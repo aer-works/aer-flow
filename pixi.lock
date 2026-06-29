@@ -1,0 +1,171 @@
+version: 7
+platforms:
+- name: linux-64
+- name: osx-arm64
+- name: win-64
+environments:
+  default:
+    channels:
+    - url: https://conda.anaconda.org/conda-forge/
+    packages:
+      linux-64:
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/dotnet-runtime-10.0.0-h84d6215_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/dotnet-sdk-10.0.100-h84d6215_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-h33c6efd_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgcc-15.2.0-he0feb66_19.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgomp-15.2.0-he0feb66_19.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-15.2.0-h934c35e_19.conda
+      osx-arm64:
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/dotnet-runtime-10.0.0-hce30654_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/dotnet-sdk-10.0.100-hce30654_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/icu-78.3-hef89b57_0.conda
+      win-64:
+      - conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-runtime-10.0.0-h57928b3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-sdk-10.0.100-h57928b3_0.conda
+packages:
+- conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
+  build_number: 20
+  sha256: 1dd3fffd892081df9726d7eb7e0dea6198962ba775bd88842135a4ddb4deb3c9
+  md5: a9f577daf3de00bca7c3c76c0ecbd1de
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgomp >=7.5.0
+  constrains:
+  - openmp_impl <0.0a0
+  license: BSD-3-Clause
+  license_family: BSD
+  run_exports:
+    strong:
+    - _openmp_mutex >=4.5
+  size: 28948
+  timestamp: 1770939786096
+- conda: https://conda.anaconda.org/conda-forge/linux-64/dotnet-runtime-10.0.0-h84d6215_0.conda
+  sha256: 6cd38decdc40b67427c532beeb1bebb7d43881f005ac405b07f0c0ebccb0817d
+  md5: aae41f008fb51777cfada693ee8c2019
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - icu
+  - libgcc >=13
+  - libstdcxx >=13
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 28731851
+  timestamp: 1764576298576
+- conda: https://conda.anaconda.org/conda-forge/linux-64/dotnet-sdk-10.0.100-h84d6215_0.conda
+  sha256: 00b9b82d63c9aa797e79f3a85296271d22c29addc6111e22d06183b85557b5a6
+  md5: 5bd7e88caab18d6fa1d1808232513b30
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - dotnet-runtime 10.0.0.*
+  - libgcc >=13
+  - libstdcxx >=13
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 136504807
+  timestamp: 1764576365568
+- conda: https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-h33c6efd_0.conda
+  sha256: fbf86c4a59c2ed05bbffb2ba25c7ed94f6185ec30ecb691615d42342baa1a16a
+  md5: c80d8a3b84358cb967fa81e7075fbc8a
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  - libstdcxx >=14
+  license: MIT
+  license_family: MIT
+  run_exports:
+    weak:
+    - icu >=78.3,<79.0a0
+  size: 12723451
+  timestamp: 1773822285671
+- conda: https://conda.anaconda.org/conda-forge/linux-64/libgcc-15.2.0-he0feb66_19.conda
+  sha256: 8e0a3b5e41272e5678499b5dfc4cddb673f9e935de01eb0767ce857001229f46
+  md5: 57736f29cc2b0ec0b6c2952d3f101b6a
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - _openmp_mutex >=4.5
+  constrains:
+  - libgcc-ng ==15.2.0=*_19
+  - libgomp 15.2.0 he0feb66_19
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  run_exports: {}
+  size: 1041084
+  timestamp: 1778269013026
+- conda: https://conda.anaconda.org/conda-forge/linux-64/libgomp-15.2.0-he0feb66_19.conda
+  sha256: 5abe4ab9d93f6c9757d654f1969ae2267d4505315c1f2f8fe705fd60af084f1b
+  md5: faac990cb7aedc7f3a2224f2c9b0c26c
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  run_exports:
+    strong:
+    - _openmp_mutex >=4.5
+  size: 603817
+  timestamp: 1778268942614
+- conda: https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-15.2.0-h934c35e_19.conda
+  sha256: dff1058c76ec6b8759e41cefa2508162d00e4a5e6721aa68ec3fd10094e702dc
+  md5: 5794b3bdc38177caf969dabd3af08549
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc 15.2.0 he0feb66_19
+  constrains:
+  - libstdcxx-ng ==15.2.0=*_19
+  license: GPL-3.0-only WITH GCC-exception-3.1
+  license_family: GPL
+  run_exports: {}
+  size: 5852044
+  timestamp: 1778269036376
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/dotnet-runtime-10.0.0-hce30654_0.conda
+  sha256: 8eecfc70d2087295d9d3dfdaf3eb630ab267cbff7667696527bc1453557e9857
+  md5: 2b07dae65121b2ab19d2722d0394baa7
+  depends:
+  - icu
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 25676203
+  timestamp: 1764576195036
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/dotnet-sdk-10.0.100-hce30654_0.conda
+  sha256: acfd0462196f022ace7ec37544e21bfe72e0f189b5cb6a6c562d21693f5fdc9f
+  md5: a5ff4a0132e1142b0003131b9f470d93
+  depends:
+  - dotnet-runtime 10.0.0.*
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 131136863
+  timestamp: 1764576264230
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/icu-78.3-hef89b57_0.conda
+  sha256: 3a7907a17e9937d3a46dfd41cffaf815abad59a569440d1e25177c15fd0684e5
+  md5: f1182c91c0de31a7abd40cedf6a5ebef
+  depends:
+  - __osx >=11.0
+  license: MIT
+  license_family: MIT
+  run_exports:
+    weak:
+    - icu >=78.3,<79.0a0
+  size: 12361647
+  timestamp: 1773822915649
+- conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-runtime-10.0.0-h57928b3_0.conda
+  sha256: 0707dfd8eb03aae3263b25b36fae3aeef332feaf89e25278d10211ddda0b5771
+  md5: 459da043d2e99f92f7ea123f9f3824ca
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 28926799
+  timestamp: 1764576397445
+- conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-sdk-10.0.100-h57928b3_0.conda
+  sha256: dd599c2f3677a53becdf6b2360bb55f86e748216411692af310bb22118e92241
+  md5: 5eb46845e8f3d9d06b19adcc94cda530
+  depends:
+  - dotnet-runtime 10.0.0.*
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 143429902
+  timestamp: 1764576558695

@@ -1,0 +1,117 @@
+name: Project Automation
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  sync-status:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      PROJECT_NUMBER: 1
+      ORG: aer-works
+
+    steps:
+      - name: Get project and field metadata
+        id: meta
+        run: |
+          DATA=$(gh api graphql -f query='
+            query($org: String!, $num: Int!) {
+              organization(login: $org) {
+                projectV2(number: $num) {
+                  id
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        name
+                        options { id name }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -F org=$ORG -F num=$PROJECT_NUMBER)
+
+          PROJECT_ID=$(echo "$DATA" | jq -r '.data.organization.projectV2.id')
+          STATUS_FIELD_ID=$(echo "$DATA" | jq -r '
+            .data.organization.projectV2.fields.nodes[]
+            | select(.name == "Status") | .id')
+          TODO_ID=$(echo "$DATA" | jq -r '
+            .data.organization.projectV2.fields.nodes[]
+            | select(.name == "Status") | .options[]
+            | select(.name == "Todo") | .id')
+          DONE_ID=$(echo "$DATA" | jq -r '
+            .data.organization.projectV2.fields.nodes[]
+            | select(.name == "Status") | .options[]
+            | select(.name == "Done") | .id')
+
+          echo "project_id=$PROJECT_ID"         >> "$GITHUB_OUTPUT"
+          echo "status_field_id=$STATUS_FIELD_ID" >> "$GITHUB_OUTPUT"
+          echo "todo_id=$TODO_ID"               >> "$GITHUB_OUTPUT"
+          echo "done_id=$DONE_ID"               >> "$GITHUB_OUTPUT"
+
+      - name: Determine target status
+        id: status
+        run: |
+          EVENT="${{ github.event_name }}"
+          ACTION="${{ github.event.action }}"
+
+          if [[ "$ACTION" == "closed" ]]; then
+            echo "option_id=${{ steps.meta.outputs.done_id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "option_id=${{ steps.meta.outputs.todo_id }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get project item ID for this issue/PR
+        id: item
+        run: |
+          if [[ "${{ github.event_name }}" == "issues" ]]; then
+            NODE_ID="${{ github.event.issue.node_id }}"
+          else
+            NODE_ID="${{ github.event.pull_request.node_id }}"
+          fi
+
+          ITEM_ID=$(gh api graphql -f query='
+            query($id: ID!, $proj: ID!) {
+              node(id: $id) {
+                ... on Issue {
+                  projectItems(first: 10) {
+                    nodes { id project { id } }
+                  }
+                }
+                ... on PullRequest {
+                  projectItems(first: 10) {
+                    nodes { id project { id } }
+                  }
+                }
+              }
+            }' -F id="$NODE_ID" -F proj="${{ steps.meta.outputs.project_id }}" \
+            | jq -r --arg proj "${{ steps.meta.outputs.project_id }}" '
+                (.data.node.projectItems.nodes // [])[]
+                | select(.project.id == $proj) | .id')
+
+          echo "item_id=$ITEM_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Update project item status
+        if: steps.item.outputs.item_id != ''
+        run: |
+          gh api graphql -f query='
+            mutation($proj: ID!, $item: ID!, $field: ID!, $opt: String!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $proj
+                itemId: $item
+                fieldId: $field
+                value: { singleSelectOptionId: $opt }
+              }) { projectV2Item { id } }
+            }' \
+            -F proj="${{ steps.meta.outputs.project_id }}" \
+            -F item="${{ steps.item.outputs.item_id }}" \
+            -F field="${{ steps.meta.outputs.status_field_id }}" \
+            -F opt="${{ steps.status.outputs.option_id }}"
