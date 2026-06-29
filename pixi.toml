@@ -1,0 +1,14 @@
+[workspace]
+channels = ["conda-forge"]
+name = "aer-flow"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+build = "dotnet build"
+test = "dotnet test"
+fmt = "dotnet format"
+fmt-check = "dotnet format --verify-no-changes"
+lint = "dotnet build -warnaserror"
+[dependencies]
+dotnet-sdk = ">=10.0.100,<11"
