@@ -1,0 +1,30 @@
+version: 7
+platforms:
+- name: win-64
+environments:
+  default:
+    channels:
+    - url: https://conda.anaconda.org/conda-forge/
+    packages:
+      win-64:
+      - conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-runtime-10.0.0-h57928b3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-sdk-10.0.100-h57928b3_0.conda
+packages:
+- conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-runtime-10.0.0-h57928b3_0.conda
+  sha256: 0707dfd8eb03aae3263b25b36fae3aeef332feaf89e25278d10211ddda0b5771
+  md5: 459da043d2e99f92f7ea123f9f3824ca
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 28926799
+  timestamp: 1764576397445
+- conda: https://conda.anaconda.org/conda-forge/win-64/dotnet-sdk-10.0.100-h57928b3_0.conda
+  sha256: dd599c2f3677a53becdf6b2360bb55f86e748216411692af310bb22118e92241
+  md5: 5eb46845e8f3d9d06b19adcc94cda530
+  depends:
+  - dotnet-runtime 10.0.0.*
+  license: MIT
+  license_family: MIT
+  run_exports: {}
+  size: 143429902
+  timestamp: 1764576558695
