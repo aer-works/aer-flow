@@ -68,9 +68,10 @@ At the same time, the Core / Flow / UI split exists *specifically because* it co
 
 Concretely, this means: the layering itself is not over-engineering. A second worker adapter, a different scheduling rule, or someone else's UI could plug into the existing seams (Core's FFI boundary, Flow's mutation interface, the WorkerContract abstraction) without anyone needing to have anticipated their specific use case — because those seams were chosen for what AER itself needed, not for an imagined audience. What *would* be over-engineering is adding capability — a plugin registry, multi-user auth, a marketplace of contracts — before anyone, including Philip, has a concrete second use case for it. If that day comes, the right move is the same one this whole thread has used repeatedly: build the second concrete thing, then extract what it actually has in common with the first.
 
-## 7. Status & Roadmap
+## 7. Repository Layout
 
-- **AER Core:** M1–M3 complete (state machine, timeout/kill escalation, process tree cleanup). M4 in progress (Observation Tier, on-demand Cancellation, and the FFI boundary, all scoped together — see Core spec §7–§8). M5 (.NET binding) next. M6 (Python binding) explicitly deferred — no consumer exists yet.
-- **AER Flow:** Behavioral spec complete (v1.0), including the generalized Pause & External Decision primitive that makes human override a first-class capability, and the bounded `Supersede`/`SupersedeTargets` mechanism that realizes the original "Architect ↔ Critic" iteration goal without reintroducing a workflow DSL. Implementation not yet started; begins once AER Core's M5 binding is available for Flow to build against.
-- **AER Flow UI:** Behavioral spec drafted (v0.7) ahead of any other client existing, intentionally — establishing what a client is and is not allowed to do before one is built tends to be cheaper than retrofitting the restriction later.
-- **Repo layout:** `aer-core` (Rust, its own repo — the one boundary that's genuinely cross-language and earns a separate repo). `aer-flow` (a single .NET solution containing Flow, worker adapters, and the CLI as separate projects within it; created when Flow implementation begins). No `aer-agents` repo split yet — deferred until a third party, not just Philip, needs to ship worker adapters independently.
+- **`aer-core`** — Rust; its own repo because it's the one boundary that's genuinely cross-language and earns the isolation. Publishes a C ABI and a .NET P/Invoke binding.
+- **`aer-flow`** — A single .NET solution containing the Flow engine, worker adapters, and the CLI as separate projects. Lives here because Core/Flow/UI are one team's work and there's no benefit in splitting them before a genuine second consumer exists.
+- **`aer-works/.github`** — Org profile. No code lives here.
+
+For current milestone status and implementation sequencing, see `IMPLEMENTATION_PLAN.md` in each repo.
