@@ -70,7 +70,12 @@ WorkerContract
  ├── WorkerName
  ├── RequiredInputs[]    (named file roles, e.g. "goal", "plan-to-review")
  ├── ProducedOutputs[]   (named file roles, e.g. "plan", "review")
+ │    └── Condition?     (optional — see §4.1)
  └── OptionalMetadata[]  (e.g. a structured .json summary alongside the primary artifact)
+
+OutputCondition
+ ├── Path    (JSON Pointer, RFC 6901, into the output file's parsed JSON content)
+ └── Equals  (a scalar JSON literal: string, number, boolean, or null)
 ```
 
 **Rules:**
@@ -78,6 +83,22 @@ WorkerContract
 - Flow validates that an execution's declared `Outputs` satisfy its `WorkerContract`'s `ProducedOutputs` before classifying the execution as successful (see §8). A worker that exits 0 but fails to produce a contractually required output is a failure, not a success.
 - Contracts are declarative metadata only. They impose no runtime logic on Core — Core still only sees `Inputs`/`Outputs` as file paths from §3.
 - `OptionalMetadata` is where a worker may report `FailureClassification` (§8.1) on failure. Flow understands exactly that one field, with exactly two values, and nothing else a worker writes there — see §8.1 for why this is deliberately narrow.
+
+### 4.1 Output conditions (content, not just existence)
+
+A `ProducedOutputs` entry may optionally declare one `OutputCondition`, extending the contract from "this file must exist" to "this file must exist and say this." This is the entire condition language; it is deliberately tiny.
+
+**Satisfaction.** An output with a declared condition satisfies the contract exactly when all of the following hold:
+1. the file exists on disk;
+2. it parses as JSON (a condition may only be declared on a JSON output);
+3. the JSON Pointer in `Path` resolves to a value;
+4. that value equals the scalar literal in `Equals` (string, number, boolean, or null; numbers compare by value).
+
+Failure of any clause makes the output unsatisfied — classified exactly like a missing required output (§8): `ExecutionFailed`, even on a clean exit 0. When a step declares conditions on multiple outputs, all must hold (implicit AND).
+
+**Evaluation happens exactly once.** Flow evaluates conditions at outcome-classification time (§8), reading the artifact from disk, and records the verdict as the durable `ExecutionSucceeded`/`ExecutionFailed` event. Replay never re-evaluates a condition — artifacts are not part of the Event Store, and the projection (§12, §13) trusts the recorded classification. A later mutation of an artifact on disk cannot retroactively change history.
+
+**Deliberate exclusions.** No comparison operators beyond equality, no boolean composition, no regex, no numeric ranges, no JSONPath queries. The reasoning is §8.1's, applied again: a richer condition language becomes a de facto DSL whose exact spelling Flow's scheduling behavior depends on, and which must then be versioned, documented, and maintained forever. A worker that needs a complex judgment ("are all tests green and coverage above 80%?") computes it inside the worker boundary (§18.2) and writes a scalar verdict field — `{"status": "approved"}` — for the contract to check. This is precisely the shape §10.1's retry-as-self-iteration pattern requires, and nothing in that pattern needs more.
 
 ---
 
@@ -147,11 +168,11 @@ Core reports only factual, mechanical outcomes — exit code and `reason` (`Natu
 
 | Classification       | Condition                                                                                                               |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `ExecutionSucceeded` | Core `reason == NaturalExit`, exit code `== 0`, **and** all outputs declared by the step's `WorkerContract` exist       |
-| `ExecutionFailed`    | Core `reason == NaturalExit` and (non-zero exit code **or** missing required outputs), **or** Core `reason == TimedOut` |
+| `ExecutionSucceeded` | Core `reason == NaturalExit`, exit code `== 0`, **and** all outputs declared by the step's `WorkerContract` exist and satisfy their declared `OutputCondition`s (§4.1) |
+| `ExecutionFailed`    | Core `reason == NaturalExit` and (non-zero exit code **or** missing / condition-unsatisfied required outputs), **or** Core `reason == TimedOut` |
 | `ExecutionCancelled` | Core `reason == CancelRequested` — see §9                                                                               |
 
-A clean exit with missing outputs is a failure, not a success — exit code alone is necessary but not sufficient. A cancellation is never classified as a failure: it reflects an explicit decision to stop, not the worker doing anything wrong, and — per §9 and §10 — is never subject to retry.
+A clean exit with missing or condition-unsatisfied outputs (§4.1) is a failure, not a success — exit code alone is necessary but not sufficient. A cancellation is never classified as a failure: it reflects an explicit decision to stop, not the worker doing anything wrong, and — per §9 and §10 — is never subject to retry.
 
 ### 8.1 Worker Self-Reported Failure Classification (optional)
 
@@ -204,7 +225,7 @@ Cancellation is requested through Flow's mutation interface (§14), like every o
 Flow has no loop or branching construct (§20). This section names a pattern — not a new primitive — for the common case of "have a single step retry itself until its own output is good enough, capped at a fixed number of attempts," using only mechanisms already defined in this document.
 
 **The pattern:**
-- A `WorkerContract` (§4) defines what counts as a satisfying output not just by *existence* of a file, but by its *content meeting a declared condition* — e.g. requiring an output `verdict.json` whose `status` field equals `"approved"`, not merely requiring `verdict.json` to exist.
+- A `WorkerContract` defines what counts as a satisfying output not just by *existence* of a file, but by its *content meeting a declared `OutputCondition`* (§4.1) — e.g. requiring an output `verdict.json` whose `/status` pointer equals `"approved"`, not merely requiring `verdict.json` to exist.
 - A worker that judges its own output insufficient (whether by self-critique, a second model call, or any other means internal to the worker boundary — §18.2) writes `verdict.json: {"status": "needs_revision", ...}` and exits 0.
 - Per §8's failure model, exit code `0` is necessary but not sufficient for `ExecutionSucceeded` — the declared output must also satisfy the contract. `status: "needs_revision"` fails the contract, so this execution is classified `ExecutionFailed` despite the clean exit.
 - The step's existing `RetryPolicy` then governs exactly as it would for any other failure: a new `ExecutionRequest` with a new `ExecutionId` is generated, up to the policy's attempt limit, after which the step transitions to terminal failure per the normal retry rules above.
