@@ -66,3 +66,4 @@ Always use `pixi run <task>`. Never invoke `dotnet` directly in CI or developmen
 - No direct commits to `main`. All changes via PR.
 - Always create branches from issues (e.g., using `gh issue develop`).
 - Close issues in the PR body (`Closes #n`), not in commit messages.
+- Each issue is scoped to ship as a standalone PR (one-to-one). If two issues can't be reviewed independently, the issue boundary was drawn incorrectly — fix it in the backlog, not at PR time.
