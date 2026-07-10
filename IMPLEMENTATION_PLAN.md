@@ -126,7 +126,7 @@ Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not
 
 ## Current Milestone
 
-**M7 — in progress.** Phases 1–3 complete. Phase 4 (State Projector) is next.
+**M7 — in progress.** Phases 1–4 complete. Phase 5 (Dependency Resolver) is next.
 
 ## Completed Milestones
 
@@ -135,6 +135,7 @@ None yet. Phase progress within M7:
 - ✅ Phase 1 — Domain model (#7)
 - ✅ Phase 2 — Log Manager (#8)
 - ✅ Phase 3 — Template Parser + Snapshot Binder (#9)
+- ✅ Phase 4 — State Projector (#10)
 
 ---
 
