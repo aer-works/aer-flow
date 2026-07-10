@@ -10,5 +10,3 @@ test = "dotnet test"
 fmt = "dotnet format"
 fmt-check = "dotnet format --verify-no-changes"
 lint = "dotnet build -warnaserror"
-[dependencies]
-dotnet-sdk = ">=10.0.100,<11"

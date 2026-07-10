@@ -36,7 +36,10 @@ Always use `pixi run <task>`. Never invoke `dotnet` directly in CI or developmen
 | `fmt` | `dotnet format` (fix) |
 | `fmt-check` | `dotnet format --verify-no-changes` (CI) |
 
-Pixi manages the .NET SDK (`dotnet-sdk` from `conda-forge`) — no separate system-wide .NET install needed.
+**.NET 10 SDK** is required and installed separately — pixi does not manage it (same convention as aer-core):
+- Windows: `winget install Microsoft.DotNet.SDK.10`
+- macOS: `brew install dotnet-sdk` or the official installer
+- Linux: follow [Microsoft's install guide](https://learn.microsoft.com/en-us/dotnet/core/install/linux)
 
 ---
 

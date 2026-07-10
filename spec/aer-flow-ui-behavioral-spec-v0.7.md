@@ -9,7 +9,9 @@ AER Flow UI is a control-plane and visualization layer for AER Flow. It depends 
 
 This specification intentionally defines **no execution semantics**. Those belong exclusively to AER Flow and AER Core.
 
-**Changes from v0.6:** renamed `RevisableUpstream` to `SupersedeTargets` throughout, matching AER Flow v1.6. No behavioral change to the UI's own contract — this is a pure rename following the upstream field rename.
+Each spec (Core, Flow, UI) is versioned independently; the dependency list above pins the sibling spec versions this document was written against, and cross-references always name the sibling spec file as it exists at the same commit.
+
+**Changes from v0.6:** renamed `RevisableUpstream` to `SupersedeTargets` throughout, matching the field name in `aer-flow-behavioral-spec-v1.0.md` (an earlier draft lineage of that spec used different numbering; v1.0 is the published version). No behavioral change to the UI's own contract — this is a pure rename following the upstream field rename.
 
 ---
 
