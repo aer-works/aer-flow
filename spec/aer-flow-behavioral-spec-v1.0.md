@@ -90,7 +90,7 @@ Append-only, source of truth for system state reconstruction. Storage backend (J
 | Log                            | Owner             | Contains                                                                                                                                                                                                                              |
 | ------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `events.jsonl` (or equivalent) | Core, exclusively | `ExecutionStarted`, `ExecutionExited`, `StdoutChunk`/`StderrChunk` (if `CaptureOutput` is enabled)                                                                                                                                    |
-| `flow.jsonl` (or equivalent)   | Flow, exclusively | `ExecutionRequestAccepted`, `ExecutionRequestRejected`, `ExecutionSucceeded`, `ExecutionFailed`, `ExecutionCancelled`, `CancellationRequested`, `WorkflowPaused`, `ExternalDecisionRecorded`, `WorkflowResumed`, `WorkflowTransition` |
+| `flow.jsonl` (or equivalent)   | Flow, exclusively | `ExecutionRequestAccepted`, `ExecutionRequestRejected`, `ExecutionSucceeded`, `ExecutionFailed`, `ExecutionCancelled`, `CancellationRequested`, `WorkflowPaused`, `ExternalDecisionRecorded`, `WorkflowResumed` |
 
 **Rule:** each log has exactly one writer role. Core never writes to the Flow log; Flow never writes to the Core log. This holds regardless of file format or count — if the two are later merged into one store, the ownership rule still applies per event type.
 
@@ -107,6 +107,8 @@ Append-only, source of truth for system state reconstruction. Storage backend (J
 | `WorkflowPaused` / `ExternalDecisionRecorded` / `WorkflowResumed` | A workflow has paused, received an external decision, and resumed (§17)                                 | Between steps, at arbitrary real-world duration                                   |
 
 These names are deliberately distinct from each other precisely because "admitted to run," "succeeded once run," "cancelled mid-run," and "paused awaiting a decision" are different moments. No event name may be reused across multiple meanings.
+
+There is deliberately **no workflow-level transition event** (an earlier draft named a `WorkflowTransition` event without defining it). Workflow-level status — running, paused, completed, failed — is a pure projection of the events above plus the `WorkflowDefinitionSnapshot` (§12, §13): a workflow is terminal exactly when every step has reached a terminal outcome or become unreachable. Recording that conclusion as a stored event would create a second source of truth that a replay of the step-level events could contradict, violating §12.1's rule that anything derivable by replay belongs in the projection, not in an event.
 
 ### 5.3 Properties
 
@@ -299,7 +301,7 @@ NextExecutionRequest = f(FlowState)
 - Determine which steps are ready per §11.3.
 - Emit `ExecutionRequest`s for ready steps.
 - Classify completed executions per §8.
-- Advance `WorkflowTransition`, `WorkflowPaused`/`WorkflowResumed` state accordingly.
+- Derive workflow-level status (running, paused, terminal) from the projected step outcomes and `WorkflowPaused`/`WorkflowResumed` events — a pure projection, never a stored event (§5.2).
 
 **Constraint:** Flow never executes a process. It only ever reads the Event Store and emits requests.
 
