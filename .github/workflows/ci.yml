@@ -23,6 +23,10 @@ jobs:
         with:
           cache: true
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
       - name: Check formatting
         run: pixi run fmt-check
 
