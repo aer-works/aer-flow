@@ -69,6 +69,14 @@ jobs:
             echo "option_id=${{ steps.meta.outputs.todo_id }}" >> "$GITHUB_OUTPUT"
           fi
 
+      # The org plan's built-in auto-add workflow is already consumed by
+      # aer-core, so this repo adds its own issues to the board. Idempotent:
+      # adding an item that is already on the project is a no-op. Issues only —
+      # PRs are deliberately never added to the board.
+      - name: Add issue to project
+        if: github.event_name == 'issues'
+        run: gh project item-add $PROJECT_NUMBER --owner "$ORG" --url "${{ github.event.issue.html_url }}"
+
       - name: Get project item ID for this issue/PR
         id: item
         run: |
