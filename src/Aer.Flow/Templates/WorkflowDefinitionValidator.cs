@@ -1,0 +1,158 @@
+using Aer.Flow.Domain;
+
+namespace Aer.Flow.Templates;
+
+/// <summary>
+/// Structural validation for a <see cref="WorkflowDefinition"/> template (spec §11.1), independent
+/// of how the definition was produced (parsed from a file, constructed in-memory, etc).
+/// </summary>
+public static class WorkflowDefinitionValidator
+{
+    /// <summary>
+    /// Validates <paramref name="definition"/>, throwing <see cref="WorkflowDefinitionValidationException"/>
+    /// with every violation found if it is not well-formed. A well-formed definition has:
+    /// unique <see cref="StepId"/>s; every <c>DependsOn</c> entry resolving to a declared
+    /// <see cref="StepId"/>; an acyclic <c>DependsOn</c> graph; and, for every declared
+    /// <c>PausePoint</c>, <c>SupersedeTargets</c> entries that are all transitive ancestors of the
+    /// declaring step (§17.1).
+    /// </summary>
+    public static void Validate(WorkflowDefinition definition)
+    {
+        // System.Text.Json does not enforce non-nullable reference-typed record parameters by
+        // default: a template JSON that simply omits "steps", "dependsOn", or "supersedeTargets"
+        // deserializes those properties as null despite their declared (non-nullable) type. Every
+        // list is re-checked for null below so a hand-edited or truncated template file fails with
+        // a WorkflowDefinitionValidationException, not an unhandled NullReferenceException.
+        var errors = new List<string>();
+
+        if (definition.Steps is null)
+        {
+            throw new WorkflowDefinitionValidationException(["WorkflowDefinition.Steps is missing."]);
+        }
+
+        for (var i = 0; i < definition.Steps.Count; i++)
+        {
+            if (definition.Steps[i] is null)
+            {
+                errors.Add($"WorkflowDefinition.Steps[{i}] is missing.");
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new WorkflowDefinitionValidationException(errors);
+        }
+
+        var declared = new HashSet<StepId>();
+        foreach (var step in definition.Steps)
+        {
+            if (!declared.Add(step.StepId))
+            {
+                errors.Add($"Duplicate StepId '{step.StepId}'.");
+            }
+        }
+
+        foreach (var step in definition.Steps)
+        {
+            if (step.DependsOn is null)
+            {
+                errors.Add($"Step '{step.StepId}' has a missing DependsOn list.");
+                continue;
+            }
+
+            foreach (var dependency in step.DependsOn)
+            {
+                if (!declared.Contains(dependency))
+                {
+                    errors.Add($"Step '{step.StepId}' declares DependsOn '{dependency}', which is not a declared StepId.");
+                }
+            }
+        }
+
+        // The ancestor walk below assumes every StepId reference resolves, appears once, and has
+        // a non-null DependsOn list; surface the errors above first rather than let the walk fail
+        // on malformed input.
+        if (errors.Count > 0)
+        {
+            throw new WorkflowDefinitionValidationException(errors);
+        }
+
+        var ancestorsByStep = ComputeTransitiveAncestors(definition, errors);
+
+        foreach (var step in definition.Steps)
+        {
+            if (step.PausePoint is null)
+            {
+                continue;
+            }
+
+            if (step.PausePoint.SupersedeTargets is null)
+            {
+                errors.Add($"Step '{step.StepId}' declares a PausePoint with a missing SupersedeTargets list.");
+                continue;
+            }
+
+            var ancestors = ancestorsByStep[step.StepId];
+            foreach (var target in step.PausePoint.SupersedeTargets)
+            {
+                if (!ancestors.Contains(target))
+                {
+                    errors.Add(
+                        $"Step '{step.StepId}' declares SupersedeTarget '{target}', which is not a transitive ancestor of '{step.StepId}'.");
+                }
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new WorkflowDefinitionValidationException(errors);
+        }
+    }
+
+    /// <summary>
+    /// Computes, for every step, the full set of StepIds reachable by following <c>DependsOn</c>
+    /// edges backward. Detects cycles along the way — a cyclic <c>DependsOn</c> graph contradicts
+    /// §11.1's "no loops" static-DAG requirement, and would otherwise make "transitive ancestor"
+    /// an ill-defined question for <c>SupersedeTargets</c> validation.
+    /// </summary>
+    private static Dictionary<StepId, HashSet<StepId>> ComputeTransitiveAncestors(
+        WorkflowDefinition definition,
+        List<string> errors)
+    {
+        var byId = definition.Steps.ToDictionary(step => step.StepId);
+        var ancestorsByStep = new Dictionary<StepId, HashSet<StepId>>();
+        var inProgress = new HashSet<StepId>();
+
+        HashSet<StepId> Visit(StepId stepId)
+        {
+            if (ancestorsByStep.TryGetValue(stepId, out var cached))
+            {
+                return cached;
+            }
+
+            if (!inProgress.Add(stepId))
+            {
+                errors.Add($"Cyclic DependsOn graph detected at StepId '{stepId}'.");
+                return [];
+            }
+
+            var ancestors = new HashSet<StepId>();
+            foreach (var dependency in byId[stepId].DependsOn)
+            {
+                ancestors.Add(dependency);
+                ancestors.UnionWith(Visit(dependency));
+            }
+
+            inProgress.Remove(stepId);
+            ancestorsByStep[stepId] = ancestors;
+            return ancestors;
+        }
+
+        foreach (var step in definition.Steps)
+        {
+            Visit(step.StepId);
+        }
+
+        return ancestorsByStep;
+    }
+}

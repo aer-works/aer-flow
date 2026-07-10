@@ -80,7 +80,7 @@ Load and validate `WorkflowDefinition` from file. Freeze into `WorkflowDefinitio
 
 **Produces:** validated, immutable `WorkflowDefinitionSnapshot` — the input both the State Projector (Phase 4) and Dependency Resolver (Phase 5) require.  
 **Excludes:** projection, scheduling, dispatch.  
-**Open question resolved in this phase:** workflow definition file format (spec says implementation-defined; TOML is human-writable, JSONL is consistent with the event log — pick one and document it as the convention).
+**Open question resolved in this phase:** workflow definition file format is plain JSON (`.json`, one document — not `.jsonl`), deserialized through the same `System.Text.Json` converters already used for every other domain record and for `flow.jsonl` itself. See `Aer.Flow.Templates.WorkflowDefinitionParser`.
 
 ### Phase 4 — State Projector
 Implement `Project(EventStore, WorkflowDefinitionSnapshot) → FlowState`. Read `flow.jsonl` linearly (via Phase 2's log reader). Reconstruct per-step execution status. Causal linking strictly by `ExecutionId` (§6) — never by line order, file order, or timestamp. Handle the unfinalized-classification case (§6: process ran in Core, Flow has not yet written `ExecutionSucceeded/Failed`).
@@ -126,11 +126,15 @@ Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not
 
 ## Current Milestone
 
-**M7 — not started.** Blocked on aer-core M5.
+**M7 — in progress.** Phases 1–3 complete. Phase 4 (State Projector) is next.
 
 ## Completed Milestones
 
-None.
+None yet. Phase progress within M7:
+
+- ✅ Phase 1 — Domain model (#7)
+- ✅ Phase 2 — Log Manager (#8)
+- ✅ Phase 3 — Template Parser + Snapshot Binder (#9)
 
 ---
 
