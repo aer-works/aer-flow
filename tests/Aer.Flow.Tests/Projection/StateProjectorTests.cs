@@ -163,6 +163,77 @@ public class StateProjectorTests
     }
 
     [Fact]
+    public void Rejecting_a_paused_execution_that_had_succeeded_projects_it_as_Rejected()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+            new FlowEvent.WorkflowPaused(executionId, Critic),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, executionId, DecisionType.Reject, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(StepStatus.Rejected, StepFor(state, Critic).Status);
+    }
+
+    [Fact]
+    public void Rejecting_a_paused_execution_that_had_failed_projects_it_as_Rejected_not_Failed()
+    {
+        // "Equivalent in effect to exhausting RetryPolicy, but externally triggered" (§17.2):
+        // Rejected is a distinct terminal status from Failed so the Retry Engine never reconsiders it.
+        var executionId = new ExecutionId("exec-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Critic)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable),
+            new FlowEvent.WorkflowPaused(executionId, Critic),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, executionId, DecisionType.Reject, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(StepStatus.Rejected, StepFor(state, Critic).Status);
+    }
+
+    [Fact]
+    public void A_paused_execution_reports_its_underlying_outcome_as_PausedOutcome()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+            new FlowEvent.WorkflowPaused(executionId, Critic),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(StepStatus.Succeeded, StepFor(state, Critic).PausedOutcome);
+    }
+
+    [Fact]
+    public void A_step_that_is_not_currently_paused_reports_a_null_PausedOutcome()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Null(StepFor(state, Critic).PausedOutcome);
+    }
+
+    [Fact]
     public void A_step_with_no_WorkflowPaused_ever_recorded_projects_PauseRecordedForLatestExecution_false()
     {
         var executionId = new ExecutionId("exec-1");

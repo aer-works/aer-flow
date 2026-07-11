@@ -33,7 +33,9 @@ public static class DependencyResolver
 
             // Running: an attempt is already in flight. Paused: idle until an external decision
             // resolves it (§17.1). Cancelled: never retried, regardless of policy (§9, §10).
-            if (stepState.Status is StepStatus.Running or StepStatus.Paused or StepStatus.Cancelled)
+            // Rejected: an external Reject forecloses retry regardless of remaining budget,
+            // equivalent in effect to exhausting RetryPolicy but externally triggered (§17.2).
+            if (stepState.Status is StepStatus.Running or StepStatus.Paused or StepStatus.Cancelled or StepStatus.Rejected)
             {
                 continue;
             }

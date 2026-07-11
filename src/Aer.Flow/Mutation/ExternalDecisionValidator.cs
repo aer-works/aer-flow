@@ -1,0 +1,112 @@
+using Aer.Flow.Domain;
+
+namespace Aer.Flow.Mutation;
+
+/// <summary>
+/// Capability 14's validation half (spec §17.2): a pure function — no I/O, no dispatch — deciding
+/// whether a candidate <see cref="FlowEvent.ExternalDecisionRecorded"/> is admissible against
+/// projected <see cref="FlowState"/>. Every <see cref="DecisionType"/> is validated here, even
+/// though <see cref="DecisionType.RetryWithRevision"/>/<see cref="DecisionType.Supersede"/>
+/// consequences land in a later phase — an invalid decision is rejected before anything is
+/// appended, never silently widened.
+/// </summary>
+public static class ExternalDecisionValidator
+{
+    /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
+    public static void Validate(
+        FlowState state,
+        WorkflowDefinitionSnapshot snapshot,
+        IReadOnlySet<ExecutionId> succeededExecutionIds,
+        ExecutionId referencedExecutionId,
+        DecisionType decisionType,
+        StepId? targetStepId,
+        ExecutionId? supplementaryExecutionId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(succeededExecutionIds);
+
+        // "One resolving decision per pause" (§17.2) needs no separate check: once a prior decision
+        // has resolved this ExecutionId, WorkflowResumed has already cleared its Paused status, so a
+        // further decision against it fails this same lookup.
+        var referencedStep = state.Steps.SingleOrDefault(step => step.LatestExecutionId == referencedExecutionId);
+        if (referencedStep is null || referencedStep.Status != StepStatus.Paused)
+        {
+            throw new InvalidExternalDecisionException(
+                $"Execution '{referencedExecutionId}' is not the currently paused latest attempt of any step.");
+        }
+
+        // Every Paused step was paused by the Pause Engine only for a step declaring PausePoint
+        // (§17.1) — a Flow-internal invariant, not something a caller's input can violate.
+        var pausePoint = snapshot.Steps.Single(step => step.StepId == referencedStep.StepId).PausePoint!;
+
+        switch (decisionType)
+        {
+            case DecisionType.Resume:
+                RequireNoTargetStepId(decisionType, targetStepId);
+                break;
+
+            case DecisionType.Reject:
+                RequireNoTargetStepId(decisionType, targetStepId);
+                break;
+
+            case DecisionType.RetryWithRevision:
+                RequireNoTargetStepId(decisionType, targetStepId);
+                if (referencedStep.PausedOutcome == StepStatus.Succeeded)
+                {
+                    throw new InvalidExternalDecisionException(
+                        $"RetryWithRevision requires step '{referencedStep.StepId}' to not have already succeeded.");
+                }
+
+                if (supplementaryExecutionId is { } retrySupplement && !succeededExecutionIds.Contains(retrySupplement))
+                {
+                    throw new InvalidExternalDecisionException(
+                        $"SupplementaryExecutionId '{retrySupplement}' does not name a recorded successful execution.");
+                }
+
+                break;
+
+            case DecisionType.Supersede:
+                if (targetStepId is not { } target)
+                {
+                    throw new InvalidExternalDecisionException("Supersede decisions require a TargetStepId.");
+                }
+
+                if (!pausePoint.SupersedeTargets.Contains(target))
+                {
+                    throw new InvalidExternalDecisionException(
+                        $"'{target}' is not a declared SupersedeTargets entry for step '{referencedStep.StepId}'.");
+                }
+
+                var targetState = state.Steps.Single(step => step.StepId == target);
+                if (targetState.Status != StepStatus.Succeeded)
+                {
+                    throw new InvalidExternalDecisionException($"Supersede target '{target}' has not succeeded.");
+                }
+
+                if (supplementaryExecutionId is not { } supersedeSupplement)
+                {
+                    throw new InvalidExternalDecisionException("Supersede decisions require a SupplementaryExecutionId.");
+                }
+
+                if (!succeededExecutionIds.Contains(supersedeSupplement))
+                {
+                    throw new InvalidExternalDecisionException(
+                        $"SupplementaryExecutionId '{supersedeSupplement}' does not name a recorded successful execution.");
+                }
+
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(decisionType), decisionType, "Unknown DecisionType.");
+        }
+    }
+
+    private static void RequireNoTargetStepId(DecisionType decisionType, StepId? targetStepId)
+    {
+        if (targetStepId is not null)
+        {
+            throw new InvalidExternalDecisionException($"TargetStepId is only valid for {DecisionType.Supersede} decisions, not {decisionType}.");
+        }
+    }
+}
