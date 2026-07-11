@@ -56,6 +56,25 @@ public static class MutationInterface
         {
             var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
             state = StateProjector.Project(events, snapshot);
+
+            // A derived obligation (§17.1), re-evaluated from projected state on every round rather
+            // than welded into the dispatch continuation, so a crash between the outcome event and
+            // this append loses nothing (§7, §13). Appending changes a paused step's projected
+            // status from its terminal outcome to Paused, which must be reflected before readiness
+            // is resolved — re-reading and re-projecting the freshly appended events is simpler than
+            // threading that one status change through by hand.
+            var pauseObligations = PauseEngine.GetPauseObligations(state, snapshot);
+            if (pauseObligations.Count > 0)
+            {
+                foreach (var (stepId, executionId) in pauseObligations)
+                {
+                    await eventLogWriter.AppendAsync(new FlowEvent.WorkflowPaused(executionId, stepId), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
             var readyStepIds = DependencyResolver.GetReadySteps(state, snapshot);
 
             // Snapshot declaration order, not the ready set's (unordered) iteration order, so a

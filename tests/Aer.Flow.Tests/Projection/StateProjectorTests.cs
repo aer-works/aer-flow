@@ -163,6 +163,142 @@ public class StateProjectorTests
     }
 
     [Fact]
+    public void A_step_with_no_WorkflowPaused_ever_recorded_projects_PauseRecordedForLatestExecution_false()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.False(StepFor(state, Critic).PauseRecordedForLatestExecution);
+    }
+
+    [Fact]
+    public void PauseRecordedForLatestExecution_stays_true_after_resume_even_though_Status_reverts()
+    {
+        // §17.2's "one resolving decision per pause": Resume clears the transient Paused status,
+        // but the fact that this exact ExecutionId was once paused must survive so the Pause Engine
+        // never re-pauses it (§17.1).
+        var executionId = new ExecutionId("exec-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+            new FlowEvent.WorkflowPaused(executionId, Critic),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, executionId, DecisionType.Resume, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var critic = StepFor(state, Critic);
+        Assert.Equal(StepStatus.Succeeded, critic.Status);
+        Assert.True(critic.PauseRecordedForLatestExecution);
+    }
+
+    [Fact]
+    public void A_new_attempt_after_resume_starts_with_PauseRecordedForLatestExecution_false()
+    {
+        // A fresh ExecutionId (e.g. via §17.2's RetryWithRevision/Supersede, landing in later
+        // phases) has never itself been paused, regardless of the step's history.
+        var firstAttempt = new ExecutionId("exec-1");
+        var secondAttempt = new ExecutionId("exec-2");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(firstAttempt, Critic)),
+            new FlowEvent.ExecutionSucceeded(firstAttempt),
+            new FlowEvent.WorkflowPaused(firstAttempt, Critic),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, firstAttempt, DecisionType.Resume, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(secondAttempt, Critic)),
+            new FlowEvent.ExecutionSucceeded(secondAttempt),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.False(StepFor(state, Critic).PauseRecordedForLatestExecution);
+    }
+
+    [Fact]
+    public void An_all_pending_workflow_projects_WorkflowStatus_Terminal()
+    {
+        var state = StateProjector.Project([], TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Terminal, state.Status);
+    }
+
+    [Fact]
+    public void A_workflow_with_a_running_step_projects_WorkflowStatus_Running()
+    {
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("exec-1"), Architect)),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Running, state.Status);
+    }
+
+    [Fact]
+    public void A_workflow_with_a_paused_step_and_nothing_running_projects_WorkflowStatus_Paused()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+            new FlowEvent.WorkflowPaused(executionId, Architect),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Paused, state.Status);
+    }
+
+    [Fact]
+    public void Running_takes_priority_over_Paused_when_both_are_present()
+    {
+        var architectExecutionId = new ExecutionId("exec-1");
+        var criticExecutionId = new ExecutionId("exec-2");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
+            new FlowEvent.ExecutionSucceeded(architectExecutionId),
+            new FlowEvent.WorkflowPaused(architectExecutionId, Architect),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(criticExecutionId, Critic)),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Running, state.Status);
+    }
+
+    [Fact]
+    public void A_fully_succeeded_workflow_projects_WorkflowStatus_Terminal()
+    {
+        var architectExecutionId = new ExecutionId("exec-1");
+        var criticExecutionId = new ExecutionId("exec-2");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
+            new FlowEvent.ExecutionSucceeded(architectExecutionId),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(criticExecutionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(criticExecutionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Terminal, state.Status);
+    }
+
+    [Fact]
     public void A_rejected_request_never_having_been_accepted_leaves_the_step_Pending()
     {
         var events = new FlowEvent[]
