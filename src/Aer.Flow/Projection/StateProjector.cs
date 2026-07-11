@@ -27,6 +27,7 @@ public static class StateProjector
         var upstreamExecutionIdsByStepId = new Dictionary<StepId, IReadOnlyDictionary<StepId, ExecutionId>>();
         var terminalStatusByExecutionId = new Dictionary<ExecutionId, StepStatus>();
         var pausedExecutionIds = new HashSet<ExecutionId>();
+        var everPausedExecutionIds = new HashSet<ExecutionId>();
         var referencedExecutionIdByDecisionId = new Dictionary<DecisionId, ExecutionId>();
         var stepIdByExecutionId = new Dictionary<ExecutionId, StepId>();
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
@@ -69,6 +70,7 @@ public static class StateProjector
 
                 case FlowEvent.WorkflowPaused paused:
                     pausedExecutionIds.Add(paused.ExecutionId);
+                    everPausedExecutionIds.Add(paused.ExecutionId);
                     break;
 
                 case FlowEvent.ExternalDecisionRecorded decision:
@@ -119,9 +121,16 @@ public static class StateProjector
                 latestExecutionId,
                 upstreamExecutionIdsByStepId[stepDefinition.StepId],
                 consecutiveFailureCountByStepId.GetValueOrDefault(stepDefinition.StepId),
-                latestFailureClassificationByStepId.GetValueOrDefault(stepDefinition.StepId)));
+                latestFailureClassificationByStepId.GetValueOrDefault(stepDefinition.StepId),
+                everPausedExecutionIds.Contains(latestExecutionId)));
         }
 
-        return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps);
+        var workflowStatus = steps.Any(step => step.Status == StepStatus.Running)
+            ? WorkflowStatus.Running
+            : steps.Any(step => step.Status == StepStatus.Paused)
+                ? WorkflowStatus.Paused
+                : WorkflowStatus.Terminal;
+
+        return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, workflowStatus);
     }
 }
