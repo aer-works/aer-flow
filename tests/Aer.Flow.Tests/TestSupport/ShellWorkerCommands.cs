@@ -118,4 +118,94 @@ internal static class ShellWorkerCommands
 
         return FromScript(scriptDirectory, body);
     }
+
+    /// <summary>
+    /// §17.2/§17.5's supplement convention (<c>AER_SUPPLEMENTARY_INPUT</c>): copies
+    /// <paramref name="supplementaryFileName"/> from the supplementary execution's output directory
+    /// to <paramref name="outputName"/> when a <see cref="Domain.DecisionType.RetryWithRevision"/>
+    /// consequence attached one; exits non-zero otherwise, standing in for a worker with nothing to
+    /// retry against — exercises the §10 ↔ §17.2 seam end to end (M9 Phase 5, issue #61).
+    /// </summary>
+    public static CoreDispatchTarget ConsumeSupplementaryInputElseFail(
+        string scriptDirectory, string outputName, string supplementaryFileName)
+    {
+        var supplementaryPath = OperatingSystem.IsWindows()
+            ? $"%AER_SUPPLEMENTARY_INPUT%\\{supplementaryFileName}"
+            : $"$AER_SUPPLEMENTARY_INPUT/{supplementaryFileName}";
+        var outputPath = OperatingSystem.IsWindows()
+            ? $"%AER_OUTPUT_DIR%\\{outputName}"
+            : $"$AER_OUTPUT_DIR/{outputName}";
+
+        var body = OperatingSystem.IsWindows()
+            ? "@echo off\n" +
+              "if defined AER_SUPPLEMENTARY_INPUT (\n" +
+              $"  copy /y \"{supplementaryPath}\" \"{outputPath}\" >nul\n" +
+              ") else (\n" +
+              "  exit /b 1\n" +
+              ")\n"
+            : "#!/bin/sh\n" +
+              "if [ -n \"$AER_SUPPLEMENTARY_INPUT\" ]; then\n" +
+              $"  cp \"{supplementaryPath}\" \"{outputPath}\"\n" +
+              "else\n" +
+              "  exit 1\n" +
+              "fi\n";
+
+        return FromScript(scriptDirectory, body);
+    }
+
+    /// <summary>
+    /// Copies <c>AER_SUPPLEMENTARY_INPUT</c>'s <paramref name="supplementaryFileName"/> to
+    /// <paramref name="outputName"/> when present (a <see cref="Domain.DecisionType.Supersede"/>
+    /// consequence, §17.5); otherwise writes <paramref name="baseContent"/>. The architect–critic
+    /// loop's Architect: its second run must consume the critic's feedback rather than repeat its
+    /// first run's output, so the cascade is observably driven by the supplement, not coincidence.
+    /// </summary>
+    public static CoreDispatchTarget ConsumeSupplementaryInputElseWrite(
+        string scriptDirectory, string outputName, string supplementaryFileName, string baseContent)
+    {
+        var supplementaryPath = OperatingSystem.IsWindows()
+            ? $"%AER_SUPPLEMENTARY_INPUT%\\{supplementaryFileName}"
+            : $"$AER_SUPPLEMENTARY_INPUT/{supplementaryFileName}";
+        var outputPath = OperatingSystem.IsWindows()
+            ? $"%AER_OUTPUT_DIR%\\{outputName}"
+            : $"$AER_OUTPUT_DIR/{outputName}";
+
+        var body = OperatingSystem.IsWindows()
+            ? "@echo off\n" +
+              "if defined AER_SUPPLEMENTARY_INPUT (\n" +
+              $"  copy /y \"{supplementaryPath}\" \"{outputPath}\" >nul\n" +
+              ") else (\n" +
+              $"  echo {baseContent}>\"{outputPath}\"\n" +
+              ")\n"
+            : "#!/bin/sh\n" +
+              "if [ -n \"$AER_SUPPLEMENTARY_INPUT\" ]; then\n" +
+              $"  cp \"{supplementaryPath}\" \"{outputPath}\"\n" +
+              "else\n" +
+              $"  echo {baseContent} > \"{outputPath}\"\n" +
+              "fi\n";
+
+        return FromScript(scriptDirectory, body);
+    }
+
+    /// <summary>
+    /// Appends <paramref name="suffix"/> to the first resolved input's content instead of a bare
+    /// copy — the architect–critic loop's Critic, so its output visibly differs across reruns and
+    /// assertions can tell "fed the new plan back in" apart from "produced the same file again".
+    /// </summary>
+    public static CoreDispatchTarget AppendSuffixToFirstInput(string scriptDirectory, string outputName, string suffix)
+    {
+        var outputPath = OperatingSystem.IsWindows()
+            ? $"%AER_OUTPUT_DIR%\\{outputName}"
+            : $"$AER_OUTPUT_DIR/{outputName}";
+
+        var body = OperatingSystem.IsWindows()
+            ? "@echo off\n" +
+              "set /p content=<%AER_INPUT_0%\n" +
+              $"echo %content%{suffix}>\"{outputPath}\"\n"
+            : "#!/bin/sh\n" +
+              "content=$(cat \"$AER_INPUT_0\")\n" +
+              $"echo \"${{content}}{suffix}\" > \"{outputPath}\"\n";
+
+        return FromScript(scriptDirectory, body);
+    }
 }

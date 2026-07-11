@@ -1,0 +1,23 @@
+{
+  "WorkflowTemplateId": "approval-gate",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "a",
+      "Worker": "a",
+      "Inputs": [],
+      "Outputs": ["out_a"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 1 },
+      "PausePoint": { "SupersedeTargets": [] }
+    },
+    {
+      "StepId": "b",
+      "Worker": "b",
+      "Inputs": ["out_a"],
+      "Outputs": ["out_b"],
+      "DependsOn": ["a"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}

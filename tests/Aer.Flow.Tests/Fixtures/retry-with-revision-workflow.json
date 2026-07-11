@@ -1,0 +1,23 @@
+{
+  "WorkflowTemplateId": "retry-with-revision",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "flaky",
+      "Worker": "flaky",
+      "Inputs": [],
+      "Outputs": ["result"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 2 },
+      "PausePoint": { "SupersedeTargets": [] }
+    },
+    {
+      "StepId": "downstream",
+      "Worker": "downstream",
+      "Inputs": ["result"],
+      "Outputs": ["final"],
+      "DependsOn": ["flaky"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}
