@@ -38,11 +38,13 @@ jobs:
           cache: false
 
       # Caches NuGet restore keyed off tests/Aer.Flow.Tests/packages.lock.json — the only project
-      # with real PackageReferences.
+      # with real PackageReferences. cache-dependency-path must be explicit: cache: true alone
+      # only looks for a lock file at the repo root, not recursively.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.x"
           cache: true
+          cache-dependency-path: "**/packages.lock.json"
 
       - name: Check formatting
         run: pixi run fmt-check
