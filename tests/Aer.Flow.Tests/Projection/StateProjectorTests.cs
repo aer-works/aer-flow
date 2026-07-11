@@ -465,6 +465,127 @@ public class StateProjectorTests
     }
 
     [Fact]
+    public void RetryWithRevision_resets_the_consecutive_failure_count_for_a_fresh_retry_round()
+    {
+        // The externally-triggered counterpart to a success resetting the budget (M8 Phase 1):
+        // an exhausted step reopened via RetryWithRevision must not still read as exhausted.
+        var executionId = new ExecutionId("exec-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable),
+            new FlowEvent.WorkflowPaused(executionId, Architect),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, executionId, DecisionType.RetryWithRevision, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.Equal(StepStatus.Failed, architect.Status);
+        Assert.Equal(0, architect.ConsecutiveFailureCount);
+    }
+
+    [Fact]
+    public void RetryWithRevision_with_a_SupplementaryExecutionId_projects_it_as_pending_for_the_referenced_step()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var supplementaryExecutionId = new ExecutionId("supplement-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable),
+            new FlowEvent.WorkflowPaused(executionId, Architect),
+            new FlowEvent.ExternalDecisionRecorded(
+                decisionId, executionId, DecisionType.RetryWithRevision, null, supplementaryExecutionId),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(supplementaryExecutionId, StepFor(state, Architect).PendingSupplementaryExecutionId);
+    }
+
+    [Fact]
+    public void A_newer_ExecutionRequestAccepted_clears_the_pending_supplementary_fact_for_that_step()
+    {
+        var firstAttempt = new ExecutionId("exec-1");
+        var secondAttempt = new ExecutionId("exec-2");
+        var supplementaryExecutionId = new ExecutionId("supplement-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(firstAttempt, Architect)),
+            new FlowEvent.ExecutionFailed(firstAttempt, FailureClassification.Retryable),
+            new FlowEvent.WorkflowPaused(firstAttempt, Architect),
+            new FlowEvent.ExternalDecisionRecorded(
+                decisionId, firstAttempt, DecisionType.RetryWithRevision, null, supplementaryExecutionId),
+            new FlowEvent.WorkflowResumed(decisionId),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(secondAttempt, Architect)),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Null(StepFor(state, Architect).PendingSupplementaryExecutionId);
+    }
+
+    [Fact]
+    public void Supersede_marks_its_TargetStepId_as_a_pending_Supersede_target_with_a_pending_supplement()
+    {
+        var criticExecutionId = new ExecutionId("c-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+            new FlowEvent.ExecutionSucceeded(new ExecutionId("a-1")),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(criticExecutionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(criticExecutionId),
+            new FlowEvent.WorkflowPaused(criticExecutionId, Critic),
+            new FlowEvent.ExternalDecisionRecorded(
+                decisionId, criticExecutionId, DecisionType.Supersede, Architect, criticExecutionId),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.True(architect.IsPendingSupersedeTarget);
+        Assert.Equal(criticExecutionId, architect.PendingSupplementaryExecutionId);
+
+        // Critic itself carries no pending fact — it is the decision's referent, not its target.
+        Assert.False(StepFor(state, Critic).IsPendingSupersedeTarget);
+    }
+
+    [Fact]
+    public void A_newer_ExecutionRequestAccepted_for_the_target_clears_IsPendingSupersedeTarget()
+    {
+        var architectFirstAttempt = new ExecutionId("a-1");
+        var architectSecondAttempt = new ExecutionId("a-2");
+        var criticExecutionId = new ExecutionId("c-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectFirstAttempt, Architect)),
+            new FlowEvent.ExecutionSucceeded(architectFirstAttempt),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(criticExecutionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(criticExecutionId),
+            new FlowEvent.WorkflowPaused(criticExecutionId, Critic),
+            new FlowEvent.ExternalDecisionRecorded(
+                decisionId, criticExecutionId, DecisionType.Supersede, Architect, criticExecutionId),
+            new FlowEvent.WorkflowResumed(decisionId),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectSecondAttempt, Architect)),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.False(architect.IsPendingSupersedeTarget);
+        Assert.Null(architect.PendingSupplementaryExecutionId);
+    }
+
+    [Fact]
     public void Projecting_the_same_events_twice_produces_an_identical_result()
     {
         var executionId = new ExecutionId("exec-1");

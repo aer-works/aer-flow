@@ -210,12 +210,20 @@ public static class MutationInterface
         IEventLogWriter eventLogWriter,
         CancellationToken cancellationToken)
     {
+        var stateByStepId = state.Steps.ToDictionary(s => s.StepId);
+
         var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
         var inputPaths = ArtifactManager.ResolveInputPaths(step, snapshot, state, artifactsRootPath);
         var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
-        var environment = ArtifactManager.BuildEnvironment(inputPaths, outputDirectory);
 
-        var stateByStepId = state.Steps.ToDictionary(s => s.StepId);
+        // A RetryWithRevision/Supersede consequence still owed to this step (§17.5) carries its
+        // supplement into this dispatch — a projected fact, so this holds whether this round is the
+        // decision's immediate consequence or a replay resuming after a crash between the two (§13).
+        var supplementaryInputPath = stateByStepId[step.StepId].PendingSupplementaryExecutionId is { } supplementaryExecutionId
+            ? ArtifactManager.ResolveSupplementaryInputPath(artifactsRootPath, supplementaryExecutionId)
+            : null;
+        var environment = ArtifactManager.BuildEnvironment(inputPaths, outputDirectory, supplementaryInputPath);
+
         var upstreamExecutionIds = new Dictionary<StepId, ExecutionId>();
         foreach (var dependencyStepId in step.DependsOn)
         {

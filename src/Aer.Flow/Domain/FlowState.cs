@@ -89,6 +89,22 @@ public enum StepStatus
 /// Decision Handler validates <see cref="DecisionType.RetryWithRevision"/>/<see cref="DecisionType.Reject"/>
 /// against, since <see cref="Status"/> itself no longer carries that information while paused (§17.2).
 /// </param>
+/// <param name="PendingSupplementaryExecutionId">
+/// A <see cref="DecisionType.RetryWithRevision"/> or <see cref="DecisionType.Supersede"/> decision's
+/// <see cref="FlowEvent.ExternalDecisionRecorded.SupplementaryExecutionId"/>, still owed to this
+/// step's next dispatch: recorded against this step (as referent for <c>RetryWithRevision</c>, or as
+/// <see cref="FlowEvent.ExternalDecisionRecorded.TargetStepId"/> for <c>Supersede</c>) but not yet
+/// carried by a newer <see cref="FlowEvent.ExecutionRequestAccepted"/> for it. A projected fact, not
+/// handler state, so a crash between recording the decision and dispatching its consequence loses
+/// nothing (§7, §13, §17.5).
+/// </param>
+/// <param name="IsPendingSupersedeTarget">
+/// Whether a <see cref="DecisionType.Supersede"/> named this (already-<see cref="StepStatus.Succeeded"/>)
+/// step as <see cref="FlowEvent.ExternalDecisionRecorded.TargetStepId"/> and no newer
+/// <see cref="FlowEvent.ExecutionRequestAccepted"/> has been recorded for it since — the direct
+/// consequence the Dependency Resolver dispatches without regard to §11.3's ordinary conditions,
+/// since a superseded step is never "ready" through staleness alone (§17.5).
+/// </param>
 public sealed record StepState(
     StepId StepId,
     StepStatus Status,
@@ -97,4 +113,6 @@ public sealed record StepState(
     int ConsecutiveFailureCount = 0,
     FailureClassification? LatestFailureClassification = null,
     bool PauseRecordedForLatestExecution = false,
-    StepStatus? PausedOutcome = null);
+    StepStatus? PausedOutcome = null,
+    ExecutionId? PendingSupplementaryExecutionId = null,
+    bool IsPendingSupersedeTarget = false);
