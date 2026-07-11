@@ -116,7 +116,12 @@ Apply §8 classification rules to Core's exit: `NaturalExit + code 0 + all Produ
 
 **Produces:** complete end-to-end linear execution with correct, durable outcome classification. Integration test: full three-step workflow, all steps succeed.  
 **Excludes:** retries, pauses, cancellation, concurrency protection.  
-**Why this boundary:** Phase 6 produces lifecycle events but does not classify them — classification is its own correctness concern (§8's rules are non-trivial) and must be locked down before the concurrency guard wraps the whole path.
+**Why this boundary:** Phase 6 produces lifecycle events but does not classify them — classification is its own correctness concern (§8's rules are non-trivial) and must be locked down before the concurrency guard wraps the whole path.  
+**Open questions resolved in this phase:**
+- `WorkflowTransition` spec gap: already resolved before this phase (see Open Questions below, #15) — §5.2 itself now states workflow-level status is a pure projection, not a stored event. Nothing further to do here.
+- `MutationInterface`'s worker-resolution shape (spec §4, §14): `StartWorkflowAsync` takes an `IReadOnlyDictionary<string, WorkerBinding>` mapping a step's `Worker` role name to the `WorkerContract` (for classification), the `CoreDispatchTarget` (the concrete binary — `Aer.Adapters` doesn't exist yet, no milestone), and a per-worker `Timeout`. `WorkflowStepDefinition` itself carries no timeout field, so this is where one had to be introduced; scoping it to the binding rather than the step keeps the frozen `WorkflowDefinitionSnapshot` shape (§11.2) unchanged.
+- Where a worker's self-reported `FailureClassification` (§8.1) lives: the first of the contract's declared `OptionalMetadata` file names (checked in order) that exists in the output directory, parses as JSON, and has a top-level `FailureClassification` field wins. Absent or unrecognized is `null`, which callers (and the domain type itself) already treat as `Retryable`.
+- A latent Dependency Resolver bug (Phase 5, #11) surfaced only once Phase 7 actually drove execution in a loop: a root step (no `DependsOn`) that already succeeded was vacuously "ready" forever, because §11.3 condition 2 is only ever checked inside the `DependsOn` loop. Fixed in `DependencyResolver.IsReady` with an explicit early return; covered by a new `DependencyResolverTests` case.
 
 ### Phase 8 — Concurrency Guard + end-to-end integration test
 Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not a sentinel file — sentinel files survive crashes). Wraps the complete Phase 7 end-to-end path. Integration test: full three-step linear workflow on a real filesystem; assert `FlowState` projects correctly after completion; assert artifacts exist and are immutable.
@@ -128,7 +133,7 @@ Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not
 
 ## Current Milestone
 
-**M7 — in progress.** Phases 1–6 complete. Phase 7 (Outcome Classifier + Contract Validator + Mutation Interface) is next.
+**M7 — in progress.** Phases 1–7 complete. Phase 8 (Concurrency Guard + end-to-end integration test) is next.
 
 ## Completed Milestones
 
@@ -140,6 +145,7 @@ None yet. Phase progress within M7:
 - ✅ Phase 4 — State Projector (#10)
 - ✅ Phase 5 — Dependency Resolver (#11)
 - ✅ Phase 6 — Artifact Manager + Core Dispatcher (#12)
+- ✅ Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface (#13)
 
 ---
 
