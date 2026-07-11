@@ -186,6 +186,30 @@ public class DependencyResolverTests
     }
 
     [Fact]
+    public void A_rejected_step_is_never_re_queued_regardless_of_retry_policy()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Terminal(Architect, StepStatus.Rejected, new ExecutionId("A1")), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5));
+
+        Assert.DoesNotContain(Architect, ready);
+    }
+
+    [Fact]
+    public void A_step_whose_dependency_was_rejected_is_not_ready()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Terminal(Architect, StepStatus.Rejected, new ExecutionId("A1")), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+
+        Assert.DoesNotContain(Critic, ready);
+    }
+
+    [Fact]
     public void A_retried_steps_downstream_stays_blocked_until_the_retry_succeeds()
     {
         var state = new FlowState(

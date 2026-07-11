@@ -29,6 +29,7 @@ public static class StateProjector
         var pausedExecutionIds = new HashSet<ExecutionId>();
         var everPausedExecutionIds = new HashSet<ExecutionId>();
         var referencedExecutionIdByDecisionId = new Dictionary<DecisionId, ExecutionId>();
+        var decisionTypeByDecisionId = new Dictionary<DecisionId, DecisionType>();
         var stepIdByExecutionId = new Dictionary<ExecutionId, StepId>();
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
@@ -75,12 +76,22 @@ public static class StateProjector
 
                 case FlowEvent.ExternalDecisionRecorded decision:
                     referencedExecutionIdByDecisionId[decision.DecisionId] = decision.ReferencedExecutionId;
+                    decisionTypeByDecisionId[decision.DecisionId] = decision.DecisionType;
                     break;
 
                 case FlowEvent.WorkflowResumed resumed:
                     if (referencedExecutionIdByDecisionId.TryGetValue(resumed.DecisionId, out var resumedExecutionId))
                     {
                         pausedExecutionIds.Remove(resumedExecutionId);
+
+                        // Reject is the one decision type that changes the referenced execution's
+                        // outcome rather than letting it stand (§17.2) — terminally failed, retry
+                        // foreclosed, regardless of whether the underlying outcome was itself a
+                        // success. Never a stored event; derived here from the decision it resolves.
+                        if (decisionTypeByDecisionId.GetValueOrDefault(resumed.DecisionId) == DecisionType.Reject)
+                        {
+                            terminalStatusByExecutionId[resumedExecutionId] = StepStatus.Rejected;
+                        }
                     }
 
                     break;
@@ -111,9 +122,9 @@ public static class StateProjector
             // No terminal event yet for the latest attempt means either it is genuinely still
             // running, or Flow crashed before recording its outcome — the two are indistinguishable
             // from the event log alone (§6), and both project to Running.
-            var status = pausedExecutionIds.Contains(latestExecutionId)
-                ? StepStatus.Paused
-                : terminalStatusByExecutionId.GetValueOrDefault(latestExecutionId, StepStatus.Running);
+            var rawStatus = terminalStatusByExecutionId.GetValueOrDefault(latestExecutionId, StepStatus.Running);
+            var isPaused = pausedExecutionIds.Contains(latestExecutionId);
+            var status = isPaused ? StepStatus.Paused : rawStatus;
 
             steps.Add(new StepState(
                 stepDefinition.StepId,
@@ -122,7 +133,8 @@ public static class StateProjector
                 upstreamExecutionIdsByStepId[stepDefinition.StepId],
                 consecutiveFailureCountByStepId.GetValueOrDefault(stepDefinition.StepId),
                 latestFailureClassificationByStepId.GetValueOrDefault(stepDefinition.StepId),
-                everPausedExecutionIds.Contains(latestExecutionId)));
+                everPausedExecutionIds.Contains(latestExecutionId),
+                isPaused ? rawStatus : null));
         }
 
         var workflowStatus = steps.Any(step => step.Status == StepStatus.Running)

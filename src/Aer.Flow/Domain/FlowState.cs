@@ -46,6 +46,15 @@ public enum StepStatus
     Failed,
     Cancelled,
     Paused,
+
+    /// <summary>
+    /// An external <see cref="DecisionType.Reject"/> resolved this step's pause (spec §17.2):
+    /// terminally failed with retry foreclosed regardless of remaining budget, and — unlike
+    /// <see cref="Failed"/> — reachable even from an underlying <see cref="Succeeded"/> outcome
+    /// (the approval-gate "no"). Never a stored event; derived from
+    /// <see cref="FlowEvent.WorkflowResumed"/> plus the decision it resolves (§5.2).
+    /// </summary>
+    Rejected,
 }
 
 /// <summary>A step's projected status, as of the most recent event concerning it (spec §11.3).</summary>
@@ -72,6 +81,14 @@ public enum StepStatus
 /// (spec §17.1). The Pause Engine consults this, not the currently-<c>Paused</c> status, so a resumed
 /// execution is never re-paused.
 /// </param>
+/// <param name="PausedOutcome">
+/// The underlying terminal <see cref="StepStatus"/> (<see cref="StepStatus.Succeeded"/>,
+/// <see cref="StepStatus.Failed"/>, or <see cref="StepStatus.Cancelled"/>) that <paramref name="LatestExecutionId"/>
+/// reached before it was masked to <see cref="StepStatus.Paused"/>; <c>null</c> whenever
+/// <paramref name="Status"/> is not <see cref="StepStatus.Paused"/>. This is what the External
+/// Decision Handler validates <see cref="DecisionType.RetryWithRevision"/>/<see cref="DecisionType.Reject"/>
+/// against, since <see cref="Status"/> itself no longer carries that information while paused (§17.2).
+/// </param>
 public sealed record StepState(
     StepId StepId,
     StepStatus Status,
@@ -79,4 +96,5 @@ public sealed record StepState(
     IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds,
     int ConsecutiveFailureCount = 0,
     FailureClassification? LatestFailureClassification = null,
-    bool PauseRecordedForLatestExecution = false);
+    bool PauseRecordedForLatestExecution = false,
+    StepStatus? PausedOutcome = null);

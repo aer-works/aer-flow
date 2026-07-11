@@ -49,6 +49,89 @@ public static class MutationInterface
 
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
+        return await PumpToFixedPointAsync(
+                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A second mutation-surface entry point (spec §14, §17.2): records an external decision
+    /// against a currently paused execution, resumes the workflow, and drives the consequences to
+    /// the next fixed point through the same pump <see cref="StartWorkflowAsync"/> uses. Validates
+    /// every <see cref="DecisionType"/> against projected state (§17.2's closed-set rules) before
+    /// appending anything — an invalid decision throws and leaves the log untouched.
+    /// </summary>
+    /// <exception cref="WorkflowLockedException">
+    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// </exception>
+    /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
+    public static async Task<FlowState> RecordDecisionAsync(
+        WorkflowId workflowId,
+        string taskDirectoryPath,
+        WorkflowDefinitionSnapshot snapshot,
+        IReadOnlyDictionary<string, WorkerBinding> workerBindings,
+        string artifactsRootPath,
+        IEventLogReader eventLogReader,
+        IEventLogWriter eventLogWriter,
+        ICoreDispatcher dispatcher,
+        ExecutionId referencedExecutionId,
+        DecisionType decisionType,
+        StepId? targetStepId = null,
+        ExecutionId? supplementaryExecutionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(workerBindings);
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+        ArgumentNullException.ThrowIfNull(eventLogReader);
+        ArgumentNullException.ThrowIfNull(eventLogWriter);
+        ArgumentNullException.ThrowIfNull(dispatcher);
+
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+
+        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var state = StateProjector.Project(events, snapshot);
+        var succeededExecutionIds = events
+            .OfType<FlowEvent.ExecutionSucceeded>()
+            .Select(e => e.ExecutionId)
+            .ToHashSet();
+
+        ExternalDecisionValidator.Validate(
+            state, snapshot, succeededExecutionIds, referencedExecutionId, decisionType, targetStepId, supplementaryExecutionId);
+
+        var decisionId = new DecisionId(Guid.NewGuid().ToString("n"));
+
+        // Both fsync'd — lifecycle events, same write-sequence discipline as any other append (§7).
+        await eventLogWriter.AppendAsync(
+                new FlowEvent.ExternalDecisionRecorded(
+                    decisionId, referencedExecutionId, decisionType, targetStepId, supplementaryExecutionId),
+                cancellationToken)
+            .ConfigureAwait(false);
+        await eventLogWriter.AppendAsync(new FlowEvent.WorkflowResumed(decisionId), cancellationToken).ConfigureAwait(false);
+
+        return await PumpToFixedPointAsync(
+                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The scheduling pump shared by both mutation-surface entry points: repeatedly projects
+    /// <see cref="FlowState"/>, appends any owed <see cref="FlowEvent.WorkflowPaused"/> obligations,
+    /// resolves every ready step, and dispatches all of them to Core concurrently until nothing is
+    /// ready and nothing remains in flight. Assumes the caller already holds the §15 concurrency
+    /// guard.
+    /// </summary>
+    private static async Task<FlowState> PumpToFixedPointAsync(
+        WorkflowId workflowId,
+        WorkflowDefinitionSnapshot snapshot,
+        IReadOnlyDictionary<string, WorkerBinding> workerBindings,
+        string artifactsRootPath,
+        IEventLogReader eventLogReader,
+        IEventLogWriter eventLogWriter,
+        ICoreDispatcher dispatcher,
+        CancellationToken cancellationToken)
+    {
         var inFlight = new List<Task>();
         FlowState state;
 
