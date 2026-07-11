@@ -4,15 +4,13 @@ name = "aer-flow"
 platforms = ["win-64", "linux-64", "osx-arm64"]
 version = "0.1.0"
 
-[dependencies]
-# Builds the aer-core submodule's native library only — aer-flow has no Rust source of its own.
-rust = ">=1.80"
-
 [tasks]
 # Builds external/aer-core's native library. The Aer.Core.csproj ProjectReference (Aer.Flow ->
 # Aer.Core, M7 Phase 6's Core Dispatcher) copies this binary from external/aer-core/target/debug/
 # into the output directory only if it already exists there, so this must run before any dotnet
-# task that touches Aer.Flow.
+# task that touches Aer.Flow. Requires a Rust toolchain on PATH — installed separately, not pixi-
+# managed (same convention as the .NET SDK below); GitHub Actions' standard runner images already
+# have one.
 build-core = { cmd = "cargo build", cwd = "external/aer-core" }
 
 build = { cmd = "dotnet build", depends-on = ["build-core"] }
