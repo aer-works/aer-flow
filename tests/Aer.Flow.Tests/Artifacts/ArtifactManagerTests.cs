@@ -81,7 +81,7 @@ public class ArtifactManagerTests
 
         var paths = ArtifactManager.ResolveInputPaths(snapshot.Steps[1], snapshot, state, "/artifacts");
 
-        Assert.Equal(["/artifacts/execution_A1/plan"], paths);
+        Assert.Equal([Path.Combine("/artifacts", "execution_A1", "plan")], paths);
     }
 
     [Fact]
