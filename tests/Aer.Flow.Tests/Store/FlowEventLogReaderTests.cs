@@ -50,8 +50,8 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         try
         {
-            var completeLine = JsonSerializer.Serialize(MakeEvent("exec-1"), typeof(FlowEvent));
-            var tornLine = JsonSerializer.Serialize(MakeEvent("exec-2"), typeof(FlowEvent))[..5];
+            var completeLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry));
+            var tornLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-2")), typeof(LogEntry))[..5];
             await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8);
 
             var events = await new FlowEventLogReader(path).ReadAllAsync();
@@ -74,6 +74,32 @@ public class FlowEventLogReaderTests
             await File.WriteAllTextAsync(path, "{ not valid json }\n", Encoding.UTF8);
 
             await Assert.ThrowsAsync<FlowEventLogReadException>(() => new FlowEventLogReader(path).ReadAllAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReadAllAsync_skips_core_owned_lines_and_returns_only_flow_events()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            await using (var writer = new FlowEventLogWriter(path))
+            {
+                await writer.AppendAsync(MakeEvent("exec-1"));
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42));
+                await writer.AppendAsync(
+                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural));
+                await writer.AppendAsync(MakeEvent("exec-2"));
+            }
+
+            var events = await new FlowEventLogReader(path).ReadAllAsync();
+
+            var ids = events.Cast<FlowEvent.ExecutionSucceeded>().Select(e => e.ExecutionId.Value);
+            Assert.Equal(new[] { "exec-1", "exec-2" }, ids);
         }
         finally
         {
