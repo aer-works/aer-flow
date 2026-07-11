@@ -14,7 +14,10 @@ public static class DependencyResolver
     /// step <c>DependsOn</c>, that dependency's most recent attempt succeeded (condition 1), and
     /// this step does not already have a successful execution that used the dependency's current
     /// most recent successful <see cref="ExecutionId"/> (condition 2 — staleness after
-    /// <see cref="DecisionType.Supersede"/>, §17.5).
+    /// <see cref="DecisionType.Supersede"/>, §17.5). A step whose latest attempt failed is also
+    /// ready when <see cref="RetryEngine.MayRetry"/> holds for it (§10) — "terminally failed" is
+    /// the derived complement (<see cref="StepStatus.Failed"/> and not <c>MayRetry</c>), never a
+    /// stored event.
     /// </summary>
     public static IReadOnlySet<StepId> GetReadySteps(FlowState state, WorkflowDefinitionSnapshot snapshot)
     {
@@ -29,9 +32,15 @@ public static class DependencyResolver
             var stepState = stepStateByStepId[stepDefinition.StepId];
 
             // Running: an attempt is already in flight. Paused: idle until an external decision
-            // resolves it (§17.1). Failed/Cancelled: M7 has no Retry Engine (§10 is M8) — a step
-            // whose latest attempt ended that way stays terminal until that subsystem exists.
-            if (stepState.Status is StepStatus.Running or StepStatus.Paused or StepStatus.Failed or StepStatus.Cancelled)
+            // resolves it (§17.1). Cancelled: never retried, regardless of policy (§9, §10).
+            if (stepState.Status is StepStatus.Running or StepStatus.Paused or StepStatus.Cancelled)
+            {
+                continue;
+            }
+
+            // A failed step stays terminal unless its RetryPolicy still permits another attempt
+            // (§10); one that does proceeds into the same readiness check as any other step.
+            if (stepState.Status == StepStatus.Failed && !RetryEngine.MayRetry(stepState, stepDefinition.RetryPolicy))
             {
                 continue;
             }

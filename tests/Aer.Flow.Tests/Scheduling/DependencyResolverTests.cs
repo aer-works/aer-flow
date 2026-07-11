@@ -8,13 +8,13 @@ public class DependencyResolverTests
     private static readonly StepId Architect = new("architect");
     private static readonly StepId Critic = new("critic");
 
-    private static WorkflowDefinitionSnapshot TwoStepSnapshot() => new(
+    private static WorkflowDefinitionSnapshot TwoStepSnapshot(int architectMaxAttempts = 1) => new(
         new WorkflowDefinitionSnapshotId("snapshot-1"),
         new WorkflowTemplateId("architect-critic"),
         WorkflowTemplateVersion: 1,
         Steps:
         [
-            new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(1)),
+            new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(architectMaxAttempts)),
             new WorkflowStepDefinition(Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(1)),
         ]);
 
@@ -24,6 +24,9 @@ public class DependencyResolverTests
 
     private static StepState Terminal(StepId stepId, StepStatus status, ExecutionId executionId) =>
         new(stepId, status, executionId, NoUpstream);
+
+    private static StepState Failed(StepId stepId, ExecutionId executionId, int consecutiveFailureCount, FailureClassification? classification = null) =>
+        new(stepId, StepStatus.Failed, executionId, NoUpstream, consecutiveFailureCount, classification);
 
     private static StepState SucceededUsing(StepId stepId, ExecutionId executionId, StepId dependencyStepId, ExecutionId upstreamExecutionId) =>
         new(stepId, StepStatus.Succeeded, executionId, new Dictionary<StepId, ExecutionId> { [dependencyStepId] = upstreamExecutionId });
@@ -135,14 +138,62 @@ public class DependencyResolverTests
     }
 
     [Fact]
-    public void A_step_that_already_failed_is_not_re_queued_without_a_retry_engine()
+    public void A_failed_step_with_retry_budget_remaining_becomes_ready_again()
     {
         var state = new FlowState(
             new WorkflowDefinitionSnapshotId("snapshot-1"),
-            [Terminal(Architect, StepStatus.Failed, new ExecutionId("A1")), Pending(Critic)]);
+            [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 1), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2));
+
+        Assert.Contains(Architect, ready);
+    }
+
+    [Fact]
+    public void A_failed_step_with_an_exhausted_retry_budget_is_not_re_queued()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 2), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2));
 
         Assert.DoesNotContain(Architect, ready);
+    }
+
+    [Fact]
+    public void A_failed_step_classified_Permanent_is_not_re_queued_regardless_of_remaining_budget()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 0, FailureClassification.Permanent), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5));
+
+        Assert.DoesNotContain(Architect, ready);
+    }
+
+    [Fact]
+    public void A_cancelled_step_is_never_re_queued_regardless_of_retry_policy()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Terminal(Architect, StepStatus.Cancelled, new ExecutionId("A1")), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5));
+
+        Assert.DoesNotContain(Architect, ready);
+    }
+
+    [Fact]
+    public void A_retried_steps_downstream_stays_blocked_until_the_retry_succeeds()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 1), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2));
+
+        Assert.DoesNotContain(Critic, ready);
     }
 }
