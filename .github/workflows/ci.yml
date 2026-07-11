@@ -21,6 +21,12 @@ jobs:
         with:
           submodules: true
 
+      # Caches ~/.cargo and external/aer-core/target, keyed off external/aer-core/Cargo.lock, so
+      # `pixi run build-core`'s cargo build only recompiles when the submodule pin actually moves.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: external/aer-core
+
       # run-install/cache are off: the pixi env is deliberately empty (the .NET SDK and, since M7
       # Phase 6, the Rust toolchain used to build the external/aer-core submodule are both system
       # installs, not conda packages — GitHub's standard runner images ship both already), and
@@ -31,9 +37,12 @@ jobs:
           run-install: false
           cache: false
 
+      # Caches NuGet restore keyed off tests/Aer.Flow.Tests/packages.lock.json — the only project
+      # with real PackageReferences.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.x"
+          cache: true
 
       - name: Check formatting
         run: pixi run fmt-check

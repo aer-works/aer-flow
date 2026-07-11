@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Generates packages.lock.json so CI can cache NuGet restore (actions/setup-dotnet's
+         cache: true keys off it). This is the only project in the repo with real PackageReferences. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
