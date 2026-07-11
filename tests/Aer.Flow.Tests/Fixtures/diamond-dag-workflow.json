@@ -1,0 +1,38 @@
+{
+  "WorkflowTemplateId": "diamond-dag",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "a",
+      "Worker": "a",
+      "Inputs": [],
+      "Outputs": ["out_a"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    },
+    {
+      "StepId": "b",
+      "Worker": "b",
+      "Inputs": ["out_a"],
+      "Outputs": ["out_b"],
+      "DependsOn": ["a"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    },
+    {
+      "StepId": "c",
+      "Worker": "c",
+      "Inputs": ["out_a"],
+      "Outputs": ["out_c"],
+      "DependsOn": ["a"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    },
+    {
+      "StepId": "d",
+      "Worker": "d",
+      "Inputs": ["out_b", "out_c"],
+      "Outputs": ["out_d"],
+      "DependsOn": ["b", "c"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}

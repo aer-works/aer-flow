@@ -1,0 +1,14 @@
+{
+  "WorkflowTemplateId": "self-iteration",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "reviewer",
+      "Worker": "reviewer",
+      "Inputs": [],
+      "Outputs": ["verdict"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 3 }
+    }
+  ]
+}
