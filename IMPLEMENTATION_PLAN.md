@@ -127,17 +127,21 @@ Apply §8 classification rules to Core's exit: `NaturalExit + code 0 + all Produ
 Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not a sentinel file — sentinel files survive crashes). Wraps the complete Phase 7 end-to-end path. Integration test: full three-step linear workflow on a real filesystem; assert `FlowState` projects correctly after completion; assert artifacts exist and are immutable.
 
 **Produces:** M7 complete. CI green on Windows and Linux.  
-**Why this boundary:** the guard must wrap a complete, proven path — adding it before Phase 7's integration test would be guarding an unproven sequence.
+**Why this boundary:** the guard must wrap a complete, proven path — adding it before Phase 7's integration test would be guarding an unproven sequence.  
+**Open questions resolved in this phase:**
+- Where the guard lives: `ConcurrencyGuard.Acquire(taskDirectoryPath)` (`Aer.Flow.Concurrency`) is held for the full duration of `MutationInterface.StartWorkflowAsync` (now `WorkflowLockedException`-throwing and `taskDirectoryPath`-scoped) rather than left to each caller to remember — consistent with §14's "exactly one well-defined mutation surface" framing, since the single mutation surface is the only place that guarantee needs enforcing today.
+- Lock file naming: `flow.lock`, one per task directory, left on disk (not deleted) on release — its existence is deliberately meaningless per §15; only the live `FileShare.None` hold signals "locked".
 
 ---
 
 ## Current Milestone
 
-**M7 — in progress.** Phases 1–7 complete. Phase 8 (Concurrency Guard + end-to-end integration test) is next.
+**M7 — complete.** All eight phases landed; the milestone is closeable per #14's acceptance
+criteria. **M8 (Reactive Scheduler)** is next.
 
 ## Completed Milestones
 
-None yet. Phase progress within M7:
+**M7: Foundation.** Phase progress:
 
 - ✅ Phase 1 — Domain model (#7)
 - ✅ Phase 2 — Log Manager (#8)
@@ -146,6 +150,7 @@ None yet. Phase progress within M7:
 - ✅ Phase 5 — Dependency Resolver (#11)
 - ✅ Phase 6 — Artifact Manager + Core Dispatcher (#12)
 - ✅ Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface (#13)
+- ✅ Phase 8 — Concurrency Guard + end-to-end integration test (#14)
 
 ---
 
