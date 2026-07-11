@@ -50,6 +50,15 @@ public static class DependencyResolver
         StepState stepState,
         Dictionary<StepId, StepState> stepStateByStepId)
     {
+        // Condition 2 only ever blocks re-readiness by comparing against a dependency that could
+        // have gone stale (§17.5). A step with no DependsOn has nothing to go stale against, so
+        // the loop below would never run and an already-succeeded root step would be vacuously
+        // "ready" on every single projection — an infinite re-run, not a one-time completion.
+        if (stepState.Status == StepStatus.Succeeded && stepDefinition.DependsOn.Count == 0)
+        {
+            return false;
+        }
+
         foreach (var dependencyStepId in stepDefinition.DependsOn)
         {
             var dependencyState = stepStateByStepId[dependencyStepId];

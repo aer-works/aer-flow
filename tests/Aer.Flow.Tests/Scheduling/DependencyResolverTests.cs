@@ -123,6 +123,18 @@ public class DependencyResolverTests
     }
 
     [Fact]
+    public void A_succeeded_step_with_no_dependencies_is_not_re_queued()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Terminal(Architect, StepStatus.Succeeded, new ExecutionId("A1")), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+
+        Assert.DoesNotContain(Architect, ready);
+    }
+
+    [Fact]
     public void A_step_that_already_failed_is_not_re_queued_without_a_retry_engine()
     {
         var state = new FlowState(
