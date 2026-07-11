@@ -74,6 +74,66 @@ public class MutationInterfaceTests
     }
 
     [Fact]
+    public async Task StartWorkflowAsync_retries_a_step_that_fails_once_then_succeeds()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var markerFilePath = Path.Combine(taskDirectory, "attempt-marker");
+        try
+        {
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-3"),
+                new WorkflowTemplateId("flaky-architect-critic"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(Architect, "architect", [], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(MaxAttempts: 2)),
+                    new WorkflowStepDefinition(Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(1)),
+                ]);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["architect"] = new WorkerBinding(
+                    new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                    FailOnFirstAttemptThenSucceed(markerFilePath, "plan", "architect"),
+                    TimeSpan.FromSeconds(30)),
+                ["critic"] = new WorkerBinding(
+                    new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
+                    CopyFirstInputTo("review"),
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            var finalState = await MutationInterface.StartWorkflowAsync(
+                new WorkflowId("wf-3"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+
+            Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
+            Assert.Equal(0, finalState.Steps.Single(s => s.StepId == Architect).ConsecutiveFailureCount);
+
+            // §10's history shape: two distinct ExecutionIds for Architect, the first failed and
+            // the second succeeded — neither event mutated or removed.
+            var events = await reader.ReadAllAsync();
+            var architectAttempts = events
+                .OfType<FlowEvent.ExecutionRequestAccepted>()
+                .Where(e => e.Request.StepId == Architect)
+                .Select(e => e.Request.ExecutionId)
+                .ToList();
+            Assert.Equal(2, architectAttempts.Count);
+            Assert.Equal(architectAttempts.Distinct().Count(), architectAttempts.Count);
+            Assert.Contains(events, e => e is FlowEvent.ExecutionFailed failed && architectAttempts.Contains(failed.ExecutionId));
+            Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && architectAttempts.Contains(succeeded.ExecutionId));
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task StartWorkflowAsync_classifies_a_clean_exit_with_no_output_as_ExecutionFailed()
     {
         var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");

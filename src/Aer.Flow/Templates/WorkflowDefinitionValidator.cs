@@ -12,9 +12,10 @@ public static class WorkflowDefinitionValidator
     /// Validates <paramref name="definition"/>, throwing <see cref="WorkflowDefinitionValidationException"/>
     /// with every violation found if it is not well-formed. A well-formed definition has:
     /// unique <see cref="StepId"/>s; every <c>DependsOn</c> entry resolving to a declared
-    /// <see cref="StepId"/>; an acyclic <c>DependsOn</c> graph; and, for every declared
-    /// <c>PausePoint</c>, <c>SupersedeTargets</c> entries that are all transitive ancestors of the
-    /// declaring step (§17.1).
+    /// <see cref="StepId"/>; an acyclic <c>DependsOn</c> graph; a <c>RetryPolicy</c> with
+    /// <c>MaxAttempts &gt;= 1</c> on every step (§10); and, for every declared <c>PausePoint</c>,
+    /// <c>SupersedeTargets</c> entries that are all transitive ancestors of the declaring step
+    /// (§17.1).
     /// </summary>
     public static void Validate(WorkflowDefinition definition)
     {
@@ -66,6 +67,19 @@ public static class WorkflowDefinitionValidator
                 {
                     errors.Add($"Step '{step.StepId}' declares DependsOn '{dependency}', which is not a declared StepId.");
                 }
+            }
+        }
+
+        foreach (var step in definition.Steps)
+        {
+            if (step.RetryPolicy is null)
+            {
+                errors.Add($"Step '{step.StepId}' has a missing RetryPolicy.");
+            }
+            else if (step.RetryPolicy.MaxAttempts < 1)
+            {
+                errors.Add(
+                    $"Step '{step.StepId}' declares RetryPolicy.MaxAttempts '{step.RetryPolicy.MaxAttempts}', which must be at least 1.");
             }
         }
 

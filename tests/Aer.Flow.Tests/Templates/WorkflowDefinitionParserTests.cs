@@ -136,6 +136,38 @@ public class WorkflowDefinitionParserTests
     }
 
     [Fact]
+    public void A_step_missing_its_RetryPolicy_is_rejected_instead_of_throwing_a_null_reference_exception()
+    {
+        var json = """
+            {
+              "WorkflowTemplateId": "x",
+              "WorkflowTemplateVersion": 1,
+              "Steps": [
+                { "StepId": "a", "Worker": "worker", "Inputs": [], "Outputs": [], "DependsOn": [] }
+              ]
+            }
+            """;
+
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(json));
+
+        Assert.Contains(ex.Errors, e => e.Contains("missing RetryPolicy"));
+    }
+
+    [Fact]
+    public void A_RetryPolicy_with_MaxAttempts_less_than_one_is_rejected()
+    {
+        var definition = new WorkflowDefinition(
+            new WorkflowTemplateId("bad-retry"),
+            1,
+            Steps: [new WorkflowStepDefinition(new StepId("a"), "worker", [], [], [], new RetryPolicy(MaxAttempts: 0))]);
+
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(
+            () => WorkflowDefinitionParser.Parse(JsonSerializer.Serialize(definition)));
+
+        Assert.Contains(ex.Errors, e => e.Contains("MaxAttempts '0'"));
+    }
+
+    [Fact]
     public void Duplicate_StepIds_are_rejected()
     {
         var definition = new WorkflowDefinition(
