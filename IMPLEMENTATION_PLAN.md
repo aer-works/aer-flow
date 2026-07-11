@@ -98,7 +98,8 @@ Takes `FlowState` (from Phase 4) + `WorkflowDefinitionSnapshot` (from Phase 3) a
 
 **Produces:** correct step scheduling. Unit tests covering: no steps ready, one step ready, dependency failed so nothing ready, step already succeeded so not re-queued.  
 **Excludes:** dispatch, artifacts, retries. Condition 2 is included now per §11.3's "critical" designation, but its full test coverage (staleness after Supersede) requires M9 — note explicitly.  
-**Why this boundary:** both inputs (`FlowState`, `WorkflowDefinitionSnapshot`) are now available; the resolver's output (ready `StepId`s) is clean and testable with zero I/O. Isolate before it gets entangled with dispatch.
+**Why this boundary:** both inputs (`FlowState`, `WorkflowDefinitionSnapshot`) are now available; the resolver's output (ready `StepId`s) is clean and testable with zero I/O. Isolate before it gets entangled with dispatch.  
+**Open question resolved in this phase:** condition 2 needs each step's recorded `UpstreamExecutionIds` to compare against a dependency's current latest success, but Phase 4's `FlowState`/`StepState` didn't carry it. Extended `StepState` with an `UpstreamExecutionIds` field (populated by the State Projector from each step's latest `ExecutionRequestAccepted`) rather than having the resolver re-read raw events — keeps the resolver's declared inputs (`FlowState` + `WorkflowDefinitionSnapshot`) accurate. A step whose latest attempt is `Failed`/`Cancelled` is excluded from readiness (M7 has no Retry Engine; re-running it would be an undeclared ad hoc retry).
 
 ### Phase 6 — Artifact Manager + Core Dispatcher
 Pre-allocate `artifacts/execution_{N}/`. Compute input paths from prior steps' output directories. Call the aer-core M5 `AerTask` binding. Record Core lifecycle events to the log (Phase 2's writer).
@@ -126,7 +127,7 @@ Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not
 
 ## Current Milestone
 
-**M7 — in progress.** Phases 1–4 complete. Phase 5 (Dependency Resolver) is next.
+**M7 — in progress.** Phases 1–5 complete. Phase 6 (Artifact Manager + Core Dispatcher) is next.
 
 ## Completed Milestones
 
@@ -136,6 +137,7 @@ None yet. Phase progress within M7:
 - ✅ Phase 2 — Log Manager (#8)
 - ✅ Phase 3 — Template Parser + Snapshot Binder (#9)
 - ✅ Phase 4 — State Projector (#10)
+- ✅ Phase 5 — Dependency Resolver (#11)
 
 ---
 
