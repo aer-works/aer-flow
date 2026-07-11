@@ -28,8 +28,12 @@ internal static class ShellWorkerCommands
     /// </summary>
     public static CoreDispatchTarget FailOnFirstAttemptThenSucceed(string markerFilePath, string outputName, string content) => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget(
+            // No quotes around markerFilePath: embedding a literal '"' in a single cmd argument
+            // does not survive aer-core's Windows process-spawn re-quoting intact, and a
+            // GUID-based temp path never contains spaces, so quoting buys nothing here — matches
+            // this file's other Windows commands, none of which quote a path either.
             "cmd",
-            ["/c", $"if exist \"{markerFilePath}\" (echo {content}>%AER_OUTPUT_DIR%\\{outputName}) else (echo marker>\"{markerFilePath}\" & exit 1)"])
+            ["/c", $"if exist {markerFilePath} (echo {content}>%AER_OUTPUT_DIR%\\{outputName}) else (echo marker>{markerFilePath} & exit 1)"])
         : new CoreDispatchTarget(
             "sh",
             ["-c", $"if [ -f \"{markerFilePath}\" ]; then echo {content} > \"$AER_OUTPUT_DIR/{outputName}\"; else touch \"{markerFilePath}\"; exit 1; fi"]);
