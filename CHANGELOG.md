@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/aer-works/aer-flow/compare/v0.2.0...v0.3.0) (2026-07-11)
+
+
+### Features
+
+* **flow:** M8 Phase 1 — Attempt-history projection ([#51](https://github.com/aer-works/aer-flow/issues/51)) ([5579774](https://github.com/aer-works/aer-flow/commit/55797741cc8a48490bf8f4ae7b29fef1ea8fb452))
+* **flow:** M8 Phase 2 — Retry Engine + retry-aware readiness ([#53](https://github.com/aer-works/aer-flow/issues/53)) ([a45ad6d](https://github.com/aer-works/aer-flow/commit/a45ad6d745ca029e20f4d50368ca4ba568f8d375))
+* **flow:** M8 Phase 3 — Reactive concurrent dispatch ([#54](https://github.com/aer-works/aer-flow/issues/54)) ([afccaf5](https://github.com/aer-works/aer-flow/commit/afccaf5510b085e188023b7037ed809abe3d5806))
+
+
+### Documentation
+
+* Define the M8 (Reactive Scheduler) phase plan ([#49](https://github.com/aer-works/aer-flow/issues/49)) ([2e72b91](https://github.com/aer-works/aer-flow/commit/2e72b915ebba0971b1b6f339a6b1b79ee3e6c082))
+* Require PR-body verification after create/update calls ([#52](https://github.com/aer-works/aer-flow/issues/52)) ([112ef08](https://github.com/aer-works/aer-flow/commit/112ef08de517b01bac752c6abe414c27b4f1e878))
+
+
+### Tests
+
+* **flow:** M8 Phase 4 — Fan-out/fan-in + retry end-to-end integration tests ([#56](https://github.com/aer-works/aer-flow/issues/56)) ([15d5adb](https://github.com/aer-works/aer-flow/commit/15d5adb77ff0c508fee275746009cc9f0d1de9de))
+
 ## [0.2.0](https://github.com/aer-works/aer-flow/compare/v0.1.0...v0.2.0) (2026-07-11)
 
 
