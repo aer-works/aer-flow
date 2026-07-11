@@ -30,9 +30,19 @@ public static class StateProjector
         var everPausedExecutionIds = new HashSet<ExecutionId>();
         var referencedExecutionIdByDecisionId = new Dictionary<DecisionId, ExecutionId>();
         var decisionTypeByDecisionId = new Dictionary<DecisionId, DecisionType>();
+        var targetStepIdByDecisionId = new Dictionary<DecisionId, StepId>();
+        var supplementaryExecutionIdByDecisionId = new Dictionary<DecisionId, ExecutionId>();
         var stepIdByExecutionId = new Dictionary<ExecutionId, StepId>();
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
+
+        // §17.5's decision consequences, tracked the same "derive, don't remember" way as everything
+        // else here: set when a resolving decision names this step (RetryWithRevision's own referent,
+        // or Supersede's TargetStepId) and cleared the moment a newer ExecutionRequestAccepted lands
+        // for that step — i.e. once the consequence has actually been dispatched. Replaying a log cut
+        // off between the decision and its dispatch re-derives the same pending fact (§7, §13).
+        var pendingSupplementaryExecutionIdByStepId = new Dictionary<StepId, ExecutionId>();
+        var pendingSupersedeTargetStepIds = new HashSet<StepId>();
 
         foreach (var flowEvent in events)
         {
@@ -42,6 +52,10 @@ public static class StateProjector
                     latestExecutionIdByStepId[accepted.Request.StepId] = accepted.Request.ExecutionId;
                     upstreamExecutionIdsByStepId[accepted.Request.StepId] = accepted.Request.UpstreamExecutionIds;
                     stepIdByExecutionId[accepted.Request.ExecutionId] = accepted.Request.StepId;
+
+                    // This dispatch is the consequence a prior decision was owed, if any — fulfilled now.
+                    pendingSupplementaryExecutionIdByStepId.Remove(accepted.Request.StepId);
+                    pendingSupersedeTargetStepIds.Remove(accepted.Request.StepId);
                     break;
 
                 case FlowEvent.ExecutionSucceeded succeeded:
@@ -77,20 +91,68 @@ public static class StateProjector
                 case FlowEvent.ExternalDecisionRecorded decision:
                     referencedExecutionIdByDecisionId[decision.DecisionId] = decision.ReferencedExecutionId;
                     decisionTypeByDecisionId[decision.DecisionId] = decision.DecisionType;
+                    if (decision.TargetStepId is { } declaredTargetStepId)
+                    {
+                        targetStepIdByDecisionId[decision.DecisionId] = declaredTargetStepId;
+                    }
+
+                    if (decision.SupplementaryExecutionId is { } declaredSupplementaryExecutionId)
+                    {
+                        supplementaryExecutionIdByDecisionId[decision.DecisionId] = declaredSupplementaryExecutionId;
+                    }
+
                     break;
 
                 case FlowEvent.WorkflowResumed resumed:
                     if (referencedExecutionIdByDecisionId.TryGetValue(resumed.DecisionId, out var resumedExecutionId))
                     {
                         pausedExecutionIds.Remove(resumedExecutionId);
+                        var resumedDecisionType = decisionTypeByDecisionId.GetValueOrDefault(resumed.DecisionId);
+                        ExecutionId? supplementaryExecutionId = supplementaryExecutionIdByDecisionId.TryGetValue(
+                            resumed.DecisionId, out var declaredSupplement)
+                            ? declaredSupplement
+                            : null;
 
                         // Reject is the one decision type that changes the referenced execution's
                         // outcome rather than letting it stand (§17.2) — terminally failed, retry
                         // foreclosed, regardless of whether the underlying outcome was itself a
                         // success. Never a stored event; derived here from the decision it resolves.
-                        if (decisionTypeByDecisionId.GetValueOrDefault(resumed.DecisionId) == DecisionType.Reject)
+                        if (resumedDecisionType == DecisionType.Reject)
                         {
                             terminalStatusByExecutionId[resumedExecutionId] = StepStatus.Rejected;
+                        }
+
+                        // RetryWithRevision reopens the referenced (not-yet-succeeded) step's retry
+                        // round: a fresh budget, the same way a success resets it (M8 Phase 1), so
+                        // the reopened attempt flows through ordinary §10 readiness rather than
+                        // finding itself already exhausted.
+                        if (resumedDecisionType == DecisionType.RetryWithRevision &&
+                            stepIdByExecutionId.TryGetValue(resumedExecutionId, out var retryStepId))
+                        {
+                            consecutiveFailureCountByStepId[retryStepId] = 0;
+
+                            if (supplementaryExecutionId is { } retrySupplement)
+                            {
+                                pendingSupplementaryExecutionIdByStepId[retryStepId] = retrySupplement;
+                            }
+                            else
+                            {
+                                pendingSupplementaryExecutionIdByStepId.Remove(retryStepId);
+                            }
+                        }
+
+                        // Supersede's target — already Succeeded, therefore never "ready" through
+                        // §11.3 alone — gets a new ExecutionRequest as the decision's direct
+                        // consequence (§17.5); the mandatory supplement rides along as an input.
+                        if (resumedDecisionType == DecisionType.Supersede &&
+                            targetStepIdByDecisionId.TryGetValue(resumed.DecisionId, out var supersedeTargetStepId))
+                        {
+                            pendingSupersedeTargetStepIds.Add(supersedeTargetStepId);
+
+                            if (supplementaryExecutionId is { } supersedeSupplement)
+                            {
+                                pendingSupplementaryExecutionIdByStepId[supersedeTargetStepId] = supersedeSupplement;
+                            }
                         }
                     }
 
@@ -134,7 +196,11 @@ public static class StateProjector
                 consecutiveFailureCountByStepId.GetValueOrDefault(stepDefinition.StepId),
                 latestFailureClassificationByStepId.GetValueOrDefault(stepDefinition.StepId),
                 everPausedExecutionIds.Contains(latestExecutionId),
-                isPaused ? rawStatus : null));
+                isPaused ? rawStatus : null,
+                pendingSupplementaryExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var pendingSupplement)
+                    ? pendingSupplement
+                    : null,
+                pendingSupersedeTargetStepIds.Contains(stepDefinition.StepId)));
         }
 
         var workflowStatus = steps.Any(step => step.Status == StepStatus.Running)

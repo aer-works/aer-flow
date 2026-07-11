@@ -21,10 +21,26 @@ public static class ArtifactManager
     {
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
 
-        var directory = Path.Combine(artifactsRootPath, $"execution_{executionId}");
+        var directory = OutputDirectoryPath(artifactsRootPath, executionId);
         Directory.CreateDirectory(directory);
         return directory;
     }
+
+    /// <summary>
+    /// The supplementary artifact a <see cref="Domain.DecisionType.RetryWithRevision"/> or
+    /// <see cref="Domain.DecisionType.Supersede"/> decision attaches to its consequence's dispatch
+    /// (§17.2, §17.5): <paramref name="supplementaryExecutionId"/>'s already-completed output
+    /// directory, addressed the same way as any other execution's — no new path convention needed.
+    /// </summary>
+    public static string ResolveSupplementaryInputPath(string artifactsRootPath, ExecutionId supplementaryExecutionId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+
+        return OutputDirectoryPath(artifactsRootPath, supplementaryExecutionId);
+    }
+
+    private static string OutputDirectoryPath(string artifactsRootPath, ExecutionId executionId) =>
+        Path.Combine(artifactsRootPath, $"execution_{executionId}");
 
     /// <summary>
     /// Resolves <paramref name="step"/>'s declared <c>Inputs</c> to concrete file paths, in
@@ -71,25 +87,36 @@ public static class ArtifactManager
 
     /// <summary>
     /// Builds the AER-computed environment variables (§3, §16) a worker is invoked with:
-    /// <c>AER_INPUT_0</c>.. for each resolved input path, in order, and <c>AER_OUTPUT_DIR</c> for
-    /// the pre-allocated output directory. Pass-through variables (secrets, vendor settings) are
-    /// not this method's concern — they carry no derived value and are resolved separately,
-    /// immediately before dispatch (§3).
+    /// <c>AER_INPUT_0</c>.. for each resolved input path, in order, <c>AER_OUTPUT_DIR</c> for
+    /// the pre-allocated output directory, and — only when this dispatch is a
+    /// <see cref="Domain.DecisionType.RetryWithRevision"/> or <see cref="Domain.DecisionType.Supersede"/>
+    /// consequence carrying a supplement (§17.2, §17.5) — <c>AER_SUPPLEMENTARY_INPUT</c> for
+    /// <paramref name="supplementaryInputPath"/>. A dedicated variable, not a declared input name, so
+    /// it can never collide with a step's own declared <c>Inputs</c>. Pass-through variables
+    /// (secrets, vendor settings) are not this method's concern — they carry no derived value and
+    /// are resolved separately, immediately before dispatch (§3).
     /// </summary>
     public static IReadOnlyList<EnvironmentVariable.AerComputed> BuildEnvironment(
         IReadOnlyList<string> inputPaths,
-        string outputDirectory)
+        string outputDirectory,
+        string? supplementaryInputPath = null)
     {
         ArgumentNullException.ThrowIfNull(inputPaths);
         ArgumentException.ThrowIfNullOrEmpty(outputDirectory);
 
-        var variables = new List<EnvironmentVariable.AerComputed>(inputPaths.Count + 1);
+        var variables = new List<EnvironmentVariable.AerComputed>(inputPaths.Count + 2);
         for (var i = 0; i < inputPaths.Count; i++)
         {
             variables.Add(new EnvironmentVariable.AerComputed($"AER_INPUT_{i}", inputPaths[i]));
         }
 
         variables.Add(new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", outputDirectory));
+
+        if (supplementaryInputPath is not null)
+        {
+            variables.Add(new EnvironmentVariable.AerComputed("AER_SUPPLEMENTARY_INPUT", supplementaryInputPath));
+        }
+
         return variables;
     }
 

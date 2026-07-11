@@ -31,6 +31,16 @@ public static class DependencyResolver
         {
             var stepState = stepStateByStepId[stepDefinition.StepId];
 
+            // A Supersede's target is already Succeeded and therefore never "ready" through the
+            // ordinary conditions below — it is ready as the decision's direct consequence instead
+            // (§17.5), independent of its own dependencies' staleness. Once dispatched, the next
+            // projection clears this and the step falls back into ordinary readiness.
+            if (stepState.IsPendingSupersedeTarget)
+            {
+                readyStepIds.Add(stepDefinition.StepId);
+                continue;
+            }
+
             // Running: an attempt is already in flight. Paused: idle until an external decision
             // resolves it (§17.1). Cancelled: never retried, regardless of policy (§9, §10).
             // Rejected: an external Reject forecloses retry regardless of remaining budget,

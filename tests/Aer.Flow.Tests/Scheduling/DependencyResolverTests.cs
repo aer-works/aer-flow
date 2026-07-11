@@ -220,4 +220,33 @@ public class DependencyResolverTests
 
         Assert.DoesNotContain(Critic, ready);
     }
+
+    [Fact]
+    public void A_pending_Supersede_target_is_ready_even_though_it_already_succeeded_with_no_stale_dependency()
+    {
+        // Architect has no DependsOn, so nothing about it could ever be "stale" via condition 2 —
+        // the only reason it is ready again is IsPendingSupersedeTarget (§17.5's direct consequence).
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                new StepState(Architect, StepStatus.Succeeded, new ExecutionId("A1"), NoUpstream, IsPendingSupersedeTarget: true),
+                Pending(Critic),
+            ]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+
+        Assert.Contains(Architect, ready);
+    }
+
+    [Fact]
+    public void A_step_that_already_succeeded_and_is_not_a_pending_Supersede_target_is_not_ready_again()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Terminal(Architect, StepStatus.Succeeded, new ExecutionId("A1")), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+
+        Assert.DoesNotContain(Architect, ready);
+    }
 }
