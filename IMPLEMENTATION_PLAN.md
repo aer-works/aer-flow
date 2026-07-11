@@ -44,96 +44,6 @@ Which milestone introduces which capabilities.
 
 ---
 
-## M7: Foundation — Phase Plan
-
-**Goal:** Execute a linear A → B → C workflow end-to-end. Happy path only. No retries, no pause points, no concurrent steps.
-
-### Phase dependency table
-
-| Phase | Requires output from |
-|---|---|
-| 1 — Domain model | — |
-| 2 — Log Manager | 1 (event types to append) |
-| 3 — Template Parser + Snapshot Binder | 1 (`WorkflowDefinition`, `SnapshotId` types) |
-| 4 — State Projector | 1 (event discriminated union), 2 (log reader), 3 (`WorkflowDefinitionSnapshot`) |
-| 5 — Dependency Resolver | 3 (`WorkflowDefinitionSnapshot`), 4 (`FlowState`) |
-| 6 — Artifact Manager + Core Dispatcher | 1–5 (all types, log writer, snapshot, projector, resolver) |
-| 7 — Outcome Classifier + Contract Validator + Mutation Interface | 6 (dispatch produces lifecycle events to classify) |
-| 8 — Concurrency Guard | 7 (full end-to-end path exists to wrap and guard) |
-
-### Phase 1 — Domain model
-Define all types: `ExecutionRequest`, `WorkerContract`, `WorkflowDefinition`, `WorkflowDefinitionSnapshot`, `FlowState`, and the complete `flow.jsonl` event discriminated union (`ExecutionRequestAccepted`, `ExecutionRequestRejected`, `ExecutionSucceeded`, `ExecutionFailed`, `ExecutionCancelled`, `CancellationRequested`, `WorkflowPaused`, `ExternalDecisionRecorded`, `WorkflowResumed`). Workflow-level status is a pure projection, not an event — see spec §5.2.
-
-**Produces:** compilable type system; test that all event variants serialize round-trip to/from JSON.  
-**Excludes:** all I/O, all logic, anything that runs.  
-**Why this boundary:** every subsequent phase imports these types. Wrong shapes (especially the event discriminated union) cause cascading rework across all later phases.
-
-### Phase 2 — Log Manager
-Append events to `flow.jsonl` atomically (write-buffer-flush or write-then-rename per §5.3). fsync lifecycle events synchronously before returning. Buffered flush acceptable for observation-tier events (not produced by Flow in M7, but establish the rule).
-
-**Produces:** crash-safe event persistence. Unit tests: verify a partial write is never observable; verify lifecycle events are fsync'd; verify ordering (§7 write-sequence rule: intent before dispatch).  
-**Excludes:** reading events, projecting state, dispatch.  
-**Why this boundary:** consumes Phase 1 event types. The fsync ordering rule is easy to violate subtly — testing it in isolation with injected failures is far easier than testing it entangled with projection logic.
-
-### Phase 3 — Template Parser + Snapshot Binder
-Load and validate `WorkflowDefinition` from file. Freeze into `WorkflowDefinitionSnapshot`; generate `SnapshotId`. Persist the snapshot alongside the task's log directory.
-
-**Produces:** validated, immutable `WorkflowDefinitionSnapshot` — the input both the State Projector (Phase 4) and Dependency Resolver (Phase 5) require.  
-**Excludes:** projection, scheduling, dispatch.  
-**Open question resolved in this phase:** workflow definition file format is plain JSON (`.json`, one document — not `.jsonl`), deserialized through the same `System.Text.Json` converters already used for every other domain record and for `flow.jsonl` itself. See `Aer.Flow.Templates.WorkflowDefinitionParser`.
-
-### Phase 4 — State Projector
-Implement `Project(EventStore, WorkflowDefinitionSnapshot) → FlowState`. Read `flow.jsonl` linearly (via Phase 2's log reader). Reconstruct per-step execution status. Causal linking strictly by `ExecutionId` (§6) — never by line order, file order, or timestamp. Handle the unfinalized-classification case (§6: process ran in Core, Flow has not yet written `ExecutionSucceeded/Failed`).
-
-**Produces:** `FlowState` — the primary input to Phase 5's Dependency Resolver. Unit tests driven entirely by event fixture files, no real I/O required.  
-**Excludes:** dependency resolution, dispatch.  
-**Why this boundary:** the projector is the heart of the determinism guarantee (§13) and the most likely source of subtle correctness bugs. Exhaustive fixture-based tests here are the highest-leverage investment in the whole milestone. Build and prove it before the Dependency Resolver depends on its output.
-
-### Phase 5 — Dependency Resolver
-Implement §11.3 readiness check, both conditions:
-- Condition 1: dependency's most recent attempt produced `ExecutionSucceeded`.
-- Condition 2: this step does not already have a success whose `UpstreamExecutionIds` match the dependency's current most recent successful `ExecutionId`.
-
-Takes `FlowState` (from Phase 4) + `WorkflowDefinitionSnapshot` (from Phase 3) as inputs. Returns the set of ready `StepId`s.
-
-**Produces:** correct step scheduling. Unit tests covering: no steps ready, one step ready, dependency failed so nothing ready, step already succeeded so not re-queued.  
-**Excludes:** dispatch, artifacts, retries. Condition 2 is included now per §11.3's "critical" designation, but its full test coverage (staleness after Supersede) requires M9 — note explicitly.  
-**Why this boundary:** both inputs (`FlowState`, `WorkflowDefinitionSnapshot`) are now available; the resolver's output (ready `StepId`s) is clean and testable with zero I/O. Isolate before it gets entangled with dispatch.  
-**Open question resolved in this phase:** condition 2 needs each step's recorded `UpstreamExecutionIds` to compare against a dependency's current latest success, but Phase 4's `FlowState`/`StepState` didn't carry it. Extended `StepState` with an `UpstreamExecutionIds` field (populated by the State Projector from each step's latest `ExecutionRequestAccepted`) rather than having the resolver re-read raw events — keeps the resolver's declared inputs (`FlowState` + `WorkflowDefinitionSnapshot`) accurate. A step whose latest attempt is `Failed`/`Cancelled` is excluded from readiness (M7 has no Retry Engine; re-running it would be an undeclared ad hoc retry).
-
-### Phase 6 — Artifact Manager + Core Dispatcher
-Pre-allocate `artifacts/execution_{N}/`. Compute input paths from prior steps' output directories. Call the aer-core M5 `AerTask` binding. Record Core lifecycle events to the log (Phase 2's writer).
-
-**Produces:** actual process execution through Flow. Integration test: trivial worker (`cmd /c echo hello` / `sh -c 'echo hello'`), assert output file appears and events are logged.  
-**Excludes:** outcome classification, retry.  
-**Open questions resolved in this phase:**
-- How are paths passed to workers? Spec says "e.g. environment variables: `AER_INPUT_<n>`, `AER_OUTPUT_DIR`" — adopt this as the convention. `ArtifactManager.ResolveInputPaths` matches a step's declared `Inputs` names against its direct dependencies' declared `Outputs` names to find each input's producing step.
-- Who writes Core's events? Spec says Core owns `events.jsonl` (§5.1), but in P/Invoke, Core is a library call inside the Flow process. Decision for M7: single `flow.jsonl` records both Flow and Core-originated events (allowed because §5 says storage backend is implementation-defined); ownership is enforced in the type system (`LogEntry.FlowLogEntry` vs. `LogEntry.CoreLogEntry`), not by physical file separation.
-- How does `Aer.Flow` consume the aer-core M5 binding, given aer-core publishes no package? Vendored as a pinned git submodule (`external/aer-core`); `pixi run build-core` builds its native library from source. Revisit with a real package feed only once a second consumer of aer-core exists (AER Overview §6) — not needed for a single-developer project today.
-
-### Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface
-Apply §8 classification rules to Core's exit: `NaturalExit + code 0 + all ProducedOutputs exist` → `ExecutionSucceeded`; otherwise `ExecutionFailed`; `CancelRequested` → `ExecutionCancelled`. Walk `WorkerContract.ProducedOutputs` and verify each file exists on disk. Write classification event to the log. Wrap the full sequence — load snapshot → project → resolve → dispatch → classify — as a named `MutationInterface.StartWorkflow()` per §14.
-
-**Produces:** complete end-to-end linear execution with correct, durable outcome classification. Integration test: full three-step workflow, all steps succeed.  
-**Excludes:** retries, pauses, cancellation, concurrency protection.  
-**Why this boundary:** Phase 6 produces lifecycle events but does not classify them — classification is its own correctness concern (§8's rules are non-trivial) and must be locked down before the concurrency guard wraps the whole path.  
-**Open questions resolved in this phase:**
-- `WorkflowTransition` spec gap: already resolved before this phase (see Open Questions below, #15) — §5.2 itself now states workflow-level status is a pure projection, not a stored event. Nothing further to do here.
-- `MutationInterface`'s worker-resolution shape (spec §4, §14): `StartWorkflowAsync` takes an `IReadOnlyDictionary<string, WorkerBinding>` mapping a step's `Worker` role name to the `WorkerContract` (for classification), the `CoreDispatchTarget` (the concrete binary — `Aer.Adapters` doesn't exist yet, no milestone), and a per-worker `Timeout`. `WorkflowStepDefinition` itself carries no timeout field, so this is where one had to be introduced; scoping it to the binding rather than the step keeps the frozen `WorkflowDefinitionSnapshot` shape (§11.2) unchanged.
-- Where a worker's self-reported `FailureClassification` (§8.1) lives: the first of the contract's declared `OptionalMetadata` file names (checked in order) that exists in the output directory, parses as JSON, and has a top-level `FailureClassification` field wins. Absent or unrecognized is `null`, which callers (and the domain type itself) already treat as `Retryable`.
-- A latent Dependency Resolver bug (Phase 5, #11) surfaced only once Phase 7 actually drove execution in a loop: a root step (no `DependsOn`) that already succeeded was vacuously "ready" forever, because §11.3 condition 2 is only ever checked inside the `DependsOn` loop. Fixed in `DependencyResolver.IsReady` with an explicit early return; covered by a new `DependencyResolverTests` case.
-
-### Phase 8 — Concurrency Guard + end-to-end integration test
-Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not a sentinel file — sentinel files survive crashes). Wraps the complete Phase 7 end-to-end path. Integration test: full three-step linear workflow on a real filesystem; assert `FlowState` projects correctly after completion; assert artifacts exist and are immutable.
-
-**Produces:** M7 complete. CI green on Windows and Linux.  
-**Why this boundary:** the guard must wrap a complete, proven path — adding it before Phase 7's integration test would be guarding an unproven sequence.  
-**Open questions resolved in this phase:**
-- Where the guard lives: `ConcurrencyGuard.Acquire(taskDirectoryPath)` (`Aer.Flow.Concurrency`) is held for the full duration of `MutationInterface.StartWorkflowAsync` (now `WorkflowLockedException`-throwing and `taskDirectoryPath`-scoped) rather than left to each caller to remember — consistent with §14's "exactly one well-defined mutation surface" framing, since the single mutation surface is the only place that guarantee needs enforcing today.
-- Lock file naming: `flow.lock`, one per task directory, left on disk (not deleted) on release — its existence is deliberately meaningless per §15; only the live `FileShare.None` hold signals "locked".
-
----
-
 ## M8: Reactive Scheduler — Phase Plan
 
 **Goal:** Execute a fan-out/fan-in DAG (A → B, C → D) end-to-end with failed steps retried per `RetryPolicy` (§10), the worker-reported `Permanent` short-circuit honored (§8.1), and every ready step in flight concurrently. Still no pauses, no external decisions, no supersede (M9); no cancellation (M10).
@@ -194,7 +104,11 @@ The M8 completion gate, playing #14's role for this milestone: real processes, r
 
 ## Completed Milestones
 
-**M7: Foundation.** Phase progress:
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M7: Foundation** — linear A → B → C end-to-end, happy path only.
 
 - ✅ Phase 1 — Domain model (#7)
 - ✅ Phase 2 — Log Manager (#8)
@@ -204,6 +118,16 @@ The M8 completion gate, playing #14's role for this milestone: real processes, r
 - ✅ Phase 6 — Artifact Manager + Core Dispatcher (#12)
 - ✅ Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface (#13)
 - ✅ Phase 8 — Concurrency Guard + end-to-end integration test (#14)
+
+Decisions of record from M7:
+
+- **Workflow definition files are plain JSON** (`.json`, one document — not `.jsonl`), deserialized through the same `System.Text.Json` converters as every other domain record and `flow.jsonl` itself (Phase 3).
+- **Paths reach workers via environment variables**: `AER_INPUT_<n>` and `AER_OUTPUT_DIR`. `ArtifactManager.ResolveInputPaths` matches a step's declared `Inputs` names against its direct dependencies' declared `Outputs` names (Phase 6).
+- **A single `flow.jsonl` records both Flow- and Core-originated events** (allowed because §5 leaves the storage backend implementation-defined); §5.1's dual-log ownership is enforced in the type system (`LogEntry.FlowLogEntry` vs. `LogEntry.CoreLogEntry`), not by physical file separation (Phase 6).
+- **aer-core is consumed as a pinned git submodule** (`external/aer-core`), built from source via `pixi run build-core`. Revisit with a real package feed only once a second consumer exists (Phase 6; AER Overview §6).
+- **Worker resolution shape**: the Mutation Interface takes `Worker`-name → `WorkerBinding` (the `WorkerContract`, the concrete `CoreDispatchTarget`, and a per-worker `Timeout`). The timeout deliberately lives on the binding, not the step, keeping the frozen `WorkflowDefinitionSnapshot` shape (§11.2) unchanged (Phase 7).
+- **Where `FailureClassification` (§8.1) lives**: the first of the contract's declared `OptionalMetadata` file names (checked in order) that exists in the output directory, parses as JSON, and has a top-level `FailureClassification` field wins; absent or unrecognized is `null`, which every consumer treats as `Retryable` (Phase 7).
+- **The concurrency guard is held by the Mutation Interface** for the full duration of the mutation call — the single mutation surface (§14) is the one place §15's guarantee needs enforcing. `flow.lock` is left on disk on release; its existence is deliberately meaningless — only the live `FileShare.None` hold signals "locked" (Phase 8).
 
 ---
 
