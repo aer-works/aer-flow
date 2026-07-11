@@ -1,0 +1,14 @@
+{
+  "WorkflowTemplateId": "permanent-failure",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "permanent",
+      "Worker": "permanent",
+      "Inputs": [],
+      "Outputs": ["result"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 3 }
+    }
+  ]
+}

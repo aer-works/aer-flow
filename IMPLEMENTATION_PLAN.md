@@ -91,6 +91,8 @@ The M8 completion gate, playing #14's role for this milestone: real processes, r
 **Produces:** M8 complete. CI green on Windows and Linux.
 **Also in this phase:** the roadmap's "manifest cache if scale demands" gets its answer — measure full-log re-read overhead in the integration suite and record the verdict here. Expectation per §21: per-task-namespace scoping keeps logs small; defer the manifest cache (§12.1), since the efficient read strategy depends on the unresolved no-daemon question (§20/§21) and should not be pre-empted by this milestone.
 
+**Manifest cache decision:** deferred, per §21's expectation. Measured `FlowEventLogReader.ReadAllAsync` re-reading a 400-event log (200 accept/succeed pairs — already larger than any per-task-namespace log this milestone's own tests produce, which top out around a dozen events) at **~3.8ms per full re-read**. A scheduling round's own dispatch latency (spawning a real process) dwarfs that by orders of magnitude, so a manifest cache (§12.1) buys nothing yet. Revisit only if a workload's per-task log grows large enough for this to show up in practice.
+
 ---
 
 ## Current Milestone
@@ -100,7 +102,7 @@ The M8 completion gate, playing #14's role for this milestone: real processes, r
 - ✅ Phase 1 — Attempt-history projection (#45)
 - ✅ Phase 2 — Retry Engine + retry-aware readiness (#46)
 - ✅ Phase 3 — Reactive concurrent dispatch (#47)
-- ⬜ Phase 4 — Fan-out/fan-in + retry end-to-end integration tests (#48)
+- ✅ Phase 4 — Fan-out/fan-in + retry end-to-end integration tests (#48)
 
 ## Completed Milestones
 

@@ -1,0 +1,22 @@
+{
+  "WorkflowTemplateId": "exhaustion",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "flaky",
+      "Worker": "flaky",
+      "Inputs": [],
+      "Outputs": ["result"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 2 }
+    },
+    {
+      "StepId": "downstream",
+      "Worker": "downstream",
+      "Inputs": ["result"],
+      "Outputs": ["final"],
+      "DependsOn": ["flaky"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}
