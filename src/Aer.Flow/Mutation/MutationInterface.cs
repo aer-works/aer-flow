@@ -11,22 +11,19 @@ namespace Aer.Flow.Mutation;
 
 /// <summary>
 /// The single external entry point for all Flow state mutation (spec §14) — no other code path may
-/// append to <c>flow.jsonl</c>. M7 provides only <see cref="StartWorkflowAsync"/>: linear
-/// happy-path execution with no retries, pauses, or concurrent dispatch (IMPLEMENTATION_PLAN.md's
-/// M7 goal). This method is itself the "pump" §21 decided on: it blocks, dispatching each ready
-/// step as the previous one completes, until the workflow reaches a fixed point. It also holds the
-/// §15 concurrency guard for the whole call — the single mutation surface is the natural place to
-/// enforce "at most one Flow instance may mutate a given task's workflow state at a time", rather
-/// than trusting every caller to remember to acquire it.
+/// append to <c>flow.jsonl</c>. <see cref="StartWorkflowAsync"/> is the "pump" §21 decided on: it
+/// blocks until the workflow reaches a fixed point. From M8 Phase 3 on, every step ready in a given
+/// scheduling round dispatches concurrently rather than one at a time — a diamond's B and C run
+/// simultaneously, and a slow step never delays unrelated ready work.
 /// </summary>
 public static class MutationInterface
 {
     /// <summary>
     /// Acquires the task's §15 concurrency guard, then repeatedly projects <see cref="FlowState"/>,
-    /// resolves ready steps (§11.3), dispatches the first ready step to Core, classifies its
-    /// outcome (§8), and appends the result — until no step is ready, either because every step
-    /// reached a terminal outcome or because a failure has permanently blocked the remaining graph
-    /// (M7 has no Retry Engine, §10 is M8). Returns the final projected <see cref="FlowState"/>.
+    /// resolves every ready step (§11.3, retry-aware per §10), and dispatches all of them to Core
+    /// concurrently. Each completion (<c>Task.WhenAny</c>) triggers a fresh round — re-projecting
+    /// and dispatching any newly-ready work — while the rest stay in flight. Returns once nothing is
+    /// ready and nothing remains in flight.
     /// </summary>
     /// <exception cref="WorkflowLockedException">
     /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
@@ -39,7 +36,7 @@ public static class MutationInterface
         string artifactsRootPath,
         IEventLogReader eventLogReader,
         IEventLogWriter eventLogWriter,
-        CoreDispatcher dispatcher,
+        ICoreDispatcher dispatcher,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
@@ -52,53 +49,56 @@ public static class MutationInterface
 
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
-        var stepDefinitionsById = snapshot.Steps.ToDictionary(s => s.StepId);
+        var inFlight = new List<Task>();
+        FlowState state;
 
         while (true)
         {
             var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-            var state = StateProjector.Project(events, snapshot);
+            state = StateProjector.Project(events, snapshot);
             var readyStepIds = DependencyResolver.GetReadySteps(state, snapshot);
 
-            // Pick by the snapshot's own declaration order rather than the ready set's (unordered)
-            // iteration order, so the choice is deterministic even though, for M7's linear
-            // happy-path workflows, at most one step is ever actually ready at once.
-            WorkflowStepDefinition? nextStep = null;
-            foreach (var candidate in snapshot.Steps)
+            // Snapshot declaration order, not the ready set's (unordered) iteration order, so a
+            // round's intents are always emitted in the same sequence for the same FlowState (§13)
+            // regardless of how concurrent dispatches later complete.
+            foreach (var stepDefinition in snapshot.Steps)
             {
-                if (readyStepIds.Contains(candidate.StepId))
+                if (!readyStepIds.Contains(stepDefinition.StepId))
                 {
-                    nextStep = candidate;
-                    break;
+                    continue;
                 }
+
+                if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding))
+                {
+                    throw new UnresolvedWorkerException(
+                        $"No WorkerBinding registered for Worker '{stepDefinition.Worker}' (step '{stepDefinition.StepId}').");
+                }
+
+                // §7's write-sequence rule, extended to a concurrent round: each intent is appended
+                // and fsync'd here — awaited sequentially, in declaration order — before that step's
+                // own dispatch is even started, and before the next step's intent is written.
+                var prepared = await PrepareExecutionAsync(
+                        workflowId, stepDefinition, snapshot, state, binding, artifactsRootPath, eventLogWriter, cancellationToken)
+                    .ConfigureAwait(false);
+
+                // Not awaited here: starts the dispatch and joins the in-flight set, so a slow step
+                // never blocks this round from dispatching the rest of its ready work.
+                inFlight.Add(DispatchAndRecordOutcomeAsync(
+                    prepared, binding, eventLogWriter, dispatcher, cancellationToken));
             }
 
-            if (nextStep is null)
+            if (inFlight.Count == 0)
             {
                 return state;
             }
 
-            if (!workerBindings.TryGetValue(nextStep.Worker, out var binding))
-            {
-                throw new UnresolvedWorkerException(
-                    $"No WorkerBinding registered for Worker '{nextStep.Worker}' (step '{nextStep.StepId}').");
-            }
-
-            await ExecuteStepAsync(
-                    workflowId,
-                    nextStep,
-                    snapshot,
-                    state,
-                    binding,
-                    artifactsRootPath,
-                    eventLogWriter,
-                    dispatcher,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            var completed = await Task.WhenAny(inFlight).ConfigureAwait(false);
+            inFlight.Remove(completed);
+            await completed.ConfigureAwait(false);
         }
     }
 
-    private static async Task ExecuteStepAsync(
+    private static async Task<PreparedExecution> PrepareExecutionAsync(
         WorkflowId workflowId,
         WorkflowStepDefinition step,
         WorkflowDefinitionSnapshot snapshot,
@@ -106,7 +106,6 @@ public static class MutationInterface
         WorkerBinding binding,
         string artifactsRootPath,
         IEventLogWriter eventLogWriter,
-        CoreDispatcher dispatcher,
         CancellationToken cancellationToken)
     {
         var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
@@ -138,18 +137,30 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), cancellationToken)
             .ConfigureAwait(false);
 
-        var dispatchResult = await dispatcher.DispatchAsync(request, binding.Target, cancellationToken)
+        return new PreparedExecution(request, outputDirectory);
+    }
+
+    private static async Task DispatchAndRecordOutcomeAsync(
+        PreparedExecution prepared,
+        WorkerBinding binding,
+        IEventLogWriter eventLogWriter,
+        ICoreDispatcher dispatcher,
+        CancellationToken cancellationToken)
+    {
+        var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, cancellationToken)
             .ConfigureAwait(false);
-        var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, outputDirectory);
+        var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, prepared.OutputDirectory);
 
         FlowEvent outcomeEvent = classification.Verdict switch
         {
-            OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(executionId),
-            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification),
-            OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(executionId),
+            OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(prepared.Request.ExecutionId),
+            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(prepared.Request.ExecutionId, classification.FailureClassification),
+            OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(prepared.Request.ExecutionId),
             _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
         };
 
         await eventLogWriter.AppendAsync(outcomeEvent, cancellationToken).ConfigureAwait(false);
     }
+
+    private sealed record PreparedExecution(ExecutionRequest Request, string OutputDirectory);
 }
