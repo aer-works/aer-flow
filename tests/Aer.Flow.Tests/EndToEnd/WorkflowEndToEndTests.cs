@@ -47,15 +47,15 @@ public class WorkflowEndToEndTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["architect"] = new WorkerBinding(
+                ["architect"] = new WorkerBinding.Process(
                     new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
                     WriteFile("plan", "the-plan"),
                     TimeSpan.FromSeconds(30)),
-                ["critic"] = new WorkerBinding(
+                ["critic"] = new WorkerBinding.Process(
                     new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
                     CopyFirstInputTo("review"),
                     TimeSpan.FromSeconds(30)),
-                ["publisher"] = new WorkerBinding(
+                ["publisher"] = new WorkerBinding.Process(
                     new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
                     CopyFirstInputTo("summary"),
                     TimeSpan.FromSeconds(30)),
@@ -133,19 +133,19 @@ public class WorkflowEndToEndTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["a"] = new WorkerBinding(
+                ["a"] = new WorkerBinding.Process(
                     new WorkerContract("a", [], [new ProducedOutput("out_a")], []),
                     WriteFile("out_a", "a-out"),
                     TimeSpan.FromSeconds(30)),
-                ["b"] = new WorkerBinding(
+                ["b"] = new WorkerBinding.Process(
                     new WorkerContract("b", ["out_a"], [new ProducedOutput("out_b")], []),
                     CopyFirstInputTo("out_b"),
                     TimeSpan.FromSeconds(30)),
-                ["c"] = new WorkerBinding(
+                ["c"] = new WorkerBinding.Process(
                     new WorkerContract("c", ["out_a"], [new ProducedOutput("out_c")], []),
                     CopyFirstInputTo("out_c"),
                     TimeSpan.FromSeconds(30)),
-                ["d"] = new WorkerBinding(
+                ["d"] = new WorkerBinding.Process(
                     new WorkerContract("d", ["out_b", "out_c"], [new ProducedOutput("out_d")], []),
                     ConcatBothInputsTo("out_d"),
                     TimeSpan.FromSeconds(30)),
@@ -193,11 +193,11 @@ public class WorkflowEndToEndTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["flaky"] = new WorkerBinding(
+                ["flaky"] = new WorkerBinding.Process(
                     new WorkerContract("flaky", [], [new ProducedOutput("result")], []),
                     FailOnFirstAttemptThenSucceed(markerFilePath, "result", "second-attempt-result"),
                     TimeSpan.FromSeconds(30)),
-                ["downstream"] = new WorkerBinding(
+                ["downstream"] = new WorkerBinding.Process(
                     new WorkerContract("downstream", ["result"], [new ProducedOutput("final")], []),
                     CopyFirstInputTo("final"),
                     TimeSpan.FromSeconds(30)),
@@ -252,7 +252,7 @@ public class WorkflowEndToEndTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["reviewer"] = new WorkerBinding(
+                ["reviewer"] = new WorkerBinding.Process(
                     new WorkerContract(
                         "reviewer",
                         [],
@@ -304,7 +304,7 @@ public class WorkflowEndToEndTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["permanent"] = new WorkerBinding(
+                ["permanent"] = new WorkerBinding.Process(
                     new WorkerContract("permanent", [], [new ProducedOutput("result")], ["result-metadata.json"]),
                     FailPermanently(scriptDirectory, "result-metadata.json"),
                     TimeSpan.FromSeconds(30)),
@@ -345,11 +345,11 @@ public class WorkflowEndToEndTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["flaky"] = new WorkerBinding(
+                ["flaky"] = new WorkerBinding.Process(
                     new WorkerContract("flaky", [], [new ProducedOutput("result")], []),
                     ExitCleanlyWithoutWriting(),
                     TimeSpan.FromSeconds(30)),
-                ["downstream"] = new WorkerBinding(
+                ["downstream"] = new WorkerBinding.Process(
                     new WorkerContract("downstream", ["result"], [new ProducedOutput("final")], []),
                     CopyFirstInputTo("final"),
                     TimeSpan.FromSeconds(30)),

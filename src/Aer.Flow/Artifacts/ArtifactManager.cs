@@ -39,6 +39,18 @@ public static class ArtifactManager
         return OutputDirectoryPath(artifactsRootPath, supplementaryExecutionId);
     }
 
+    /// <summary>
+    /// The same addressing <see cref="AllocateOutputDirectory"/> uses, without creating anything —
+    /// for a caller that only needs to read an execution's already-allocated output directory (e.g.
+    /// <see cref="Outcomes.NonProcessCompletionDetector"/> checking contract satisfaction, §17.3).
+    /// </summary>
+    public static string ResolveOutputDirectory(string artifactsRootPath, ExecutionId executionId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+
+        return OutputDirectoryPath(artifactsRootPath, executionId);
+    }
+
     private static string OutputDirectoryPath(string artifactsRootPath, ExecutionId executionId) =>
         Path.Combine(artifactsRootPath, $"execution_{executionId}");
 

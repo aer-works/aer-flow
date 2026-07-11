@@ -346,7 +346,7 @@ public class MutationInterfaceRevisionTests
         Steps: steps);
 
     private static Dictionary<string, WorkerBinding> MakeBindings() =>
-        new() { ["stub-worker"] = new WorkerBinding(Contract, Target, Timeout) };
+        new() { ["stub-worker"] = new WorkerBinding.Process(Contract, Target, Timeout) };
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {

@@ -12,10 +12,20 @@ namespace Aer.Flow.Domain;
 /// external decision (§17.1). Defaults to <see cref="WorkflowStatus.Running"/> for call sites that
 /// construct a <see cref="FlowState"/> directly rather than through <c>StateProjector.Project</c>.
 /// </param>
+/// <param name="StepLessExecutions">
+/// Step-less supplementary executions (spec §17.3) still awaiting completion: accepted, but with no
+/// terminal event recorded for them yet. Never affects <paramref name="Status"/> or any
+/// <see cref="StepState"/> — by construction (§12), a step-less execution belongs to no step.
+/// </param>
 public sealed record FlowState(
     WorkflowDefinitionSnapshotId WorkflowDefinitionSnapshotId,
     IReadOnlyList<StepState> Steps,
-    WorkflowStatus Status = WorkflowStatus.Running);
+    WorkflowStatus Status = WorkflowStatus.Running,
+    IReadOnlyList<StepLessExecutionState>? StepLessExecutions = null)
+{
+    /// <summary>Defaults to empty rather than <c>null</c> for call sites that omit the constructor argument.</summary>
+    public IReadOnlyList<StepLessExecutionState> StepLessExecutions { get; init; } = StepLessExecutions ?? [];
+}
 
 /// <summary>
 /// A workflow's derived, whole-of-DAG status (spec §12) — computed from <see cref="StepState.Status"/>
@@ -116,3 +126,10 @@ public sealed record StepState(
     StepStatus? PausedOutcome = null,
     ExecutionId? PendingSupplementaryExecutionId = null,
     bool IsPendingSupersedeTarget = false);
+
+/// <summary>
+/// A step-less supplementary execution still awaiting completion (spec §17.3): minted outside the
+/// DAG during a pause, by <c>MutationInterface.RecordSupplementaryExecutionAsync</c>, so it belongs
+/// to no <see cref="StepId"/> and never appears among <see cref="FlowState.Steps"/>.
+/// </summary>
+public sealed record StepLessExecutionState(ExecutionId ExecutionId, string Worker);

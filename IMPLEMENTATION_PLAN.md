@@ -108,7 +108,7 @@ The M9 completion gate, playing #14's and #48's role: real processes, real files
 - ✅ Phase 1 — Pause Engine (#57)
 - ✅ Phase 2 — External Decision Handler: record, validate, Resume/Reject (#58)
 - ✅ Phase 3 — RetryWithRevision + Supersede + the invalidation cascade (#59)
-- ⬜ Phase 4 — Human worker support (#60)
+- ✅ Phase 4 — Human worker support (#60)
 - ⬜ Phase 5 — Pause/decision/supersede/human end-to-end integration tests (#61)
 
 ## Completed Milestones

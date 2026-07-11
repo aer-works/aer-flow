@@ -60,7 +60,9 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(target);
 
-        using var task = new AerTask(target.Program, [.. target.Args]).WithTimeout(request.Timeout);
+        // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a
+        // dispatcher for a NonProcess execution, §17.3) — Timeout is therefore always set.
+        using var task = new AerTask(target.Program, [.. target.Args]).WithTimeout(request.Timeout!.Value);
 
         foreach (var environmentVariable in request.Environment)
         {
