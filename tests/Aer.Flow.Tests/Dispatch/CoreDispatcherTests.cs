@@ -1,0 +1,145 @@
+using System.Text.Json;
+using Aer.Flow.Artifacts;
+using Aer.Flow.Dispatch;
+using Aer.Flow.Domain;
+using Aer.Flow.Store;
+
+namespace Aer.Flow.Tests.Dispatch;
+
+/// <summary>
+/// Integration tests: these spawn a real process through the aer-core M5 <c>AerTask</c> binding
+/// (M7 Phase 6's acceptance criteria — a trivial worker, output file appears in the pre-allocated
+/// artifact directory, Core lifecycle events land in the log). No mocking of Aer.Core itself.
+/// </summary>
+public class CoreDispatcherTests
+{
+    private static readonly ExecutionId ExecutionId = new("exec-1");
+
+    [Fact]
+    public async Task DispatchAsync_runs_a_trivial_worker_and_the_output_file_appears_in_the_pre_allocated_directory()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var environment = ArtifactManager.BuildEnvironment([], outputDirectory);
+            var request = MakeRequest(environment);
+            var target = EchoHelloToOutputFile();
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            var result = await dispatcher.DispatchAsync(request, target);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(CoreExitReason.Natural, result.Reason);
+            Assert.True(File.Exists(Path.Combine(outputDirectory, "hello.txt")));
+        }
+        finally
+        {
+            Directory.Delete(artifactsRoot, recursive: true);
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_records_Started_and_Exited_CoreEvents_to_the_log()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory));
+            var target = EchoHelloToOutputFile();
+
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await new CoreDispatcher(writer).DispatchAsync(request, target);
+            }
+
+            var entries = (await File.ReadAllLinesAsync(logPath))
+                .Select(line => JsonSerializer.Deserialize<LogEntry>(line))
+                .Cast<LogEntry.CoreLogEntry>()
+                .Select(e => e.Event)
+                .ToList();
+
+            var started = Assert.Single(entries.OfType<CoreEvent.ExecutionStarted>());
+            Assert.Equal(ExecutionId, started.ExecutionId);
+            Assert.True(started.Pid > 0);
+
+            var exited = Assert.Single(entries.OfType<CoreEvent.ExecutionExited>());
+            Assert.Equal(ExecutionId, exited.ExecutionId);
+            Assert.Equal(0, exited.ExitCode);
+            Assert.Equal(CoreExitReason.Natural, exited.Reason);
+        }
+        finally
+        {
+            Directory.Delete(artifactsRoot, recursive: true);
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_surfaces_a_non_zero_exit_code_without_throwing()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var request = MakeRequest([]);
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 7"])
+                : new CoreDispatchTarget("sh", ["-c", "exit 7"]);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target);
+
+            Assert.Equal(7, result.ExitCode);
+            Assert.Equal(CoreExitReason.Natural, result.Reason);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_does_not_resolve_pass_through_variable_values()
+    {
+        // Pass-through env var *values* are a future worker-adapter concern (spec §3) — the Core
+        // Dispatcher must not accidentally leak a name-only declaration through as a literal value.
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var request = MakeRequest([new EnvironmentVariable.PassThrough("SOME_SECRET")]);
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 0"])
+                : new CoreDispatchTarget("sh", ["-c", "exit 0"]);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target);
+
+            Assert.Equal(0, result.ExitCode);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
+    private static ExecutionRequest MakeRequest(IReadOnlyList<EnvironmentVariable> environment) => new(
+        ExecutionId,
+        new WorkflowId("wf-1"),
+        new StepId("step-1"),
+        "trivial",
+        Inputs: [],
+        Outputs: ["hello.txt"],
+        Timeout: TimeSpan.FromSeconds(30),
+        Environment: environment,
+        UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+    private static CoreDispatchTarget EchoHelloToOutputFile() => OperatingSystem.IsWindows()
+        ? new CoreDispatchTarget("cmd", ["/c", "echo hello > %AER_OUTPUT_DIR%\\hello.txt"])
+        : new CoreDispatchTarget("sh", ["-c", "echo hello > \"$AER_OUTPUT_DIR/hello.txt\""]);
+}
