@@ -76,8 +76,16 @@ public class WorkflowDefinitionTests
             new WorkflowDefinitionSnapshotId("snap-1"),
             Steps:
             [
-                new StepState(new StepId("architect"), StepStatus.Succeeded, new ExecutionId("exec-1")),
-                new StepState(new StepId("critic"), StepStatus.Pending, LatestExecutionId: null),
+                new StepState(
+                    new StepId("architect"),
+                    StepStatus.Succeeded,
+                    new ExecutionId("exec-1"),
+                    UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()),
+                new StepState(
+                    new StepId("critic"),
+                    StepStatus.Pending,
+                    LatestExecutionId: null,
+                    UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()),
             ]);
 
         var json = JsonSerializer.Serialize(state);

@@ -26,4 +26,14 @@ public enum StepStatus
 }
 
 /// <summary>A step's projected status, as of the most recent event concerning it (spec §11.3).</summary>
-public sealed record StepState(StepId StepId, StepStatus Status, ExecutionId? LatestExecutionId);
+/// <param name="UpstreamExecutionIds">
+/// The <see cref="ExecutionRequest.UpstreamExecutionIds"/> recorded on <paramref name="LatestExecutionId"/>'s
+/// request — empty when the step has no execution yet. This is what the Dependency Resolver's
+/// staleness check (§11.3 condition 2) compares against a dependency's current latest successful
+/// <see cref="ExecutionId"/>.
+/// </param>
+public sealed record StepState(
+    StepId StepId,
+    StepStatus Status,
+    ExecutionId? LatestExecutionId,
+    IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds);

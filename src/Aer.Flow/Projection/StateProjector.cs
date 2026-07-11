@@ -24,6 +24,7 @@ public static class StateProjector
         ArgumentNullException.ThrowIfNull(snapshot);
 
         var latestExecutionIdByStepId = new Dictionary<StepId, ExecutionId>();
+        var upstreamExecutionIdsByStepId = new Dictionary<StepId, IReadOnlyDictionary<StepId, ExecutionId>>();
         var terminalStatusByExecutionId = new Dictionary<ExecutionId, StepStatus>();
         var pausedExecutionIds = new HashSet<ExecutionId>();
         var referencedExecutionIdByDecisionId = new Dictionary<DecisionId, ExecutionId>();
@@ -34,6 +35,7 @@ public static class StateProjector
             {
                 case FlowEvent.ExecutionRequestAccepted accepted:
                     latestExecutionIdByStepId[accepted.Request.StepId] = accepted.Request.ExecutionId;
+                    upstreamExecutionIdsByStepId[accepted.Request.StepId] = accepted.Request.UpstreamExecutionIds;
                     break;
 
                 case FlowEvent.ExecutionSucceeded succeeded:
@@ -79,7 +81,11 @@ public static class StateProjector
         {
             if (!latestExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var latestExecutionId))
             {
-                steps.Add(new StepState(stepDefinition.StepId, StepStatus.Pending, LatestExecutionId: null));
+                steps.Add(new StepState(
+                    stepDefinition.StepId,
+                    StepStatus.Pending,
+                    LatestExecutionId: null,
+                    UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()));
                 continue;
             }
 
@@ -90,7 +96,11 @@ public static class StateProjector
                 ? StepStatus.Paused
                 : terminalStatusByExecutionId.GetValueOrDefault(latestExecutionId, StepStatus.Running);
 
-            steps.Add(new StepState(stepDefinition.StepId, status, latestExecutionId));
+            steps.Add(new StepState(
+                stepDefinition.StepId,
+                status,
+                latestExecutionId,
+                upstreamExecutionIdsByStepId[stepDefinition.StepId]));
         }
 
         return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps);
