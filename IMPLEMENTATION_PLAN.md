@@ -99,7 +99,7 @@ The M8 completion gate, playing #14's role for this milestone: real processes, r
 
 - ✅ Phase 1 — Attempt-history projection (#45)
 - ✅ Phase 2 — Retry Engine + retry-aware readiness (#46)
-- ⬜ Phase 3 — Reactive concurrent dispatch (#47)
+- ✅ Phase 3 — Reactive concurrent dispatch (#47)
 - ⬜ Phase 4 — Fan-out/fan-in + retry end-to-end integration tests (#48)
 
 ## Completed Milestones

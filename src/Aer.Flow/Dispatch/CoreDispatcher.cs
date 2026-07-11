@@ -22,12 +22,28 @@ public sealed record CoreDispatchTarget(string Program, IReadOnlyList<string> Ar
 public sealed record CoreDispatchResult(int ExitCode, CoreExitReason Reason);
 
 /// <summary>
+/// What <c>MutationInterface</c> needs from a dispatcher (spec §12's "Flow never executes a
+/// process; it only ever reads the Event Store and emits requests" — this is the seam through
+/// which it emits them). Extracted from <see cref="CoreDispatcher"/> so mutation-level tests can
+/// substitute a stub with <see cref="System.Threading.Tasks.TaskCompletionSource{TResult}"/>-controlled
+/// completion order (M8 Phase 3) instead of spawning real processes.
+/// </summary>
+public interface ICoreDispatcher
+{
+    /// <inheritdoc cref="CoreDispatcher.DispatchAsync"/>
+    Task<CoreDispatchResult> DispatchAsync(
+        ExecutionRequest request,
+        CoreDispatchTarget target,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Calls the aer-core M5 <c>AerTask</c> binding with an <see cref="ExecutionRequest"/> and records
 /// Core's lifecycle events to the combined log (M7 Phase 6). This is the P/Invoke Layer
 /// <c>CLAUDE.md</c> requires: the only place in <c>Aer.Flow</c> that touches <c>Aer.Core</c>
 /// directly.
 /// </summary>
-public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter)
+public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICoreDispatcher
 {
     /// <summary>
     /// Spawns <paramref name="target"/> with <paramref name="request"/>'s AER-computed environment
