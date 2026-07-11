@@ -107,8 +107,9 @@ Pre-allocate `artifacts/execution_{N}/`. Compute input paths from prior steps' o
 **Produces:** actual process execution through Flow. Integration test: trivial worker (`cmd /c echo hello` / `sh -c 'echo hello'`), assert output file appears and events are logged.  
 **Excludes:** outcome classification, retry.  
 **Open questions resolved in this phase:**
-- How are paths passed to workers? Spec says "e.g. environment variables: `AER_INPUT_<n>`, `AER_OUTPUT_DIR`" — adopt this as the convention.
-- Who writes Core's events? Spec says Core owns `events.jsonl` (§5.1), but in P/Invoke, Core is a library call inside the Flow process. Decision for M7: single `flow.jsonl` records both Flow and Core-originated events (allowed because §5 says storage backend is implementation-defined); ownership is enforced in the type system, not by physical file separation.
+- How are paths passed to workers? Spec says "e.g. environment variables: `AER_INPUT_<n>`, `AER_OUTPUT_DIR`" — adopt this as the convention. `ArtifactManager.ResolveInputPaths` matches a step's declared `Inputs` names against its direct dependencies' declared `Outputs` names to find each input's producing step.
+- Who writes Core's events? Spec says Core owns `events.jsonl` (§5.1), but in P/Invoke, Core is a library call inside the Flow process. Decision for M7: single `flow.jsonl` records both Flow and Core-originated events (allowed because §5 says storage backend is implementation-defined); ownership is enforced in the type system (`LogEntry.FlowLogEntry` vs. `LogEntry.CoreLogEntry`), not by physical file separation.
+- How does `Aer.Flow` consume the aer-core M5 binding, given aer-core publishes no package? Vendored as a pinned git submodule (`external/aer-core`); `pixi run build-core` builds its native library from source. Revisit with a real package feed only once a second consumer of aer-core exists (AER Overview §6) — not needed for a single-developer project today.
 
 ### Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface
 Apply §8 classification rules to Core's exit: `NaturalExit + code 0 + all ProducedOutputs exist` → `ExecutionSucceeded`; otherwise `ExecutionFailed`; `CancelRequested` → `ExecutionCancelled`. Walk `WorkerContract.ProducedOutputs` and verify each file exists on disk. Write classification event to the log. Wrap the full sequence — load snapshot → project → resolve → dispatch → classify — as a named `MutationInterface.StartWorkflow()` per §14.
@@ -127,7 +128,7 @@ Implement file lock per §15 (`FileShare.None` on a `FileStream`; explicitly not
 
 ## Current Milestone
 
-**M7 — in progress.** Phases 1–5 complete. Phase 6 (Artifact Manager + Core Dispatcher) is next.
+**M7 — in progress.** Phases 1–6 complete. Phase 7 (Outcome Classifier + Contract Validator + Mutation Interface) is next.
 
 ## Completed Milestones
 
@@ -138,6 +139,7 @@ None yet. Phase progress within M7:
 - ✅ Phase 3 — Template Parser + Snapshot Binder (#9)
 - ✅ Phase 4 — State Projector (#10)
 - ✅ Phase 5 — Dependency Resolver (#11)
+- ✅ Phase 6 — Artifact Manager + Core Dispatcher (#12)
 
 ---
 

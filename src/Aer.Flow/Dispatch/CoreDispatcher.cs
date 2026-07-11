@@ -1,0 +1,110 @@
+using Aer.Core;
+using Aer.Flow.Domain;
+using Aer.Flow.Store;
+
+namespace Aer.Flow.Dispatch;
+
+/// <summary>
+/// The concrete binary and arguments to spawn for an <see cref="ExecutionRequest"/>. Resolving a
+/// <see cref="ExecutionRequest.Worker"/> role name (e.g. <c>"architect"</c>) to this is a vendor
+/// binding concern — <c>CLAUDE.md</c>'s Adapter Isolation rule keeps that resolution out of
+/// <c>Aer.Flow</c> entirely, so the caller supplies it explicitly rather than the dispatcher
+/// interpreting <see cref="ExecutionRequest.Worker"/> itself.
+/// </summary>
+public sealed record CoreDispatchTarget(string Program, IReadOnlyList<string> Args);
+
+/// <summary>
+/// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
+/// <c>TimedOut</c> | <c>CancelRequested</c> vocabulary). M7 Phase 6 explicitly excludes outcome
+/// classification — mapping this into <c>ExecutionSucceeded</c>/<c>ExecutionFailed</c>/
+/// <c>ExecutionCancelled</c> is the Outcome Classifier's job (Phase 7, spec §8).
+/// </summary>
+public sealed record CoreDispatchResult(int ExitCode, CoreExitReason Reason);
+
+/// <summary>
+/// Calls the aer-core M5 <c>AerTask</c> binding with an <see cref="ExecutionRequest"/> and records
+/// Core's lifecycle events to the combined log (M7 Phase 6). This is the P/Invoke Layer
+/// <c>CLAUDE.md</c> requires: the only place in <c>Aer.Flow</c> that touches <c>Aer.Core</c>
+/// directly.
+/// </summary>
+public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter)
+{
+    /// <summary>
+    /// Spawns <paramref name="target"/> with <paramref name="request"/>'s AER-computed environment
+    /// variables and timeout, and returns once the process has exited, timed out, or been
+    /// cancelled. Never throws for any of those three outcomes — each is a normal result §8 must
+    /// later classify, not an error condition — but does not suppress genuine dispatch failures
+    /// (e.g. the binary could not be spawned at all), which propagate as <see cref="AerException"/>.
+    /// </summary>
+    public async Task<CoreDispatchResult> DispatchAsync(
+        ExecutionRequest request,
+        CoreDispatchTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(target);
+
+        using var task = new AerTask(target.Program, [.. target.Args]).WithTimeout(request.Timeout);
+
+        foreach (var environmentVariable in request.Environment)
+        {
+            // PassThrough variable *values* are resolved by whatever wires a concrete worker
+            // adapter (Aer.Adapters, no milestone yet — spec §3) — out of scope here. Only
+            // AER-computed variables (paths the Artifact Manager already resolved) are set.
+            if (environmentVariable is EnvironmentVariable.AerComputed aerComputed)
+            {
+                task.WithEnv(aerComputed.Name, aerComputed.Value);
+            }
+        }
+
+        var exitCode = 0;
+        var reason = CoreExitReason.Natural;
+        var pendingLogWrites = new List<Task>();
+
+        task.EventRaised += (_, e) =>
+        {
+            switch (e.Kind)
+            {
+                case AerTaskEventKind.Started:
+                    pendingLogWrites.Add(coreEventLogWriter.AppendAsync(
+                        new CoreEvent.ExecutionStarted(request.ExecutionId, e.Pid), cancellationToken));
+                    break;
+
+                case AerTaskEventKind.Exited:
+                    exitCode = e.ExitCode;
+                    reason = ToCoreExitReason(e.ExitReason);
+                    pendingLogWrites.Add(coreEventLogWriter.AppendAsync(
+                        new CoreEvent.ExecutionExited(request.ExecutionId, e.ExitCode, reason), cancellationToken));
+                    break;
+            }
+        };
+
+        try
+        {
+            // Dispatch(Exited) above has already run by the time RunAsync's Task completes (native
+            // callbacks fire synchronously inside aer_task_run, which returns before RunAsync's
+            // wrapping Task.Run does), so exitCode/reason are already set here on the natural path.
+            await task.RunAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (AerTimeoutException)
+        {
+            reason = CoreExitReason.TimedOut;
+        }
+        catch (AerCancelException)
+        {
+            reason = CoreExitReason.CancelRequested;
+        }
+
+        await Task.WhenAll(pendingLogWrites).ConfigureAwait(false);
+
+        return new CoreDispatchResult(exitCode, reason);
+    }
+
+    private static CoreExitReason ToCoreExitReason(AerExitReason reason) => reason switch
+    {
+        AerExitReason.Natural => CoreExitReason.Natural,
+        AerExitReason.TimedOut => CoreExitReason.TimedOut,
+        AerExitReason.CancelRequested => CoreExitReason.CancelRequested,
+        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown AerExitReason."),
+    };
+}

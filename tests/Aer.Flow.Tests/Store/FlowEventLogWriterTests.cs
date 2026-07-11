@@ -74,7 +74,7 @@ public class FlowEventLogWriterTests
     public async Task A_torn_write_never_leaves_a_partial_event_observable_as_a_complete_line()
     {
         using var buffer = new MemoryStream();
-        var firstEventJson = JsonSerializer.Serialize(MakeEvent("exec-1"), typeof(FlowEvent));
+        var firstEventJson = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry));
 
         await using var faulting = new TornWriteStream(buffer, callsBeforeFault: 1, truncateToBytes: 5);
         await using var writer = new FlowEventLogWriter(faulting, leaveOpen: true);
@@ -119,11 +119,42 @@ public class FlowEventLogWriterTests
         using var buffer = new MemoryStream();
         await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync((FlowEvent)null!));
+    }
+
+    [Fact]
+    public async Task AppendAsync_rejects_a_null_core_event()
+    {
+        using var buffer = new MemoryStream();
+        await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync((CoreEvent)null!));
+    }
+
+    [Fact]
+    public async Task AppendAsync_writes_flow_and_core_events_as_distinct_owner_tagged_lines_on_one_stream()
+    {
+        using var buffer = new MemoryStream();
+        await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
+
+        await writer.AppendAsync(MakeEvent("exec-1"));
+        await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 123));
+
+        var lines = Encoding.UTF8.GetString(buffer.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal(2, lines.Length);
+        var flowEntry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[0]));
+        Assert.IsType<FlowEvent.ExecutionSucceeded>(flowEntry.Event);
+        var coreEntry = Assert.IsType<LogEntry.CoreLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[1]));
+        var started = Assert.IsType<CoreEvent.ExecutionStarted>(coreEntry.Event);
+        Assert.Equal(123u, started.Pid);
     }
 
     private static FlowEvent.ExecutionSucceeded DeserializeExecutionSucceeded(string line)
-        => Assert.IsType<FlowEvent.ExecutionSucceeded>(JsonSerializer.Deserialize<FlowEvent>(line));
+    {
+        var entry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(line));
+        return Assert.IsType<FlowEvent.ExecutionSucceeded>(entry.Event);
+    }
 
     /// <summary>Wraps a stream and, after a configured number of calls, writes only a truncated
     /// prefix of the buffer before throwing — simulating a crash mid-write.</summary>

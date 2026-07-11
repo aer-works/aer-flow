@@ -1,0 +1,32 @@
+using System.Text.Json.Serialization;
+
+namespace Aer.Flow.Domain;
+
+/// <summary>
+/// The physical line union for the single combined <c>flow.jsonl</c> file (M7 Phase 6's dual-log
+/// ownership decision — spec §5.1 defines two logical logs but leaves the storage backend
+/// implementation-defined; a later merge into one physical store is explicitly permitted as long
+/// as "each log has exactly one writer role" still holds per event type). Wrapping
+/// <see cref="FlowEvent"/> and <see cref="CoreEvent"/> in distinct, non-interchangeable
+/// <see cref="LogEntry"/> cases is what enforces that ownership rule in the type system rather
+/// than by physical file separation: nothing can construct a <see cref="CoreLogEntry"/> around a
+/// <see cref="FlowEvent"/> or vice versa.
+/// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "owner")]
+[JsonDerivedType(typeof(FlowLogEntry), "flow")]
+[JsonDerivedType(typeof(CoreLogEntry), "core")]
+public abstract record LogEntry
+{
+    private LogEntry()
+    {
+    }
+
+    /// <summary>A line written by Flow's own mutation logic (spec §5.1's <c>flow.jsonl</c> owner).</summary>
+    public sealed record FlowLogEntry(FlowEvent Event) : LogEntry;
+
+    /// <summary>
+    /// A line written by the Core Dispatcher on Core's behalf (spec §5.1's <c>events.jsonl</c>
+    /// owner) — Flow never originates these, it only durably records what Core reported.
+    /// </summary>
+    public sealed record CoreLogEntry(CoreEvent Event) : LogEntry;
+}
