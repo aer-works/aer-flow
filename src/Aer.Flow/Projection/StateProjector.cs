@@ -28,6 +28,9 @@ public static class StateProjector
         var terminalStatusByExecutionId = new Dictionary<ExecutionId, StepStatus>();
         var pausedExecutionIds = new HashSet<ExecutionId>();
         var referencedExecutionIdByDecisionId = new Dictionary<DecisionId, ExecutionId>();
+        var stepIdByExecutionId = new Dictionary<ExecutionId, StepId>();
+        var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
+        var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
 
         foreach (var flowEvent in events)
         {
@@ -36,14 +39,28 @@ public static class StateProjector
                 case FlowEvent.ExecutionRequestAccepted accepted:
                     latestExecutionIdByStepId[accepted.Request.StepId] = accepted.Request.ExecutionId;
                     upstreamExecutionIdsByStepId[accepted.Request.StepId] = accepted.Request.UpstreamExecutionIds;
+                    stepIdByExecutionId[accepted.Request.ExecutionId] = accepted.Request.StepId;
                     break;
 
                 case FlowEvent.ExecutionSucceeded succeeded:
                     terminalStatusByExecutionId[succeeded.ExecutionId] = StepStatus.Succeeded;
+                    if (stepIdByExecutionId.TryGetValue(succeeded.ExecutionId, out var succeededStepId))
+                    {
+                        consecutiveFailureCountByStepId[succeededStepId] = 0;
+                        latestFailureClassificationByStepId[succeededStepId] = null;
+                    }
+
                     break;
 
                 case FlowEvent.ExecutionFailed failed:
                     terminalStatusByExecutionId[failed.ExecutionId] = StepStatus.Failed;
+                    if (stepIdByExecutionId.TryGetValue(failed.ExecutionId, out var failedStepId))
+                    {
+                        consecutiveFailureCountByStepId[failedStepId] =
+                            consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
+                        latestFailureClassificationByStepId[failedStepId] = failed.FailureClassification;
+                    }
+
                     break;
 
                 case FlowEvent.ExecutionCancelled cancelled:
@@ -100,7 +117,9 @@ public static class StateProjector
                 stepDefinition.StepId,
                 status,
                 latestExecutionId,
-                upstreamExecutionIdsByStepId[stepDefinition.StepId]));
+                upstreamExecutionIdsByStepId[stepDefinition.StepId],
+                consecutiveFailureCountByStepId.GetValueOrDefault(stepDefinition.StepId),
+                latestFailureClassificationByStepId.GetValueOrDefault(stepDefinition.StepId)));
         }
 
         return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps);

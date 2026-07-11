@@ -32,8 +32,21 @@ public enum StepStatus
 /// staleness check (§11.3 condition 2) compares against a dependency's current latest successful
 /// <see cref="ExecutionId"/>.
 /// </param>
+/// <param name="ConsecutiveFailureCount">
+/// The number of trailing consecutive <see cref="FlowEvent.ExecutionFailed"/> attempts for this step,
+/// resetting to zero on <see cref="FlowEvent.ExecutionSucceeded"/> — the Retry Engine's input for
+/// <c>RetryPolicy.MaxAttempts</c> (spec §10).
+/// </param>
+/// <param name="LatestFailureClassification">
+/// The <see cref="Domain.FailureClassification"/> carried on the latest attempt's
+/// <see cref="FlowEvent.ExecutionFailed"/> event; <c>null</c> when the latest attempt did not fail or
+/// reported no classification, which every consumer treats as <see cref="Domain.FailureClassification.Retryable"/>
+/// (spec §8.1).
+/// </param>
 public sealed record StepState(
     StepId StepId,
     StepStatus Status,
     ExecutionId? LatestExecutionId,
-    IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds);
+    IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds,
+    int ConsecutiveFailureCount = 0,
+    FailureClassification? LatestFailureClassification = null);

@@ -178,6 +178,86 @@ public class StateProjectorTests
     }
 
     [Fact]
+    public void A_fail_fail_succeed_sequence_resets_the_consecutive_failure_count_to_zero()
+    {
+        var first = new ExecutionId("exec-1");
+        var second = new ExecutionId("exec-2");
+        var third = new ExecutionId("exec-3");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(first, Architect)),
+            new FlowEvent.ExecutionFailed(first, FailureClassification.Retryable),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(second, Architect)),
+            new FlowEvent.ExecutionFailed(second, FailureClassification.Retryable),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(third, Architect)),
+            new FlowEvent.ExecutionSucceeded(third),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.Equal(0, architect.ConsecutiveFailureCount);
+        Assert.Null(architect.LatestFailureClassification);
+    }
+
+    [Fact]
+    public void A_fail_fail_sequence_leaves_the_consecutive_failure_count_at_two()
+    {
+        var first = new ExecutionId("exec-1");
+        var second = new ExecutionId("exec-2");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(first, Architect)),
+            new FlowEvent.ExecutionFailed(first, FailureClassification.Retryable),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(second, Architect)),
+            new FlowEvent.ExecutionFailed(second, FailureClassification.Permanent),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.Equal(2, architect.ConsecutiveFailureCount);
+        Assert.Equal(FailureClassification.Permanent, architect.LatestFailureClassification);
+    }
+
+    [Fact]
+    public void A_step_with_no_events_projects_a_zero_consecutive_failure_count_and_null_classification()
+    {
+        var state = StateProjector.Project([], TwoStepSnapshot());
+
+        Assert.All(state.Steps, s =>
+        {
+            Assert.Equal(0, s.ConsecutiveFailureCount);
+            Assert.Null(s.LatestFailureClassification);
+        });
+    }
+
+    [Fact]
+    public void Causal_linking_for_failure_history_is_by_ExecutionId_not_line_position()
+    {
+        // Architect and Critic attempts interleave in the log; each step's failure count must
+        // track only its own ExecutionIds, never be confused by append order across steps.
+        var architectFirst = new ExecutionId("a-1");
+        var criticFirst = new ExecutionId("c-1");
+        var architectSecond = new ExecutionId("a-2");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectFirst, Architect)),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(criticFirst, Critic)),
+            new FlowEvent.ExecutionFailed(architectFirst, FailureClassification.Retryable),
+            new FlowEvent.ExecutionSucceeded(criticFirst),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectSecond, Architect)),
+            new FlowEvent.ExecutionFailed(architectSecond, FailureClassification.Retryable),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(2, StepFor(state, Architect).ConsecutiveFailureCount);
+        Assert.Equal(0, StepFor(state, Critic).ConsecutiveFailureCount);
+        Assert.Null(StepFor(state, Critic).LatestFailureClassification);
+    }
+
+    [Fact]
     public void Projecting_the_same_events_twice_produces_an_identical_result()
     {
         var executionId = new ExecutionId("exec-1");
