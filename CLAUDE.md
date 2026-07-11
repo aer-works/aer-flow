@@ -16,6 +16,8 @@ aer-flow/
 ├── spec/                   Behavioral specs (source of truth)
 │   ├── aer-flow-behavioral-spec-v1.0.md
 │   └── aer-flow-ui-behavioral-spec-v0.7.md
+├── external/
+│   └── aer-core/           git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
 ├── .github/workflows/
 │   ├── ci.yml              lint + fmt + test on win + linux
 │   └── release-please.yml  versioning and changelog
@@ -28,8 +30,11 @@ aer-flow/
 
 Always use `pixi run <task>`. Never invoke `dotnet` directly in CI or development.
 
+On a fresh clone, init the submodule first: `git submodule update --init`.
+
 | Task | Command |
 |---|---|
+| `build-core` | `cargo build` in `external/aer-core` — builds the native lib `build`/`test`/`lint` depend on |
 | `build` | `dotnet build` |
 | `test` | `dotnet test` |
 | `lint` | `dotnet build -warnaserror` |
@@ -40,6 +45,8 @@ Always use `pixi run <task>`. Never invoke `dotnet` directly in CI or developmen
 - Windows: `winget install Microsoft.DotNet.SDK.10`
 - macOS: `brew install dotnet-sdk` or the official installer
 - Linux: follow [Microsoft's install guide](https://learn.microsoft.com/en-us/dotnet/core/install/linux)
+
+**aer-core** (`external/aer-core`) is a git submodule, not a package — there is no NuGet feed for it yet (a single-developer project doesn't need the auth/RID-packaging overhead a real feed would add; see AER Overview §6). `pixi run build-core` builds its native library from source via `cargo build`; the Rust toolchain itself is a `pixi` dependency (`pixi.toml`'s `[dependencies]`), so no separate Rust install is needed.
 
 ---
 

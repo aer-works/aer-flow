@@ -4,9 +4,19 @@ name = "aer-flow"
 platforms = ["win-64", "linux-64", "osx-arm64"]
 version = "0.1.0"
 
+[dependencies]
+# Builds the aer-core submodule's native library only — aer-flow has no Rust source of its own.
+rust = ">=1.80"
+
 [tasks]
-build = "dotnet build"
-test = "dotnet test"
+# Builds external/aer-core's native library. The Aer.Core.csproj ProjectReference (Aer.Flow ->
+# Aer.Core, M7 Phase 6's Core Dispatcher) copies this binary from external/aer-core/target/debug/
+# into the output directory only if it already exists there, so this must run before any dotnet
+# task that touches Aer.Flow.
+build-core = { cmd = "cargo build", cwd = "external/aer-core" }
+
+build = { cmd = "dotnet build", depends-on = ["build-core"] }
+test = { cmd = "dotnet test", depends-on = ["build-core"] }
 fmt = "dotnet format"
 fmt-check = "dotnet format --verify-no-changes"
-lint = "dotnet build -warnaserror"
+lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }

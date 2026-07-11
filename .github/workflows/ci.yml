@@ -18,15 +18,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-      # run-install/cache are off: the pixi env is deliberately empty (the .NET
-      # SDK is a system install, not a conda package), and setup-pixi's
-      # `pixi list` step fails hard on an empty environment. `pixi run` performs
-      # the (trivial) implicit install on first use instead.
+      # The pixi env now carries a real dependency (the Rust toolchain, needed only to build the
+      # external/aer-core submodule's native library — see pixi.toml's build-core task), so let
+      # setup-pixi install and cache it normally (.NET SDK stays a system install, not a conda
+      # package, unaffected by this).
       - uses: prefix-dev/setup-pixi@v0.8.0
         with:
-          run-install: false
-          cache: false
+          cache: true
 
       - uses: actions/setup-dotnet@v4
         with:
