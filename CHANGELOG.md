@@ -1,0 +1,50 @@
+# Changelog
+
+## [0.2.0](https://github.com/aer-works/aer-flow/compare/v0.1.0...v0.2.0) (2026-07-11)
+
+
+### Features
+
+* **core:** Initialize .NET solution and placeholder projects for aer-flow ([541258d](https://github.com/aer-works/aer-flow/commit/541258d75a43ad50fd25a63b8151d7e64c5d512c))
+* **flow:** Add the Dependency Resolver for step readiness ([#38](https://github.com/aer-works/aer-flow/issues/38)) ([c460641](https://github.com/aer-works/aer-flow/commit/c4606410d54b3988c9139e2d327e31578948bc1f))
+* **flow:** Add the Log Manager for crash-safe flow.jsonl appends ([#35](https://github.com/aer-works/aer-flow/issues/35)) ([8d8a728](https://github.com/aer-works/aer-flow/commit/8d8a7281653b87825a06fa4600b7edc146f22ddb))
+* **flow:** Add the State Projector for FlowState reconstruction ([#37](https://github.com/aer-works/aer-flow/issues/37)) ([6601423](https://github.com/aer-works/aer-flow/commit/66014230b0aec75181105dfd4ecbdee6a4341b7a))
+* **flow:** Add the Template Parser and Snapshot Binder ([#36](https://github.com/aer-works/aer-flow/issues/36)) ([75090a1](https://github.com/aer-works/aer-flow/commit/75090a1925023150fd5c80f8a776610f8094b30f))
+* **flow:** Define the Phase 1 domain model ([#34](https://github.com/aer-works/aer-flow/issues/34)) ([61db539](https://github.com/aer-works/aer-flow/commit/61db539efef509d46167d08d0365b09989d70b46))
+* **flow:** M7 Phase 6 — Artifact Manager + Core Dispatcher ([#41](https://github.com/aer-works/aer-flow/issues/41)) ([1a633ce](https://github.com/aer-works/aer-flow/commit/1a633ce4f0794f52730122c2d6f573958ad4ba1d))
+* **flow:** M7 Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface ([#43](https://github.com/aer-works/aer-flow/issues/43)) ([97b90a7](https://github.com/aer-works/aer-flow/commit/97b90a79cfebea010a73e6c3eb8efaf37de20350))
+* **flow:** M7 Phase 8 — Concurrency Guard + end-to-end integration test ([#44](https://github.com/aer-works/aer-flow/issues/44)) ([eea819f](https://github.com/aer-works/aer-flow/commit/eea819f3a27724ee6af182215ea0aa8ccae950b8))
+
+
+### Documentation
+
+* Add IMPLEMENTATION_PLAN.md and clean up AER Overview ([638719c](https://github.com/aer-works/aer-flow/commit/638719c4b5909438d8641da50c8759f3434ed2c5))
+* Add IMPLEMENTATION_PLAN.md and clean up AER Overview ([45030d7](https://github.com/aer-works/aer-flow/commit/45030d7518485562368ee896c37970656d285502))
+* add placeholder README.md for aer-flow ([aaf9860](https://github.com/aer-works/aer-flow/commit/aaf9860980977f10f20f313d53341752a956ac64))
+* **ci:** Fix stale spec cross-reference and adopt the system .NET SDK convention ([#27](https://github.com/aer-works/aer-flow/issues/27)) ([6472d0a](https://github.com/aer-works/aer-flow/commit/6472d0a193eb8a72937f1d375d65b167f8ecbf4a)), closes [#20](https://github.com/aer-works/aer-flow/issues/20)
+* Land plan refinements that missed PR [#6](https://github.com/aer-works/aer-flow/issues/6) and prune resolved WorkflowTransition references ([#29](https://github.com/aer-works/aer-flow/issues/29)) ([9910dfa](https://github.com/aer-works/aer-flow/commit/9910dfa0d8c5c7135a4ddec626e440ac53f8d8ea)), closes [#28](https://github.com/aer-works/aer-flow/issues/28)
+* point IMPLEMENTATION_PLAN.md at [#21](https://github.com/aer-works/aer-flow/issues/21) findings for future adapter work ([#33](https://github.com/aer-works/aer-flow/issues/33)) ([ff3c8cd](https://github.com/aer-works/aer-flow/commit/ff3c8cd4f237808319ad173cc96e61c3edc7ecbb))
+* Replace IMPLEMENTATION_PLAN.md with spec-derived plan ([3496d36](https://github.com/aer-works/aer-flow/commit/3496d361f730420f57dfc3015136ee7eb8e368e2))
+* **spec:** Define the OutputCondition content-condition language (§4.1) ([#23](https://github.com/aer-works/aer-flow/issues/23)) ([74f7fa8](https://github.com/aer-works/aer-flow/commit/74f7fa87330a55e12a2ae0f61bf8c6e5ce2dfca6)), closes [#16](https://github.com/aer-works/aer-flow/issues/16)
+* **spec:** Name quota exhaustion as an open failure-model question (§21) ([#25](https://github.com/aer-works/aer-flow/issues/25)) ([d954a84](https://github.com/aer-works/aer-flow/commit/d954a8477315beb6c8cda62c84547a1d752d29c6)), closes [#18](https://github.com/aer-works/aer-flow/issues/18)
+* **spec:** Name the pump problem in §21 with candidate resolutions and v1 intent ([#26](https://github.com/aer-works/aer-flow/issues/26)) ([dfc384c](https://github.com/aer-works/aer-flow/commit/dfc384cf6752f6c7feced3483462ad0b7d089b8f)), closes [#19](https://github.com/aer-works/aer-flow/issues/19)
+* **spec:** Record pass-through Environment variables by name only, never value ([#24](https://github.com/aer-works/aer-flow/issues/24)) ([ac217a5](https://github.com/aer-works/aer-flow/commit/ac217a550584b1409be43ec2879618fec220375c)), closes [#17](https://github.com/aer-works/aer-flow/issues/17)
+* **spec:** Remove undefined WorkflowTransition event from the event union ([#22](https://github.com/aer-works/aer-flow/issues/22)) ([b82f09c](https://github.com/aer-works/aer-flow/commit/b82f09c25b78be09837bed4c820c45178f7d7091)), closes [#15](https://github.com/aer-works/aer-flow/issues/15)
+
+
+### Continuous Integration
+
+* Add issues to the AER Roadmap board from project-automation ([#31](https://github.com/aer-works/aer-flow/issues/31)) ([75e7e4c](https://github.com/aer-works/aer-flow/commit/75e7e4cbf59ea462982c2bb148ffc7a4626ab813)), closes [#30](https://github.com/aer-works/aer-flow/issues/30)
+* Cache NuGet restore and the aer-core Rust build ([#42](https://github.com/aer-works/aer-flow/issues/42)) ([6988bc6](https://github.com/aer-works/aer-flow/commit/6988bc622443f5393141146cbcaf2ddd972b8c0b))
+* fix release-please action configuration ([4b28e9f](https://github.com/aer-works/aer-flow/commit/4b28e9fd0bd12ba9026e5b87780f3b2ccee3aa57))
+* fix release-please action configuration ([eaa73a5](https://github.com/aer-works/aer-flow/commit/eaa73a519a6edc1a4bc163b1f234f3f450526e98))
+* Fix Ubuntu target and Windows EPERM issue ([f0752cf](https://github.com/aer-works/aer-flow/commit/f0752cf9786549bec69d16ec159c399cd27d430b))
+* Skip redundant project item-add on issue close ([#40](https://github.com/aer-works/aer-flow/issues/40)) ([05b7f87](https://github.com/aer-works/aer-flow/commit/05b7f8760fdffec91f888066cd16a51a903c8e1e))
+
+
+### Miscellaneous
+
+* **setup:** include pixi.lock, gitattributes, and spec files ([a2ea72b](https://github.com/aer-works/aer-flow/commit/a2ea72be2978a8396cda4e2f1f1665783f8f8f62))
+* **setup:** initialize aer-flow repository ([801f348](https://github.com/aer-works/aer-flow/commit/801f348f5e2d1a21bbd25cd421cfd91c15b22c4d))
+* **setup:** Initialize aer-flow repository with Pixi, CI, and CLAUDE instructions ([f3d9e8e](https://github.com/aer-works/aer-flow/commit/f3d9e8edd0b44c2127291023a057f2fc8a6cdaf3))
+* update pixi.lock for new platforms ([b530375](https://github.com/aer-works/aer-flow/commit/b530375c53475417850118e6b3c0eaf8f189807f))
