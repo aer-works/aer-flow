@@ -2,6 +2,7 @@ using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Store;
+using static Aer.Flow.Tests.TestSupport.ShellWorkerCommands;
 
 namespace Aer.Flow.Tests.Mutation;
 
@@ -20,8 +21,9 @@ public class MutationInterfaceTests
     [Fact]
     public async Task StartWorkflowAsync_runs_a_three_step_linear_workflow_to_completion()
     {
-        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
         try
         {
             var snapshot = new WorkflowDefinitionSnapshot(
@@ -56,7 +58,7 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-1"), snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-1"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
 
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
@@ -67,16 +69,16 @@ public class MutationInterfaceTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
-            File.Delete(logPath);
+            Directory.Delete(taskDirectory, recursive: true);
         }
     }
 
     [Fact]
     public async Task StartWorkflowAsync_classifies_a_clean_exit_with_no_output_as_ExecutionFailed()
     {
-        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
         try
         {
             var stepId = new StepId("silent-step");
@@ -99,27 +101,14 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-2"), snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-2"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
 
             var stepState = Assert.Single(finalState.Steps);
             Assert.Equal(StepStatus.Failed, stepState.Status);
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
-            File.Delete(logPath);
+            Directory.Delete(taskDirectory, recursive: true);
         }
     }
-
-    private static CoreDispatchTarget WriteFile(string outputName, string content) => OperatingSystem.IsWindows()
-        ? new CoreDispatchTarget("cmd", ["/c", $"echo {content}>%AER_OUTPUT_DIR%\\{outputName}"])
-        : new CoreDispatchTarget("sh", ["-c", $"echo {content} > \"$AER_OUTPUT_DIR/{outputName}\""]);
-
-    private static CoreDispatchTarget CopyFirstInputTo(string outputName) => OperatingSystem.IsWindows()
-        ? new CoreDispatchTarget("cmd", ["/c", $"type %AER_INPUT_0% >%AER_OUTPUT_DIR%\\{outputName}"])
-        : new CoreDispatchTarget("sh", ["-c", $"cat \"$AER_INPUT_0\" > \"$AER_OUTPUT_DIR/{outputName}\""]);
-
-    private static CoreDispatchTarget ExitCleanlyWithoutWriting() => OperatingSystem.IsWindows()
-        ? new CoreDispatchTarget("cmd", ["/c", "exit 0"])
-        : new CoreDispatchTarget("sh", ["-c", "exit 0"]);
 }

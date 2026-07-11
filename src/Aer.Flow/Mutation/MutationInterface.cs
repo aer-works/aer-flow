@@ -1,4 +1,5 @@
 using Aer.Flow.Artifacts;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Outcomes;
@@ -13,19 +14,26 @@ namespace Aer.Flow.Mutation;
 /// append to <c>flow.jsonl</c>. M7 provides only <see cref="StartWorkflowAsync"/>: linear
 /// happy-path execution with no retries, pauses, or concurrent dispatch (IMPLEMENTATION_PLAN.md's
 /// M7 goal). This method is itself the "pump" §21 decided on: it blocks, dispatching each ready
-/// step as the previous one completes, until the workflow reaches a fixed point.
+/// step as the previous one completes, until the workflow reaches a fixed point. It also holds the
+/// §15 concurrency guard for the whole call — the single mutation surface is the natural place to
+/// enforce "at most one Flow instance may mutate a given task's workflow state at a time", rather
+/// than trusting every caller to remember to acquire it.
 /// </summary>
 public static class MutationInterface
 {
     /// <summary>
-    /// Repeatedly projects <see cref="FlowState"/>, resolves ready steps (§11.3), dispatches the
-    /// first ready step to Core, classifies its outcome (§8), and appends the result — until no
-    /// step is ready, either because every step reached a terminal outcome or because a failure
-    /// has permanently blocked the remaining graph (M7 has no Retry Engine, §10 is M8). Returns the
-    /// final projected <see cref="FlowState"/>.
+    /// Acquires the task's §15 concurrency guard, then repeatedly projects <see cref="FlowState"/>,
+    /// resolves ready steps (§11.3), dispatches the first ready step to Core, classifies its
+    /// outcome (§8), and appends the result — until no step is ready, either because every step
+    /// reached a terminal outcome or because a failure has permanently blocked the remaining graph
+    /// (M7 has no Retry Engine, §10 is M8). Returns the final projected <see cref="FlowState"/>.
     /// </summary>
+    /// <exception cref="WorkflowLockedException">
+    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// </exception>
     public static async Task<FlowState> StartWorkflowAsync(
         WorkflowId workflowId,
+        string taskDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -34,12 +42,15 @@ public static class MutationInterface
         CoreDispatcher dispatcher,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
         ArgumentNullException.ThrowIfNull(eventLogReader);
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
+
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
         var stepDefinitionsById = snapshot.Steps.ToDictionary(s => s.StepId);
 
