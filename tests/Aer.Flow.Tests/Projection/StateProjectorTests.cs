@@ -33,6 +33,18 @@ public class StateProjectorTests
 
     private static StepState StepFor(FlowState state, StepId stepId) => Assert.Single(state.Steps, s => s.StepId == stepId);
 
+    private static ExecutionRequest MakeStepLessRequest(ExecutionId executionId, string worker = "human")
+        => new(
+            executionId,
+            new WorkflowId("wf-1"),
+            StepId: null,
+            worker,
+            Inputs: [],
+            Outputs: [],
+            Timeout: null,
+            Environment: [],
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
     [Fact]
     public void A_step_with_no_events_at_all_projects_as_Pending()
     {
@@ -600,5 +612,58 @@ public class StateProjectorTests
         var second = StateProjector.Project(events, snapshot);
 
         Assert.Equal(JsonSerializer.Serialize(first), JsonSerializer.Serialize(second));
+    }
+
+    [Fact]
+    public void A_step_less_ExecutionRequestAccepted_with_no_terminal_event_is_a_pending_StepLessExecution()
+    {
+        var executionId = new ExecutionId("supplement-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeStepLessRequest(executionId)),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var stepLess = Assert.Single(state.StepLessExecutions);
+        Assert.Equal(executionId, stepLess.ExecutionId);
+        Assert.Equal("human", stepLess.Worker);
+
+        // Never perturbs any step's own projection (§12) — a step-less execution belongs to no StepId.
+        Assert.Equal(StepStatus.Pending, StepFor(state, Architect).Status);
+        Assert.Equal(StepStatus.Pending, StepFor(state, Critic).Status);
+    }
+
+    [Fact]
+    public void A_settled_step_less_execution_is_no_longer_a_pending_StepLessExecution()
+    {
+        var executionId = new ExecutionId("supplement-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeStepLessRequest(executionId)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Empty(state.StepLessExecutions);
+    }
+
+    [Fact]
+    public void Multiple_pending_step_less_executions_are_tracked_independently_in_append_order()
+    {
+        var first = new ExecutionId("supplement-1");
+        var second = new ExecutionId("supplement-2");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeStepLessRequest(first)),
+            new FlowEvent.ExecutionRequestAccepted(MakeStepLessRequest(second)),
+            new FlowEvent.ExecutionSucceeded(first),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var pending = Assert.Single(state.StepLessExecutions);
+        Assert.Equal(second, pending.ExecutionId);
     }
 }

@@ -39,15 +39,15 @@ public class MutationInterfaceTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["architect"] = new WorkerBinding(
+                ["architect"] = new WorkerBinding.Process(
                     new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
                     WriteFile("plan", "architect"),
                     TimeSpan.FromSeconds(30)),
-                ["critic"] = new WorkerBinding(
+                ["critic"] = new WorkerBinding.Process(
                     new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
                     CopyFirstInputTo("review"),
                     TimeSpan.FromSeconds(30)),
-                ["publisher"] = new WorkerBinding(
+                ["publisher"] = new WorkerBinding.Process(
                     new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
                     CopyFirstInputTo("summary"),
                     TimeSpan.FromSeconds(30)),
@@ -94,11 +94,11 @@ public class MutationInterfaceTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["architect"] = new WorkerBinding(
+                ["architect"] = new WorkerBinding.Process(
                     new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
                     FailOnFirstAttemptThenSucceed(markerFilePath, "plan", "architect"),
                     TimeSpan.FromSeconds(30)),
-                ["critic"] = new WorkerBinding(
+                ["critic"] = new WorkerBinding.Process(
                     new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
                     CopyFirstInputTo("review"),
                     TimeSpan.FromSeconds(30)),
@@ -150,7 +150,7 @@ public class MutationInterfaceTests
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
-                ["silent"] = new WorkerBinding(
+                ["silent"] = new WorkerBinding.Process(
                     new WorkerContract("silent", [], [new ProducedOutput("output.txt")], []),
                     ExitCleanlyWithoutWriting(),
                     TimeSpan.FromSeconds(30)),

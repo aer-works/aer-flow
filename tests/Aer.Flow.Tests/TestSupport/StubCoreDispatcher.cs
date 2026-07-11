@@ -49,19 +49,23 @@ internal sealed class StubCoreDispatcher : ICoreDispatcher
         CoreDispatchTarget target,
         CancellationToken cancellationToken = default)
     {
+        // Only ever dispatched for a step-tied, process-bound request (§17.3) — StepId is always
+        // set here.
+        var stepId = request.StepId!.Value;
+
         TaskCompletionSource<CoreDispatchResult> completionSource;
         lock (_lock)
         {
-            if (!_pendingResults.TryGetValue(request.StepId, out var queue) || queue.Count == 0)
+            if (!_pendingResults.TryGetValue(stepId, out var queue) || queue.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"StubCoreDispatcher: no result enqueued for step '{request.StepId}' (attempt count exceeds test setup).");
+                    $"StubCoreDispatcher: no result enqueued for step '{stepId}' (attempt count exceeds test setup).");
             }
 
             completionSource = queue.Dequeue();
         }
 
-        _dispatchStarted.Writer.TryWrite(request.StepId);
+        _dispatchStarted.Writer.TryWrite(stepId);
         return completionSource.Task;
     }
 }

@@ -36,6 +36,11 @@ public static class StateProjector
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
 
+        // Step-less executions (spec §17.3) never associate with any StepId — tracked separately,
+        // in append order, so a pending one can be surfaced to completion detection without
+        // perturbing any step's latest-attempt projection above.
+        var stepLessExecutionsInOrder = new List<StepLessExecutionState>();
+
         // §17.5's decision consequences, tracked the same "derive, don't remember" way as everything
         // else here: set when a resolving decision names this step (RetryWithRevision's own referent,
         // or Supersede's TargetStepId) and cleared the moment a newer ExecutionRequestAccepted lands
@@ -49,13 +54,21 @@ public static class StateProjector
             switch (flowEvent)
             {
                 case FlowEvent.ExecutionRequestAccepted accepted:
-                    latestExecutionIdByStepId[accepted.Request.StepId] = accepted.Request.ExecutionId;
-                    upstreamExecutionIdsByStepId[accepted.Request.StepId] = accepted.Request.UpstreamExecutionIds;
-                    stepIdByExecutionId[accepted.Request.ExecutionId] = accepted.Request.StepId;
+                    if (accepted.Request.StepId is { } acceptedStepId)
+                    {
+                        latestExecutionIdByStepId[acceptedStepId] = accepted.Request.ExecutionId;
+                        upstreamExecutionIdsByStepId[acceptedStepId] = accepted.Request.UpstreamExecutionIds;
+                        stepIdByExecutionId[accepted.Request.ExecutionId] = acceptedStepId;
 
-                    // This dispatch is the consequence a prior decision was owed, if any — fulfilled now.
-                    pendingSupplementaryExecutionIdByStepId.Remove(accepted.Request.StepId);
-                    pendingSupersedeTargetStepIds.Remove(accepted.Request.StepId);
+                        // This dispatch is the consequence a prior decision was owed, if any — fulfilled now.
+                        pendingSupplementaryExecutionIdByStepId.Remove(acceptedStepId);
+                        pendingSupersedeTargetStepIds.Remove(acceptedStepId);
+                    }
+                    else
+                    {
+                        stepLessExecutionsInOrder.Add(new StepLessExecutionState(accepted.Request.ExecutionId, accepted.Request.Worker));
+                    }
+
                     break;
 
                 case FlowEvent.ExecutionSucceeded succeeded:
@@ -209,6 +222,13 @@ public static class StateProjector
                 ? WorkflowStatus.Paused
                 : WorkflowStatus.Terminal;
 
-        return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, workflowStatus);
+        // Still pending: accepted, but no terminal event recorded for it yet — exactly the same
+        // "no terminal event means Running-or-crashed" rule §6 already applies to step-tied
+        // executions, just without a StepState to attach it to.
+        var pendingStepLessExecutions = stepLessExecutionsInOrder
+            .Where(execution => !terminalStatusByExecutionId.ContainsKey(execution.ExecutionId))
+            .ToList();
+
+        return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, workflowStatus, pendingStepLessExecutions);
     }
 }

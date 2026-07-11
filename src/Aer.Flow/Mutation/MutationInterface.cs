@@ -116,11 +116,88 @@ public static class MutationInterface
     }
 
     /// <summary>
+    /// A third mutation-surface entry point (spec §14, §17.3): mints a step-less supplementary
+    /// execution — a human, or any other non-process party, producing a new artifact outside the
+    /// DAG during a pause. Appends <see cref="FlowEvent.ExecutionRequestAccepted"/> with
+    /// <c>StepId: null</c> and pre-allocates the output directory exactly like any other worker
+    /// (§16), but does not run the pump: minting one changes no step's readiness by itself, and
+    /// nothing here needs driving to a fixed point (§20, no daemon). The returned
+    /// <see cref="ExecutionId"/> becomes usable as a <see cref="DecisionType.RetryWithRevision"/> or
+    /// <see cref="DecisionType.Supersede"/> decision's <c>SupplementaryExecutionId</c> once
+    /// completion — <see cref="NonProcessCompletionDetector"/>, consulted by a later
+    /// <see cref="StartWorkflowAsync"/> or <see cref="RecordDecisionAsync"/> pump — has recorded it
+    /// as <see cref="FlowEvent.ExecutionSucceeded"/>.
+    /// </summary>
+    /// <exception cref="WorkflowLockedException">
+    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// </exception>
+    /// <exception cref="UnresolvedWorkerException">
+    /// <paramref name="worker"/> has no corresponding <see cref="WorkerBinding.NonProcess"/> among
+    /// <paramref name="workerBindings"/> — a supplementary execution is non-process by definition
+    /// (§17.3), so naming a <see cref="WorkerBinding.Process"/> role (or no role at all) is invalid.
+    /// </exception>
+    public static async Task<(FlowState State, ExecutionId ExecutionId)> RecordSupplementaryExecutionAsync(
+        WorkflowId workflowId,
+        string taskDirectoryPath,
+        WorkflowDefinitionSnapshot snapshot,
+        IReadOnlyDictionary<string, WorkerBinding> workerBindings,
+        string artifactsRootPath,
+        string worker,
+        IReadOnlyList<string> inputs,
+        IEventLogReader eventLogReader,
+        IEventLogWriter eventLogWriter,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(workerBindings);
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+        ArgumentException.ThrowIfNullOrEmpty(worker);
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(eventLogReader);
+        ArgumentNullException.ThrowIfNull(eventLogWriter);
+
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+
+        if (!workerBindings.TryGetValue(worker, out var binding) || binding is not WorkerBinding.NonProcess nonProcess)
+        {
+            throw new UnresolvedWorkerException($"No non-process WorkerBinding registered for Worker '{worker}'.");
+        }
+
+        var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
+        var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
+        var environment = ArtifactManager.BuildEnvironment(inputs, outputDirectory);
+        var outputs = nonProcess.Contract.ProducedOutputs.Select(output => output.Name).ToList();
+
+        var request = new ExecutionRequest(
+            executionId,
+            workflowId,
+            StepId: null,
+            worker,
+            inputs,
+            outputs,
+            Timeout: null,
+            environment,
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+        // §7's write-sequence discipline still applies: appended and fsync'd before this method
+        // returns, even though no Core process ever follows it (§17.3).
+        await eventLogWriter.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), cancellationToken)
+            .ConfigureAwait(false);
+
+        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var state = StateProjector.Project(events, snapshot);
+
+        return (state, executionId);
+    }
+
+    /// <summary>
     /// The scheduling pump shared by both mutation-surface entry points: repeatedly projects
-    /// <see cref="FlowState"/>, appends any owed <see cref="FlowEvent.WorkflowPaused"/> obligations,
-    /// resolves every ready step, and dispatches all of them to Core concurrently until nothing is
-    /// ready and nothing remains in flight. Assumes the caller already holds the §15 concurrency
-    /// guard.
+    /// <see cref="FlowState"/>, finalizes any settled non-process execution, appends any owed
+    /// <see cref="FlowEvent.WorkflowPaused"/> obligations, resolves every ready step, and dispatches
+    /// all of them concurrently — to Core, or, for a <see cref="WorkerBinding.NonProcess"/> step,
+    /// nowhere at all — until nothing is ready and nothing remains in flight. Assumes the caller
+    /// already holds the §15 concurrency guard.
     /// </summary>
     private static async Task<FlowState> PumpToFixedPointAsync(
         WorkflowId workflowId,
@@ -139,6 +216,24 @@ public static class MutationInterface
         {
             var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
             state = StateProjector.Project(events, snapshot);
+
+            // A derived obligation (§17.3), re-evaluated from projected state on every round for
+            // the same crash-safety reason the pause obligation below is: the filesystem is read
+            // only here, at classification time, and the resulting ExecutionSucceeded is the
+            // durable truth from then on (§13). Must run before pause obligations, so a step that
+            // just settled this way can still owe a WorkflowPaused append in the same pass.
+            var settledNonProcessExecutionIds = NonProcessCompletionDetector.GetSettledExecutions(
+                state, snapshot, workerBindings, artifactsRootPath);
+            if (settledNonProcessExecutionIds.Count > 0)
+            {
+                foreach (var executionId in settledNonProcessExecutionIds)
+                {
+                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
 
             // A derived obligation (§17.1), re-evaluated from projected state on every round rather
             // than welded into the dispatch continuation, so a crash between the outcome event and
@@ -183,14 +278,30 @@ public static class MutationInterface
                         workflowId, stepDefinition, snapshot, state, binding, artifactsRootPath, eventLogWriter, cancellationToken)
                     .ConfigureAwait(false);
 
-                // Not awaited here: starts the dispatch and joins the in-flight set, so a slow step
-                // never blocks this round from dispatching the rest of its ready work.
-                inFlight.Add(DispatchAndRecordOutcomeAsync(
-                    prepared, binding, eventLogWriter, dispatcher, cancellationToken));
+                // A non-process worker (§17.3) is fully handled by the append above: no Core
+                // process to spawn, so nothing joins the in-flight set. The pump reaches its fixed
+                // point with the step awaiting external completion (no daemon, §20); a later round's
+                // NonProcessCompletionDetector call is what eventually finalizes it.
+                if (binding is WorkerBinding.Process processBinding)
+                {
+                    // Not awaited here: starts the dispatch and joins the in-flight set, so a slow
+                    // step never blocks this round from dispatching the rest of its ready work.
+                    inFlight.Add(DispatchAndRecordOutcomeAsync(
+                        prepared, processBinding, eventLogWriter, dispatcher, cancellationToken));
+                }
             }
 
             if (inFlight.Count == 0)
             {
+                // A round that dispatched only non-process work still changed projected state (new
+                // ExecutionRequestAccepted events) even though nothing joined inFlight — loop back
+                // around to re-project and return the state that actually reflects it, rather than
+                // the stale snapshot read at the top of this iteration.
+                if (readyStepIds.Count > 0)
+                {
+                    continue;
+                }
+
                 return state;
             }
 
@@ -239,7 +350,7 @@ public static class MutationInterface
             step.Worker,
             inputPaths,
             step.Outputs,
-            binding.Timeout,
+            binding is WorkerBinding.Process processBinding ? processBinding.Timeout : null,
             environment,
             upstreamExecutionIds);
 
@@ -252,7 +363,7 @@ public static class MutationInterface
 
     private static async Task DispatchAndRecordOutcomeAsync(
         PreparedExecution prepared,
-        WorkerBinding binding,
+        WorkerBinding.Process binding,
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
         CancellationToken cancellationToken)
