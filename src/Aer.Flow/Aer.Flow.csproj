@@ -14,4 +14,11 @@
     <ProjectReference Include="..\..\external\aer-core\bindings\dotnet\Aer.Core\Aer.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets the test project exercise internal pump machinery (e.g. InFlightExecutionRegistry's
+         Register/Unregister/RequestStopAsync) directly where a test needs to force an exact
+         internal race deterministically, not just through the public mutation surface. -->
+    <InternalsVisibleTo Include="Aer.Flow.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -44,7 +44,7 @@ internal sealed class StubCoreDispatcher : ICoreDispatcher
         return completionSource;
     }
 
-    public Task<CoreDispatchResult> DispatchAsync(
+    public async Task<CoreDispatchResult> DispatchAsync(
         ExecutionRequest request,
         CoreDispatchTarget target,
         CancellationToken cancellationToken = default)
@@ -66,6 +66,24 @@ internal sealed class StubCoreDispatcher : ICoreDispatcher
         }
 
         _dispatchStarted.Writer.TryWrite(stepId);
-        return completionSource.Task;
+
+        // Mirrors CoreDispatcher's real contract (M10 Phase 2): a cancelled dispatch token never
+        // throws, it resolves to a Cancelled result, exactly like AerCancelException does for a real
+        // AerTask.RunAsync. Not observed at all when the caller passes a token that can never fire
+        // (the pre-Phase-2 default), so every earlier test's un-cancellable stub calls behave
+        // identically to before.
+        if (!cancellationToken.CanBeCanceled)
+        {
+            return await completionSource.Task.ConfigureAwait(false);
+        }
+
+        var cancellationTask = Task.Delay(Timeout.Infinite, cancellationToken);
+        var winner = await Task.WhenAny(completionSource.Task, cancellationTask).ConfigureAwait(false);
+        if (winner == cancellationTask)
+        {
+            return new CoreDispatchResult(0, CoreExitReason.CancelRequested);
+        }
+
+        return await completionSource.Task.ConfigureAwait(false);
     }
 }
