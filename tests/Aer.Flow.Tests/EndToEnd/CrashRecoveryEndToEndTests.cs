@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Aer.Flow.Artifacts;
 using Aer.Flow.CrashTestHost;
 using Aer.Flow.Dispatch;
@@ -233,7 +234,7 @@ public class CrashRecoveryEndToEndTests
     {
         var (snapshot, bindings) = Scenarios.Build(recoveryWorker);
 
-        await using var writer = new FlowEventLogWriter(logPath);
+        await using var writer = await OpenWriterWithRetryAsync(logPath);
         var reader = new FlowEventLogReader(logPath);
         var dispatcher = new CoreDispatcher(writer);
 
@@ -245,6 +246,30 @@ public class CrashRecoveryEndToEndTests
         return completed is Task<FlowState> stateTask
             ? await stateTask
             : throw new TimeoutException("Recovery run did not reach a fixed point in time.");
+    }
+
+    /// <summary>
+    /// Opens <paramref name="logPath"/> for append, retrying on <see cref="IOException"/> for a
+    /// short window: on Windows, a killed process's file handles are not always released by the
+    /// instant <see cref="Process.WaitForExit"/>/<see cref="Process.WaitForExitAsync"/> returns —
+    /// a real, observed gap between "the process object reports exited" and "the OS has finished
+    /// tearing down every handle it held" — so opening this same file for append immediately after
+    /// killing its previous writer can transiently collide with that teardown.
+    /// </summary>
+    private static async Task<FlowEventLogWriter> OpenWriterWithRetryAsync(string logPath)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            try
+            {
+                return new FlowEventLogWriter(logPath);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
+        }
     }
 
     private static async Task<ExecutionId> GetAcceptedExecutionIdAsync(string logPath)

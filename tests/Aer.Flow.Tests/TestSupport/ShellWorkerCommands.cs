@@ -30,10 +30,18 @@ internal static class ShellWorkerCommands
     /// Sleeps for at least <paramref name="duration"/> before writing <paramref name="outputName"/>
     /// and exiting 0 — M10 Phase 4's real long-running worker, giving a test enough real wall-clock
     /// time to observe it genuinely still executing (via <c>CoreEvent.ExecutionStarted</c>) before
-    /// cancelling or otherwise acting on it.
+    /// cancelling or otherwise acting on it. Windows uses <c>ping</c> as the sleep primitive, not
+    /// <c>timeout</c>: the latter requires an interactive console on stdin and fails immediately
+    /// ("Input redirection is not supported") under a spawned, non-console process — and chained
+    /// with <c>&amp;</c> rather than <c>&amp;&amp;</c>, that failure was silently swallowed and the
+    /// echo ran anyway, so the worker "succeeded" almost instantly instead of actually sleeping.
+    /// <c>ping -n</c> has no such dependency and reliably blocks for approximately one second per
+    /// echo request regardless of how the process was spawned.
     /// </summary>
     public static CoreDispatchTarget SleepThenWriteFile(TimeSpan duration, string outputName, string content) => OperatingSystem.IsWindows()
-        ? new CoreDispatchTarget("cmd", ["/c", $"timeout /t {(int)duration.TotalSeconds} /nobreak >nul & echo {content}>%AER_OUTPUT_DIR%\\{outputName}"])
+        ? new CoreDispatchTarget(
+            "cmd",
+            ["/c", $"ping -n {(int)duration.TotalSeconds + 1} 127.0.0.1 >nul & echo {content}>%AER_OUTPUT_DIR%\\{outputName}"])
         : new CoreDispatchTarget("sh", ["-c", $"sleep {duration.TotalSeconds} && echo {content} > \"$AER_OUTPUT_DIR/{outputName}\""]);
 
     /// <summary>
