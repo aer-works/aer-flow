@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/aer-works/aer-flow/compare/v0.4.0...v0.5.0) (2026-07-12)
+
+
+### Features
+
+* **flow:** M10 Phase 1 — Cancellation mutation surface: record, validate, non-process targets ([#75](https://github.com/aer-works/aer-flow/issues/75)) ([df31f67](https://github.com/aer-works/aer-flow/commit/df31f671fa8a1a9259fdc42d5738a6f3f5dac5c0))
+* **flow:** M10 Phase 2 — Live cancellation delivery: in-flight Core executions ([#76](https://github.com/aer-works/aer-flow/issues/76)) ([196410e](https://github.com/aer-works/aer-flow/commit/196410ece90a02c0bdb82ea12520dfa26985cf61))
+* **flow:** M10 Phase 3 — Crash-recovery reconciliation: reading back the Core log ([#80](https://github.com/aer-works/aer-flow/issues/80)) ([8332030](https://github.com/aer-works/aer-flow/commit/833203098219d7a6c8f8f2ae65d04cbb6e2cec05))
+* **flow:** M10 Phase 4 — Cancellation + crash-recovery end-to-end integration tests ([#82](https://github.com/aer-works/aer-flow/issues/82)) ([37afd3d](https://github.com/aer-works/aer-flow/commit/37afd3de76e0c51c21f05d4d883b67884d19a0d8))
+
+
+### Bug Fixes
+
+* **flow:** Order in-flight registry capture before the round's log read ([#83](https://github.com/aer-works/aer-flow/issues/83)) ([55dfbd9](https://github.com/aer-works/aer-flow/commit/55dfbd99ceb605ded552b6a5117ca140bb296ae5))
+
+
+### Documentation
+
+* Define the M10 (Cancellation & Edge Cases) phase plan ([#73](https://github.com/aer-works/aer-flow/issues/73)) ([d85257f](https://github.com/aer-works/aer-flow/commit/d85257f70c676cba8f626cc869da5d45d58f6f1c))
+* **spec:** Define recovery for the orphaned execution crash state (§7) ([#78](https://github.com/aer-works/aer-flow/issues/78)) ([82f80d9](https://github.com/aer-works/aer-flow/commit/82f80d955f01735f79e4a8d7e791f81cd6d2afd7))
+
 ## [0.4.0](https://github.com/aer-works/aer-flow/compare/v0.3.0...v0.4.0) (2026-07-12)
 
 
