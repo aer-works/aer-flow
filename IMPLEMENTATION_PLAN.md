@@ -118,10 +118,44 @@ The M11 completion gate, playing the role #14/#48/#61/#72 played for the engine 
 
 - ✅ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
 - ✅ Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
-- ⬜ Phase 3 — `aer run` pump (the CLI driver) (#86)
+- ✅ Phase 3 — `aer run` pump (the CLI driver) (#86)
 - ⬜ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
 
 Decisions of record from M11:
+
+- **`RunCommand.ExecuteAsync` takes the adapter registry as a plain argument, never constructing
+  one itself**: `Program.cs`'s only production wiring decision is passing
+  `WorkerAdapterRegistry.Default` (`Aer.Adapters`, `{"claude": ClaudeWorkerAdapter}`) — every other
+  layer (argument parsing, snapshot/bindings loading, the pump call) is identical whether the
+  caller is the real CLI or a test supplying its own registry. This is what let Phase 3's
+  completion gate reach the real `IWorkerAdapter`/bindings-config seam end to end with a
+  deterministic shell-stub adapter (`ShellCommandWorkerAdapter`, test-only — runs its
+  `WorkerInvocation.PromptTemplate` directly as a shell command, the same `sh -c`/`cmd /c`
+  convention `ClaudeWorkerAdapter` and the M7 shell-stub workers already use) instead of a live
+  LLM, without a single line of the production driver being test-only code (Phase 3).
+- **A task directory's `snapshot.json` existence is the fresh-vs-resumed signal, not a separate
+  flag**: `RunCommand` binds and persists a new snapshot from the workflow file only when
+  `snapshot.json` is absent; otherwise it loads the persisted one (`SnapshotBinder.LoadFromFileAsync`,
+  new) and never re-reads the workflow file at all. This is what makes `aer run`'s own resume story
+  (§21: "running `aer run` again picks up from the log") match spec §11.2's guarantee that a task
+  stays bound to the snapshot it was created from, even if the source template file changes or
+  disappears between runs (Phase 3).
+- **`--task-dir` defaults to `.aer/<workflow-file-stem>` under the current directory when omitted**,
+  so `aer run workflow.json` twice in the same directory naturally resumes the same task without
+  requiring an explicit path every time — still overridable, and still the one thing that must stay
+  stable across a resume (Phase 3).
+- **Malformed CLI arguments are their own exception type** (`CliArgumentException : AerFlowException`,
+  `Aer.Cli`), parsed by `RunOptionsParser` before any file is touched — mirrors
+  `WorkflowDefinitionValidationException`/`WorkerBindingConfigException` one layer up, per
+  CLAUDE.md's error-handling rules. `Program.cs`'s `Main` is the one place any `AerFlowException`
+  is caught at all, turning it into a stderr message and a non-zero exit code instead of a raw stack
+  trace (Phase 3).
+- **The de-risking spike's question — whether the real M5 binding works as the dispatcher
+  assumes — was already answered by M7**: `WorkflowEndToEndTests` has dispatched through the real
+  `CoreDispatcher` and the real `aer-core` binding (never `StubCoreDispatcher`) since Phase 8, and
+  passes on both CI platforms today. Phase 3 adds no separate throwaway spike file; the same
+  dual-OS CI green on the existing and newly added end-to-end suites *is* the spike's answer,
+  re-confirmed rather than re-litigated (Phase 3).
 
 - **The Claude adapter shell-wraps every invocation and never relies on cwd.** `ClaudeWorkerAdapter`
   spawns `sh -c`/`cmd /c` around the real `claude` invocation rather than the bare binary, for two

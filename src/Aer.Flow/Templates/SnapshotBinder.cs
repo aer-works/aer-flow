@@ -45,4 +45,35 @@ public static class SnapshotBinder
         var json = JsonSerializer.Serialize(snapshot);
         await File.WriteAllTextAsync(snapshotFilePath, json, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Reads back a snapshot persisted by <see cref="PersistAsync"/> — how a resumed <c>aer run</c>
+    /// (§21) re-derives the exact frozen template a task was created from, rather than re-parsing
+    /// and re-binding the source workflow file a second time (which would mint a new, unrelated
+    /// <see cref="WorkflowDefinitionSnapshotId"/> and, per this type's own remarks, be unaffected by
+    /// what binding already froze anyway).
+    /// </summary>
+    /// <exception cref="SnapshotLoadException">The file is malformed or empty.</exception>
+    public static async Task<WorkflowDefinitionSnapshot> LoadFromFileAsync(
+        string snapshotFilePath, CancellationToken cancellationToken = default)
+    {
+        var json = await File.ReadAllTextAsync(snapshotFilePath, cancellationToken).ConfigureAwait(false);
+
+        WorkflowDefinitionSnapshot? snapshot;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new SnapshotLoadException($"Malformed snapshot JSON at '{snapshotFilePath}': {ex.Message}", ex);
+        }
+
+        if (snapshot is null)
+        {
+            throw new SnapshotLoadException($"Snapshot file '{snapshotFilePath}' did not contain a WorkflowDefinitionSnapshot object.");
+        }
+
+        return snapshot;
+    }
 }
