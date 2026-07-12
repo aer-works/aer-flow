@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/aer-works/aer-flow/compare/v0.5.0...v0.6.0) (2026-07-12)
+
+
+### Features
+
+* **adapters:** M11 Phase 1 — Canonical worker-invocation protocol + Aer.Adapters seam ([#91](https://github.com/aer-works/aer-flow/issues/91)) ([4388492](https://github.com/aer-works/aer-flow/commit/43884920d76955ff75b7d4940b2f3531f3e91315))
+* **adapters:** M11 Phase 2 — Claude worker adapter (headless claude CLI) ([#92](https://github.com/aer-works/aer-flow/issues/92)) ([b7395bd](https://github.com/aer-works/aer-flow/commit/b7395bd1c33a6527217bfde32ba7e73c40f64771))
+* **cli:** M11 Phase 3 — aer run pump (the CLI driver) ([#93](https://github.com/aer-works/aer-flow/issues/93)) ([d4648a1](https://github.com/aer-works/aer-flow/commit/d4648a1cee9e369e2a34d2d6442d4ed5eb7d2631))
+
+
+### Documentation
+
+* Define the M11 (First Real Run) phase plan and reframe the post-M10 roadmap ([#89](https://github.com/aer-works/aer-flow/issues/89)) ([fa393aa](https://github.com/aer-works/aer-flow/commit/fa393aa05f3b35535d133fc9bd6a00f045df7695))
+
+
+### Tests
+
+* **cli:** M11 Phase 4 — Live two-step Claude run (gated end-to-end) ([#94](https://github.com/aer-works/aer-flow/issues/94)) ([ce3be15](https://github.com/aer-works/aer-flow/commit/ce3be15268363d8f44dbb8d11f2873b880ab0dee))
+
 ## [0.5.0](https://github.com/aer-works/aer-flow/compare/v0.4.0...v0.5.0) (2026-07-12)
 
 
