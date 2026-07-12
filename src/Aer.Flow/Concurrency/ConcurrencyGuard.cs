@@ -41,7 +41,10 @@ public sealed class ConcurrencyGuard : IDisposable
         catch (IOException ex)
         {
             throw new WorkflowLockedException(
-                $"Task directory '{taskDirectoryPath}' is already locked by another Flow instance.", ex);
+                $"Task directory '{taskDirectoryPath}' is already locked by another Flow instance — most " +
+                "likely a live 'aer run' pump. A live in-flight execution can only be reached from that " +
+                "process itself (Ctrl+C); 'aer cancel' from a second terminal reaches only idle tasks — a " +
+                "crashed pump's orphaned executions, or pending non-process work.", ex);
         }
 
         return new ConcurrencyGuard(lockStream);
