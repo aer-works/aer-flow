@@ -25,6 +25,19 @@ public static class MutationInterface
     /// and dispatching any newly-ready work — while the rest stay in flight. Returns once nothing is
     /// ready and nothing remains in flight.
     /// </summary>
+    /// <param name="inFlightExecutions">
+    /// M10 Phase 2's live-cancellation delivery point (§9 steps 1-3): populated with every
+    /// process-bound dispatch this call has in flight, so a caller retaining this instance can
+    /// cancel one of them via <see cref="InFlightExecutionRegistry.RequestCancellationAsync"/> while
+    /// this call is still running — the only way a live execution is reachable at all, since §15's
+    /// guard blocks any second mutation-surface call for the same task until this one returns.
+    /// Defaults to a fresh, unshared instance when the caller has no need to interact with it.
+    /// </param>
+    /// <param name="cancellationToken">
+    /// A host-initiated stop (§9): when cancelled, every execution this call currently has in flight
+    /// gets a <see cref="FlowEvent.CancellationRequested"/> recorded and fsync'd, then is signalled —
+    /// never the reverse, and never signalled directly without a recorded intent first.
+    /// </param>
     /// <exception cref="WorkflowLockedException">
     /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
     /// </exception>
@@ -37,6 +50,7 @@ public static class MutationInterface
         IEventLogReader eventLogReader,
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
+        InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
@@ -50,7 +64,8 @@ public static class MutationInterface
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
         return await PumpToFixedPointAsync(
-                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher, cancellationToken)
+                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -78,6 +93,7 @@ public static class MutationInterface
         DecisionType decisionType,
         StepId? targetStepId = null,
         ExecutionId? supplementaryExecutionId = null,
+        InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
@@ -111,7 +127,8 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(new FlowEvent.WorkflowResumed(decisionId), cancellationToken).ConfigureAwait(false);
 
         return await PumpToFixedPointAsync(
-                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher, cancellationToken)
+                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -218,6 +235,7 @@ public static class MutationInterface
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
         ExecutionId targetExecutionId,
+        InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
@@ -245,7 +263,8 @@ public static class MutationInterface
             .ConfigureAwait(false);
 
         return await PumpToFixedPointAsync(
-                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher, cancellationToken)
+                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -258,6 +277,16 @@ public static class MutationInterface
     /// nowhere at all — until nothing is ready and nothing remains in flight. Assumes the caller
     /// already holds the §15 concurrency guard.
     /// </summary>
+    /// <remarks>
+    /// M10 Phase 2: every process-bound dispatch this loop starts is registered with
+    /// <paramref name="inFlightExecutions"/> under its own <see cref="CancellationTokenSource"/> —
+    /// never the ambient <paramref name="cancellationToken"/> directly, so a cancellation of that
+    /// host token can never reach Core without <see cref="FlowEvent.CancellationRequested"/> being
+    /// recorded first (§7, §9 step 1). While dispatches are in flight, this loop also races
+    /// <paramref name="cancellationToken"/> itself: the instant it is cancelled, every execution
+    /// still registered gets its intent recorded and is then signalled via
+    /// <see cref="InFlightExecutionRegistry.RequestStopAsync"/> — the host-initiated stop.
+    /// </remarks>
     private static async Task<FlowState> PumpToFixedPointAsync(
         WorkflowId workflowId,
         WorkflowDefinitionSnapshot snapshot,
@@ -266,14 +295,24 @@ public static class MutationInterface
         IEventLogReader eventLogReader,
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
+        InFlightExecutionRegistry inFlightExecutions,
         CancellationToken cancellationToken)
     {
+        inFlightExecutions.Bind(eventLogWriter);
+
         var inFlight = new List<Task>();
+        var hostStopRequested = false;
+
+        // Starts as the caller's own token, but is switched to CancellationToken.None the instant a
+        // host stop is detected below (M10 Phase 2): every read/write this loop performs to reach
+        // its fixed point must keep completing even after the ambient token has fired, or the pump
+        // could never converge to the consistent, fully-classified state a host stop promises.
+        var ioCancellationToken = cancellationToken;
         FlowState state;
 
         while (true)
         {
-            var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+            var events = await eventLogReader.ReadAllAsync(ioCancellationToken).ConfigureAwait(false);
             state = StateProjector.Project(events, snapshot);
 
             // A derived obligation (§17.3), re-evaluated from projected state on every round for
@@ -287,7 +326,7 @@ public static class MutationInterface
             {
                 foreach (var executionId in settledNonProcessExecutionIds)
                 {
-                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), cancellationToken)
+                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), ioCancellationToken)
                         .ConfigureAwait(false);
                 }
 
@@ -304,7 +343,7 @@ public static class MutationInterface
             {
                 foreach (var executionId in cancelledNonProcessExecutionIds)
                 {
-                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), cancellationToken)
+                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), ioCancellationToken)
                         .ConfigureAwait(false);
                 }
 
@@ -322,14 +361,18 @@ public static class MutationInterface
             {
                 foreach (var (stepId, executionId) in pauseObligations)
                 {
-                    await eventLogWriter.AppendAsync(new FlowEvent.WorkflowPaused(executionId, stepId), cancellationToken)
+                    await eventLogWriter.AppendAsync(new FlowEvent.WorkflowPaused(executionId, stepId), ioCancellationToken)
                         .ConfigureAwait(false);
                 }
 
                 continue;
             }
 
-            var readyStepIds = DependencyResolver.GetReadySteps(state, snapshot);
+            // Once a host stop is underway, no newly-ready step should be dispatched — cancellation
+            // is winding this call down, not making room for fresh work.
+            var readyStepIds = hostStopRequested
+                ? (IReadOnlySet<StepId>)new HashSet<StepId>()
+                : DependencyResolver.GetReadySteps(state, snapshot);
 
             // Snapshot declaration order, not the ready set's (unordered) iteration order, so a
             // round's intents are always emitted in the same sequence for the same FlowState (§13)
@@ -351,7 +394,7 @@ public static class MutationInterface
                 // and fsync'd here — awaited sequentially, in declaration order — before that step's
                 // own dispatch is even started, and before the next step's intent is written.
                 var prepared = await PrepareExecutionAsync(
-                        workflowId, stepDefinition, snapshot, state, binding, artifactsRootPath, eventLogWriter, cancellationToken)
+                        workflowId, stepDefinition, snapshot, state, binding, artifactsRootPath, eventLogWriter, ioCancellationToken)
                     .ConfigureAwait(false);
 
                 // A non-process worker (§17.3) is fully handled by the append above: no Core
@@ -360,10 +403,16 @@ public static class MutationInterface
                 // NonProcessCompletionDetector call is what eventually finalizes it.
                 if (binding is WorkerBinding.Process processBinding)
                 {
+                    // Registered under its own token (§9 steps 1-3, M10 Phase 2) — never the ambient
+                    // cancellationToken directly — so this specific execution, and only this one, can
+                    // be signalled without touching a sibling dispatched in the same round.
+                    var executionId = prepared.Request.ExecutionId;
+                    var dispatchCancellationToken = inFlightExecutions.Register(executionId);
+
                     // Not awaited here: starts the dispatch and joins the in-flight set, so a slow
                     // step never blocks this round from dispatching the rest of its ready work.
                     inFlight.Add(DispatchAndRecordOutcomeAsync(
-                        prepared, processBinding, eventLogWriter, dispatcher, cancellationToken));
+                        prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
                 }
             }
 
@@ -381,7 +430,35 @@ public static class MutationInterface
                 return state;
             }
 
-            var completed = await Task.WhenAny(inFlight).ConfigureAwait(false);
+            // Races the round's in-flight dispatches against the host token itself (M10 Phase 2): a
+            // Task.Delay(Timeout.Infinite, ...) never completes on its own, only transitions to
+            // Canceled the instant cancellationToken fires, which Task.WhenAny treats as "done" —
+            // exactly the wakeup a host-initiated stop needs without polling.
+            var hostStopWatcher = !hostStopRequested && cancellationToken.CanBeCanceled
+                ? Task.Delay(Timeout.Infinite, cancellationToken)
+                : null;
+            var waitCandidates = new List<Task>(inFlight);
+            if (hostStopWatcher is not null)
+            {
+                waitCandidates.Add(hostStopWatcher);
+            }
+
+            var completed = await Task.WhenAny(waitCandidates).ConfigureAwait(false);
+            if (completed == hostStopWatcher)
+            {
+                hostStopRequested = true;
+
+                // From here on every read/write this loop performs must survive the now-cancelled
+                // ambient token so the pump can still converge (see ioCancellationToken's own
+                // remarks above).
+                ioCancellationToken = CancellationToken.None;
+
+                // Intent-first, for every execution still in flight, before any of them is signalled
+                // (§7, §9 step 1) — RequestStopAsync itself enforces that ordering.
+                await inFlightExecutions.RequestStopAsync(CancellationToken.None).ConfigureAwait(false);
+                continue;
+            }
+
             inFlight.Remove(completed);
             await completed.ConfigureAwait(false);
         }
@@ -442,21 +519,33 @@ public static class MutationInterface
         WorkerBinding.Process binding,
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
-        CancellationToken cancellationToken)
+        InFlightExecutionRegistry inFlightExecutions,
+        CancellationToken dispatchCancellationToken)
     {
-        var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, cancellationToken)
-            .ConfigureAwait(false);
-        var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, prepared.OutputDirectory);
-
-        FlowEvent outcomeEvent = classification.Verdict switch
+        try
         {
-            OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(prepared.Request.ExecutionId),
-            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(prepared.Request.ExecutionId, classification.FailureClassification),
-            OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(prepared.Request.ExecutionId),
-            _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
-        };
+            var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, dispatchCancellationToken)
+                .ConfigureAwait(false);
+            var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, prepared.OutputDirectory);
 
-        await eventLogWriter.AppendAsync(outcomeEvent, cancellationToken).ConfigureAwait(false);
+            FlowEvent outcomeEvent = classification.Verdict switch
+            {
+                OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(prepared.Request.ExecutionId),
+                OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(prepared.Request.ExecutionId, classification.FailureClassification),
+                OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(prepared.Request.ExecutionId),
+                _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
+            };
+
+            // Never gated on dispatchCancellationToken: that token having fired is exactly what
+            // produced this outcome (Cancelled) in the first place, so recording it must not itself
+            // be cancellable by the same signal (§7 — the outcome append always completes once
+            // dispatch has returned).
+            await eventLogWriter.AppendAsync(outcomeEvent, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            inFlightExecutions.Unregister(prepared.Request.ExecutionId);
+        }
     }
 
     private sealed record PreparedExecution(ExecutionRequest Request, string OutputDirectory);

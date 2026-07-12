@@ -100,9 +100,31 @@ The M10 completion gate, playing #14's, #48's, and #61's role: real processes, r
 **M10: Cancellation & Edge Cases** — phase plan above. Progress:
 
 - ✅ Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
-- ⬜ Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
+- ✅ Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
 - ⬜ Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
 - ⬜ Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
+
+Decisions of record from M10 (so far):
+
+- **The pump's own host process is the only delivery point for a live execution, by construction**:
+  §15's guard is held for a mutation call's entire duration, so a second call — even from the same
+  process — cannot acquire it while a pump is in flight (verified empirically: .NET's
+  `FileShare.None` conflicts across handles in the same process on Linux, not just across
+  processes). `InFlightExecutionRegistry` is therefore an in-process handle the caller retains
+  *before* calling `StartWorkflowAsync`/`RecordDecisionAsync`/`RequestCancellationAsync`, populated
+  as each call dispatches, so cancellation of one specific live execution — or a host-initiated
+  stop of everything in flight — can reach the pump while it is still running, with no second
+  mutation-surface call and no daemon (Phase 2).
+- **Every process dispatch is registered under its own `CancellationTokenSource`, never the
+  ambient host token directly**: closes the passive path where a host's own token used to reach
+  Core with nothing recorded. A host stop mints `CancellationRequested` for every execution still
+  in flight (fsync'd, one append per execution) *before* any of them is signalled; a targeted
+  `InFlightExecutionRegistry.RequestCancellationAsync` call does the identical
+  record-then-signal for exactly one, leaving its siblings untouched (Phase 2).
+- **Once a host stop is detected, the pump's own I/O switches to an uncancellable token**: the
+  ambient `CancellationToken` firing must not stop the pump from reading/writing its way to a
+  consistent fixed point — only from admitting new dispatches. Reusing the now-cancelled token for
+  later reads/writes would throw immediately and strand the call mid-shutdown (Phase 2).
 
 ## Completed Milestones
 
