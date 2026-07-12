@@ -29,6 +29,16 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 15 | **Supersede + Invalidation Cascade** | New execution for superseded step; staleness propagates forward via §11.3 condition 2 automatically | §17.5 |
 | 16 | **Human Worker Support** | Non-process `ExecutionRequest`; completion detected by file existence, not Core exit | §17.3 |
 
+**Product layer** — subsystems beyond the v1.0 engine, from §21 (the CLI is the pump), the adapter spike (#21), and the UI spec. These are what turn the engine library into a runnable product; introduced M11 onward.
+
+| # | Subsystem | Reference |
+|---|---|---|
+| 17 | **Worker Adapter** | Canonical worker-invocation protocol; per-vendor CLI isolation (Claude, then Gemini/`agy`) behind `IWorkerAdapter` → `CoreDispatchTarget` | CLAUDE.md rule #2; §3, §4; #21 |
+| 18 | **CLI Pump** | `aer run`: load workflow + bindings, drive project → resolve → dispatch → await to a terminal state | §21 |
+| 19 | **CLI Mutation Commands** | `aer decide` / `aer cancel` against a running or paused task | §14, §21; UI spec §7 |
+| 20 | **Distribution** | `aer` as an installable `dotnet tool`; native-lib bundling | AER Overview §6 |
+| 21 | **Projection / Authoring UI** | Read model + template/DAG authoring over the event store | UI spec v0.7 |
+
 ---
 
 ## Milestone Roadmap
@@ -41,70 +51,92 @@ Which milestone introduces which capabilities.
 | **M8: Reactive Scheduler** | 10 (Retry Engine); full fan-out/fan-in DAG testing; manifest cache if scale demands | M7 |
 | **M9: External Decisions** | 13, 14, 15, 16 (all pause/decision/supersede/human machinery) | M8 |
 | **M10: Cancellation & Edge Cases** | §9 cancellation flow; crash recovery hardening (§7 full robustness) | M9 |
+| **M11: First Real Run** | 17 (Worker Adapter — Claude only), 18 (CLI Pump) | M10; live aer-core M5 |
+| **M12: Full Control Surface** | 17 (Gemini/`agy` adapter), 19 (`decide`/`cancel`); canonical protocol generalized across vendors | M11 |
+| **M13: Distribution** | 20 | M11 |
+| *(UI track — separate)* | 21 | M11 (UI spec v0.7) |
+
+M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
 ---
 
-## M10: Cancellation & Edge Cases — Phase Plan
+## M11: First Real Run — Phase Plan
 
-**Goal:** Cancel a live execution on demand through the single mutation surface (§9, §14), intent recorded first (§7), and make crash recovery whole: a mutation call invoked against a log that ends mid-flight — an unfinalized execution, an unfulfilled cancellation intent — re-derives and completes every outstanding obligation (§6, §7, §13). This is the roadmap's final milestone: after M10, every §5.1 flow event has a producer and every crash window named in the spec has a recovery test. Worker adapters and any UI surface remain separate tracks (Notes for future work; UI spec).
+**Goal:** run one real two-step workflow against a real worker (Claude, headless) through a minimal `aer run`, producing real artifacts on disk (§21, §3, §16). M7–M10 completed the v1.0 engine, but every execution to date ran against `StubCoreDispatcher` or a shell command standing in for a worker; `Aer.Adapters` is an empty class and `Aer.Cli` prints `Hello, World!`. This is the milestone that makes the library runnable — deliberately happy-path only, exactly as M7 scoped the engine's first end-to-end (linear, no failures): one vendor, no `decide`/`cancel` from the CLI yet (M12), no second vendor (M12), no UI.
 
-Three findings from M7–M9 shape this plan. First, cancellation's read side is already complete: M7 shipped both events (`CancellationRequested`, `ExecutionCancelled`), the Outcome Classifier maps `CoreExitReason.CancelRequested` to a cancelled verdict (never a failure, §8), M8's Retry Engine never retries a cancellation (§10), the resolver treats `Cancelled` as terminal, and M9's Pause Engine counts it as a settled outcome — but nothing ever *produces* `CancellationRequested`, and the one path that cancels today (the pump host's own `CancellationToken` flowing straight into Core dispatch) does so with no recorded intent — §9's step 1, inverted. M10's cancellation work is therefore the request/delivery side only. Second, §7's durability primitives all exist — every lifecycle append fsyncs before dispatch, the reader drops a torn trailing line and throws on a malformed complete one, the kernel-held guard evaporates with a crashed holder, and M9 deliberately shaped pause/decision/non-process consequences as derived obligations any later pump re-derives — but reconciliation does not: an unfinalized process execution projects `Running` forever and the workflow stalls, because "genuinely still running" and "its pump died" are indistinguishable to the projector today. Third, the fact that distinguishes them is already on disk and unread: Core-originated `ExecutionStarted`/`ExecutionExited` lines have been recorded in the single log since M7 Phase 6, but `FlowEventLogReader` skips `CoreLogEntry` lines — §6's causal link is recorded but never consulted. Reading back what Flow already writes is the substantive new mechanism of this milestone.
+Two facts shape the plan. First, **the pump already exists as test code.** `WorkflowEndToEndTests` already drives the engine's only loop — project state, resolve ready steps, dispatch through the single Mutation Interface, await, repeat to a terminal state — against stubs. `aer run` is that loop with real adapters wired in and a real host process around it; the engine surface it calls does not change. The genuinely new code is small and sits at the edges: the adapter seam, one adapter, and a config that maps a workflow's abstract worker names to real invocations. Second, **the vendor choice is settled by de-risking, not preference.** Closed spike #21 recorded that the `claude` CLI needs exactly one invocation accommodation (stdin redirected to avoid a per-call stall), while `agy` — antigravity, Google Gemini's CLI — needs three (it ignores the invoking process's cwd, so it needs `--add-dir` and absolute input paths interpolated into the prompt text). The first slice takes the vendor with the smallest invocation surface; the fiddlier one is M12, once the seam it plugs into is proven.
 
-The phase boundaries follow the spec's own seams: within §9, recording an intent (a mutation, §14 — including the targets that need no Core at all) vs. delivering it to a live process (Core's kill sequence, under §7's intent-first ordering); then §7's recovery obligations, which need both; and the end-to-end completion gate last, as in every milestone before.
+The phase boundaries follow the same seam discipline as every milestone before: define the vendor-agnostic protocol and its seam with nothing real behind it, then one real adapter behind it, then the driver that turns the library into a process, then the live gate last.
 
 ### Phase dependency table
 
 | Phase | Requires output from |
 |---|---|
-| 1 — Cancellation mutation surface (record, validate, non-process targets) | — (consumes M7's classifier/event vocabulary and M9's derived-obligation pump) |
-| 2 — Live cancellation delivery (in-flight Core executions) | 1 (the recording surface and its ordering rule) |
-| 3 — Crash-recovery reconciliation (reading back the Core log) | 2 (re-issuing an unfulfilled intent is delivery machinery) |
-| 4 — Cancellation + crash-recovery end-to-end integration tests | 3 |
+| 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam | — (consumes M7's `CoreDispatchTarget`, `WorkerBinding`, `ArtifactManager`) |
+| 2 — Claude worker adapter (headless `claude` CLI) | 1 (the seam it implements) |
+| 3 — `aer run` pump (the CLI driver) | 2 (a real adapter to dispatch through) + M5 binding live |
+| 4 — Live two-step Claude run (gated end-to-end) | 3 |
 
-### Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
-§9 steps 1 and 4. `MutationInterface.RequestCancellationAsync(...)`, the fourth public mutation operation: same §15 guard, validate against projected state, append `CancellationRequested(ExecutionId)` fsync'd (§7's intent-first discipline), then run the same pump to its fixed point. An `ExecutionId` unknown to the log throws a typed `AerFlowException` subclass and appends nothing (M9 Phase 2's "not silently widened" discipline); a known but already-terminal target is *not* an error. Targets with no Core process finalize entirely in this phase: a pending non-process execution (human step or step-less supplementary, §17.3) has nothing to forward, so the same round's derived obligation appends `ExecutionCancelled` directly. Pause-on-cancelled — the rule shipped in M9 Phase 1 with nothing to exercise it — gets its first exercise via a cancelled non-process `PausePoint` step.
+### Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
+CLAUDE.md rule #2 made concrete. Define the vendor-neutral record the engine hands a worker adapter — the resolved prompt/template, the input artifact paths `ArtifactManager` already resolves (§16), the assigned `AER_OUTPUT_DIR`, declared outputs, permission scope, model — and `IWorkerAdapter`, which maps it to a `CoreDispatchTarget` (the command/args/env the `CoreDispatcher` shipped in M7 Phase 6 already executes). Every vendor quirk lives behind this interface; `Aer.Flow` gains no vendor knowledge. Adapter resolution wires into `WorkerBinding` construction (worker name → adapter), leaving the frozen `WorkflowDefinitionSnapshot` untouched — dispatch details stay off the step, exactly where M7 Phase 7 put the timeout.
 
-**Produces:** cancel-a-pending-human-step end-to-end at mutation level (intent, then `ExecutionCancelled`; downstream never dispatched via §11.3 condition 1; no retry despite budget, §10); the too-late matrix appending exactly one line and changing nothing. Validation-matrix unit tests, projector fixture cases, mutation-level stub tests.
-**Excludes:** live Core delivery (Phase 2), crashed executions (Phase 3), real-process tests (Phase 4).
+**Produces:** the canonical → `CoreDispatchTarget` mapping under a fake/echo adapter; the worker-binding config parsed and resolved into bindings. Unit tests only — no real vendor, no live process.
+**Excludes:** the Claude adapter (Phase 2), the pump (Phase 3), live runs (Phase 4).
 **Open questions resolved in this phase:**
-- What §9's "records that the request arrived too late" means under §5.1's closed vocabulary: the `CancellationRequested` append itself is the record; too-late-ness is a derived fact of projection, never stored, and the recorded outcome is never altered.
-- Whether Flow may append `ExecutionCancelled` with no Core exit to classify: for the non-process tier, yes — §8's table classifies *Core-reported* outcomes, and §17.3 already made Flow that tier's completion authority (M9 Phase 4); §9's steps 2–3 are vacuous with no process. A cancelled supplementary execution is thereby also permanently ineligible as a `SupplementaryExecutionId` (§17.2 requires a *successful* one — validated since M9 Phase 2).
+- **Where worker-binding config lives.** A workflow names abstract workers; the mapping `worker name → {adapter, model, permission scope, prompt template}` is a run-time sidecar config, *not* the snapshot — the snapshot stays a pure frozen §11.2 template and the same run is reproducible from workflow + bindings. Mirrors the M7 decision to keep timeout on the binding, not the step.
+- **What the canonical protocol carries vs. what the adapter owns.** The protocol is paths, names, and intent; how those become a command line — flag vocabulary, cwd handling, stdin — is entirely the adapter's, so adding a second vendor (M12) changes no engine or protocol code.
 
-### Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
-§9 steps 1–3 for a running process. Delivery is the new machinery, classification is not: `CoreDispatcher` already surfaces `AerCancelException` as `CoreExitReason.CancelRequested`, and the existing outcome path already appends `ExecutionCancelled`. The pump gains an in-flight registry — `ExecutionId` → per-dispatch cancellation source — so one live execution can be signalled without touching its siblings (today the only token reaching `AerTask.RunAsync` is the pump's own). Ordering is the substance: the intent is appended and fsync'd *before* the per-dispatch signal, and the passive path that lets the host's token reach Core unrecorded is closed — a host-initiated stop mints `CancellationRequested` for every in-flight id, fsyncs, forwards, then awaits and classifies each exit before returning with the log consistent. A cancelled execution is one execution: siblings run to their own outcomes (cancelled is not failed, §8), downstream stays blocked through condition 1, and a cancelled `PausePoint` step pauses (settled round).
+### Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
+The first real adapter. `ClaudeWorkerAdapter` builds the `CoreDispatchTarget` for a headless `claude` invocation, honoring the facts spike #21 recorded (read them first): Claude's scoped-permission flag (each vendor's is different — the reason this isn't shared code), stdin explicitly redirected to avoid #21's per-call stall, and a prompt-template convention that tells Claude to write each declared output to its assigned path under `AER_OUTPUT_DIR`. A worker that fails to write its declared output is not a special case — `ContractValidator` (M7 Phase 7) already reads that as an unsatisfied contract, which the classifier maps to a retryable failure (§8) and the Retry Engine handles (§10).
 
-**Produces:** cancel one of two in-flight executions with the sibling unaffected; a host stop cancelling everything in flight. Stub-dispatcher (`TaskCompletionSource`) tests asserting the intent line hits the log before the signal arrives.
-**Excludes:** crash windows around cancellation (Phase 3); real processes (Phase 4); Ctrl+C wiring in a real CLI host (`Aer.Cli` is still a stub — this phase builds the host-token surface the CLI will eventually wire to).
+**Produces:** the constructed command / args / env / prompt asserted by unit test. No live API call in CI (Phase 4's gate).
+**Excludes:** the Gemini/`agy` adapter and the canonical protocol's generalization across two vendors (M12); the pump (Phase 3); live runs (Phase 4).
 **Open questions resolved in this phase:**
-- How an on-demand cancel reaches a live run at all, given the §15 guard is held by the pump for the whole mutation call (M7 Phase 8) and §20 forbids a daemon: the pump's host process is the delivery point. §21 already answers "who invokes Flow" with "the CLI is the pump"; cancelling a live run means signalling that process (Ctrl+C / the host's token), which routes through the same single mutation surface in-process — §14's "exactly one surface" is a code path, not a process boundary, and no second channel or IPC is invented. A *separate* process's `RequestCancellationAsync` therefore acts between pump calls (exactly Phase 1's targets) or arrives too late.
-- No workflow-level "stop" operation: §9 is per-`ExecutionId`; a host stop is simply an intent minted for every in-flight id.
+- **How an LLM worker's success is defined.** By the existing contract: declared output files present on disk (§4.1, §8). The adapter's only job toward this is a prompt that reliably instructs the writes; verification stays the engine's, unchanged.
 
-### Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
-§7 full robustness. Surface the Core half of the log — `CoreLogEntry` lines, same file since M7 Phase 6's single-log decision — and join them to Flow intents by `ExecutionId`, never by file order or timestamp (§6). Reconciliation is the M9 derived-obligation pattern at the top of every mutation call, no dedicated "recovery mode" (§13): an unfinalized intent with **no `ExecutionStarted`** is §7's named safe state — re-submit it under its existing `ExecutionId` (no new accept event, no `RetryPolicy` charge: it is the same attempt, and the held guard plus the absent trace keep §15's one-execution-per-request intact); one with **`ExecutionExited` but no outcome** ran while Flow was down — classify now from the recorded exit and the contract on disk (§8, §6), as if the completion had just arrived; an **unfulfilled `CancellationRequested`** follows §9's crash clause — cancel wins for a never-started target (finalize `ExecutionCancelled`, never dispatch), classification proceeds for an exited one (the intent derives as too late), and a still-live target gets the request re-issued, safe because Core no-ops on a finished execution. The fourth state — **`ExecutionStarted` with no `ExecutionExited`**, the orphan whose pump died mid-run — is now defined by §7: best-effort re-issue the cancellation toward Core, then finalize `ExecutionFailed`/`Retryable` from recorded facts alone (#77).
+### Phase 3 — `aer run` pump (the CLI driver) (#86)
+§21's "the CLI is the pump" made real. `aer run <workflow.json> [--bindings <config>]` parses the workflow and its bindings, resolves adapters into `WorkerBinding`s, and runs the project → resolve → dispatch → await loop through the single Mutation Interface to a terminal state — the loop `WorkflowEndToEndTests` has exercised since M7, now with a real adapter and a real host process (the same host M10 Phase 2 built the in-flight cancellation surface for, still un-wired to a CLI). Malformed workflow or bindings surface as typed `AerFlowException`s, never bare `InvalidOperationException` (CLAUDE.md error rules).
 
-**Produces:** mutation-level crash-window tests — logs cut after accept-fsync/before spawn, after spawn/before exit, after exit/before classification, after `CancellationRequested`/before forward, after outcome/before pause event (M9 Phase 1's window, now tested against restart) — each re-run converging to the identical fixed point with no duplicate events and no double execution (§13). Torn-trailing-line and guard-reacquire cases folded into the same suite.
-**Excludes:** real-process/real-kill tests (Phase 4); re-attaching to a live orphaned process (§20, no daemon); the manifest-checkpoint read strategy (§21, still deferred — reading the Core half changes what is read, not the full-reread strategy M8 Phase 4 measured as cheap).
+This phase **opens with a spike**, because it is where the P/Invoke boundary is first crossed for real: every prior milestone ran against `StubCoreDispatcher`, and the `external/aer-core` submodule is uninitialized in a fresh checkout. Before building the pump, dispatch a trivial `echo` worker through the real M5 binding (`git submodule update --init`, `pixi run build-core`) and confirm an `AerTask` round-trips. If the binding needs work, that surfaces here, on one line of throwaway code, not woven through the driver.
+
+**Produces:** `aer run` driving a multi-step workflow end-to-end through the shell-stub adapter — deterministic, CI-safe — to completion; the real-binding spike green on both platforms.
+**Excludes:** `aer decide` / `aer cancel` (M12 — the mutation surface has existed since M9/M10; this is only about exposing it on the CLI); any live LLM (Phase 4).
 **Open questions resolved in this phase:**
-- Recovery re-submission is the *same attempt*, not a retry: the intent is already durably recorded, so no new `ExecutionRequestAccepted` is appended and nothing is charged against `RetryPolicy`.
-- The orphan rule (§7, resolved in #77): the attempt is *abandoned*; nothing can re-attach (§20 no daemon; the binding is spawn-and-await) and §15 forbids a second execution for the same request, so it is finalized from recorded facts as a failed, retryable attempt, after a best-effort re-issued cancellation toward Core; §16's fresh-output-directory-per-attempt already guarantees a still-live orphan can never corrupt a successor attempt.
+- **Whether the real M5 binding works as the dispatcher assumes.** Answered by the opening spike before any pump code depends on it. If it does not, M11 stops here and the fix is scoped as its own work — the risk is named, not absorbed.
 
-### Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
-The M10 completion gate, playing #14's, #48's, and #61's role: real processes, real filesystem, both CI platforms. A genuinely long-running real worker cancelled mid-flight via the host token (`CancellationRequested` durably precedes the kill; the concurrent sibling completes; downstream never dispatched; no retry despite budget); cancel → pause → `RetryWithRevision` rerunning the cancelled pause-point step to success (§17.2 applies to any not-yet-succeeded outcome); a pump host — a small test-only host process, `Aer.Cli` being a stub — killed hard at each §7 window, leaving a real orphan for the started-no-exit case, then a plain re-invocation completing the workflow; the torn trailing line a killed writer leaves behind skipped on re-read; the guard reacquired immediately with no stale lock (§15); the too-late matrix; artifact directories for every attempt — cancelled, abandoned, re-submitted, successful — untouched afterward (§10, §16).
+### Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
+The M11 completion gate, playing the role #14/#48/#61/#72 played for the engine milestones — but against a real worker, so it cannot live in default CI. A real draft → review workflow run through `aer run` against the real `claude` CLI, producing real artifacts, behind a key-gated `pixi run` smoke task with a documented runbook. This is the first time aer-flow runs a real workflow against a real worker; after it, `Aer.Adapters` and `Aer.Cli` are no longer stubs.
 
-**Produces:** M10 complete — the roadmap's four milestones done, every capability-map row shipped and tested. CI green on Windows and Linux.
+**Produces:** M11 complete — the library is runnable. A green live run recorded in the runbook; the shell-stub path still guarding the same loop in CI.
+**Excludes:** the second vendor and CLI mutation commands (M12); packaging as a `dotnet tool` (M13); the UI (v0.7 spec).
 
 ---
 
 ## Current Milestone
 
-**M10: Cancellation & Edge Cases** — phase plan above. Progress:
+**M11: First Real Run** — phase plan above. Progress:
+
+- ⬜ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
+- ⬜ Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
+- ⬜ Phase 3 — `aer run` pump (the CLI driver) (#86)
+- ⬜ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
+
+Decisions of record accrue here as phases land.
+
+## Completed Milestones
+
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M10: Cancellation & Edge Cases** — on-demand cancellation through the single mutation surface (intent recorded first), and crash-recovery made whole by reading back the Core half of the log.
 
 - ✅ Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
 - ✅ Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
 - ✅ Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
-- ⬜ Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
+- ✅ Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
 
-Decisions of record from M10 (so far):
+Decisions of record from M10:
 
 - **The pump's own host process is the only delivery point for a live execution, by construction**:
   §15's guard is held for a mutation call's entire duration, so a second call — even from the same
@@ -140,12 +172,6 @@ Decisions of record from M10 (so far):
   `Aer.Core`'s P/Invoke surface) — a crashed pump's `AerCancelHandle` cannot survive the process
   that created it. §7's "best-effort" phrasing already accommodates this; Phase 3 does not invent a
   new kill-by-`Pid` capability to make the re-issue do anything (Phase 3).
-
-## Completed Milestones
-
-Completed milestones keep only their phase checklist and any decisions of record later work
-still leans on. The full phase plans — goals, boundaries, and the open questions each phase
-resolved — live in this file's git history and in the linked issues.
 
 **M9: External Decisions** — pause points, the four external decisions, the automatic invalidation cascade, human workers.
 
@@ -209,9 +235,9 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 
 - ~~**`WorkflowTransition` event**~~ — resolved (#15): the event was removed from the spec; workflow-level status is a pure projection of step-level and pause/resume events (§5.2, §12).
 - **Event Store performance** — full re-read vs. manifest-checkpoint-plus-tail (§21). Deferred until §20's no-daemon question is revisited.
-- **Mutation Interface shape** — deliberately unspecified (§14); CLI is the reference implementation. Shape emerges from M7 implementation.
+- **Mutation Interface shape** — deliberately unspecified (§14); CLI is the reference implementation. Shape emerges from M7 implementation; the CLI surface itself lands in M11 (`aer run`) and M12 (`aer decide`/`aer cancel`).
 - ~~**Orphaned mid-run executions**~~ — resolved (#77): §7 now defines the third crash state (`ExecutionStarted`, no `ExecutionExited`) — finalize as abandoned, a Flow-originated `ExecutionFailed`/`Retryable`, after a best-effort re-issued cancellation toward Core. Unblocks M10 Phase 3 (#71).
 
 ## Notes for future work
 
-- **Worker adapter implementation (`Aer.Adapters`, no milestone yet)** — closed issue [#21](https://github.com/aer-works/aer-flow/issues/21) spiked a raw Claude→agy handoff and recorded facts that must inform whatever phase eventually builds the real Claude/Gemini adapters: each vendor needs a different scoped permission flag (no shared vocabulary), agy does not honor the invoking process's cwd and requires `--add-dir` plus absolute paths interpolated into the prompt text, and Claude needs stdin explicitly redirected to avoid a per-call stall. Read #21's findings before starting that work.
+- **Worker adapter implementation (`Aer.Adapters`)** — now scheduled: the **Claude** adapter is M11 Phase 2 (#85), the **Gemini** adapter (`agy` — antigravity, Google Gemini's CLI) is M12. Closed issue [#21](https://github.com/aer-works/aer-flow/issues/21) spiked a raw Claude→Gemini handoff and recorded the facts both phases must honor: each vendor needs a different scoped permission flag (no shared vocabulary), `agy` does not honor the invoking process's cwd and requires `--add-dir` plus absolute paths interpolated into the prompt text (three accommodations), and `claude` needs stdin explicitly redirected to avoid a per-call stall (one) — which is why M11 takes Claude first. Read #21's findings before starting Phase 2.
