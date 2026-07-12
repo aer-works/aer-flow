@@ -1,0 +1,31 @@
+using Aer.Flow.Domain;
+
+namespace Aer.Cli;
+
+/// <summary>
+/// Parsed arguments for <c>aer decide</c> (M12 Phase 3, §17.2's external-decision surface exposed
+/// on the CLI). Mirrors <see cref="CancelOptions"/>'s shape: a mutation command never binds a fresh
+/// snapshot (§11.2).
+/// </summary>
+/// <param name="TaskDirectoryPath">An already-started task's durable state directory.</param>
+/// <param name="ExecutionId">
+/// The currently paused execution this decision resolves — the reference the pause-aware output
+/// (<see cref="FlowStateReporter"/>) reports so a terminal user knows what to pass here.
+/// </param>
+/// <param name="DecisionType">One of §17.2's closed set: <c>resume</c>, <c>reject</c>, <c>retry-with-revision</c>, <c>supersede</c>.</param>
+/// <param name="TargetStepId">Required for, and only valid with, <see cref="Domain.DecisionType.Supersede"/>.</param>
+/// <param name="SupplementaryExecutionId">
+/// Required for <see cref="Domain.DecisionType.Supersede"/>; optional for
+/// <see cref="Domain.DecisionType.RetryWithRevision"/> (§17.2). Names an already-succeeded
+/// supplementary execution — see <c>aer supply</c>.
+/// </param>
+/// <param name="BindingsFilePath">The worker-binding config file (M11 Phase 1's sidecar shape).</param>
+/// <param name="WorkflowId">Defaults to the bound snapshot's <c>WorkflowTemplateId</c> when not given, same as <c>aer run</c>.</param>
+public sealed record DecideOptions(
+    string TaskDirectoryPath,
+    string ExecutionId,
+    DecisionType DecisionType,
+    StepId? TargetStepId,
+    string? SupplementaryExecutionId,
+    string BindingsFilePath,
+    string? WorkflowId = null);

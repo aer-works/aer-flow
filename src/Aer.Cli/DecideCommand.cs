@@ -8,13 +8,15 @@ using Aer.Flow.Templates;
 namespace Aer.Cli;
 
 /// <summary>
-/// <c>aer cancel</c> (M12 Phase 2): exposes <see cref="MutationInterface.RequestCancellationAsync"/>
-/// on the CLI. Unlike <see cref="RunCommand"/>, this never binds a fresh snapshot — §11.2's rule that
-/// mutation commands only ever act against a task <c>aer run</c> has already started — and, like
-/// every mutation entry point, is itself a pump: recording the cancellation intent resumes driving
-/// the rest of the workflow to its next fixed point (§21).
+/// <c>aer decide</c> (M12 Phase 3): exposes <see cref="MutationInterface.RecordDecisionAsync"/> on
+/// the CLI — UI spec §7's reference mapping made real. The vocabulary is exactly §17.2's closed set
+/// (<see cref="Domain.DecisionType"/>); every validity rule (which options a given type requires or
+/// forbids) stays <c>ExternalDecisionValidator</c>'s, never re-implemented here. Like
+/// <see cref="CancelCommand"/>, this never binds a fresh snapshot, and recording a decision resumes
+/// the workflow — <c>ExternalDecisionRecorded</c> + <c>WorkflowResumed</c>, then the pump to a fixed
+/// point — so this command blocks and reports exactly like <c>aer run</c>.
 /// </summary>
-public static class CancelCommand
+public static class DecideCommand
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
@@ -28,16 +30,12 @@ public static class CancelCommand
     /// <exception cref="UnknownWorkerAdapterException">
     /// The worker-binding config names an adapter not present in <paramref name="adapters"/>.
     /// </exception>
-    /// <exception cref="Aer.Flow.Mutation.UnknownExecutionIdException">
-    /// <paramref name="options"/>'s <c>ExecutionId</c> was never admitted for execution.
-    /// </exception>
+    /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock — most likely a live
-    /// <c>aer run</c> pump; see that exception's message for how to reach an in-flight execution
-    /// instead.
+    /// Another Flow instance already holds this task directory's lock.
     /// </exception>
     public static async Task<CommandResult> ExecuteAsync(
-        CancelOptions options,
+        DecideOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         CancellationToken cancellationToken = default)
     {
@@ -51,7 +49,7 @@ public static class CancelCommand
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer cancel' " +
+                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer decide' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 
@@ -62,13 +60,14 @@ public static class CancelCommand
         var workerBindings = WorkerBindingResolver.Resolve(bindingConfig, adapters);
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
-        var targetExecutionId = new ExecutionId(options.ExecutionId);
+        var referencedExecutionId = new ExecutionId(options.ExecutionId);
+        var supplementaryExecutionId = options.SupplementaryExecutionId is { } id ? new ExecutionId(id) : (ExecutionId?)null;
 
         await using var writer = new FlowEventLogWriter(logPath);
         var reader = new FlowEventLogReader(logPath);
         var dispatcher = new CoreDispatcher(writer);
 
-        var state = await MutationInterface.RequestCancellationAsync(
+        var state = await MutationInterface.RecordDecisionAsync(
                 workflowId,
                 options.TaskDirectoryPath,
                 snapshot,
@@ -77,7 +76,10 @@ public static class CancelCommand
                 reader,
                 writer,
                 dispatcher,
-                targetExecutionId,
+                referencedExecutionId,
+                options.DecisionType,
+                options.TargetStepId,
+                supplementaryExecutionId,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 

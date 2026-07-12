@@ -34,7 +34,7 @@ public static class RunCommand
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
     /// </exception>
-    public static async Task<FlowState> ExecuteAsync(
+    public static async Task<CommandResult> ExecuteAsync(
         RunOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         CancellationToken cancellationToken = default)
@@ -62,7 +62,7 @@ public static class RunCommand
         var reader = new FlowEventLogReader(logPath);
         var dispatcher = new CoreDispatcher(writer);
 
-        return await MutationInterface.StartWorkflowAsync(
+        var state = await MutationInterface.StartWorkflowAsync(
                 workflowId,
                 options.TaskDirectoryPath,
                 snapshot,
@@ -73,6 +73,8 @@ public static class RunCommand
                 dispatcher,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
+
+        return new CommandResult(state, snapshot);
     }
 
     private static async Task<WorkflowDefinitionSnapshot> BindAndPersistAsync(

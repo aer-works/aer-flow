@@ -32,7 +32,7 @@ public class RunCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var finalState = await RunCommand.ExecuteAsync(options, Adapters);
+            var finalState = (await RunCommand.ExecuteAsync(options, Adapters)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(3, finalState.Steps.Count);
@@ -68,13 +68,13 @@ public class RunCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var firstRun = await RunCommand.ExecuteAsync(options, Adapters);
+            var firstRun = (await RunCommand.ExecuteAsync(options, Adapters)).State;
             Assert.All(firstRun.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
             var logPath = Path.Combine(taskDirectory, "flow.jsonl");
             var eventCountAfterFirstRun = (await new FlowEventLogReader(logPath).ReadAllAsync()).Count;
 
-            var secondRun = await RunCommand.ExecuteAsync(options, Adapters);
+            var secondRun = (await RunCommand.ExecuteAsync(options, Adapters)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, secondRun.Status);
             Assert.All(secondRun.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));

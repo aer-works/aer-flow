@@ -117,12 +117,40 @@ The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (
 **M12: Full Control Surface** — phase plan above. Progress:
 
 - ✅ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
-- ⬜ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
-- ⬜ Phase 3 — `aer decide` + supplementary artifact recording (#97)
+- ✅ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
+- ✅ Phase 3 — `aer decide` + supplementary artifact recording (#97)
 - ⬜ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
 
 Decisions of record from M12:
 
+- **`aer supply` mints, populates, and settles a supplementary execution in one call, rather than
+  reporting a path for a human to drop a file into out-of-band.** `MutationInterface.RecordSupplementaryExecutionAsync`
+  deliberately never runs the pump (§17.3: minting alone changes no readiness), so a settling call is
+  still required before the execution's `ExecutionId` is a valid `--supplementary` argument — but
+  since `aer supply` already holds the worker-binding it just constructed, it calls
+  `StartWorkflowAsync` itself immediately after copying `--file`'s content into the assigned output
+  directory, rather than requiring a separate `aer run` invocation in between. This is what makes the
+  supply → decide round trip two CLI invocations, not three, and sidesteps a consistency problem a
+  cross-invocation design would have had: the transient `WorkerContract` a purely-supplementary role
+  needs (arbitrary output names unrelated to any DAG step) would otherwise have to be reconstructed
+  identically by whichever command runs the settling pump (Phase 3).
+- **The non-process `WorkerBinding` a supplementary execution dispatches under is constructed
+  directly by `aer supply` from `--worker`/`--output`, never looked up in the bindings file** — per
+  M11's decision of record that worker-binding config entries only ever resolve to
+  `WorkerBinding.Process`. This phase does not reopen that decision or extend
+  `WorkerBindingConfigParser`'s schema; `aer supply` builds the one `WorkerContract` it needs
+  (a single declared output, no required inputs) in-process and merges it into the config-resolved
+  Process bindings for its own call only (Phase 3).
+- **`aer supply` is scoped to a single declared output**, populated from a single `--file` source,
+  rather than a general multi-output contract — every existing supplementary-artifact fixture (M9's
+  human-worker tests, this phase's own) is a single revision file; a multi-output supplementary
+  execution is a hypothetical this phase declines to design for (Phase 3).
+- **`aer run`, `aer cancel`, and `aer decide` all now return a `CommandResult` (`FlowState` plus the
+  bound `WorkflowDefinitionSnapshot`), not a bare `FlowState`** — the pause-aware reporting this phase
+  requires (a paused step's `SupersedeTargets`) is only resolvable against the snapshot's declared
+  `PausePoint`s, which `FlowState` alone does not carry. `FlowStateReporter` is the one shared
+  formatter every command's output goes through, so `aer run` and `aer decide` report a paused
+  workflow identically (Phase 3).
 - **The input-directory grant is one vendor-neutral environment variable, not a per-input
   adapter-side derivation.** `ArtifactManager.BuildEnvironment` gained `AER_ARTIFACTS_ROOT` —
   emitted unconditionally, exactly like `AER_OUTPUT_DIR` — because a step's own output directory
