@@ -42,10 +42,24 @@ public static class DependencyResolver
             }
 
             // Running: an attempt is already in flight. Paused: idle until an external decision
-            // resolves it (§17.1). Cancelled: never retried, regardless of policy (§9, §10).
-            // Rejected: an external Reject forecloses retry regardless of remaining budget,
-            // equivalent in effect to exhausting RetryPolicy but externally triggered (§17.2).
-            if (stepState.Status is StepStatus.Running or StepStatus.Paused or StepStatus.Cancelled or StepStatus.Rejected)
+            // resolves it (§17.1). Rejected: an external Reject forecloses retry regardless of
+            // remaining budget, equivalent in effect to exhausting RetryPolicy but externally
+            // triggered (§17.2).
+            if (stepState.Status is StepStatus.Running or StepStatus.Paused or StepStatus.Rejected)
+            {
+                continue;
+            }
+
+            // Cancelled is never retried by RetryPolicy (§9, §10) — but a RetryWithRevision
+            // decision reopens "the referenced step, which has not yet succeeded" (§17.2)
+            // regardless of whether that step's terminal outcome was Cancelled or Failed, and a
+            // pending PendingSupplementaryExecutionId is recorded only in exactly that case (StateProjector
+            // also resets ConsecutiveFailureCount for the same decision, mirroring how Failed's own
+            // MayRetry check below is bypassed by remaining RetryPolicy budget rather than an
+            // external decision). Falls through to the ordinary readiness check below rather than
+            // bypassing it outright, unlike a Supersede target: a reopened Cancelled step's own
+            // dependencies can still legitimately have gone stale.
+            if (stepState.Status == StepStatus.Cancelled && stepState.PendingSupplementaryExecutionId is null)
             {
                 continue;
             }
