@@ -119,7 +119,9 @@ The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (
 - ✅ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
 - ✅ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
 - ✅ Phase 3 — `aer decide` + supplementary artifact recording (#97)
-- ⬜ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
+- ⬜ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98) — test, fixtures, `pixi run
+  smoke-mixed-vendor`, and the runbook are landed; the checkbox stays open until the live run
+  itself has actually been recorded (see below).
 
 Decisions of record from M12:
 
@@ -171,6 +173,18 @@ Decisions of record from M12:
   `WorkerInvocation.PermissionScope` is unset — the exact value #21 confirmed pre-authorizes file
   edits (v1.1.1+), coarser than Claude's per-tool `--allowedTools` and further confirmation
   `PermissionScope` must stay an opaque, adapter-interpreted string (Phase 1).
+- **Phase 4's gate mirrors M11 Phase 4's shape exactly**: `LiveMixedVendorPausedRunSmokeTest`
+  lives in the same `Aer.Cli.SmokeTests` project (still absent from `AerFlow.slnx`), driving
+  `RunCommand.ExecuteAsync` then `DecideCommand.ExecuteAsync` against a `draft` (Claude) → `review`
+  (Gemini/`agy`) fixture where `review` declares the `PausePoint`, so the fixed point after `aer
+  run` is `Paused` and the fixed point after `aer decide --type resume` is `Terminal`. A dedicated
+  `pixi run smoke-mixed-vendor` task (filtered to just this test, same project as `smoke-claude`)
+  and `docs/runbooks/live-mixed-vendor-smoke.md` (a new file, not a rewrite of
+  `live-claude-smoke.md`, so M11's recorded run stays an unmodified historical record) round it
+  out. **Not yet recorded green**: unlike `claude`, no authenticated `agy` binary was reachable in
+  the environment this phase was implemented in, so the live dual-vendor run itself has not been
+  executed — the checklist above stays open until someone with both CLIs available runs `pixi run
+  smoke-mixed-vendor` and records the result per the runbook's closing section (Phase 4).
 
 ## Completed Milestones
 
