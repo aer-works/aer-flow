@@ -23,7 +23,7 @@ public class CoreDispatcherTests
         try
         {
             var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
-            var environment = ArtifactManager.BuildEnvironment([], outputDirectory);
+            var environment = ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot);
             var request = MakeRequest(environment);
             var target = EchoHelloToOutputFile();
 
@@ -51,7 +51,7 @@ public class CoreDispatcherTests
         try
         {
             var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
-            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory));
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
             var target = EchoHelloToOutputFile();
 
             await using (var writer = new FlowEventLogWriter(logPath))

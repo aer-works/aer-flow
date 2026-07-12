@@ -183,7 +183,7 @@ public static class MutationInterface
 
         var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
         var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
-        var environment = ArtifactManager.BuildEnvironment(inputs, outputDirectory);
+        var environment = ArtifactManager.BuildEnvironment(inputs, outputDirectory, artifactsRootPath);
         var outputs = nonProcess.Contract.ProducedOutputs.Select(output => output.Name).ToList();
 
         var request = new ExecutionRequest(
@@ -594,7 +594,7 @@ public static class MutationInterface
         var supplementaryInputPath = stateByStepId[step.StepId].PendingSupplementaryExecutionId is { } supplementaryExecutionId
             ? ArtifactManager.ResolveSupplementaryInputPath(artifactsRootPath, supplementaryExecutionId)
             : null;
-        var environment = ArtifactManager.BuildEnvironment(inputPaths, outputDirectory, supplementaryInputPath);
+        var environment = ArtifactManager.BuildEnvironment(inputPaths, outputDirectory, artifactsRootPath, supplementaryInputPath);
 
         var upstreamExecutionIds = new Dictionary<StepId, ExecutionId>();
         foreach (var dependencyStepId in step.DependsOn)

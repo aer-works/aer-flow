@@ -116,12 +116,33 @@ The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (
 
 **M12: Full Control Surface** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
+- ✅ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
 - ⬜ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
 - ⬜ Phase 3 — `aer decide` + supplementary artifact recording (#97)
 - ⬜ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
 
-Decisions of record accrue here as phases land.
+Decisions of record from M12:
+
+- **The input-directory grant is one vendor-neutral environment variable, not a per-input
+  adapter-side derivation.** `ArtifactManager.BuildEnvironment` gained `AER_ARTIFACTS_ROOT` —
+  emitted unconditionally, exactly like `AER_OUTPUT_DIR` — because a step's own output directory
+  and every upstream input it reads are already sibling `execution_{id}` directories under the same
+  artifacts root (§16). `GeminiWorkerAdapter` grants it once via `--add-dir`, covering every input
+  and the output directory with a single flag; the alternative (a per-input `dirname`-style grant
+  derived in the shell wrapper) would have needed its own, uglier answer on Windows for no benefit.
+  `ClaudeWorkerAdapter` has no use for the new variable and simply never references it (Phase 1).
+- **The registry key is the vendor name, not the binary name**: `WorkerAdapterRegistry.Default`
+  registers the Gemini adapter as `"gemini"`, matching `"claude"`'s convention, even though the
+  binary it invokes is `agy` — the key names who you're talking to, not what you type to reach them
+  (Phase 1).
+- **`agy` is shell-wrapped and has its stdin redirected exactly like `ClaudeWorkerAdapter`**, even
+  though spike #21 recorded no stdin stall for it: the wrapper already exists for `--add-dir`/prompt
+  path expansion, so redirecting is free insurance against the same class of stall Claude hit, not a
+  proven necessity for `agy` specifically (Phase 1).
+- **`agy`'s scoped-permission flag is `--mode`, defaulting to `"accept-edits"`** when
+  `WorkerInvocation.PermissionScope` is unset — the exact value #21 confirmed pre-authorizes file
+  edits (v1.1.1+), coarser than Claude's per-tool `--allowedTools` and further confirmation
+  `PermissionScope` must stay an opaque, adapter-interpreted string (Phase 1).
 
 ## Completed Milestones
 

@@ -271,7 +271,7 @@ public class MutationInterfaceCrashRecoveryTests
             Inputs: [],
             Outputs: [],
             Timeout,
-            ArtifactManager.BuildEnvironment([], outputDirectory),
+            ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot),
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
         await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request));
