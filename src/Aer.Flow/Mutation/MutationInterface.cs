@@ -192,8 +192,67 @@ public static class MutationInterface
     }
 
     /// <summary>
-    /// The scheduling pump shared by both mutation-surface entry points: repeatedly projects
-    /// <see cref="FlowState"/>, finalizes any settled non-process execution, appends any owed
+    /// A fourth mutation-surface entry point (spec §14, §9 steps 1 and 4): records an on-demand
+    /// cancellation intent — fsync'd before anything else happens, even when the target has already
+    /// reached a terminal outcome (§9 step 4's too-late no-op; §7's intent-first ordering) — then
+    /// drives the consequences to the next fixed point through the same pump
+    /// <see cref="StartWorkflowAsync"/> uses. Phase 1 finalizes only targets with no live Core
+    /// process to signal: a pending non-process execution's obligation is fulfilled directly, in the
+    /// same round, by <see cref="NonProcessCancellationDetector"/>. A still-running
+    /// <see cref="WorkerBinding.Process"/> target's request is durably recorded here but not yet
+    /// delivered — that is Phase 2's machinery.
+    /// </summary>
+    /// <exception cref="WorkflowLockedException">
+    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// </exception>
+    /// <exception cref="UnknownExecutionIdException">
+    /// <paramref name="targetExecutionId"/> was never admitted via <see cref="FlowEvent.ExecutionRequestAccepted"/>.
+    /// </exception>
+    public static async Task<FlowState> RequestCancellationAsync(
+        WorkflowId workflowId,
+        string taskDirectoryPath,
+        WorkflowDefinitionSnapshot snapshot,
+        IReadOnlyDictionary<string, WorkerBinding> workerBindings,
+        string artifactsRootPath,
+        IEventLogReader eventLogReader,
+        IEventLogWriter eventLogWriter,
+        ICoreDispatcher dispatcher,
+        ExecutionId targetExecutionId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(workerBindings);
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+        ArgumentNullException.ThrowIfNull(eventLogReader);
+        ArgumentNullException.ThrowIfNull(eventLogWriter);
+        ArgumentNullException.ThrowIfNull(dispatcher);
+
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+
+        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var knownExecutionIds = events
+            .OfType<FlowEvent.ExecutionRequestAccepted>()
+            .Select(e => e.Request.ExecutionId)
+            .ToHashSet();
+
+        CancellationValidator.Validate(knownExecutionIds, targetExecutionId);
+
+        // §7's write-sequence discipline: recorded and fsync'd before anything else, whether the
+        // target turns out to be a live process, a pending non-process execution, or already
+        // terminal (§9 step 4 — the record itself is the too-late outcome; nothing else changes).
+        await eventLogWriter.AppendAsync(new FlowEvent.CancellationRequested(targetExecutionId), cancellationToken)
+            .ConfigureAwait(false);
+
+        return await PumpToFixedPointAsync(
+                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The scheduling pump shared by every mutation-surface entry point that needs one: repeatedly
+    /// projects <see cref="FlowState"/>, finalizes any settled non-process execution, finalizes any
+    /// non-process execution with an unfulfilled cancellation request, appends any owed
     /// <see cref="FlowEvent.WorkflowPaused"/> obligations, resolves every ready step, and dispatches
     /// all of them concurrently — to Core, or, for a <see cref="WorkerBinding.NonProcess"/> step,
     /// nowhere at all — until nothing is ready and nothing remains in flight. Assumes the caller
@@ -229,6 +288,23 @@ public static class MutationInterface
                 foreach (var executionId in settledNonProcessExecutionIds)
                 {
                     await eventLogWriter.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
+            // A derived obligation (§9 steps 2-3, vacuous with no process), re-evaluated from
+            // projected state on every round for the same crash-safety reason as the settlement
+            // check above. Must run before pause obligations, so a step just cancelled this way can
+            // still owe a WorkflowPaused append in the same pass.
+            var cancelledNonProcessExecutionIds = NonProcessCancellationDetector.GetCancelledExecutions(
+                state, snapshot, workerBindings);
+            if (cancelledNonProcessExecutionIds.Count > 0)
+            {
+                foreach (var executionId in cancelledNonProcessExecutionIds)
+                {
+                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), cancellationToken)
                         .ConfigureAwait(false);
                 }
 

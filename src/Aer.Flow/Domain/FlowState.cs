@@ -17,14 +17,30 @@ namespace Aer.Flow.Domain;
 /// terminal event recorded for them yet. Never affects <paramref name="Status"/> or any
 /// <see cref="StepState"/> — by construction (§12), a step-less execution belongs to no step.
 /// </param>
+/// <param name="CancellationRequestedExecutionIds">
+/// <see cref="ExecutionId"/>s with a recorded <see cref="FlowEvent.CancellationRequested"/> and no
+/// terminal event yet (spec §9 step 1) — the intent Flow still owes a resolution for, whether that
+/// resolution is direct finalization for a non-process target (this milestone's Phase 1) or delivery
+/// to a live Core process (Phase 2). An <see cref="ExecutionId"/> leaves this list the moment any
+/// terminal event lands for it, the same "no terminal event yet" rule every other derived obligation
+/// here already follows (§6, §13) — so a too-late request (§9 step 4) never appears here at all. A
+/// list, not a set, for the same reason as <paramref name="StepLessExecutions"/>: this type is
+/// serialized (see <c>WorkflowDefinitionTests.FlowState_projects_a_skeleton_per_step_status</c>),
+/// and <see cref="IReadOnlySet{T}"/> has no default JSON-constructible implementation.
+/// </param>
 public sealed record FlowState(
     WorkflowDefinitionSnapshotId WorkflowDefinitionSnapshotId,
     IReadOnlyList<StepState> Steps,
     WorkflowStatus Status = WorkflowStatus.Running,
-    IReadOnlyList<StepLessExecutionState>? StepLessExecutions = null)
+    IReadOnlyList<StepLessExecutionState>? StepLessExecutions = null,
+    IReadOnlyList<ExecutionId>? CancellationRequestedExecutionIds = null)
 {
     /// <summary>Defaults to empty rather than <c>null</c> for call sites that omit the constructor argument.</summary>
     public IReadOnlyList<StepLessExecutionState> StepLessExecutions { get; init; } = StepLessExecutions ?? [];
+
+    /// <summary>Defaults to empty rather than <c>null</c> for call sites that omit the constructor argument.</summary>
+    public IReadOnlyList<ExecutionId> CancellationRequestedExecutionIds { get; init; } =
+        CancellationRequestedExecutionIds ?? [];
 }
 
 /// <summary>

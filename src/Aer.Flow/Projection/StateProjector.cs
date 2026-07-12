@@ -35,6 +35,7 @@ public static class StateProjector
         var stepIdByExecutionId = new Dictionary<ExecutionId, StepId>();
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
+        var cancellationRequestedExecutionIds = new HashSet<ExecutionId>();
 
         // Step-less executions (spec §17.3) never associate with any StepId — tracked separately,
         // in append order, so a pending one can be surfaced to completion detection without
@@ -171,12 +172,16 @@ public static class StateProjector
 
                     break;
 
+                // Mid-execution, not an outcome — the step stays Running (or Paused) until the
+                // matching terminal event arrives (§9). Tracked here only so a later derived
+                // obligation can find it; membership is trimmed to "still unfulfilled" below.
+                case FlowEvent.CancellationRequested cancellationRequested:
+                    cancellationRequestedExecutionIds.Add(cancellationRequested.ExecutionId);
+                    break;
+
                 // ExecutionRequestRejected carries no StepId and never received an
                 // ExecutionRequestAccepted, so it never becomes "the latest attempt" for any step.
-                // CancellationRequested is mid-execution, not an outcome — the step stays Running
-                // (or Paused) until the matching terminal event arrives.
                 case FlowEvent.ExecutionRequestRejected:
-                case FlowEvent.CancellationRequested:
                     break;
             }
         }
@@ -229,6 +234,17 @@ public static class StateProjector
             .Where(execution => !terminalStatusByExecutionId.ContainsKey(execution.ExecutionId))
             .ToList();
 
-        return new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, workflowStatus, pendingStepLessExecutions);
+        // A too-late request (§9 step 4) named an ExecutionId that already has a terminal event —
+        // the same rule that keeps a StepLessExecutionState "pending" above.
+        var unfulfilledCancellationRequestExecutionIds = cancellationRequestedExecutionIds
+            .Where(executionId => !terminalStatusByExecutionId.ContainsKey(executionId))
+            .ToList();
+
+        return new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            steps,
+            workflowStatus,
+            pendingStepLessExecutions,
+            unfulfilledCancellationRequestExecutionIds);
     }
 }

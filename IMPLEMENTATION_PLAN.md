@@ -99,7 +99,7 @@ The M10 completion gate, playing #14's, #48's, and #61's role: real processes, r
 
 **M10: Cancellation & Edge Cases** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
+- ✅ Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
 - ⬜ Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
 - ⬜ Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
 - ⬜ Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
