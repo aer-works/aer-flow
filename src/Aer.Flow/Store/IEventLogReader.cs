@@ -17,4 +17,27 @@ public interface IEventLogReader
     /// excluded rather than surfaced as a parse failure.
     /// </summary>
     Task<IReadOnlyList<FlowEvent>> ReadAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns every complete Core-originated event currently in the log (spec §5.1's
+    /// <c>events.jsonl</c> half, physically interleaved in the same file since M7 Phase 6's
+    /// single-log decision) — the half <see cref="ReadAllAsync"/> deliberately excludes. M10 Phase 3
+    /// reads this back to join Core's lifecycle facts (<c>ExecutionStarted</c>/<c>ExecutionExited</c>)
+    /// to Flow's own intents by <see cref="Domain.ExecutionId"/> (§6) for crash reconciliation. Same
+    /// completeness rule as <see cref="ReadAllAsync"/>: a torn trailing line is excluded, not
+    /// surfaced as a parse failure.
+    /// </summary>
+    Task<IReadOnlyList<CoreEvent>> ReadAllCoreEventsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns both halves of the log from a single read pass. A caller that needs both — M10
+    /// Phase 3's per-round crash reconciliation, which must consult Core's lifecycle facts
+    /// alongside Flow's own projected state on every scheduling round — should use this instead of
+    /// calling <see cref="ReadAllAsync"/> and <see cref="ReadAllCoreEventsAsync"/> separately, which
+    /// would read and parse the same file twice for no new information.
+    /// </summary>
+    Task<EventLogSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>The joined contents of a single log read (spec §5.1's two logical halves), from <see cref="IEventLogReader.ReadSnapshotAsync"/>.</summary>
+public sealed record EventLogSnapshot(IReadOnlyList<FlowEvent> FlowEvents, IReadOnlyList<CoreEvent> CoreEvents);

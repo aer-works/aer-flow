@@ -129,6 +129,21 @@ public sealed class InFlightExecutionRegistry
         return cancellationTokenSource.Token;
     }
 
+    /// <summary>
+    /// A snapshot of every <see cref="ExecutionId"/> this call currently has dispatched and not yet
+    /// unregistered — what M10 Phase 3's crash reconciliation must exclude from consideration, since
+    /// a dispatch this same call is still genuinely awaiting is not an orphan (its pump did not die;
+    /// it is this pump) even though Core has already recorded its <see cref="Domain.CoreEvent.ExecutionStarted"/>
+    /// with no matching <see cref="Domain.CoreEvent.ExecutionExited"/> yet.
+    /// </summary>
+    internal IReadOnlySet<ExecutionId> RegisteredExecutionIds()
+    {
+        lock (_lock)
+        {
+            return _entries.Keys.ToHashSet();
+        }
+    }
+
     /// <summary>Removes a settled dispatch so neither <see cref="RequestCancellationAsync"/> nor a host stop can reach it.</summary>
     internal void Unregister(ExecutionId executionId)
     {
