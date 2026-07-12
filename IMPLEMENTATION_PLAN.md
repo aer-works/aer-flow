@@ -60,69 +60,83 @@ M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for 
 
 ---
 
-## M11: First Real Run — Phase Plan
+## M12: Full Control Surface — Phase Plan
 
-**Goal:** run one real two-step workflow against a real worker (Claude, headless) through a minimal `aer run`, producing real artifacts on disk (§21, §3, §16). M7–M10 completed the v1.0 engine, but every execution to date ran against `StubCoreDispatcher` or a shell command standing in for a worker; `Aer.Adapters` is an empty class and `Aer.Cli` prints `Hello, World!`. This is the milestone that makes the library runnable — deliberately happy-path only, exactly as M7 scoped the engine's first end-to-end (linear, no failures): one vendor, no `decide`/`cancel` from the CLI yet (M12), no second vendor (M12), no UI.
+**Goal:** make the runnable library *drivable*: a second vendor (Gemini's `agy`) behind the M11 protocol unchanged, and the mutation surface M9/M10 built — external decisions (§17) and cancellation (§9) — exposed as `aer decide` / `aer cancel` (§14; UI spec §7), proven by a live mixed-vendor paused run decided from the terminal (§18.1). M11 made the library runnable but left the control surface start-only: `Program.cs` dispatches exactly one subcommand, and even Ctrl+C reaches nothing — the pump gets a default cancellation token, so the in-flight cancellation surface M10 Phase 2 built is still un-wired to any CLI. After M12, every user action the UI spec enumerates (§7) exists as a CLI command; the eventual UI becomes a renderer over a control surface that already works.
 
-Two facts shape the plan. First, **the pump already exists as test code.** `WorkflowEndToEndTests` already drives the engine's only loop — project state, resolve ready steps, dispatch through the single Mutation Interface, await, repeat to a terminal state — against stubs. `aer run` is that loop with real adapters wired in and a real host process around it; the engine surface it calls does not change. The genuinely new code is small and sits at the edges: the adapter seam, one adapter, and a config that maps a workflow's abstract worker names to real invocations. Second, **the vendor choice is settled by de-risking, not preference.** Closed spike #21 recorded that the `claude` CLI needs exactly one invocation accommodation (stdin redirected to avoid a per-call stall), while `agy` — antigravity, Google Gemini's CLI — needs three (it ignores the invoking process's cwd, so it needs `--add-dir` and absolute input paths interpolated into the prompt text). The first slice takes the vendor with the smallest invocation surface; the fiddlier one is M12, once the seam it plugs into is proven.
-
-The phase boundaries follow the same seam discipline as every milestone before: define the vendor-agnostic protocol and its seam with nothing real behind it, then one real adapter behind it, then the driver that turns the library into a process, then the live gate last.
+Three facts shape the plan. First, **nothing here changes the engine.** `RecordDecisionAsync` and `RequestCancellationAsync` have existed and been tested at the `MutationInterface` layer since M9/M10, and the adapter seam was designed (M11 Phase 1) so a second vendor is one class plus a registry entry. M12 is edges: one adapter, the CLI wiring, and the pause-aware output a terminal user needs to know which `ExecutionId` to decide on. Second, **the second vendor's quirks are already recorded.** Spike #21: `agy` needs three accommodations — `--mode accept-edits` (its permission flag; no shared vocabulary with Claude's `--allowedTools`), `--add-dir` grants for every directory it touches (it ignores the invoking process's cwd entirely, working from its own scratch dir), and absolute paths in the prompt text. The third is already solved by the M11 mechanism (shell-expanded `$AER_INPUT_<n>`/`$AER_OUTPUT_DIR` references in the wrapped command); the second raises the milestone's one genuinely open mechanism question — input-directory grants (Phase 1). Third, **the cancellation surface splits in two by construction**: §15's guard is held for a mutation call's whole duration (M10's decision of record), so a separate `aer cancel` process can never reach an execution a live pump has in flight — live delivery is Ctrl+C on the pump's own host, while `aer cancel` serves idle tasks (crashed-pump orphans, pending non-process executions). The plan wires both paths instead of pretending one command covers them.
 
 ### Phase dependency table
 
 | Phase | Requires output from |
 |---|---|
-| 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam | — (consumes M7's `CoreDispatchTarget`, `WorkerBinding`, `ArtifactManager`) |
-| 2 — Claude worker adapter (headless `claude` CLI) | 1 (the seam it implements) |
-| 3 — `aer run` pump (the CLI driver) | 2 (a real adapter to dispatch through) + M5 binding live |
-| 4 — Live two-step Claude run (gated end-to-end) | 3 |
+| 1 — Gemini worker adapter (headless `agy` CLI) | — (implements M11 Phase 1's seam, unchanged) |
+| 2 — `aer cancel` + Ctrl+C host-stop wiring | — (exposes M10's mutation surface; establishes the mutation-command CLI plumbing) |
+| 3 — `aer decide` + supplementary artifact recording | 2 (the plumbing it extends) |
+| 4 — Live mixed-vendor paused run (gated end-to-end) | 1 + 3 |
 
-### Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
-CLAUDE.md rule #2 made concrete. Define the vendor-neutral record the engine hands a worker adapter — the resolved prompt/template, the input artifact paths `ArtifactManager` already resolves (§16), the assigned `AER_OUTPUT_DIR`, declared outputs, permission scope, model — and `IWorkerAdapter`, which maps it to a `CoreDispatchTarget` (the command/args/env the `CoreDispatcher` shipped in M7 Phase 6 already executes). Every vendor quirk lives behind this interface; `Aer.Flow` gains no vendor knowledge. Adapter resolution wires into `WorkerBinding` construction (worker name → adapter), leaving the frozen `WorkflowDefinitionSnapshot` untouched — dispatch details stay off the step, exactly where M7 Phase 7 put the timeout.
+Phases 1 and 2 are deliberately independent — either can land first. The adapter goes first among equals because it holds the milestone's only external unknown; the CLI phases are wiring over an engine surface tested since M9/M10.
 
-**Produces:** the canonical → `CoreDispatchTarget` mapping under a fake/echo adapter; the worker-binding config parsed and resolved into bindings. Unit tests only — no real vendor, no live process.
-**Excludes:** the Claude adapter (Phase 2), the pump (Phase 3), live runs (Phase 4).
+### Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
+The second real adapter — and the test of M11 Phase 1's claim that adding a vendor changes no engine or protocol code. `GeminiWorkerAdapter` builds the `CoreDispatchTarget` for a headless `agy` invocation honoring the facts spike #21 recorded (read them first): Gemini's scoped-permission flag is `--mode accept-edits` (coarser than Claude's per-tool `--allowedTools` — further proof `PermissionScope` must stay an opaque, adapter-interpreted string), and `agy` ignores the invoking process's cwd, so every directory it touches needs an `--add-dir` grant and every path must reach the prompt as an absolute path. The absolute-path half is already solved by the M11 shell-wrap mechanism: config-authored text escaped, live `$AER_INPUT_<n>`/`$AER_OUTPUT_DIR` references left for the shell to expand into real per-execution paths at spawn time, before `agy` ever sees the prompt. #21's other finding — `agy` returning exit 0 having written nothing — is not a special case: `ContractValidator` already reads a missing declared output as a retryable contract failure (§8 → §10), exactly as M11 Phase 2 framed it for Claude.
+
+**Produces:** the constructed command / args / prompt asserted by unit tests mirroring `ClaudeWorkerAdapterTests`; the adapter registered in `WorkerAdapterRegistry.Default`. No live API call in CI (Phase 4's gate).
+**Excludes:** the CLI mutation commands (Phases 2–3); live runs (Phase 4).
 **Open questions resolved in this phase:**
-- **Where worker-binding config lives.** A workflow names abstract workers; the mapping `worker name → {adapter, model, permission scope, prompt template}` is a run-time sidecar config, *not* the snapshot — the snapshot stays a pure frozen §11.2 template and the same run is reproducible from workflow + bindings. Mirrors the M7 decision to keep timeout on the binding, not the step.
-- **What the canonical protocol carries vs. what the adapter owns.** The protocol is paths, names, and intent; how those become a command line — flag vocabulary, cwd handling, stdin — is entirely the adapter's, so adding a second vendor (M12) changes no engine or protocol code.
+- **How input directories are granted.** A step's inputs live in sibling `artifacts/execution_{N}/` directories of *upstream* executions, outside `$AER_OUTPUT_DIR`, so `--add-dir "$AER_OUTPUT_DIR"` alone cannot cover reads. Candidates: per-input `--add-dir` grants derived in the shell wrapper (`dirname`-style — needs a Windows answer), or a vendor-neutral per-dispatch environment variable for the task's artifacts root (an `ArtifactManager` addition — vendor-neutral, so no isolation violation). Whichever wins must stay per-dispatch-dynamic through the same env-expansion route, since `IWorkerAdapter.Resolve` runs once per binding, never per execution.
+- **The registry key** (`"gemini"` — the vendor, as `"claude"` is — vs. the binary name `"agy"`), and whether `agy` also gets the stdin redirect (#21 recorded no stall for it; the shell wrapper is there either way).
 
-### Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
-The first real adapter. `ClaudeWorkerAdapter` builds the `CoreDispatchTarget` for a headless `claude` invocation, honoring the facts spike #21 recorded (read them first): Claude's scoped-permission flag (each vendor's is different — the reason this isn't shared code), stdin explicitly redirected to avoid #21's per-call stall, and a prompt-template convention that tells Claude to write each declared output to its assigned path under `AER_OUTPUT_DIR`. A worker that fails to write its declared output is not a special case — `ContractValidator` (M7 Phase 7) already reads that as an unsatisfied contract, which the classifier maps to a retryable failure (§8) and the Retry Engine handles (§10).
+### Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
+§9's cancellation surface exposed on the CLI, split along M10's decision of record. `aer cancel <task-dir> --execution <id> --bindings <config>` calls `MutationInterface.RequestCancellationAsync`: intent recorded first (`CancellationRequested` fsync'd before anything is signalled), and a request against an already-terminal execution reported as §9 step 4's recorded too-late no-op — success, not an error. The command is itself a pump: after recording, it drives project → resolve → dispatch → await to a fixed point like every mutation entry point (§21), which is why it requires bindings at all. And because §15's guard blocks a second process for a live pump's whole call, in-flight delivery is wired where M10 put it: `Console.CancelKeyPress` on the `aer run` host feeds the ambient token, whose firing records `CancellationRequested` for everything in flight before signalling any of it. This phase also establishes the mutation-command plumbing Phase 3 extends: `Program.cs` subcommand dispatch, positional task dir, snapshot loaded from the task dir's existing `snapshot.json` (typed error when absent — a mutation command never binds fresh, per §11.2), the same `CliArgumentException` parser conventions and single `AerFlowException` boundary as `aer run`.
 
-**Produces:** the constructed command / args / env / prompt asserted by unit test. No live API call in CI (Phase 4's gate).
-**Excludes:** the Gemini/`agy` adapter and the canonical protocol's generalization across two vendors (M12); the pump (Phase 3); live runs (Phase 4).
+**Produces:** `aer cancel` end-to-end against idle tasks, and Ctrl+C stopping a live run — both CI-safe through shell-stub adapters, mirroring `RunCommandEndToEndTests`; engine cancellation semantics stay proven at the `MutationInterface` layer (M10), not re-proven.
+**Excludes:** `aer decide` (Phase 3); live vendors (Phase 4).
 **Open questions resolved in this phase:**
-- **How an LLM worker's success is defined.** By the existing contract: declared output files present on disk (§4.1, §8). The adapter's only job toward this is a prompt that reliably instructs the writes; verification stays the engine's, unchanged.
+- **What cancel-blocked-by-live-pump looks like.** `WorkflowLockedException` surfacing with a message that names the resolution (Ctrl+C on the running pump) rather than a bare "locked" — the split is by construction, so the CLI should teach it.
+- **Exit-code vocabulary for mutation commands** — `aer run`'s 0/1/64 convention generalized to commands whose outcome is a recorded mutation plus a resulting state (including "recorded, but too late").
 
-### Phase 3 — `aer run` pump (the CLI driver) (#86)
-§21's "the CLI is the pump" made real. `aer run <workflow.json> [--bindings <config>]` parses the workflow and its bindings, resolves adapters into `WorkerBinding`s, and runs the project → resolve → dispatch → await loop through the single Mutation Interface to a terminal state — the loop `WorkflowEndToEndTests` has exercised since M7, now with a real adapter and a real host process (the same host M10 Phase 2 built the in-flight cancellation surface for, still un-wired to a CLI). Malformed workflow or bindings surface as typed `AerFlowException`s, never bare `InvalidOperationException` (CLAUDE.md error rules).
+### Phase 3 — `aer decide` + supplementary artifact recording (#97)
+UI spec §7's reference mapping made real on Phase 2's plumbing: `aer decide <task-dir> --execution <referenced-id> --type resume|reject|retry-with-revision|supersede [--target-step <step>] [--supplementary <execution-id>] --bindings <config>` → `MutationInterface.RecordDecisionAsync`. The vocabulary is §17.2's closed set, exposed exactly — no additions, no interpretation (UI spec §6 binds any client, a terminal included); every validity rule stays `ExternalDecisionValidator`'s. Recording a decision resumes the workflow — `ExternalDecisionRecorded` + `WorkflowResumed`, then the pump to a fixed point — so the command blocks like `aer run` and reports the same way. Alongside it, pause-aware reporting: `aer run`/`aer decide` output surfaces paused executions with their `ExecutionId`s, paused outcomes, and declared `SupersedeTargets`, without which a terminal user cannot know what to pass to `--execution`/`--target-step`.
 
-This phase **opens with a spike**, because it is where the P/Invoke boundary is first crossed for real: every prior milestone ran against `StubCoreDispatcher`, and the `external/aer-core` submodule is uninitialized in a fresh checkout. Before building the pump, dispatch a trivial `echo` worker through the real M5 binding (`git submodule update --init`, `pixi run build-core`) and confirm an `AerTask` round-trips. If the binding needs work, that surfaces here, on one line of throwaway code, not woven through the driver.
-
-**Produces:** `aer run` driving a multi-step workflow end-to-end through the shell-stub adapter — deterministic, CI-safe — to completion; the real-binding spike green on both platforms.
-**Excludes:** `aer decide` / `aer cancel` (M12 — the mutation surface has existed since M9/M10; this is only about exposing it on the CLI); any live LLM (Phase 4).
+**Produces:** all four decision types driveable from the terminal, CI-safe end-to-end (pause → decide → fixed point, including the supply → decide-`Supersede` round trip), mirroring `RunCommandEndToEndTests`; decision semantics stay proven at the `MutationInterface` layer (M9), not re-proven.
+**Excludes:** live vendors (Phase 4).
 **Open questions resolved in this phase:**
-- **Whether the real M5 binding works as the dispatcher assumes.** Answered by the opening spike before any pump code depends on it. If it does not, M11 stops here and the fix is scoped as its own work — the risk is named, not absorbed.
+- **How a terminal user records the §17.3 supplementary artifact** that `Supersede` requires and `RetryWithRevision` optionally takes. `RecordSupplementaryExecutionAsync` has existed since M9 but is reachable from no CLI. The phase decides the surface — e.g. an `aer supply`-style subcommand that mints the step-less execution, reports (or directly populates) the assigned output path, and prints the `ExecutionId` to hand to `aer decide` — and how the non-process `human` binding is constructed: directly by the CLI, per M11's decision of record that worker-binding configs only ever produce `Process` bindings.
+- **Whether `--execution` may be inferred** when exactly one pause is outstanding, or stays always-explicit (determinism and scriptability favor explicit; the pause-aware output makes explicit cheap).
 
-### Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
-The M11 completion gate, playing the role #14/#48/#61/#72 played for the engine milestones — but against a real worker, so it cannot live in default CI. A real draft → review workflow run through `aer run` against the real `claude` CLI, producing real artifacts, behind a key-gated `pixi run` smoke task with a documented runbook. This is the first time aer-flow runs a real workflow against a real worker; after it, `Aer.Adapters` and `Aer.Cli` are no longer stubs.
+### Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
+The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (Claude) → review (Gemini/`agy`) workflow — §18.1's composition case, the original goal the project was built for — run live through `aer run`, pausing at a declared `PausePoint` on the review step, resumed by a real `aer decide` from a terminal, driving to terminal success with real artifacts from both vendors on disk. Lives in `Aer.Cli.SmokeTests` (outside `AerFlow.slnx` — default CI never sees it) behind a key-gated `pixi run` smoke task alongside `smoke-claude`, with the runbook extended to cover both vendors' prerequisites and triage. Asserts output existence and non-blankness only, never exact worker text.
 
-**Produces:** M11 complete — the library is runnable. A green live run recorded in the runbook; the shell-stub path still guarding the same loop in CI.
-**Excludes:** the second vendor and CLI mutation commands (M12); packaging as a `dotnet tool` (M13); the UI (v0.7 spec).
+**Produces:** M12 complete — the full control surface is real: two vendors behind one unchanged protocol, a paused live run decided from the terminal.
+**Excludes:** distribution/packaging (M13); the UI (v0.7 spec, separate track).
 
 ---
 
 ## Current Milestone
 
-**M11: First Real Run** — phase plan above. Progress:
+**M12: Full Control Surface** — phase plan above. Progress:
+
+- ⬜ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
+- ⬜ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
+- ⬜ Phase 3 — `aer decide` + supplementary artifact recording (#97)
+- ⬜ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
+
+Decisions of record accrue here as phases land.
+
+## Completed Milestones
+
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M11: First Real Run** — the milestone that made the library runnable: the canonical
+worker-invocation protocol and adapter seam, the Claude adapter, the `aer run` pump, and a
+recorded green live two-step run (`docs/runbooks/live-claude-smoke.md`).
 
 - ✅ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
 - ✅ Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
 - ✅ Phase 3 — `aer run` pump (the CLI driver) (#86)
 - ✅ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
-
-M11 is complete: the library is runnable end to end against a real worker (see the recorded green
-run in `docs/runbooks/live-claude-smoke.md`).
 
 Decisions of record from M11:
 
@@ -194,12 +208,6 @@ Decisions of record from M11:
 - **The canonical record doesn't duplicate `WorkerContract`.** `IWorkerAdapter.Resolve` takes the `WorkerContract` alongside `WorkerInvocation` rather than folding `RequiredInputs`/`ProducedOutputs` into the invocation record — the contract already carries the ordered input role names and declared outputs; `WorkerInvocation` adds only what it doesn't: the human-authored `PromptTemplate`, and the opaque vendor-specific `Model`/`PermissionScope` strings (spike #21: no shared permission vocabulary across vendors) (Phase 1).
 - **Worker-binding config is a flat JSON object keyed by worker role name**, deserialized with the same case-sensitive, no-naming-policy `JsonSerializer` defaults `WorkflowDefinitionParser` already established for templates — one config format convention for the whole repo, not two. Lives in `Aer.Adapters` (`WorkerBindingConfigParser`/`WorkerBindingConfigEntry`/`WorkerBindingResolver`), entirely outside `Aer.Flow`, per CLAUDE.md's Adapter Isolation rule. `WorkerBindingResolver.Resolve` takes the adapter registry (`IReadOnlyDictionary<string, IWorkerAdapter>`) as a plain caller-supplied argument — no adapter-registration mechanism was built, since Phase 1 excludes every adapter but the fake/echo test double; Phase 2/3 register the real one the same way (Phase 1).
 - **Every worker-binding config entry resolves to `WorkerBinding.Process`.** A worker-binding config describes a real vendor invocation; `WorkerBinding.NonProcess` (spec §17.3, human/non-process parties) is unrelated to this seam and continues to be constructed directly by whatever caller needs one, unchanged since M9 (Phase 1).
-
-## Completed Milestones
-
-Completed milestones keep only their phase checklist and any decisions of record later work
-still leans on. The full phase plans — goals, boundaries, and the open questions each phase
-resolved — live in this file's git history and in the linked issues.
 
 **M10: Cancellation & Edge Cases** — on-demand cancellation through the single mutation surface (intent recorded first), and crash-recovery made whole by reading back the Core half of the log.
 
@@ -312,4 +320,4 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 
 ## Notes for future work
 
-- **Worker adapter implementation (`Aer.Adapters`)** — now scheduled: the **Claude** adapter is M11 Phase 2 (#85), the **Gemini** adapter (`agy` — antigravity, Google Gemini's CLI) is M12. Closed issue [#21](https://github.com/aer-works/aer-flow/issues/21) spiked a raw Claude→Gemini handoff and recorded the facts both phases must honor: each vendor needs a different scoped permission flag (no shared vocabulary), `agy` does not honor the invoking process's cwd and requires `--add-dir` plus absolute paths interpolated into the prompt text (three accommodations), and `claude` needs stdin explicitly redirected to avoid a per-call stall (one) — which is why M11 takes Claude first. Read #21's findings before starting Phase 2.
+- **Worker adapter implementation (`Aer.Adapters`)** — the **Claude** adapter shipped in M11 Phase 2 (#85); the **Gemini** adapter (`agy` — antigravity, Google Gemini's CLI) is M12 Phase 1 (#95), with the facts closed spike [#21](https://github.com/aer-works/aer-flow/issues/21) recorded folded into its phase plan above. Read #21's findings before starting it.
