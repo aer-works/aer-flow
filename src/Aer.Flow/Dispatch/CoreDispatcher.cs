@@ -84,15 +84,21 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             switch (e.Kind)
             {
                 case AerTaskEventKind.Started:
+                    // CancellationToken.None, not cancellationToken: a cancellation firing is
+                    // exactly what makes this record worth having (§7, §9's crash clause depends on
+                    // Started actually landing before a cancel/timeout/host-stop can be attributed
+                    // to it), so recording it must not itself be cancellable by that same signal —
+                    // the same reasoning DispatchAndRecordOutcomeAsync's outcome append already
+                    // applies to its own append.
                     pendingLogWrites.Add(coreEventLogWriter.AppendAsync(
-                        new CoreEvent.ExecutionStarted(request.ExecutionId, e.Pid), cancellationToken));
+                        new CoreEvent.ExecutionStarted(request.ExecutionId, e.Pid), CancellationToken.None));
                     break;
 
                 case AerTaskEventKind.Exited:
                     exitCode = e.ExitCode;
                     reason = ToCoreExitReason(e.ExitReason);
                     pendingLogWrites.Add(coreEventLogWriter.AppendAsync(
-                        new CoreEvent.ExecutionExited(request.ExecutionId, e.ExitCode, reason), cancellationToken));
+                        new CoreEvent.ExecutionExited(request.ExecutionId, e.ExitCode, reason), CancellationToken.None));
                     break;
             }
         };
