@@ -1,0 +1,22 @@
+{
+  "WorkflowTemplateId": "draft-review-smoke",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "draft",
+      "Worker": "drafter",
+      "Inputs": [],
+      "Outputs": ["draft"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    },
+    {
+      "StepId": "review",
+      "Worker": "reviewer",
+      "Inputs": ["draft"],
+      "Outputs": ["review"],
+      "DependsOn": ["draft"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}

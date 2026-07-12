@@ -119,10 +119,28 @@ The M11 completion gate, playing the role #14/#48/#61/#72 played for the engine 
 - ✅ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
 - ✅ Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
 - ✅ Phase 3 — `aer run` pump (the CLI driver) (#86)
-- ⬜ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
+- ✅ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
+
+M11 is complete: the library is runnable end to end against a real worker (see the recorded green
+run in `docs/runbooks/live-claude-smoke.md`).
 
 Decisions of record from M11:
 
+- **The gate lives in its own test project, `Aer.Cli.SmokeTests`, deliberately absent from
+  `AerFlow.slnx`** — a solution/CI-invoked `dotnet test`/`build`/`lint` never discovers, builds, or
+  runs it, which is what keeps a real, key-gated `claude` call out of default CI without any
+  trait-based test filtering. `pixi run smoke-claude` (`dotnet test tests/Aer.Cli.SmokeTests`)
+  targets the project directly; the runbook (`docs/runbooks/live-claude-smoke.md`) documents
+  prerequisites, what "green" means, and how to triage a failure (Phase 4).
+- **A worker role that must read an upstream artifact needs `Read` in its `PermissionScope`, not
+  just `Write`** — caught by the gate itself, not written in from the start: `ClaudeWorkerAdapter`'s
+  default (`"Write"`) is exactly right for a source step with no inputs, but a downstream step's
+  worker-binding config must opt into `"Read,Write"` (or list whatever tools its prompt actually
+  needs) or `claude` refuses the unapproved `Read` tool call and the step fails its output contract.
+  Nothing about this is engine or adapter behavior to fix — `PermissionScope` is deliberately an
+  opaque, adapter-interpreted string (Phase 1's decision); it is a per-worker config fact the
+  `draft-review-bindings.json` fixture now gets right, and the runbook calls it out for anyone
+  authoring a new worker-binding config (Phase 4).
 - **`RunCommand.ExecuteAsync` takes the adapter registry as a plain argument, never constructing
   one itself**: `Program.cs`'s only production wiring decision is passing
   `WorkerAdapterRegistry.Default` (`Aer.Adapters`, `{"claude": ClaudeWorkerAdapter}`) — every other

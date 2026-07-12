@@ -18,3 +18,11 @@ test = { cmd = "dotnet test", depends-on = ["build-core"] }
 fmt = "dotnet format"
 fmt-check = "dotnet format --verify-no-changes"
 lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }
+
+# M11 Phase 4 (#87), the milestone's completion gate: a real draft → review workflow run through
+# `aer run` against the real, authenticated `claude` CLI, never `pixi run test`'s stub/shell-stub
+# path, and never invoked from CI. Requires a `claude` CLI on PATH already logged in (or an API
+# key configured for it) and outbound network access. `Aer.Cli.SmokeTests` is deliberately absent
+# from AerFlow.slnx so it never builds or runs as a side effect of `build`/`test`/`lint`. See
+# docs/runbooks/live-claude-smoke.md before running this.
+smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["build-core"] }
