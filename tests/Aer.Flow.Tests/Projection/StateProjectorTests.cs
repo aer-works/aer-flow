@@ -666,4 +666,56 @@ public class StateProjectorTests
         var pending = Assert.Single(state.StepLessExecutions);
         Assert.Equal(second, pending.ExecutionId);
     }
+
+    [Fact]
+    public void A_CancellationRequested_with_no_terminal_event_yet_is_unfulfilled()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.CancellationRequested(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal([executionId], state.CancellationRequestedExecutionIds);
+        // §9: mid-execution, not an outcome — the step itself stays Running until a terminal event.
+        Assert.Equal(StepStatus.Running, StepFor(state, Architect).Status);
+    }
+
+    [Fact]
+    public void A_CancellationRequested_against_an_already_terminal_execution_is_never_unfulfilled()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+            new FlowEvent.CancellationRequested(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        // §9 step 4's too-late request: recorded, but never surfaced as still owed.
+        Assert.Empty(state.CancellationRequestedExecutionIds);
+        Assert.Equal(StepStatus.Succeeded, StepFor(state, Architect).Status);
+    }
+
+    [Fact]
+    public void A_CancellationRequested_is_no_longer_unfulfilled_once_a_terminal_event_lands()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.CancellationRequested(executionId),
+            new FlowEvent.ExecutionCancelled(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Empty(state.CancellationRequestedExecutionIds);
+        Assert.Equal(StepStatus.Cancelled, StepFor(state, Architect).Status);
+    }
 }
