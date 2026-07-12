@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/aer-works/aer-flow/compare/v0.3.0...v0.4.0) (2026-07-12)
+
+
+### Features
+
+* **flow:** M9 Phase 1 — Pause Engine ([#64](https://github.com/aer-works/aer-flow/issues/64)) ([6aa4ff0](https://github.com/aer-works/aer-flow/commit/6aa4ff0330db7a6f727fc565b5fb512a14212220))
+* **flow:** M9 Phase 2 — External Decision Handler: record, validate, Resume/Reject ([#65](https://github.com/aer-works/aer-flow/issues/65)) ([a8e580f](https://github.com/aer-works/aer-flow/commit/a8e580f6a30ca0c5ce09a1d8097a75fa618a0704))
+* **flow:** M9 Phase 3 — RetryWithRevision + Supersede + the invalidation cascade ([#66](https://github.com/aer-works/aer-flow/issues/66)) ([3569690](https://github.com/aer-works/aer-flow/commit/35696900a6732bb5033680d495edba6f877f02b7))
+* **flow:** M9 Phase 4 — Human worker support (non-process executions) ([#67](https://github.com/aer-works/aer-flow/issues/67)) ([e24f273](https://github.com/aer-works/aer-flow/commit/e24f2738cef966d21e8895e82a29761b7c64dd6e))
+
+
+### Documentation
+
+* Define the M9 (External Decisions) phase plan ([#62](https://github.com/aer-works/aer-flow/issues/62)) ([f4d9335](https://github.com/aer-works/aer-flow/commit/f4d9335a2db9e40e42f0f6dbe055e3c58f22ff5a))
+
 ## [0.3.0](https://github.com/aer-works/aer-flow/compare/v0.2.0...v0.3.0) (2026-07-11)
 
 
