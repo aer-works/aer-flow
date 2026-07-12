@@ -100,29 +100,44 @@ public static class ArtifactManager
     /// <summary>
     /// Builds the AER-computed environment variables (§3, §16) a worker is invoked with:
     /// <c>AER_INPUT_0</c>.. for each resolved input path, in order, <c>AER_OUTPUT_DIR</c> for
-    /// the pre-allocated output directory, and — only when this dispatch is a
-    /// <see cref="Domain.DecisionType.RetryWithRevision"/> or <see cref="Domain.DecisionType.Supersede"/>
-    /// consequence carrying a supplement (§17.2, §17.5) — <c>AER_SUPPLEMENTARY_INPUT</c> for
-    /// <paramref name="supplementaryInputPath"/>. A dedicated variable, not a declared input name, so
-    /// it can never collide with a step's own declared <c>Inputs</c>. Pass-through variables
-    /// (secrets, vendor settings) are not this method's concern — they carry no derived value and
-    /// are resolved separately, immediately before dispatch (§3).
+    /// the pre-allocated output directory, <c>AER_ARTIFACTS_ROOT</c> for <paramref name="artifactsRootPath"/>
+    /// itself, and — only when this dispatch is a <see cref="Domain.DecisionType.RetryWithRevision"/>
+    /// or <see cref="Domain.DecisionType.Supersede"/> consequence carrying a supplement (§17.2, §17.5)
+    /// — <c>AER_SUPPLEMENTARY_INPUT</c> for <paramref name="supplementaryInputPath"/>. A dedicated
+    /// variable, not a declared input name, so it can never collide with a step's own declared
+    /// <c>Inputs</c>. Pass-through variables (secrets, vendor settings) are not this method's concern
+    /// — they carry no derived value and are resolved separately, immediately before dispatch (§3).
     /// </summary>
+    /// <remarks>
+    /// <c>AER_ARTIFACTS_ROOT</c> (M12 Phase 1, #95) exists because a step's own output directory and
+    /// every upstream input it reads (<see cref="ResolveInputPaths"/>) are all addressed as sibling
+    /// <c>execution_{id}</c> directories under this same root — so one grant covering the root covers
+    /// reads and writes alike. This is what lets the Gemini/<c>agy</c> adapter's <c>--add-dir</c>
+    /// requirement (spike #21: <c>agy</c> ignores the invoking process's cwd and needs every
+    /// directory it touches granted explicitly) be satisfied with a single, vendor-neutral variable
+    /// here rather than a per-input, adapter-side <c>dirname</c> derivation, which would have needed
+    /// its own answer on Windows for no benefit. Emitted unconditionally, exactly like
+    /// <c>AER_OUTPUT_DIR</c>, since it carries no vendor-specific meaning; an adapter with no use for
+    /// it (Claude) simply never references it.
+    /// </remarks>
     public static IReadOnlyList<EnvironmentVariable.AerComputed> BuildEnvironment(
         IReadOnlyList<string> inputPaths,
         string outputDirectory,
+        string artifactsRootPath,
         string? supplementaryInputPath = null)
     {
         ArgumentNullException.ThrowIfNull(inputPaths);
         ArgumentException.ThrowIfNullOrEmpty(outputDirectory);
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
 
-        var variables = new List<EnvironmentVariable.AerComputed>(inputPaths.Count + 2);
+        var variables = new List<EnvironmentVariable.AerComputed>(inputPaths.Count + 3);
         for (var i = 0; i < inputPaths.Count; i++)
         {
             variables.Add(new EnvironmentVariable.AerComputed($"AER_INPUT_{i}", inputPaths[i]));
         }
 
         variables.Add(new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", outputDirectory));
+        variables.Add(new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", artifactsRootPath));
 
         if (supplementaryInputPath is not null)
         {

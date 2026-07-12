@@ -123,25 +123,46 @@ public class ArtifactManagerTests
     }
 
     [Fact]
-    public void BuildEnvironment_numbers_inputs_in_order_and_appends_AER_OUTPUT_DIR()
+    public void BuildEnvironment_numbers_inputs_in_order_and_appends_AER_OUTPUT_DIR_and_AER_ARTIFACTS_ROOT()
     {
         var variables = ArtifactManager.BuildEnvironment(
-            ["/artifacts/execution_A1/plan", "/artifacts/execution_B1/goal"], "/artifacts/execution_C1");
+            ["/artifacts/execution_A1/plan", "/artifacts/execution_B1/goal"], "/artifacts/execution_C1", "/artifacts");
 
         Assert.Equal(
             [
                 new EnvironmentVariable.AerComputed("AER_INPUT_0", "/artifacts/execution_A1/plan"),
                 new EnvironmentVariable.AerComputed("AER_INPUT_1", "/artifacts/execution_B1/goal"),
                 new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1"),
+                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", "/artifacts"),
             ],
             variables);
     }
 
     [Fact]
-    public void BuildEnvironment_with_no_inputs_still_sets_AER_OUTPUT_DIR()
+    public void BuildEnvironment_with_no_inputs_still_sets_AER_OUTPUT_DIR_and_AER_ARTIFACTS_ROOT()
     {
-        var variables = ArtifactManager.BuildEnvironment([], "/artifacts/execution_C1");
+        var variables = ArtifactManager.BuildEnvironment([], "/artifacts/execution_C1", "/artifacts");
 
-        Assert.Equal([new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1")], variables);
+        Assert.Equal(
+            [
+                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1"),
+                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", "/artifacts"),
+            ],
+            variables);
+    }
+
+    [Fact]
+    public void BuildEnvironment_with_a_supplement_appends_AER_SUPPLEMENTARY_INPUT_after_AER_ARTIFACTS_ROOT()
+    {
+        var variables = ArtifactManager.BuildEnvironment(
+            [], "/artifacts/execution_C1", "/artifacts", "/artifacts/execution_S1");
+
+        Assert.Equal(
+            [
+                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1"),
+                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", "/artifacts"),
+                new EnvironmentVariable.AerComputed("AER_SUPPLEMENTARY_INPUT", "/artifacts/execution_S1"),
+            ],
+            variables);
     }
 }
