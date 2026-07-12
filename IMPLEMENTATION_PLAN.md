@@ -101,7 +101,7 @@ The M10 completion gate, playing #14's, #48's, and #61's role: real processes, r
 
 - ✅ Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
 - ✅ Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
-- ⬜ Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
+- ✅ Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
 - ⬜ Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
 
 Decisions of record from M10 (so far):
@@ -125,6 +125,21 @@ Decisions of record from M10 (so far):
   ambient `CancellationToken` firing must not stop the pump from reading/writing its way to a
   consistent fixed point — only from admitting new dispatches. Reusing the now-cancelled token for
   later reads/writes would throw immediately and strand the call mid-shutdown (Phase 2).
+- **`IEventLogReader` gained `ReadAllCoreEventsAsync` rather than widening `ReadAllAsync`'s return
+  type**: every existing caller already treats `ReadAllAsync` as Flow-events-only, so an additive
+  method reads back Core's half (§6) for the first time since M7 Phase 6 wrote it without touching
+  any of that call-site surface (Phase 3).
+- **A dispatch this same call already has registered is excluded from crash-recovery consideration
+  entirely, checked before any of the four crash states**: caught in review — `StubCoreDispatcher`
+  never writes a `CoreEvent`, so without this exclusion every genuinely in-flight stub dispatch
+  looked identical to "never started" and got wrongly resubmitted mid-flight. The fix generalizes
+  what was originally only the orphan branch's guard: `InFlightExecutionRegistry` now exposes a
+  `RegisteredExecutionIds()` snapshot the detector checks first (Phase 3).
+- **The orphan's best-effort cancellation re-issue is a documented no-op, not a new mechanism**:
+  aer-core's binding has no cross-process re-attach or kill-by-`Pid` capability (confirmed against
+  `Aer.Core`'s P/Invoke surface) — a crashed pump's `AerCancelHandle` cannot survive the process
+  that created it. §7's "best-effort" phrasing already accommodates this; Phase 3 does not invent a
+  new kill-by-`Pid` capability to make the re-issue do anything (Phase 3).
 
 ## Completed Milestones
 

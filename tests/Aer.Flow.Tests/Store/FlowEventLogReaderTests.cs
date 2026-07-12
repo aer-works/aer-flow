@@ -106,4 +106,82 @@ public class FlowEventLogReaderTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public async Task ReadAllCoreEventsAsync_returns_an_empty_list_for_a_nonexistent_file()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        var reader = new FlowEventLogReader(path);
+
+        var events = await reader.ReadAllCoreEventsAsync();
+
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public async Task ReadAllCoreEventsAsync_skips_flow_owned_lines_and_returns_only_core_events_in_append_order()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            await using (var writer = new FlowEventLogWriter(path))
+            {
+                await writer.AppendAsync(MakeEvent("exec-1"));
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42));
+                await writer.AppendAsync(
+                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural));
+                await writer.AppendAsync(MakeEvent("exec-2"));
+            }
+
+            var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync();
+
+            Assert.Collection(
+                events,
+                e => Assert.Equal("exec-1", Assert.IsType<CoreEvent.ExecutionStarted>(e).ExecutionId.Value),
+                e => Assert.Equal("exec-1", Assert.IsType<CoreEvent.ExecutionExited>(e).ExecutionId.Value));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReadAllCoreEventsAsync_excludes_a_trailing_line_with_no_newline_terminator()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var startedEvent = new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42);
+            var exitedEvent = new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural);
+            var completeLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(startedEvent), typeof(LogEntry));
+            var tornLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(exitedEvent), typeof(LogEntry))[..5];
+            await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8);
+
+            var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync();
+
+            var started = Assert.Single(events);
+            Assert.Equal("exec-1", Assert.IsType<CoreEvent.ExecutionStarted>(started).ExecutionId.Value);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReadAllCoreEventsAsync_throws_a_FlowEventLogReadException_for_a_complete_but_malformed_line()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            await File.WriteAllTextAsync(path, "{ not valid json }\n", Encoding.UTF8);
+
+            await Assert.ThrowsAsync<FlowEventLogReadException>(() => new FlowEventLogReader(path).ReadAllCoreEventsAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

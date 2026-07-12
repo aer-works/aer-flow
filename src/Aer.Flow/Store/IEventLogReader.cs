@@ -17,4 +17,15 @@ public interface IEventLogReader
     /// excluded rather than surfaced as a parse failure.
     /// </summary>
     Task<IReadOnlyList<FlowEvent>> ReadAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns every complete Core-originated event currently in the log (spec §5.1's
+    /// <c>events.jsonl</c> half, physically interleaved in the same file since M7 Phase 6's
+    /// single-log decision) — the half <see cref="ReadAllAsync"/> deliberately excludes. M10 Phase 3
+    /// reads this back to join Core's lifecycle facts (<c>ExecutionStarted</c>/<c>ExecutionExited</c>)
+    /// to Flow's own intents by <see cref="Domain.ExecutionId"/> (§6) for crash reconciliation. Same
+    /// completeness rule as <see cref="ReadAllAsync"/>: a torn trailing line is excluded, not
+    /// surfaced as a parse failure.
+    /// </summary>
+    Task<IReadOnlyList<CoreEvent>> ReadAllCoreEventsAsync(CancellationToken cancellationToken = default);
 }

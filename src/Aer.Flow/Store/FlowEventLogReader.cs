@@ -4,16 +4,48 @@ using Aer.Flow.Domain;
 namespace Aer.Flow.Store;
 
 /// <summary>
-/// Reads the combined <c>flow.jsonl</c> back into an ordered list of <see cref="FlowEvent"/>s
-/// (spec §5.1), silently skipping <see cref="LogEntry.CoreLogEntry"/> lines the Core Dispatcher
-/// wrote (M7 Phase 6) — the State Projector (§12) has no use for Core lifecycle events, only for
-/// Flow's own classifications, so this keeps <see cref="IEventLogReader"/>'s contract unchanged
-/// rather than pushing the filtering onto every caller. Pairs with <see cref="FlowEventLogWriter"/>,
-/// which guarantees each entry is a single, complete, newline-terminated line (§5.3).
+/// Reads the combined <c>flow.jsonl</c> back into ordered event lists (spec §5.1):
+/// <see cref="ReadAllAsync"/> for Flow's own half, which the State Projector (§12) consumes, and
+/// <see cref="ReadAllCoreEventsAsync"/> for the Core Dispatcher's half (M7 Phase 6), which M10
+/// Phase 3's crash reconciliation reads back for §6's causal link. Pairs with
+/// <see cref="FlowEventLogWriter"/>, which guarantees each entry is a single, complete,
+/// newline-terminated line (§5.3).
 /// </summary>
 public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
 {
     public async Task<IReadOnlyList<FlowEvent>> ReadAllAsync(CancellationToken cancellationToken = default)
+    {
+        var entries = await ReadAllEntriesAsync(cancellationToken).ConfigureAwait(false);
+
+        var events = new List<FlowEvent>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (entry is LogEntry.FlowLogEntry flowLogEntry)
+            {
+                events.Add(flowLogEntry.Event);
+            }
+        }
+
+        return events;
+    }
+
+    public async Task<IReadOnlyList<CoreEvent>> ReadAllCoreEventsAsync(CancellationToken cancellationToken = default)
+    {
+        var entries = await ReadAllEntriesAsync(cancellationToken).ConfigureAwait(false);
+
+        var events = new List<CoreEvent>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (entry is LogEntry.CoreLogEntry coreLogEntry)
+            {
+                events.Add(coreLogEntry.Event);
+            }
+        }
+
+        return events;
+    }
+
+    private async Task<IReadOnlyList<LogEntry>> ReadAllEntriesAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(logFilePath))
         {
@@ -33,7 +65,7 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
         var completeText = lastNewline >= 0 ? text[..(lastNewline + 1)] : string.Empty;
         var lines = completeText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        var events = new List<FlowEvent>(lines.Length);
+        var entries = new List<LogEntry>(lines.Length);
         foreach (var line in lines)
         {
             LogEntry? entry;
@@ -46,18 +78,14 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
                 throw new FlowEventLogReadException($"Malformed flow.jsonl line: {line}", ex);
             }
 
-            switch (entry)
+            if (entry is null)
             {
-                case LogEntry.FlowLogEntry flowLogEntry:
-                    events.Add(flowLogEntry.Event);
-                    break;
-                case LogEntry.CoreLogEntry:
-                    break;
-                default:
-                    throw new FlowEventLogReadException($"flow.jsonl line deserialized to null: {line}");
+                throw new FlowEventLogReadException($"flow.jsonl line deserialized to null: {line}");
             }
+
+            entries.Add(entry);
         }
 
-        return events;
+        return entries;
     }
 }

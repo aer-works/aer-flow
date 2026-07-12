@@ -315,6 +315,80 @@ public static class MutationInterface
             var events = await eventLogReader.ReadAllAsync(ioCancellationToken).ConfigureAwait(false);
             state = StateProjector.Project(events, snapshot);
 
+            // M10 Phase 3 (§7 full robustness): joins Core's half of the log — read back here for
+            // the first time since M7 Phase 6 wrote it — to Flow's own intents by ExecutionId (§6),
+            // distinguishing a process-bound step's "genuinely still Running" from "a prior pump
+            // crashed before recording its outcome" (until now indistinguishable, per StateProjector's
+            // own comment). A dispatch this very call still has registered is excluded — that pump is
+            // this pump, not a crashed one.
+            var coreEvents = await eventLogReader.ReadAllCoreEventsAsync(ioCancellationToken).ConfigureAwait(false);
+            var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
+                state, snapshot, workerBindings, coreEvents, inFlightExecutions.RegisteredExecutionIds());
+
+            // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
+            // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
+            // cancellation request, which simply derives as too late unless the recorded exit reason
+            // was itself CancelRequested (§9's crash clause).
+            if (crashRecovery.ToClassify.Count > 0)
+            {
+                foreach (var (executionId, exit) in crashRecovery.ToClassify)
+                {
+                    var request = FindAcceptedRequest(events, executionId);
+                    var binding = (WorkerBinding.Process)workerBindings[request.Worker];
+                    var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
+                    var classification = OutcomeClassifier.Classify(
+                        new CoreDispatchResult(exit.ExitCode, exit.Reason), binding.Contract, outputDirectory);
+
+                    FlowEvent outcomeEvent = classification.Verdict switch
+                    {
+                        OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(executionId),
+                        OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification),
+                        OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(executionId),
+                        _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
+                    };
+
+                    await eventLogWriter.AppendAsync(outcomeEvent, ioCancellationToken).ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
+            // No ExecutionStarted was ever recorded for this target (§9's crash clause): the cancel
+            // wins, finalized directly — there was never anything to forward to Core in the first
+            // place, and re-dispatching now would race the intent that already decided this attempt
+            // is not to run.
+            if (crashRecovery.ToFinalizeAsCancelled.Count > 0)
+            {
+                foreach (var executionId in crashRecovery.ToFinalizeAsCancelled)
+                {
+                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), ioCancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
+            // The orphan (§7's third crash state): ExecutionStarted with no ExecutionExited, this
+            // call's own registry proving it is not still genuinely in flight here. Nothing can
+            // re-attach (§20 no daemon; the binding is spawn-and-await) and §15 forbids a second
+            // execution for the same request, so the attempt is finalized from recorded facts alone
+            // as abandoned — a real, chargeable failed attempt (§10) — regardless of whether a
+            // cancellation was also pending for it. There is no live handle left to re-issue a
+            // cancellation toward (this pump is not the one that dispatched it); the best-effort
+            // re-issue spec §7 allows for is therefore a documented no-op given aer-core's binding
+            // has no cross-process re-attach capability, not a new mechanism this phase introduces.
+            if (crashRecovery.ToFinalizeAsAbandoned.Count > 0)
+            {
+                foreach (var executionId in crashRecovery.ToFinalizeAsAbandoned)
+                {
+                    await eventLogWriter.AppendAsync(
+                            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable), ioCancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
             // A derived obligation (§17.3), re-evaluated from projected state on every round for
             // the same crash-safety reason the pause obligation below is: the filesystem is read
             // only here, at classification time, and the resulting ExecutionSucceeded is the
@@ -369,10 +443,12 @@ public static class MutationInterface
             }
 
             // Once a host stop is underway, no newly-ready step should be dispatched — cancellation
-            // is winding this call down, not making room for fresh work.
+            // is winding this call down, not making room for fresh work. The same applies to a
+            // crash-recovery resubmission (M10 Phase 3): it is a brand-new dispatch to Core too.
             var readyStepIds = hostStopRequested
                 ? (IReadOnlySet<StepId>)new HashSet<StepId>()
                 : DependencyResolver.GetReadySteps(state, snapshot);
+            var toResubmit = hostStopRequested ? (IReadOnlyList<ExecutionId>)[] : crashRecovery.ToResubmit;
 
             // Snapshot declaration order, not the ready set's (unordered) iteration order, so a
             // round's intents are always emitted in the same sequence for the same FlowState (§13)
@@ -414,6 +490,22 @@ public static class MutationInterface
                     inFlight.Add(DispatchAndRecordOutcomeAsync(
                         prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
                 }
+            }
+
+            // M10 Phase 3's re-submission crash state (§7): the same attempt, not a retry — the
+            // intent is already durably recorded (ExecutionRequestAccepted), so this re-dispatches
+            // the existing request as-is rather than calling PrepareExecutionAsync, which would
+            // append a new one and charge a fresh ExecutionId against nothing.
+            foreach (var executionId in toResubmit)
+            {
+                var request = FindAcceptedRequest(events, executionId);
+                var processBinding = (WorkerBinding.Process)workerBindings[request.Worker];
+                var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
+                var prepared = new PreparedExecution(request, outputDirectory);
+
+                var dispatchCancellationToken = inFlightExecutions.Register(executionId);
+                inFlight.Add(DispatchAndRecordOutcomeAsync(
+                    prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
             }
 
             if (inFlight.Count == 0)
@@ -547,6 +639,19 @@ public static class MutationInterface
             inFlightExecutions.Unregister(prepared.Request.ExecutionId);
         }
     }
+
+    /// <summary>
+    /// Looks up the durably recorded <see cref="ExecutionRequest"/> for <paramref name="executionId"/>
+    /// (M10 Phase 3): every crash-recovery obligation that acts on an already-accepted execution — a
+    /// re-submission or a from-the-log classification — reuses the exact request Flow already
+    /// admitted rather than reconstructing one, so no new <see cref="FlowEvent.ExecutionRequestAccepted"/>
+    /// is ever needed for the same attempt.
+    /// </summary>
+    private static ExecutionRequest FindAcceptedRequest(IReadOnlyList<FlowEvent> events, ExecutionId executionId) =>
+        events
+            .OfType<FlowEvent.ExecutionRequestAccepted>()
+            .First(e => e.Request.ExecutionId == executionId)
+            .Request;
 
     private sealed record PreparedExecution(ExecutionRequest Request, string OutputDirectory);
 }
