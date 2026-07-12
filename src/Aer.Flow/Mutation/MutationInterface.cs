@@ -312,6 +312,17 @@ public static class MutationInterface
 
         while (true)
         {
+            // Captured before the log read below, not after (issue #81): a sibling dispatch's
+            // DispatchAndRecordOutcomeAsync always appends its outcome and fsyncs it before calling
+            // Unregister, so if an ExecutionId has already dropped out of this snapshot, the append
+            // that preceded its Unregister is guaranteed to already be durable — and therefore
+            // visible to the log read started right after. Reading the log first and checking the
+            // registry second (the previous order) offered no such guarantee: a sibling could finish
+            // its append-then-Unregister sequence in the gap after the read had already started,
+            // leaving a Running step that looks unregistered and unstarted-in-Core — indistinguishable
+            // from the "safe pre-spawn crash" state — even though it had, in fact, just succeeded.
+            var registeredExecutionIds = inFlightExecutions.RegisteredExecutionIds();
+
             // A single read of the combined log per round — feeding both Flow's own projection and
             // M10 Phase 3's crash reconciliation from one pass, rather than reading and parsing the
             // same file twice for no new information.
@@ -335,7 +346,7 @@ public static class MutationInterface
             // own comment). A dispatch this very call still has registered is excluded — that pump is
             // this pump, not a crashed one.
             var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
-                state, snapshot, workerBindings, log.CoreEvents, inFlightExecutions.RegisteredExecutionIds());
+                state, snapshot, workerBindings, log.CoreEvents, registeredExecutionIds);
 
             // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
             // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
