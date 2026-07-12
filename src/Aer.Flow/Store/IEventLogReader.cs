@@ -28,4 +28,16 @@ public interface IEventLogReader
     /// surfaced as a parse failure.
     /// </summary>
     Task<IReadOnlyList<CoreEvent>> ReadAllCoreEventsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns both halves of the log from a single read pass. A caller that needs both — M10
+    /// Phase 3's per-round crash reconciliation, which must consult Core's lifecycle facts
+    /// alongside Flow's own projected state on every scheduling round — should use this instead of
+    /// calling <see cref="ReadAllAsync"/> and <see cref="ReadAllCoreEventsAsync"/> separately, which
+    /// would read and parse the same file twice for no new information.
+    /// </summary>
+    Task<EventLogSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken = default);
 }
+
+/// <summary>The joined contents of a single log read (spec §5.1's two logical halves), from <see cref="IEventLogReader.ReadSnapshotAsync"/>.</summary>
+public sealed record EventLogSnapshot(IReadOnlyList<FlowEvent> FlowEvents, IReadOnlyList<CoreEvent> CoreEvents);

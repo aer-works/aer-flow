@@ -312,8 +312,21 @@ public static class MutationInterface
 
         while (true)
         {
-            var events = await eventLogReader.ReadAllAsync(ioCancellationToken).ConfigureAwait(false);
+            // A single read of the combined log per round — feeding both Flow's own projection and
+            // M10 Phase 3's crash reconciliation from one pass, rather than reading and parsing the
+            // same file twice for no new information.
+            var log = await eventLogReader.ReadSnapshotAsync(ioCancellationToken).ConfigureAwait(false);
+            var events = log.FlowEvents;
             state = StateProjector.Project(events, snapshot);
+
+            // Keyed once per round rather than re-scanned per obligation: every crash-recovery
+            // branch below that acts on an already-accepted execution (classification or
+            // re-submission) looks up its durably recorded ExecutionRequest here instead of
+            // reconstructing one, so no new ExecutionRequestAccepted is ever needed for the same
+            // attempt.
+            var acceptedRequestByExecutionId = events
+                .OfType<FlowEvent.ExecutionRequestAccepted>()
+                .ToDictionary(e => e.Request.ExecutionId, e => e.Request);
 
             // M10 Phase 3 (§7 full robustness): joins Core's half of the log — read back here for
             // the first time since M7 Phase 6 wrote it — to Flow's own intents by ExecutionId (§6),
@@ -321,9 +334,8 @@ public static class MutationInterface
             // crashed before recording its outcome" (until now indistinguishable, per StateProjector's
             // own comment). A dispatch this very call still has registered is excluded — that pump is
             // this pump, not a crashed one.
-            var coreEvents = await eventLogReader.ReadAllCoreEventsAsync(ioCancellationToken).ConfigureAwait(false);
             var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
-                state, snapshot, workerBindings, coreEvents, inFlightExecutions.RegisteredExecutionIds());
+                state, snapshot, workerBindings, log.CoreEvents, inFlightExecutions.RegisteredExecutionIds());
 
             // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
             // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
@@ -333,21 +345,14 @@ public static class MutationInterface
             {
                 foreach (var (executionId, exit) in crashRecovery.ToClassify)
                 {
-                    var request = FindAcceptedRequest(events, executionId);
+                    var request = acceptedRequestByExecutionId[executionId];
                     var binding = (WorkerBinding.Process)workerBindings[request.Worker];
                     var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
                     var classification = OutcomeClassifier.Classify(
                         new CoreDispatchResult(exit.ExitCode, exit.Reason), binding.Contract, outputDirectory);
 
-                    FlowEvent outcomeEvent = classification.Verdict switch
-                    {
-                        OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(executionId),
-                        OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification),
-                        OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(executionId),
-                        _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
-                    };
-
-                    await eventLogWriter.AppendAsync(outcomeEvent, ioCancellationToken).ConfigureAwait(false);
+                    await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 continue;
@@ -498,7 +503,7 @@ public static class MutationInterface
             // append a new one and charge a fresh ExecutionId against nothing.
             foreach (var executionId in toResubmit)
             {
-                var request = FindAcceptedRequest(events, executionId);
+                var request = acceptedRequestByExecutionId[executionId];
                 var processBinding = (WorkerBinding.Process)workerBindings[request.Worker];
                 var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
                 var prepared = new PreparedExecution(request, outputDirectory);
@@ -620,19 +625,12 @@ public static class MutationInterface
                 .ConfigureAwait(false);
             var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, prepared.OutputDirectory);
 
-            FlowEvent outcomeEvent = classification.Verdict switch
-            {
-                OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(prepared.Request.ExecutionId),
-                OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(prepared.Request.ExecutionId, classification.FailureClassification),
-                OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(prepared.Request.ExecutionId),
-                _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
-            };
-
             // Never gated on dispatchCancellationToken: that token having fired is exactly what
             // produced this outcome (Cancelled) in the first place, so recording it must not itself
             // be cancellable by the same signal (§7 — the outcome append always completes once
             // dispatch has returned).
-            await eventLogWriter.AppendAsync(outcomeEvent, CancellationToken.None).ConfigureAwait(false);
+            await eventLogWriter.AppendAsync(ToOutcomeEvent(prepared.Request.ExecutionId, classification), CancellationToken.None)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -641,17 +639,18 @@ public static class MutationInterface
     }
 
     /// <summary>
-    /// Looks up the durably recorded <see cref="ExecutionRequest"/> for <paramref name="executionId"/>
-    /// (M10 Phase 3): every crash-recovery obligation that acts on an already-accepted execution — a
-    /// re-submission or a from-the-log classification — reuses the exact request Flow already
-    /// admitted rather than reconstructing one, so no new <see cref="FlowEvent.ExecutionRequestAccepted"/>
-    /// is ever needed for the same attempt.
+    /// Maps a classified outcome to the terminal <see cref="FlowEvent"/> it owes (spec §8), shared by
+    /// a fresh dispatch's own completion (<see cref="DispatchAndRecordOutcomeAsync"/>) and M10 Phase
+    /// 3's from-the-log classification of a recorded exit — the same mapping either way.
     /// </summary>
-    private static ExecutionRequest FindAcceptedRequest(IReadOnlyList<FlowEvent> events, ExecutionId executionId) =>
-        events
-            .OfType<FlowEvent.ExecutionRequestAccepted>()
-            .First(e => e.Request.ExecutionId == executionId)
-            .Request;
+    private static FlowEvent ToOutcomeEvent(ExecutionId executionId, OutcomeClassification classification) =>
+        classification.Verdict switch
+        {
+            OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(executionId),
+            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification),
+            OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(executionId),
+            _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
+        };
 
     private sealed record PreparedExecution(ExecutionRequest Request, string OutputDirectory);
 }

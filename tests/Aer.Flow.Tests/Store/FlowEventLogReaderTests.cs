@@ -184,4 +184,34 @@ public class FlowEventLogReaderTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public async Task ReadSnapshotAsync_returns_both_halves_from_a_single_read()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            await using (var writer = new FlowEventLogWriter(path))
+            {
+                await writer.AppendAsync(MakeEvent("exec-1"));
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42));
+                await writer.AppendAsync(
+                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural));
+                await writer.AppendAsync(MakeEvent("exec-2"));
+            }
+
+            var snapshot = await new FlowEventLogReader(path).ReadSnapshotAsync();
+
+            var flowIds = snapshot.FlowEvents.Cast<FlowEvent.ExecutionSucceeded>().Select(e => e.ExecutionId.Value);
+            Assert.Equal(new[] { "exec-1", "exec-2" }, flowIds);
+            Assert.Collection(
+                snapshot.CoreEvents,
+                e => Assert.IsType<CoreEvent.ExecutionStarted>(e),
+                e => Assert.IsType<CoreEvent.ExecutionExited>(e));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }
