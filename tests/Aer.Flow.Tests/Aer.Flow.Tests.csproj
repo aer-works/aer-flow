@@ -23,6 +23,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aer.Flow\Aer.Flow.csproj" />
+    <!-- M10 Phase 4 (issue #72): shares Aer.Flow.CrashTestHost's Scenarios builder, so this
+         project's in-process recovery run binds against the identical WorkflowDefinitionSnapshot
+         the killed run used, and locates that project's built assembly (via its Scenarios type's
+         own Assembly.Location) to launch it as a real, separate, killable OS process. -->
+    <ProjectReference Include="..\Aer.Flow.CrashTestHost\Aer.Flow.CrashTestHost.csproj" />
   </ItemGroup>
 
   <ItemGroup>

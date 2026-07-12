@@ -107,6 +107,12 @@
         "dependencies": {
           "Aer.Core": "[1.0.0, )"
         }
+      },
+      "aer.flow.crashtesthost": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Flow": "[1.0.0, )"
+        }
       }
     }
   }
