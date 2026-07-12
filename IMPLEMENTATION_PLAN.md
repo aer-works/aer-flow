@@ -116,12 +116,17 @@ The M11 completion gate, playing the role #14/#48/#61/#72 played for the engine 
 
 **M11: First Real Run** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
+- ✅ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
 - ⬜ Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
 - ⬜ Phase 3 — `aer run` pump (the CLI driver) (#86)
 - ⬜ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
 
-Decisions of record accrue here as phases land.
+Decisions of record from M11:
+
+- **`WorkerInvocation` cannot carry a resolved, execution-specific file path.** `MutationInterface.StartWorkflowAsync` captures the `IReadOnlyDictionary<string, WorkerBinding>` once and loops internally to a fixed point (§21) — one `CoreDispatchTarget` per worker role is reused across every round, every step, and every concurrent fan-out dispatch of that role. `IWorkerAdapter.Resolve(WorkerInvocation, WorkerContract)` therefore runs once, when a worker-binding config entry is resolved into a binding, not once per execution. Per-execution dynamism stays exactly where M7 Phase 6 put it: `AER_INPUT_<n>`/`AER_OUTPUT_DIR` environment variables, resolved fresh per dispatch by the unchanged `ArtifactManager`. An adapter that needs literal absolute paths in its prompt text (`agy`, M12 — spike #21) gets there by shell-wrapping its `CoreDispatchTarget` so the shell expands the env var at spawn time, the same convention the shell-stub test workers already use — no new mechanism (Phase 1).
+- **The canonical record doesn't duplicate `WorkerContract`.** `IWorkerAdapter.Resolve` takes the `WorkerContract` alongside `WorkerInvocation` rather than folding `RequiredInputs`/`ProducedOutputs` into the invocation record — the contract already carries the ordered input role names and declared outputs; `WorkerInvocation` adds only what it doesn't: the human-authored `PromptTemplate`, and the opaque vendor-specific `Model`/`PermissionScope` strings (spike #21: no shared permission vocabulary across vendors) (Phase 1).
+- **Worker-binding config is a flat JSON object keyed by worker role name**, deserialized with the same case-sensitive, no-naming-policy `JsonSerializer` defaults `WorkflowDefinitionParser` already established for templates — one config format convention for the whole repo, not two. Lives in `Aer.Adapters` (`WorkerBindingConfigParser`/`WorkerBindingConfigEntry`/`WorkerBindingResolver`), entirely outside `Aer.Flow`, per CLAUDE.md's Adapter Isolation rule. `WorkerBindingResolver.Resolve` takes the adapter registry (`IReadOnlyDictionary<string, IWorkerAdapter>`) as a plain caller-supplied argument — no adapter-registration mechanism was built, since Phase 1 excludes every adapter but the fake/echo test double; Phase 2/3 register the real one the same way (Phase 1).
+- **Every worker-binding config entry resolves to `WorkerBinding.Process`.** A worker-binding config describes a real vendor invocation; `WorkerBinding.NonProcess` (spec §17.3, human/non-process parties) is unrelated to this seam and continues to be constructed directly by whatever caller needs one, unchanged since M9 (Phase 1).
 
 ## Completed Milestones
 

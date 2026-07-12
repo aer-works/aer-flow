@@ -37,9 +37,10 @@ jobs:
           run-install: false
           cache: false
 
-      # Caches NuGet restore keyed off tests/Aer.Flow.Tests/packages.lock.json — the only project
-      # with real PackageReferences. cache-dependency-path must be explicit: cache: true alone
-      # only looks for a lock file at the repo root, not recursively.
+      # Caches NuGet restore keyed off every packages.lock.json in the repo (the xunit test
+      # projects — Aer.Flow.Tests, Aer.Adapters.Tests — are the only ones with real
+      # PackageReferences). cache-dependency-path must be explicit: cache: true alone only looks
+      # for a lock file at the repo root, not recursively.
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.x"
