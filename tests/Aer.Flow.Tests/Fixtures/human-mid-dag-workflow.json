@@ -1,0 +1,30 @@
+{
+  "WorkflowTemplateId": "human-mid-dag",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "a",
+      "Worker": "a",
+      "Inputs": [],
+      "Outputs": ["draft"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    },
+    {
+      "StepId": "h",
+      "Worker": "human",
+      "Inputs": ["draft"],
+      "Outputs": ["revision"],
+      "DependsOn": ["a"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    },
+    {
+      "StepId": "c",
+      "Worker": "c",
+      "Inputs": ["revision"],
+      "Outputs": ["final"],
+      "DependsOn": ["h"],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}
