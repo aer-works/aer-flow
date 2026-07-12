@@ -3,12 +3,19 @@ using Aer.Cli;
 using Aer.Flow;
 using Aer.Flow.Domain;
 
-if (args.Length == 0 || (args[0] != "run" && args[0] != "cancel"))
+var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
+if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
     Console.Error.WriteLine(
         "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>]");
     Console.Error.WriteLine(
         "       aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]");
+    Console.Error.WriteLine(
+        "       aer decide <task-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
+        "[--target-step <step-id>] [--supplementary <execution-id>] --bindings <bindings-file> [--workflow-id <id>]");
+    Console.Error.WriteLine(
+        "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
+        "--bindings <bindings-file> [--workflow-id <id>]");
     return 64;
 }
 
@@ -27,27 +34,47 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 try
 {
-    FlowState finalState;
-    if (args[0] == "run")
+    CommandResult result;
+    switch (args[0])
     {
-        var options = RunOptionsParser.Parse(args[1..]);
-        finalState = await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
-            .ConfigureAwait(false);
-    }
-    else
-    {
-        var options = CancelOptionsParser.Parse(args[1..]);
-        finalState = await CancelCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
-            .ConfigureAwait(false);
+        case "run":
+            {
+                var options = RunOptionsParser.Parse(args[1..]);
+                result = await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
+                    .ConfigureAwait(false);
+                break;
+            }
+
+        case "cancel":
+            {
+                var options = CancelOptionsParser.Parse(args[1..]);
+                result = await CancelCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
+                    .ConfigureAwait(false);
+                break;
+            }
+
+        case "decide":
+            {
+                var options = DecideOptionsParser.Parse(args[1..]);
+                result = await DecideCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
+                    .ConfigureAwait(false);
+                break;
+            }
+
+        default:
+            {
+                var options = SupplyOptionsParser.Parse(args[1..]);
+                var supplyResult = await SupplyCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
+                    .ConfigureAwait(false);
+                Console.WriteLine($"Supplementary execution: {supplyResult.ExecutionId}");
+                result = supplyResult.Command;
+                break;
+            }
     }
 
-    Console.WriteLine($"Workflow status: {finalState.Status}");
-    foreach (var step in finalState.Steps)
-    {
-        Console.WriteLine($"  {step.StepId}: {step.Status}");
-    }
+    FlowStateReporter.Report(Console.Out, result);
 
-    return finalState.Status == WorkflowStatus.Terminal && finalState.Steps.All(step => step.Status == StepStatus.Succeeded)
+    return result.State.Status == WorkflowStatus.Terminal && result.State.Steps.All(step => step.Status == StepStatus.Succeeded)
         ? 0
         : 1;
 }

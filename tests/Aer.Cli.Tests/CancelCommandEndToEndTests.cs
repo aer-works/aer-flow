@@ -24,14 +24,14 @@ public class CancelCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var finalState = await RunCommand.ExecuteAsync(runOptions, Adapters);
+            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
 
             var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
             Assert.NotNull(architectExecutionId);
 
             var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, bindingsFilePath);
-            var canceledState = await CancelCommand.ExecuteAsync(cancelOptions, Adapters);
+            var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, Adapters)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
             Assert.All(canceledState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
