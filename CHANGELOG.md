@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/aer-works/aer-flow/compare/v0.6.0...v0.7.0) (2026-07-13)
+
+
+### Features
+
+* **adapters:** M12 Phase 1 — Gemini worker adapter (headless agy CLI) ([#102](https://github.com/aer-works/aer-flow/issues/102)) ([4b944f5](https://github.com/aer-works/aer-flow/commit/4b944f5bc0ab6296ad4d408b5279d61068a80be4))
+* **cli:** M12 Phase 2 — aer cancel + Ctrl+C host-stop wiring ([#103](https://github.com/aer-works/aer-flow/issues/103)) ([08b8d7a](https://github.com/aer-works/aer-flow/commit/08b8d7abd9da77c404ded2a5ce0c764407afca05))
+* **cli:** M12 Phase 3 — aer decide + supplementary artifact recording ([#105](https://github.com/aer-works/aer-flow/issues/105)) ([e63b823](https://github.com/aer-works/aer-flow/commit/e63b8235db1ad9f05aed058a052a9ee7a6855d44))
+* **cli:** M12 Phase 4 — Live mixed-vendor paused run (gated end-to-end) ([#106](https://github.com/aer-works/aer-flow/issues/106)) ([371049b](https://github.com/aer-works/aer-flow/commit/371049b08630fe078628693eecf1ed87732349bb))
+
+
+### Documentation
+
+* Add agent-delegation strategy to CLAUDE.md ([#104](https://github.com/aer-works/aer-flow/issues/104)) ([f3a78e9](https://github.com/aer-works/aer-flow/commit/f3a78e9e8733a94b7c5206aa7e31aaaea02f5b78))
+* Define the M12 (Full Control Surface) phase plan ([#100](https://github.com/aer-works/aer-flow/issues/100)) ([555c8ce](https://github.com/aer-works/aer-flow/commit/555c8ce4d2a27a84ceea26e5b81b2868044d5a64))
+
 ## [0.6.0](https://github.com/aer-works/aer-flow/compare/v0.5.0...v0.6.0) (2026-07-12)
 
 
