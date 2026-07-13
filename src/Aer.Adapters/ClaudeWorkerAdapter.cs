@@ -34,6 +34,18 @@ namespace Aer.Adapters;
 /// confirmed pre-authorizes file writes without disabling every other approval gate — when
 /// <see cref="WorkerInvocation.PermissionScope"/> is not set.
 /// </para>
+/// <para>
+/// <b>Windows tokens are never pre-quoted into one string.</b> aer-core's Windows spawn
+/// (<c>Command::args</c>) applies Win32 argument quoting/escaping to every
+/// <see cref="CoreDispatchTarget.Args"/> element itself. Handing it one already hand-quoted
+/// command-line string (as the Unix branch correctly does for <c>sh -c</c>, where <c>execve</c>
+/// passes argv through verbatim with no re-quoting) makes Rust escape this adapter's own quotes a
+/// second time, corrupting the command before <c>cmd.exe</c> or <c>claude</c> ever see a valid one
+/// — confirmed live: <c>claude</c> received no prompt at all, only "What would you like me to
+/// write?". Passing each token as its own array element lets that one layer of quoting happen
+/// exactly once, correctly, on both a literal quote/backtick/dollar/backslash in a prompt and a
+/// bare <c>%AER_OUTPUT_DIR%</c> reference (confirmed live via a capture-enabled repro of both).
+/// </para>
 /// </remarks>
 public sealed class ClaudeWorkerAdapter : IWorkerAdapter
 {
@@ -48,19 +60,47 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter
         var prompt = BuildPrompt(invocation.PromptTemplate, contract, isWindows);
         var permissionScope = invocation.PermissionScope ?? DefaultPermissionScope;
 
-        var commandLine = new StringBuilder("claude -p ")
-            .Append(Quote(prompt))
-            .Append(" --allowedTools ").Append(Quote(EscapeUserContent(permissionScope, isWindows)))
-            .Append(" --output-format text");
+        return isWindows
+            ? ResolveWindows(prompt, permissionScope, invocation.Model)
+            : ResolveUnix(prompt, permissionScope, invocation.Model);
+    }
 
-        if (invocation.Model is not null)
+    private static CoreDispatchTarget ResolveWindows(string prompt, string permissionScope, string? model)
+    {
+        List<string> args =
+        [
+            "/c", "claude", "-p", prompt,
+            "--allowedTools", EscapeUserContent(permissionScope, isWindows: true),
+            "--output-format", "text",
+        ];
+
+        if (model is not null)
         {
-            commandLine.Append(" --model ").Append(Quote(EscapeUserContent(invocation.Model, isWindows)));
+            args.Add("--model");
+            args.Add(EscapeUserContent(model, isWindows: true));
         }
 
-        return isWindows
-            ? new CoreDispatchTarget("cmd", ["/c", $"{commandLine} < NUL"])
-            : new CoreDispatchTarget("sh", ["-c", $"{commandLine} < /dev/null"]);
+        // Stdin is always redirected (see this type's remarks) -- as separate tokens so cmd's own
+        // tail parser, not Rust's argument quoting, is what interprets the redirection operator.
+        args.Add("<");
+        args.Add("NUL");
+
+        return new CoreDispatchTarget("cmd", args);
+    }
+
+    private static CoreDispatchTarget ResolveUnix(string prompt, string permissionScope, string? model)
+    {
+        var commandLine = new StringBuilder("claude -p ")
+            .Append(Quote(prompt))
+            .Append(" --allowedTools ").Append(Quote(EscapeUserContent(permissionScope, isWindows: false)))
+            .Append(" --output-format text");
+
+        if (model is not null)
+        {
+            commandLine.Append(" --model ").Append(Quote(EscapeUserContent(model, isWindows: false)));
+        }
+
+        return new CoreDispatchTarget("sh", ["-c", $"{commandLine} < /dev/null"]);
     }
 
     /// <summary>
@@ -93,29 +133,43 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter
             }
         }
 
-        return prompt.ToString();
+        var built = prompt.ToString();
+
+        // cmd.exe's `/c` parser ends the current statement at an embedded newline even inside a
+        // quoted argument (unlike `sh -c`, whose quoting correctly spans lines) -- so a multi-line
+        // prompt would otherwise silently truncate the invocation, dropping --allowedTools/
+        // --output-format/--model and the output-path instructions that follow it. Collapsing to
+        // single-line here is Windows-only; Unix keeps the newlines for readability.
+        return isWindows ? built.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ') : built;
     }
 
     private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
 
     /// <summary>
     /// Defuses shell metacharacters in config-authored text (a prompt template, model name, or
-    /// permission scope) before it is embedded in the generated command line, so it can never alter
-    /// the command's structure or expand as a variable reference itself — unlike the
+    /// permission scope) before it is embedded in the generated command, so it can never alter the
+    /// command's structure or expand as a variable reference itself — unlike the
     /// <c>AER_INPUT_&lt;n&gt;</c>/<c>AER_OUTPUT_DIR</c> references this adapter generates afterward,
     /// which are deliberately left unescaped (see this type's remarks).
+    /// <para>
+    /// On Windows only <c>%</c> needs doubling: confirmed live that an unescaped <c>%PATH%</c> (or
+    /// any other real variable name) in a prompt gets expanded by <c>cmd.exe</c>'s own pass over its
+    /// <c>/c</c> tail — independent of, and unaffected by, whether the surrounding text is one of
+    /// Rust's quoted argv tokens — leaking the host's actual environment variable value into the
+    /// prompt. A literal quote/backtick/dollar/backslash does not need escaping here: passing each
+    /// token as its own array element (see <see cref="ResolveWindows"/>) lets Rust's own Win32
+    /// argument quoting handle those correctly and exactly once; escaping them here too, as this
+    /// method used to for <c>"</c>, made <c>claude</c> receive no prompt at all (confirmed live).
+    /// </para>
     /// </summary>
     private static string EscapeUserContent(string value, bool isWindows) => isWindows
-        ? value.Replace("%", "%%").Replace("\"", "\"\"")
+        ? value.Replace("%", "%%")
         : value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("`", "\\`").Replace("$", "\\$");
 
     /// <summary>
-    /// Wraps already-escaped content in double quotes for embedding as one shell argument.
-    /// <paramref name="value"/> must already be escaped (via <see cref="EscapeUserContent"/>) for
-    /// any config-authored portion it contains — this only adds the enclosing quotes, so it never
-    /// touches (and cannot break) a deliberately unescaped <c>AER_OUTPUT_DIR</c>-style reference.
-    /// Quoting itself is identical on both platforms; only <see cref="EscapeUserContent"/>'s
-    /// escaping rules differ.
+    /// Wraps already-escaped content in double quotes for embedding as one shell argument in the
+    /// Unix <c>sh -c</c> command line, which <c>execve</c> passes through verbatim with no further
+    /// re-quoting. Windows never builds a command line this way (see <see cref="ResolveWindows"/>).
     /// </summary>
     private static string Quote(string value) => $"\"{value}\"";
 }
