@@ -1,0 +1,100 @@
+# Runbook: Live mixed-vendor paused-run smoke run (M12 Phase 4)
+
+M12's completion gate (#98): a real `draft` (Claude) → `review` (Gemini/`agy`) workflow — §18.1's
+composition case, the original goal the project was built for. Run through `aer run` against both
+real headless CLIs, pausing at `review`'s declared `PausePoint`, resumed by a real `aer decide` to
+terminal success, with real artifacts from both vendors on disk. This is the first time aer-flow
+dispatches two different vendors in the same run, and the first time a live smoke test also
+exercises the mutation surface (`aer decide`), not just `aer run`.
+
+**This is always a human-run step, not something an agent session can close on its own** — see
+CLAUDE.md's "Live-vendor smoke tests" section. Both adapters shell out to whatever's already
+authenticated on the host rather than owning key-handling code of their own, which is what lets
+this work against real subscriptions; nothing about that can be provisioned headlessly from inside
+an agent session, and it shouldn't be worked around (e.g. by dropping in an API key) just to make
+the gate pass.
+
+## Prerequisites
+
+- An authenticated `claude` CLI on `PATH` — see
+  [`live-claude-smoke.md`](./live-claude-smoke.md)'s prerequisites; unchanged here.
+- An authenticated `agy` (antigravity, Google Gemini's CLI) on `PATH` — either a logged-in session
+  or an API key configured for it. `GeminiWorkerAdapter` has no key-handling code of its own; it
+  shells out to whatever `agy` invocation is already authenticated on this machine.
+- Outbound network access to both Anthropic's and Google's APIs.
+- The usual repo prerequisites (`.NET 10` SDK, Rust toolchain, submodule initialized — see the
+  root `README.md`).
+
+## Running it
+
+```bash
+pixi run smoke-mixed-vendor
+```
+
+This runs `dotnet test tests/Aer.Cli.SmokeTests` filtered to
+`LiveMixedVendorPausedRunSmokeTest` — the same project as `smoke-claude`, still **not** part of
+`AerFlow.slnx`, so it never builds or runs as a side effect of `pixi run build`/`test`/`lint`.
+
+The test drives `RunCommand.ExecuteAsync` then `DecideCommand.ExecuteAsync` — the same calls
+`Program.cs` makes for `aer run`/`aer decide` — against the fixtures in
+`tests/Aer.Cli.SmokeTests/Fixtures/`:
+
+- `draft-review-paused-workflow.json` — two steps, `draft` then `review`, `review` depending on
+  `draft`'s output and declaring a `PausePoint` with no supersede targets.
+- `draft-review-paused-bindings.json` — `draft` bound to the `claude` adapter
+  (`claude-haiku-4-5-20251001`), `review` bound to the `gemini` adapter (`gemini-3-flash`) — edit
+  either `Model` to point at a different model without touching any code.
+
+Each run uses a fresh temporary task directory, so repeated runs never resume a prior one.
+
+## What "green" means
+
+The test passes when:
+
+- `aer run` reaches a `Paused` workflow status with `draft` `Succeeded` and `review` `Paused`
+  (`PausedOutcome: Succeeded`).
+- `aer decide --type resume` against `review`'s paused execution reaches a `Terminal` workflow
+  status with both steps `Succeeded`.
+- Both declared outputs (`draft`, `review`) exist on disk under the run's `artifacts/` directory
+  and are non-blank.
+
+The test does not assert on the *content* either vendor wrote (spec §4.1's contract is "the file
+exists", not "the file says X" — the same rule `live-claude-smoke.md` documents).
+
+## If it fails
+
+- **`draft` (Claude) never reaches `Succeeded`**: triage exactly as `live-claude-smoke.md`
+  describes — this half of the run is unchanged from M11.
+- **`review` (Gemini/`agy`) never reaches a paused `Succeeded` outcome**: check the step's latest
+  execution's directory under `artifacts/` for whatever `agy` actually produced (or didn't).
+  Re-run `agy -p "..." --mode accept-edits --add-dir "<artifacts root>"` by hand with the same
+  flags `GeminiWorkerAdapter` builds (see its XML doc remarks) to isolate CLI-vs-engine issues. A
+  clarifying question with no file written is `agy`'s documented failure mode (spike #21) — it
+  exits 0, and `ContractValidator` reads the missing output as retryable, same as any other
+  contract failure.
+- **`aer run` never pauses** (workflow reaches `Terminal` or fails before pausing): the fixture's
+  `PausePoint` declaration is the only thing to check — this mechanism is proven end-to-end against
+  a stub worker in `PauseDecisionSupersedeHumanEndToEndTests` (M9), so a live-only failure here
+  points at the fixture, not the engine.
+- **`aer decide` fails to resolve the pause**: engine-side decision semantics are proven at the
+  `MutationInterface` layer (M9) and CLI wiring at `DecideCommandEndToEndTests` (M12 Phase 3) — if
+  those are green but this isn't, the fault is almost certainly in one of the two live adapters, not
+  the decision surface itself.
+- **Everything else** (unexpected exception, hang): this is the same `project → resolve → dispatch →
+  await` loop `RunCommandEndToEndTests`/`DecideCommandEndToEndTests` already exercise end-to-end in
+  CI with shell-stub workers — if those are green but this isn't, the fault is in one of the live
+  adapters or CLI invocations, not the engine.
+
+## Recording a green run
+
+M12 is complete once this has been run successfully at least once. Record the date and both CLI
+versions used in the PR that lands this runbook (see `IMPLEMENTATION_PLAN.md`'s M12 decisions of
+record) — this file only documents *how* to run it, not a rolling log of every run.
+
+**Recorded green run:** 2026-07-13, `claude` CLI 2.1.207 and `agy` CLI 1.1.1 (Windows). Both adapters
+needed the same Windows-only fix first (see `live-claude-smoke.md`'s 2026-07-13 entry for the full
+root cause): `ClaudeWorkerAdapter`/`GeminiWorkerAdapter` each built one pre-quoted `cmd /c "..."`
+string, which aer-core's Windows spawn (`Command::args`) re-quoted and corrupted a second time. Fixed
+in both adapters by passing each token as its own `Args` element on Windows instead. With that fix,
+`draft` (Claude) → paused `review` (Gemini/`agy`) → `aer decide --type resume` → `Terminal` ran to
+completion end to end on the first live attempt.

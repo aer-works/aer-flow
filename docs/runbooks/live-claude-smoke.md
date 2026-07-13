@@ -6,6 +6,12 @@ aer-flow dispatches to a live LLM instead of `StubCoreDispatcher` or a shell-stu
 runs from this runbook and a dedicated `pixi run` task, never from default CI (no API key or
 network access is available there, and a real call shouldn't gate every PR anyway).
 
+**This is a human-run step in general** — see CLAUDE.md's "Live-vendor smoke tests" section. The
+recorded green run below happened to be closed from inside an agent session because that session's
+own host coincidentally carried an authenticated `claude` CLI; that's a coincidence of the host, not
+a capability to rely on for future re-runs or for gates on other vendors (see
+`live-mixed-vendor-smoke.md`, where the same coincidence didn't hold for `agy`).
+
 ## Prerequisites
 
 - An authenticated `claude` CLI on `PATH` — either a logged-in session or an API key configured
@@ -69,3 +75,17 @@ this runbook exists to catch: the `reviewer` binding's original `PermissionScope
 let `claude` write its output but not read the `draft` input, so the step failed after refusing the
 unapproved `Read` tool call. Fixed by granting `"Read,Write"` in `draft-review-bindings.json`. With
 that fix, both steps ran to completion end to end.
+
+**Recorded green run:** 2026-07-13, `claude` CLI 2.1.207 (Windows). A second, unrelated bug: the
+`draft` step (no fixture changes involved) failed with no visible error. A capture-enabled repro of
+`ClaudeWorkerAdapter.Resolve`'s exact target found `claude` received either no prompt at all or one
+truncated at the first embedded newline. Root cause was in `ClaudeWorkerAdapter` itself, Windows-only
+— aer-core's Windows spawn (`Command::args`) applies its own Win32 argument quoting/escaping to every
+`CoreDispatchTarget.Args` element; handing it one already hand-quoted `cmd /c "..."` string (as the
+Unix branch correctly does, since `execve` never re-quotes) made Rust escape the adapter's own quotes
+a second time, corrupting the command. Fixed by passing each token as its own array element on
+Windows instead of one pre-built string (Unix is unaffected and unchanged). A related, separately
+real bug fixed in the same pass: a multi-line prompt's embedded newlines made `cmd.exe`'s `/c` tail
+parser split it into multiple statements, silently dropping `--allowedTools`/`--output-format`/
+`--model`; Windows prompts are now flattened to one line for exactly this reason. With both fixes,
+`draft` → `review` ran to completion end to end again.

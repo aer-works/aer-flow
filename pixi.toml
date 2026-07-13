@@ -26,3 +26,10 @@ lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }
 # from AerFlow.slnx so it never builds or runs as a side effect of `build`/`test`/`lint`. See
 # docs/runbooks/live-claude-smoke.md before running this.
 smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["build-core"] }
+
+# M12 Phase 4 (#98), this milestone's completion gate: a real draft (`claude`) → review (`agy`)
+# workflow, paused at review's declared PausePoint and resumed via `aer decide`, run through the
+# real, authenticated `claude` and `agy` CLIs. Same CI exclusion as smoke-claude above — requires
+# both CLIs on PATH already logged in (or API keys configured) and outbound network access to both
+# vendors' APIs. See docs/runbooks/live-mixed-vendor-smoke.md before running this.
+smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveMixedVendorPausedRunSmokeTest", depends-on = ["build-core"] }

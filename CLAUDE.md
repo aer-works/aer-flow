@@ -53,6 +53,33 @@ On a fresh clone, init the submodule first: `git submodule update --init`.
 
 ---
 
+## Live-vendor smoke tests
+
+Some milestones' completion gates are real, live runs against a vendor CLI (`pixi run
+smoke-claude`, `pixi run smoke-mixed-vendor`, …) — see `docs/runbooks/`. These live outside
+`AerFlow.slnx` and default CI on purpose.
+
+**These gates are permanently a human action item, not something an agent session can close.**
+`ClaudeWorkerAdapter`/`GeminiWorkerAdapter` deliberately own no key-handling code (Adapter
+Isolation) — they shell out to whatever vendor CLI is already authenticated on the host, because
+the project's whole point is working against **subscriptions**, not API keys. There is no headless
+or non-interactive way to provision that from inside an agent session, and there should not be one:
+dropping in an API key to make a gate pass would test a different auth path than the one the
+project exists to support.
+
+If a session's host happens to already carry a subscription login for one vendor (e.g. a Claude
+Code session's own `claude` CLI), that is a coincidence of the host, not a capability — it does not
+extend to any other vendor's CLI, and a future session should not assume it will recur or try to
+work around its absence (installing a different auth mode, requesting API keys, stubbing the
+adapter, etc.). When implementing a phase gated by one of these tests: build the test, fixtures,
+`pixi run` task, and runbook exactly like the pattern in `docs/runbooks/`, run everything that
+*can* run locally (`build`, `test`, `lint`, `fmt-check`), leave the live smoke task itself un-run if
+its vendor isn't authenticated on this host, and say so plainly in the PR body and the relevant
+`IMPLEMENTATION_PLAN.md` checklist item — don't mark the phase's live-run checkbox done on anything
+short of an actual recorded run.
+
+---
+
 ## Architecture Rules
 
 1. **Flow carries discipline, Workers carry intelligence**: The Flow engine must *never* parse conversation content, inspect prompt text, or attempt to understand LLM outputs to make routing decisions. Routing is exclusively defined by the structured workflow config and explicit tool returns from the Workers.

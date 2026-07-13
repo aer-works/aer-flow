@@ -119,7 +119,7 @@ The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (
 - ✅ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
 - ✅ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
 - ✅ Phase 3 — `aer decide` + supplementary artifact recording (#97)
-- ⬜ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
+- ✅ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
 
 Decisions of record from M12:
 
@@ -171,6 +171,22 @@ Decisions of record from M12:
   `WorkerInvocation.PermissionScope` is unset — the exact value #21 confirmed pre-authorizes file
   edits (v1.1.1+), coarser than Claude's per-tool `--allowedTools` and further confirmation
   `PermissionScope` must stay an opaque, adapter-interpreted string (Phase 1).
+- **Phase 4's gate mirrors M11 Phase 4's shape exactly**: `LiveMixedVendorPausedRunSmokeTest`
+  lives in the same `Aer.Cli.SmokeTests` project (still absent from `AerFlow.slnx`), driving
+  `RunCommand.ExecuteAsync` then `DecideCommand.ExecuteAsync` against a `draft` (Claude) → `review`
+  (Gemini/`agy`) fixture where `review` declares the `PausePoint`, so the fixed point after `aer
+  run` is `Paused` and the fixed point after `aer decide --type resume` is `Terminal`. A dedicated
+  `pixi run smoke-mixed-vendor` task (filtered to just this test, same project as `smoke-claude`)
+  and `docs/runbooks/live-mixed-vendor-smoke.md` (a new file, not a rewrite of
+  `live-claude-smoke.md`, so M11's recorded run stays an unmodified historical record) round it
+  out. **Recorded green 2026-07-13** on a host that happened to carry both `claude` and `agy`
+  authenticated (a coincidence of that host, not a capability — see CLAUDE.md's "Live-vendor smoke
+  tests"; the phase that implemented this test only had `claude`, so it left the run un-executed).
+  The first live attempt caught a real, Windows-only bug in both adapters (not a fixture bug this
+  time): `ClaudeWorkerAdapter`/`GeminiWorkerAdapter` each built one pre-quoted `cmd /c "..."` string,
+  which aer-core's Windows spawn re-quoted and corrupted a second time — fixed by passing each token
+  as its own `Args` element on Windows instead (see `live-mixed-vendor-smoke.md`'s recorded-run
+  entry). With that fix, `pixi run smoke-mixed-vendor` ran to completion end to end.
 
 ## Completed Milestones
 
