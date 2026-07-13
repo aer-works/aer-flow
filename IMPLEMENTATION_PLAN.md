@@ -112,6 +112,56 @@ The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (
 
 ---
 
+## M13: Distribution — Phase Plan
+
+**Goal:** turn `aer` from something you `dotnet build` out of a checkout into something installable — `dotnet tool install --global` on Windows, Linux, and macOS, from a self-built, correctly versioned package (capability #20; `spec/AER Overview.md` §6). Not blocked by M12: the Milestone Roadmap has always listed M13 as blocked by M11 only — it is a parallel track, not a sequel, and M12's own remaining gate (#98) is now a permanently human-run step (CLAUDE.md's "Live-vendor smoke tests") with no bearing on packaging work.
+
+Three facts shape the plan. First, **this is packaging work, not new engine behavior** — no section of `aer-flow-behavioral-spec-v1.0.md` governs it, the way §9/§14/§17 governed M9–M12. The only real guidance is `AER Overview.md` §6: build for the concrete, single-developer need, not a hypothetical audience — no public NuGet.org feed, no auth, no RID matrix beyond what `pixi.toml` already claims to support. Second, **the native-lib copy mechanism that exists today doesn't survive packing.** `Aer.Core.csproj`'s `Content Include`/`CopyToOutputDirectory` trick (M7 Phase 6) copies a single host-OS binary into a *build output directory* — exactly what every `dotnet test`/`dotnet run` in this repo has relied on so far, and exactly what `dotnet pack` does not automatically fold into a nupkg. A `PackAsTool` global tool always launches through the portable `dotnet` muxer regardless of RID, so the native asset needs a `tools/$(TargetFramework)/any/` `PackagePath`, not the `runtimes/<rid>/native/` convention self-contained deployments use. Third, **versioning has never been wired past the changelog.** `release-please-config.json`'s `release-type: "simple"` bumps only `.release-please-manifest.json`/`CHANGELOG.md` — no `.csproj` has ever read that version, so this is the first milestone that has to close that loop.
+
+### Phase dependency table
+
+| Phase | Requires output from |
+|---|---|
+| 1 — Pack `aer` as a `dotnet tool` (single-platform) | — |
+| 2 — Version wiring (release-please → package `Version`) | 1 (the packing shape it versions) |
+| 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) | 1 (the packing shape it multiplies across platforms) |
+| 4 — Installed-tool round-trip check (wired into default CI) | 1 + 2 + 3 |
+
+Phases 2 and 3 are independent of each other once Phase 1 lands — where the version number comes from and how many platforms' native libs ship in the package are separable concerns, same as M12 Phases 1 and 2 being independent of each other.
+
+### Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
+Establishes that `Aer.Cli` can be `dotnet pack`ed into an installable global tool at all, deferring "works on any machine" to Phase 3. `<PackAsTool>true</PackAsTool>`, `<ToolCommandName>aer</ToolCommandName>`, and a `<PackageId>` on `Aer.Cli.csproj`; a `pixi run pack` task. The genuinely new problem is getting the native `aer_core` library correctly embedded and resolvable at runtime — not a copy-paste of `Aer.Core.csproj`'s existing build-output-directory trick, since `dotnet pack` doesn't pick that up on its own. Verified with a real round trip: pack → `dotnet tool install --global --add-source <dir>` → run `aer` for real against a shell-stub fixture → `dotnet tool uninstall --global`.
+
+**Produces:** an installable nupkg, proven end-to-end on the current host only.
+**Excludes:** other-OS native libs (Phase 3); a real release version (Phase 2); the CI-wired round-trip check (Phase 4).
+**Open questions resolved in this phase:**
+- **`PackageId`/`ToolCommandName` naming** (candidates: `aer`, `Aer.Flow.Cli`, `AerFlow.Cli` — no public feed exists to collide with, per §6, so this is a local-convenience choice, not a namespace-squatting concern).
+- **Where the native asset's `PackagePath` lives inside the tool's payload** — `tools/$(TargetFramework)/any/`, next to the managed DLL, where default P/Invoke probing finds it.
+
+### Phase 2 — Version wiring (release-please → package `Version`) (#108)
+Closes the loop between `release-please` and the packed tool's version, so `aer --version` means something and matches the `CHANGELOG.md` entry it shipped with. Two candidates, decided in this phase rather than pre-committed here: a root `Directory.Build.props` with a `<Version>` that `release-please-config.json` bumps directly via its generic version-file mechanism (visible to every local `dotnet build`, not just CI), or a CI-only `-p:Version=` override read from `.release-please-manifest.json` at pack time (simpler, but invisible outside CI).
+
+**Produces:** a packed `aer` tool whose `--version` output matches the changelog entry for the same release.
+**Excludes:** publishing anywhere (no feed exists — §6); multi-RID packaging (Phase 3).
+**Open questions resolved in this phase:**
+- **Where the single source of truth for the version lives** — a tracked `.props` file `release-please` writes to directly, or a value read only at pack time.
+
+### Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
+Extends Phase 1's single-platform pack so the same nupkg installs and runs regardless of which OS Philip is on that day, matching `pixi.toml`'s declared `platforms = ["win-64", "linux-64", "osx-arm64"]`. Two gaps stand in the way: `.github/workflows/ci.yml`'s matrix today is `[windows-latest, ubuntu-latest]` only — no macOS job exists, and cross-compiling `aer_core` to `aarch64-apple-darwin` from a Linux runner isn't practical without Apple's SDK, so this phase most likely adds a real `macos-latest` job rather than a cross-compile trick; and the pack step needs all three OSes' `cargo build` outputs gathered into one place (CI artifacts, downloaded into the packing job) before `dotnet pack` runs.
+
+**Produces:** `aer` installable and runnable via the same install command regardless of host OS.
+**Excludes:** a real version number (Phase 2, independent); the CI-wired round-trip check (Phase 4).
+**Open questions resolved in this phase:**
+- **Single "fat" package vs. per-RID packages.** A fat package ships all three native libs side by side (`tools/$(TargetFramework)/any/`) with the existing build-time `IsOSPlatform` `Aer.Core.csproj` logic ported to a runtime P/Invoke-resolution check; per-RID packages (`dotnet pack -r win-x64`, etc.) install via `dotnet tool install --global --arch <rid>` instead. Named as a real choice, not assumed.
+
+### Phase 4 — Installed-tool round-trip check, wired into default CI (#110)
+The M13 completion gate — but unlike M11/M12's gates, deliberately *not* their gated-manual-runbook pattern. A `pixi run` task does a full pack → install → run (a trivial shell-stub workflow fixture, no live vendor, mirroring `RunCommandEndToEndTests` rather than `LiveClaudeRunSmokeTest`) → assert output → uninstall round trip, with no external dependency beyond the repo itself. Since nothing here needs real subscription auth (the reason M11/M12's gates are permanently human-run — CLAUDE.md's "Live-vendor smoke tests"), this check belongs in `ci.yml` directly, not a runbook — the phase's job is deciding that placement deliberately, not defaulting to the gated pattern out of habit. Also adds an "Installing `aer`" section to `README.md` documenting the end-user install/uninstall commands this phase proves work.
+
+**Produces:** M13 complete — `aer` installable via `dotnet tool install --global` on Windows, Linux, and macOS from a self-built, correctly versioned nupkg, with an unattended CI check proving install → run → uninstall.
+**Excludes:** publishing to nuget.org or any public feed; an OS-native installer (MSI/Homebrew formula); auto-update.
+
+---
+
 ## Current Milestone
 
 **M12: Full Control Surface** — phase plan above. Progress:
