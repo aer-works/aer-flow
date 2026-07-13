@@ -42,6 +42,13 @@ namespace Aer.Adapters;
 /// <c>agy</c>: the shell wrapper already exists here for <c>--add-dir</c>/prompt-path expansion, so
 /// redirecting is free insurance against the same class of stall Claude hit, not a proven necessity.
 /// </para>
+/// <para>
+/// <b>Windows tokens are never pre-quoted into one string</b> — identical fix and identical reason
+/// as <see cref="ClaudeWorkerAdapter"/>'s remarks: aer-core's Windows spawn (<c>Command::args</c>)
+/// quotes/escapes every <see cref="CoreDispatchTarget.Args"/> element itself, so one pre-quoted
+/// string here would be escaped a second time and corrupted before <c>cmd.exe</c> or <c>agy</c> ever
+/// saw a valid command, exactly as confirmed live for <c>claude</c>.
+/// </para>
 /// </remarks>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter
 {
@@ -57,19 +64,47 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter
         var permissionScope = invocation.PermissionScope ?? DefaultPermissionScope;
         var artifactsRoot = EnvironmentReference("AER_ARTIFACTS_ROOT", isWindows);
 
-        var commandLine = new StringBuilder("agy -p ")
-            .Append(Quote(prompt))
-            .Append(" --mode ").Append(Quote(EscapeUserContent(permissionScope, isWindows)))
-            .Append(" --add-dir ").Append(Quote(artifactsRoot));
+        return isWindows
+            ? ResolveWindows(prompt, permissionScope, artifactsRoot, invocation.Model)
+            : ResolveUnix(prompt, permissionScope, artifactsRoot, invocation.Model);
+    }
 
-        if (invocation.Model is not null)
+    private static CoreDispatchTarget ResolveWindows(
+        string prompt, string permissionScope, string artifactsRoot, string? model)
+    {
+        List<string> args =
+        [
+            "/c", "agy", "-p", prompt,
+            "--mode", EscapeUserContent(permissionScope, isWindows: true),
+            "--add-dir", artifactsRoot,
+        ];
+
+        if (model is not null)
         {
-            commandLine.Append(" --model ").Append(Quote(EscapeUserContent(invocation.Model, isWindows)));
+            args.Add("--model");
+            args.Add(EscapeUserContent(model, isWindows: true));
         }
 
-        return isWindows
-            ? new CoreDispatchTarget("cmd", ["/c", $"{commandLine} < NUL"])
-            : new CoreDispatchTarget("sh", ["-c", $"{commandLine} < /dev/null"]);
+        args.Add("<");
+        args.Add("NUL");
+
+        return new CoreDispatchTarget("cmd", args);
+    }
+
+    private static CoreDispatchTarget ResolveUnix(
+        string prompt, string permissionScope, string artifactsRoot, string? model)
+    {
+        var commandLine = new StringBuilder("agy -p ")
+            .Append(Quote(prompt))
+            .Append(" --mode ").Append(Quote(EscapeUserContent(permissionScope, isWindows: false)))
+            .Append(" --add-dir ").Append(Quote(artifactsRoot));
+
+        if (model is not null)
+        {
+            commandLine.Append(" --model ").Append(Quote(EscapeUserContent(model, isWindows: false)));
+        }
+
+        return new CoreDispatchTarget("sh", ["-c", $"{commandLine} < /dev/null"]);
     }
 
     /// <summary>
@@ -102,26 +137,34 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter
             }
         }
 
-        return prompt.ToString();
+        var built = prompt.ToString();
+
+        // cmd.exe's `/c` parser ends the current statement at an embedded newline even inside a
+        // quoted argument (unlike `sh -c`, whose quoting correctly spans lines) -- so a multi-line
+        // prompt would otherwise silently truncate the invocation, dropping --mode/--add-dir/
+        // --model and the output-path instructions that follow it. Collapsing to single-line here
+        // is Windows-only; Unix keeps the newlines for readability.
+        return isWindows ? built.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ') : built;
     }
 
     private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
 
     /// <summary>
     /// Defuses shell metacharacters in config-authored text (a prompt template, model name, or
-    /// permission scope) before it is embedded in the generated command line — identical to
+    /// permission scope) before it is embedded in the generated command — identical to
     /// <see cref="ClaudeWorkerAdapter"/>'s escaping, since the shell-wrapping mechanism (and
-    /// therefore what needs defusing) is the same regardless of vendor.
+    /// therefore what needs defusing) is the same regardless of vendor. On Windows only <c>%</c>
+    /// needs doubling; a literal quote/backtick/dollar/backslash does not (see
+    /// <see cref="ClaudeWorkerAdapter"/>'s remarks for why).
     /// </summary>
     private static string EscapeUserContent(string value, bool isWindows) => isWindows
-        ? value.Replace("%", "%%").Replace("\"", "\"\"")
+        ? value.Replace("%", "%%")
         : value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("`", "\\`").Replace("$", "\\$");
 
     /// <summary>
-    /// Wraps already-escaped content in double quotes for embedding as one shell argument.
-    /// <paramref name="value"/> must already be escaped (via <see cref="EscapeUserContent"/>) for
-    /// any config-authored portion it contains — this only adds the enclosing quotes, so it never
-    /// touches (and cannot break) a deliberately unescaped <c>AER_ARTIFACTS_ROOT</c>-style reference.
+    /// Wraps already-escaped content in double quotes for embedding as one shell argument in the
+    /// Unix <c>sh -c</c> command line, which <c>execve</c> passes through verbatim with no further
+    /// re-quoting. Windows never builds a command line this way (see <see cref="ResolveWindows"/>).
     /// </summary>
     private static string Quote(string value) => $"\"{value}\"";
 }
