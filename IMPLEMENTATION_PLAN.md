@@ -181,10 +181,15 @@ Decisions of record from M12:
   `pixi run smoke-mixed-vendor` task (filtered to just this test, same project as `smoke-claude`)
   and `docs/runbooks/live-mixed-vendor-smoke.md` (a new file, not a rewrite of
   `live-claude-smoke.md`, so M11's recorded run stays an unmodified historical record) round it
-  out. **Not yet recorded green**: unlike `claude`, no authenticated `agy` binary was reachable in
-  the environment this phase was implemented in, so the live dual-vendor run itself has not been
-  executed — the checklist above stays open until someone with both CLIs available runs `pixi run
-  smoke-mixed-vendor` and records the result per the runbook's closing section (Phase 4).
+  out. **Not yet recorded green, and not closeable by an agent session in general**: both adapters
+  deliberately shell out to whatever's already authenticated on the host rather than owning
+  key-handling code (CLAUDE.md's "Live-vendor smoke tests"), because the project's point is working
+  against real subscriptions, not API keys — there is no headless way to provision that from inside
+  a session, and this phase does not attempt one. `claude` happened to be authenticated in the
+  session that implemented this phase (a coincidence of that host, not a capability); `agy` was not,
+  so the live dual-vendor run itself has not been executed. The checklist above stays open until a
+  human runs `pixi run smoke-mixed-vendor` on a machine with both CLIs authenticated and records the
+  result per the runbook's closing section (Phase 4).
 
 ## Completed Milestones
 
