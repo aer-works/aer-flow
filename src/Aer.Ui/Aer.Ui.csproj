@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- M14 Phase 1 (#118): the UI track's stack decision, recorded here rather than in a design doc.
+       A plain .NET console project, in this repo/solution, referencing Aer.Flow directly — no web
+       host or desktop GUI framework. UI spec §13 treats desktop/web/TUI/IDE-integration as
+       behaviorally equivalent, so the deciding criterion is AER Overview §6 (no speculative
+       deployment story for a single-developer tool) plus §11's determinism guarantee, which a
+       console project consuming Aer.Flow's read model as a project reference inherits by
+       construction — the same seam Aer.Cli already proved for the write side. A web host would add
+       a hosting/deployment story nothing here demands yet; a desktop GUI framework would add a
+       platform-specific rendering toolchain for a phase whose own scope excludes "any styling worth
+       defending". Revisit only once a real requirement (not a hypothetical one) needs it, per
+       Overview §6. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Aer.Flow\Aer.Flow.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

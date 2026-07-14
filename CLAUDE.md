@@ -11,7 +11,8 @@ aer-flow/
 ├── src/
 │   ├── Aer.Flow/           The core execution engine and routing state machine
 │   ├── Aer.Adapters/       Vendor-specific adapters (Claude/Gemini)
-│   └── Aer.Cli/            Command-line interface
+│   ├── Aer.Cli/            Command-line interface
+│   └── Aer.Ui/             Read-only projection UI (console; consumes Aer.Flow's read model directly)
 ├── tests/                  Unit and integration tests
 ├── spec/                   Behavioral specs (source of truth)
 │   ├── aer-flow-behavioral-spec-v1.0.md

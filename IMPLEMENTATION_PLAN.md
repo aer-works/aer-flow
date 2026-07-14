@@ -127,8 +127,46 @@ The M14 completion gate: recorded task-directory fixtures (a completed run, a pa
 
 ## Current Milestone
 
-**M14: UI Projection** — phase plan above; phase issues #118–#122. No phase is in progress yet;
-Phase 1 (#118) is next. Per this document's session prompt: help implement the current phase only.
+**M14: UI Projection** — phase plan above. Progress:
+
+- ✅ Phase 1 — Stack decision + walking skeleton (#118)
+- ⬜ Phase 2 — Task & execution projection + change observation (#119)
+- ⬜ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
+- ⬜ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
+- ⬜ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
+
+Per this document's session prompt: help implement the current phase only.
+
+Decisions of record from M14:
+
+- **Stack: a plain .NET console project (`Aer.Ui`), in this repo/solution, referencing `Aer.Flow`
+  directly** — resolves both of Phase 1's named open questions at once. UI spec §13 treats
+  desktop/web/TUI/IDE-integration as behaviorally equivalent, so the deciding criterion is AER
+  Overview §6 (a single-developer tool, no speculative deployment story) plus §11's determinism
+  guarantee, which direct `Aer.Flow` library reuse inherits by construction — the same seam
+  `Aer.Cli` already proved for the write side. A web host would add a hosting/deployment story
+  nothing here demands; a desktop GUI framework would add a platform-specific rendering toolchain
+  for a phase whose own scope excludes "any styling worth defending." Revisit only once a real
+  requirement — not a hypothetical one — needs it (Phase 1).
+- **Repo/solution placement was never actually in question**: nothing about the stack choice above
+  needed a cross-language or cross-solution boundary, so Overview §7's default (this repo, this
+  solution) applies unchanged — `Aer.Ui.csproj`/`Aer.Ui.Tests.csproj` are new leaves in
+  `AerFlow.slnx`, not a new repo (Phase 1).
+- **Project name is `Aer.Ui`, not `Aer.Flow.Ui`**: the UI is architecturally outside the trusted
+  execution stack (UI spec §2) and must never be mistaken for part of Flow's own namespace, even
+  though it references `Aer.Flow` directly — `Aer.Cli` set the same flat-naming precedent (M7) for
+  a project that also only exists to drive `Aer.Flow` (Phase 1).
+- **The walking skeleton opens exactly one task directory it is told about, with no discovery
+  mechanism yet** — `Aer.Ui`'s own `TaskProjectionLoader.LoadAsync` takes a task-directory path
+  argument directly (`aer-ui <task-directory>`), consistent with UI spec §3.1 (#126): a task
+  directory is self-describing and confirmed by its contents (a persisted `snapshot.json`), not by
+  membership in any list. Any recents/roots list is Phase 2's concern, since minting one has nothing
+  to do with proving the seam (Phase 1).
+- **The renderer owns no formatting `Aer.Cli`'s `FlowStateReporter` already has** — `TaskStatusRenderer`
+  was written from scratch rather than shared, since sharing would mean `Aer.Ui` depending on
+  `Aer.Cli` (a write-path project) for a read-only rendering concern, which the UI spec's
+  architectural-position rule (§2) forecloses; the two happen to look similar because both are
+  minimal `StepId: Status` dumps, not because either reuses the other's code (Phase 1).
 
 ## Completed Milestones
 
