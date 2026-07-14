@@ -133,7 +133,7 @@ The M14 completion gate: recorded task-directory fixtures (a completed run, a pa
 - ✅ Phase 2 — Task & execution projection + change observation (#119)
 - ✅ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
 - ✅ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
-- ⬜ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
+- ✅ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
 
 Per this document's session prompt: help implement the current phase only.
 
@@ -347,6 +347,32 @@ Decisions of record from M14:
   wired to the field would silently do nothing if `LoadAsync` was called directly. Caught by a test
   that calls `LoadAsync` the same way `MainWindowDagTests` already does, then drives the rendered
   button's real `Click` event rather than calling `ShowArtifactPreviewAsync` directly (Phase 4).
+- **"Wired into default CI" means an ordinary `[Fact]` in `Aer.Ui.Tests`, with zero `ci.yml`
+  changes** — unlike M13 Phase 4 (a separate bash step in the `pack` job, since that check needed a
+  packaged tool to exist first), this gate only needs the projection code already in `Aer.Flow`/
+  `Aer.Ui`, so `pixi run test` — already run on all three OS matrix entries by the existing `test`
+  job — covers it for free (Phase 5).
+- **`GoldenProjectionCanonicalizer` tokenizes every runtime-minted ID (`ExecutionId`, `DecisionId`)
+  to a stable `"execution-N"`/`"decision-N"` string by first appearance in `Lineage.Executions`/
+  `History.Decisions`, and explicitly sorts only the fields backed by `Dictionary`/`HashSet`
+  (`UpstreamExecutionIds`, `AttemptsByStepId`, `CancellationRequestedExecutionIds`) — every
+  List-backed field (`Steps`, `Decisions`, `DagLayout.Nodes`/`Edges`, etc.) is left in its natural,
+  walk-order-derived order.** That natural order is itself the determinism property spec §11
+  requires and Phase 5 exists to check; re-sorting it would hide real ordering bugs instead of
+  catching them (Phase 5).
+- **A new `paused-run-workflow.json` fixture was authored from scratch for the paused-mid-decision
+  golden scenario, rather than reusing the existing `diamond-workflow-with-pause.json`.** That
+  fixture declares two steps (`a`, `b`) with the same `Worker` name but different declared
+  `Outputs` — safe as a raw, never-pumped template (its only prior use), but dispatch-unsafe once
+  pumped for real: sharing one `WorkerBinding` entry between steps with different output contracts
+  would make `OutcomeClassifier` check the wrong step's output file. The new fixture gives every
+  step a distinct worker name, matching the already-safe pattern in
+  `Aer.Flow.Tests/Fixtures/diamond-dag-workflow.json` (Phase 5).
+- **Golden files are bootstrapped and refreshed via an opt-in `AER_UPDATE_GOLDEN_FILES=1`
+  environment variable read by the test itself, never hand-authored.** Hand-writing expected JSON
+  for tokenized IDs and dictionary-sort order would be error-prone and self-fulfilling; the
+  regeneration path writes to the source-tree fixture path (resolved via `[CallerFilePath]`) so a
+  deliberate, reviewable diff is the only way a golden file changes (Phase 5).
 
 ## Completed Milestones
 
