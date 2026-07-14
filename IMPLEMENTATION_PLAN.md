@@ -131,7 +131,7 @@ The M14 completion gate: recorded task-directory fixtures (a completed run, a pa
 
 - ✅ Phase 1 — Stack decision + walking skeleton (#118)
 - ✅ Phase 2 — Task & execution projection + change observation (#119)
-- ⬜ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
+- ✅ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
 - ⬜ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
 - ⬜ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
 
@@ -263,6 +263,38 @@ Decisions of record from M14:
   repo-placement decision for right now; `Aer.Ui` stays on the shared root version like every other
   project until that tradeoff is worth it on its own terms, not as a side effect of chasing a
   release-please config workaround.
+- **`DagLayoutEngine.Layout` takes `IReadOnlyList<WorkflowStepDefinition>` directly — the shape both
+  `WorkflowDefinition` (a raw template) and `WorkflowDefinitionSnapshot` (a bound task) already
+  expose — rather than two overloads or a new shared wrapper type.** One graph view over both bound
+  tasks and raw templates (issue #120) falls out for free: the layout and rendering code never
+  branches on which kind of source it was handed, only the status overlay does (`null` for a
+  template, projected `FlowState` for a task) (Phase 3).
+- **Layering is longest-path-from-root ranking, columns assigned in declaration order within a
+  rank** — the simplest layout that reads correctly for the small, mostly-linear-with-occasional-fan
+  DAGs this project's own workflows are (three-to-a-handful of steps), against Overview §6's bias
+  against building a general graph-layout library (barycenter/Sugiyama crossing-minimization, etc.)
+  for a need that doesn't exist yet. Output order (both `DagLayout.Nodes` and `.Edges`) is derived
+  entirely by walking the input `steps` list and each step's own `DependsOn`/`SupersedeTargets` list
+  — never by `Dictionary`/`HashSet` enumeration order, which .NET does not guarantee stable — so the
+  layout is as deterministic as spec §11 requires, ready for Phase 5's golden-projection gate to
+  assert against directly (Phase 3).
+- **An ordinary `DependsOn` edge and a declared `PausePoint.SupersedeTargets` edge render distinctly
+  (solid vs. dashed)**, per the issue's explicit "PausePoints and their SupersedeTargets" scope — the
+  two mean different things and must not be visually conflated: one is an execution-order constraint
+  that has already held, the other a *possible future* decision that may never be taken (Phase 3).
+- **`TemplateProjectionLoader` is a new, separate loader — not a branch inside
+  `TaskProjectionLoader`.** A raw template file and a task directory are different durable-state
+  shapes (a single `WorkflowDefinition` JSON document vs. a directory containing a bound
+  `WorkflowDefinitionSnapshot` plus an Event Store); giving each its own loader keeps
+  `TaskProjectionLoader`'s existing contract (and its Phase 1/2 tests) untouched, the same
+  one-file-not-found-check-before-delegating shape as `TaskProjectionLoader` itself (Phase 3).
+- **`MainWindow.OpenAsync` dispatches on `File.Exists` vs. `Directory.Exists` of the given path,
+  rather than adding a second path box or a mode toggle** — Overview §6's bias against speculative
+  UI surface: a task directory and a template file are never ambiguous on disk, so the existing
+  single path-box-plus-Open-button pair already has enough information to route correctly. Opening a
+  template does not record to `LocalUiConfigurationStore` (that store is task-directory recents
+  specifically, per its Phase 2 decision of record) and does not start the live-refresh timer — a
+  template has no execution state to observe changing (Phase 3).
 
 ## Completed Milestones
 
