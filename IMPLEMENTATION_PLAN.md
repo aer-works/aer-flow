@@ -112,14 +112,54 @@ The M13 completion gate — but unlike M11/M12's gates, deliberately *not* their
 
 ## Current Milestone
 
-**M13: Distribution** — phase plan above. Progress:
+No milestone currently has an active phase plan. **M13: Distribution** is complete (see
+Completed Milestones below) — the Milestone Roadmap's only remaining unstarted capability is the
+UI track (#21, blocked only by M11, already satisfied). Starting it, or any new engine milestone,
+needs its own "docs: Define M14 phase plan"-style PR before implementation begins, per this
+document's own convention (`IMPLEMENTATION_PLAN.md`'s session prompt: "Help implement the current
+phase only").
+
+## Completed Milestones
+
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M13: Distribution** — turned `aer` from a checkout-only build into an installable
+`dotnet tool`: single-platform packing, version wiring from `release-please`, multi-RID
+native-lib bundling, and an unattended CI round-trip check proving install → run → uninstall
+works with no live vendor auth (`pixi run verify-pack`, `scripts/verify-pack-roundtrip.sh`).
 
 - ✅ Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
 - ✅ Phase 2 — Version wiring (release-please → package `Version`) (#108)
 - ✅ Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
-- ⬜ Phase 4 — Installed-tool round-trip check (wired into default CI) (#110)
+- ✅ Phase 4 — Installed-tool round-trip check (wired into default CI) (#110)
 
 Decisions of record from M13:
+
+- **The round-trip check's "no live vendor" requirement is met by stubbing the `claude` binary
+  itself, not by using a separate, unregistered test-only adapter.** `WorkerAdapterRegistry.Default`
+  — the exact registry the installed `aer` binary's `Program.cs` wires up — only ever resolves
+  `"claude"`/`"gemini"` bindings; the `"shell"` adapter `RunCommandEndToEndTests` uses is
+  `Aer.Cli.Tests`-internal and never reachable from a real installed tool. So
+  `scripts/verify-pack-roundtrip.sh` puts a trivial local script named `claude` ahead of any real
+  one on `PATH`; `ClaudeWorkerAdapter`'s shell-wrapped invocation finds and runs it like it would
+  the real CLI, and the stub satisfies the declared output contract by reading the real
+  `AER_OUTPUT_DIR` process environment variable directly (M7 Phase 6) rather than parsing the
+  prompt text — proving the packaged `aer_core` dispatch and adapter shell-wrapping work end to
+  end from the installed global tool, settling the step `Succeeded` rather than reusing Phases
+  1/3's `ExitCode:127`-on-missing-`claude` proof shape (Phase 4).
+- **The check is a plain bash script (`scripts/verify-pack-roundtrip.sh`) invoked by a new
+  `pixi run verify-pack` task, not a `dotnet test`.** Unlike `smoke-claude`/`smoke-mixed-vendor`
+  (real `dotnet test` projects, gated out of `AerFlow.slnx` because they need real subscription
+  auth), this check drives the literal end-user install/run/uninstall commands from
+  `README.md`'s new "Installing `aer`" section, so the script *is* the documentation, verified
+  (Phase 4).
+- **Wired into the existing CI `pack` job (`ubuntu-latest`), not a new job or a runbook.** The
+  phase's own named question — CI vs. a gated runbook, like M11/M12's pattern — resolves to CI
+  specifically because nothing here needs live vendor auth, matching the phase plan's stated
+  reasoning. It runs after "Pack aer (multi-RID)" in the same job, so it exercises the real
+  multi-RID nupkg the `test` matrix's three OS jobs just built (Phase 4).
 
 - **The native-lib packaging problem the phase plan flagged as "genuinely new" turned out to need
   no extra MSBuild plumbing at all.** `PackAsTool` packs from a *publish* output, not a plain build
@@ -190,12 +230,6 @@ Decisions of record from M13:
 - **`/artifacts/` is gitignored, not a tracked convention directory** — it exists only as a
   CI-job-to-CI-job (or locally, human-to-`dotnet pack`) hand-off point, populated fresh by
   `actions/download-artifact` before every `pack` job run, never committed content (Phase 3).
-
-## Completed Milestones
-
-Completed milestones keep only their phase checklist and any decisions of record later work
-still leans on. The full phase plans — goals, boundaries, and the open questions each phase
-resolved — live in this file's git history and in the linked issues.
 
 **M12: Full Control Surface** — the milestone that made the runnable library drivable: a second
 vendor (Gemini's `agy`) behind M11's unchanged protocol, and the mutation surface M9/M10 built

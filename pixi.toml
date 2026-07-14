@@ -39,3 +39,10 @@ smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["bu
 # both CLIs on PATH already logged in (or API keys configured) and outbound network access to both
 # vendors' APIs. See docs/runbooks/live-mixed-vendor-smoke.md before running this.
 smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveMixedVendorPausedRunSmokeTest", depends-on = ["build-core"] }
+
+# M13 Phase 4 (#110), the milestone's completion gate: unlike smoke-claude/smoke-mixed-vendor
+# above, this needs no live vendor auth, so it runs unattended in default CI rather than a gated
+# runbook. Packs `aer`, installs it as a real global tool from that local nupkg, runs it against a
+# one-step workflow whose `claude` adapter is satisfied by a local stub binary (no network), asserts
+# the declared output landed on disk, then uninstalls -- see scripts/verify-pack-roundtrip.sh.
+verify-pack = { cmd = "bash scripts/verify-pack-roundtrip.sh", depends-on = ["pack"] }

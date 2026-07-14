@@ -138,3 +138,9 @@ jobs:
         with:
           name: aer-nupkg
           path: bin/pack/*.nupkg
+
+      # M13 Phase 4 (#110), the milestone's completion gate: unattended, since (unlike
+      # smoke-claude/smoke-mixed-vendor) it needs no live vendor auth -- install → run against a
+      # locally-stubbed claude binary → assert the declared output landed on disk → uninstall.
+      - name: Verify installed-tool round trip
+        run: pixi run verify-pack
