@@ -10,7 +10,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # M13 Phase 3 (#109): macos-latest joins the matrix so pixi.toml's declared osx-arm64
+        # support actually builds somewhere — cross-compiling aer_core to aarch64-apple-darwin from
+        # the ubuntu-latest runner isn't practical without Apple's SDK. rid/lib-name key each OS's
+        # native-lib artifact for the pack job below to gather.
+        include:
+          - os: windows-latest
+            rid: win-x64
+            lib-name: aer_core.dll
+          - os: ubuntu-latest
+            rid: linux-x64
+            lib-name: libaer_core.so
+          - os: macos-latest
+            rid: osx-arm64
+            lib-name: libaer_core.dylib
     runs-on: ${{ matrix.os }}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
@@ -59,3 +72,69 @@ jobs:
       - name: Shutdown dotnet build server
         run: pixi run dotnet build-server shutdown
         if: always()
+
+      # M13 Phase 3 (#109): each OS's own cargo build output (already produced above as a
+      # dependency of lint/test) becomes this platform's contribution to the fat multi-RID
+      # package the pack job below assembles.
+      - name: Upload native library artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-lib-${{ matrix.rid }}
+          path: external/aer-core/target/debug/${{ matrix.lib-name }}
+          if-no-files-found: error
+
+  # M13 Phase 3 (#109): gathers the native libs the test matrix above built on all three OSes into
+  # one fat nupkg — the same install command (`dotnet tool install --global aer`) then works
+  # regardless of host OS. Runs after `test` so it only packs libraries that already passed lint
+  # and test on their own platform.
+  pack:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: external/aer-core
+
+      - uses: prefix-dev/setup-pixi@v0.8.0
+        with:
+          run-install: false
+          cache: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      # This job's own host (Linux) is folded in automatically by `pixi run pack`'s build-core
+      # dependency + Aer.Core.csproj's existing build-time copy (M7 Phase 6) — only the other two
+      # platforms' pre-built binaries need fetching into the artifacts/native-libs/<rid>/
+      # convention Aer.Cli.csproj's Phase 3 items read from.
+      - name: Download Windows native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-lib-win-x64
+          path: artifacts/native-libs/win-x64
+
+      - name: Download macOS native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-lib-osx-arm64
+          path: artifacts/native-libs/osx-arm64
+
+      - name: Pack aer (multi-RID)
+        run: pixi run pack
+
+      - name: Upload packed nupkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: aer-nupkg
+          path: bin/pack/*.nupkg
