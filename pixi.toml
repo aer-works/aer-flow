@@ -19,6 +19,12 @@ fmt = "dotnet format"
 fmt-check = "dotnet format --verify-no-changes"
 lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }
 
+# M13 Phase 1 (#107): packs Aer.Cli as an installable global dotnet tool (nupkg), embedding the
+# native aer_core library for the current host OS. Not part of `build`/`test`/`lint` — packing
+# isn't needed for everyday development, only for the install round trip this phase's runbook-style
+# verification exercises (`dotnet tool install --global --add-source bin/pack <PackageId>`).
+pack = { cmd = "dotnet pack src/Aer.Cli/Aer.Cli.csproj -o bin/pack", depends-on = ["build-core"] }
+
 # M11 Phase 4 (#87), the milestone's completion gate: a real draft → review workflow run through
 # `aer run` against the real, authenticated `claude` CLI, never `pixi run test`'s stub/shell-stub
 # path, and never invoked from CI. Requires a `claude` CLI on PATH already logged in (or an API

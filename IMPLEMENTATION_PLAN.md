@@ -60,58 +60,6 @@ M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for 
 
 ---
 
-## M12: Full Control Surface — Phase Plan
-
-**Goal:** make the runnable library *drivable*: a second vendor (Gemini's `agy`) behind the M11 protocol unchanged, and the mutation surface M9/M10 built — external decisions (§17) and cancellation (§9) — exposed as `aer decide` / `aer cancel` (§14; UI spec §7), proven by a live mixed-vendor paused run decided from the terminal (§18.1). M11 made the library runnable but left the control surface start-only: `Program.cs` dispatches exactly one subcommand, and even Ctrl+C reaches nothing — the pump gets a default cancellation token, so the in-flight cancellation surface M10 Phase 2 built is still un-wired to any CLI. After M12, every user action the UI spec enumerates (§7) exists as a CLI command; the eventual UI becomes a renderer over a control surface that already works.
-
-Three facts shape the plan. First, **nothing here changes the engine.** `RecordDecisionAsync` and `RequestCancellationAsync` have existed and been tested at the `MutationInterface` layer since M9/M10, and the adapter seam was designed (M11 Phase 1) so a second vendor is one class plus a registry entry. M12 is edges: one adapter, the CLI wiring, and the pause-aware output a terminal user needs to know which `ExecutionId` to decide on. Second, **the second vendor's quirks are already recorded.** Spike #21: `agy` needs three accommodations — `--mode accept-edits` (its permission flag; no shared vocabulary with Claude's `--allowedTools`), `--add-dir` grants for every directory it touches (it ignores the invoking process's cwd entirely, working from its own scratch dir), and absolute paths in the prompt text. The third is already solved by the M11 mechanism (shell-expanded `$AER_INPUT_<n>`/`$AER_OUTPUT_DIR` references in the wrapped command); the second raises the milestone's one genuinely open mechanism question — input-directory grants (Phase 1). Third, **the cancellation surface splits in two by construction**: §15's guard is held for a mutation call's whole duration (M10's decision of record), so a separate `aer cancel` process can never reach an execution a live pump has in flight — live delivery is Ctrl+C on the pump's own host, while `aer cancel` serves idle tasks (crashed-pump orphans, pending non-process executions). The plan wires both paths instead of pretending one command covers them.
-
-### Phase dependency table
-
-| Phase | Requires output from |
-|---|---|
-| 1 — Gemini worker adapter (headless `agy` CLI) | — (implements M11 Phase 1's seam, unchanged) |
-| 2 — `aer cancel` + Ctrl+C host-stop wiring | — (exposes M10's mutation surface; establishes the mutation-command CLI plumbing) |
-| 3 — `aer decide` + supplementary artifact recording | 2 (the plumbing it extends) |
-| 4 — Live mixed-vendor paused run (gated end-to-end) | 1 + 3 |
-
-Phases 1 and 2 are deliberately independent — either can land first. The adapter goes first among equals because it holds the milestone's only external unknown; the CLI phases are wiring over an engine surface tested since M9/M10.
-
-### Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
-The second real adapter — and the test of M11 Phase 1's claim that adding a vendor changes no engine or protocol code. `GeminiWorkerAdapter` builds the `CoreDispatchTarget` for a headless `agy` invocation honoring the facts spike #21 recorded (read them first): Gemini's scoped-permission flag is `--mode accept-edits` (coarser than Claude's per-tool `--allowedTools` — further proof `PermissionScope` must stay an opaque, adapter-interpreted string), and `agy` ignores the invoking process's cwd, so every directory it touches needs an `--add-dir` grant and every path must reach the prompt as an absolute path. The absolute-path half is already solved by the M11 shell-wrap mechanism: config-authored text escaped, live `$AER_INPUT_<n>`/`$AER_OUTPUT_DIR` references left for the shell to expand into real per-execution paths at spawn time, before `agy` ever sees the prompt. #21's other finding — `agy` returning exit 0 having written nothing — is not a special case: `ContractValidator` already reads a missing declared output as a retryable contract failure (§8 → §10), exactly as M11 Phase 2 framed it for Claude.
-
-**Produces:** the constructed command / args / prompt asserted by unit tests mirroring `ClaudeWorkerAdapterTests`; the adapter registered in `WorkerAdapterRegistry.Default`. No live API call in CI (Phase 4's gate).
-**Excludes:** the CLI mutation commands (Phases 2–3); live runs (Phase 4).
-**Open questions resolved in this phase:**
-- **How input directories are granted.** A step's inputs live in sibling `artifacts/execution_{N}/` directories of *upstream* executions, outside `$AER_OUTPUT_DIR`, so `--add-dir "$AER_OUTPUT_DIR"` alone cannot cover reads. Candidates: per-input `--add-dir` grants derived in the shell wrapper (`dirname`-style — needs a Windows answer), or a vendor-neutral per-dispatch environment variable for the task's artifacts root (an `ArtifactManager` addition — vendor-neutral, so no isolation violation). Whichever wins must stay per-dispatch-dynamic through the same env-expansion route, since `IWorkerAdapter.Resolve` runs once per binding, never per execution.
-- **The registry key** (`"gemini"` — the vendor, as `"claude"` is — vs. the binary name `"agy"`), and whether `agy` also gets the stdin redirect (#21 recorded no stall for it; the shell wrapper is there either way).
-
-### Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
-§9's cancellation surface exposed on the CLI, split along M10's decision of record. `aer cancel <task-dir> --execution <id> --bindings <config>` calls `MutationInterface.RequestCancellationAsync`: intent recorded first (`CancellationRequested` fsync'd before anything is signalled), and a request against an already-terminal execution reported as §9 step 4's recorded too-late no-op — success, not an error. The command is itself a pump: after recording, it drives project → resolve → dispatch → await to a fixed point like every mutation entry point (§21), which is why it requires bindings at all. And because §15's guard blocks a second process for a live pump's whole call, in-flight delivery is wired where M10 put it: `Console.CancelKeyPress` on the `aer run` host feeds the ambient token, whose firing records `CancellationRequested` for everything in flight before signalling any of it. This phase also establishes the mutation-command plumbing Phase 3 extends: `Program.cs` subcommand dispatch, positional task dir, snapshot loaded from the task dir's existing `snapshot.json` (typed error when absent — a mutation command never binds fresh, per §11.2), the same `CliArgumentException` parser conventions and single `AerFlowException` boundary as `aer run`.
-
-**Produces:** `aer cancel` end-to-end against idle tasks, and Ctrl+C stopping a live run — both CI-safe through shell-stub adapters, mirroring `RunCommandEndToEndTests`; engine cancellation semantics stay proven at the `MutationInterface` layer (M10), not re-proven.
-**Excludes:** `aer decide` (Phase 3); live vendors (Phase 4).
-**Open questions resolved in this phase:**
-- **What cancel-blocked-by-live-pump looks like.** `WorkflowLockedException` surfacing with a message that names the resolution (Ctrl+C on the running pump) rather than a bare "locked" — the split is by construction, so the CLI should teach it.
-- **Exit-code vocabulary for mutation commands** — `aer run`'s 0/1/64 convention generalized to commands whose outcome is a recorded mutation plus a resulting state (including "recorded, but too late").
-
-### Phase 3 — `aer decide` + supplementary artifact recording (#97)
-UI spec §7's reference mapping made real on Phase 2's plumbing: `aer decide <task-dir> --execution <referenced-id> --type resume|reject|retry-with-revision|supersede [--target-step <step>] [--supplementary <execution-id>] --bindings <config>` → `MutationInterface.RecordDecisionAsync`. The vocabulary is §17.2's closed set, exposed exactly — no additions, no interpretation (UI spec §6 binds any client, a terminal included); every validity rule stays `ExternalDecisionValidator`'s. Recording a decision resumes the workflow — `ExternalDecisionRecorded` + `WorkflowResumed`, then the pump to a fixed point — so the command blocks like `aer run` and reports the same way. Alongside it, pause-aware reporting: `aer run`/`aer decide` output surfaces paused executions with their `ExecutionId`s, paused outcomes, and declared `SupersedeTargets`, without which a terminal user cannot know what to pass to `--execution`/`--target-step`.
-
-**Produces:** all four decision types driveable from the terminal, CI-safe end-to-end (pause → decide → fixed point, including the supply → decide-`Supersede` round trip), mirroring `RunCommandEndToEndTests`; decision semantics stay proven at the `MutationInterface` layer (M9), not re-proven.
-**Excludes:** live vendors (Phase 4).
-**Open questions resolved in this phase:**
-- **How a terminal user records the §17.3 supplementary artifact** that `Supersede` requires and `RetryWithRevision` optionally takes. `RecordSupplementaryExecutionAsync` has existed since M9 but is reachable from no CLI. The phase decides the surface — e.g. an `aer supply`-style subcommand that mints the step-less execution, reports (or directly populates) the assigned output path, and prints the `ExecutionId` to hand to `aer decide` — and how the non-process `human` binding is constructed: directly by the CLI, per M11's decision of record that worker-binding configs only ever produce `Process` bindings.
-- **Whether `--execution` may be inferred** when exactly one pause is outstanding, or stays always-explicit (determinism and scriptability favor explicit; the pause-aware output makes explicit cheap).
-
-### Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
-The M12 completion gate, following M11 Phase 4's pattern exactly. A real draft (Claude) → review (Gemini/`agy`) workflow — §18.1's composition case, the original goal the project was built for — run live through `aer run`, pausing at a declared `PausePoint` on the review step, resumed by a real `aer decide` from a terminal, driving to terminal success with real artifacts from both vendors on disk. Lives in `Aer.Cli.SmokeTests` (outside `AerFlow.slnx` — default CI never sees it) behind a key-gated `pixi run` smoke task alongside `smoke-claude`, with the runbook extended to cover both vendors' prerequisites and triage. Asserts output existence and non-blankness only, never exact worker text.
-
-**Produces:** M12 complete — the full control surface is real: two vendors behind one unchanged protocol, a paused live run decided from the terminal.
-**Excludes:** distribution/packaging (M13); the UI (v0.7 spec, separate track).
-
----
-
 ## M13: Distribution — Phase Plan
 
 **Goal:** turn `aer` from something you `dotnet build` out of a checkout into something installable — `dotnet tool install --global` on Windows, Linux, and macOS, from a self-built, correctly versioned package (capability #20; `spec/AER Overview.md` §6). Not blocked by M12: the Milestone Roadmap has always listed M13 as blocked by M11 only — it is a parallel track, not a sequel, and M12's own remaining gate (#98) is now a permanently human-run step (CLAUDE.md's "Live-vendor smoke tests") with no bearing on packaging work.
@@ -164,7 +112,51 @@ The M13 completion gate — but unlike M11/M12's gates, deliberately *not* their
 
 ## Current Milestone
 
-**M12: Full Control Surface** — phase plan above. Progress:
+**M13: Distribution** — phase plan above. Progress:
+
+- ✅ Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
+- ⬜ Phase 2 — Version wiring (release-please → package `Version`) (#108)
+- ⬜ Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
+- ⬜ Phase 4 — Installed-tool round-trip check (wired into default CI) (#110)
+
+Decisions of record from M13:
+
+- **The native-lib packaging problem the phase plan flagged as "genuinely new" turned out to need
+  no extra MSBuild plumbing at all.** `PackAsTool` packs from a *publish* output, not a plain build
+  output — and `dotnet publish` already folds in every referenced project's
+  `Content`/`CopyToOutputDirectory` items, including `Aer.Core.csproj`'s existing `aer_core` copy
+  (M7 Phase 6), landing it at `tools/$(TargetFramework)/any/` next to the managed DLLs for free.
+  An explicit `<None Pack="true" PackagePath="tools/...">` item was tried first and produced NuGet
+  warning NU5118 ("file already added") — removed once inspecting the nupkg's contents confirmed
+  the automatic inclusion already puts the native library exactly where P/Invoke probing looks for
+  it. `Aer.Cli.csproj` therefore only needed `PackAsTool`/`ToolCommandName`/`PackageId` (Phase 1).
+- **`PackageId`/`ToolCommandName` are both `aer`** — no public feed exists to collide with (AER
+  Overview §6), so this is the simplest local-convenience choice, not a namespace decision (Phase 1).
+- **The round trip was verified for real, offline, without a live vendor call**: `dotnet pack` →
+  `dotnet tool install --global --add-source <dir> aer` → `aer run` against a one-step
+  `draft`/`claude`-adapter workflow with `claude` deliberately absent from `PATH` → `dotnet tool
+  uninstall --global aer`. The stripped `PATH` makes the shell-wrapped `claude` invocation fail
+  fast (`sh: 1: claude: not found`, exit 127) instead of reaching the network, while still driving
+  a real OS process through the real, packaged `aer_core` native library end to end — confirmed via
+  `flow.jsonl`'s `executionStarted`/`executionExited` pair carrying a real `Pid` and `ExitCode:127`.
+  This proves exactly what Phase 1 needs to prove (the native lib resolves and P/Invoke dispatch
+  works from the installed global tool) without redoing M11/M12's already-proven live-engine
+  behavior or touching the "Live-vendor smoke tests" gate CLAUDE.md reserves for a human (Phase 1).
+- **`pixi run pack`** (`dotnet pack src/Aer.Cli/Aer.Cli.csproj -o bin/pack`) is its own task,
+  deliberately not folded into `build`/`test`/`lint` — packing isn't part of everyday development,
+  only the install round trip this phase's verification exercises and Phase 4's future CI check
+  will automate (Phase 1).
+
+## Completed Milestones
+
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M12: Full Control Surface** — the milestone that made the runnable library drivable: a second
+vendor (Gemini's `agy`) behind M11's unchanged protocol, and the mutation surface M9/M10 built
+exposed as `aer decide`/`aer cancel`, proven by a live mixed-vendor paused run decided from the
+terminal (`docs/runbooks/live-mixed-vendor-smoke.md`).
 
 - ✅ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
 - ✅ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
@@ -237,12 +229,6 @@ Decisions of record from M12:
   which aer-core's Windows spawn re-quoted and corrupted a second time — fixed by passing each token
   as its own `Args` element on Windows instead (see `live-mixed-vendor-smoke.md`'s recorded-run
   entry). With that fix, `pixi run smoke-mixed-vendor` ran to completion end to end.
-
-## Completed Milestones
-
-Completed milestones keep only their phase checklist and any decisions of record later work
-still leans on. The full phase plans — goals, boundaries, and the open questions each phase
-resolved — live in this file's git history and in the linked issues.
 
 **M11: First Real Run** — the milestone that made the library runnable: the canonical
 worker-invocation protocol and adapter seam, the Claude adapter, the `aer run` pump, and a
