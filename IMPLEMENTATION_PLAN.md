@@ -248,6 +248,23 @@ Decisions of record from M14:
   is observed at all** — production code never reads it. The alternative (asserting on real
   elapsed-time timer ticks) would reintroduce exactly the dispatcher-pumping flakiness Phase 1's
   `LoadAsync`-is-public-and-awaitable decision was designed to avoid (Phase 2).
+- **`Aer.Ui` was pulled out of the repo's single shared release version into its own
+  release-please package (`"src/Aer.Ui"`, component `aer-ui`, manifest-seeded at `0.0.0`), a
+  follow-up to Phase 2 rather than part of it.** Every other project (`Aer.Flow`/`Aer.Cli`/
+  `Aer.Adapters`) keeps riding the root `"."` package's shared `Directory.Build.props` `<Version>`,
+  the same single-release-train convention M13 established — the deciding difference for `Aer.Ui`
+  is that UI spec §2 already places it architecturally outside the trusted execution stack, and
+  unlike `Aer.Cli` (which M13 actually packs and ships as the `aer` dotnet tool under that shared
+  version), nothing about `Aer.Ui`'s version needs to track the engine's. This is a narrower,
+  same-repo analogue of why `aer-core` versions independently (CLAUDE.md, AER Overview §6) — the
+  reason there is a cross-language repo boundary, which `Aer.Ui` does not have, so the mechanism
+  here is a second release-please package, not a second repo. `src/Aer.Ui/Directory.Build.props`
+  (new) imports the root `Directory.Build.props` first — for `IncludeSourceRevisionInInformationalVersion`
+  and any other repo-wide MSBuild setting — then overrides just `<Version>`, so `release-please-config.json`'s
+  new package can target it with the same `extra-files` XML-xpath mechanism the root package already
+  uses. The root `"."` package gained `"exclude-paths": ["src/Aer.Ui", "tests/Aer.Ui.Tests"]` —
+  without it, `"."`'s path (the whole repo) is a prefix of `src/Aer.Ui`, so a UI-only commit would
+  still count toward the root package's changelog/bump and defeat the split entirely.
 
 ## Completed Milestones
 

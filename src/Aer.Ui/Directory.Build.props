@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- Aer.Ui versions independently from the rest of the repo: its own release-please package
+       ("src/Aer.Ui", component "aer-ui", starting at 0.0.0 pre-first-release) rather than riding
+       the root package's shared <Version>. Unlike aer-core (a genuinely separate repo/language
+       boundary), Aer.Ui stays in this repo/solution (UI spec §2: architecturally outside the
+       trusted execution stack, but not a cross-language boundary) — so independent versioning
+       needs its own Directory.Build.props, not a separate repo's own version file. Imports the
+       root Directory.Build.props first (IncludeSourceRevisionInInformationalVersion and any other
+       repo-wide MSBuild settings), then overrides Version — the one property this project does not
+       share with the rest of the repo. release-please-config.json's "src/Aer.Ui" package targets
+       this file's Version the same way the root package targets the root file's. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <Version>0.0.0</Version>
+  </PropertyGroup>
+
+</Project>
