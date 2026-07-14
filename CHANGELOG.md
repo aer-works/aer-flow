@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.9.0](https://github.com/aer-works/aer-flow/compare/v0.8.0...v0.9.0) (2026-07-14)
+
+
+### Features
+
+* **ui:** M14 Phase 1 — Stack decision + walking skeleton ([#127](https://github.com/aer-works/aer-flow/issues/127)) ([5974df4](https://github.com/aer-works/aer-flow/commit/5974df4e68fde19a0c8029d8aec7771380be9e8f))
+* **ui:** M14 Phase 2 — Task & execution projection + change observation ([#128](https://github.com/aer-works/aer-flow/issues/128)) ([d242321](https://github.com/aer-works/aer-flow/commit/d242321320e291f9e96eba56918765c22f5c2934))
+
+
+### Bug Fixes
+
+* **release:** Seed aer-ui manifest at 0.0.1, not 0.0.0 ([#130](https://github.com/aer-works/aer-flow/issues/130)) ([d8aef7a](https://github.com/aer-works/aer-flow/commit/d8aef7ae891247a13e02aa30e2e086aab188a592))
+
+
+### Documentation
+
+* Define the M14 (UI Projection) phase plan ([#123](https://github.com/aer-works/aer-flow/issues/123)) ([b6469ed](https://github.com/aer-works/aer-flow/commit/b6469ede34547ce77bc3781bd7333b1b3047a5b9))
+* **spec:** Define task-directory discovery (UI spec v0.8) ([#126](https://github.com/aer-works/aer-flow/issues/126)) ([b023d32](https://github.com/aer-works/aer-flow/commit/b023d325a7dc2fe48279c616e1e70ace87bf1324))
+
+
+### Miscellaneous
+
+* **release:** Version aer-ui as its own release-please package ([#129](https://github.com/aer-works/aer-flow/issues/129)) ([2cb929c](https://github.com/aer-works/aer-flow/commit/2cb929ccebe030439ac1f4d6557dab217d34d30a))
+
 ## [0.8.0](https://github.com/aer-works/aer-flow/compare/v0.7.0...v0.8.0) (2026-07-14)
 
 

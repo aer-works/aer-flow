@@ -10,10 +10,10 @@
        repo-wide MSBuild settings), then overrides Version — the one property this project does not
        share with the rest of the repo. release-please-config.json's "src/Aer.Ui" package targets
        this file's Version the same way the root package targets the root file's. -->
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"/>
 
   <PropertyGroup>
-    <Version>0.0.0</Version>
+    <Version>0.1.0</Version>
   </PropertyGroup>
 
 </Project>
