@@ -115,7 +115,7 @@ The M13 completion gate — but unlike M11/M12's gates, deliberately *not* their
 **M13: Distribution** — phase plan above. Progress:
 
 - ✅ Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
-- ⬜ Phase 2 — Version wiring (release-please → package `Version`) (#108)
+- ✅ Phase 2 — Version wiring (release-please → package `Version`) (#108)
 - ⬜ Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
 - ⬜ Phase 4 — Installed-tool round-trip check (wired into default CI) (#110)
 
@@ -146,6 +146,22 @@ Decisions of record from M13:
   deliberately not folded into `build`/`test`/`lint` — packing isn't part of everyday development,
   only the install round trip this phase's verification exercises and Phase 4's future CI check
   will automate (Phase 1).
+- **The version's single source of truth is a root `Directory.Build.props` `<Version>`, not a
+  CI-only pack-time `-p:Version=` override.** `release-please-config.json`'s `.` package gained an
+  `extra-files` entry (`type: "xml"`, `xpath: "/Project/PropertyGroup/Version"`) that bumps it
+  directly on every release PR merge, the same mechanism that already bumps
+  `.release-please-manifest.json`/`CHANGELOG.md` — visible to every local `dotnet build`, not just
+  a CI pack step, per the phase plan's stated preference for the option with wider visibility
+  (Phase 2).
+- **`IncludeSourceRevisionInInformationalVersion` is explicitly `false`.** The SDK's default behavior
+  appends `+<git-sha>` to `AssemblyInformationalVersion`, which would make the packed tool's version
+  output (`0.7.0+<sha>`) never equal `CHANGELOG.md`'s plain `0.7.0` entry — caught by the phase's own
+  round-trip test failing on the first attempt, not anticipated up front (Phase 2).
+- **`aer --version` is handled directly in `Program.cs`, ahead of the `knownSubcommands` dispatch,
+  not as a fifth subcommand.** It takes no options, touches no task directory or bindings file, and
+  returns before any of the mutation-surface machinery every other command goes through; `VersionInfo.GetVersion`
+  (a one-line `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()` read, `Aer.Cli`)
+  is the only piece worth unit-testing on its own (Phase 2).
 
 ## Completed Milestones
 
