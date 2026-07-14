@@ -1,23 +1,15 @@
-using Aer.Flow;
-using Aer.Ui;
+using Avalonia;
 
-if (args.Length != 1)
-{
-    Console.Error.WriteLine("Usage: aer-ui <task-directory>");
-    return 64;
-}
+namespace Aer.Ui;
 
-try
+internal static class Program
 {
-    var projection = await TaskProjectionLoader.LoadAsync(args[0]).ConfigureAwait(false);
-    TaskStatusRenderer.Render(Console.Out, projection);
-    return 0;
-}
-catch (AerFlowException ex)
-{
-    // Mirrors Aer.Cli's Program.cs boundary: every domain-level read failure — an invalid task
-    // directory, a malformed snapshot, a malformed event log — surfaces as a clean message here
-    // instead of a raw stack trace, per CLAUDE.md's error-handling rules.
-    Console.Error.WriteLine(ex.Message);
-    return 1;
+    [STAThread]
+    public static void Main(string[] args) => BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+
+    /// <summary>Exposed as a static entry point, not inlined into <see cref="Main"/>, so the Avalonia previewer can find it — the standard template shape.</summary>
+    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
+        .UsePlatformDetect()
+        .WithInterFont()
+        .LogToTrace();
 }

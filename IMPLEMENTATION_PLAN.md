@@ -139,15 +139,19 @@ Per this document's session prompt: help implement the current phase only.
 
 Decisions of record from M14:
 
-- **Stack: a plain .NET console project (`Aer.Ui`), in this repo/solution, referencing `Aer.Flow`
-  directly** — resolves both of Phase 1's named open questions at once. UI spec §13 treats
-  desktop/web/TUI/IDE-integration as behaviorally equivalent, so the deciding criterion is AER
-  Overview §6 (a single-developer tool, no speculative deployment story) plus §11's determinism
-  guarantee, which direct `Aer.Flow` library reuse inherits by construction — the same seam
-  `Aer.Cli` already proved for the write side. A web host would add a hosting/deployment story
-  nothing here demands; a desktop GUI framework would add a platform-specific rendering toolchain
-  for a phase whose own scope excludes "any styling worth defending." Revisit only once a real
-  requirement — not a hypothetical one — needs it (Phase 1).
+- **Stack: Avalonia (a cross-platform, native .NET desktop UI framework), in this repo/solution,
+  referencing `Aer.Flow` directly** — resolves both of Phase 1's named open questions at once. UI
+  spec §13 treats desktop/web/TUI/IDE-integration as behaviorally equivalent, so the deciding
+  criteria are AER Overview §6 (a single-developer tool: "run the exe" is a desktop app's whole
+  deployment story, no server/browser/hosting layer) and §11's determinism guarantee, which direct
+  in-process `Aer.Flow` library reuse inherits by construction — the same seam `Aer.Cli` already
+  proved for the write side. Avalonia specifically, over WPF/MAUI, because it is genuinely
+  cross-platform (matching the existing win/linux/mac CI matrix) and renders real vector graphics —
+  what Phase 3's DAG view and Phase 4's artifact/diff views actually want, not a text
+  approximation. An initial plain-console-app version of this decision was reopened and replaced
+  with this one before the phase shipped, once it was clear "any styling worth defending" (this
+  phase's own exclusion) had been read as license to defer the real stack question rather than
+  answer it (Phase 1).
 - **Repo/solution placement was never actually in question**: nothing about the stack choice above
   needed a cross-language or cross-solution boundary, so Overview §7's default (this repo, this
   solution) applies unchanged — `Aer.Ui.csproj`/`Aer.Ui.Tests.csproj` are new leaves in
@@ -158,15 +162,33 @@ Decisions of record from M14:
   a project that also only exists to drive `Aer.Flow` (Phase 1).
 - **The walking skeleton opens exactly one task directory it is told about, with no discovery
   mechanism yet** — `Aer.Ui`'s own `TaskProjectionLoader.LoadAsync` takes a task-directory path
-  argument directly (`aer-ui <task-directory>`), consistent with UI spec §3.1 (#126): a task
+  argument directly (the app's single launch argument), consistent with UI spec §3.1 (#126): a task
   directory is self-describing and confirmed by its contents (a persisted `snapshot.json`), not by
-  membership in any list. Any recents/roots list is Phase 2's concern, since minting one has nothing
-  to do with proving the seam (Phase 1).
-- **The renderer owns no formatting `Aer.Cli`'s `FlowStateReporter` already has** — `TaskStatusRenderer`
-  was written from scratch rather than shared, since sharing would mean `Aer.Ui` depending on
-  `Aer.Cli` (a write-path project) for a read-only rendering concern, which the UI spec's
-  architectural-position rule (§2) forecloses; the two happen to look similar because both are
-  minimal `StepId: Status` dumps, not because either reuses the other's code (Phase 1).
+  membership in any list. Any recents/roots list, and any actual folder-picker UI, is Phase 2's
+  concern, since minting one has nothing to do with proving the seam (Phase 1).
+- **`MainWindow` renders directly against named controls in code-behind, with no ViewModel or
+  data-binding layer** — `LoadAsync` sets `TextBlock`/`StackPanel` contents itself, the simplest
+  thing that could render `TaskProjection`, matching this phase's explicit exclusion of "any
+  styling worth defending." An MVVM layer is exactly the kind of abstraction CLAUDE.md's guidance
+  says not to build ahead of a second concrete need for it (M15's interactive control surface, or
+  Phase 3's graph view, may well introduce one) (Phase 1).
+- **`MainWindow.LoadAsync` is public and directly awaitable, not fired from the constructor or a
+  `Loaded` event** — the only way a test can drive it deterministically (await it, then assert on
+  the now-populated controls) without pumping the dispatcher on a timer or racing a background
+  task (Phase 1).
+- **A failed load (an invalid task directory, a malformed snapshot or event log) renders as an
+  in-window message, not a crash or an `Aer.Cli`-style stderr-plus-exit-code failure** — a GUI app
+  has no console/exit-code convention to fail into the way `Aer.Cli`'s `Program.cs` boundary does;
+  `MainWindow.LoadAsync` catches `AerFlowException` itself and writes the message into the status
+  text block (Phase 1).
+- **UI tests drive the real `Aer.Ui.App`/`MainWindow` through `Avalonia.Headless`/
+  `Avalonia.Headless.XUnit`**, not a plain-text stand-in renderer — proving the phase's "renders
+  that task's per-step statuses" claim against actual rendered controls (`FindControl<TextBlock>`),
+  offscreen and without a display server, which is what makes it safe to run unattended on all
+  three CI OSes. This forced `Aer.Ui.Tests` onto xunit v3 (`Avalonia.Headless.XUnit`'s `[AvaloniaFact]`
+  is a v3-only attribute, incompatible with the xunit v2 packages every other test project in this
+  repo uses) — an isolated exception, confined to this one project, for a genuinely different
+  concern (headless UI testing) no other project has (Phase 1).
 
 ## Completed Milestones
 

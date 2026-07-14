@@ -4,28 +4,24 @@ using Aer.Flow.Mutation;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
 using Aer.Ui.Tests.TestSupport;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
 
 namespace Aer.Ui.Tests;
 
 /// <summary>
-/// M14 Phase 1's completion gate (issue #118): proves the seam end to end against a real task
-/// directory — a real bound snapshot and a real Flow Event Store, produced through the exact same
-/// <c>MutationInterface.StartWorkflowAsync</c> write path <c>Aer.Cli</c>'s <c>aer run</c> uses
-/// (<c>Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests</c>' convention), then read back exclusively
-/// through <see cref="TaskProjectionLoader"/> — never by constructing a <see cref="FlowState"/> by
-/// hand.
+/// Drives the real <see cref="MainWindow"/> — not a plain-text renderer standing in for it — inside
+/// a headless Avalonia session (<see cref="TestAppBuilder"/>), so the phase's "renders that task's
+/// per-step statuses" claim is proven against actual rendered controls, not just the projection
+/// data <see cref="TaskProjectionLoaderTests"/> already covers.
 /// </summary>
-public class TaskProjectionLoaderTests
+public class MainWindowTests
 {
-    private static readonly StepId Architect = new("architect");
-    private static readonly StepId Critic = new("critic");
-    private static readonly StepId Publisher = new("publisher");
-
-    [Fact]
-    public async Task Loads_a_bound_snapshot_and_projects_state_from_a_real_task_directory()
+    [AvaloniaFact]
+    public async Task Renders_workflow_status_and_each_steps_status_from_a_real_task_directory()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-task-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -55,7 +51,7 @@ public class TaskProjectionLoaderTests
                 var dispatcher = new CoreDispatcher(writer);
 
                 await MutationInterface.StartWorkflowAsync(
-                    new WorkflowId("wf-ui-e2e"),
+                    new WorkflowId("wf-ui-window-e2e"),
                     taskDirectory,
                     snapshot,
                     bindings,
@@ -66,17 +62,15 @@ public class TaskProjectionLoaderTests
                     cancellationToken: TestContext.Current.CancellationToken);
             }
 
-            var projection = await TaskProjectionLoader.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var window = new MainWindow();
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            // Not Assert.Equal(snapshot, projection.Snapshot): WorkflowDefinitionSnapshot's Steps
-            // is a List<T>, which has no value-equality override, so a record freshly deserialized
-            // from disk never structurally equals the in-memory instance it was persisted from.
-            Assert.Equal(snapshot.WorkflowDefinitionSnapshotId, projection.Snapshot.WorkflowDefinitionSnapshotId);
-            Assert.Equal(WorkflowStatus.Terminal, projection.State.Status);
-            var stepStatusByStepId = projection.State.Steps.ToDictionary(step => step.StepId, step => step.Status);
-            Assert.Equal(StepStatus.Succeeded, stepStatusByStepId[Architect]);
-            Assert.Equal(StepStatus.Succeeded, stepStatusByStepId[Critic]);
-            Assert.Equal(StepStatus.Succeeded, stepStatusByStepId[Publisher]);
+            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+
+            Assert.Equal("Workflow status: Terminal", statusText.Text);
+            var stepLines = stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList();
+            Assert.Equal(["architect: Succeeded", "critic: Succeeded", "publisher: Succeeded"], stepLines);
         }
         finally
         {
@@ -84,17 +78,21 @@ public class TaskProjectionLoaderTests
         }
     }
 
-    [Fact]
-    public async Task A_directory_with_no_snapshot_is_reported_as_not_a_task_directory()
+    [AvaloniaFact]
+    public async Task Renders_the_error_message_for_a_directory_with_no_snapshot()
     {
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-not-a-task-{Guid.NewGuid():N}");
+        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-not-a-task-{Guid.NewGuid():N}");
         Directory.CreateDirectory(notATaskDirectory);
         try
         {
-            var exception = await Assert.ThrowsAsync<InvalidTaskDirectoryException>(
-                () => TaskProjectionLoader.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken));
+            var window = new MainWindow();
+            await window.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken);
 
-            Assert.Contains(notATaskDirectory, exception.Message);
+            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+
+            Assert.Contains(notATaskDirectory, statusText.Text);
+            Assert.Empty(stepsPanel.Children);
         }
         finally
         {
