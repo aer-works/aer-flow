@@ -28,3 +28,26 @@ pixi run test
 # Format code
 pixi run fmt
 ```
+
+## Installing `aer`
+
+`aer` is distributed as a self-built, unpublished `dotnet tool` — there is no public NuGet feed
+(a single-developer project doesn't need one; see `spec/AER Overview.md` §6). Build a local nupkg
+and install from it directly:
+
+```bash
+# Build the nupkg (embeds the native aer_core library for every OS CI already built one for)
+pixi run pack
+
+# Install it as a global tool from that local folder
+dotnet tool install --global --add-source bin/pack aer
+
+# Run it
+aer run <workflow-file> --bindings <bindings-file>
+
+# Remove it
+dotnet tool uninstall --global aer
+```
+
+`pixi run verify-pack` runs this exact install → run → uninstall round trip end to end against a
+trivial fixture (no live vendor call) — it's the same check CI runs unattended on every push.
