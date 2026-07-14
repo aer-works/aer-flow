@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.0](https://github.com/aer-works/aer-flow/compare/v0.7.0...v0.8.0) (2026-07-14)
+
+
+### Features
+
+* **cli:** M13 Phase 1 — Pack aer as a dotnet tool (single-platform) ([#114](https://github.com/aer-works/aer-flow/issues/114)) ([e6be44f](https://github.com/aer-works/aer-flow/commit/e6be44f99e542dbcba29f6327ea35c94ad95eaee))
+* **cli:** M13 Phase 2 — Version wiring (release-please → package Version) ([#115](https://github.com/aer-works/aer-flow/issues/115)) ([c970aa5](https://github.com/aer-works/aer-flow/commit/c970aa5dbed9ffa0df1a89aa9b67f126f2d5338a))
+
+
+### Documentation
+
+* Define the M13 (Distribution) phase plan ([#112](https://github.com/aer-works/aer-flow/issues/112)) ([0d12778](https://github.com/aer-works/aer-flow/commit/0d12778902cc20f1c06f18ec538b317560d13f03))
+
+
+### Continuous Integration
+
+* **cli:** M13 Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) ([#116](https://github.com/aer-works/aer-flow/issues/116)) ([7180dfd](https://github.com/aer-works/aer-flow/commit/7180dfdc7d36c4b14d1b3edbed11a1c9916a6db0))
+
+
+### Tests
+
+* **cli:** M13 Phase 4 — Installed-tool round-trip check, wired into default CI ([#117](https://github.com/aer-works/aer-flow/issues/117)) ([102248e](https://github.com/aer-works/aer-flow/commit/102248e53e7a0883d7a0a9e3ce5671425f411db6))
+
 ## [0.7.0](https://github.com/aer-works/aer-flow/compare/v0.6.0...v0.7.0) (2026-07-13)
 
 
