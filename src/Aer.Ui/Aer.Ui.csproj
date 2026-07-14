@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- M14 Phase 1 (#118): the UI track's stack decision, recorded here rather than in a design doc.
+       Avalonia — a cross-platform, XAML-based, native .NET desktop UI framework — in this
+       repo/solution, referencing Aer.Flow directly. UI spec §13 treats desktop/web/TUI/IDE
+       integration as behaviorally equivalent, so the deciding criteria are AER Overview §6 (no
+       speculative deployment story for a single-developer tool: a desktop app is "run the exe", no
+       server/browser/hosting layer) and §11's determinism guarantee, which direct in-process
+       reference to Aer.Flow's read model inherits by construction — the same seam Aer.Cli already
+       proved for the write side. Avalonia specifically (over WPF/MAUI) because it is genuinely
+       cross-platform, matching the existing win/linux/mac CI matrix, and gives real vector-graphics
+       rendering for the DAG view (Phase 3) rather than a text approximation. Revisited from this
+       phase's original console-app decision once real UI ambition (not this phase's "any styling
+       worth defending" exclusion) made the tradeoff explicit. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Aer.Flow\Aer.Flow.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Generates packages.lock.json so CI can cache NuGet restore (actions/setup-dotnet's
+         cache-dependency-path globs **/packages.lock.json) — this project now has real
+         PackageReferences (the Avalonia packages above), unlike Aer.Cli. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

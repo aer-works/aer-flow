@@ -1,0 +1,48 @@
+using Aer.Flow.Projection;
+using Aer.Flow.Store;
+using Aer.Flow.Templates;
+
+namespace Aer.Ui;
+
+/// <summary>
+/// The seam this phase exists to prove (issue #118): opens a real task directory using exactly
+/// the read-model library calls Flow's own write path uses — <see cref="SnapshotBinder.LoadFromFileAsync"/>
+/// for the bound snapshot (AER Flow spec §11.2), <see cref="FlowEventLogReader"/> for the Flow
+/// Event Store (§5.1), and <see cref="StateProjector.Project"/> to reconstruct <see cref="Aer.Flow.Domain.FlowState"/>
+/// (§12) — never a reimplementation of any of it. A UI built this way inherits §11's determinism
+/// guarantee by construction, per UI spec §11.
+/// </summary>
+public static class TaskProjectionLoader
+{
+    private const string SnapshotFileName = "snapshot.json";
+    private const string LogFileName = "flow.jsonl";
+
+    /// <exception cref="InvalidTaskDirectoryException">
+    /// <paramref name="taskDirectoryPath"/> has no persisted snapshot — UI spec §3.1's
+    /// self-describing-directory contract confirmed by contents, not assumed from a path.
+    /// </exception>
+    /// <exception cref="SnapshotLoadException">The persisted snapshot is malformed.</exception>
+    /// <exception cref="FlowEventLogReadException">The persisted Flow Event Store is malformed.</exception>
+    public static async Task<TaskProjection> LoadAsync(
+        string taskDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(taskDirectoryPath);
+
+        var snapshotPath = Path.Combine(taskDirectoryPath, SnapshotFileName);
+        if (!File.Exists(snapshotPath))
+        {
+            throw new InvalidTaskDirectoryException(
+                $"Not a task directory (no '{SnapshotFileName}' found): '{taskDirectoryPath}'");
+        }
+
+        var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
+
+        var logPath = Path.Combine(taskDirectoryPath, LogFileName);
+        var reader = new FlowEventLogReader(logPath);
+        var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+
+        var state = StateProjector.Project(events, snapshot);
+
+        return new TaskProjection(snapshot, state);
+    }
+}

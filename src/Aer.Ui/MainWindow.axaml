@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Aer.Ui.MainWindow"
+        Title="AER Flow UI"
+        Width="480" Height="360">
+  <StackPanel Margin="16" Spacing="8">
+    <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
+    <StackPanel x:Name="StepsPanel" Spacing="4" />
+  </StackPanel>
+</Window>
