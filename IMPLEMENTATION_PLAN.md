@@ -130,7 +130,7 @@ The M14 completion gate: recorded task-directory fixtures (a completed run, a pa
 **M14: UI Projection** — phase plan above. Progress:
 
 - ✅ Phase 1 — Stack decision + walking skeleton (#118)
-- ⬜ Phase 2 — Task & execution projection + change observation (#119)
+- ✅ Phase 2 — Task & execution projection + change observation (#119)
 - ⬜ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
 - ⬜ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
 - ⬜ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
@@ -189,6 +189,65 @@ Decisions of record from M14:
   is a v3-only attribute, incompatible with the xunit v2 packages every other test project in this
   repo uses) — an isolated exception, confined to this one project, for a genuinely different
   concern (headless UI testing) no other project has (Phase 1).
+
+- **`ExecutionHistory`/`ExecutionHistoryProjector` is a new `Aer.Ui`-only read-model type, not an
+  addition to `Aer.Flow.Domain.FlowState`.** `StateProjector.Project` deliberately collapses each
+  step to its *latest* attempt (§12); the full per-step attempt history, and the full (not just
+  still-unresolved) decision list, are presentation-layer facts derivable from the same event list
+  a second time, never dispatch-affecting ones. `ExecutionHistoryProjector.Project` walks
+  `IReadOnlyList<FlowEvent>` independently — re-deriving the same "what happened to this
+  `ExecutionId`" facts `StateProjector` computes internally, but keyed per-execution instead of
+  collapsed per-step — rather than calling into or duplicating `StateProjector`'s retry/staleness/
+  readiness logic. `TaskProjectionLoader.LoadAsync` calls both projectors over the same `events`
+  list; `TaskProjection` gained a third field, `History`, alongside `Snapshot`/`State` (Phase 2).
+- **A non-process/human execution is identified the same way M11 Phase 1 already recorded it**:
+  `ExecutionRequest.Timeout is null`. No new durable fact was needed — bindings themselves are
+  never persisted to the task directory, so this was the only signal already on disk that
+  distinguishes a `Mutation.WorkerBinding.NonProcess` dispatch from an ordinary one once the read
+  side has nothing but the event log and snapshot to go on (Phase 2).
+- **Task-directory discovery (UI spec §3.1's implementation choice) is "ask the user for a path,
+  or pick a remembered one" — never a scanned root.** A new `TaskDirectoryPathBox`/`OpenButton`
+  pair plus a `RecentsPanel` (Local UI Configuration, §3.1/§4) cover the concrete mechanism; a
+  scanned-root discovery mode was considered and dropped as unnecessary complexity for a
+  single-developer tool with no fixed "tasks live under one root" convention (Phase 2).
+- **`LocalUiConfigurationStore` is a small, explicit JSON file store** (`recent-task-directories.json`
+  under a per-user config directory via `CreateDefault()`), never backed by a database or a
+  platform-specific settings API — matching this repo's "no speculative infrastructure" bias
+  (Overview §6). It is deliberately non-authoritative per §3.1: a missing or corrupt file loads as
+  an empty list rather than an error, and a remembered path that no longer exists on disk is
+  silently dropped on load rather than surfaced as stale-list breakage. Capped at 10 entries,
+  deduplicated by full path, most-recently-opened first — a bounded convenience, not a full
+  history (Phase 2).
+- **`MainWindow` takes a `LocalUiConfigurationStore` as a constructor argument**, defaulting to
+  `CreateDefault()` only via a parameterless overload — the same "production wiring is the
+  caller's decision, not baked into the type" seam `RunCommand`'s adapter-registry argument
+  established (M11 Phase 3). This is what lets `Aer.Ui.Tests` point every window at a temp config
+  file instead of ever touching this host's real per-user config directory (Phase 2).
+- **Change observation is polling via a 2-second `DispatcherTimer`, not a `FileSystemWatcher`** —
+  issue #119's named open question. Simplest thing that behaves identically across the
+  win/linux/mac CI matrix without depending on a given filesystem's (or container's) watch
+  semantics; the existing `flow.jsonl` re-read cost is already known cheap (M8 Phase 4's ~3.8ms
+  finding). Polling stops once the projected `WorkflowStatus` reaches `Terminal` — nothing further
+  can change per spec §12, so there is nothing left to observe (Phase 2).
+- **`MainWindow.RefreshAsync` is public and directly awaitable, the same reason `LoadAsync` was
+  (Phase 1, issue #118)**: it is what the `DispatcherTimer`'s tick calls in production, but a test
+  drives exactly one re-projection deterministically by calling it directly, rather than pumping
+  the headless dispatcher and racing a real elapsed-time tick. `OpenAsync` is the richer entry
+  point (`LoadAsync` plus recents-recording plus starting/stopping the live-refresh timer) that the
+  Open button, a `RecentsPanel` click, and `App`'s CLI-argument launch path all now go through —
+  `LoadAsync` itself is untouched from Phase 1, so its existing rendering contract (and
+  `MainWindowTests`' assertions against it) stay stable (Phase 2).
+- **`StatusText`/`StepsPanel`'s rendering format is byte-for-byte unchanged from Phase 1.** Every
+  new read-model surface (attempt history, retry/pause state with declared `SupersedeTargets`,
+  decisions, supplementary/human executions) renders into new, separate panels
+  (`HistoryPanel`/`DecisionsPanel`/`SupplementaryPanel`) rather than being folded into the existing
+  per-step line — preserves Phase 1's tested rendering contract exactly rather than reopening it
+  (Phase 2).
+- **A test-only `internal bool IsLiveRefreshTimerEnabled` property, gated by
+  `[InternalsVisibleTo("Aer.Ui.Tests")]`, is the only way the live-refresh timer's start/stop state
+  is observed at all** — production code never reads it. The alternative (asserting on real
+  elapsed-time timer ticks) would reintroduce exactly the dispatcher-pumping flakiness Phase 1's
+  `LoadAsync`-is-public-and-awaitable decision was designed to avoid (Phase 2).
 
 ## Completed Milestones
 

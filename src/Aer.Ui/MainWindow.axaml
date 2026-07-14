@@ -2,9 +2,29 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aer.Ui.MainWindow"
         Title="AER Flow UI"
-        Width="480" Height="360">
-  <StackPanel Margin="16" Spacing="8">
-    <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
-    <StackPanel x:Name="StepsPanel" Spacing="4" />
-  </StackPanel>
+        Width="720" Height="640">
+  <ScrollViewer>
+    <StackPanel Margin="16" Spacing="12">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBox x:Name="TaskDirectoryPathBox" Width="480" PlaceholderText="Task directory path" />
+        <Button x:Name="OpenButton" Content="Open" />
+        <Button x:Name="RefreshButton" Content="Refresh" />
+      </StackPanel>
+
+      <TextBlock Text="Recent task directories:" FontWeight="Bold" />
+      <StackPanel x:Name="RecentsPanel" Spacing="4" />
+
+      <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
+      <StackPanel x:Name="StepsPanel" Spacing="4" />
+
+      <TextBlock Text="Execution history:" FontWeight="Bold" />
+      <StackPanel x:Name="HistoryPanel" Spacing="2" />
+
+      <TextBlock Text="Recorded decisions:" FontWeight="Bold" />
+      <StackPanel x:Name="DecisionsPanel" Spacing="2" />
+
+      <TextBlock Text="Supplementary / human executions:" FontWeight="Bold" />
+      <StackPanel x:Name="SupplementaryPanel" Spacing="2" />
+    </StackPanel>
+  </ScrollViewer>
 </Window>
