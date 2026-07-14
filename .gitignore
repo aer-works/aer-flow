@@ -29,3 +29,6 @@ bld/
 
 # pixi
 .pixi/
+
+# M13 Phase 3 (#109): other-platform native libs gathered here before a multi-RID `pixi run pack`
+/artifacts/

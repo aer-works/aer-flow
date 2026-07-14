@@ -116,7 +116,7 @@ The M13 completion gate — but unlike M11/M12's gates, deliberately *not* their
 
 - ✅ Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
 - ✅ Phase 2 — Version wiring (release-please → package `Version`) (#108)
-- ⬜ Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
+- ✅ Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
 - ⬜ Phase 4 — Installed-tool round-trip check (wired into default CI) (#110)
 
 Decisions of record from M13:
@@ -162,6 +162,34 @@ Decisions of record from M13:
   returns before any of the mutation-surface machinery every other command goes through; `VersionInfo.GetVersion`
   (a one-line `Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()` read, `Aer.Cli`)
   is the only piece worth unit-testing on its own (Phase 2).
+- **A single fat package, not three RID-qualified packages** — resolving Phase 3's named open
+  question. `ci.yml`'s `test` matrix gained a real `macos-latest` job (cross-compiling `aer_core`
+  to `aarch64-apple-darwin` from the existing Linux runner isn't practical without Apple's SDK) and
+  now uploads each OS's own `cargo build` output as a keyed artifact; a new `pack` job downloads the
+  two platforms it isn't running on into `artifacts/native-libs/<rid>/` and runs `pixi run pack`, so
+  the packing machine's own OS is still folded in automatically by the existing build-time
+  mechanism (Phase 1's decision) while the other two arrive as gathered files. The same
+  `dotnet tool install --global aer` then works unchanged regardless of host OS — no `--arch`
+  selection, no per-RID package variants (Phase 3).
+- **No runtime OS-detection/P/Invoke-resolution code was needed** — the second half of Phase 3's
+  named open question turned out to be moot. `NativeMethods.cs`'s `DllImport`/`LibraryImport`
+  attributes reference the bare library name `"aer_core"`, and .NET's default native-library probing
+  already appends the host-appropriate prefix/extension (`aer_core.dll` / `libaer_core.so` /
+  `libaer_core.dylib`) when resolving it at P/Invoke call time. Since every platform's binary has a
+  distinct filename, all three coexist in the same flat `tools/$(TargetFramework)/any/` directory
+  with no collision and no custom resolution logic — confirmed by inspecting a locally packed nupkg
+  (real Linux `libaer_core.so` alongside placeholder `aer_core.dll`/`libaer_core.dylib` standing in
+  for the two platforms this sandbox can't build) and by a live round trip: pack → install →
+  `aer run` against a one-step `draft`/`claude`-adapter workflow with `claude` stripped from `PATH`
+  → `flow.jsonl`'s `executionStarted`/`executionExited` pair carrying a real `Pid` and
+  `ExitCode:127`, the same proof-of-dispatch shape Phase 1 used → uninstall (Phase 3).
+- **`Aer.Cli.csproj`'s three new `<None Pack="true">` items are each `Condition="Exists(...)"`
+  against `artifacts/native-libs/<rid>/`**, so a plain single-platform `pixi run pack` with no
+  gathered-artifacts folder present (Phase 1's original local round trip) packs exactly as before —
+  Phase 3 adds nothing that requires CI to run to keep local packing working (Phase 3).
+- **`/artifacts/` is gitignored, not a tracked convention directory** — it exists only as a
+  CI-job-to-CI-job (or locally, human-to-`dotnet pack`) hand-off point, populated fresh by
+  `actions/download-artifact` before every `pack` job run, never committed content (Phase 3).
 
 ## Completed Milestones
 
