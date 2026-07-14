@@ -132,7 +132,7 @@ The M14 completion gate: recorded task-directory fixtures (a completed run, a pa
 - ✅ Phase 1 — Stack decision + walking skeleton (#118)
 - ✅ Phase 2 — Task & execution projection + change observation (#119)
 - ✅ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
-- ⬜ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
+- ✅ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
 - ⬜ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
 
 Per this document's session prompt: help implement the current phase only.
@@ -295,6 +295,58 @@ Decisions of record from M14:
   template does not record to `LocalUiConfigurationStore` (that store is task-directory recents
   specifically, per its Phase 2 decision of record) and does not start the live-refresh timer — a
   template has no execution state to observe changing (Phase 3).
+- **`ArtifactLineageProjector` walks each recorded `ExecutionRequest`'s `UpstreamExecutionIds`
+  directly — never `ArtifactManager.ResolveInputPaths`/the current `FlowState`'s `LatestExecutionId`
+  — to resolve which upstream execution fed each input.** The durable fact of *which specific
+  execution* produced a given input is only ever recorded once, at that request's own dispatch time;
+  re-deriving it against today's state would silently substitute a step's *current* latest execution
+  for the one an earlier, possibly-superseded attempt actually consumed. A step's declared
+  `Inputs` names (read from the snapshot, matched against each `DependsOn` step's declared
+  `Outputs`) are what the projector walks to find each producer `StepId` — never
+  `ExecutionRequest.Inputs`, which holds `ArtifactManager.ResolveInputPaths`' already-resolved file
+  paths, not bare input names, and does not key against the producer lookup at all (caught by
+  `TaskProjectionLoaderTests`' real `MutationInterface`-pumped fixture; a hand-built event-list unit
+  test alone did not catch it, since it could assign whatever meaning it liked to `Inputs`) (Phase 4).
+- **Output-file listings are read straight off disk (`Directory.GetFiles`), never from a step's
+  declared `Outputs`** — a contract names what a worker was supposed to produce, not what is really
+  in `artifacts/execution_{N}/`; sorted ordinally rather than left in platform-dependent enumeration
+  order, since UI spec §11 requires identical projected state on all three CI OSes and Phase 5's
+  golden gate will assert against exactly this ordering (Phase 4).
+- **The snapshot-vs-template diff compares `WorkflowStepDefinition` fields with `SequenceEqual`,
+  never the records' own generated `Equals`.** `Inputs`/`Outputs`/`DependsOn` are
+  `IReadOnlyList<string>`/`IReadOnlyList<StepId>`; C#'s positional-record equality compares a list
+  member with `EqualityComparer<T>.Default`, which is reference equality for a list — since the
+  snapshot and template are always separate object graphs (deserialized from separate sources), that
+  would report every field of every step as changed, always. Caught before it shipped, not by a
+  test: the naive "identical content, separate instances" case is exactly the one a same-instance
+  test fixture would hide (Phase 4).
+- **A `WorkflowTemplateId` mismatch is reported as `TemplateIdMismatch`, never folded into
+  `HasDiverged`.** Comparing two unrelated templates and calling the result a "diff" would be the
+  exact silent-substitution error UI spec §5 warns against — divergence means the *same* template
+  changed over time, not that the wrong file was compared. `WorkflowTemplateVersion` is carried on
+  the diff purely as an informational field, never as part of the `HasDiverged` predicate: a
+  hand-edited template can diverge without a version bump, and a version bump alone doesn't prove
+  the steps actually differ (Phase 4).
+- **There is no durable link from a bound task back to the template file it originated from** — the
+  snapshot carries only `WorkflowTemplateId`/`WorkflowTemplateVersion`, never a path (confirmed
+  against `WorkflowDefinitionSnapshot`, `SnapshotBinder`, and every event in `FlowEvent`). The diff
+  surface therefore takes the template file path directly from the user (a new
+  `TemplateComparePathBox`/`CompareButton` pair, gated on a task already being open via
+  `MainWindow.CompareToTemplateAsync`), the same "ask, don't infer" answer Phase 2 gave for
+  task-directory discovery, rather than inventing a new stored pointer this phase has no spec basis
+  for (Phase 4).
+- **The artifact preview is scoped to plain text, capped at 8,000 characters, with no content-type
+  detection.** An artifact is not guaranteed to be small or textual; `File.ReadAllTextAsync`'s
+  default UTF-8 decoding never throws on non-UTF-8 bytes (replacement characters instead), so a
+  binary file still renders as garbled text rather than crashing — the phase's own "cheap preview,
+  not a text-viewer" ceiling, not a special-cased binary detector (Phase 4).
+- **Each output-file button's click handler captures the resolved file path at render time
+  (`RenderArtifactLineage`'s own `taskDirectoryPath` parameter), never `_currentTaskDirectoryPath`.**
+  `LoadAsync` is a supported, directly-callable entry point in its own right (Phase 1) that a caller
+  may invoke without ever going through `OpenAsync` (the only place that field is set) — a button
+  wired to the field would silently do nothing if `LoadAsync` was called directly. Caught by a test
+  that calls `LoadAsync` the same way `MainWindowDagTests` already does, then drives the rendered
+  button's real `Click` event rather than calling `ShowArtifactPreviewAsync` directly (Phase 4).
 
 ## Completed Milestones
 

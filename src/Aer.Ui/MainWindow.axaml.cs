@@ -1,4 +1,5 @@
 using Aer.Flow;
+using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Avalonia;
 using Avalonia.Controls;
@@ -14,11 +15,15 @@ namespace Aer.Ui;
 
 public partial class MainWindow : Window
 {
+    private const string ArtifactsDirectoryName = "artifacts";
+    private const int MaxArtifactPreviewLength = 8000;
+
     private readonly LocalUiConfigurationStore _configurationStore;
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private string? _currentTaskDirectoryPath;
     private bool _lastLoadSucceeded;
     private WorkflowStatus? _lastWorkflowStatus;
+    private WorkflowDefinitionSnapshot? _lastSnapshot;
 
     /// <summary>Test-only observation of the live-refresh polling state (see <see cref="UpdateLiveRefreshTimer"/>) — never consulted by production code.</summary>
     internal bool IsLiveRefreshTimerEnabled => _liveRefreshTimer.IsEnabled;
@@ -43,6 +48,7 @@ public partial class MainWindow : Window
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
         OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);
         RefreshButton.Click += (_, _) => _ = RefreshAsync();
+        CompareButton.Click += (_, _) => _ = CompareToTemplateAsync(TemplateComparePathBox.Text ?? string.Empty);
         Closed += (_, _) => _liveRefreshTimer.Stop();
     }
 
@@ -143,9 +149,11 @@ public partial class MainWindow : Window
             RenderExecutionHistory(projection);
             RenderDecisions(projection);
             RenderSupplementaryExecutions(projection);
+            RenderArtifactLineage(projection, taskDirectoryPath);
 
             _lastLoadSucceeded = true;
             _lastWorkflowStatus = projection.State.Status;
+            _lastSnapshot = projection.Snapshot;
         }
         catch (AerFlowException ex)
         {
@@ -158,9 +166,13 @@ public partial class MainWindow : Window
             HistoryPanel.Children.Clear();
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
+            LineagePanel.Children.Clear();
+            ArtifactPreviewBox.Text = string.Empty;
+            DiffPanel.Children.Clear();
 
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
+            _lastSnapshot = null;
         }
     }
 
@@ -185,11 +197,15 @@ public partial class MainWindow : Window
             HistoryPanel.Children.Clear();
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
+            LineagePanel.Children.Clear();
+            ArtifactPreviewBox.Text = string.Empty;
+            DiffPanel.Children.Clear();
 
             RenderDag(definition.Steps, statusByStepId: null);
 
             _lastLoadSucceeded = true;
             _lastWorkflowStatus = null;
+            _lastSnapshot = null;
         }
         catch (AerFlowException ex)
         {
@@ -199,9 +215,13 @@ public partial class MainWindow : Window
             HistoryPanel.Children.Clear();
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
+            LineagePanel.Children.Clear();
+            ArtifactPreviewBox.Text = string.Empty;
+            DiffPanel.Children.Clear();
 
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
+            _lastSnapshot = null;
         }
     }
 
@@ -397,6 +417,184 @@ public partial class MainWindow : Window
             {
                 Text = $"{execution.ExecutionId} ({execution.Worker}): {execution.Status}{nonProcessSuffix}",
             });
+        }
+    }
+
+    /// <summary>
+    /// Renders <see cref="ArtifactLineage"/> (M14 Phase 4, issue #121): one block per execution,
+    /// naming its declared inputs' resolved producers, then a row of buttons — one per file actually
+    /// present in its output directory — each wired to <see cref="ShowArtifactPreviewAsync"/>.
+    /// <paramref name="taskDirectoryPath"/> is <see cref="LoadAsync"/>'s own parameter, not
+    /// <see cref="_currentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
+    /// entry point in its own right (issue #118) that a caller may invoke without ever going through
+    /// <see cref="OpenAsync"/> (which is the only place that field is set) — the rendered buttons must
+    /// resolve against the directory this exact call just loaded, not a field that might still be
+    /// null or, worse, stale from a previously opened task.
+    /// </summary>
+    private void RenderArtifactLineage(TaskProjection projection, string taskDirectoryPath)
+    {
+        LineagePanel.Children.Clear();
+
+        var artifactsRootPath = System.IO.Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
+
+        foreach (var execution in projection.Lineage.Executions)
+        {
+            var header = execution.StepId is { } stepId
+                ? $"{stepId} — {execution.ExecutionId} ({execution.Worker})"
+                : $"(supplementary) — {execution.ExecutionId} ({execution.Worker})";
+            LineagePanel.Children.Add(new TextBlock { Text = header, FontWeight = FontWeight.SemiBold });
+
+            foreach (var link in execution.Inputs)
+            {
+                LineagePanel.Children.Add(new TextBlock
+                {
+                    Text = $"    input '{link.InputName}' <- {link.ProducerStepId} ({link.ProducerExecutionId})",
+                });
+            }
+
+            if (execution.OutputFiles.Count == 0)
+            {
+                LineagePanel.Children.Add(new TextBlock { Text = "    (no output files)" });
+                continue;
+            }
+
+            var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, execution.ExecutionId);
+            var filesPanel = new WrapPanel { Margin = new Thickness(16, 0, 0, 0) };
+            foreach (var fileName in execution.OutputFiles)
+            {
+                var filePath = System.IO.Path.Combine(outputDirectory, fileName);
+                var button = new Button { Content = fileName, Margin = new Thickness(0, 0, 4, 4) };
+                button.Click += (_, _) => _ = ShowArtifactPreviewAsync(filePath);
+                filesPanel.Children.Add(button);
+            }
+
+            LineagePanel.Children.Add(filesPanel);
+        }
+    }
+
+    /// <summary>
+    /// Reads one artifact file's content into <see cref="ArtifactPreviewBox"/> — "a file listing +
+    /// plain-text preview," this phase's stated ceiling (issue #121), not content rendering of any
+    /// kind beyond that. Public and directly awaitable, the same reason every other load-driving
+    /// entry point on this window is (issue #118): a test can trigger exactly one preview
+    /// deterministically instead of raising a real button-click event. Truncated defensively at
+    /// <see cref="MaxArtifactPreviewLength"/> — an artifact is not guaranteed to be small or textual,
+    /// and this preview is deliberately the cheapest thing that could show it, not a text-viewer.
+    /// </summary>
+    public async Task ShowArtifactPreviewAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            ArtifactPreviewBox.Text = content.Length > MaxArtifactPreviewLength
+                ? content[..MaxArtifactPreviewLength] + "\n… (truncated)"
+                : content;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            ArtifactPreviewBox.Text = $"Cannot preview '{System.IO.Path.GetFileName(filePath)}': {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// The snapshot-vs-template diff surface (UI spec §5; M14 Phase 4, issue #121): loads
+    /// <paramref name="templateFilePath"/> via <see cref="TemplateProjectionLoader"/> and compares it
+    /// against the currently open task's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
+    /// Requires a task directory to already be open — <see cref="_lastSnapshot"/> is only ever set by
+    /// <see cref="LoadAsync"/>'s success path, never by opening a raw template on its own, since a
+    /// template with nothing bound to it has nothing to diff against.
+    /// </summary>
+    public async Task CompareToTemplateAsync(string templateFilePath, CancellationToken cancellationToken = default)
+    {
+        DiffPanel.Children.Clear();
+
+        if (_lastSnapshot is not { } snapshot)
+        {
+            DiffPanel.Children.Add(new TextBlock { Text = "Open a task directory before comparing it to a template." });
+            return;
+        }
+
+        try
+        {
+            var template = await TemplateProjectionLoader.LoadAsync(templateFilePath, cancellationToken);
+            RenderDiff(SnapshotTemplateDiffer.Diff(snapshot, template));
+        }
+        catch (AerFlowException ex)
+        {
+            DiffPanel.Children.Add(new TextBlock { Text = ex.Message });
+        }
+    }
+
+    private void RenderDiff(SnapshotTemplateDiff diff)
+    {
+        DiffPanel.Children.Clear();
+
+        if (diff.TemplateIdMismatch)
+        {
+            DiffPanel.Children.Add(new TextBlock
+            {
+                Text = "This file is a different template than the one the task is bound to — a " +
+                       "mismatch, not a divergence; no diff is shown.",
+            });
+            return;
+        }
+
+        DiffPanel.Children.Add(new TextBlock
+        {
+            Text = $"Bound snapshot is template version {diff.SnapshotTemplateVersion}; " +
+                   $"current template file is version {diff.TemplateVersion}.",
+        });
+
+        if (!diff.HasDiverged)
+        {
+            DiffPanel.Children.Add(new TextBlock { Text = "No divergence: the bound snapshot matches the current template." });
+            return;
+        }
+
+        foreach (var addedStepId in diff.AddedStepIds)
+        {
+            DiffPanel.Children.Add(new TextBlock { Text = $"+ {addedStepId} (added in template; not in the bound snapshot)" });
+        }
+
+        foreach (var removedStepId in diff.RemovedStepIds)
+        {
+            DiffPanel.Children.Add(new TextBlock { Text = $"- {removedStepId} (in the bound snapshot; removed from the template)" });
+        }
+
+        foreach (var changedStep in diff.ChangedSteps)
+        {
+            var changedFields = new List<string>();
+            if (changedStep.WorkerChanged)
+            {
+                changedFields.Add("worker");
+            }
+
+            if (changedStep.InputsChanged)
+            {
+                changedFields.Add("inputs");
+            }
+
+            if (changedStep.OutputsChanged)
+            {
+                changedFields.Add("outputs");
+            }
+
+            if (changedStep.DependsOnChanged)
+            {
+                changedFields.Add("dependsOn");
+            }
+
+            if (changedStep.RetryPolicyChanged)
+            {
+                changedFields.Add("retryPolicy");
+            }
+
+            if (changedStep.PausePointChanged)
+            {
+                changedFields.Add("pausePoint");
+            }
+
+            DiffPanel.Children.Add(new TextBlock { Text = $"~ {changedStep.StepId} changed: {string.Join(", ", changedFields)}" });
         }
     }
 
