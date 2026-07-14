@@ -249,7 +249,7 @@ Decisions of record from M14:
   elapsed-time timer ticks) would reintroduce exactly the dispatcher-pumping flakiness Phase 1's
   `LoadAsync`-is-public-and-awaitable decision was designed to avoid (Phase 2).
 - **`Aer.Ui` was pulled out of the repo's single shared release version into its own
-  release-please package (`"src/Aer.Ui"`, component `aer-ui`, manifest-seeded at `0.0.0`), a
+  release-please package (`"src/Aer.Ui"`, component `aer-ui`, manifest-seeded at `0.0.1`), a
   follow-up to Phase 2 rather than part of it.** Every other project (`Aer.Flow`/`Aer.Cli`/
   `Aer.Adapters`) keeps riding the root `"."` package's shared `Directory.Build.props` `<Version>`,
   the same single-release-train convention M13 established — the deciding difference for `Aer.Ui`
@@ -265,6 +265,23 @@ Decisions of record from M14:
   uses. The root `"."` package gained `"exclude-paths": ["src/Aer.Ui", "tests/Aer.Ui.Tests"]` —
   without it, `"."`'s path (the whole repo) is a prefix of `src/Aer.Ui`, so a UI-only commit would
   still count toward the root package's changelog/bump and defeat the split entirely.
+- **The manifest seed is `0.0.1`, not the more obvious `0.0.0`** — caught immediately by the live
+  release-please proposal, not anticipated up front: seeding exactly `"0.0.0"` triggers
+  release-please's "never released yet" bootstrap path, which ignores ordinary semver bump math and
+  jumps straight to `1.0.0` regardless of commit history (a known upstream quirk,
+  [googleapis/release-please#2087](https://github.com/googleapis/release-please/issues/2087)).
+  `"0.0.1"` computes normally instead — `feat` commits bump minor even pre-1.0 here, the same
+  default behavior that already took the root package `0.6.0`→`0.7.0`→`0.8.0` without any
+  `bump-minor-pre-major` config, landing `aer-ui`'s first release at `0.1.0` as intended.
+- **A stale already-open release-please proposal PR doesn't fully recompute on a config change** —
+  also caught live: `exclude-paths` alone didn't stop the pre-existing pending release PR from
+  still listing the UI commits under the root package once the split config merged, and the new
+  `aer-ui` section it appended included an unrelated commit from outside its path — matching known
+  upstream reports that `exclude-paths` handling in monorepo/manifest mode is not fully reliable
+  ([#2301](https://github.com/googleapis/release-please/issues/2301),
+  [#2230](https://github.com/googleapis/release-please/issues/2230)). The fix was operational, not
+  a further config change: close the stale proposal PR and delete its branch so the next
+  release-please run starts from a genuinely clean slate instead of amending cached state.
 
 ## Completed Milestones
 
