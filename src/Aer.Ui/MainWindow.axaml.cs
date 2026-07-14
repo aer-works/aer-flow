@@ -1,6 +1,9 @@
 using Aer.Flow;
 using Aer.Flow.Domain;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
+using Avalonia.Media;
 using Avalonia.Threading;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -55,10 +58,27 @@ public partial class MainWindow : Window
     /// and a click on a <see cref="RecentsPanel"/> entry both call; <see cref="App"/>'s CLI-argument
     /// launch path calls it too, so a directory opened that way is remembered exactly like one
     /// opened by hand.
+    /// <para>
+    /// If <paramref name="taskDirectoryPath"/> names a file rather than a directory, it is opened as
+    /// a raw <c>WorkflowDefinition</c> template instead (M14 Phase 3, issue #120: the DAG view
+    /// renders both bound tasks and not-yet-instantiated templates). A template is not a task —
+    /// there is no execution state to remember a re-projection cadence for, so it is neither
+    /// recorded to <see cref="LocalUiConfigurationStore"/> (that store is task-directory recents
+    /// specifically, per its Phase 2 decision of record) nor live-refreshed.
+    /// </para>
     /// </summary>
     public async Task OpenAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
         TaskDirectoryPathBox.Text = taskDirectoryPath;
+
+        if (File.Exists(taskDirectoryPath) && !Directory.Exists(taskDirectoryPath))
+        {
+            _currentTaskDirectoryPath = null;
+            await LoadTemplateAsync(taskDirectoryPath, cancellationToken);
+            _liveRefreshTimer.Stop();
+            return;
+        }
+
         _currentTaskDirectoryPath = taskDirectoryPath;
 
         await LoadAsync(taskDirectoryPath, cancellationToken);
@@ -117,6 +137,9 @@ public partial class MainWindow : Window
                 StepsPanel.Children.Add(new TextBlock { Text = $"{step.StepId}: {step.Status}" });
             }
 
+            var statusByStepId = projection.State.Steps.ToDictionary(step => step.StepId, step => step.Status);
+            RenderDag(projection.Snapshot.Steps, statusByStepId);
+
             RenderExecutionHistory(projection);
             RenderDecisions(projection);
             RenderSupplementaryExecutions(projection);
@@ -131,6 +154,7 @@ public partial class MainWindow : Window
             // in-window message instead.
             StatusText.Text = ex.Message;
             StepsPanel.Children.Clear();
+            DagCanvas.Children.Clear();
             HistoryPanel.Children.Clear();
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
@@ -138,6 +162,155 @@ public partial class MainWindow : Window
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
         }
+    }
+
+    /// <summary>
+    /// Renders a raw, not-yet-instantiated <see cref="WorkflowDefinition"/> template's DAG
+    /// (M14 Phase 3, issue #120; UI spec §5, §10) — the counterpart to <see cref="LoadAsync"/> for
+    /// paths that name a file rather than a task directory. There is no <see cref="FlowState"/> to
+    /// overlay (a template is not bound to any task, so it has never executed) and no execution
+    /// history/decisions/supplementary-execution surface either — those are all per-task facts;
+    /// only the graph itself is meaningful for a template.
+    /// </summary>
+    private async Task LoadTemplateAsync(string templateFilePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var definition = await TemplateProjectionLoader.LoadAsync(templateFilePath, cancellationToken);
+
+            StatusText.Text =
+                $"Template: {definition.WorkflowTemplateId} v{definition.WorkflowTemplateVersion} " +
+                $"({definition.Steps.Count} step(s)) — not a task, no execution state.";
+            StepsPanel.Children.Clear();
+            HistoryPanel.Children.Clear();
+            DecisionsPanel.Children.Clear();
+            SupplementaryPanel.Children.Clear();
+
+            RenderDag(definition.Steps, statusByStepId: null);
+
+            _lastLoadSucceeded = true;
+            _lastWorkflowStatus = null;
+        }
+        catch (AerFlowException ex)
+        {
+            StatusText.Text = ex.Message;
+            StepsPanel.Children.Clear();
+            DagCanvas.Children.Clear();
+            HistoryPanel.Children.Clear();
+            DecisionsPanel.Children.Clear();
+            SupplementaryPanel.Children.Clear();
+
+            _lastLoadSucceeded = false;
+            _lastWorkflowStatus = null;
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<StepStatus, IBrush> BackgroundByStatus = new Dictionary<StepStatus, IBrush>
+    {
+        [StepStatus.Pending] = Brushes.WhiteSmoke,
+        [StepStatus.Running] = Brushes.LightSkyBlue,
+        [StepStatus.Succeeded] = Brushes.LightGreen,
+        [StepStatus.Failed] = Brushes.IndianRed,
+        [StepStatus.Cancelled] = Brushes.LightGray,
+        [StepStatus.Paused] = Brushes.Khaki,
+        [StepStatus.Rejected] = Brushes.IndianRed,
+    };
+
+    private const double DagCellWidth = 170;
+    private const double DagCellHeight = 90;
+    private const double DagNodeWidth = 150;
+    private const double DagNodeHeight = 56;
+
+    /// <summary>
+    /// Renders <see cref="DagLayoutEngine.Layout"/>'s result over <paramref name="steps"/> as boxes
+    /// (one per step, positioned by <see cref="DagNode.Rank"/>/<see cref="DagNode.Column"/>) joined
+    /// by lines (one per <see cref="DagEdge"/>): solid for an ordinary <c>DependsOn</c> dependency,
+    /// dashed for a declared <c>PausePoint.SupersedeTargets</c> entry (UI spec §10; issue #120).
+    /// <paramref name="statusByStepId"/> is <c>null</c> for a raw template — nothing to overlay — or
+    /// populated from the bound task's <see cref="FlowState"/> for a real task directory; either way
+    /// every node still renders, just without a status-derived background in the template case.
+    /// </summary>
+    private void RenderDag(IReadOnlyList<WorkflowStepDefinition> steps, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
+    {
+        DagCanvas.Children.Clear();
+
+        var layout = DagLayoutEngine.Layout(steps);
+        if (layout.Nodes.Count == 0)
+        {
+            DagCanvas.Width = 0;
+            DagCanvas.Height = 0;
+            return;
+        }
+
+        var nodeByStepId = layout.Nodes.ToDictionary(node => node.StepId);
+
+        foreach (var edge in layout.Edges)
+        {
+            var from = nodeByStepId[edge.From];
+            var to = nodeByStepId[edge.To];
+
+            var line = new Line
+            {
+                StartPoint = new Point(
+                    from.Column * DagCellWidth + DagNodeWidth / 2,
+                    from.Rank * DagCellHeight + DagNodeHeight),
+                EndPoint = new Point(
+                    to.Column * DagCellWidth + DagNodeWidth / 2,
+                    to.Rank * DagCellHeight),
+                Stroke = edge.IsSupersede ? Brushes.DarkOrange : Brushes.Gray,
+                StrokeThickness = 1.5,
+            };
+
+            if (edge.IsSupersede)
+            {
+                line.StrokeDashArray = [4, 2];
+            }
+
+            DagCanvas.Children.Add(line);
+        }
+
+        foreach (var node in layout.Nodes)
+        {
+            var status = statusByStepId?.GetValueOrDefault(node.StepId);
+            var background = status is { } knownStatus
+                ? BackgroundByStatus.GetValueOrDefault(knownStatus, Brushes.WhiteSmoke)
+                : Brushes.WhiteSmoke;
+
+            var label = status is { } renderedStatus
+                ? $"{node.StepId}\n{node.Worker}\n{renderedStatus}"
+                : $"{node.StepId}\n{node.Worker}";
+
+            if (node.HasPausePoint)
+            {
+                label += node.SupersedeTargets.Count > 0
+                    ? $"\n[pause -> {string.Join(", ", node.SupersedeTargets)}]"
+                    : "\n[pause]";
+            }
+
+            var border = new Border
+            {
+                Width = DagNodeWidth,
+                Height = DagNodeHeight,
+                Background = background,
+                BorderBrush = Brushes.Black,
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = label,
+                    TextAlignment = TextAlignment.Center,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            };
+
+            Canvas.SetLeft(border, node.Column * DagCellWidth);
+            Canvas.SetTop(border, node.Rank * DagCellHeight);
+            DagCanvas.Children.Add(border);
+        }
+
+        var maxColumn = layout.Nodes.Max(node => node.Column);
+        var maxRank = layout.Nodes.Max(node => node.Rank);
+        DagCanvas.Width = (maxColumn + 1) * DagCellWidth;
+        DagCanvas.Height = (maxRank + 1) * DagCellHeight;
     }
 
     /// <summary>

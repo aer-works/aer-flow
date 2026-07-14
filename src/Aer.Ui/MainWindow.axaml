@@ -17,6 +17,11 @@
       <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
       <StackPanel x:Name="StepsPanel" Spacing="4" />
 
+      <TextBlock Text="Workflow graph:" FontWeight="Bold" />
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="360">
+        <Canvas x:Name="DagCanvas" />
+      </ScrollViewer>
+
       <TextBlock Text="Execution history:" FontWeight="Bold" />
       <StackPanel x:Name="HistoryPanel" Spacing="2" />
 
