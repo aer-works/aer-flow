@@ -9,8 +9,10 @@ namespace Aer.Ui;
 /// the read-model library calls Flow's own write path uses — <see cref="SnapshotBinder.LoadFromFileAsync"/>
 /// for the bound snapshot (AER Flow spec §11.2), <see cref="FlowEventLogReader"/> for the Flow
 /// Event Store (§5.1), and <see cref="StateProjector.Project"/> to reconstruct <see cref="Aer.Flow.Domain.FlowState"/>
-/// (§12) — never a reimplementation of any of it. A UI built this way inherits §11's determinism
-/// guarantee by construction, per UI spec §11.
+/// (§12) — never a reimplementation of any of it. <see cref="ExecutionHistoryProjector.Project"/>
+/// (M14 Phase 2, issue #119) reads the same event list a second time for the fuller per-execution
+/// history <see cref="Aer.Flow.Domain.FlowState"/> alone doesn't carry. A UI built this way inherits
+/// §11's determinism guarantee by construction, per UI spec §11.
 /// </summary>
 public static class TaskProjectionLoader
 {
@@ -42,7 +44,8 @@ public static class TaskProjectionLoader
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
         var state = StateProjector.Project(events, snapshot);
+        var history = ExecutionHistoryProjector.Project(events, snapshot);
 
-        return new TaskProjection(snapshot, state);
+        return new TaskProjection(snapshot, state, history);
     }
 }
