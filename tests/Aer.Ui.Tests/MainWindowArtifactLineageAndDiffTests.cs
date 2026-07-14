@@ -146,9 +146,19 @@ public class MainWindowArtifactLineageAndDiffTests
                 .Single(button => (string)button.Content! == "plan");
 
             planButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await Task.Yield();
 
-            Assert.Contains("the-plan", window.FindControl<TextBox>("ArtifactPreviewBox")!.Text);
+            // ShowArtifactPreviewAsync is fired and forgotten by the click handler (Avalonia click
+            // handlers cannot be async void-awaited by the caller), so the file read genuinely races
+            // the assertion — a single Task.Yield() only proved out on Windows CI's scheduling and
+            // flaked on Linux/macOS. Poll the actual rendered result instead of the scheduler.
+            var previewBox = window.FindControl<TextBox>("ArtifactPreviewBox")!;
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (string.IsNullOrEmpty(previewBox.Text) && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+
+            Assert.Contains("the-plan", previewBox.Text);
         }
         finally
         {
