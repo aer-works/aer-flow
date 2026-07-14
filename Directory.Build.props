@@ -1,0 +1,18 @@
+<Project>
+
+  <!-- M13 Phase 2 (#108): single source of truth for the repo's version. release-please-config.json's
+       extra-files entry bumps <Version> here directly on every release PR merge, the same way it
+       already bumps .release-please-manifest.json/CHANGELOG.md, visible to every local `dotnet
+       build` rather than only a CI-only pack-time override. Directory.Build.props at the repo root
+       is auto-imported by every project below it, so Aer.Cli's packed version flag output (and
+       every other project's AssemblyInformationalVersion) comes from this one place. -->
+  <PropertyGroup>
+    <Version>0.7.0</Version>
+
+    <!-- The SDK defaults to appending "+<git-sha>" to AssemblyInformationalVersion, which would make
+         `aer`'s version flag output ("0.7.0+<sha>") never match CHANGELOG.md's plain "0.7.0" entry —
+         exactly what this phase's produced-artifact requirement rules out. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

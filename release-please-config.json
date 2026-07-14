@@ -4,6 +4,13 @@
     ".": {
       "release-type": "simple",
       "path": ".",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Directory.Build.props",
+          "xpath": "/Project/PropertyGroup/Version"
+        }
+      ],
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },

@@ -1,7 +1,14 @@
+using System.Reflection;
 using Aer.Adapters;
 using Aer.Cli;
 using Aer.Flow;
 using Aer.Flow.Domain;
+
+if (args.Length == 1 && args[0] == "--version")
+{
+    Console.WriteLine(VersionInfo.GetVersion(Assembly.GetExecutingAssembly()));
+    return 0;
+}
 
 var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
@@ -16,6 +23,7 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
     Console.Error.WriteLine(
         "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
+    Console.Error.WriteLine("       aer --version");
     return 64;
 }
 
