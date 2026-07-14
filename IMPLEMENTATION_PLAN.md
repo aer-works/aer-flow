@@ -37,7 +37,9 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 18 | **CLI Pump** | `aer run`: load workflow + bindings, drive project → resolve → dispatch → await to a terminal state | §21 |
 | 19 | **CLI Mutation Commands** | `aer decide` / `aer cancel` against a running or paused task | §14, §21; UI spec §7 |
 | 20 | **Distribution** | `aer` as an installable `dotnet tool`; native-lib bundling | AER Overview §6 |
-| 21 | **Projection / Authoring UI** | Read model + template/DAG authoring over the event store | UI spec v0.7 |
+| 21 | **UI Projection** | Read model + views: deterministic reconstruction from bound snapshots, event stores, and artifact directories; DAG/timeline/lineage rendering | UI spec §1, §3, §10–§12 |
+| 22 | **UI Control Surface** | The §7 user actions (approve/reject/retry-with-revision/send-back/cancel/start) mapped onto Flow's closed `DecisionType` set, exclusively via the mutation interface | UI spec §6, §7 |
+| 23 | **UI Authoring** | Template/DAG/worker-binding editing with structural validation (cycles, `SupersedeTargets` ancestry); never touches a bound snapshot | UI spec §5, §8, §9 |
 
 ---
 
@@ -54,70 +56,79 @@ Which milestone introduces which capabilities.
 | **M11: First Real Run** | 17 (Worker Adapter — Claude only), 18 (CLI Pump) | M10; live aer-core M5 |
 | **M12: Full Control Surface** | 17 (Gemini/`agy` adapter), 19 (`decide`/`cancel`); canonical protocol generalized across vendors | M11 |
 | **M13: Distribution** | 20 | M11 |
-| *(UI track — separate)* | 21 | M11 (UI spec v0.7) |
+| **M14: UI Projection** | 21 | M11 |
+| **M15: UI Control Surface** | 22 | M14; M12 (`aer decide`/`cancel`/`supply` — the mutation-interface callers it wraps) |
+| **M16: UI Authoring** | 23 | M14 |
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
+M14–M16 are that UI track, splitting the roadmap's original single "UI" row the same way the engine split into M7–M10: **projection first** (capability 21 — every other UI capability renders on top of the read model), then the **control surface** (22) and **authoring** (23) as independent tracks behind it — M15 and M16 don't depend on each other, only on M14. Conversation-style views and live Observation-Tier turn streaming (UI spec §10) are deliberately assigned to *no* milestone: they depend on Case 2 encapsulated multi-model workers (Flow spec §18.2) that don't exist yet, and Overview §6's rule is to build the second concrete thing before generalizing for it.
+
 ---
 
-## M13: Distribution — Phase Plan
+## M14: UI Projection — Phase Plan
 
-**Goal:** turn `aer` from something you `dotnet build` out of a checkout into something installable — `dotnet tool install --global` on Windows, Linux, and macOS, from a self-built, correctly versioned package (capability #20; `spec/AER Overview.md` §6). Not blocked by M12: the Milestone Roadmap has always listed M13 as blocked by M11 only — it is a parallel track, not a sequel, and M12's own remaining gate (#98) is now a permanently human-run step (CLAUDE.md's "Live-vendor smoke tests") with no bearing on packaging work.
+**Goal:** the first UI-track milestone (capability #21; UI spec v0.7 §1, §3, §10–§12): a read-only projection surface over real task directories — browse a task's steps, executions, pauses, and decisions; see the DAG; trace artifacts along their dependency edges; and see when a bound snapshot has diverged from its source template — all reconstructed exclusively from durable state, exactly as UI spec §3/§11/§12 demand. No mutations (that's M15) and no authoring (M16).
 
-Three facts shape the plan. First, **this is packaging work, not new engine behavior** — no section of `aer-flow-behavioral-spec-v1.0.md` governs it, the way §9/§14/§17 governed M9–M12. The only real guidance is `AER Overview.md` §6: build for the concrete, single-developer need, not a hypothetical audience — no public NuGet.org feed, no auth, no RID matrix beyond what `pixi.toml` already claims to support. Second, **the native-lib copy mechanism that exists today doesn't survive packing.** `Aer.Core.csproj`'s `Content Include`/`CopyToOutputDirectory` trick (M7 Phase 6) copies a single host-OS binary into a *build output directory* — exactly what every `dotnet test`/`dotnet run` in this repo has relied on so far, and exactly what `dotnet pack` does not automatically fold into a nupkg. A `PackAsTool` global tool always launches through the portable `dotnet` muxer regardless of RID, so the native asset needs a `tools/$(TargetFramework)/any/` `PackagePath`, not the `runtimes/<rid>/native/` convention self-contained deployments use. Third, **versioning has never been wired past the changelog.** `release-please-config.json`'s `release-type: "simple"` bumps only `.release-please-manifest.json`/`CHANGELOG.md` — no `.csproj` has ever read that version, so this is the first milestone that has to close that loop.
+Three facts shape the plan. First, **the read model already exists.** UI spec §3's input set — templates, bound snapshots, Flow events, Core events, artifact directories — is precisely what `SnapshotBinder.LoadFromFileAsync`, `IEventLogReader`, and `StateProjector.Project` already consume, and §11's determinism guarantee is Flow §13's re-stated for rendering. A UI that consumes these as a library inherits both by construction; a UI that reimplements projection in another language has to keep two implementations of the same semantics in lockstep forever. This is the dominant constraint on the stack choice, and it pulls hard toward .NET — but the decision is Phase 1's to record, not this plan's to pre-commit. Second, **the spec deliberately refuses to pick a form factor** (§13: desktop, web, TUI, IDE integration — all behaviorally equivalent), so someone has to, against Overview §6's criterion: build for the concrete single-developer need, no speculative deployment story. That decision — and with it, whether the UI lives in `AerFlow.slnx` or a new repo (Overview §7: don't split before a genuine reason; only `aer-core`'s cross-language boundary has ever earned one) — also resolves in Phase 1. Third, **the UI spec is v0.7, not 1.0** — planning has already surfaced one real gap (task-directory discovery; see Open Questions below), and implementation should expect to surface more, each resolved by a spec PR before the phase that needs it, per this document's existing convention.
+
+Unlike M11/M12, nothing in M14 can ever need live vendor auth: projection is a pure function of durable state (§11), so the milestone gate is golden-projection tests over recorded task-directory fixtures, wired into default CI — M13 Phase 4's placement, for the same reason.
 
 ### Phase dependency table
 
 | Phase | Requires output from |
 |---|---|
-| 1 — Pack `aer` as a `dotnet tool` (single-platform) | — |
-| 2 — Version wiring (release-please → package `Version`) | 1 (the packing shape it versions) |
-| 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) | 1 (the packing shape it multiplies across platforms) |
-| 4 — Installed-tool round-trip check (wired into default CI) | 1 + 2 + 3 |
+| 1 — Stack decision + walking skeleton | — |
+| 2 — Task & execution projection + change observation | 1 |
+| 3 — DAG view (snapshot topology + status overlay) | 1 |
+| 4 — Artifact lineage + snapshot-vs-template diff | 2 + 3 |
+| 5 — Golden-projection determinism gate (default CI) | 2 + 3 + 4 |
 
-Phases 2 and 3 are independent of each other once Phase 1 lands — where the version number comes from and how many platforms' native libs ship in the package are separable concerns, same as M12 Phases 1 and 2 being independent of each other.
+Phases 2 and 3 are independent of each other once Phase 1 lands — what a step's execution history looks like and how the graph is drawn are separable concerns, the same shape as M13 Phases 2 and 3. Phase 2 is additionally blocked on the task-directory-discovery spec PR (Open Questions below).
 
-### Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
-Establishes that `Aer.Cli` can be `dotnet pack`ed into an installable global tool at all, deferring "works on any machine" to Phase 3. `<PackAsTool>true</PackAsTool>`, `<ToolCommandName>aer</ToolCommandName>`, and a `<PackageId>` on `Aer.Cli.csproj`; a `pixi run pack` task. The genuinely new problem is getting the native `aer_core` library correctly embedded and resolvable at runtime — not a copy-paste of `Aer.Core.csproj`'s existing build-output-directory trick, since `dotnet pack` doesn't pick that up on its own. Verified with a real round trip: pack → `dotnet tool install --global --add-source <dir>` → run `aer` for real against a shell-stub fixture → `dotnet tool uninstall --global`.
+### Phase 1 — Stack decision + walking skeleton (#118)
+Resolves the one decision everything else in the UI track builds on, then proves it end to end: a new UI project that opens one real task directory — persisted snapshot via `SnapshotBinder.LoadFromFileAsync`, events via `IEventLogReader`, state via `StateProjector` — and renders that task's per-step statuses. Deliberately minimal rendering; the point is the seam (§3's read model consumed as a library, inheriting §11's determinism by construction), not the pixels.
 
-**Produces:** an installable nupkg, proven end-to-end on the current host only.
-**Excludes:** other-OS native libs (Phase 3); a real release version (Phase 2); the CI-wired round-trip check (Phase 4).
+**Produces:** the UI project in its decided home, consuming the real read model, rendering one real task's step states.
+**Excludes:** multiple tasks and execution detail (Phase 2); graph rendering (Phase 3); artifacts and diffing (Phase 4); any styling worth defending.
 **Open questions resolved in this phase:**
-- **`PackageId`/`ToolCommandName` naming** (candidates: `aer`, `Aer.Flow.Cli`, `AerFlow.Cli` — no public feed exists to collide with, per §6, so this is a local-convenience choice, not a namespace-squatting concern).
-- **Where the native asset's `PackagePath` lives inside the tool's payload** — `tools/$(TargetFramework)/any/`, next to the managed DLL, where default P/Invoke probing finds it.
+- **Form factor + stack** (§13 candidates; criterion: §11 determinism via direct `Aer.Flow` read-model reuse, plus Overview §6's single-developer scope).
+- **Repo + solution placement** — Overview §7's default is this repo/solution; a stack that can't link `Aer.Flow` directly is the only thing that would reopen it, and that would need an Overview §7 spec PR, not an implicit decision.
+- **Project naming** (`Aer.Ui` vs `Aer.Flow.Ui` vs …).
 
-### Phase 2 — Version wiring (release-please → package `Version`) (#108)
-Closes the loop between `release-please` and the packed tool's version, so `aer --version` means something and matches the `CHANGELOG.md` entry it shipped with. Two candidates, decided in this phase rather than pre-committed here: a root `Directory.Build.props` with a `<Version>` that `release-please-config.json` bumps directly via its generic version-file mechanism (visible to every local `dotnet build`, not just CI), or a CI-only `-p:Version=` override read from `.release-please-manifest.json` at pack time (simpler, but invisible outside CI).
+### Phase 2 — Task & execution projection + change observation (#119)
+The full read-model surface for a single task: per-step attempt history, retry state, pause state with its declared `SupersedeTargets`, recorded decisions, supplementary executions, human/non-process executions — everything `FlowState` and the bound snapshot jointly carry (M12 Phase 3's `CommandResult` already established that pairing as the right reporting unit). Plus the first live-ness: re-projecting when the event store grows while a run is in flight. §11 is not threatened by this — observation decides *when* to re-project, never *what* the projection concludes (the same when-vs-what line M8 Phase 3 drew for dispatch determinism).
 
-**Produces:** a packed `aer` tool whose `--version` output matches the changelog entry for the same release.
-**Excludes:** publishing anywhere (no feed exists — §6); multi-RID packaging (Phase 3).
+**Produces:** a complete, live-updating read view of any single task directory.
+**Excludes:** graph rendering (Phase 3); artifact browsing and template diffing (Phase 4); all mutations (M15).
 **Open questions resolved in this phase:**
-- **Where the single source of truth for the version lives** — a tracked `.props` file `release-please` writes to directly, or a value read only at pack time.
+- **How task directories are opened/discovered** — downstream of the task-directory-discovery spec gap; this phase implements whatever the spec PR lands on.
+- **Change observation mechanism** (polling vs. `FileSystemWatcher` vs. re-project-on-demand) — an implementation choice invisible to the behavioral model, made here.
 
-### Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
-Extends Phase 1's single-platform pack so the same nupkg installs and runs regardless of which OS Philip is on that day, matching `pixi.toml`'s declared `platforms = ["win-64", "linux-64", "osx-arm64"]`. Two gaps stand in the way: `.github/workflows/ci.yml`'s matrix today is `[windows-latest, ubuntu-latest]` only — no macOS job exists, and cross-compiling `aer_core` to `aarch64-apple-darwin` from a Linux runner isn't practical without Apple's SDK, so this phase most likely adds a real `macos-latest` job rather than a cross-compile trick; and the pack step needs all three OSes' `cargo build` outputs gathered into one place (CI artifacts, downloaded into the packing job) before `dotnet pack` runs.
+### Phase 3 — DAG view (snapshot topology + status overlay) (#120)
+Renders the graph — steps, dependencies, `PausePoint`s and their `SupersedeTargets` — overlaid with each step's current projected status: §10's DAG view, plus §8's read-only items (visualize execution order, preview workflow topology). Per §5, a bound task renders its immutable `WorkflowDefinitionSnapshot`, never the live template it originated from; a not-yet-instantiated workflow renders the template.
 
-**Produces:** `aer` installable and runnable via the same install command regardless of host OS.
-**Excludes:** a real version number (Phase 2, independent); the CI-wired round-trip check (Phase 4).
-**Open questions resolved in this phase:**
-- **Single "fat" package vs. per-RID packages.** A fat package ships all three native libs side by side (`tools/$(TargetFramework)/any/`) with the existing build-time `IsOSPlatform` `Aer.Core.csproj` logic ported to a runtime P/Invoke-resolution check; per-RID packages (`dotnet pack -r win-x64`, etc.) install via `dotnet tool install --global --arch <rid>` instead. Named as a real choice, not assumed.
+**Produces:** the graph view over both bound tasks and raw templates.
+**Excludes:** all editing (M16); §8's advisory scheduling simulation (nothing demands it yet — Overview §6); the snapshot-vs-template *diff* rendering (Phase 4).
 
-### Phase 4 — Installed-tool round-trip check, wired into default CI (#110)
-The M13 completion gate — but unlike M11/M12's gates, deliberately *not* their gated-manual-runbook pattern. A `pixi run` task does a full pack → install → run (a trivial shell-stub workflow fixture, no live vendor, mirroring `RunCommandEndToEndTests` rather than `LiveClaudeRunSmokeTest`) → assert output → uninstall round trip, with no external dependency beyond the repo itself. Since nothing here needs real subscription auth (the reason M11/M12's gates are permanently human-run — CLAUDE.md's "Live-vendor smoke tests"), this check belongs in `ci.yml` directly, not a runbook — the phase's job is deciding that placement deliberately, not defaulting to the gated pattern out of habit. Also adds an "Installing `aer`" section to `README.md` documenting the end-user install/uninstall commands this phase proves work.
+### Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
+The two remaining read-only projection surfaces. **Artifact lineage** (§10): every execution's `artifacts/execution_{N}/` contents, navigable along the dependency edges that fed them — the input resolution is already durable (`AER_INPUT_<n>` assignment per Flow spec §16), so the view walks recorded facts, never re-derives them. **Snapshot-vs-template diff** (§5): when a task's originating template still exists and has diverged from the bound snapshot, the divergence must be *visible* — rendered as a diff, never silently substituting one for the other.
 
-**Produces:** M13 complete — `aer` installable via `dotnet tool install --global` on Windows, Linux, and macOS from a self-built, correctly versioned nupkg, with an unattended CI check proving install → run → uninstall.
-**Excludes:** publishing to nuget.org or any public feed; an OS-native installer (MSI/Homebrew formula); auto-update.
+**Produces:** artifact browsing with lineage, and the §5 divergence surface.
+**Excludes:** artifact editing or submission (§5's revised-artifact path is a mutation through Flow's mutation interface — M15); rendering artifact *content* beyond a file listing + plain-text preview.
+
+### Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
+The M14 completion gate: recorded task-directory fixtures (a completed run, a paused run mid-decision, a failed-and-retried run — produced by shell-stub workflows, the `RunCommandEndToEndTests` convention, so no live vendor is involved) projected to a canonical serialized form and asserted against golden files on all three CI OSes. This is §11 made executable — identical durable state, identical projected state — and it is what makes every future UI refactor safe. Belongs in `ci.yml` directly, for M13 Phase 4's reason: nothing here needs live vendor auth, so the gated-runbook pattern would be the wrong default.
+
+**Produces:** M14 complete — a read-only UI over real task directories, with §11 determinism enforced by unattended CI.
+**Excludes:** any mutation surface (M15); any authoring (M16); conversation/live-stream views (assigned to no milestone — see the roadmap note).
 
 ---
 
 ## Current Milestone
 
-No milestone currently has an active phase plan. **M13: Distribution** is complete (see
-Completed Milestones below) — the Milestone Roadmap's only remaining unstarted capability is the
-UI track (#21, blocked only by M11, already satisfied). Starting it, or any new engine milestone,
-needs its own "docs: Define M14 phase plan"-style PR before implementation begins, per this
-document's own convention (`IMPLEMENTATION_PLAN.md`'s session prompt: "Help implement the current
-phase only").
+**M14: UI Projection** — phase plan above; phase issues #118–#122. No phase is in progress yet;
+Phase 1 (#118) is next. Per this document's session prompt: help implement the current phase only.
 
 ## Completed Milestones
 
@@ -496,6 +507,8 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 - **Event Store performance** — full re-read vs. manifest-checkpoint-plus-tail (§21). Deferred until §20's no-daemon question is revisited.
 - **Mutation Interface shape** — deliberately unspecified (§14); CLI is the reference implementation. Shape emerges from M7 implementation; the CLI surface itself lands in M11 (`aer run`) and M12 (`aer decide`/`aer cancel`).
 - ~~**Orphaned mid-run executions**~~ — resolved (#77): §7 now defines the third crash state (`ExecutionStarted`, no `ExecutionExited`) — finalize as abandoned, a Flow-originated `ExecutionFailed`/`Retryable`, after a best-effort re-issued cancellation toward Core. Unblocks M10 Phase 3 (#71).
+- **Task-directory discovery (UI spec §3)** — the UI spec defines *what* the UI reads (templates, snapshots, event stores, artifacts) but not how it *finds* task directories: `aer run`'s `--task-dir` default (`.aer/<workflow-file-stem>` under the invoking directory, an M11 Phase 3 decision) is a per-cwd convention, and no registry of existing task directories exists anywhere in the system. Whatever mechanism the UI uses (a user-opened directory, a scan convention, an opt-in registry file) needs a UI-spec PR before M14 Phase 2 (#119) commits to one — noting principle 3 (one source of truth): a registry, if introduced, would be a rebuildable convenience, never authoritative.
+- **UI spec maturity (v0.7 vs. the flow spec's v1.0)** — the UI spec is the only sibling below 1.0. M14–M16 planning and implementation should expect to surface more gaps like the one above, each resolved via a spec PR before the phase that hits it — this list is the ledger. Promotion to v1.0 is a natural M16-completion question, not a prerequisite for starting M14.
 
 ## Notes for future work
 
