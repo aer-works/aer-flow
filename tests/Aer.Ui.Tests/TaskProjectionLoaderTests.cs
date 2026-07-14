@@ -77,6 +77,21 @@ public class TaskProjectionLoaderTests
             Assert.Equal(StepStatus.Succeeded, stepStatusByStepId[Architect]);
             Assert.Equal(StepStatus.Succeeded, stepStatusByStepId[Critic]);
             Assert.Equal(StepStatus.Succeeded, stepStatusByStepId[Publisher]);
+
+            // M14 Phase 4 (issue #121): the same run also projects real artifact lineage — actual
+            // files on disk, and each downstream step's input traced back to the exact upstream
+            // execution that produced it.
+            var executionByStepId = projection.Lineage.Executions
+                .Where(execution => execution.StepId is not null)
+                .ToDictionary(execution => execution.StepId!.Value);
+
+            Assert.Equal(["plan"], executionByStepId[Architect].OutputFiles);
+            Assert.Empty(executionByStepId[Architect].Inputs);
+
+            var criticInput = Assert.Single(executionByStepId[Critic].Inputs);
+            Assert.Equal("plan", criticInput.InputName);
+            Assert.Equal(Architect, criticInput.ProducerStepId);
+            Assert.Equal(executionByStepId[Architect].ExecutionId, criticInput.ProducerExecutionId);
         }
         finally
         {

@@ -11,13 +11,16 @@ namespace Aer.Ui;
 /// Event Store (§5.1), and <see cref="StateProjector.Project"/> to reconstruct <see cref="Aer.Flow.Domain.FlowState"/>
 /// (§12) — never a reimplementation of any of it. <see cref="ExecutionHistoryProjector.Project"/>
 /// (M14 Phase 2, issue #119) reads the same event list a second time for the fuller per-execution
-/// history <see cref="Aer.Flow.Domain.FlowState"/> alone doesn't carry. A UI built this way inherits
+/// history <see cref="Aer.Flow.Domain.FlowState"/> alone doesn't carry, and
+/// <see cref="ArtifactLineageProjector.Project"/> (M14 Phase 4, issue #121) reads it a third time,
+/// plus the artifacts directory, for per-execution artifact provenance. A UI built this way inherits
 /// §11's determinism guarantee by construction, per UI spec §11.
 /// </summary>
 public static class TaskProjectionLoader
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
+    private const string ArtifactsDirectoryName = "artifacts";
 
     /// <exception cref="InvalidTaskDirectoryException">
     /// <paramref name="taskDirectoryPath"/> has no persisted snapshot — UI spec §3.1's
@@ -46,6 +49,9 @@ public static class TaskProjectionLoader
         var state = StateProjector.Project(events, snapshot);
         var history = ExecutionHistoryProjector.Project(events, snapshot);
 
-        return new TaskProjection(snapshot, state, history);
+        var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
+        var lineage = ArtifactLineageProjector.Project(events, snapshot, artifactsRootPath);
+
+        return new TaskProjection(snapshot, state, history, lineage);
     }
 }

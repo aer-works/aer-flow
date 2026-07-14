@@ -13,4 +13,11 @@ namespace Aer.Ui;
 /// <c>Aer.Ui</c> rather than shared with <c>Aer.Cli</c>, since the UI is architecturally outside the
 /// trusted execution stack (UI spec §2) and must not depend on it.
 /// </summary>
-public sealed record TaskProjection(WorkflowDefinitionSnapshot Snapshot, FlowState State, ExecutionHistory History);
+/// <param name="Lineage">
+/// Every execution's artifact-directory contents and resolved input provenance (M14 Phase 4, issue
+/// #121) — a fourth read-model surface alongside <see cref="Snapshot"/>/<see cref="State"/>/
+/// <see cref="History"/>, following the same "derived from the same events, owned by <c>Aer.Ui</c>"
+/// shape <see cref="History"/> established (Phase 2).
+/// </param>
+public sealed record TaskProjection(
+    WorkflowDefinitionSnapshot Snapshot, FlowState State, ExecutionHistory History, ArtifactLineage Lineage);
