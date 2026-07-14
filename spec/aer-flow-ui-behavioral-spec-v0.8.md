@@ -1,4 +1,4 @@
-# AER Flow UI Behavioral Specification — v0.7
+# AER Flow UI Behavioral Specification — v0.8
 
 This document defines the behavioral contract of AER Flow UI.
 
@@ -11,7 +11,7 @@ This specification intentionally defines **no execution semantics**. Those belon
 
 Each spec (Core, Flow, UI) is versioned independently; the dependency list above pins the sibling spec versions this document was written against, and cross-references always name the sibling spec file as it exists at the same commit.
 
-**Changes from v0.6:** renamed `RevisableUpstream` to `SupersedeTargets` throughout, matching the field name in `aer-flow-behavioral-spec-v1.0.md` (an earlier draft lineage of that spec used different numbering; v1.0 is the published version). No behavioral change to the UI's own contract — this is a pure rename following the upstream field rename.
+**Changes from v0.7:** added §3.1 (Task Directory Discovery), closing a gap found while planning the first UI milestone: §3 defined *what* the UI reads but not how it *finds* task directories. A task directory is self-describing — identified by its durable contents, never by membership in a registry; any UI-side list of task directories is Local UI Configuration (§4), rebuildable and never authoritative; and the trusted execution stack is never required to announce, register, or enumerate tasks.
 
 ---
 
@@ -90,6 +90,19 @@ The UI reconstructs all visible state exclusively from:
 No live runtime state is authoritative.
 
 If something cannot be reconstructed from durable state, it is not part of the behavioral model.
+
+## 3.1 Task Directory Discovery
+
+A task directory is **self-describing**: it is identified by its contents — a bound `WorkflowDefinitionSnapshot` and its Event Store (AER Flow spec §5, §11.2) — never by membership in any registry, index, or list. Whether a task exists is a fact about durable state on disk, and about nothing else.
+
+Consequences:
+
+* The UI may maintain a list of known task directories — recently opened locations, configured roots it scans, an index it builds. Any such list is Local UI Configuration (§4): a rebuildable convenience that may be lost, deleted, or rebuilt at any time with no loss of information. It is never authoritative; the task directory itself is.
+* The UI must be able to open any valid task directory it is pointed at, whether or not any list has ever mentioned it.
+* A listed directory that no longer exists, or no longer contains a valid snapshot and Event Store, is stale list state — to be reflected or pruned, never surfaced as a system error.
+* No component of the trusted execution stack (§2) is required — or may be required by a UI — to announce, register, or enumerate task directories. Flow has no registry of tasks and no concept of one (AER Flow spec §2, §20); discovery is entirely a client-side concern.
+
+How a UI populates its list — asking the user, remembering what it opened before, scanning a configured root for directories matching the reference implementation's on-disk layout — is an implementation choice, not behavioral contract, with one constraint: a scan must treat "looks like a task directory" as a hypothesis, confirmed only by the directory's actual contents.
 
 ---
 
