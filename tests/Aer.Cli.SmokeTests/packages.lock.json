@@ -99,16 +99,16 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "aer.adapters": {
-        "type": "Project",
-        "dependencies": {
-          "Aer.Flow": "[1.0.0, )"
-        }
-      },
-      "aer.cli": {
+      "aer": {
         "type": "Project",
         "dependencies": {
           "Aer.Adapters": "[1.0.0, )",
+          "Aer.Flow": "[1.0.0, )"
+        }
+      },
+      "aer.adapters": {
+        "type": "Project",
+        "dependencies": {
           "Aer.Flow": "[1.0.0, )"
         }
       },
