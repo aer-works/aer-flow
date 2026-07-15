@@ -265,7 +265,7 @@ WorkflowDefinition (Template)
 
 ```
 
-A `WorkflowDefinition` in this form is a **template**: editable, versionable, and not itself bound to any running task. `WorkflowTemplateVersion` increments on every edit that is instantiated from; it is the only thing that distinguishes two otherwise-identically-named templates over time.
+A `WorkflowDefinition` in this form is a **template**: editable, versionable, and not itself bound to any running task. `WorkflowTemplateVersion` is ordinary template data, exactly like `WorkflowTemplateId` — Flow neither computes, infers, nor enforces it; it only reads whatever value is present in the template at instantiation time and copies it into the snapshot (§11.2). Responsibility for incrementing it belongs entirely to whoever edits the template (a UI, or a human editing the file by hand): it should increment on every content-changing edit — any save whose resulting `Steps` or metadata differ from what was loaded — never on a save that leaves the template unchanged, and never at finer granularity than a save. It is the only thing that distinguishes two otherwise-identically-named templates over time, and its accuracy is an authoring-discipline guarantee external to Flow, not one Flow verifies.
 
 ### 11.2 WorkflowDefinitionSnapshot (Immutable Binding)
 
