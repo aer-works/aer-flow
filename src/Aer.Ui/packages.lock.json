@@ -198,6 +198,19 @@
         "resolved": "0.94.1",
         "contentHash": "11YMr7FnAbL83bQmVxlhbIKHvSLxjO81D12Ej0QMSGXMDTxNA9MTOa4MQxx43nv5el/efuPHwzyrj6a5ha2gug=="
       },
+      "aer": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Adapters": "[0.9.0, )",
+          "Aer.Flow": "[0.9.0, )"
+        }
+      },
+      "aer.adapters": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Flow": "[0.9.0, )"
+        }
+      },
       "aer.core": {
         "type": "Project"
       },

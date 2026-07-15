@@ -14,6 +14,13 @@
        worth defending" exclusion) made the tradeoff explicit. -->
   <ItemGroup>
     <ProjectReference Include="..\Aer.Flow\Aer.Flow.csproj" />
+    <!-- M15 Phase 1 (#137): the mutation seam's decision of record — in-process reuse of M12's
+         command layer (RunCommand, then DecideCommand/CancelCommand/SupplyCommand in later phases),
+         the same static, adapter-registry-as-argument surface Aer.Cli's Program.cs already drives,
+         rather than spawning the installed aer binary. Aer.Adapters supplies the IWorkerAdapter
+         registry seam RunCommand.ExecuteAsync's second parameter needs. -->
+    <ProjectReference Include="..\Aer.Cli\Aer.Cli.csproj" />
+    <ProjectReference Include="..\Aer.Adapters\Aer.Adapters.csproj" />
   </ItemGroup>
 
   <ItemGroup>

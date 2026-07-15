@@ -133,13 +133,45 @@ The M15 completion gate, placed by M14 Phase 5's reasoning: no live vendor auth 
 
 **M15: UI Control Surface** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Mutation seam + start/resume a workflow (#137)
+- ✅ Phase 1 — Mutation seam + start/resume a workflow (#137)
 - ⬜ Phase 2 — Resolve decisions: Approve / Reject (#138)
 - ⬜ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
 - ⬜ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
 - ⬜ Phase 5 — UI-driven mutation round trips in default CI (#141)
 
 Per this document's session prompt: help implement the current phase only.
+
+Decisions of record from M15:
+
+- **The mutation seam is in-process reuse of `Aer.Cli.RunCommand.ExecuteAsync`** — `Aer.Ui` now
+  references `Aer.Cli` and `Aer.Adapters` directly (new `ProjectReference`s), the same static,
+  adapter-registry-as-argument call `Program.cs` makes for `aer run`, rather than spawning the
+  installed `aer` binary. This is the seam every later phase's decision command builds on the same
+  way (Phase 1).
+- **The worker-adapter registry is a `MainWindow` constructor argument**, defaulting to
+  `WorkerAdapterRegistry.Default` through the existing parameterless/one-argument constructors so
+  no production caller has to name it — the same "production wiring is the caller's decision" seam
+  `LocalUiConfigurationStore` established in M14 Phase 2. `Aer.Ui.Tests` substitutes a deterministic
+  shell-stub registry (`MainWindowRunTests`) instead of resolving a live vendor CLI (Phase 1).
+- **`RunOptions.WorkflowFilePath` is nullable** — a resume of an already-bound task directory never
+  reads it (`RunCommand.ExecuteAsync` only binds a fresh snapshot when none is persisted yet), so
+  `MainWindow.RunAsync` never has to ask the user for a template unless the task directory is
+  actually starting fresh. A fresh start with no template given is a `CliArgumentException`, not a
+  silent no-op (Phase 1).
+- **Bindings and template file paths are asked for on every Run, never inferred** — bindings are
+  never persisted in a task directory (M14 Phase 2's decision of record) and a template is only
+  ever relevant on a fresh start. `LocalUiConfigurationStore` gained `LastBindingsFilePath`/
+  `LastWorkflowTemplateFilePath` purely to pre-fill that ask, the same non-authoritative,
+  rebuildable-convenience treatment as the existing recents list (Phase 1).
+- **The pump runs via `Task.Run` inside `MainWindow.RunAsync`, and the UI thread never awaits it
+  directly** — a real dispatch can take however long a worker takes; the existing 2-second
+  `DispatcherTimer` poller (M14 Phase 2) is what renders progress while a Run is in flight.
+  `RunAsync` itself only touches projection controls once, after the pump has already reached its
+  fixed point (Phase 1).
+- **`RunCommand`/`MutationInterface` were not given the caller-retained `InFlightExecutionRegistry`
+  this phase** — deliberately deferred to Phase 4, which already owns that additive signature
+  change per the phase plan above; Phase 1's Run action has nothing yet to target a cancel at
+  (Phase 1).
 
 ## Completed Milestones
 

@@ -3,7 +3,14 @@ namespace Aer.Cli;
 /// <summary>
 /// Parsed arguments for <c>aer run</c> (M11 Phase 3, §21's "the CLI is the pump").
 /// </summary>
-/// <param name="WorkflowFilePath">The <c>WorkflowDefinition</c> template file (spec §11.1).</param>
+/// <param name="WorkflowFilePath">
+/// The <c>WorkflowDefinition</c> template file (spec §11.1). Only read when
+/// <paramref name="TaskDirectoryPath"/> has no persisted snapshot yet — a fresh start. Resuming a
+/// task directory that is already bound never reads this, so <c>null</c> is valid for a
+/// resume-only call (M15 Phase 1, issue #137): the CLI still requires it positionally (a terminal
+/// invocation names a workflow file whether fresh or resumed), but an in-process caller resuming a
+/// known task directory has no reason to ask the user for one.
+/// </param>
 /// <param name="BindingsFilePath">The worker-binding config file (M11 Phase 1's sidecar shape).</param>
 /// <param name="TaskDirectoryPath">
 /// Where this task's durable state lives — <c>snapshot.json</c>, <c>flow.jsonl</c>, <c>artifacts/</c>,
@@ -17,7 +24,7 @@ namespace Aer.Cli;
 /// already carry.
 /// </param>
 public sealed record RunOptions(
-    string WorkflowFilePath,
+    string? WorkflowFilePath,
     string BindingsFilePath,
     string TaskDirectoryPath,
     string? WorkflowId = null);
