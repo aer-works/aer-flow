@@ -16,6 +16,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<PausedStepViewModel> PausedSteps { get; } = [];
 
     /// <summary>
+    /// The template editor's state (M16 Phase 1, issue #150) — the authoring surface, deliberately
+    /// its own child ViewModel rather than more fields here: authoring is a separate concern from
+    /// the mutation/decision surface this type was introduced for, and it is the first surface
+    /// whose fields are two-way bound (see <see cref="TemplateEditorViewModel"/>'s own remarks).
+    /// </summary>
+    public TemplateEditorViewModel TemplateEditor { get; } = new();
+
+    /// <summary>
     /// One entry per currently-running or cancellation-pending execution (M15 Phase 4, issue #140) —
     /// the §7 targeted-Cancel surface, alongside <see cref="PausedSteps"/>' decision surface.
     /// </summary>

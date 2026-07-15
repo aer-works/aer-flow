@@ -132,13 +132,52 @@ The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests 
 
 **M16: UI Authoring** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Template write seam + create/save walking skeleton (#150)
+- ✅ Phase 1 — Template write seam + create/save walking skeleton (#150)
 - ⬜ Phase 2 — Step & graph editing with live structural validation (#151)
 - ⬜ Phase 3 — PausePoint + SupersedeTargets editing (#152)
 - ⬜ Phase 4 — Worker-binding configuration editing (#153)
 - ⬜ Phase 5 — Authoring round trips in default CI (#154)
 
 Per this document's session prompt: help implement the current phase only.
+
+Decisions of record from M16:
+
+- **The template writer is `WorkflowDefinitionWriter`, beside its parser in `Aer.Flow.Templates`** —
+  not inside `Aer.Ui`, resolving the phase plan's named seam decision. Round-trip fidelity
+  (save → parse → validate through the exact code every other consumer uses) is a domain-layer
+  property, guaranteed by construction only when both directions share the same
+  `System.Text.Json` converters, and `SnapshotBinder.PersistAsync` already established that
+  domain-record file writers live in this namespace. Flow's engine still never writes a template
+  on any execution path — the writer has no caller inside `Aer.Flow` itself; the UI is the caller,
+  exactly as UI spec §4 assigns. Output is indented (a template is a human-editable file, §11.1's
+  own framing), and the round-trip bar is parse-level, never byte-level (Phase 1).
+- **The writer validates before writing** — `WorkflowDefinitionWriter.Serialize` runs
+  `WorkflowDefinitionValidator.Validate` first and writes nothing on failure, the same
+  public-entry-point reasoning as `SnapshotBinder.Bind`. Phase 2's save-validity open question
+  (may an invalid in-progress graph be saved as a draft?) can loosen this deliberately; until it
+  does, a saved template file is engine-valid by construction (Phase 1).
+- **The editing model is in-memory `WorkflowDefinition` + explicit Save with dirty tracking,
+  as a separate editor surface riding the MVVM layer** — `TemplateEditorViewModel` (a child of
+  `MainWindowViewModel`, the first two-way-bound surface, exactly the shape M15's
+  notes-for-future-work entry anticipated) holds the metadata fields and the baseline they were
+  loaded from; `MainWindow.NewTemplate`/`OpenTemplateInEditorAsync`/`SaveTemplateAsync` own all
+  file I/O, the same state-in-VM/I-O-in-window split `PausedStepViewModel` established.
+  M14 Phase 3's read-only template projection is untouched: `OpenAsync` still routes a template
+  file straight to the read-only DAG view — inspecting and authoring are separate surfaces, so
+  the read-only view never has to defend against a half-edited state (Phase 1).
+- **§11.1's version-increment rule is implemented in `MainWindow.SaveTemplateAsync` exactly as the
+  spec amendment settled it**: a content-changing save increments `WorkflowTemplateVersion` from
+  the loaded baseline — unless the user explicitly set a different version themselves, which is
+  respected as-is (a hand-editor may legitimately do the same); a no-op save writes nothing and
+  increments nothing (`No changes to save.`); and a brand-new template's first save has no saved
+  predecessor to distinguish from, so it saves the version as entered
+  (`TemplateEditorViewModel.BaselineIsPersisted` is how Save tells the two apart). The incremented
+  version is written back into the editor's fields after save, so the box never silently diverges
+  from disk (Phase 1).
+- **Template saves are deliberately not gated on `IsMutationInFlight`** — a template file is not
+  durable task state, no §15 task lock is involved, and an edit is visible only to future
+  instantiations regardless (UI spec §5), so the editor stays usable while a pump is in flight
+  (Phase 1).
 
 ## Completed Milestones
 
