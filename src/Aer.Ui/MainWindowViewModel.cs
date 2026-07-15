@@ -24,6 +24,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public TemplateEditorViewModel TemplateEditor { get; } = new();
 
     /// <summary>
+    /// The worker-bindings editor's state (M16 Phase 4, issue #153) — the second authoring surface,
+    /// alongside <see cref="TemplateEditor"/>, riding the same MVVM shape for the same reason: it is
+    /// two-way bound. Bindings are a separate concern from template editing (UI spec §4, §9) — never
+    /// persisted in a task directory, never touching a bound snapshot.
+    /// </summary>
+    public BindingsEditorViewModel BindingsEditor { get; } = new();
+
+    /// <summary>
     /// One entry per currently-running or cancellation-pending execution (M15 Phase 4, issue #140) —
     /// the §7 targeted-Cancel surface, alongside <see cref="PausedSteps"/>' decision surface.
     /// </summary>
