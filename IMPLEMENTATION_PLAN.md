@@ -137,7 +137,7 @@ The M15 completion gate, placed by M14 Phase 5's reasoning: no live vendor auth 
 - ✅ Phase 2 — Resolve decisions: Approve / Reject (#138)
 - ✅ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
 - ✅ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
-- ⬜ Phase 5 — UI-driven mutation round trips in default CI (#141)
+- ✅ Phase 5 — UI-driven mutation round trips in default CI (#141)
 
 Per this document's session prompt: help implement the current phase only.
 
@@ -295,6 +295,29 @@ Decisions of record from M15:
   `Close()` from the first user-initiated one so the stop sequence never re-enters. This is the
   "Ctrl+C equivalent" applied to the one exit path a GUI has that a terminal's SIGINT handler doesn't:
   closing the window mid-pump is never a silent abandonment of a live execution (Phase 4).
+- **No new gate mechanism was needed — the milestone's three named round trips already existed as
+  each earlier phase's own end-to-end proof.** `MainWindowDecisionTests.Approve_resolves_the_pause_...`
+  (Phase 2) *is* run → pause → Approve → terminal; `MainWindowRetryAndSendBackTests.Send_back_offers_
+  only_declared_SupersedeTargets_...` (Phase 3) *is* pause → supply + Send-back → invalidation cascade
+  → terminal; `MainWindowCancelAndStopTests.Targeted_cancel_of_a_locally_hosted_execution_...`
+  (Phase 4) *is* running → targeted Cancel → cancelled — each already driving the real `MainWindow`
+  through a deterministic shell-stub `IWorkerAdapter`, never a live vendor CLI. Writing a duplicate
+  Phase-5-named test class over the same three scenarios would be ceremony, not coverage. The
+  `ShellCommandWorkerAdapter`-placement question the phase plan named was likewise already settled,
+  in Phase 1: `Aer.Ui.Tests` grew its own copy (`TestSupport/ShellCommandWorkerAdapter.cs`) rather
+  than sharing `Aer.Cli.Tests`'s, because Phase 1's own `MainWindowRunTests` needed a stub registry
+  immediately and this project's established convention (`ShellWorkerCommands`'s own remarks) is to
+  own its minimal shell-stub set rather than reach into another test project's `TestSupport`.
+- **"Wired into default CI" needed no new CI step, because `Aer.Ui.Tests` already is one.** It has
+  been a leaf in `AerFlow.slnx` since M14 Phase 1, so `pixi run test`'s plain `dotnet test` already
+  runs it — headless, offscreen, no display server — on all three of `ci.yml`'s matrix OSes
+  (win/linux/mac) on every PR and every push to `main`, the same unattended placement M13 Phase 4
+  and M14 Phase 5 established for gates that need no live vendor auth. Verified green end to end for
+  this phase: `dotnet build -warnaserror` (lint), `dotnet format --verify-no-changes` (fmt-check),
+  and the full `dotnet test` run — all four `AerFlow.slnx` test projects, 480 tests total, including
+  every M14 Phase 5 golden-projection fact — pass with no changes to `Aer.Flow`, `Aer.Adapters`, or
+  `Aer.Cli`: the control surface added mutation callers across Phases 1–4, never projection semantics
+  (Phase 5).
 
 ## Completed Milestones
 
