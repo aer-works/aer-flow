@@ -4,6 +4,7 @@ using Aer.Flow;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
+using Aer.Flow.Templates;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -111,6 +112,9 @@ public partial class MainWindow : Window
         RunButton.Click += (_, _) => _ = RunAsync(
             TaskDirectoryPathBox.Text ?? string.Empty, WorkflowTemplatePathBox.Text, BindingsFilePathBox.Text ?? string.Empty);
         StopButton.Click += (_, _) => _ = StopAsync();
+        NewTemplateButton.Click += (_, _) => NewTemplate();
+        EditTemplateButton.Click += (_, _) => _ = OpenTemplateInEditorAsync(TemplateEditorPathBox.Text ?? string.Empty);
+        SaveTemplateButton.Click += (_, _) => _ = SaveTemplateAsync(TemplateEditorPathBox.Text ?? string.Empty);
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;
     }
@@ -368,6 +372,120 @@ public partial class MainWindow : Window
         }
 
         await OpenAsync(taskDirectoryPath, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts a fresh template-editing session over a blank in-memory <see cref="WorkflowDefinition"/>
+    /// (M16 Phase 1, issue #150) — nothing touches disk until <see cref="SaveTemplateAsync"/>.
+    /// Deliberately synchronous: there is no file to read.
+    /// </summary>
+    public void NewTemplate()
+    {
+        ViewModel.TemplateEditor.StartNew();
+        ViewModel.TemplateEditor.StatusText = "New template — set its id, then Save.";
+    }
+
+    /// <summary>
+    /// Opens <paramref name="templateFilePath"/> into the template editor (M16 Phase 1, issue #150)
+    /// via the engine's own <see cref="TemplateProjectionLoader"/>/<c>WorkflowDefinitionParser</c> —
+    /// never a second parser. This is a separate surface from <see cref="OpenAsync"/>'s read-only
+    /// template projection (M14 Phase 3), which stays untouched: the read-only view is how a
+    /// template (or a bound snapshot's diff against one) is *inspected*; this editor is how a
+    /// template *file* is changed — and only ever a file, never a bound snapshot (UI spec §2, §4,
+    /// §5). Phase 1 exposes exactly the metadata fields (<c>WorkflowTemplateId</c>,
+    /// <c>WorkflowTemplateVersion</c>); the loaded steps ride through every save untouched until
+    /// Phase 2's structural editing.
+    /// </summary>
+    public async Task OpenTemplateInEditorAsync(string templateFilePath, CancellationToken cancellationToken = default)
+    {
+        TemplateEditorPathBox.Text = templateFilePath;
+
+        try
+        {
+            var definition = await TemplateProjectionLoader.LoadAsync(templateFilePath, cancellationToken);
+            ViewModel.TemplateEditor.LoadFrom(definition);
+            ViewModel.TemplateEditor.StatusText = string.Empty;
+        }
+        catch (AerFlowException ex)
+        {
+            // Same in-window-message precedent as LoadAsync (M14 Phase 1) — and a failed open must
+            // not leave a previous session's fields sitting in the editor as if they were this file's.
+            ViewModel.TemplateEditor.Close();
+            ViewModel.TemplateEditor.StatusText = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Saves the editor's current state to <paramref name="templateFilePath"/> through
+    /// <c>WorkflowDefinitionWriter</c>, so the saved file round-trips through the exact
+    /// parser/validator every other consumer uses (M16 Phase 1, issue #150). Implements Flow spec
+    /// §11.1's version-increment rule directly (settled ahead of this phase): a save whose content
+    /// differs from the loaded baseline increments <c>WorkflowTemplateVersion</c> — unless the user
+    /// explicitly set a different version themselves, which is respected as-is (a hand-editor may
+    /// legitimately do the same) — a no-op save writes nothing and increments nothing, and a
+    /// brand-new template's first save has no predecessor to distinguish from, so it saves the
+    /// version as entered. Deliberately not gated on <see cref="MainWindowViewModel.IsMutationInFlight"/>:
+    /// a template file is not durable task state, no §15 task lock is involved, and an edit is
+    /// visible only to future instantiations regardless (UI spec §5).
+    /// </summary>
+    public async Task SaveTemplateAsync(string templateFilePath, CancellationToken cancellationToken = default)
+    {
+        var editor = ViewModel.TemplateEditor;
+
+        if (editor.Baseline is not { } baseline)
+        {
+            editor.StatusText = "Nothing to save — create a new template or open one in the editor first.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(templateFilePath))
+        {
+            editor.StatusText = "Enter a template file path to save to.";
+            return;
+        }
+
+        if (!int.TryParse(editor.TemplateVersionText, out var version))
+        {
+            editor.StatusText = $"Version '{editor.TemplateVersionText}' is not a whole number.";
+            return;
+        }
+
+        var candidate = baseline with
+        {
+            WorkflowTemplateId = new WorkflowTemplateId(editor.TemplateId),
+            WorkflowTemplateVersion = version,
+        };
+
+        if (editor.BaselineIsPersisted && candidate == baseline)
+        {
+            // §11.1: never increment on a no-op save — and there is nothing to write either; the
+            // file already contains exactly this state.
+            editor.StatusText = "No changes to save.";
+            return;
+        }
+
+        if (editor.BaselineIsPersisted && version == baseline.WorkflowTemplateVersion)
+        {
+            candidate = candidate with { WorkflowTemplateVersion = baseline.WorkflowTemplateVersion + 1 };
+        }
+
+        try
+        {
+            await WorkflowDefinitionWriter.SaveToFileAsync(candidate, templateFilePath, cancellationToken);
+        }
+        catch (Exception ex) when (ex is AerFlowException or IOException or UnauthorizedAccessException)
+        {
+            // Same in-window-message precedent as LoadAsync (M14 Phase 1): a structurally invalid
+            // definition (WorkflowDefinitionValidationException) or an unwritable path renders here
+            // rather than crashing; nothing was written.
+            editor.StatusText = ex.Message;
+            return;
+        }
+
+        // Re-anchor dirty tracking to what the file now actually contains — including the
+        // incremented version, which must show in the box rather than silently diverge from disk.
+        editor.LoadFrom(candidate);
+        editor.StatusText = $"Saved '{templateFilePath}' (version {candidate.WorkflowTemplateVersion}).";
     }
 
     /// <summary>
