@@ -136,7 +136,7 @@ The M15 completion gate, placed by M14 Phase 5's reasoning: no live vendor auth 
 - ✅ Phase 1 — Mutation seam + start/resume a workflow (#137)
 - ✅ Phase 2 — Resolve decisions: Approve / Reject (#138)
 - ✅ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
-- ⬜ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
+- ✅ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
 - ⬜ Phase 5 — UI-driven mutation round trips in default CI (#141)
 
 Per this document's session prompt: help implement the current phase only.
@@ -240,6 +240,61 @@ Decisions of record from M15:
   caught alongside `AerFlowException` in `MainWindow.DecideAsync`** — a mistyped revision file path
   is exactly the kind of input error the in-window-message precedent (M14 Phase 1) exists for, and
   letting it propagate uncaught would crash the window, the one thing that precedent forbids (Phase 3).
+- **`RunCommand.ExecuteAsync`/`DecideCommand.ExecuteAsync` gained an additive, optional
+  `InFlightExecutionRegistry? inFlightExecutions = null` parameter**, forwarded unchanged to
+  `MutationInterface.StartWorkflowAsync`/`RecordDecisionAsync` — the signature change the phase plan
+  named as sitting on the critical path. `null` for every existing caller (the CLI included, which
+  still lets `MutationInterface` default one internally); `Aer.Ui.MainWindow` is the first caller with
+  a reason to retain one (Phase 4).
+- **`MainWindow` retains a fresh `InFlightExecutionRegistry` and a host-stop `CancellationTokenSource`
+  (linked to the caller's own token) per `RunAsync`/`DecideAsync` pump call**, cleared in that same
+  call's `finally` — the same call-scoped lifetime the registry itself already has inside
+  `MutationInterface`, just now reachable from outside it. `DecideAsync`'s `aer supply` half shares
+  the same host-stop token as its `aer decide` half, since together they are one user-facing action
+  (Phase 3's own precedent), even though only the decide call ever registers a process dispatch
+  (Phase 4).
+- **`MainWindowViewModel.RunningExecutions` (`RunningExecutionViewModel`) is the §7 targeted-Cancel
+  surface**, rebuilt from `TaskProjection` on every load exactly like `PausedSteps` — one entry per
+  step whose latest attempt is `StepStatus.Running`, plus one per pending step-less/human execution
+  (`FlowState.StepLessExecutions`), both valid `RequestCancellationAsync` targets. Two-phase
+  reflection (§7) reuses `FlowState.CancellationRequestedExecutionIds` directly rather than adding a
+  new UI-owned field — the Flow layer already derives exactly that fact (Phase 4).
+- **`IsLocallyHosted` is derived once, at render time, from whether `MainWindow`'s own retained
+  `InFlightExecutionRegistry` is currently driving the exact task directory being rendered** — never
+  a per-execution registry membership check (which would need `InFlightExecutionRegistry`'s internal
+  `RegisteredExecutionIds()` visible outside `Aer.Flow`). Since only one mutation can be in flight
+  from this process at a time (the shared `IsMutationInFlight` flag, Phase 2's decision of record),
+  "this window's retained registry is non-null and its task directory matches" is unambiguous. A
+  step-less/non-process execution is never locally hosted: it never registers with
+  `InFlightExecutionRegistry` in the first place (Phase 1's `NonProcessCancellationDetector` finalizes
+  it directly, in-round) (Phase 4).
+- **Targeted Cancel delivery is a two-way split, `MainWindow.CancelExecutionAsync`'s own decision, not
+  offered as a single always-available button**: a locally-hosted execution is signalled in-process via
+  `InFlightExecutionRegistry.RequestCancellationAsync` — fast, idempotent, no new mutation call, since
+  §15's guard is already held for that pump's entire duration (M10's decision of record). Anything
+  else is the only remaining path: a brand-new `Aer.Cli.CancelCommand` mutation call, wrapped exactly
+  like `RunAsync` wraps `RunCommand`, including a possible `WorkflowLockedException` from whatever
+  process (or pump) currently holds the task's lock — rendered via the in-window-message precedent
+  (M14 Phase 1), never a button that pretends to work (the phase's own named open question) (Phase 4).
+- **`RunningExecutionViewModel`'s enabled state is the one deliberate exception to the shared
+  `IsMutationInFlight` gate**: a locally-hosted execution's Cancel command stays enabled *exactly*
+  while `IsMutationInFlight` is true, since that is the only time signalling it is meaningful at all;
+  every other entry (not locally hosted) follows the same `!IsMutationInFlight` rule
+  `PausedStepViewModel`/`RunButton` already do. `RunningExecutionViewModel.UpdateEnabled` encodes this;
+  `MainWindowViewModel.OnIsMutationInFlightChanged` calls it for every entry, the same fan-out
+  `PausedSteps` already gets (Phase 4).
+- **`MainWindow.StopAsync` (bound to the new `StopButton`) only cancels the retained host-stop
+  `CancellationTokenSource` — it does not itself await the pump.** `RunAsync`/`DecideAsync`'s own
+  already-awaited pump task is what actually drives §9's intent-first record for every execution still
+  in flight and clears `IsMutationInFlight` once `MutationInterface`'s existing host-stop machinery
+  (M10 Phase 2) reaches its fixed point; `StopAsync` is fire-and-forget by design, mirroring
+  `Aer.Cli.Program.cs`'s `Console.CancelKeyPress` handler, which is exactly as thin (Phase 4).
+- **Window-close semantics: the first `Window.Closing` while a pump is in flight is deferred
+  (`e.Cancel = true`), triggers the same host stop, and the window closes for real only once the
+  retained pump task has settled.** A `_closeConfirmed` flag distinguishes that second, programmatic
+  `Close()` from the first user-initiated one so the stop sequence never re-enters. This is the
+  "Ctrl+C equivalent" applied to the one exit path a GUI has that a terminal's SIGINT handler doesn't:
+  closing the window mid-pump is never a silent abandonment of a live execution (Phase 4).
 
 ## Completed Milestones
 

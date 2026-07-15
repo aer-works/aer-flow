@@ -48,7 +48,7 @@ try
         case "run":
             {
                 var options = RunOptionsParser.Parse(args[1..]);
-                result = await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
+                result = await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: hostStopSource.Token)
                     .ConfigureAwait(false);
                 break;
             }
@@ -64,7 +64,7 @@ try
         case "decide":
             {
                 var options = DecideOptionsParser.Parse(args[1..]);
-                result = await DecideCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
+                result = await DecideCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: hostStopSource.Token)
                     .ConfigureAwait(false);
                 break;
             }

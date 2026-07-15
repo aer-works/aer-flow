@@ -34,9 +34,15 @@ public static class DecideCommand
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
     /// </exception>
+    /// <param name="inFlightExecutions">
+    /// M15 Phase 4's (issue #140) additive caller-retained delivery point — see
+    /// <see cref="RunCommand.ExecuteAsync"/>'s own remarks; forwarded, unchanged, to
+    /// <see cref="MutationInterface.RecordDecisionAsync"/>.
+    /// </param>
     public static async Task<CommandResult> ExecuteAsync(
         DecideOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+        InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -80,7 +86,8 @@ public static class DecideCommand
                 options.DecisionType,
                 options.TargetStepId,
                 supplementaryExecutionId,
-                cancellationToken: cancellationToken)
+                inFlightExecutions,
+                cancellationToken)
             .ConfigureAwait(false);
 
         return new CommandResult(state, snapshot);
