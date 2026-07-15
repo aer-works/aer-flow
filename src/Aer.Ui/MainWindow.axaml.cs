@@ -219,48 +219,82 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The paused-step decision surface this phase adds (issue #138): wraps
-    /// <see cref="DecideCommand.ExecuteAsync"/> — the same static, adapter-registry-as-argument call
-    /// <c>aer decide</c> makes — exactly like <see cref="RunAsync"/> wraps <c>RunCommand</c> (Phase 1).
-    /// <paramref name="decisionType"/> is always <see cref="DecisionType.Resume"/> or
-    /// <see cref="DecisionType.Reject"/> here — §7's Approve/Reject label mapping, the only two
-    /// decision types this phase's action surface offers (<see cref="PausedStepViewModel"/>'s two
-    /// commands); the label-mapping discipline itself is the point of this phase (never a UI-invented
-    /// <see cref="DecisionType"/>, UI spec §6). Bindings are read from <see cref="BindingsFilePathBox"/>,
-    /// the same box <see cref="RunAsync"/> already asks for — never inferred or persisted per task
-    /// (M14 Phase 2's decision of record).
+    /// The paused-step decision surface (issue #138; extended for Phase 3's artifact-carrying
+    /// decisions, issue #139): wraps <see cref="DecideCommand.ExecuteAsync"/> — the same static,
+    /// adapter-registry-as-argument call <c>aer decide</c> makes — exactly like <see cref="RunAsync"/>
+    /// wraps <c>RunCommand</c> (Phase 1). <paramref name="decisionType"/> is one of §7's four labels
+    /// mapped 1:1 onto <see cref="DecisionType"/> (<see cref="PausedStepViewModel"/>'s four commands)
+    /// — never a UI-invented decision type (UI spec §6).
+    /// <para>
+    /// When <paramref name="revisionFilePath"/> is non-null, this first runs the <c>aer supply</c>
+    /// half of M12 Phase 3's two-call round trip — minting, populating, and settling a supplementary
+    /// execution from <paramref name="supplementaryWorker"/>/<paramref name="supplementaryOutputName"/>
+    /// — then passes its <see cref="ExecutionId"/> to <c>aer decide</c> as <c>SupplementaryExecutionId</c>.
+    /// Both calls run under the same <see cref="MainWindowViewModel.IsMutationInFlight"/> window and
+    /// the same single poller start, since together they are one user-facing action (Retry or Send
+    /// back), not two.
+    /// </para>
+    /// Bindings are read from <see cref="BindingsFilePathBox"/>, the same box <see cref="RunAsync"/>
+    /// already asks for — never inferred or persisted per task (M14 Phase 2's decision of record).
     /// </summary>
     private async Task DecideAsync(
-        string taskDirectoryPath, StepId stepId, ExecutionId executionId, DecisionType decisionType, CancellationToken cancellationToken = default)
+        string taskDirectoryPath,
+        StepId stepId,
+        ExecutionId executionId,
+        DecisionType decisionType,
+        StepId? targetStepId,
+        string? revisionFilePath,
+        string? supplementaryWorker,
+        string? supplementaryOutputName,
+        CancellationToken cancellationToken = default)
     {
-        var options = new DecideOptions(
-            taskDirectoryPath,
-            executionId.Value,
-            decisionType,
-            TargetStepId: null,
-            SupplementaryExecutionId: null,
-            BindingsFilePathBox.Text ?? string.Empty);
-
         ViewModel.DecisionStatusText = $"Deciding {stepId.Value}…";
         ViewModel.IsMutationInFlight = true;
 
         // Same reasoning as RunAsync (Phase 1): started before the pump itself begins, so the
-        // existing 2-second poller renders progress for however long this decision's pump takes to
-        // reach its next fixed point.
+        // existing 2-second poller renders progress for however long this decision's pump (and, when
+        // a supplementary artifact rides it, the aer supply call ahead of it) takes to reach its next
+        // fixed point.
         _liveRefreshTimer.Start();
 
         try
         {
+            ExecutionId? supplementaryExecutionId = null;
+
+            if (revisionFilePath is not null)
+            {
+                var supplyOptions = new SupplyOptions(
+                    taskDirectoryPath,
+                    supplementaryWorker ?? string.Empty,
+                    supplementaryOutputName ?? string.Empty,
+                    revisionFilePath,
+                    BindingsFilePathBox.Text ?? string.Empty);
+
+                var supplyResult = await Task.Run(() => SupplyCommand.ExecuteAsync(supplyOptions, _adapters, cancellationToken), cancellationToken)
+                    .ConfigureAwait(true);
+
+                supplementaryExecutionId = supplyResult.ExecutionId;
+            }
+
+            var options = new DecideOptions(
+                taskDirectoryPath,
+                executionId.Value,
+                decisionType,
+                targetStepId,
+                supplementaryExecutionId?.Value,
+                BindingsFilePathBox.Text ?? string.Empty);
+
             await Task.Run(() => DecideCommand.ExecuteAsync(options, _adapters, cancellationToken), cancellationToken)
                 .ConfigureAwait(true);
 
             ViewModel.DecisionStatusText = string.Empty;
         }
-        catch (AerFlowException ex)
+        catch (Exception ex) when (ex is AerFlowException or FileNotFoundException)
         {
             // Same in-window-message precedent as RunAsync/LoadAsync (M14 Phase 1): a
-            // WorkflowLockedException from a competing external pump, or an invalid decision
-            // (ExternalDecisionValidator's §17.2 rules), renders here rather than crashing.
+            // WorkflowLockedException from a competing external pump, an invalid decision
+            // (ExternalDecisionValidator's §17.2 rules), or aer supply's FileNotFoundException for a
+            // mistyped revision file path, all render here rather than crashing.
             _liveRefreshTimer.Stop();
             ViewModel.DecisionStatusText = ex.Message;
             return;
@@ -582,6 +616,8 @@ public partial class MainWindow : Window
     {
         ViewModel.PausedSteps.Clear();
 
+        var stepDefinitionByStepId = projection.Snapshot.Steps.ToDictionary(step => step.StepId);
+
         foreach (var stepState in projection.State.Steps)
         {
             if (stepState.Status != StepStatus.Paused || stepState.LatestExecutionId is not { } executionId)
@@ -589,10 +625,18 @@ public partial class MainWindow : Window
                 continue;
             }
 
+            // Every Paused step was paused by the Pause Engine only for a step declaring PausePoint
+            // (§17.1) — the same Flow-internal invariant ExternalDecisionValidator itself relies on.
+            var supersedeTargets = stepDefinitionByStepId[stepState.StepId].PausePoint!.SupersedeTargets;
+
             ViewModel.PausedSteps.Add(new PausedStepViewModel(
                 stepState.StepId,
                 executionId,
-                (stepId, decidedExecutionId, decisionType) => DecideAsync(taskDirectoryPath, stepId, decidedExecutionId, decisionType))
+                supersedeTargets,
+                (stepId, decidedExecutionId, decisionType, targetStepId, revisionFilePath, supplementaryWorker, supplementaryOutputName) =>
+                    DecideAsync(
+                        taskDirectoryPath, stepId, decidedExecutionId, decisionType, targetStepId,
+                        revisionFilePath, supplementaryWorker, supplementaryOutputName))
             {
                 IsEnabled = !ViewModel.IsMutationInFlight,
             });
