@@ -1,4 +1,4 @@
-# AER Flow UI Behavioral Specification — v0.8
+# AER Flow UI Behavioral Specification — v0.9
 
 This document defines the behavioral contract of AER Flow UI.
 
@@ -10,6 +10,8 @@ AER Flow UI is a control-plane and visualization layer for AER Flow. It depends 
 This specification intentionally defines **no execution semantics**. Those belong exclusively to AER Flow and AER Core.
 
 Each spec (Core, Flow, UI) is versioned independently; the dependency list above pins the sibling spec versions this document was written against, and cross-references always name the sibling spec file as it exists at the same commit.
+
+**Changes from v0.8:** added worker-bindings configuration files to §4's write model, closing a gap found while planning the third (authoring) UI milestone: §9 already granted "edit worker bindings" / "swap worker implementations", but §4's closed write list never named the file those grants imply the UI writes to.
 
 **Changes from v0.7:** added §3.1 (Task Directory Discovery), closing a gap found while planning the first UI milestone: §3 defined *what* the UI reads but not how it *finds* task directories. A task directory is self-describing — identified by its durable contents, never by membership in a registry; any UI-side list of task directories is Local UI Configuration (§4), rebuildable and never authoritative; and the trusted execution stack is never required to announce, register, or enumerate tasks.
 
@@ -111,6 +113,7 @@ How a UI populates its list — asking the user, remembering what it opened befo
 The UI may write only to:
 
 * Workflow template files (never a bound `WorkflowDefinitionSnapshot` — those are immutable per AER Flow spec §11.2)
+* Worker-bindings configuration files (§9) — never a task directory; bindings are a UI/CLI input, not durable task state (§3)
 * User preferences
 * Local UI configuration
 
