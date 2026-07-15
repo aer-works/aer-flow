@@ -135,7 +135,7 @@ The M15 completion gate, placed by M14 Phase 5's reasoning: no live vendor auth 
 
 - ✅ Phase 1 — Mutation seam + start/resume a workflow (#137)
 - ✅ Phase 2 — Resolve decisions: Approve / Reject (#138)
-- ⬜ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
+- ✅ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
 - ⬜ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
 - ⬜ Phase 5 — UI-driven mutation round trips in default CI (#141)
 
@@ -197,6 +197,49 @@ Decisions of record from M15:
   decision of record); `RunAsync` now also writes its own `bindingsFilePath` argument back into that
   box so a decision has something to read even when `RunAsync` was invoked directly rather than
   through the Run button's click handler (Phase 2).
+- **The supplementary-artifact worker role and output name are asked for, never inferred or
+  defaulted** — `WorkerBinding.NonProcess` is constructed directly from these two strings (M12
+  Phase 3's decision of record: never looked up in the bindings file), and no snapshot-declared field
+  names an expected value for either, so `PausedStepViewModel.SupplementaryWorker`/
+  `SupplementaryOutputName` are the same "ask, don't infer" discipline as the bindings/template file
+  paths, just promoted into the MVVM layer Phase 2 introduced rather than a named code-behind control
+  — a paused step is a dynamically-templated `ItemsControl` row, not a fixed named control (Phase 3).
+- **`DecideDelegate` replaced the three-argument decide callback**, carrying `TargetStepId` and the
+  supplementary-artifact triple (`RevisionFilePath`/`SupplementaryWorker`/`SupplementaryOutputName`,
+  `null` together whenever no artifact rides the decision) alongside the original
+  `StepId`/`ExecutionId`/`DecisionType`. `MainWindow`'s private `DecideAsync` is the one place that
+  runs the `aer supply` → `aer decide` two-call round trip M12 Phase 3 established for the CLI: it
+  mints/populates/settles the supplementary execution first (only when a revision file path is
+  non-null) and passes the resulting `ExecutionId` to `DecideCommand` as `SupplementaryExecutionId`
+  — both calls share one `IsMutationInFlight` window and one poller start, since together they are
+  one user-facing action, not two (Phase 3).
+- **Retry's supplementary artifact is optional, Send-back's is mandatory — enforced by each
+  command's own `CanExecute`, never by letting an incomplete call reach the mutation interface.**
+  `PausedStepViewModel.CanRetry` allows a blank revision file (Retry proceeds with no supplementary
+  artifact) but requires the worker/output-name pair *together* with a non-blank one, so a half-filled
+  triple can never reach `aer supply` with an empty string argument. Every `SendBackTargets` entry's
+  `CanSendBack` requires all three fields unconditionally — §17.2 defines a `Supersede` without a
+  `SupplementaryExecutionId` as itself invalid, so the UI never offers a submittable button until one
+  is guaranteed (Phase 3).
+- **"Send back to X" is a small child view model (`SendBackTargetViewModel`) per declared
+  `PausePoint.SupersedeTargets` entry, not a single parameterized command on `PausedStepViewModel`.**
+  One object per target keeps the `ItemsControl` binding simple (`Command="{Binding SendBackCommand}"`
+  needs no `CommandParameter` threaded through a nested template); it reads the shared
+  `RevisionFilePath`/`SupplementaryWorker`/`SupplementaryOutputName` directly off its owning
+  `PausedStepViewModel` rather than duplicating them per target, since a paused step has exactly one
+  supplementary artifact in flight regardless of which target eventually consumes it. An empty
+  `SendBackTargets` list (no declared targets) renders no send-back option at all — never
+  offered-then-failed at the mutation interface (Phase 3).
+- **`SendBackTargetViewModel`'s `SendBackCommand` `CanExecute` re-evaluation is pushed manually, not
+  via `NotifyCanExecuteChangedFor`** — that attribute only reaches commands generated on the *same*
+  class, and each target is its own `ObservableObject`. `PausedStepViewModel` calls
+  `NotifyCanExecuteChanged()` on every target's `SendBackCommand` from `On<Field>Changed` partial
+  methods whenever `RevisionFilePath`/`SupplementaryWorker`/`SupplementaryOutputName`/`IsEnabled`
+  changes (Phase 3).
+- **`SupplyCommand`'s `FileNotFoundException` (a plain BCL exception, not `AerFlowException`) is
+  caught alongside `AerFlowException` in `MainWindow.DecideAsync`** — a mistyped revision file path
+  is exactly the kind of input error the in-window-message precedent (M14 Phase 1) exists for, and
+  letting it propagate uncaught would crash the window, the one thing that precedent forbids (Phase 3).
 
 ## Completed Milestones
 
