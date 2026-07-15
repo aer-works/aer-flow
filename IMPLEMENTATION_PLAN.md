@@ -134,7 +134,7 @@ The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests 
 
 - ✅ Phase 1 — Template write seam + create/save walking skeleton (#150)
 - ✅ Phase 2 — Step & graph editing with live structural validation (#151)
-- ⬜ Phase 3 — PausePoint + SupersedeTargets editing (#152)
+- ✅ Phase 3 — PausePoint + SupersedeTargets editing (#152)
 - ✅ Phase 4 — Worker-binding configuration editing (#153)
 - ⬜ Phase 5 — Authoring round trips in default CI (#154)
 
@@ -207,6 +207,35 @@ Decisions of record from M16:
   `Steps` is editable, every list-typed member compares by reference under default record equality,
   not by content, so `==` silently under-reports changes. `DependsOn` compares as a set (the
   validator never treats it as ordered); every other list compares in sequence (Phase 2).
+- **`WorkflowDefinitionValidator` gains a public `ComputeTransitiveAncestors(WorkflowDefinition)`,
+  reusing the exact ancestor walk `Validate` already runs internally for `SupersedeTargets`
+  ancestry, rather than a second implementation in `Aer.Ui`.** The authoring counterpart of "Flow
+  carries discipline": a `SupersedeTargets` candidate list needs the live in-edit graph's actual
+  ancestor set, and re-deriving that in the UI would risk drifting from the validator's own rule.
+  Carries the same precondition `DagLayoutEngine.Layout` already does — acyclic, every `DependsOn`
+  reference resolvable — so it is only ever called once `WorkflowDefinitionValidator.Validate` has
+  already succeeded (Phase 3).
+- **`SupersedeTargets` is edited as a checkbox per this step's actual transitive ancestor
+  (`StepEditorViewModel.SupersedeTargetOptions`), gated on the whole graph currently validating** —
+  the same "reflect, don't invent" shape `DependsOn` established in Phase 2, extended with a
+  validity gate `DependsOn`'s own candidate list didn't need (an ancestor walk, unlike "every other
+  declared step," isn't safe to compute against a cyclic or dangling-reference graph). A
+  `PausePoint`'s own toggle (`HasPausePoint`) is independent of its targets — turning it off writes
+  `PausePoint = null` regardless of what remains selected, and turning it back on does not clear
+  prior selections (Phase 3).
+- **An edit that orphans an already-selected `SupersedeTargets` entry (removing the `DependsOn`
+  path that made it an ancestor) is never silently dropped — it rides into the candidate unchanged
+  and surfaces as a live `WorkflowDefinitionValidator` "not a transitive ancestor" violation**,
+  exactly as the phase plan requires (live, not save-time). `StepEditorViewModel.SelectedSupersedeTargets`
+  is the authoritative selection state independent of whatever `SupersedeTargetOptions` currently
+  offers — an option list is allowed to go briefly stale while the graph is otherwise invalid, since
+  ancestor computation isn't safe against invalid input, but the underlying selection is never
+  touched by that staleness (Phase 3).
+- **`PausePoint` equality for dirty tracking and the no-op-save check is content-based
+  (`TemplateEditorViewModel.PausePointsAreEqual`), not the reference equality Phase 2's pass-through
+  relied on** — `BuildCandidate` now constructs a fresh `PausePoint` from editor state on every call,
+  so a loaded step's original instance is no longer threaded through untouched once `PausePoint`
+  itself is editable (Phase 3).
 - **The bindings writer is `WorkerBindingConfigWriter`, beside its parser in `Aer.Adapters`** — not
   inside `Aer.Ui` or `Aer.Flow.Templates`, resolving the phase plan's named seam decision the same
   way Phase 1 resolved it for templates. The bindings shape (adapter names, `WorkerContract`,

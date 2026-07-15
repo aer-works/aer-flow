@@ -70,6 +70,22 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <CheckBox Content="Pause point" IsChecked="{Binding HasPausePoint}" />
+                <StackPanel IsVisible="{Binding HasPausePoint}" Spacing="4">
+                  <TextBlock Text="Supersede targets (this step's transitive ancestors):" />
+                  <ItemsControl ItemsSource="{Binding SupersedeTargetOptions}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:SupersedeTargetOptionViewModel">
+                        <CheckBox Content="{Binding StepId}" IsChecked="{Binding IsSelected}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
               </StackPanel>
             </Border>
           </DataTemplate>

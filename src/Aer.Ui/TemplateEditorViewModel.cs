@@ -267,7 +267,9 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
                 ParseList(stepVm.OutputsText),
                 stepVm.SelectedDependsOn.Select(id => new StepId(id)).ToList(),
                 new RetryPolicy(maxAttempts),
-                stepVm.OriginalPausePoint));
+                stepVm.HasPausePoint
+                    ? new PausePoint(stepVm.SelectedSupersedeTargets.Select(id => new StepId(id)).ToList())
+                    : null));
         }
 
         if (errors.Count > 0)
@@ -330,7 +332,25 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
             && a.Outputs.SequenceEqual(b.Outputs)
             && a.DependsOn.ToHashSet().SetEquals(b.DependsOn)
             && a.RetryPolicy == b.RetryPolicy
-            && Equals(a.PausePoint, b.PausePoint);
+            && PausePointsAreEqual(a.PausePoint, b.PausePoint);
+
+    /// <summary>
+    /// <see cref="PausePoint"/> equality by content, not reference (Phase 3) — <see cref="BuildCandidate"/>
+    /// constructs a fresh <see cref="PausePoint"/> from <see cref="StepEditorViewModel.HasPausePoint"/>/
+    /// <see cref="StepEditorViewModel.SelectedSupersedeTargets"/> on every call, so the pass-through
+    /// reference equality Phase 2 relied on (a loaded step's <c>PausePoint</c> rode through untouched)
+    /// no longer holds once <c>PausePoint</c> itself is editable. <c>SupersedeTargets</c> compares as a
+    /// set, the same reasoning <c>DependsOn</c> uses.
+    /// </summary>
+    private static bool PausePointsAreEqual(PausePoint? a, PausePoint? b)
+    {
+        if (a is null || b is null)
+        {
+            return a is null && b is null;
+        }
+
+        return a.SupersedeTargets.ToHashSet().SetEquals(b.SupersedeTargets);
+    }
 
     partial void OnTemplateIdChanged(string value) => RecomputeDerivedState();
 
@@ -339,12 +359,55 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
     partial void OnIsOpenChanged(bool value) => RecomputeDerivedState();
 
     /// <summary>
+    /// Rebuilds every step's <see cref="StepEditorViewModel.SupersedeTargetOptions"/> from
+    /// <paramref name="validCandidate"/>'s actual transitive-ancestor sets (Phase 3) — reflecting the
+    /// live in-edit graph, never a stale or invented candidate (§8; §17.1). <see langword="null"/>
+    /// (the current state does not fully validate) leaves every step's existing options untouched
+    /// rather than clearing them: <c>WorkflowDefinitionValidator.ComputeTransitiveAncestors</c> assumes
+    /// an already-acyclic, fully-resolvable graph, so it is only safe to call once
+    /// <see cref="ValidationErrors"/> is empty — the same DAG-layout-safety reasoning
+    /// <see cref="PreviewLayout"/> already follows. An option list going briefly stale mid-edit is
+    /// harmless: <see cref="StepEditorViewModel.SelectedSupersedeTargets"/> is the authoritative
+    /// selection state regardless of whether its offered options are current.
+    /// </summary>
+    internal void RefreshSupersedeTargetOptions(WorkflowDefinition? validCandidate)
+    {
+        if (validCandidate is null)
+        {
+            return;
+        }
+
+        var ancestorsByStep = WorkflowDefinitionValidator.ComputeTransitiveAncestors(validCandidate);
+
+        foreach (var stepVm in Steps)
+        {
+            var ancestors = ancestorsByStep.TryGetValue(new StepId(stepVm.StepId), out var found)
+                ? found
+                : (IReadOnlySet<StepId>)new HashSet<StepId>();
+
+            stepVm.SupersedeTargetOptions.Clear();
+            foreach (var candidateStep in Steps)
+            {
+                if (!ancestors.Contains(new StepId(candidateStep.StepId)))
+                {
+                    continue;
+                }
+
+                stepVm.SupersedeTargetOptions.Add(new SupersedeTargetOptionViewModel(
+                    candidateStep.StepId,
+                    stepVm.SelectedSupersedeTargets.Contains(candidateStep.StepId),
+                    stepVm));
+            }
+        }
+    }
+
+    /// <summary>
     /// Recomputes every derived surface from the editor's current field state, in the order each
     /// depends on the last: candidate-dependent DAG-candidate labels first, then the candidate itself,
     /// then <see cref="ValidationErrors"/>/<see cref="PreviewLayout"/>/<see cref="IsDirty"/> from it
-    /// (Phase 2). Called on every field change — the same "re-derived, not remembered" discipline the
-    /// rest of the window already follows, just reached from a two-way-bound field instead of a
-    /// re-projection.
+    /// (Phase 2; extended for Phase 3's <see cref="RefreshSupersedeTargetOptions"/>). Called on every
+    /// field change — the same "re-derived, not remembered" discipline the rest of the window already
+    /// follows, just reached from a two-way-bound field instead of a re-projection.
     /// </summary>
     private void RecomputeDerivedState()
     {
@@ -358,9 +421,11 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
             ValidationErrors.Add(error);
         }
 
-        PreviewLayout = errors.Count == 0 && candidate is { } validated
-            ? DagLayoutEngine.Layout(validated.Steps)
-            : null;
+        var validCandidate = errors.Count == 0 ? candidate : null;
+
+        PreviewLayout = validCandidate is { } validated ? DagLayoutEngine.Layout(validated.Steps) : null;
+
+        RefreshSupersedeTargetOptions(validCandidate);
 
         IsDirty = IsOpen && Baseline is { } baseline
             && (!BaselineIsPersisted || candidate is null || !DefinitionsAreEqual(candidate, baseline));
