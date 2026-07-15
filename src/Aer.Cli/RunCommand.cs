@@ -25,6 +25,10 @@ public static class RunCommand
     /// not a fresh one), resolves <paramref name="adapters"/> into <see cref="WorkerBinding"/>s, and
     /// runs the single mutation surface to a terminal state.
     /// </summary>
+    /// <exception cref="CliArgumentException">
+    /// <paramref name="options"/>'s <c>TaskDirectoryPath</c> has no persisted snapshot yet (a fresh
+    /// start) and no <c>WorkflowFilePath</c> was given to bind one from.
+    /// </exception>
     /// <exception cref="WorkflowDefinitionValidationException">The workflow template is malformed or invalid.</exception>
     /// <exception cref="SnapshotLoadException">The task directory's persisted snapshot is malformed.</exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
@@ -50,7 +54,7 @@ public static class RunCommand
 
         var snapshot = File.Exists(snapshotPath)
             ? await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false)
-            : await BindAndPersistAsync(options.WorkflowFilePath, snapshotPath, cancellationToken).ConfigureAwait(false);
+            : await BindAndPersistAsync(RequireWorkflowFilePath(options), snapshotPath, cancellationToken).ConfigureAwait(false);
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
@@ -76,6 +80,15 @@ public static class RunCommand
 
         return new CommandResult(state, snapshot);
     }
+
+    /// <summary>
+    /// A fresh start with no <see cref="RunOptions.WorkflowFilePath"/> is a caller error, not a
+    /// silent no-op — there is nothing to bind a snapshot from (M15 Phase 1, issue #137).
+    /// </summary>
+    private static string RequireWorkflowFilePath(RunOptions options) => options.WorkflowFilePath
+        ?? throw new CliArgumentException(
+            $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot yet, and no workflow " +
+            "template file was given to start one fresh.");
 
     private static async Task<WorkflowDefinitionSnapshot> BindAndPersistAsync(
         string workflowFilePath, string snapshotPath, CancellationToken cancellationToken)

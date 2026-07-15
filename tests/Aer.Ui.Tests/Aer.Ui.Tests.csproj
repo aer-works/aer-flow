@@ -26,6 +26,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aer.Ui\Aer.Ui.csproj" />
     <ProjectReference Include="..\..\src\Aer.Flow\Aer.Flow.csproj" />
+    <!-- M15 Phase 1 (#137): MainWindow.RunAsync goes through the real RunCommand/IWorkerAdapter
+         seam, not a hand-built WorkerBinding, so tests need both directly. -->
+    <ProjectReference Include="..\..\src\Aer.Cli\Aer.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Aer.Adapters\Aer.Adapters.csproj" />
   </ItemGroup>
 
   <ItemGroup>

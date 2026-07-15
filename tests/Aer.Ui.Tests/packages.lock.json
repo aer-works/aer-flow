@@ -382,6 +382,19 @@
           "xunit.v3.runner.common": "[3.2.2]"
         }
       },
+      "aer": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Adapters": "[0.9.0, )",
+          "Aer.Flow": "[0.9.0, )"
+        }
+      },
+      "aer.adapters": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Flow": "[0.9.0, )"
+        }
+      },
       "aer.core": {
         "type": "Project"
       },
@@ -394,11 +407,13 @@
       "aer.ui": {
         "type": "Project",
         "dependencies": {
-          "Aer.Flow": "[0.8.0, )",
+          "Aer.Adapters": "[0.9.0, )",
+          "Aer.Flow": "[0.9.0, )",
           "Avalonia": "[12.1.0, )",
           "Avalonia.Desktop": "[12.1.0, )",
           "Avalonia.Fonts.Inter": "[12.1.0, )",
-          "Avalonia.Themes.Fluent": "[12.1.0, )"
+          "Avalonia.Themes.Fluent": "[12.1.0, )",
+          "aer": "[0.9.0, )"
         }
       }
     }

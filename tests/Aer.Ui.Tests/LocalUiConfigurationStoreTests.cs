@@ -97,6 +97,39 @@ public class LocalUiConfigurationStoreTests
     }
 
     [Fact]
+    public async Task No_bindings_or_template_path_remembered_yet_loads_as_null()
+    {
+        var store = new LocalUiConfigurationStore(NewConfigFilePath());
+
+        Assert.Null(await store.LoadLastBindingsFilePathAsync(TestContext.Current.CancellationToken));
+        Assert.Null(await store.LoadLastWorkflowTemplateFilePathAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_recorded_bindings_path_is_returned_on_the_next_load_alongside_the_recents_list()
+    {
+        var configFilePath = NewConfigFilePath();
+        var store = new LocalUiConfigurationStore(configFilePath);
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(taskDirectory);
+        try
+        {
+            await store.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await store.RecordBindingsFilePathAsync("bindings.json", TestContext.Current.CancellationToken);
+            await store.RecordWorkflowTemplateFilePathAsync("workflow.json", TestContext.Current.CancellationToken);
+
+            Assert.Equal(Path.GetFullPath("bindings.json"), await store.LoadLastBindingsFilePathAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(Path.GetFullPath("workflow.json"), await store.LoadLastWorkflowTemplateFilePathAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(
+                Path.GetFullPath(taskDirectory), Assert.Single(await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken)));
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Recording_more_than_the_cap_keeps_only_the_most_recent_entries()
     {
         var configFilePath = NewConfigFilePath();

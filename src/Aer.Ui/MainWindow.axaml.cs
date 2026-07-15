@@ -1,3 +1,5 @@
+using Aer.Adapters;
+using Aer.Cli;
 using Aer.Flow;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
@@ -19,6 +21,7 @@ public partial class MainWindow : Window
     private const int MaxArtifactPreviewLength = 8000;
 
     private readonly LocalUiConfigurationStore _configurationStore;
+    private readonly IReadOnlyDictionary<string, IWorkerAdapter> _adapters;
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private string? _currentTaskDirectoryPath;
     private bool _lastLoadSucceeded;
@@ -29,7 +32,7 @@ public partial class MainWindow : Window
     internal bool IsLiveRefreshTimerEnabled => _liveRefreshTimer.IsEnabled;
 
     public MainWindow()
-        : this(LocalUiConfigurationStore.CreateDefault())
+        : this(LocalUiConfigurationStore.CreateDefault(), WorkerAdapterRegistry.Default)
     {
     }
 
@@ -41,20 +44,46 @@ public partial class MainWindow : Window
     /// registry (M11 Phase 3).
     /// </summary>
     public MainWindow(LocalUiConfigurationStore configurationStore)
+        : this(configurationStore, WorkerAdapterRegistry.Default)
+    {
+    }
+
+    /// <summary>
+    /// Takes the worker-adapter registry as a constructor argument too (M15 Phase 1, issue #137) —
+    /// the same production-wiring-is-the-caller's-decision seam as <paramref name="configurationStore"/>
+    /// and, before this window existed, <c>RunCommand.ExecuteAsync</c>'s own adapter-registry
+    /// parameter (M11 Phase 3). Defaults to <see cref="WorkerAdapterRegistry.Default"/> via the
+    /// other two constructors so production callers never have to name it explicitly, while
+    /// <c>Aer.Ui.Tests</c> can substitute a deterministic shell-stub registry instead of resolving a
+    /// live vendor CLI.
+    /// </summary>
+    public MainWindow(LocalUiConfigurationStore configurationStore, IReadOnlyDictionary<string, IWorkerAdapter> adapters)
     {
         InitializeComponent();
         _configurationStore = configurationStore;
+        _adapters = adapters;
 
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
         OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);
         RefreshButton.Click += (_, _) => _ = RefreshAsync();
         CompareButton.Click += (_, _) => _ = CompareToTemplateAsync(TemplateComparePathBox.Text ?? string.Empty);
+        RunButton.Click += (_, _) => _ = RunAsync(
+            TaskDirectoryPathBox.Text ?? string.Empty, WorkflowTemplatePathBox.Text, BindingsFilePathBox.Text ?? string.Empty);
         Closed += (_, _) => _liveRefreshTimer.Stop();
     }
 
-    /// <summary>Populates <see cref="RecentsPanel"/> from Local UI Configuration (UI spec §3.1) — call once at startup.</summary>
-    public Task InitializeAsync(CancellationToken cancellationToken = default) =>
-        RefreshRecentsPanelAsync(cancellationToken);
+    /// <summary>
+    /// Populates <see cref="RecentsPanel"/> from Local UI Configuration (UI spec §3.1), plus (M15
+    /// Phase 1) pre-fills the Run action's bindings/template inputs from whatever was last
+    /// remembered — call once at startup.
+    /// </summary>
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        await RefreshRecentsPanelAsync(cancellationToken);
+
+        BindingsFilePathBox.Text = await _configurationStore.LoadLastBindingsFilePathAsync(cancellationToken);
+        WorkflowTemplatePathBox.Text = await _configurationStore.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
+    }
 
     /// <summary>
     /// The full "open a task directory" action (UI spec §3.1): loads and renders it via
@@ -96,6 +125,78 @@ public partial class MainWindow : Window
         }
 
         UpdateLiveRefreshTimer();
+    }
+
+    /// <summary>
+    /// The mutation seam this phase exists to prove (issue #137): a Run action that either starts a
+    /// fresh task from <paramref name="workflowTemplateFilePath"/> + <paramref name="bindingsFilePath"/>,
+    /// or resumes an already-bound <paramref name="taskDirectoryPath"/> after a pause or stop — the
+    /// same <c>RunCommand.ExecuteAsync</c> call <c>aer run</c> makes, reused in-process rather than
+    /// spawning the installed binary (the seam decision this phase resolves). Bindings are never
+    /// persisted in a task directory (M14 Phase 2's decision of record) and the template is only
+    /// ever read on a fresh start (<see cref="RunOptions.WorkflowFilePath"/>'s own remarks), so both
+    /// are asked for here rather than inferred — "ask, don't infer," the same discipline the recents
+    /// list already follows for task-directory discovery (UI spec §3.1).
+    /// <para>
+    /// The pump itself runs on a background thread (<see cref="Task.Run(Func{Task})"/>): a live
+    /// execution can take however long a real worker takes, and the UI thread must never await that
+    /// directly. This method starts <see cref="MainWindow"/>'s existing 2-second poller
+    /// (<see cref="_liveRefreshTimer"/>) immediately, before the pump even begins, so it is what
+    /// renders progress for the run's entire duration — this method itself only touches projection
+    /// controls once more, via <see cref="OpenAsync"/>, after the pump has already reached its
+    /// fixed point.
+    /// </para>
+    /// </summary>
+    public async Task RunAsync(
+        string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default)
+    {
+        TaskDirectoryPathBox.Text = taskDirectoryPath;
+        _currentTaskDirectoryPath = taskDirectoryPath;
+
+        var options = new RunOptions(
+            string.IsNullOrWhiteSpace(workflowTemplateFilePath) ? null : workflowTemplateFilePath,
+            bindingsFilePath,
+            taskDirectoryPath);
+
+        RunButton.IsEnabled = false;
+        RunStatusText.Text = "Running…";
+
+        // Started before the pump itself even begins: flow.jsonl is read with FileShare.ReadWrite
+        // and written with FileShare.Read (Aer.Flow.Store), so a concurrent poll while this call's
+        // own background dispatch is mid-write is safe by construction — this is what renders
+        // progress for however long a real dispatch takes, the same 2-second re-projection M14
+        // Phase 2 already built, not something this phase reinvents.
+        _liveRefreshTimer.Start();
+
+        try
+        {
+            await Task.Run(() => RunCommand.ExecuteAsync(options, _adapters, cancellationToken), cancellationToken)
+                .ConfigureAwait(true);
+
+            RunStatusText.Text = string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(workflowTemplateFilePath))
+            {
+                await _configurationStore.RecordWorkflowTemplateFilePathAsync(workflowTemplateFilePath, cancellationToken);
+            }
+
+            await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken);
+        }
+        catch (AerFlowException ex)
+        {
+            // Same in-window-message precedent as LoadAsync (M14 Phase 1): a GUI has no
+            // stderr/exit-code convention to fail into, so a malformed template/bindings file or a
+            // WorkflowLockedException from a competing pump renders here rather than crashing.
+            _liveRefreshTimer.Stop();
+            RunStatusText.Text = ex.Message;
+            return;
+        }
+        finally
+        {
+            RunButton.IsEnabled = true;
+        }
+
+        await OpenAsync(taskDirectoryPath, cancellationToken);
     }
 
     /// <summary>
