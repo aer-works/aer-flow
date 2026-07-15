@@ -28,6 +28,15 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+    <!-- M15 Phase 2 (#138): M14 Phase 1 deliberately deferred a ViewModel layer until a second
+         concrete need arrived — buttons whose enabled state is tied jointly to projected state and
+         an in-flight mutation, which this phase's paused-step decision surface is. CommunityToolkit.Mvvm
+         over hand-rolled INotifyPropertyChanged/ICommand or ReactiveUI: source-generator-based
+         ([ObservableProperty]/[RelayCommand]), no reactive-extensions dependency, the de facto
+         standard for Avalonia MVVM. Scoped to the new decision surface only — the existing read-only
+         rendering (DAG, history, lineage, diff) stays code-behind; migrating it is a future decision,
+         not one this phase's Approve/Reject surface needs to force. -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
   <PropertyGroup>
