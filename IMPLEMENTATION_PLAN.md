@@ -133,7 +133,7 @@ The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests 
 **M16: UI Authoring** — phase plan above. Progress:
 
 - ✅ Phase 1 — Template write seam + create/save walking skeleton (#150)
-- ⬜ Phase 2 — Step & graph editing with live structural validation (#151)
+- ✅ Phase 2 — Step & graph editing with live structural validation (#151)
 - ⬜ Phase 3 — PausePoint + SupersedeTargets editing (#152)
 - ⬜ Phase 4 — Worker-binding configuration editing (#153)
 - ⬜ Phase 5 — Authoring round trips in default CI (#154)
@@ -178,6 +178,35 @@ Decisions of record from M16:
   durable task state, no §15 task lock is involved, and an edit is visible only to future
   instantiations regardless (UI spec §5), so the editor stays usable while a pump is in flight
   (Phase 1).
+- **The save-validity discipline: Save stays blocked until the in-progress graph is valid — Phase
+  1's rule is not loosened.** `TemplateEditorViewModel.BuildCandidate` returns every parse and
+  `WorkflowDefinitionValidator` violation found; `SaveTemplateAsync` refuses to write while any
+  remain, surfacing them verbatim in `StatusText`. There is no draft-storage concept elsewhere in
+  the stack — a template file is the sole authoring artifact and exactly what instantiation reads —
+  and a blocked Save loses no work: the in-memory `Steps` collection and every field persist for the
+  whole editing session regardless of current validity, so the user can edit across a temporarily
+  invalid intermediate state and only needs to reach validity once, at the moment they choose to
+  save (Phase 2).
+- **`DependsOn` is edited as a checkbox per declared step (`StepEditorViewModel.DependsOnOptions`),
+  never free text** — candidates are offered from the template's other declared steps only,
+  excluding the step itself (impossible-by-construction, not a validator rule tripped), the
+  authoring counterpart of M15's "reflect, don't invent" send-back discipline. A step's
+  `SelectedDependsOn` set is keyed by target `StepId` text and survives `DependsOnOptions` being
+  rebuilt after an unrelated edit; a rename elsewhere is treated as a new identity — an old
+  selection under stale text is not carried forward — the same way the validator itself would flag
+  a stale reference as unresolved rather than silently repair it (Phase 2).
+- **The DAG preview re-layout is gated on full validation passing, never attempted against an
+  invalid in-progress graph.** `DagLayoutEngine.Layout` assumes an already-structurally-valid graph
+  (acyclic, every `DependsOn` reference resolvable) and does not itself guard a cycle or a dangling
+  reference — calling it on an invalid graph risks an unbounded recursion or a dictionary-lookup
+  crash, not a graceful validator-style rejection. `TemplateEditorViewModel.PreviewLayout` is
+  `null` whenever `ValidationErrors` is non-empty; the editor's dedicated `TemplateEditorDagCanvas`
+  simply clears rather than rendering a stale layout (Phase 2).
+- **Dirty tracking and the no-op-save check use a dedicated structural-equality helper
+  (`TemplateEditorViewModel.DefinitionsAreEqual`), not `WorkflowDefinition`'s record `==`.** Once
+  `Steps` is editable, every list-typed member compares by reference under default record equality,
+  not by content, so `==` silently under-reports changes. `DependsOn` compares as a set (the
+  validator never treats it as ordered); every other list compares in sequence (Phase 2).
 
 ## Completed Milestones
 

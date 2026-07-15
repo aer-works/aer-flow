@@ -115,6 +115,14 @@ public partial class MainWindow : Window
         NewTemplateButton.Click += (_, _) => NewTemplate();
         EditTemplateButton.Click += (_, _) => _ = OpenTemplateInEditorAsync(TemplateEditorPathBox.Text ?? string.Empty);
         SaveTemplateButton.Click += (_, _) => _ = SaveTemplateAsync(TemplateEditorPathBox.Text ?? string.Empty);
+        AddStepButton.Click += (_, _) => ViewModel.TemplateEditor.AddStep();
+        ViewModel.TemplateEditor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TemplateEditorViewModel.PreviewLayout))
+            {
+                RenderTemplateEditorDag();
+            }
+        };
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;
     }
@@ -444,19 +452,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!int.TryParse(editor.TemplateVersionText, out var version))
+        // Phase 2's save-validity decision of record: Save stays blocked until the in-progress state
+        // both parses and passes WorkflowDefinitionValidator — Phase 1's "the writer validates before
+        // writing" rule is not loosened (TemplateEditorViewModel's own remarks explain why).
+        var (candidate, errors) = editor.BuildCandidate();
+        if (candidate is null || errors.Count > 0)
         {
-            editor.StatusText = $"Version '{editor.TemplateVersionText}' is not a whole number.";
+            editor.StatusText = string.Join(" ", errors);
             return;
         }
 
-        var candidate = baseline with
-        {
-            WorkflowTemplateId = new WorkflowTemplateId(editor.TemplateId),
-            WorkflowTemplateVersion = version,
-        };
-
-        if (editor.BaselineIsPersisted && candidate == baseline)
+        if (editor.BaselineIsPersisted && TemplateEditorViewModel.DefinitionsAreEqual(candidate, baseline))
         {
             // §11.1: never increment on a no-op save — and there is nothing to write either; the
             // file already contains exactly this state.
@@ -464,7 +470,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (editor.BaselineIsPersisted && version == baseline.WorkflowTemplateVersion)
+        if (editor.BaselineIsPersisted && candidate.WorkflowTemplateVersion == baseline.WorkflowTemplateVersion)
         {
             candidate = candidate with { WorkflowTemplateVersion = baseline.WorkflowTemplateVersion + 1 };
         }
@@ -655,14 +661,37 @@ public partial class MainWindow : Window
     /// every node still renders, just without a status-derived background in the template case.
     /// </summary>
     private void RenderDag(IReadOnlyList<WorkflowStepDefinition> steps, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
-    {
-        DagCanvas.Children.Clear();
+        => RenderDag(DagLayoutEngine.Layout(steps), DagCanvas, statusByStepId);
 
-        var layout = DagLayoutEngine.Layout(steps);
+    /// <summary>
+    /// Re-layouts and renders <see cref="TemplateEditorViewModel.PreviewLayout"/> into
+    /// <see cref="TemplateEditorDagCanvas"/> (M16 Phase 2, issue #151) — a dedicated canvas, not the
+    /// read-only <see cref="DagCanvas"/>, so the editor's live preview can never collide with an
+    /// independently-opened task or template's read-only rendering (Phase 1's separate-surfaces
+    /// decision, extended to the graph view). <see langword="null"/> (an invalid or empty in-progress
+    /// graph) clears the canvas rather than rendering a stale layout.
+    /// </summary>
+    private void RenderTemplateEditorDag()
+    {
+        if (ViewModel.TemplateEditor.PreviewLayout is not { } layout)
+        {
+            TemplateEditorDagCanvas.Children.Clear();
+            TemplateEditorDagCanvas.Width = 0;
+            TemplateEditorDagCanvas.Height = 0;
+            return;
+        }
+
+        RenderDag(layout, TemplateEditorDagCanvas, statusByStepId: null);
+    }
+
+    private void RenderDag(DagLayout layout, Canvas canvas, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
+    {
+        canvas.Children.Clear();
+
         if (layout.Nodes.Count == 0)
         {
-            DagCanvas.Width = 0;
-            DagCanvas.Height = 0;
+            canvas.Width = 0;
+            canvas.Height = 0;
             return;
         }
 
@@ -690,7 +719,7 @@ public partial class MainWindow : Window
                 line.StrokeDashArray = [4, 2];
             }
 
-            DagCanvas.Children.Add(line);
+            canvas.Children.Add(line);
         }
 
         foreach (var node in layout.Nodes)
@@ -728,13 +757,13 @@ public partial class MainWindow : Window
 
             Canvas.SetLeft(border, node.Column * DagCellWidth);
             Canvas.SetTop(border, node.Rank * DagCellHeight);
-            DagCanvas.Children.Add(border);
+            canvas.Children.Add(border);
         }
 
         var maxColumn = layout.Nodes.Max(node => node.Column);
         var maxRank = layout.Nodes.Max(node => node.Rank);
-        DagCanvas.Width = (maxColumn + 1) * DagCellWidth;
-        DagCanvas.Height = (maxRank + 1) * DagCellHeight;
+        canvas.Width = (maxColumn + 1) * DagCellWidth;
+        canvas.Height = (maxRank + 1) * DagCellHeight;
     }
 
     /// <summary>
