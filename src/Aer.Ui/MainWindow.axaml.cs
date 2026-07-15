@@ -31,6 +31,14 @@ public partial class MainWindow : Window
     /// <summary>Test-only observation of the live-refresh polling state (see <see cref="UpdateLiveRefreshTimer"/>) — never consulted by production code.</summary>
     internal bool IsLiveRefreshTimerEnabled => _liveRefreshTimer.IsEnabled;
 
+    /// <summary>
+    /// This window's ViewModel (M15 Phase 2, issue #138) — set as <see cref="Window.DataContext"/> so
+    /// <see cref="MainWindow.axaml"/> can bind the paused-step decision surface and the shared
+    /// mutation-in-flight flag directly. See <see cref="MainWindowViewModel"/>'s own remarks for why
+    /// this is scoped to that surface only, not the rest of the window's rendering.
+    /// </summary>
+    internal MainWindowViewModel ViewModel { get; } = new();
+
     public MainWindow()
         : this(LocalUiConfigurationStore.CreateDefault(), WorkerAdapterRegistry.Default)
     {
@@ -60,6 +68,7 @@ public partial class MainWindow : Window
     public MainWindow(LocalUiConfigurationStore configurationStore, IReadOnlyDictionary<string, IWorkerAdapter> adapters)
     {
         InitializeComponent();
+        DataContext = ViewModel;
         _configurationStore = configurationStore;
         _adapters = adapters;
 
@@ -151,6 +160,12 @@ public partial class MainWindow : Window
         string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default)
     {
         TaskDirectoryPathBox.Text = taskDirectoryPath;
+        // Kept in sync here, not just read from at Run-button-click time, so a later decision
+        // (M15 Phase 2, issue #138) — which reads this same box rather than a remembered field, the
+        // same "ask, don't infer" discipline this box's own value already follows — has a bindings
+        // path to use even when RunAsync was invoked directly (a test, or a future non-button caller)
+        // rather than through the click handler that already reads this box.
+        BindingsFilePathBox.Text = bindingsFilePath;
         _currentTaskDirectoryPath = taskDirectoryPath;
 
         var options = new RunOptions(
@@ -158,7 +173,11 @@ public partial class MainWindow : Window
             bindingsFilePath,
             taskDirectoryPath);
 
-        RunButton.IsEnabled = false;
+        // M15 Phase 2 (#138): RunButton's enabled state is now bound to ViewModel.IsMutationInFlight
+        // in MainWindow.axaml — the same flag gates the paused-step decision buttons — rather than
+        // toggled directly, so a Run and a decision can never both be in flight from this process at
+        // once (the underlying §15 lock could not support that regardless).
+        ViewModel.IsMutationInFlight = true;
         RunStatusText.Text = "Running…";
 
         // Started before the pump itself even begins: flow.jsonl is read with FileShare.ReadWrite
@@ -193,7 +212,62 @@ public partial class MainWindow : Window
         }
         finally
         {
-            RunButton.IsEnabled = true;
+            ViewModel.IsMutationInFlight = false;
+        }
+
+        await OpenAsync(taskDirectoryPath, cancellationToken);
+    }
+
+    /// <summary>
+    /// The paused-step decision surface this phase adds (issue #138): wraps
+    /// <see cref="DecideCommand.ExecuteAsync"/> — the same static, adapter-registry-as-argument call
+    /// <c>aer decide</c> makes — exactly like <see cref="RunAsync"/> wraps <c>RunCommand</c> (Phase 1).
+    /// <paramref name="decisionType"/> is always <see cref="DecisionType.Resume"/> or
+    /// <see cref="DecisionType.Reject"/> here — §7's Approve/Reject label mapping, the only two
+    /// decision types this phase's action surface offers (<see cref="PausedStepViewModel"/>'s two
+    /// commands); the label-mapping discipline itself is the point of this phase (never a UI-invented
+    /// <see cref="DecisionType"/>, UI spec §6). Bindings are read from <see cref="BindingsFilePathBox"/>,
+    /// the same box <see cref="RunAsync"/> already asks for — never inferred or persisted per task
+    /// (M14 Phase 2's decision of record).
+    /// </summary>
+    private async Task DecideAsync(
+        string taskDirectoryPath, StepId stepId, ExecutionId executionId, DecisionType decisionType, CancellationToken cancellationToken = default)
+    {
+        var options = new DecideOptions(
+            taskDirectoryPath,
+            executionId.Value,
+            decisionType,
+            TargetStepId: null,
+            SupplementaryExecutionId: null,
+            BindingsFilePathBox.Text ?? string.Empty);
+
+        ViewModel.DecisionStatusText = $"Deciding {stepId.Value}…";
+        ViewModel.IsMutationInFlight = true;
+
+        // Same reasoning as RunAsync (Phase 1): started before the pump itself begins, so the
+        // existing 2-second poller renders progress for however long this decision's pump takes to
+        // reach its next fixed point.
+        _liveRefreshTimer.Start();
+
+        try
+        {
+            await Task.Run(() => DecideCommand.ExecuteAsync(options, _adapters, cancellationToken), cancellationToken)
+                .ConfigureAwait(true);
+
+            ViewModel.DecisionStatusText = string.Empty;
+        }
+        catch (AerFlowException ex)
+        {
+            // Same in-window-message precedent as RunAsync/LoadAsync (M14 Phase 1): a
+            // WorkflowLockedException from a competing external pump, or an invalid decision
+            // (ExternalDecisionValidator's §17.2 rules), renders here rather than crashing.
+            _liveRefreshTimer.Stop();
+            ViewModel.DecisionStatusText = ex.Message;
+            return;
+        }
+        finally
+        {
+            ViewModel.IsMutationInFlight = false;
         }
 
         await OpenAsync(taskDirectoryPath, cancellationToken);
@@ -251,6 +325,7 @@ public partial class MainWindow : Window
             RenderDecisions(projection);
             RenderSupplementaryExecutions(projection);
             RenderArtifactLineage(projection, taskDirectoryPath);
+            RebuildPausedSteps(projection, taskDirectoryPath);
 
             _lastLoadSucceeded = true;
             _lastWorkflowStatus = projection.State.Status;
@@ -270,6 +345,8 @@ public partial class MainWindow : Window
             LineagePanel.Children.Clear();
             ArtifactPreviewBox.Text = string.Empty;
             DiffPanel.Children.Clear();
+            ViewModel.PausedSteps.Clear();
+            ViewModel.DecisionStatusText = string.Empty;
 
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
@@ -301,6 +378,8 @@ public partial class MainWindow : Window
             LineagePanel.Children.Clear();
             ArtifactPreviewBox.Text = string.Empty;
             DiffPanel.Children.Clear();
+            ViewModel.PausedSteps.Clear();
+            ViewModel.DecisionStatusText = string.Empty;
 
             RenderDag(definition.Steps, statusByStepId: null);
 
@@ -319,6 +398,8 @@ public partial class MainWindow : Window
             LineagePanel.Children.Clear();
             ArtifactPreviewBox.Text = string.Empty;
             DiffPanel.Children.Clear();
+            ViewModel.PausedSteps.Clear();
+            ViewModel.DecisionStatusText = string.Empty;
 
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
@@ -486,6 +567,35 @@ public partial class MainWindow : Window
             }
 
             HistoryPanel.Children.Add(new TextBlock { Text = summary });
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="ViewModel"/>'s <see cref="MainWindowViewModel.PausedSteps"/> (M15 Phase 2,
+    /// issue #138) — one entry per step whose latest attempt is <see cref="StepStatus.Paused"/>,
+    /// carrying the <see cref="ExecutionId"/> a decision resolves (<see cref="StepState.LatestExecutionId"/>,
+    /// guaranteed non-null while paused). Rebuilt from scratch on every load, the same "projected
+    /// fact, not retained handler state" discipline every other render method here follows — a step
+    /// that resumes simply stops appearing next load, with nothing to reconcile.
+    /// </summary>
+    private void RebuildPausedSteps(TaskProjection projection, string taskDirectoryPath)
+    {
+        ViewModel.PausedSteps.Clear();
+
+        foreach (var stepState in projection.State.Steps)
+        {
+            if (stepState.Status != StepStatus.Paused || stepState.LatestExecutionId is not { } executionId)
+            {
+                continue;
+            }
+
+            ViewModel.PausedSteps.Add(new PausedStepViewModel(
+                stepState.StepId,
+                executionId,
+                (stepId, decidedExecutionId, decisionType) => DecideAsync(taskDirectoryPath, stepId, decidedExecutionId, decisionType))
+            {
+                IsEnabled = !ViewModel.IsMutationInFlight,
+            });
         }
     }
 

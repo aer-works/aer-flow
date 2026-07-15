@@ -1,6 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Aer.Ui"
         x:Class="Aer.Ui.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
         Title="AER Flow UI"
         Width="720" Height="640">
   <ScrollViewer>
@@ -18,12 +20,26 @@
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow template file (fresh start only)" />
         <TextBox x:Name="BindingsFilePathBox" Width="300" PlaceholderText="Worker-bindings file" />
-        <Button x:Name="RunButton" Content="Run" />
+        <Button x:Name="RunButton" Content="Run" IsEnabled="{Binding !IsMutationInFlight}" />
       </StackPanel>
       <TextBlock x:Name="RunStatusText" />
 
       <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
       <StackPanel x:Name="StepsPanel" Spacing="4" />
+
+      <TextBlock Text="Paused steps — decide (§7's Approve/Reject):" FontWeight="Bold" />
+      <ItemsControl x:Name="PausedStepsList" ItemsSource="{Binding PausedSteps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:PausedStepViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+              <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
+              <Button Content="Approve" Command="{Binding ApproveCommand}" />
+              <Button Content="Reject" Command="{Binding RejectCommand}" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock x:Name="DecisionStatusText" Text="{Binding DecisionStatusText}" />
 
       <TextBlock Text="Workflow graph:" FontWeight="Bold" />
       <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="360">

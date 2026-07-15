@@ -134,7 +134,7 @@ The M15 completion gate, placed by M14 Phase 5's reasoning: no live vendor auth 
 **M15: UI Control Surface** — phase plan above. Progress:
 
 - ✅ Phase 1 — Mutation seam + start/resume a workflow (#137)
-- ⬜ Phase 2 — Resolve decisions: Approve / Reject (#138)
+- ✅ Phase 2 — Resolve decisions: Approve / Reject (#138)
 - ⬜ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
 - ⬜ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
 - ⬜ Phase 5 — UI-driven mutation round trips in default CI (#141)
@@ -172,6 +172,31 @@ Decisions of record from M15:
   this phase** — deliberately deferred to Phase 4, which already owns that additive signature
   change per the phase plan above; Phase 1's Run action has nothing yet to target a cancel at
   (Phase 1).
+- **MVVM enters now, scoped to the decision surface only** — `CommunityToolkit.Mvvm`
+  (source-generator `[ObservableProperty]`/`[RelayCommand]`, no reactive-extensions dependency) is
+  the new `Aer.Ui` `PackageReference`. `MainWindowViewModel`/`PausedStepViewModel` own exactly the
+  surface M14 Phase 1 named as the potential second concrete need — buttons whose enabled state is
+  tied jointly to projected state and an in-flight mutation — set as `MainWindow.DataContext`. The
+  rest of the window's read-only rendering (DAG, history, lineage, diff) is untouched, still direct
+  code-behind control manipulation; migrating it is a future decision this phase's Approve/Reject
+  surface does not need to force (Phase 2).
+- **§7's Approve/Reject label mapping**: `PausedStepViewModel.ApproveCommand` records
+  `DecisionType.Resume`, `RejectCommand` records `DecisionType.Reject` — never a UI-invented decision
+  type (UI spec §6). `MainWindow.RebuildPausedSteps` re-derives one `PausedStepViewModel` per step
+  whose latest attempt is `StepStatus.Paused`, from `StepState.LatestExecutionId`, on every load —
+  a projected fact, not retained handler state, so a step that resumes simply stops appearing next
+  load (Phase 2).
+- **One shared `IsMutationInFlight` flag, not a per-action one**, gates every mutation this UI
+  process can start — `RunButton`'s bound `IsEnabled` and every `PausedStepViewModel`'s command
+  `CanExecute` all read it, since the underlying §15 lock could not support two concurrent
+  in-process mutations regardless. A `WorkflowLockedException` from a *competing external* pump
+  still renders via the in-window-message precedent (M14 Phase 1) — this flag only ever prevents a
+  second mutation from this same process, never claims to reach across processes (Phase 2).
+- **The decision's worker-bindings path is read from `BindingsFilePathBox` at decide-time, not
+  cached in a field** — the same "ask, don't infer" box `RunAsync` already asks for (Phase 1's
+  decision of record); `RunAsync` now also writes its own `bindingsFilePath` argument back into that
+  box so a decision has something to read even when `RunAsync` was invoked directly rather than
+  through the Run button's click handler (Phase 2).
 
 ## Completed Milestones
 
@@ -494,3 +519,4 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 ## Notes for future work
 
 - **A third worker adapter (`Aer.Adapters`)** — Claude shipped in M11 Phase 2 (#85), Gemini/`agy` in M12 Phase 1 (#95). Before adding another vendor, read closed spike [#21](https://github.com/aer-works/aer-flow/issues/21)'s recorded findings — stdin stalls, permission-flag vocabularies, and path-interpolation behavior differ per CLI and are exactly what the adapter seam exists to absorb.
+- **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.
