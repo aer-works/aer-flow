@@ -21,11 +21,26 @@
         <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow template file (fresh start only)" />
         <TextBox x:Name="BindingsFilePathBox" Width="300" PlaceholderText="Worker-bindings file" />
         <Button x:Name="RunButton" Content="Run" IsEnabled="{Binding !IsMutationInFlight}" />
+        <Button x:Name="StopButton" Content="Stop" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop)." />
       </StackPanel>
       <TextBlock x:Name="RunStatusText" />
 
       <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
       <StackPanel x:Name="StepsPanel" Spacing="4" />
+
+      <TextBlock Text="Running / pending executions — cancel (§7):" FontWeight="Bold" />
+      <ItemsControl x:Name="RunningExecutionsList" ItemsSource="{Binding RunningExecutions}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RunningExecutionViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
+              <Button Content="Cancel" Command="{Binding CancelCommand}" />
+              <TextBlock Text="cancellation requested…" IsVisible="{Binding CancellationRequested}" VerticalAlignment="Center" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock x:Name="CancelStatusText" Text="{Binding CancelStatusText}" />
 
       <TextBlock Text="Paused steps — decide (§7's Approve/Reject/Retry/Send back):" FontWeight="Bold" />
       <ItemsControl x:Name="PausedStepsList" ItemsSource="{Binding PausedSteps}">

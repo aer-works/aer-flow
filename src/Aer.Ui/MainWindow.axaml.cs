@@ -3,6 +3,7 @@ using Aer.Cli;
 using Aer.Flow;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -27,6 +28,37 @@ public partial class MainWindow : Window
     private bool _lastLoadSucceeded;
     private WorkflowStatus? _lastWorkflowStatus;
     private WorkflowDefinitionSnapshot? _lastSnapshot;
+
+    /// <summary>
+    /// The caller-retained delivery point (M15 Phase 4, issue #140) for whichever Run or Decide pump
+    /// this window itself currently has in flight — <see langword="null"/> whenever this process is
+    /// not hosting one. A targeted Cancel on an execution registered here is delivered in-process via
+    /// <see cref="InFlightExecutionRegistry.RequestCancellationAsync"/>, never a second mutation-surface
+    /// call, since §15's guard is already held for this call's entire duration (M10's decision of
+    /// record). Set immediately before <see cref="RunAsync"/>/<see cref="DecideAsync"/> starts its
+    /// pump and cleared in that same call's <c>finally</c>.
+    /// </summary>
+    private InFlightExecutionRegistry? _currentInFlightExecutions;
+
+    /// <summary>
+    /// The host-stop token source for whichever pump this window currently has in flight (issue #140)
+    /// — cancelling it is the Ctrl+C equivalent <c>Aer.Cli</c>'s <c>Program.cs</c> wires to
+    /// <c>Console.CancelKeyPress</c>, reused here for <see cref="StopAsync"/> and
+    /// <see cref="OnClosing"/>. Linked to whatever <see cref="CancellationToken"/> the caller passed
+    /// into <see cref="RunAsync"/>/<see cref="DecideAsync"/> (tests use this for their own cleanup),
+    /// so either source firing reaches the pump.
+    /// </summary>
+    private CancellationTokenSource? _currentHostStopSource;
+
+    /// <summary>
+    /// The background <see cref="Task.Run(Func{Task})"/> task driving whichever pump is currently in
+    /// flight — retained so <see cref="OnClosing"/> can wait for it to reach a durable fixed point
+    /// before actually closing the window, rather than abandoning it mid-write (issue #140).
+    /// </summary>
+    private Task? _currentPumpTask;
+
+    /// <summary>Set once <see cref="OnClosing"/> has already stopped an in-flight pump and is closing the window for real — prevents re-entering the stop sequence from the follow-up programmatic <see cref="Window.Close()"/>.</summary>
+    private bool _closeConfirmed;
 
     /// <summary>Test-only observation of the live-refresh polling state (see <see cref="UpdateLiveRefreshTimer"/>) — never consulted by production code.</summary>
     internal bool IsLiveRefreshTimerEnabled => _liveRefreshTimer.IsEnabled;
@@ -78,7 +110,9 @@ public partial class MainWindow : Window
         CompareButton.Click += (_, _) => _ = CompareToTemplateAsync(TemplateComparePathBox.Text ?? string.Empty);
         RunButton.Click += (_, _) => _ = RunAsync(
             TaskDirectoryPathBox.Text ?? string.Empty, WorkflowTemplatePathBox.Text, BindingsFilePathBox.Text ?? string.Empty);
+        StopButton.Click += (_, _) => _ = StopAsync();
         Closed += (_, _) => _liveRefreshTimer.Stop();
+        Closing += OnClosing;
     }
 
     /// <summary>
@@ -187,10 +221,21 @@ public partial class MainWindow : Window
         // Phase 2 already built, not something this phase reinvents.
         _liveRefreshTimer.Start();
 
+        // M15 Phase 4 (issue #140): a fresh registry and a host-stop source linked to the caller's
+        // own token, retained on this window for this call's whole duration so a targeted Cancel or
+        // the Stop button can reach this exact pump while it is in flight — either token firing
+        // reaches it, since MutationInterface's host-stop machinery races whatever token it is given.
+        var inFlightExecutions = new InFlightExecutionRegistry();
+        var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _currentInFlightExecutions = inFlightExecutions;
+        _currentHostStopSource = hostStopSource;
+
         try
         {
-            await Task.Run(() => RunCommand.ExecuteAsync(options, _adapters, cancellationToken), cancellationToken)
-                .ConfigureAwait(true);
+            var pumpTask = Task.Run(
+                () => RunCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token), hostStopSource.Token);
+            _currentPumpTask = pumpTask;
+            await pumpTask.ConfigureAwait(true);
 
             RunStatusText.Text = string.Empty;
 
@@ -213,6 +258,10 @@ public partial class MainWindow : Window
         finally
         {
             ViewModel.IsMutationInFlight = false;
+            _currentInFlightExecutions = null;
+            _currentHostStopSource = null;
+            _currentPumpTask = null;
+            hostStopSource.Dispose();
         }
 
         await OpenAsync(taskDirectoryPath, cancellationToken);
@@ -257,6 +306,14 @@ public partial class MainWindow : Window
         // fixed point.
         _liveRefreshTimer.Start();
 
+        // M15 Phase 4 (issue #140): retained the same way RunAsync retains one, for the same reason
+        // — a paused step whose Retry/Send-back decision dispatches a fresh process-bound attempt is
+        // itself something a targeted Cancel or the Stop button must be able to reach mid-pump.
+        var inFlightExecutions = new InFlightExecutionRegistry();
+        var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _currentInFlightExecutions = inFlightExecutions;
+        _currentHostStopSource = hostStopSource;
+
         try
         {
             ExecutionId? supplementaryExecutionId = null;
@@ -270,7 +327,7 @@ public partial class MainWindow : Window
                     revisionFilePath,
                     BindingsFilePathBox.Text ?? string.Empty);
 
-                var supplyResult = await Task.Run(() => SupplyCommand.ExecuteAsync(supplyOptions, _adapters, cancellationToken), cancellationToken)
+                var supplyResult = await Task.Run(() => SupplyCommand.ExecuteAsync(supplyOptions, _adapters, hostStopSource.Token), hostStopSource.Token)
                     .ConfigureAwait(true);
 
                 supplementaryExecutionId = supplyResult.ExecutionId;
@@ -284,8 +341,10 @@ public partial class MainWindow : Window
                 supplementaryExecutionId?.Value,
                 BindingsFilePathBox.Text ?? string.Empty);
 
-            await Task.Run(() => DecideCommand.ExecuteAsync(options, _adapters, cancellationToken), cancellationToken)
-                .ConfigureAwait(true);
+            var pumpTask = Task.Run(
+                () => DecideCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token), hostStopSource.Token);
+            _currentPumpTask = pumpTask;
+            await pumpTask.ConfigureAwait(true);
 
             ViewModel.DecisionStatusText = string.Empty;
         }
@@ -302,6 +361,10 @@ public partial class MainWindow : Window
         finally
         {
             ViewModel.IsMutationInFlight = false;
+            _currentInFlightExecutions = null;
+            _currentHostStopSource = null;
+            _currentPumpTask = null;
+            hostStopSource.Dispose();
         }
 
         await OpenAsync(taskDirectoryPath, cancellationToken);
@@ -360,6 +423,7 @@ public partial class MainWindow : Window
             RenderSupplementaryExecutions(projection);
             RenderArtifactLineage(projection, taskDirectoryPath);
             RebuildPausedSteps(projection, taskDirectoryPath);
+            RebuildRunningExecutions(projection, taskDirectoryPath);
 
             _lastLoadSucceeded = true;
             _lastWorkflowStatus = projection.State.Status;
@@ -381,6 +445,8 @@ public partial class MainWindow : Window
             DiffPanel.Children.Clear();
             ViewModel.PausedSteps.Clear();
             ViewModel.DecisionStatusText = string.Empty;
+            ViewModel.RunningExecutions.Clear();
+            ViewModel.CancelStatusText = string.Empty;
 
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
@@ -414,6 +480,8 @@ public partial class MainWindow : Window
             DiffPanel.Children.Clear();
             ViewModel.PausedSteps.Clear();
             ViewModel.DecisionStatusText = string.Empty;
+            ViewModel.RunningExecutions.Clear();
+            ViewModel.CancelStatusText = string.Empty;
 
             RenderDag(definition.Steps, statusByStepId: null);
 
@@ -434,6 +502,8 @@ public partial class MainWindow : Window
             DiffPanel.Children.Clear();
             ViewModel.PausedSteps.Clear();
             ViewModel.DecisionStatusText = string.Empty;
+            ViewModel.RunningExecutions.Clear();
+            ViewModel.CancelStatusText = string.Empty;
 
             _lastLoadSucceeded = false;
             _lastWorkflowStatus = null;
@@ -641,6 +711,158 @@ public partial class MainWindow : Window
                 IsEnabled = !ViewModel.IsMutationInFlight,
             });
         }
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="ViewModel"/>'s <see cref="MainWindowViewModel.RunningExecutions"/> (M15
+    /// Phase 4, issue #140) — one entry per process-bound step still <see cref="StepStatus.Running"/>
+    /// and one per step-less supplementary/human execution still pending (spec §17.3), the same
+    /// "projected fact, not retained handler state" discipline <see cref="RebuildPausedSteps"/>
+    /// already follows. <see cref="RunningExecutionViewModel.IsLocallyHosted"/> is derived once here,
+    /// from whether this window's own retained pump (<see cref="_currentInFlightExecutions"/>) is
+    /// currently the one driving <paramref name="taskDirectoryPath"/> — the only two mutations that
+    /// can ever be true at once share the same <see cref="MainWindowViewModel.IsMutationInFlight"/>
+    /// flag, so this is unambiguous.
+    /// </summary>
+    private void RebuildRunningExecutions(TaskProjection projection, string taskDirectoryPath)
+    {
+        ViewModel.RunningExecutions.Clear();
+
+        var isLocallyHostedTask = _currentInFlightExecutions is not null && _currentTaskDirectoryPath == taskDirectoryPath;
+
+        foreach (var stepState in projection.State.Steps)
+        {
+            if (stepState.Status != StepStatus.Running || stepState.LatestExecutionId is not { } executionId)
+            {
+                continue;
+            }
+
+            AddRunningExecution(stepState.StepId, executionId, isLocallyHostedTask, projection.State, taskDirectoryPath);
+        }
+
+        foreach (var stepLessExecution in projection.State.StepLessExecutions)
+        {
+            // Never locally hosted: a non-process dispatch never registers with
+            // InFlightExecutionRegistry in the first place (Phase 1's NonProcessCancellationDetector
+            // owns that tier directly, finalizing it within the same pump round it settles in).
+            AddRunningExecution(stepId: null, stepLessExecution.ExecutionId, isLocallyHosted: false, projection.State, taskDirectoryPath);
+        }
+    }
+
+    private void AddRunningExecution(
+        StepId? stepId, ExecutionId executionId, bool isLocallyHosted, FlowState state, string taskDirectoryPath)
+    {
+        var cancellationRequested = state.CancellationRequestedExecutionIds.Contains(executionId);
+
+        ViewModel.RunningExecutions.Add(new RunningExecutionViewModel(
+            stepId,
+            executionId,
+            isLocallyHosted,
+            cancellationRequested,
+            targetExecutionId => CancelExecutionAsync(taskDirectoryPath, targetExecutionId))
+        {
+            IsEnabled = isLocallyHosted || !ViewModel.IsMutationInFlight,
+        });
+    }
+
+    /// <summary>
+    /// The targeted-Cancel surface (M15 Phase 4, issue #140): delivered in-process via the retained
+    /// <see cref="InFlightExecutionRegistry"/> when this window's own pump currently has
+    /// <paramref name="executionId"/> in flight — a fast, idempotent signal, never a second
+    /// mutation-surface call, since §15's guard is already held for that pump's entire duration
+    /// (M10's decision of record). Otherwise this is the only way left to reach it: a brand-new
+    /// <see cref="CancelCommand"/> mutation call, wrapped exactly like <see cref="RunAsync"/> wraps
+    /// <c>RunCommand</c> — including the possibility of a <see cref="Aer.Flow.Concurrency.WorkflowLockedException"/>
+    /// from whatever process (or pump) currently holds the task's lock, rendered as an in-window
+    /// message rather than a button that pretends to work (the phase's own open question).
+    /// </summary>
+    private async Task CancelExecutionAsync(string taskDirectoryPath, ExecutionId executionId, CancellationToken cancellationToken = default)
+    {
+        if (_currentInFlightExecutions is { } registry && _currentTaskDirectoryPath == taskDirectoryPath)
+        {
+            await registry.RequestCancellationAsync(executionId, cancellationToken).ConfigureAwait(true);
+            return;
+        }
+
+        ViewModel.CancelStatusText = $"Cancelling {executionId.Value}…";
+        ViewModel.IsMutationInFlight = true;
+        _liveRefreshTimer.Start();
+
+        try
+        {
+            var options = new CancelOptions(taskDirectoryPath, executionId.Value, BindingsFilePathBox.Text ?? string.Empty);
+            await Task.Run(() => CancelCommand.ExecuteAsync(options, _adapters, cancellationToken: cancellationToken), cancellationToken)
+                .ConfigureAwait(true);
+
+            ViewModel.CancelStatusText = string.Empty;
+        }
+        catch (AerFlowException ex)
+        {
+            // Same in-window-message precedent as RunAsync/DecideAsync/LoadAsync (M14 Phase 1).
+            _liveRefreshTimer.Stop();
+            ViewModel.CancelStatusText = ex.Message;
+            return;
+        }
+        finally
+        {
+            ViewModel.IsMutationInFlight = false;
+        }
+
+        await OpenAsync(taskDirectoryPath, cancellationToken);
+    }
+
+    /// <summary>
+    /// The Ctrl+C equivalent (§9's host-initiated stop; M15 Phase 4, issue #140): cancels whichever
+    /// pump this window's own Run/Decide action currently has in flight — a no-op when nothing is.
+    /// Fire-and-forget by design, mirroring <c>Aer.Cli.Program.cs</c>'s <c>Console.CancelKeyPress</c>
+    /// handler: cancelling <see cref="_currentHostStopSource"/> is only the signal.
+    /// <see cref="RunAsync"/>/<see cref="DecideAsync"/>'s own awaited pump is what actually drives
+    /// §9's intent-first record for every execution still in flight, then the durable
+    /// <c>ExecutionCancelled</c> §7's second reflection phase needs, and clears
+    /// <see cref="MainWindowViewModel.IsMutationInFlight"/> once that pump reaches its fixed point.
+    /// </summary>
+    public Task StopAsync()
+    {
+        _currentHostStopSource?.Cancel();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Window-close semantics with a pump in flight (issue #140): the first <c>Closing</c> is
+    /// cancelled and treated as a Stop request instead of a silent abandonment — the CLI's Ctrl+C
+    /// equivalent still fires even though there is no terminal to Ctrl+C in. Once the retained pump
+    /// task has actually reached its fixed point (<see cref="RunAsync"/>/<see cref="DecideAsync"/>'s
+    /// own <c>finally</c> already reflects that in the projection via their trailing
+    /// <see cref="OpenAsync"/>), this closes the window for real — a plain, uncancelled close, since
+    /// <see cref="_closeConfirmed"/> is now set.
+    /// </summary>
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_closeConfirmed || _currentPumpTask is not { IsCompleted: false } pumpTask)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        _currentHostStopSource?.Cancel();
+        _ = CloseOncePumpSettlesAsync(pumpTask);
+    }
+
+    private async Task CloseOncePumpSettlesAsync(Task pumpTask)
+    {
+        try
+        {
+            await pumpTask.ConfigureAwait(true);
+        }
+        catch
+        {
+            // RunAsync/DecideAsync's own try/catch already renders any AerFlowException as an
+            // in-window message on their own await of this same task; this second await exists only
+            // to learn that the pump has reached a fixed point, not to re-observe its outcome.
+        }
+
+        _closeConfirmed = true;
+        Close();
     }
 
     private void RenderDecisions(TaskProjection projection)

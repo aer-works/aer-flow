@@ -38,9 +38,18 @@ public static class RunCommand
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
     /// </exception>
+    /// <param name="inFlightExecutions">
+    /// M15 Phase 4's (issue #140) additive caller-retained delivery point — forwarded, unchanged, to
+    /// <see cref="MutationInterface.StartWorkflowAsync"/>. <c>null</c> for every caller (the CLI
+    /// included) that has no need to reach a live execution mid-pump; <c>Aer.Ui</c>'s
+    /// <c>MainWindow</c> is the first caller that retains one, so a targeted Cancel from the UI can
+    /// signal a specific in-flight execution this same call dispatched, without a second
+    /// mutation-surface call racing §15's guard.
+    /// </param>
     public static async Task<CommandResult> ExecuteAsync(
         RunOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+        InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -75,7 +84,8 @@ public static class RunCommand
                 reader,
                 writer,
                 dispatcher,
-                cancellationToken: cancellationToken)
+                inFlightExecutions,
+                cancellationToken)
             .ConfigureAwait(false);
 
         return new CommandResult(state, snapshot);

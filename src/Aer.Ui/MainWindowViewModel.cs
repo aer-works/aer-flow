@@ -16,13 +16,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<PausedStepViewModel> PausedSteps { get; } = [];
 
     /// <summary>
+    /// One entry per currently-running or cancellation-pending execution (M15 Phase 4, issue #140) —
+    /// the §7 targeted-Cancel surface, alongside <see cref="PausedSteps"/>' decision surface.
+    /// </summary>
+    public ObservableCollection<RunningExecutionViewModel> RunningExecutions { get; } = [];
+
+    /// <summary>
     /// True for the duration of any mutation call this UI process itself is driving — a Run or a
     /// decision — the window's own pump holding the task's §15 lock for that call's entire duration.
     /// Every <see cref="PausedSteps"/> entry's <see cref="PausedStepViewModel.IsEnabled"/> mirrors
     /// this, so a second mutation can never be started from this same process while one is already in
     /// flight (a competing *external* process's lock hold instead surfaces as a
     /// <see cref="Aer.Flow.Concurrency.WorkflowLockedException"/> in-window message, per Phase 1's
-    /// precedent — this flag does not, and cannot, prevent that one).
+    /// precedent — this flag does not, and cannot, prevent that one). <see cref="RunningExecutions"/>
+    /// entries are the one deliberate exception: a locally-hosted execution's Cancel stays enabled
+    /// exactly while this flag is true (Phase 4) — see <see cref="RunningExecutionViewModel.UpdateEnabled"/>.
     /// </summary>
     [ObservableProperty]
     private bool isMutationInFlight;
@@ -31,11 +39,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string decisionStatusText = string.Empty;
 
+    /// <summary>In-window message surface for a targeted Cancel's outcome or failure (Phase 4) — the same precedent as <see cref="DecisionStatusText"/>.</summary>
+    [ObservableProperty]
+    private string cancelStatusText = string.Empty;
+
     partial void OnIsMutationInFlightChanged(bool value)
     {
         foreach (var step in PausedSteps)
         {
             step.IsEnabled = !value;
+        }
+
+        foreach (var execution in RunningExecutions)
+        {
+            execution.UpdateEnabled(value);
         }
     }
 }
