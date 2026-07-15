@@ -91,7 +91,7 @@ public static class WorkflowDefinitionValidator
             throw new WorkflowDefinitionValidationException(errors);
         }
 
-        var ancestorsByStep = ComputeTransitiveAncestors(definition, errors);
+        var ancestorsByStep = ComputeTransitiveAncestorsCore(definition, errors);
 
         foreach (var step in definition.Steps)
         {
@@ -124,12 +124,29 @@ public static class WorkflowDefinitionValidator
     }
 
     /// <summary>
+    /// Computes every step's full set of transitive <c>DependsOn</c> ancestors — the same walk
+    /// <see cref="Validate"/> performs internally for <c>SupersedeTargets</c> ancestry, exposed here
+    /// for an editor's <c>SupersedeTargets</c> candidate list (M16 Phase 3, issue #152): "reflect,
+    /// don't invent" needs the live in-edit graph's actual ancestor set, not a caller-side
+    /// re-implementation of this rule (the authoring counterpart of "Flow carries discipline").
+    /// Assumes <paramref name="definition"/> is already structurally valid — unique <c>StepId</c>s,
+    /// every <c>DependsOn</c> reference resolvable, acyclic — the same precondition a live DAG-layout
+    /// preview carries; call only after <see cref="Validate"/> has succeeded, or this throws or
+    /// produces meaningless results on malformed input, exactly like an unguarded graph walk would.
+    /// </summary>
+    public static IReadOnlyDictionary<StepId, IReadOnlySet<StepId>> ComputeTransitiveAncestors(WorkflowDefinition definition)
+    {
+        var ancestorsByStep = ComputeTransitiveAncestorsCore(definition, errors: []);
+        return ancestorsByStep.ToDictionary(kv => kv.Key, kv => (IReadOnlySet<StepId>)kv.Value);
+    }
+
+    /// <summary>
     /// Computes, for every step, the full set of StepIds reachable by following <c>DependsOn</c>
     /// edges backward. Detects cycles along the way — a cyclic <c>DependsOn</c> graph contradicts
     /// §11.1's "no loops" static-DAG requirement, and would otherwise make "transitive ancestor"
     /// an ill-defined question for <c>SupersedeTargets</c> validation.
     /// </summary>
-    private static Dictionary<StepId, HashSet<StepId>> ComputeTransitiveAncestors(
+    private static Dictionary<StepId, HashSet<StepId>> ComputeTransitiveAncestorsCore(
         WorkflowDefinition definition,
         List<string> errors)
     {
