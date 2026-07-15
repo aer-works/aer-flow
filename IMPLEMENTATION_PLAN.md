@@ -66,80 +66,97 @@ M14–M16 are that UI track, splitting the roadmap's original single "UI" row th
 
 ---
 
-## M15: UI Control Surface — Phase Plan
+## M16: UI Authoring — Phase Plan
 
-**Goal:** the second UI-track milestone (capability #22; UI spec §6, §7): the §7 user actions — start/resume a workflow, approve, reject, retry (with or without a revision), send back, cancel — exposed in `Aer.Ui`, implemented exclusively by invoking Flow's mutation interface (§14), and mapped onto Flow's closed `DecisionType` set: human-facing labels on top ("Approve" renders, `Resume` is recorded), never a UI-invented decision type (§6). No authoring (M16); projection itself shipped in M14 and only gets consumed here.
+**Goal:** the last UI-track milestone (capability #23; UI spec §5, §8, §9): authoring in `Aer.Ui` — create and edit workflow templates (steps, dependencies, retry policies, metadata) and their `PausePoint`s/`SupersedeTargets`, plus worker-bindings configuration, with structural validation surfaced live in the editor. Authoring only ever touches **template files** and the **bindings file**: a bound `WorkflowDefinitionSnapshot` is immutable (Flow spec §11.2), its rendering stays read-only forever, and an edit is visible only to *future* instantiations (UI spec §2, §5) — the M14 diff view is how divergence gets shown, never a pretense that an edit reached a bound task. Deliberately excluded and assigned to no milestone: scheduling simulation (UI spec §8) and cost/latency display (§9) — both spec "may"s with no concrete need naming them yet (Overview §6's rule again, same as conversation views).
 
-Three facts shape the plan. First, **the mutation callers already exist and are library-shaped.** M12's command layer — `RunCommand`/`DecideCommand`/`CancelCommand`/`SupplyCommand.ExecuteAsync`, static, adapter-registry-as-argument (M11's decision of record), returning `CommandResult` (M12's) — is already driven in-process by the smoke tests; the roadmap's "M15 depends on M12" names exactly this surface. Second, **a live execution can only be cancelled from inside the pump's own host process.** §15's lock is held for a mutation call's entire duration, so a second process's `aer cancel` throws `WorkflowLockedException` while a pump is in flight, and M10's decision of record makes the caller-retained in-process `InFlightExecutionRegistry` the only targeted-cancel delivery point. §7 requires Cancel on a running execution — so the UI must itself host the pump for runs it starts, which pulls Phase 1's seam decision hard toward in-process command-layer reuse over spawning the installed `aer` binary (the decision is Phase 1's to record, not this plan's to pre-commit — M14's stack-decision convention). One consequence sits on the critical path: the command layer doesn't yet expose the registry (it lets `MutationInterface` default one internally), an additive signature change Phase 4 owns. Third, **every mutation entry point is itself a pump** that runs to a fixed point, dispatching real workers for possibly minutes — so every UI action is invoked off the UI thread and its progress observed through M14 Phase 2's existing polling re-projection; the UI thread never awaits a pump. A smaller fourth: **bindings are a UI input** — never persisted in the task directory (M14 Phase 2's decision of record) — so "which bindings file" gets the established ask-don't-infer answer, with anything remembered being Local UI Configuration (§4).
+Four facts shape the plan. First, **Flow already owns every structural rule §8 names.** `WorkflowDefinitionValidator` enforces duplicate `StepId`s, unresolvable `DependsOn` references, dependency cycles, `RetryPolicy.MaxAttempts >= 1`, and the `SupersedeTargets` transitive-ancestry rule — and collects all violations per pass rather than failing fast, which is exactly the shape an editor's error list wants. The UI calls that validator and never re-implements a rule (the authoring counterpart of "Flow carries discipline"); the editor's other job is making un-offerable states un-offerable (M15's send-back discipline, applied to authoring): `DependsOn` candidates come from declared steps, `SupersedeTargets` candidates from computed transitive ancestors, adapter names from the registry the window already holds. Second, **no code anywhere writes a template or bindings file today** — `WorkflowDefinitionParser` and `WorkerBindingConfigParser` are read-only surfaces. M16 introduces the first template writer and the first bindings writer; the correctness bar is round-trip fidelity — save → parse → validate through the exact code every other consumer uses — and where each writer lives (beside its parser vs. inside `Aer.Ui`) is a seam decision Phases 1 and 4 own, not this plan's to pre-commit (M14's stack-decision convention). Third, **the rendering surfaces authoring needs shipped in M14, deliberately shaped for this**: `DagLayoutEngine.Layout` takes a raw `IReadOnlyList<WorkflowStepDefinition>` (one graph view covers template and snapshot — M14 Phase 3's decision of record), so a live DAG preview of an in-edit template is a re-layout call, not new machinery; `TemplateProjectionLoader` already opens raw templates; `SnapshotTemplateDiffer` already renders exactly the divergence §5 requires. Fourth, **two spec gaps sit on this milestone's path**, both added to the ledger below per its rules: Flow spec §11.1's version-increment rule names no owner or granularity (hits Phase 1), and UI spec §4's closed write list doesn't name the bindings file §9's editing grant implies (hits Phase 4).
 
-Like M14, nothing in M15 can ever need live vendor auth: every action drives the same mutation surface M11/M12 already proved live, so the milestone gate is UI-driven round trips over shell-stub workers, wired into default CI.
+Like M14 and M15, nothing in M16 can ever need live vendor auth: authoring writes files, and the gate's round trips run over shell-stub workers, wired into default CI.
 
 ### Phase dependency table
 
 | Phase | Requires output from |
 |---|---|
-| 1 — Mutation seam + start/resume a workflow | — |
-| 2 — Resolve decisions: Approve / Reject | 1 |
-| 3 — Artifact-carrying decisions: Retry-with-revision + Send-back | 2 |
-| 4 — Cancel: targeted live-execution cancel + host stop | 1 |
-| 5 — UI-driven mutation round trips in default CI | 2 + 3 + 4 |
+| 1 — Template write seam + create/save walking skeleton | — |
+| 2 — Step & graph editing with live structural validation | 1 |
+| 3 — PausePoint + SupersedeTargets editing | 2 |
+| 4 — Worker-binding configuration editing | 1 |
+| 5 — Authoring round trips in default CI | 2 + 3 + 4 |
 
-Phases 2 and 4 are independent once Phase 1 lands — the same fan-out shape as M14.
+Phases 2 and 4 are independent once Phase 1 lands — the same fan-out shape as M14 and M15.
 
-### Phase 1 — Mutation seam + start/resume a workflow (#137)
-Resolves the one decision every other control-surface phase builds on — how the UI invokes the mutation interface — then proves it end to end: a Run action that starts a fresh task from a template + bindings file, or resumes an already-bound task after a pause or stop (§7's "Start a workflow" / "Resume a workflow after a pause"), invoked off the UI thread, with the existing poller rendering progress while the pump runs to its fixed point.
+### Phase 1 — Template write seam + create/save walking skeleton (#150)
+Resolves the decision every other authoring phase builds on — how the UI writes a template at all — then proves it end to end: create a new template, or open an existing one, edit its metadata (`WorkflowTemplateId`, `WorkflowTemplateVersion`), save, and have the saved file round-trip through the engine's own `WorkflowDefinitionParser`/`WorkflowDefinitionValidator`.
 
-**Produces:** the UI can start or resume a real run and watch it progress live to `Paused`/`Terminal`.
-**Excludes:** all decisions (Phases 2–3); cancel (Phase 4); any authoring of templates or bindings (M16).
+**Produces:** a template can be created, metadata-edited, and saved from the UI; the saved file is engine-valid.
+**Excludes:** step/graph editing (Phase 2); pause editing (Phase 3); bindings (Phase 4).
 **Open questions resolved in this phase:**
-- **The mutation seam** — in-process command-layer reuse vs. spawning the installed `aer` binary (dominant constraint above: targeted cancel is in-process-only by M10's construction).
-- **Where the adapter registry comes from** — expected shape: a `MainWindow` constructor argument, the same production-wiring-is-the-caller's-decision seam as M14's `LocalUiConfigurationStore`; also what lets `Aer.Ui.Tests` substitute stub adapters (Phase 5 depends on this).
-- **Where the bindings file (and template, for a fresh start) come from** — ask-don't-infer, with any remembered value as Local UI Configuration (§4).
+- **Where the template writer lives** — beside `WorkflowDefinitionParser` in `Aer.Flow.Templates` (round-trip fidelity testable at the domain layer, same `System.Text.Json` converters) vs. inside `Aer.Ui` (Flow itself never writes templates; UI spec §4 makes template files a UI-owned write).
+- **The editing model** — in-memory `WorkflowDefinition` + explicit Save with dirty tracking; an edit mode vs. a separate editor surface against M14 Phase 3's read-only template view (`MainWindow.OpenAsync` currently routes a template file straight to the read-only DAG view); whether the editor rides M15's MVVM layer (two-way binding is exactly the shape the notes-for-future-work entry anticipated).
+- **Version-bump semantics** — the §11.1 ledger entry below; spec PR before this phase completes.
 
-### Phase 2 — Resolve decisions: Approve / Reject (#138)
-The paused-step action surface for §17.2's two artifact-less decisions: a paused execution renders its available actions; "Approve" records `DecisionType: Resume`, "Reject" records `DecisionType: Reject`, each wrapping `DecideCommand`, each pumping to its next fixed point in the background exactly like Phase 1's run. §7's label-mapping discipline is the point of this phase.
+### Phase 2 — Step & graph editing with live structural validation (#151)
+The §8 structural-editing core: add/remove steps; edit `StepId`, `Worker`, `Inputs`/`Outputs`, `DependsOn`, and `RetryPolicy`; re-validation on every edit through `WorkflowDefinitionValidator`, rendering the full violation list; the DAG preview re-layouts on every structural edit. `DependsOn` candidates are offered from the template's declared steps only — reflect, don't invent.
 
-**Produces:** a paused run can be approved or rejected from the UI and watched to its next fixed point.
-**Excludes:** artifact-carrying decisions (Phase 3); cancel (Phase 4).
+**Produces:** full §8 graph editing minus pause machinery — the three-step-linear fixture rebuildable from a blank template entirely in the UI.
+**Excludes:** `PausePoint`/`SupersedeTargets` (Phase 3); scheduling simulation (no milestone).
 **Open questions resolved in this phase:**
-- **Whether a ViewModel/MVVM layer enters now** — M14 deliberately deferred it, naming M15's interactive control surface as the potential second concrete need (buttons whose enabled/disabled state is tied jointly to projected state and an in-flight mutation may be it).
-- **How mutation-in-flight is reflected** — actions disabled while the UI's own pump holds the task's lock; a `WorkflowLockedException` from a competing external pump renders via the in-window-message precedent (M14 Phase 1), never a crash.
+- **The save-validity discipline** — whether a structurally invalid in-progress graph may be saved as a draft or save is withheld until the validator passes. Blocking save loses work; offering *instantiation* of an invalid template is the thing that must never happen — the two may deserve different answers.
 
-### Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
-The other half of §17.2's decision set, carrying §7's two explicit UI constraints. "Retry" re-runs the paused step (`RetryWithRevision`), optionally with a supplied revision file; "Send back to X" supersedes an earlier step's already-successful output (`Supersede`, `TargetStepId: X`). The supplementary artifact rides M12's `aer supply` semantics: the UI wraps `SupplyCommand` (mint + populate + settle in one call) then `DecideCommand` with the returned `ExecutionId` — the same two-call round trip the CLI established. §7's constraints, enforced in the UI: "send back to X" is offered *only* for `StepId`s in this pause point's declared `SupersedeTargets` (no send-back option at all when the list is empty — never offered-then-failed at the mutation interface), and the supplementary artifact is mandatory for `Supersede`, optional for `RetryWithRevision`.
+### Phase 3 — PausePoint + SupersedeTargets editing (#152)
+Toggle `PausePoint` per step; edit `SupersedeTargets` from an offered list of exactly that step's transitive ancestors, computed from the in-edit graph — never a free-form entry that fails at the validator; uniqueness and never-self impossible by construction; the validator's ancestry rule remains the authoritative backstop at save. A graph edit that orphans an already-declared target (removing the dependency path that made it an ancestor) surfaces as a live violation immediately, not at save time.
 
-**Produces:** the full §17.2 decision surface, with the invalidation cascade watched through the existing projection.
-**Excludes:** cancel (Phase 4); any rendering of artifact content beyond what M14 Phase 4 already ships.
+**Produces:** the full §8 editing surface including pause machinery — the architect-critic-supersede fixture buildable from blank in the UI.
+**Excludes:** bindings (Phase 4); the gate (Phase 5).
 
-### Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
-§7's Cancel, on both grains M10/M12 built. **Targeted:** a Cancel action on one specific running execution, delivered through the `InFlightExecutionRegistry` the UI retained before starting its own pump. **Host stop:** the Ctrl+C equivalent — stop everything in flight, `CancellationRequested` recorded for every live execution before any is signalled, including when the window closes with a pump still running. §7's two-phase reflection must be visible: "cancellation requested" as soon as `CancellationRequested` is observed, "stopped" only once `ExecutionCancelled` separately arrives.
+### Phase 4 — Worker-binding configuration editing (#153)
+The §9 surface: create/edit the flat role-keyed bindings file (M11's decision of record) — each entry's `Adapter`, `Contract` (required inputs; produced outputs incl. `OutputCondition`; optional metadata), `PromptTemplate`, `Timeout`, `Model`, `PermissionScope`. Adapter names are offered from the registry `MainWindow` already takes as a constructor argument (M15 Phase 1's decision of record); the template↔bindings cross-check (which `Worker` names in the open template lack a binding entry) is advisory display, never a hard gate — bindings are deliberately not template data and never persisted in a task directory. First bindings write path, held to the same round-trip bar as Phase 1's template writer.
 
-**Produces:** running work can be cancelled from the UI — one execution or the whole run — with request and completion reflected as the two distinct facts they are.
-**Excludes:** any retry/decision surface changes (Phases 2–3 own those).
+**Produces:** a bindings file authorable from the UI and usable, unchanged, by `aer run` and the UI's own Run action.
+**Excludes:** any template-editing changes (Phases 1–3 own those).
 **Open questions resolved in this phase:**
-- **The additive command-layer signature change** exposing the caller-retained registry (today `RunCommand`/`DecideCommand` let `MutationInterface` default one internally, so no caller can reach an in-flight execution).
-- **Window-close semantics** with a pump in flight.
-- **What Cancel offers for executions this UI process is *not* hosting** — a targeted cancel can only be a new mutation call that blocks on §15's lock, so the likely answer is the locked-message surface, not a button that pretends to work.
+- **Bindings-writer placement** — likely beside `WorkerBindingConfigParser` in `Aer.Adapters` (Adapter Isolation: the bindings shape lives entirely there).
+- **The UI spec §4 write-model ledger entry below** — spec PR before this phase.
+- **How much of `WorkerContract` gets structured editing** vs. round-tripping opaquely in a first pass.
 
-### Phase 5 — UI-driven mutation round trips, wired into default CI (#141)
-The M15 completion gate, placed by M14 Phase 5's reasoning: no live vendor auth is needed, so shell-stub workers cover it unattended. Headless-Avalonia tests drive the real `MainWindow` through full round trips on all three CI OSes: run → pause → Approve → terminal; pause → supply + Send-back → invalidation cascade → terminal; running → targeted Cancel → cancelled. `ShellCommandWorkerAdapter` is currently `Aer.Cli.Tests`-internal — whether it moves to a shared test utility or `Aer.Ui.Tests` grows its own stub registry is this phase's choice. M14's golden-projection gate must stay green throughout: the control surface adds mutation callers, never projection semantics.
+### Phase 5 — Authoring round trips, wired into default CI (#154)
+The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests on all three CI OSes drive the real `MainWindow` through full authoring round trips — author a template from blank → save → run it via M15's Run action over shell-stub bindings → terminal (the authored file is a runnable input to the whole stack, not merely parseable); edit a template an existing task is bound to → the M14 diff view shows the divergence while the bound task's rendering is unchanged (§5's edit-visibility rule proven end to end); author the bindings file in the UI and drive that same run with it. M14's golden-projection gate must stay green throughout: authoring adds writers, never projection semantics, and never writes a byte inside a task directory. Milestone completion also owes the ledger its UI-spec v0.8 → v1.0 promotion answer.
 
-**Produces:** M15 complete — every §7 action exercised end to end through the real UI, unattended, on win/linux/mac.
-**Excludes:** any live-vendor runbook (deliberately — no new vendor-facing machinery exists to prove); authoring (M16).
+**Produces:** M16 complete — and with it the full UI track: projection (M14), control surface (M15), authoring (M16).
+**Excludes:** any live-vendor runbook (deliberately — nothing vendor-facing exists to prove).
 
 ---
 
 ## Current Milestone
 
-**M15: UI Control Surface** — phase plan above. Progress:
+**M16: UI Authoring** — phase plan above. Progress:
+
+- ⬜ Phase 1 — Template write seam + create/save walking skeleton (#150)
+- ⬜ Phase 2 — Step & graph editing with live structural validation (#151)
+- ⬜ Phase 3 — PausePoint + SupersedeTargets editing (#152)
+- ⬜ Phase 4 — Worker-binding configuration editing (#153)
+- ⬜ Phase 5 — Authoring round trips in default CI (#154)
+
+Per this document's session prompt: help implement the current phase only.
+
+## Completed Milestones
+
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M15: UI Control Surface** — the second UI-track milestone: every §7 user action — start/resume
+a workflow, Approve/Reject, Retry-with-revision, Send-back, and Cancel (targeted and host stop) —
+exposed in `Aer.Ui` exclusively through Flow's mutation interface, via in-process reuse of the CLI
+command layer, mapped onto Flow's closed `DecisionType` set, and proven by UI-driven round trips
+over shell-stub workers on all three CI OSes in default CI.
 
 - ✅ Phase 1 — Mutation seam + start/resume a workflow (#137)
 - ✅ Phase 2 — Resolve decisions: Approve / Reject (#138)
 - ✅ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
 - ✅ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
 - ✅ Phase 5 — UI-driven mutation round trips in default CI (#141)
-
-Per this document's session prompt: help implement the current phase only.
 
 Decisions of record from M15:
 
@@ -318,12 +335,6 @@ Decisions of record from M15:
   every M14 Phase 5 golden-projection fact — pass with no changes to `Aer.Flow`, `Aer.Adapters`, or
   `Aer.Cli`: the control surface added mutation callers across Phases 1–4, never projection semantics
   (Phase 5).
-
-## Completed Milestones
-
-Completed milestones keep only their phase checklist and any decisions of record later work
-still leans on. The full phase plans — goals, boundaries, and the open questions each phase
-resolved — live in this file's git history and in the linked issues.
 
 **M14: UI Projection** — the first UI-track milestone: `Aer.Ui`, an Avalonia desktop app
 consuming `Aer.Flow`'s read model in-process — task/execution/decision projection with live
@@ -636,6 +647,8 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 - ~~**Orphaned mid-run executions**~~ — resolved (#77): §7 now defines the third crash state (`ExecutionStarted`, no `ExecutionExited`) — finalize as abandoned, a Flow-originated `ExecutionFailed`/`Retryable`, after a best-effort re-issued cancellation toward Core. Unblocks M10 Phase 3 (#71).
 - ~~**Task-directory discovery (UI spec §3)**~~ — resolved (#126, UI spec v0.8 §3.1): a task directory is self-describing — identified by its durable contents (bound snapshot + event store), never by membership in any registry or list; any UI-side list of known task directories is Local UI Configuration (§4), a rebuildable convenience that is never authoritative; and no component of the trusted execution stack may be required to announce, register, or enumerate tasks. Unblocks M14 Phase 2 (#119).
 - **UI spec maturity (v0.8 vs. the flow spec's v1.0)** — the UI spec is the only sibling below 1.0. M14–M16 planning and implementation should expect to surface more gaps like the one above, each resolved via a spec PR before the phase that hits it — this list is the ledger. Promotion to v1.0 is a natural M16-completion question, not a prerequisite for starting M14.
+- **Template version-increment ownership (Flow spec §11.1)** — `WorkflowTemplateVersion` "increments on every edit that is instantiated from", but the spec names no owner or granularity: does the editor bump on every save, on every content-changing save, or is the increment somehow tied to instantiation (which Flow could not implement — it keeps no template history to compare against)? The M16 editor is the first component that must actually implement the rule. Resolve via a spec PR before M16 Phase 1 (#150) completes.
+- **The worker-bindings file vs. the UI write model (UI spec §4 vs. §9)** — §9 grants "edit worker bindings" / "swap worker implementations", but §4's closed write list (workflow template files, user preferences, local UI configuration) doesn't name the worker-bindings config file those grants imply the UI writes. Resolve via a spec PR before M16 Phase 4 (#153).
 
 ## Notes for future work
 
