@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.0](https://github.com/aer-works/aer-flow/compare/v0.9.0...v0.10.0) (2026-07-15)
+
+
+### Features
+
+* **ui:** M15 Phase 1 — Mutation seam + start/resume a workflow ([#145](https://github.com/aer-works/aer-flow/issues/145)) ([8b9c12e](https://github.com/aer-works/aer-flow/commit/8b9c12e686e1a8676df75fbfb7d4ab40ec062e33))
+* **ui:** M15 Phase 2 — Resolve decisions: Approve / Reject ([#146](https://github.com/aer-works/aer-flow/issues/146)) ([f7109c7](https://github.com/aer-works/aer-flow/commit/f7109c7ff744d0622003a71925a3663df84762d0))
+* **ui:** M15 Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back ([#147](https://github.com/aer-works/aer-flow/issues/147)) ([5ee0c0a](https://github.com/aer-works/aer-flow/commit/5ee0c0a1c7e5f2f0dacce1d805a0427b950746d3))
+* **ui:** M15 Phase 4 — Cancel: targeted live-execution cancel + host stop ([#148](https://github.com/aer-works/aer-flow/issues/148)) ([f1a2361](https://github.com/aer-works/aer-flow/commit/f1a2361b9ed887f17dbdd941f61034cb6bf63203))
+
+
+### Documentation
+
+* Define the M15 (UI Control Surface) phase plan and prune completed milestones ([#143](https://github.com/aer-works/aer-flow/issues/143)) ([5147b0d](https://github.com/aer-works/aer-flow/commit/5147b0df553bc2ab545c23a6ac9fee244ec0bb5e))
+* **ui:** M15 Phase 5 — UI-driven mutation round trips, wired into default CI ([#149](https://github.com/aer-works/aer-flow/issues/149)) ([2f48589](https://github.com/aer-works/aer-flow/commit/2f4858984cd4cc5c58e7f8bce7247a226afce42e))
+
 ## [0.9.0](https://github.com/aer-works/aer-flow/compare/v0.8.0...v0.9.0) (2026-07-15)
 
 
