@@ -105,6 +105,12 @@ public partial class MainWindow : Window
         _configurationStore = configurationStore;
         _adapters = adapters;
 
+        // M16 Phase 4 (issue #153): adapter names are offered from the registry this window was
+        // constructed with — reflect, don't invent — carried per-row on WorkerBindingEntryViewModel
+        // rather than bound from a shared ancestor, since ItemsControl.ItemTemplate's DataContext is
+        // the entry itself.
+        ViewModel.BindingsEditor.SetAdapterCandidates(adapters.Keys.OrderBy(name => name, StringComparer.Ordinal).ToList());
+
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
         OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);
         RefreshButton.Click += (_, _) => _ = RefreshAsync();
@@ -123,6 +129,15 @@ public partial class MainWindow : Window
                 RenderTemplateEditorDag();
             }
         };
+        NewBindingsButton.Click += (_, _) => NewBindings();
+        EditBindingsButton.Click += (_, _) => _ = OpenBindingsInEditorAsync(BindingsEditorPathBox.Text ?? string.Empty);
+        SaveBindingsButton.Click += (_, _) => _ = SaveBindingsAsync(BindingsEditorPathBox.Text ?? string.Empty);
+        AddBindingEntryButton.Click += (_, _) =>
+        {
+            ViewModel.BindingsEditor.AddEntry();
+            RefreshBindingsTemplateCrossCheck();
+        };
+        CheckBindingsAgainstTemplateButton.Click += (_, _) => RefreshBindingsTemplateCrossCheck();
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;
     }
@@ -492,6 +507,145 @@ public partial class MainWindow : Window
         // incremented version, which must show in the box rather than silently diverge from disk.
         editor.LoadFrom(candidate);
         editor.StatusText = $"Saved '{templateFilePath}' (version {candidate.WorkflowTemplateVersion}).";
+    }
+
+    /// <summary>
+    /// Starts a fresh worker-bindings editing session over an empty config (M16 Phase 4, issue #153)
+    /// — nothing touches disk until <see cref="SaveBindingsAsync"/>. Deliberately synchronous: there
+    /// is no file to read.
+    /// </summary>
+    public void NewBindings()
+    {
+        ViewModel.BindingsEditor.StartNew();
+        ViewModel.BindingsEditor.StatusText = "New worker-bindings file — add entries, then Save.";
+    }
+
+    /// <summary>
+    /// Opens <paramref name="bindingsFilePath"/> into the bindings editor (M16 Phase 4, issue #153)
+    /// via <see cref="BindingsProjectionLoader"/> — never a second parser. Bindings are a UI/CLI
+    /// input, never durable task state (UI spec §4, §9; M14 Phase 2's decision of record), so unlike
+    /// <see cref="OpenAsync"/> there is no read-only counterpart this editor has to stay separate
+    /// from: authoring is the only surface a bindings file has in this UI.
+    /// </summary>
+    public async Task OpenBindingsInEditorAsync(string bindingsFilePath, CancellationToken cancellationToken = default)
+    {
+        BindingsEditorPathBox.Text = bindingsFilePath;
+
+        try
+        {
+            var config = await BindingsProjectionLoader.LoadAsync(bindingsFilePath, cancellationToken);
+            ViewModel.BindingsEditor.LoadFrom(config);
+            ViewModel.BindingsEditor.StatusText = string.Empty;
+        }
+        catch (AerFlowException ex)
+        {
+            // Same in-window-message precedent as OpenTemplateInEditorAsync (M16 Phase 1) — and a
+            // failed open must not leave a previous session's rows sitting in the editor as if they
+            // were this file's.
+            ViewModel.BindingsEditor.Close();
+            ViewModel.BindingsEditor.StatusText = ex.Message;
+        }
+
+        RefreshBindingsTemplateCrossCheck();
+    }
+
+    /// <summary>
+    /// Saves the bindings editor's current rows to <paramref name="bindingsFilePath"/> through
+    /// <c>WorkerBindingConfigWriter</c>, so the saved file round-trips through the exact
+    /// <c>WorkerBindingConfigParser.Parse</c> every other consumer uses (M16 Phase 4, issue #153,
+    /// the same round-trip bar as Phase 1's template writer). Unlike <see cref="SaveTemplateAsync"/>,
+    /// there is no version field to increment — a bindings file has no §11.1 counterpart.
+    /// </summary>
+    public async Task SaveBindingsAsync(string bindingsFilePath, CancellationToken cancellationToken = default)
+    {
+        var editor = ViewModel.BindingsEditor;
+
+        if (!editor.IsOpen)
+        {
+            editor.StatusText = "Nothing to save — create a new bindings file or open one in the editor first.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(bindingsFilePath))
+        {
+            editor.StatusText = "Enter a bindings file path to save to.";
+            return;
+        }
+
+        if (!editor.TryBuildConfig(out var config, out var buildError))
+        {
+            editor.StatusText = buildError!;
+            return;
+        }
+
+        if (editor.BaselineIsPersisted && !editor.IsDirty)
+        {
+            // Same no-write, no-op-save precedent as SaveTemplateAsync (M16 Phase 1): the file
+            // already contains exactly this state.
+            editor.StatusText = "No changes to save.";
+            return;
+        }
+
+        try
+        {
+            await WorkerBindingConfigWriter.SaveToFileAsync(config!, bindingsFilePath, cancellationToken);
+        }
+        catch (Exception ex) when (ex is AerFlowException or IOException or UnauthorizedAccessException)
+        {
+            // Same in-window-message precedent as SaveTemplateAsync (M16 Phase 1): a config that
+            // fails to round-trip through the parser (blank Adapter/PromptTemplate) or an unwritable
+            // path renders here rather than crashing; nothing was written.
+            editor.StatusText = ex.Message;
+            return;
+        }
+
+        // Re-anchor dirty tracking to what the file now actually contains, the same as
+        // SaveTemplateAsync's trailing LoadFrom.
+        editor.LoadFrom(config!);
+        editor.StatusText = $"Saved '{bindingsFilePath}' ({config!.Count} entr{(config.Count == 1 ? "y" : "ies")}).";
+        RefreshBindingsTemplateCrossCheck();
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="MainWindowViewModel.BindingsEditor"/>'s
+    /// <see cref="BindingsEditorViewModel.MissingTemplateWorkerNames"/> (UI spec §9's advisory
+    /// cross-check, M16 Phase 4's named open question) — which <c>Worker</c> names the template
+    /// currently open <em>in the template editor</em> (<see cref="TemplateEditorViewModel.Baseline"/>)
+    /// declares that have no entry in the bindings editor's own <see cref="BindingsEditorViewModel.Entries"/>.
+    /// <para>
+    /// <b>Source decision of record:</b> reads <c>ViewModel.TemplateEditor.Baseline</c> — the
+    /// template-editing surface's own in-memory state — rather than the read-only DAG view's
+    /// transient <c>LoadTemplateAsync</c> result, which is never retained as a field. This is a
+    /// read-only consultation of already-computed state, not a change to template-editing code
+    /// (Phases 1-3 own that; this phase excludes touching it) — nothing here writes to, or is called
+    /// from, <see cref="TemplateEditorViewModel"/> or <see cref="OpenTemplateInEditorAsync"/>.
+    /// </para>
+    /// <para>
+    /// Advisory display only, never a save gate (§9): bindings are deliberately not template data
+    /// and never persisted in a task directory, so <see cref="SaveBindingsAsync"/> never consults
+    /// this. Called explicitly — after New/Open/Save bindings and after adding a row — rather than
+    /// wired to any template-editor change notification, since this phase does not touch that
+    /// surface's events either.
+    /// </para>
+    /// </summary>
+    private void RefreshBindingsTemplateCrossCheck()
+    {
+        var bindingsEditor = ViewModel.BindingsEditor;
+        bindingsEditor.MissingTemplateWorkerNames.Clear();
+
+        if (!bindingsEditor.IsOpen || ViewModel.TemplateEditor.Baseline is not { } template)
+        {
+            return;
+        }
+
+        var boundWorkerNames = bindingsEditor.Entries.Select(entry => entry.WorkerName).ToHashSet();
+        foreach (var workerName in template.Steps.Select(step => step.Worker).Distinct())
+        {
+            if (!boundWorkerNames.Contains(workerName))
+            {
+                bindingsEditor.MissingTemplateWorkerNames.Add(workerName);
+            }
+        }
     }
 
     /// <summary>

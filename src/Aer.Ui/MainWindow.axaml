@@ -106,6 +106,52 @@
         <Canvas x:Name="TemplateEditorDagCanvas" />
       </ScrollViewer>
 
+      <TextBlock Text="Worker-bindings editor (create or edit a bindings file — §9; never persisted in a task directory):" FontWeight="Bold" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBox x:Name="BindingsEditorPathBox" Width="360" PlaceholderText="Bindings file to edit / save to" />
+        <Button x:Name="NewBindingsButton" Content="New bindings" />
+        <Button x:Name="EditBindingsButton" Content="Open in editor" />
+        <Button x:Name="SaveBindingsButton" Content="Save" IsEnabled="{Binding BindingsEditor.IsDirty}" />
+        <Button x:Name="AddBindingEntryButton" Content="Add entry" IsEnabled="{Binding BindingsEditor.IsOpen}" />
+        <Button x:Name="CheckBindingsAgainstTemplateButton" Content="Check against open template" IsEnabled="{Binding BindingsEditor.IsOpen}" />
+      </StackPanel>
+      <ItemsControl x:Name="BindingEntriesList" ItemsSource="{Binding BindingsEditor.Entries}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:WorkerBindingEntryViewModel">
+            <Border BorderBrush="Gray" BorderThickness="1" Padding="8" Margin="0,0,0,8">
+              <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBox Text="{Binding WorkerName}" Width="150" PlaceholderText="Worker role name" />
+                  <ComboBox ItemsSource="{Binding AdapterCandidates}" Text="{Binding Adapter}" IsEditable="True"
+                            Width="120" PlaceholderText="Adapter" />
+                  <TextBox Text="{Binding Model}" Width="150" PlaceholderText="Model (optional)" />
+                  <TextBox Text="{Binding PermissionScope}" Width="150" PlaceholderText="Permission scope (optional)" />
+                  <TextBox Text="{Binding TimeoutText}" Width="90" PlaceholderText="Timeout (hh:mm:ss)" />
+                  <Button Content="Remove" Command="{Binding RemoveCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBox Text="{Binding ContractWorkerName}" Width="150" PlaceholderText="Contract WorkerName" />
+                  <TextBox Text="{Binding RequiredInputsText}" Width="200" PlaceholderText="Required inputs (comma-separated)" />
+                  <TextBox Text="{Binding OptionalMetadataText}" Width="200" PlaceholderText="Optional metadata (comma-separated)" />
+                </StackPanel>
+                <TextBox Text="{Binding PromptTemplate}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" PlaceholderText="Prompt template" />
+                <TextBox Text="{Binding ProducedOutputsJson}" AcceptsReturn="True" TextWrapping="Wrap" Height="60"
+                         FontFamily="Consolas,monospace" PlaceholderText="Produced outputs (raw JSON array)" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock Text="Template workers with no binding entry (advisory only, never a save gate):" />
+      <ItemsControl x:Name="MissingBindingsPanel" ItemsSource="{Binding BindingsEditor.MissingTemplateWorkerNames}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="8" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+      </ItemsControl>
+      <TextBlock x:Name="BindingsEditorStatusText" Text="{Binding BindingsEditor.StatusText}" />
+
       <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
       <StackPanel x:Name="StepsPanel" Spacing="4" />
 

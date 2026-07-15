@@ -135,7 +135,7 @@ The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests 
 - ✅ Phase 1 — Template write seam + create/save walking skeleton (#150)
 - ✅ Phase 2 — Step & graph editing with live structural validation (#151)
 - ✅ Phase 3 — PausePoint + SupersedeTargets editing (#152)
-- ⬜ Phase 4 — Worker-binding configuration editing (#153)
+- ✅ Phase 4 — Worker-binding configuration editing (#153)
 - ⬜ Phase 5 — Authoring round trips in default CI (#154)
 
 Per this document's session prompt: help implement the current phase only.
@@ -236,6 +236,65 @@ Decisions of record from M16:
   relied on** — `BuildCandidate` now constructs a fresh `PausePoint` from editor state on every call,
   so a loaded step's original instance is no longer threaded through untouched once `PausePoint`
   itself is editable (Phase 3).
+- **The bindings writer is `WorkerBindingConfigWriter`, beside its parser in `Aer.Adapters`** — not
+  inside `Aer.Ui` or `Aer.Flow.Templates`, resolving the phase plan's named seam decision the same
+  way Phase 1 resolved it for templates. The bindings shape (adapter names, `WorkerContract`,
+  prompt/timeout/model/permission scope) lives entirely in `Aer.Adapters` already (Adapter
+  Isolation, CLAUDE.md's own architecture rule) — putting the writer anywhere else would split a
+  format's read and write sides across the isolation boundary the rule exists to prevent. `Aer.Ui`
+  is the writer's only caller, exactly as UI spec §4 assigns (Phase 4).
+- **The writer validates by round-tripping through the parser, not a separate validator** — there is
+  no `WorkerBindingConfigValidator`; `WorkerBindingConfigParser.Parse`'s own field checks (non-blank
+  `Adapter`, a present `Contract`, non-blank `PromptTemplate`) are this format's only validation.
+  `WorkerBindingConfigWriter.Serialize` proves them by parsing its own serialized output before ever
+  returning it, and writes nothing on failure — the same "public entry point re-validates, saved
+  state is always engine-valid" discipline `WorkflowDefinitionWriter.Serialize` established via
+  `WorkflowDefinitionValidator`, adapted to a format whose only validation already lives in its
+  parser (Phase 4).
+- **Adapter names are offered per-row, from the registry `MainWindow` was constructed with** — each
+  `WorkerBindingEntryViewModel` carries its own `AdapterCandidates` list (set once from
+  `MainWindow`'s `IReadOnlyDictionary<string, IWorkerAdapter>` constructor argument, M15 Phase 1's
+  decision of record) rather than a shared binding to a root-level list, because inside an
+  `ItemsControl.ItemTemplate` the bound `DataContext` is the row itself — an ancestor/relative-source
+  binding back to `MainWindowViewModel` is the awkward path in Avalonia, a per-item list is the
+  established one (`PausedStepViewModel.SendBackTargets` already does this). Not a hard gate: the
+  `Adapter` box is an editable `ComboBox` seeded with these candidates, since nothing in
+  `WorkerBindingConfigParser.Parse` validates an entry's `Adapter` against any registry either
+  (Phase 4).
+- **Structured vs. opaque editing on `WorkerContract`**: `Adapter`, `PromptTemplate`, `Timeout`,
+  `Model`, `PermissionScope` (the entry's scalars) and `RequiredInputs`/`OptionalMetadata` (its two
+  plain-string lists, edited as comma-separated text) all get real structured editing.
+  `ProducedOutputs` does not — each entry is a small record of its own (`Name` plus an optional
+  `OutputCondition` carrying a `JsonScalar` sum type: string/number/bool/null), and a safe small
+  editable surface for that shape (per-item add/remove, a scalar-type picker) is new list-editing
+  machinery this phase's scope doesn't call for. It round-trips opaquely instead, as a raw JSON text
+  box using the same `System.Text.Json` converters the parser/writer use, so fidelity — including
+  `OutputCondition` — is guaranteed by construction rather than by a hand-written mapping this phase
+  would otherwise have to get right (Phase 4).
+- **Dirty tracking cannot reuse Phase 1's `==`-on-record trick** — `TemplateEditorViewModel`'s Save
+  builds its candidate via `baseline with { ... }`, which keeps the very same `Steps` list reference
+  when steps are untouched, so record equality (which does not deep-compare `IReadOnlyList` fields)
+  already happens to be correct there. A bindings save always rebuilds a fresh `Dictionary` from the
+  editable rows, so two structurally-identical configs are never reference-equal.
+  `BindingsEditorViewModel` uses a manual deep-equality check (`ConfigEquals`/`EntryEquals`,
+  `SequenceEqual` on the list fields) instead, recomputed via `PropertyChanged` subscriptions on
+  every row rather than the per-field `OnXChanged` partial methods `TemplateEditorViewModel` and
+  `PausedStepViewModel` use — one central subscription per row instead of ten near-identical partial
+  methods (Phase 4).
+  Note: Phase 2 later gave `TemplateEditorViewModel` its own dedicated structural-equality helper
+  (`DefinitionsAreEqual`) once `Steps` became editable there too, for the same underlying reason —
+  see Phase 2's own decision above.
+- **The template↔bindings advisory cross-check reads `TemplateEditorViewModel.Baseline`** — "the
+  currently-open template" (the phase's own open-question wording) is read from the template
+  *editor's* in-memory state, not the read-only DAG view's `LoadTemplateAsync`, which never retains
+  its loaded definition as a field at all. This is a read-only consultation of already-computed
+  state, not a change to template-editing code: nothing here writes to, or is called from,
+  `TemplateEditorViewModel` or `OpenTemplateInEditorAsync`, honoring the phase's exclusion of
+  touching Phases 1-3's surface. `MainWindow.RefreshBindingsTemplateCrossCheck` is called explicitly
+  (New/Open/Save bindings, adding a row, or a dedicated "Check against open template" button) rather
+  than wired to any template-editor change notification, for the same reason. Strictly one-directional
+  (template workers missing a binding, never the reverse) and never consulted by
+  `SaveBindingsAsync` — advisory display only, per UI spec §9 (Phase 4).
 
 ## Completed Milestones
 
