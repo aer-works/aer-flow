@@ -40,6 +40,56 @@
       </StackPanel>
       <TextBlock x:Name="TemplateEditorStatusText" Text="{Binding TemplateEditor.StatusText}" />
 
+      <TextBlock Text="Steps (§8 — add/remove, edit fields, choose DependsOn from declared steps):" FontWeight="Bold" />
+      <Button x:Name="AddStepButton" Content="Add step" IsEnabled="{Binding TemplateEditor.IsOpen}" />
+      <ItemsControl x:Name="StepsEditorList" ItemsSource="{Binding TemplateEditor.Steps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:StepEditorViewModel">
+            <Border BorderBrush="Gray" BorderThickness="1" Padding="8" Margin="0,0,0,8">
+              <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBox Text="{Binding StepId}" Width="140" PlaceholderText="StepId" />
+                  <TextBox Text="{Binding Worker}" Width="140" PlaceholderText="Worker" />
+                  <TextBox Text="{Binding MaxAttemptsText}" Width="90" PlaceholderText="MaxAttempts" />
+                  <Button Content="Remove" Command="{Binding RemoveCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBox Text="{Binding InputsText}" Width="220" PlaceholderText="Inputs (comma-separated)" />
+                  <TextBox Text="{Binding OutputsText}" Width="220" PlaceholderText="Outputs (comma-separated)" />
+                </StackPanel>
+                <TextBlock Text="Depends on:" />
+                <ItemsControl ItemsSource="{Binding DependsOnOptions}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="8" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DependsOnOptionViewModel">
+                      <CheckBox Content="{Binding StepId}" IsChecked="{Binding IsSelected}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="Validation (empty = the current edit may be saved):" FontWeight="Bold" />
+      <ItemsControl x:Name="TemplateValidationErrorsList" ItemsSource="{Binding TemplateEditor.ValidationErrors}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <TextBlock Text="{Binding}" Foreground="IndianRed" TextWrapping="Wrap" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="Template preview graph (re-layouts on every structural edit):" FontWeight="Bold" />
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="280">
+        <Canvas x:Name="TemplateEditorDagCanvas" />
+      </ScrollViewer>
+
       <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
       <StackPanel x:Name="StepsPanel" Spacing="4" />
 
