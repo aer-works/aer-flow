@@ -136,7 +136,7 @@ The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests 
 - ✅ Phase 2 — Step & graph editing with live structural validation (#151)
 - ✅ Phase 3 — PausePoint + SupersedeTargets editing (#152)
 - ✅ Phase 4 — Worker-binding configuration editing (#153)
-- ⬜ Phase 5 — Authoring round trips in default CI (#154)
+- ✅ Phase 5 — Authoring round trips in default CI (#154)
 
 Per this document's session prompt: help implement the current phase only.
 
@@ -295,6 +295,41 @@ Decisions of record from M16:
   than wired to any template-editor change notification, for the same reason. Strictly one-directional
   (template workers missing a binding, never the reverse) and never consulted by
   `SaveBindingsAsync` — advisory display only, per UI spec §9 (Phase 4).
+- **Unlike M15 Phase 5, the gate needed genuinely new test code, not a relabeling of each earlier
+  phase's own end-to-end proof.** Grepping Phases 1–4's test classes for `RunAsync`/
+  `CompareToTemplateAsync` returned zero matches — every prior M16 test drives `SaveTemplateAsync`/
+  `SaveBindingsAsync` and stops at the saved file, never the Run action or the diff view. The three
+  round trips the phase plan names live in a new `AuthoringRoundTripTests`, each stitching an
+  authoring surface (Phases 1–4) to a surface an earlier milestone shipped: a template built from
+  blank through `TemplateEditorViewModel` (Phase 2's own walking-skeleton shape), saved, and run to
+  `Terminal` through `MainWindow.RunAsync` (M15 Phase 1) over a directly-written shell-stub bindings
+  file; a template file a bound task's snapshot already reflects, edited and saved through the same
+  editor (adding a step, `WorkflowTemplateVersion` incrementing per §11.1), then compared back
+  through `MainWindow.CompareToTemplateAsync` (M14 Phase 4) — asserting both the diff panel reports
+  the added step and the *bound task's own* `StepsPanel` rendering is byte-identical before and
+  after, since `RenderDiff` only ever touches `DiffPanel`; and a bindings file built entirely from
+  blank rows through `BindingsEditorViewModel.AddEntry`/`SaveBindingsAsync` (Phase 4), then driving
+  the same `RunAsync` call to `Terminal` with zero bindings content written by hand (Phase 5).
+- **No new CI workflow or job — the same "`Aer.Ui.Tests` is already a leaf" precedent M14 Phase 5
+  and M15 Phase 5 established holds a third time.** `AuthoringRoundTripTests` runs unattended in
+  `pixi run test`'s plain `dotnet test` on all three of `ci.yml`'s matrix OSes. Verified green
+  end to end for this phase: `dotnet build -warnaserror` (lint), `dotnet format --verify-no-changes`
+  (fmt-check), and the full `dotnet test` run — all four `AerFlow.slnx` test projects, 527 tests
+  total (`Aer.Ui.Tests` 138, up from 135), including every M14 Phase 5 golden-projection fact —
+  pass with no changes to `Aer.Flow`, `Aer.Adapters`, or `Aer.Cli`: this phase adds only test code
+  (Phase 5).
+- **The UI spec v0.9 → v1.0 promotion question the phase plan flags is deliberately left open by
+  this phase, not answered by it.** The phase plan says milestone completion "owes the ledger" the
+  answer, not that this PR must execute a promotion — renaming a canonical spec and declaring its
+  status is a different kind of change than the round-trip tests this phase exists to add, and
+  bundling it into a test-only PR would put a doc-status call on the same merge-on-green path as
+  mechanical, easily-verified test code. The recommendation (worth a deliberate follow-up, not
+  silently dropped): M14 + M15 + M16 together now cover every UI-track capability the roadmap
+  named (projection, control surface, authoring), so v1.0 looks earned on the same terms the Flow
+  spec itself reached v1.0 on — not "every hypothetical covered," but "no known gap blocking
+  current capabilities." Conversation/live-streaming views (blocked on Case 2 multi-model workers)
+  and scheduling simulation/cost display (spec "may"s with no concrete need naming them) stay
+  deliberately unassigned to any milestone either way (Phase 5).
 
 ## Completed Milestones
 
