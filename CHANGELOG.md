@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.11.0](https://github.com/aer-works/aer-flow/compare/v0.10.0...v0.11.0) (2026-07-16)
+
+
+### Features
+
+* **ui:** M16 Phase 1 — Template write seam + create/save walking skeleton ([#158](https://github.com/aer-works/aer-flow/issues/158)) ([e925a57](https://github.com/aer-works/aer-flow/commit/e925a57c727cfb4d6c6c2e61d24dba46af09c653))
+* **ui:** M16 Phase 2 — Step & graph editing with live structural validation ([#160](https://github.com/aer-works/aer-flow/issues/160)) ([dc98f69](https://github.com/aer-works/aer-flow/commit/dc98f69b514781d4b9026f0c6b84e9fe6557f872))
+* **ui:** M16 Phase 3 — PausePoint + SupersedeTargets editing ([#162](https://github.com/aer-works/aer-flow/issues/162)) ([46f66cd](https://github.com/aer-works/aer-flow/commit/46f66cd4628de3d024d9b344d797d4737bcd4369))
+* **ui:** M16 Phase 4 — Worker-binding configuration editing ([#161](https://github.com/aer-works/aer-flow/issues/161)) ([b5acbb5](https://github.com/aer-works/aer-flow/commit/b5acbb583fdc658d5c1d873dc3225677c730a821))
+* **ui:** M16 Phase 5 — Authoring round trips in default CI ([#163](https://github.com/aer-works/aer-flow/issues/163)) ([e009069](https://github.com/aer-works/aer-flow/commit/e009069e2cd168ef745e485541f5906622cb7f00))
+
+
+### Documentation
+
+* Define the M16 (UI Authoring) phase plan and prune completed milestones ([#155](https://github.com/aer-works/aer-flow/issues/155)) ([c3f2d82](https://github.com/aer-works/aer-flow/commit/c3f2d8220c1a0e164b39a1fdcafdf793567651d2))
+* **spec:** Resolve M16's two spec gaps ahead of the phases that hit them ([#157](https://github.com/aer-works/aer-flow/issues/157)) ([ecaee17](https://github.com/aer-works/aer-flow/commit/ecaee179bee5e9bdf882b9e2336e441938e46def))
+
 ## [0.10.0](https://github.com/aer-works/aer-flow/compare/v0.9.0...v0.10.0) (2026-07-15)
 
 
