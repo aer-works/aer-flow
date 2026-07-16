@@ -214,13 +214,33 @@ CI, proven live by a recorded human run.
 
 **M17: Dialogue Worker** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
+- ✅ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
 - ⬜ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
 - ⬜ Phase 3 — Turn loop, termination, and failure semantics (#166)
 - ⬜ Phase 4 — Dispatch integration: the third adapter (#167)
 - ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
 
 Per this document's session prompt: help implement the current phase only.
+
+Decisions of record from M17:
+
+- **The walkthrough documents verified behavior, not intent** — every command in
+  `docs/walkthroughs/first-real-workflow.md` was executed end to end over stub vendor CLIs
+  (run → pause → supply → supersede cascade → resume → terminal, exit 0) before being written
+  down. Two facts the dry run corrected against the code: the default task directory is
+  `.aer/<workflow-file-stem>` (the *file* stem, not the template id), and
+  `AER_SUPPLEMENTARY_INPUT` names the supplementary execution's output *directory*
+  (`ArtifactManager.ResolveSupplementaryInputPath` — "addressed the same way as any other
+  execution's"), never the supplied file itself (Phase 1).
+- **Requirements captured for the dialogue worker**, recorded in the walkthrough's §8: the
+  supplementary path is not surfaced in any adapter's generated prompt — and can't be surfaced
+  per-dispatch under the current seam, since `IWorkerAdapter.Resolve` runs once per role
+  (M11's decision of record), so an unconditional env-var reference is the only available
+  adapter-level shape (Phase 4's open question now has this constraint attached); a
+  vendor-bound step that must *consume* a send-back needs a shell-capable `PermissionScope`
+  (`"Bash,Read,Write"` for Claude) purely to discover the feedback path; and the live
+  walkthrough run itself remains a human action item per CLAUDE.md's live-vendor rule —
+  the stub dry run is the part an agent session can and did verify (Phase 1).
 
 ## Completed Milestones
 
