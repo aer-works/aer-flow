@@ -16,7 +16,7 @@ aer-flow/
 ├── tests/                  Unit and integration tests
 ├── spec/                   Behavioral specs (source of truth)
 │   ├── aer-flow-behavioral-spec-v1.0.md
-│   └── aer-flow-ui-behavioral-spec-v0.9.md
+│   └── aer-flow-ui-behavioral-spec-v1.0.md
 ├── external/
 │   └── aer-core/           git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
 ├── .github/workflows/
