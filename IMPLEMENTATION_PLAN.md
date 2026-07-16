@@ -128,7 +128,7 @@ Phases 3 and 4 are independent once Phase 2 lands — the same fan-out shape as 
 has no code dependents at all: it documents what already shipped, and what the human-relay
 experience lacks is Phase 2's requirements baseline.
 
-### Phase 1 — Real-workflow walkthrough (§18.1 baseline)
+### Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
 The missing "how do I actually use this" document: a `docs/walkthroughs/` guide driving one real
 task (not the smoke fixture) end to end through the machinery M11–M16 shipped — author the
 template and bindings (in the UI or by hand), run it (the UI's Run action or `aer run`), watch
@@ -144,7 +144,7 @@ worker absorbs.
 live-vendor rule) — the doc itself, the example files, and a stub-CLI dry run of the same flow
 are all buildable in an agent session.
 
-### Phase 2 — Transcript contract + dialogue worker skeleton
+### Phase 2 — Transcript contract + dialogue worker skeleton (#165)
 The seam decisions everything else builds on: where the worker lives, and what it writes.
 Defines the `transcript.jsonl` schema (one JSON object per turn — sequence, speaker role, vendor,
 the prompt sent, the turn text produced; documented alongside the worker, tracked in the ledger
@@ -163,7 +163,7 @@ worker config format.
 - **Transcript schema ownership** — documented with the worker for now; whether UI spec §10 names
   it is settled at M18 planning (see the ledger entry).
 
-### Phase 3 — Turn loop, termination, and failure semantics
+### Phase 3 — Turn loop, termination, and failure semantics (#166)
 The real exchange: context threading (how much of the transcript each next CLI call carries —
 full transcript vs. a window; spike #21's prompt-size and CLI-argument realities apply here,
 *inside* the worker), stop conditions (turn budget exhausted; a side signals completion), and
@@ -179,7 +179,7 @@ resumption: §18.2's tradeoff, restated deliberately, not worked around.
   the worker reads (parsing is legitimate inside the boundary; the question is which is more
   robust across two different vendors' output habits).
 
-### Phase 4 — Dispatch integration: the third adapter
+### Phase 4 — Dispatch integration: the third adapter (#167)
 A `DialogueWorkerAdapter` in `Aer.Adapters` (registry key naming the capability — e.g.
 `"dialogue"` — the M12 "vendor name, not binary name" convention generalized) resolving a
 `WorkerInvocation` to the dialogue executable. A workflow step bound to it runs via `aer run`
@@ -195,7 +195,7 @@ execution.
   fields (prompt template, model, permission scope are per-role config already) vs. a config file
   path the binding's contract names as a required input.
 
-### Phase 5 — Gates: stub round trip in default CI + live dialogue runbook
+### Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
 The milestone's two gates, placed exactly like M11–M16 placed theirs: (a) an unattended
 stub-vendor dialogue round trip in default CI on all three OSes — bind and run a dialogue step to
 terminal, transcript schema-asserted; (b) `pixi run smoke-dialogue` +
@@ -214,14 +214,11 @@ CI, proven live by a recorded human run.
 
 **M17: Dialogue Worker** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Real-workflow walkthrough (§18.1 baseline)
-- ⬜ Phase 2 — Transcript contract + dialogue worker skeleton
-- ⬜ Phase 3 — Turn loop, termination, and failure semantics
-- ⬜ Phase 4 — Dispatch integration: the third adapter
-- ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook
-
-Phase issues are not yet filed — file one per phase (the repo's issue-per-PR convention) and
-record the numbers here as each is created.
+- ⬜ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
+- ⬜ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
+- ⬜ Phase 3 — Turn loop, termination, and failure semantics (#166)
+- ⬜ Phase 4 — Dispatch integration: the third adapter (#167)
+- ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
 
 Per this document's session prompt: help implement the current phase only.
 
