@@ -7,6 +7,7 @@ Built in .NET, it reads structured workflow definitions, dispatches them to Work
 ## Documentation
 - [Agent Instructions](CLAUDE.md) - Architectural rules and development workflows for AI agents.
 - [Behavioral Specs](spec/) - The source of truth for engine routing and adapter behaviors.
+- [Walkthroughs](docs/walkthroughs/) - Guided, end-to-end usage of the shipped stack, starting with your first real workflow.
 - [Runbooks](docs/runbooks/) - Manual, key-gated operational procedures not covered by CI.
 
 ## Prerequisites
