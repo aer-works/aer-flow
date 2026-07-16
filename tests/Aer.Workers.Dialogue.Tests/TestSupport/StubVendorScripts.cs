@@ -41,4 +41,47 @@ internal static class StubVendorScripts
 
         return new DialogueParticipant(role, vendor, Model: null, preamble, "sh", [shScriptPath, DialogueParticipant.PromptPlaceholder]);
     }
+
+    /// <summary>A participant whose stub CLI writes <paramref name="stderrText"/> to stderr and exits with <paramref name="exitCode"/>, never writing anything to stdout — the "vendor CLI exits non-zero" failure path (M17 Phase 3, #166).</summary>
+    public static DialogueParticipant ExitingWithCode(
+        string scriptDirectory, string role, string vendor, string preamble, int exitCode, string stderrText)
+    {
+        Directory.CreateDirectory(scriptDirectory);
+
+        if (OperatingSystem.IsWindows())
+        {
+            var scriptPath = Path.Combine(scriptDirectory, $"{Guid.NewGuid():N}.ps1");
+            File.WriteAllText(scriptPath, $"param([string]$Prompt)\r\n[Console]::Error.WriteLine('{stderrText}')\r\nexit {exitCode}\r\n");
+
+            return new DialogueParticipant(
+                role, vendor, Model: null, preamble, "powershell",
+                ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, DialogueParticipant.PromptPlaceholder]);
+        }
+
+        var shScriptPath = Path.Combine(scriptDirectory, $"{Guid.NewGuid():N}.sh");
+        File.WriteAllText(shScriptPath, $"#!/bin/sh\necho \"{stderrText}\" 1>&2\nexit {exitCode}\n");
+
+        return new DialogueParticipant(role, vendor, Model: null, preamble, "sh", [shScriptPath, DialogueParticipant.PromptPlaceholder]);
+    }
+
+    /// <summary>A participant whose stub CLI exits 0 but writes nothing to stdout — the "vendor CLI produces an empty turn" failure path (M17 Phase 3, #166; the walkthrough's recorded <c>agy</c> "clarifying question, no file written" habit, applied to stdout instead of a declared output file).</summary>
+    public static DialogueParticipant ProducingEmptyOutput(string scriptDirectory, string role, string vendor, string preamble)
+    {
+        Directory.CreateDirectory(scriptDirectory);
+
+        if (OperatingSystem.IsWindows())
+        {
+            var scriptPath = Path.Combine(scriptDirectory, $"{Guid.NewGuid():N}.ps1");
+            File.WriteAllText(scriptPath, "param([string]$Prompt)\r\nexit 0\r\n");
+
+            return new DialogueParticipant(
+                role, vendor, Model: null, preamble, "powershell",
+                ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, DialogueParticipant.PromptPlaceholder]);
+        }
+
+        var shScriptPath = Path.Combine(scriptDirectory, $"{Guid.NewGuid():N}.sh");
+        File.WriteAllText(shScriptPath, "#!/bin/sh\nexit 0\n");
+
+        return new DialogueParticipant(role, vendor, Model: null, preamble, "sh", [shScriptPath, DialogueParticipant.PromptPlaceholder]);
+    }
 }

@@ -216,7 +216,7 @@ CI, proven live by a recorded human run.
 
 - ✅ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
 - ✅ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
-- ⬜ Phase 3 — Turn loop, termination, and failure semantics (#166)
+- ✅ Phase 3 — Turn loop, termination, and failure semantics (#166)
 - ⬜ Phase 4 — Dispatch integration: the third adapter (#167)
 - ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
 
@@ -277,6 +277,47 @@ Decisions of record from M17:
   the same reason: each turn's prompt is its speaker's preamble plus only the immediately preceding
   turn's text, not the full transcript — enough to prove the loop and the schema, not a context-
   window design (Phase 2).
+- **The stop-signal shape is a literal substring in a turn's own text, not a structured per-turn
+  output file** — resolving Phase 3's named open question. Spike #21 already recorded that vendor
+  CLIs are unreliable about writing extra files on cue (the walkthrough's §8 finding: `agy` asking
+  a clarifying question and writing nothing at all) but reliably produce stdout text, which
+  `DialogueRunner` already reads for every turn regardless — parsing that same text for a sentinel
+  needs no new per-turn output-file contract each vendor CLI would separately have to honor, and is
+  the more robust of the two shapes across two different vendors' output habits for exactly that
+  reason. `DialogueWorkerConfig.StopSentinel`, carried as provisional config since Phase 2, is now
+  live: `DialogueRunner` checks each turn's raw (post-empty-check, pre-recording) text for the
+  configured sentinel substring; if present, it is stripped from the text recorded on the
+  transcript and threaded forward — a transcript reader sees the participant's actual words, never
+  the control token — and the exchange ends after that turn, before `TurnBudget` is necessarily
+  exhausted (Phase 3).
+- **Context threading is the full transcript so far, not a sliding window** — resolving the
+  phase's other named question. `DialogueWorkerConfig.TurnBudget` is this worker's own config and
+  deliberately small (the phase plan's "bounded" exchange), so a bounded turn count is what keeps
+  the full transcript's size a non-issue for spike #21's CLI-argument-length realities, without
+  this worker inventing a token-budget or summarization scheme of its own — the same reasoning
+  that kept `OutputCondition` free of a general expression language (behavioral spec §4.1): a
+  narrower mechanism sized to the actual bounded need, not a general one built ahead of a concrete
+  requirement for it. `DialogueRunner.RunAsync` now builds each turn's prompt from the speaker's
+  preamble, the exchange's `SeedPrompt`, and every prior turn's role and text in order — Phase 2's
+  "only the immediately preceding turn's text" placeholder is gone (Phase 3).
+- **Failure mapping: a non-zero vendor exit or an empty turn throws `DialogueExecutionException`
+  mid-loop, deliberately before the failing turn is appended to the transcript and before
+  `FinalOutputName` is ever written.** `Program` maps the exception to a non-zero process exit, so
+  Flow's `OutcomeClassifier`/`ContractValidator` (spec §8) see a broken dialogue fail on both counts
+  at once — non-zero exit *and* a missing declared output — deliberately redundant, not
+  either-or, so the failure is unambiguous however a caller happens to check it, mirroring the
+  `agy`-writes-nothing precedent `ContractValidator` already handles for any other worker.
+  Whatever `transcript.jsonl` lines were appended for turns that succeeded *before* the failing one
+  stay on disk as a forensic record; per §18.2's tradeoff, restated deliberately and not worked
+  around, there is no resumption from them — the step's ordinary `RetryPolicy` (spec §10) restarts
+  the whole exchange from turn one on retry, exactly like any other worker's retry (Phase 3).
+- **`IVendorTurnClient.SendTurnAsync` returns a new `VendorTurnResult(Text, ExitCode, StandardError)`
+  record instead of a bare string** — `DialogueRunner` needs the exit code to classify a turn as
+  failed (the same "exit code alone is not success" split `OutcomeClassifier` applies one layer up
+  in Flow) and captured stderr to put something a human can act on into the failure message;
+  `ProcessVendorTurnClient` now redirects and reads stderr, concurrently with stdout via
+  `Task.WhenAll` before `WaitForExitAsync`, avoiding the pipe deadlock a chatty CLI's unread stream
+  would otherwise risk (Phase 3).
 
 ## Completed Milestones
 
