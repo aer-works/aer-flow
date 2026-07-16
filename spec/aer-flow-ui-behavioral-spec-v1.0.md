@@ -1,4 +1,4 @@
-# AER Flow UI Behavioral Specification — v0.9
+# AER Flow UI Behavioral Specification — v1.0
 
 This document defines the behavioral contract of AER Flow UI.
 
@@ -10,6 +10,8 @@ AER Flow UI is a control-plane and visualization layer for AER Flow. It depends 
 This specification intentionally defines **no execution semantics**. Those belong exclusively to AER Flow and AER Core.
 
 Each spec (Core, Flow, UI) is versioned independently; the dependency list above pins the sibling spec versions this document was written against, and cross-references always name the sibling spec file as it exists at the same commit.
+
+**Changes from v0.9:** promotion to v1.0, with no behavioral changes — the answer M16's completion owed the implementation plan's spec-gap ledger. Projection, control surface, and authoring (implementation milestones M14–M16) now cover every capability this spec names for those surfaces, and no known gap blocks a current capability — the same terms on which the Flow spec reached v1.0. §10's conversation-view text remains a "may": the first Case 2 encapsulated multi-model worker (AER Flow spec §18.2) and the conversation view that projects it are planned work (implementation milestones M17/M18), and gaps they surface are resolved by amendment, exactly as the Flow spec has been amended post-1.0.
 
 **Changes from v0.8:** added worker-bindings configuration files to §4's write model, closing a gap found while planning the third (authoring) UI milestone: §9 already granted "edit worker bindings" / "swap worker implementations", but §4's closed write list never named the file those grants imply the UI writes to.
 
