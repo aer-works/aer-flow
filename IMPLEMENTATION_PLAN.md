@@ -40,6 +40,8 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 21 | **UI Projection** | Read model + views: deterministic reconstruction from bound snapshots, event stores, and artifact directories; DAG/timeline/lineage rendering | UI spec §1, §3, §10–§12 |
 | 22 | **UI Control Surface** | The §7 user actions (approve/reject/retry-with-revision/send-back/cancel/start) mapped onto Flow's closed `DecisionType` set, exclusively via the mutation interface | UI spec §6, §7 |
 | 23 | **UI Authoring** | Template/DAG/worker-binding editing with structural validation (cycles, `SupersedeTargets` ancestry); never touches a bound snapshot | UI spec §5, §8, §9 |
+| 24 | **Dialogue Worker** | The first Case 2 encapsulated multi-model worker: a bounded, multi-turn Claude ↔ Gemini exchange inside one `ExecutionRequest`, recorded as a durable transcript artifact; vendor CLIs invoked inside the worker boundary, subscriptions-only like the adapters | Flow spec §18.2; UI spec §10 |
+| 25 | **Conversation View** | Render a dialogue execution's durable transcript as a conversation-style projection | UI spec §10 |
 
 ---
 
@@ -59,86 +61,190 @@ Which milestone introduces which capabilities.
 | **M14: UI Projection** | 21 | M11 |
 | **M15: UI Control Surface** | 22 | M14; M12 (`aer decide`/`cancel`/`supply` — the mutation-interface callers it wraps) |
 | **M16: UI Authoring** | 23 | M14 |
+| **M17: Dialogue Worker** | 24 (first Case 2 worker); plus the real-use walkthrough doc | M12 (both vendor CLIs proven live) |
+| **M18: Conversation View** | 25 | M17 (a transcript to project); M14 |
+| **M19: UI Design Pass** | — (visual/UX quality across the finished surface; no new capability) | M18 |
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
-M14–M16 are that UI track, splitting the roadmap's original single "UI" row the same way the engine split into M7–M10: **projection first** (capability 21 — every other UI capability renders on top of the read model), then the **control surface** (22) and **authoring** (23) as independent tracks behind it — M15 and M16 don't depend on each other, only on M14. Conversation-style views and live Observation-Tier turn streaming (UI spec §10) are deliberately assigned to *no* milestone: they depend on Case 2 encapsulated multi-model workers (Flow spec §18.2) that don't exist yet, and Overview §6's rule is to build the second concrete thing before generalizing for it.
+M14–M16 are that UI track, splitting the roadmap's original single "UI" row the same way the engine split into M7–M10: **projection first** (capability 21 — every other UI capability renders on top of the read model), then the **control surface** (22) and **authoring** (23) as independent tracks behind it — M15 and M16 don't depend on each other, only on M14. Conversation-style views and live Observation-Tier turn streaming (UI spec §10) were deliberately assigned to *no* milestone throughout that track: they depend on Case 2 encapsulated multi-model workers (Flow spec §18.2) that didn't exist yet, and Overview §6's rule is to build the concrete thing before generalizing for it.
+
+M17–M19 are the post-UI-track sequence, planned at M16's completion by re-checking the original project goal against what had shipped. Half of that goal exists and is proven live: vendor-to-vendor task hand-off on subscriptions (M12's recorded mixed-vendor gate). The other half — letting the two models actually talk to each other — does not: today §17.5's supersede loop makes the *human* the relay for every round of the exchange. **M17** builds the first Case 2 worker (the dialogue worker — the concrete thing the conversation view has been waiting on), opening with the real-use walkthrough the project is also missing. **M18** renders M17's durable transcript as UI spec §10's conversation view — load-on-refresh first; live Observation-Tier turn streaming stays unassigned until a concrete need names it. **M19** is the deliberate visual/UX design pass over the whole UI, sequenced last so it styles the UI's final shape — conversation view included — rather than a layout M18 is about to disrupt. M18 and M19 get their phase plans when each becomes current (this document plans the current milestone only); M17's is below.
 
 ---
 
-## M16: UI Authoring — Phase Plan
+## M17: Dialogue Worker — Phase Plan
 
-**Goal:** the last UI-track milestone (capability #23; UI spec §5, §8, §9): authoring in `Aer.Ui` — create and edit workflow templates (steps, dependencies, retry policies, metadata) and their `PausePoint`s/`SupersedeTargets`, plus worker-bindings configuration, with structural validation surfaced live in the editor. Authoring only ever touches **template files** and the **bindings file**: a bound `WorkflowDefinitionSnapshot` is immutable (Flow spec §11.2), its rendering stays read-only forever, and an edit is visible only to *future* instantiations (UI spec §2, §5) — the M14 diff view is how divergence gets shown, never a pretense that an edit reached a bound task. Deliberately excluded and assigned to no milestone: scheduling simulation (UI spec §8) and cost/latency display (§9) — both spec "may"s with no concrete need naming them yet (Overview §6's rule again, same as conversation views).
+**Goal:** the first Case 2 encapsulated multi-model worker (capability #24; Flow spec §18.2): a
+single executable that internally runs a bounded, multi-turn Claude ↔ Gemini (`agy`) exchange —
+each model's turn threaded into the other's next prompt — writing a durable `transcript.jsonl`
+plus its declared outputs, dispatched by Flow like any other worker. Plus, as Phase 1, the
+real-use walkthrough the project has been missing: a document driving one real task through the
+machinery M11–M16 already shipped. This milestone turns "the two models can hand work to each
+other, with a human relaying every round" (§18.1 + §17.5, proven live in M12) into "the two
+models can talk to each other inside one execution" — the second half of the project's original
+goal. Deliberately excluded and assigned to M18: any UI rendering of the transcript (the
+conversation view, UI spec §10). Deliberately excluded and assigned to no milestone: live
+Observation-Tier turn streaming, and pausing/steering the worker mid-exchange (§17.4 places that
+outside Flow's contract above the worker boundary; nothing in this milestone builds it inside
+the boundary either).
 
-Four facts shape the plan. First, **Flow already owns every structural rule §8 names.** `WorkflowDefinitionValidator` enforces duplicate `StepId`s, unresolvable `DependsOn` references, dependency cycles, `RetryPolicy.MaxAttempts >= 1`, and the `SupersedeTargets` transitive-ancestry rule — and collects all violations per pass rather than failing fast, which is exactly the shape an editor's error list wants. The UI calls that validator and never re-implements a rule (the authoring counterpart of "Flow carries discipline"); the editor's other job is making un-offerable states un-offerable (M15's send-back discipline, applied to authoring): `DependsOn` candidates come from declared steps, `SupersedeTargets` candidates from computed transitive ancestors, adapter names from the registry the window already holds. Second, **no code anywhere writes a template or bindings file today** — `WorkflowDefinitionParser` and `WorkerBindingConfigParser` are read-only surfaces. M16 introduces the first template writer and the first bindings writer; the correctness bar is round-trip fidelity — save → parse → validate through the exact code every other consumer uses — and where each writer lives (beside its parser vs. inside `Aer.Ui`) is a seam decision Phases 1 and 4 own, not this plan's to pre-commit (M14's stack-decision convention). Third, **the rendering surfaces authoring needs shipped in M14, deliberately shaped for this**: `DagLayoutEngine.Layout` takes a raw `IReadOnlyList<WorkflowStepDefinition>` (one graph view covers template and snapshot — M14 Phase 3's decision of record), so a live DAG preview of an in-edit template is a re-layout call, not new machinery; `TemplateProjectionLoader` already opens raw templates; `SnapshotTemplateDiffer` already renders exactly the divergence §5 requires. Fourth, **two spec gaps sat on this milestone's path and are resolved as part of this same planning pass**, per the ledger's own rule of settling a gap before the phase that first hits it rather than after (the discipline #126 set for M14): Flow spec §11.1 now states who owns the `WorkflowTemplateVersion` increment and at what granularity (Phase 1's concern), and UI spec §4's write list now names worker-bindings configuration files, closing the gap against §9's existing "edit worker bindings" grant (Phase 4's concern).
-
-Like M14 and M15, nothing in M16 can ever need live vendor auth: authoring writes files, and the gate's round trips run over shell-stub workers, wired into default CI.
+Four facts shape the plan. First, **Flow and Core change by zero lines.** §18.2 already defines
+the boundary: one `ExecutionRequest`, one process lifecycle, one output directory — to the engine
+a dialogue execution is indistinguishable from running `cargo test`. Retry (§10), pause
+before/after (§17.1), contract validation (§8), cancellation (§9), and the artifact machinery
+(§16) all apply to it for free, because it is just a worker. The only production code above the
+worker boundary that learns anything is `Aer.Adapters`: `WorkerAdapterRegistry.Default` resolves
+only `claude`/`gemini`, so dispatching the dialogue executable needs a third registry entry
+(Phase 4) — and that adapter spawns *our own* executable, not a vendor CLI, so spike #21's
+per-vendor quirk catalog mostly does not apply to it: the vendor quirks live inside the worker,
+which reuses the invocation shapes the two vendor adapters already encode. Second, **the
+discipline/intelligence rule inverts inside the boundary.** Flow must never parse model output
+(CLAUDE.md rule #1), but §18.2 explicitly places multi-model coordination logic inside the worker
+— the dialogue worker may (and must) read each turn to thread context and detect a stop signal.
+Turn budget, per-side prompt preambles, and stop conditions are the worker's own configuration,
+never workflow-template or engine concepts. Third, **subscription discipline is inherited, not
+re-invented**: the worker shells out to the same already-authenticated `claude`/`agy` CLIs the
+adapters do, owning zero key-handling code of its own; its live gate is a human-run runbook
+exactly like M11/M12's (CLAUDE.md's live-vendor rule — permanently a human action item); and
+everything else runs against stub CLIs in default CI. Fourth, **the transcript schema is M18's
+data model**, per UI spec §10: every visible conversation step must correspond to durable
+artifacts, and the transcript is that artifact — so it gets settled early (Phase 2) and recorded,
+with the ledger entry below tracking where it eventually gets specified, not improvised at the
+end. Its crash semantics are §18.2's stated tradeoff, accepted as-is: the transcript is worker
+*output*, never resumable state; a crash restarts the whole exchange from turn one.
 
 ### Phase dependency table
 
 | Phase | Requires output from |
 |---|---|
-| 1 — Template write seam + create/save walking skeleton | — |
-| 2 — Step & graph editing with live structural validation | 1 |
-| 3 — PausePoint + SupersedeTargets editing | 2 |
-| 4 — Worker-binding configuration editing | 1 |
-| 5 — Authoring round trips in default CI | 2 + 3 + 4 |
+| 1 — Real-workflow walkthrough (§18.1 baseline) | — |
+| 2 — Transcript contract + dialogue worker skeleton | — |
+| 3 — Turn loop, termination, and failure semantics | 2 |
+| 4 — Dispatch integration: the third adapter | 2 |
+| 5 — Gates: stub round trip in default CI + live dialogue runbook | 3 + 4 |
 
-Phases 2 and 4 are independent once Phase 1 lands — the same fan-out shape as M14 and M15.
+Phases 3 and 4 are independent once Phase 2 lands — the same fan-out shape as M14–M16. Phase 1
+has no code dependents at all: it documents what already shipped, and what the human-relay
+experience lacks is Phase 2's requirements baseline.
 
-### Phase 1 — Template write seam + create/save walking skeleton (#150)
-Resolves the decision every other authoring phase builds on — how the UI writes a template at all — then proves it end to end: create a new template, or open an existing one, edit its metadata (`WorkflowTemplateId`, `WorkflowTemplateVersion`), save, and have the saved file round-trip through the engine's own `WorkflowDefinitionParser`/`WorkflowDefinitionValidator`.
+### Phase 1 — Real-workflow walkthrough (§18.1 baseline)
+The missing "how do I actually use this" document: a `docs/walkthroughs/` guide driving one real
+task (not the smoke fixture) end to end through the machinery M11–M16 shipped — author the
+template and bindings (in the UI or by hand), run it (the UI's Run action or `aer run`), watch
+the DAG, hit the `PausePoint`, send critique back via Send-back / `aer supply` + `aer decide`,
+and land at terminal with both vendors' artifacts on disk. This is the human-relayed version of
+the exchange M17 automates, so writing it down is also the milestone's requirements capture:
+every manual step the walkthrough forces the reader through is a candidate for what the dialogue
+worker absorbs.
 
-**Produces:** a template can be created, metadata-edited, and saved from the UI; the saved file is engine-valid.
-**Excludes:** step/graph editing (Phase 2); pause editing (Phase 3); bindings (Phase 4).
-**Settled ahead of this phase:** `WorkflowTemplateVersion` ownership (Flow spec §11.1, amended during M16 planning) — it is ordinary template data Flow only copies, never computes; the editor is responsible for incrementing it on every content-changing save, never on a no-op save, never at finer granularity than a save. Phase 1's Save action implements this rule directly rather than deciding it.
+**Produces:** the walkthrough doc; a reusable non-fixture example template + bindings pair.
+**Excludes:** any product code; any dialogue-worker content (Phases 2+).
+**Human action items:** actually performing the live run the walkthrough describes (CLAUDE.md's
+live-vendor rule) — the doc itself, the example files, and a stub-CLI dry run of the same flow
+are all buildable in an agent session.
+
+### Phase 2 — Transcript contract + dialogue worker skeleton
+The seam decisions everything else builds on: where the worker lives, and what it writes.
+Defines the `transcript.jsonl` schema (one JSON object per turn — sequence, speaker role, vendor,
+the prompt sent, the turn text produced; documented alongside the worker, tracked in the ledger
+entry below) and the worker's own config surface (the two participants' vendor + model + per-side
+preamble, turn budget, stop condition). The skeleton runs a fixed number of alternating turns
+against stub vendor CLIs and writes a schema-valid transcript plus a declared final output.
+
+**Produces:** a runnable dialogue executable (stub vendors only), the transcript schema, the
+worker config format.
+**Excludes:** real termination/failure semantics (Phase 3); Flow dispatch (Phase 4).
 **Open questions resolved in this phase:**
-- **Where the template writer lives** — beside `WorkflowDefinitionParser` in `Aer.Flow.Templates` (round-trip fidelity testable at the domain layer, same `System.Text.Json` converters) vs. inside `Aer.Ui` (Flow itself never writes templates; UI spec §4 makes template files a UI-owned write).
-- **The editing model** — in-memory `WorkflowDefinition` + explicit Save with dirty tracking; an edit mode vs. a separate editor surface against M14 Phase 3's read-only template view (`MainWindow.OpenAsync` currently routes a template file straight to the read-only DAG view); whether the editor rides M15's MVVM layer (two-way binding is exactly the shape the notes-for-future-work entry anticipated).
+- **Where the worker lives** — a new `Aer.Workers.Dialogue` leaf in `AerFlow.slnx` (Overview §7's
+  default; testable like every other project) vs. a script under `scripts/`; and how it ships —
+  riding `aer`'s existing `dotnet tool` package as a second command vs. its own package (M13's
+  packing decisions are the precedent to extend, not reopen).
+- **Transcript schema ownership** — documented with the worker for now; whether UI spec §10 names
+  it is settled at M18 planning (see the ledger entry).
 
-### Phase 2 — Step & graph editing with live structural validation (#151)
-The §8 structural-editing core: add/remove steps; edit `StepId`, `Worker`, `Inputs`/`Outputs`, `DependsOn`, and `RetryPolicy`; re-validation on every edit through `WorkflowDefinitionValidator`, rendering the full violation list; the DAG preview re-layouts on every structural edit. `DependsOn` candidates are offered from the template's declared steps only — reflect, don't invent.
+### Phase 3 — Turn loop, termination, and failure semantics
+The real exchange: context threading (how much of the transcript each next CLI call carries —
+full transcript vs. a window; spike #21's prompt-size and CLI-argument realities apply here,
+*inside* the worker), stop conditions (turn budget exhausted; a side signals completion), and
+failure mapping — a vendor CLI exiting nonzero or producing an empty turn mid-exchange ends the
+execution as a failure (nonzero exit / missing declared output), so `ContractValidator` + §10
+retry treat a broken dialogue exactly like any other failed worker. No partial-progress
+resumption: §18.2's tradeoff, restated deliberately, not worked around.
 
-**Produces:** full §8 graph editing minus pause machinery — the three-step-linear fixture rebuildable from a blank template entirely in the UI.
-**Excludes:** `PausePoint`/`SupersedeTargets` (Phase 3); scheduling simulation (no milestone).
+**Produces:** a complete dialogue run against stub CLIs, every termination path tested.
+**Excludes:** dispatch (Phase 4); live vendors (Phase 5).
 **Open questions resolved in this phase:**
-- **The save-validity discipline** — whether a structurally invalid in-progress graph may be saved as a draft or save is withheld until the validator passes. Blocking save loses work; offering *instantiation* of an invalid template is the thing that must never happen — the two may deserve different answers.
+- **The stop-signal shape** — a sentinel in the turn text vs. a structured per-turn output file
+  the worker reads (parsing is legitimate inside the boundary; the question is which is more
+  robust across two different vendors' output habits).
 
-### Phase 3 — PausePoint + SupersedeTargets editing (#152)
-Toggle `PausePoint` per step; edit `SupersedeTargets` from an offered list of exactly that step's transitive ancestors, computed from the in-edit graph — never a free-form entry that fails at the validator; uniqueness and never-self impossible by construction; the validator's ancestry rule remains the authoritative backstop at save. A graph edit that orphans an already-declared target (removing the dependency path that made it an ancestor) surfaces as a live violation immediately, not at save time.
+### Phase 4 — Dispatch integration: the third adapter
+A `DialogueWorkerAdapter` in `Aer.Adapters` (registry key naming the capability — e.g.
+`"dialogue"` — the M12 "vendor name, not binary name" convention generalized) resolving a
+`WorkerInvocation` to the dialogue executable. A workflow step bound to it runs via `aer run`
+*and* the UI's Run action over stub vendor CLIs, end to end; M12's Windows token rule (never
+pre-quote one string) applies to any shell wrapping this adapter does.
 
-**Produces:** the full §8 editing surface including pause machinery — the architect-critic-supersede fixture buildable from blank in the UI.
-**Excludes:** bindings (Phase 4); the gate (Phase 5).
-
-### Phase 4 — Worker-binding configuration editing (#153)
-The §9 surface: create/edit the flat role-keyed bindings file (M11's decision of record) — each entry's `Adapter`, `Contract` (required inputs; produced outputs incl. `OutputCondition`; optional metadata), `PromptTemplate`, `Timeout`, `Model`, `PermissionScope`. Adapter names are offered from the registry `MainWindow` already takes as a constructor argument (M15 Phase 1's decision of record); the template↔bindings cross-check (which `Worker` names in the open template lack a binding entry) is advisory display, never a hard gate — bindings are deliberately not template data and never persisted in a task directory. First bindings write path, held to the same round-trip bar as Phase 1's template writer.
-
-**Produces:** a bindings file authorable from the UI and usable, unchanged, by `aer run` and the UI's own Run action.
-**Excludes:** any template-editing changes (Phases 1–3 own those).
-**Settled ahead of this phase:** the UI spec §4 write-model gap (§9 already granted "edit worker bindings" but §4's closed write list never named the file) — resolved by adding worker-bindings configuration files to §4's list during M16 planning (UI spec v0.9).
+**Produces:** dialogue-as-a-step, runnable from CLI and UI, with `PausePoint`/retry/cancel
+applying to it like any worker.
+**Excludes:** live vendors (Phase 5); any UI rendering beyond what M14–M15 already show for any
+execution.
 **Open questions resolved in this phase:**
-- **Bindings-writer placement** — likely beside `WorkerBindingConfigParser` in `Aer.Adapters` (Adapter Isolation: the bindings shape lives entirely there).
-- **How much of `WorkerContract` gets structured editing** vs. round-tripping opaquely in a first pass.
+- **How the worker's dialogue config reaches it** — via `WorkerInvocation`'s existing per-role
+  fields (prompt template, model, permission scope are per-role config already) vs. a config file
+  path the binding's contract names as a required input.
 
-### Phase 5 — Authoring round trips, wired into default CI (#154)
-The M16 completion gate, placed exactly like M14/M15's: headless-Avalonia tests on all three CI OSes drive the real `MainWindow` through full authoring round trips — author a template from blank → save → run it via M15's Run action over shell-stub bindings → terminal (the authored file is a runnable input to the whole stack, not merely parseable); edit a template an existing task is bound to → the M14 diff view shows the divergence while the bound task's rendering is unchanged (§5's edit-visibility rule proven end to end); author the bindings file in the UI and drive that same run with it. M14's golden-projection gate must stay green throughout: authoring adds writers, never projection semantics, and never writes a byte inside a task directory. Milestone completion also owes the ledger its UI-spec v0.9 → v1.0 promotion answer.
+### Phase 5 — Gates: stub round trip in default CI + live dialogue runbook
+The milestone's two gates, placed exactly like M11–M16 placed theirs: (a) an unattended
+stub-vendor dialogue round trip in default CI on all three OSes — bind and run a dialogue step to
+terminal, transcript schema-asserted; (b) `pixi run smoke-dialogue` +
+`docs/runbooks/live-dialogue-smoke.md` — a real, bounded Claude ↔ `agy` exchange, living in
+`Aer.Cli.SmokeTests` outside `AerFlow.slnx` like every live gate, **permanently a human action
+item** (CLAUDE.md's live-vendor rule). M14's golden-projection gate must stay green untouched:
+nothing in this milestone changes projection semantics.
 
-**Produces:** M16 complete — and with it the full UI track: projection (M14), control surface (M15), authoring (M16).
-**Excludes:** any live-vendor runbook (deliberately — nothing vendor-facing exists to prove).
+**Produces:** M17 complete — the two models can talk inside one execution, provable on stubs in
+CI, proven live by a recorded human run.
+**Excludes:** the conversation view (M18 renders what this milestone records).
 
 ---
 
 ## Current Milestone
 
-**M16: UI Authoring** — phase plan above. Progress:
+**M17: Dialogue Worker** — phase plan above. Progress:
+
+- ⬜ Phase 1 — Real-workflow walkthrough (§18.1 baseline)
+- ⬜ Phase 2 — Transcript contract + dialogue worker skeleton
+- ⬜ Phase 3 — Turn loop, termination, and failure semantics
+- ⬜ Phase 4 — Dispatch integration: the third adapter
+- ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook
+
+Phase issues are not yet filed — file one per phase (the repo's issue-per-PR convention) and
+record the numbers here as each is created.
+
+Per this document's session prompt: help implement the current phase only.
+
+## Completed Milestones
+
+Completed milestones keep only their phase checklist and any decisions of record later work
+still leans on. The full phase plans — goals, boundaries, and the open questions each phase
+resolved — live in this file's git history and in the linked issues.
+
+**M16: UI Authoring** — the last milestone of the original UI track: template and worker-bindings
+authoring in `Aer.Ui` — create/edit steps, dependencies, retry policies, metadata,
+`PausePoint`s/`SupersedeTargets`, and bindings entries, with live structural validation through
+Flow's own `WorkflowDefinitionValidator`, the stack's first template and bindings writers held to
+round-trip fidelity through the engine's own parsers/validators, and full authoring round trips
+(author from blank → save → run to terminal; edit a bound task's template → the diff view shows
+the divergence while the bound rendering stays byte-identical) proven in default CI on all three
+OSes.
 
 - ✅ Phase 1 — Template write seam + create/save walking skeleton (#150)
 - ✅ Phase 2 — Step & graph editing with live structural validation (#151)
 - ✅ Phase 3 — PausePoint + SupersedeTargets editing (#152)
 - ✅ Phase 4 — Worker-binding configuration editing (#153)
 - ✅ Phase 5 — Authoring round trips in default CI (#154)
-
-Per this document's session prompt: help implement the current phase only.
 
 Decisions of record from M16:
 
@@ -330,12 +436,6 @@ Decisions of record from M16:
   current capabilities." Conversation/live-streaming views (blocked on Case 2 multi-model workers)
   and scheduling simulation/cost display (spec "may"s with no concrete need naming them) stay
   deliberately unassigned to any milestone either way (Phase 5).
-
-## Completed Milestones
-
-Completed milestones keep only their phase checklist and any decisions of record later work
-still leans on. The full phase plans — goals, boundaries, and the open questions each phase
-resolved — live in this file's git history and in the linked issues.
 
 **M15: UI Control Surface** — the second UI-track milestone: every §7 user action — start/resume
 a workflow, Approve/Reject, Retry-with-revision, Send-back, and Cancel (targeted and host stop) —
@@ -837,11 +937,12 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 - **Mutation Interface shape** — deliberately unspecified (§14); CLI is the reference implementation. Shape emerges from M7 implementation; the CLI surface itself lands in M11 (`aer run`) and M12 (`aer decide`/`aer cancel`).
 - ~~**Orphaned mid-run executions**~~ — resolved (#77): §7 now defines the third crash state (`ExecutionStarted`, no `ExecutionExited`) — finalize as abandoned, a Flow-originated `ExecutionFailed`/`Retryable`, after a best-effort re-issued cancellation toward Core. Unblocks M10 Phase 3 (#71).
 - ~~**Task-directory discovery (UI spec §3)**~~ — resolved (#126, UI spec v0.8 §3.1): a task directory is self-describing — identified by its durable contents (bound snapshot + event store), never by membership in any registry or list; any UI-side list of known task directories is Local UI Configuration (§4), a rebuildable convenience that is never authoritative; and no component of the trusted execution stack may be required to announce, register, or enumerate tasks. Unblocks M14 Phase 2 (#119).
-- **UI spec maturity (v0.9 vs. the flow spec's v1.0)** — the UI spec is the only sibling below 1.0. M14–M16 planning and implementation should expect to surface more gaps like the one above, each resolved via a spec PR before the phase that hits it — this list is the ledger. Promotion to v1.0 is a natural M16-completion question, not a prerequisite for starting M14.
+- ~~**UI spec maturity (v0.9 vs. the flow spec's v1.0)**~~ — resolved at M16 completion, during M17 planning: promoted to v1.0 (`spec/aer-flow-ui-behavioral-spec-v1.0.md`), no behavioral changes, on the same terms the Flow spec reached v1.0 — projection, control surface, and authoring cover everything the spec names for those surfaces, and no known gap blocks a current capability. Post-1.0 gaps keep resolving by amendment (the Flow spec's own §11.1 was amended post-1.0 during M16 planning); this list stays the ledger.
+- **The transcript artifact contract (UI spec §10 vs. the worker boundary)** — §10 requires every visible conversation step to correspond to durable artifacts, but no spec names the dialogue transcript's schema or its owner — and the Flow spec deliberately *can't* (nothing above the worker boundary may depend on worker internals, §18.2). M17 Phase 2 defines the schema as worker-owned documentation; whether the UI spec names that schema — and how the conversation view discovers that an execution has a transcript at all — is M18 planning's first gap to settle, via a spec PR before the view consumes it.
 - ~~**Template version-increment ownership (Flow spec §11.1)**~~ — resolved, during M16 planning (before Phase 1/#150, which would otherwise have had to decide it mid-implementation): `WorkflowTemplateVersion` is ordinary template data Flow only copies into the snapshot at instantiation, never computes or enforces; incrementing it is the editor's (or a hand-editor's) responsibility, on every content-changing save, never on a no-op save, never at finer granularity than a save.
 - ~~**The worker-bindings file vs. the UI write model (UI spec §4 vs. §9)**~~ — resolved, during M16 planning (before Phase 4/#153): §4's write list now names worker-bindings configuration files directly (UI spec v0.9), closing the gap against §9's pre-existing "edit worker bindings" grant.
 
 ## Notes for future work
 
-- **A third worker adapter (`Aer.Adapters`)** — Claude shipped in M11 Phase 2 (#85), Gemini/`agy` in M12 Phase 1 (#95). Before adding another vendor, read closed spike [#21](https://github.com/aer-works/aer-flow/issues/21)'s recorded findings — stdin stalls, permission-flag vocabularies, and path-interpolation behavior differ per CLI and are exactly what the adapter seam exists to absorb.
+- **A third worker adapter (`Aer.Adapters`)** — Claude shipped in M11 Phase 2 (#85), Gemini/`agy` in M12 Phase 1 (#95). Before adding another vendor, read closed spike [#21](https://github.com/aer-works/aer-flow/issues/21)'s recorded findings — stdin stalls, permission-flag vocabularies, and path-interpolation behavior differ per CLI and are exactly what the adapter seam exists to absorb. (M17 Phase 4's dialogue adapter is not this note's case: it spawns aer's own dialogue worker executable, not another vendor's CLI — the vendor quirks stay inside the worker, which inherits them from the two existing adapters' recorded findings.)
 - **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.
