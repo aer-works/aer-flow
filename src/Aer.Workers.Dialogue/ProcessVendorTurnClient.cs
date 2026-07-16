@@ -17,10 +17,19 @@ namespace Aer.Workers.Dialogue;
 /// Stdin is redirected but never written to and closed immediately, the same "avoid a stdin-wait
 /// stall" reasoning <c>ClaudeWorkerAdapter</c>'s remarks record for the real vendor CLIs.
 /// </para>
+/// <para>
+/// <b>Exit code and stderr are captured, not discarded</b> (M17 Phase 3, #166): <see cref="DialogueRunner"/>
+/// needs the exit code to classify a turn as failed (a non-zero exit ends the exchange, the same
+/// "exit code alone is not success" split <c>OutcomeClassifier</c> applies one layer up), and
+/// captured stderr gives a failure message something a human can act on. Stdout and stderr are read
+/// concurrently before <see cref="Process.WaitForExitAsync(CancellationToken)"/> — reading them
+/// sequentially risks the classic pipe deadlock if a chatty CLI fills the unread stream's OS buffer
+/// while blocked writing to it.
+/// </para>
 /// </summary>
 public sealed class ProcessVendorTurnClient : IVendorTurnClient
 {
-    public async Task<string> SendTurnAsync(
+    public async Task<VendorTurnResult> SendTurnAsync(
         DialogueParticipant participant, string prompt, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(participant);
@@ -30,6 +39,7 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
         {
             FileName = participant.Command,
             RedirectStandardOutput = true,
+            RedirectStandardError = true,
             RedirectStandardInput = true,
             UseShellExecute = false,
         };
@@ -43,9 +53,14 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
         process.Start();
         process.StandardInput.Close();
 
-        var output = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 
-        return output.TrimEnd('\r', '\n');
+        return new VendorTurnResult(
+            stdoutTask.Result.TrimEnd('\r', '\n'),
+            process.ExitCode,
+            stderrTask.Result.TrimEnd('\r', '\n'));
     }
 }

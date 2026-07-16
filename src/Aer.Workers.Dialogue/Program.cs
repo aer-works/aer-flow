@@ -23,3 +23,12 @@ catch (DialogueWorkerConfigException ex)
     Console.Error.WriteLine(ex.Message);
     return 1;
 }
+catch (DialogueExecutionException ex)
+{
+    // M17 Phase 3 (#166): a turn failed mid-exchange (non-zero vendor exit or an empty turn). The
+    // declared final output was never written (the throw happens before DialogueRunner reaches that
+    // line), so this non-zero exit and the missing output agree — Flow's OutcomeClassifier sees an
+    // ordinary failed worker on both counts, exactly like any other.
+    Console.Error.WriteLine(ex.Message);
+    return 1;
+}

@@ -6,11 +6,11 @@ namespace Aer.Workers.Dialogue;
 /// is deliberately not the two vendor <c>Aer.Adapters</c> already knows how to invoke via a shell
 /// wrapper (<c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c>): those exist to satisfy Flow's
 /// <c>AER_INPUT_&lt;n&gt;</c>/<c>AER_OUTPUT_DIR</c> convention for a top-level dispatch, which has
-/// no meaning for a per-turn call made entirely inside this worker's own process. Real per-vendor
-/// argument shaping (spike #21's realities — prompt size, CLI-argument vocabulary) is Phase 3's
-/// concern; this skeleton's <see cref="Command"/>/<see cref="Args"/> shape is deliberately generic
-/// so a test can point it at a stub CLI without any shell involved (see
-/// <see cref="ProcessVendorTurnClient"/>).
+/// no meaning for a per-turn call made entirely inside this worker's own process. This
+/// <see cref="Command"/>/<see cref="Args"/> shape is deliberately generic — a real vendor CLI's own
+/// flag vocabulary (e.g. <c>claude</c>/<c>agy</c>'s, spike #21's realities) is authored directly into
+/// a config's <see cref="Args"/> list, not hardcoded here — so the same shape points at a stub CLI in
+/// tests without any shell involved (see <see cref="ProcessVendorTurnClient"/>).
 /// </summary>
 /// <param name="Role">
 /// This side's logical name in the exchange (e.g. <c>"initiator"</c>/<c>"responder"</c>) — recorded
