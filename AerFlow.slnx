@@ -4,6 +4,7 @@
     <Project Path="src/Aer.Cli/Aer.Cli.csproj" />
     <Project Path="src/Aer.Flow/Aer.Flow.csproj" />
     <Project Path="src/Aer.Ui/Aer.Ui.csproj" />
+    <Project Path="src/Aer.Workers.Dialogue/Aer.Workers.Dialogue.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Aer.Adapters.Tests/Aer.Adapters.Tests.csproj" />
@@ -11,5 +12,6 @@
     <Project Path="tests/Aer.Flow.CrashTestHost/Aer.Flow.CrashTestHost.csproj" />
     <Project Path="tests/Aer.Flow.Tests/Aer.Flow.Tests.csproj" />
     <Project Path="tests/Aer.Ui.Tests/Aer.Ui.Tests.csproj" />
+    <Project Path="tests/Aer.Workers.Dialogue.Tests/Aer.Workers.Dialogue.Tests.csproj" />
   </Folder>
 </Solution>

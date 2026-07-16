@@ -215,7 +215,7 @@ CI, proven live by a recorded human run.
 **M17: Dialogue Worker** — phase plan above. Progress:
 
 - ✅ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
-- ⬜ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
+- ✅ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
 - ⬜ Phase 3 — Turn loop, termination, and failure semantics (#166)
 - ⬜ Phase 4 — Dispatch integration: the third adapter (#167)
 - ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
@@ -241,6 +241,42 @@ Decisions of record from M17:
   (`"Bash,Read,Write"` for Claude) purely to discover the feedback path; and the live
   walkthrough run itself remains a human action item per CLAUDE.md's live-vendor rule —
   the stub dry run is the part an agent session can and did verify (Phase 1).
+- **The worker lives at a new `Aer.Workers.Dialogue` leaf** (`src/Aer.Workers.Dialogue`, tested by
+  `tests/Aer.Workers.Dialogue.Tests`), Overview §7's default, resolving Phase 2's first open
+  question — not a `scripts/` shell script. It references neither `Aer.Flow` nor `Aer.Adapters`:
+  per §18.2, a Case 2 worker is "indistinguishable from running `cargo test`" to the engine, so
+  nothing above the worker boundary needs to change, and nothing inside this boundary needs to
+  reach back across it. How it ships (riding `aer`'s existing `dotnet tool` package vs. its own) is
+  left for Phase 4/5, when dispatch integration and packaging actually need an answer (Phase 2).
+- **`transcript.jsonl`'s schema is `TranscriptTurn` (sequence, role, vendor, prompt, text), one per
+  line** — documented on the record itself rather than a separate markdown file, this codebase's
+  existing convention for spec-bearing types (`WorkerContract`, `WorkerInvocation`). `Role` is the
+  configured participant's logical name (e.g. `"initiator"`/`"responder"`), never a vendor name, so
+  a transcript reader can tell who argued which side independent of which vendor played it. Whether
+  UI spec §10 names this schema is still open, per the ledger entry, for M18 planning to settle
+  (Phase 2).
+- **The worker's own config surface (`DialogueWorkerConfig`) is a JSON sidecar the executable reads
+  from a config-file-path argument** — mirrors `WorkerBindingConfigParser`'s "parse, then validate
+  structurally" shape and exception style, but is its own type family (`DialogueWorkerConfigException`
+  extends `Exception` directly, not `Aer.Flow.AerFlowException`), since this worker depends on
+  neither `Aer.Flow` nor `Aer.Adapters`. Carries a provisional `StopSentinel` field so the format
+  does not change shape again once Phase 3 decides the real stop-signal mechanism; the skeleton
+  itself ignores it and always runs the full `TurnBudget`. *How* this config path reaches the
+  worker once Flow actually dispatches it remains Phase 4's open question, deliberately left
+  unresolved here (Phase 2).
+- **Per-turn vendor invocation is direct process spawning with no shell wrapper** — unlike
+  `Aer.Adapters`'s vendor adapters, a per-turn call never touches `AER_INPUT_<n>`/`AER_OUTPUT_DIR`
+  (those are Flow's top-level dispatch convention, meaningless to a call made entirely inside the
+  worker's own process), so nothing needs shell-based environment-variable expansion. Each
+  participant names a `Command` and an `Args` list containing one literal `"{PROMPT}"` token,
+  substituted with the turn's prompt at spawn time and passed via `ProcessStartInfo.ArgumentList`
+  — every argument reaches the child exactly once, correctly quoted by the runtime, with none of
+  `ClaudeWorkerAdapter`/`GeminiWorkerAdapter`'s shell-quoting hazards. Real per-vendor argument
+  shaping (the actual `claude`/`agy` flag vocabularies, spike #21's realities) stays out of this
+  skeleton — Phase 3's turn loop is where that lands. Context threading is deliberately minimal for
+  the same reason: each turn's prompt is its speaker's preamble plus only the immediately preceding
+  turn's text, not the full transcript — enough to prove the loop and the schema, not a context-
+  window design (Phase 2).
 
 ## Completed Milestones
 
