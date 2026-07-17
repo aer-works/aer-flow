@@ -116,6 +116,7 @@ The UI may write only to:
 
 * Workflow template files (never a bound `WorkflowDefinitionSnapshot` — those are immutable per AER Flow spec §11.2)
 * Worker-bindings configuration files (§9) — never a task directory; bindings are a UI/CLI input, not durable task state (§3)
+* Worker-configuration files that a worker-bindings entry references (for example, an encapsulated worker's config sidecar) — on the same terms as the bindings files that name them: a UI/CLI input, never durable task state, never written into a task directory. What such a file *means* stays owned by the worker that reads it (AER Flow spec §18.2); this grant covers authoring the file, not reinterpreting it.
 * User preferences
 * Local UI configuration
 
