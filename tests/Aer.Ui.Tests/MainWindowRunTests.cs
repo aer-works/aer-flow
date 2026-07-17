@@ -38,9 +38,9 @@ public class MainWindowRunTests
 
             await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var runStatusText = window.FindControl<TextBlock>("RunStatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
 
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Equal(string.Empty, runStatusText.Text);
@@ -112,8 +112,8 @@ public class MainWindowRunTests
             // own remarks, issue #137) since the snapshot is already bound.
             await window.RunAsync(taskDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var runStatusText = window.FindControl<TextBlock>("RunStatusText")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Equal(string.Empty, runStatusText.Text);
         }
@@ -136,9 +136,9 @@ public class MainWindowRunTests
             // A fresh task directory (no snapshot.json yet) with no template given at all.
             await window.RunAsync(taskDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var runStatusText = window.FindControl<TextBlock>("RunStatusText")!;
+            var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
             Assert.Contains(taskDirectory, runStatusText.Text);
-            Assert.True(window.FindControl<Button>("RunButton")!.IsEnabled);
+            Assert.True(window.FindViewControl<Button>("RunButton")!.IsEnabled);
         }
         finally
         {

@@ -104,7 +104,7 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var historyPanel = window.FindControl<StackPanel>("HistoryPanel")!;
+            var historyPanel = window.FindViewControl<StackPanel>("HistoryPanel")!;
             Assert.Equal(
                 [
                     "architect attempt 1/2: a-1 -> Failed (Retryable)",
@@ -144,13 +144,13 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var historyPanel = window.FindControl<StackPanel>("HistoryPanel")!;
+            var historyPanel = window.FindViewControl<StackPanel>("HistoryPanel")!;
             var historyTexts = TextsOf(historyPanel);
             Assert.Contains(
                 "critic: consecutive failures=0, paused (underlying outcome=Succeeded), supersede targets=[architect]",
                 historyTexts);
 
-            var decisionsPanel = window.FindControl<StackPanel>("DecisionsPanel")!;
+            var decisionsPanel = window.FindViewControl<StackPanel>("DecisionsPanel")!;
             Assert.Equal(
                 ["decision-1: RetryWithRevision on c-1 (unresolved)"],
                 TextsOf(decisionsPanel));
@@ -178,7 +178,7 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var supplementaryPanel = window.FindControl<StackPanel>("SupplementaryPanel")!;
+            var supplementaryPanel = window.FindViewControl<StackPanel>("SupplementaryPanel")!;
             Assert.Equal(["supplement-1 (human): Succeeded [non-process]"], TextsOf(supplementaryPanel));
         }
         finally
@@ -204,10 +204,10 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var recentsPanel = window.FindControl<StackPanel>("RecentsPanel")!;
-            var recentButton = Assert.IsType<Button>(Assert.Single(recentsPanel.Children));
-            Assert.Equal(Path.GetFullPath(taskDirectory), recentButton.Content);
-            Assert.Equal(taskDirectory, window.FindControl<TextBox>("TaskDirectoryPathBox")!.Text);
+            // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
+            var card = Assert.Single(window.ViewModel.Home.TaskCards);
+            Assert.Equal(Path.GetFullPath(taskDirectory), card.TaskDirectoryPath);
+            Assert.Equal(taskDirectory, window.FindViewControl<TextBox>("TaskDirectoryPathBox")!.Text);
         }
         finally
         {
@@ -225,8 +225,8 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.OpenAsync(notATaskDirectory, TestContext.Current.CancellationToken);
 
-            var recentsPanel = window.FindControl<StackPanel>("RecentsPanel")!;
-            Assert.Empty(recentsPanel.Children);
+            // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
+            Assert.Empty(window.ViewModel.Home.TaskCards);
         }
         finally
         {
@@ -248,9 +248,9 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-            var recentsPanel = window.FindControl<StackPanel>("RecentsPanel")!;
-            var recentButton = Assert.IsType<Button>(Assert.Single(recentsPanel.Children));
-            Assert.Equal(Path.GetFullPath(taskDirectory), recentButton.Content);
+            // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
+            var card = Assert.Single(window.ViewModel.Home.TaskCards);
+            Assert.Equal(Path.GetFullPath(taskDirectory), card.TaskDirectoryPath);
         }
         finally
         {
@@ -276,7 +276,7 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(["architect: Running", "critic: Running"], TextsOf(stepsPanel));
             Assert.True(window.IsLiveRefreshTimerEnabled);
 
@@ -324,7 +324,7 @@ public class MainWindowProjectionTests
 
             await window.RefreshAsync(TestContext.Current.CancellationToken);
 
-            Assert.Equal("Workflow status: Terminal", window.FindControl<TextBlock>("StatusText")!.Text);
+            Assert.Equal("Workflow status: Terminal", window.FindViewControl<TextBlock>("StatusText")!.Text);
             Assert.False(window.IsLiveRefreshTimerEnabled);
         }
         finally
@@ -340,6 +340,6 @@ public class MainWindowProjectionTests
 
         await window.RefreshAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("No task directory loaded.", window.FindControl<TextBlock>("StatusText")!.Text);
+        Assert.Equal("No task directory loaded.", window.FindViewControl<TextBlock>("StatusText")!.Text);
     }
 }

@@ -38,7 +38,7 @@ public class MainWindowDecisionTests
 
             await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);
 
             var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
@@ -51,7 +51,7 @@ public class MainWindowDecisionTests
             Assert.Equal(string.Empty, window.ViewModel.DecisionStatusText);
             Assert.False(window.IsLiveRefreshTimerEnabled);
 
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(
                 ["a: Succeeded", "b: Succeeded"],
                 stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList());
@@ -79,11 +79,11 @@ public class MainWindowDecisionTests
 
             await pausedStep.RejectCommand.ExecuteAsync(null);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Empty(window.ViewModel.PausedSteps);
 
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(
                 ["a: Rejected", "b: Pending"],
                 stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList());
@@ -113,7 +113,7 @@ public class MainWindowDecisionTests
             // competing external pump's WorkflowLockedException included), which this phase's
             // decision surface must render as a message, never crash the window.
             var unresolvableBindingsFilePath = await WriteUnresolvableBindingsAsync(testRoot);
-            window.FindControl<TextBox>("BindingsFilePathBox")!.Text = unresolvableBindingsFilePath;
+            window.FindViewControl<TextBox>("BindingsFilePathBox")!.Text = unresolvableBindingsFilePath;
             var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
 
             await pausedStep.ApproveCommand.ExecuteAsync(null);
@@ -122,7 +122,7 @@ public class MainWindowDecisionTests
             Assert.False(window.ViewModel.IsMutationInFlight);
             Assert.True(pausedStep.IsEnabled);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);
         }
         finally

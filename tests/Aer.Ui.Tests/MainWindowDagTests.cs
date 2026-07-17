@@ -68,7 +68,7 @@ public class MainWindowDagTests
             var window = new MainWindow();
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var dagCanvas = window.FindControl<Canvas>("DagCanvas")!;
+            var dagCanvas = window.FindViewControl<Canvas>("DagCanvas")!;
             var nodes = dagCanvas.Children.OfType<Border>().ToList();
             var lines = dagCanvas.Children.OfType<Line>().ToList();
 
@@ -106,15 +106,15 @@ public class MainWindowDagTests
         var window = new MainWindow();
         await window.OpenAsync(fixturePath, TestContext.Current.CancellationToken);
 
-        var statusText = window.FindControl<TextBlock>("StatusText")!;
+        var statusText = window.FindViewControl<TextBlock>("StatusText")!;
         Assert.Contains("Template", statusText.Text);
         Assert.Contains("diamond-with-pause", statusText.Text);
 
         // A template is not a task: nothing per-task renders alongside the graph.
-        var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+        var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
         Assert.Empty(stepsPanel.Children);
 
-        var dagCanvas = window.FindControl<Canvas>("DagCanvas")!;
+        var dagCanvas = window.FindViewControl<Canvas>("DagCanvas")!;
         var nodes = dagCanvas.Children.OfType<Border>().ToList();
         var lines = dagCanvas.Children.OfType<Line>().ToList();
 

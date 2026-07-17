@@ -1,0 +1,58 @@
+<!-- M19 Phase 2 (#187): Home — the screen that answers "what needs me?" in one glance
+     (docs/ux/information-architecture.md). Decision inbox first, task cards second, the
+     open-a-folder fallback last: cards are the path, picking is the fallback. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
+             x:Class="Aer.Ui.Views.HomeView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+      <TextBlock Classes="display" Text="Home" />
+
+      <TextBlock Classes="heading" Text="Waiting on you" />
+      <TextBlock x:Name="InboxSummaryText" Classes="secondary" Text="{Binding Home.InboxSummaryText}" />
+      <ItemsControl x:Name="InboxList" ItemsSource="{Binding Home.InboxItems}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:InboxItemViewModel">
+            <Border Classes="card needs-you" Margin="0,0,0,8">
+              <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding TaskTitle}" />
+                  <TextBlock Classes="secondary" Text="{Binding StepName}" />
+                </StackPanel>
+                <TextBlock Text="{Binding StatusText}" />
+                <TextBlock Classes="mono" Text="{Binding PreviewText}" TextWrapping="Wrap"
+                           IsVisible="{Binding HasPreview}" MaxHeight="180" />
+                <Button Content="Review" Command="{Binding ReviewCommand}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Classes="heading" Text="Tasks" />
+      <ItemsControl x:Name="TaskCardsList" ItemsSource="{Binding Home.TaskCards}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TaskCardViewModel">
+            <Button Classes="card" Command="{Binding OpenCommand}"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,0,0,8">
+              <StackPanel Spacing="4">
+                <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                <TextBlock Classes="secondary" Text="{Binding StatusText}" />
+                <TextBlock Classes="caption" Text="{Binding TaskDirectoryPath}" />
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Classes="heading" Text="Open a task" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBox x:Name="TaskDirectoryPathBox" Width="480" PlaceholderText="Task directory path" />
+        <Button x:Name="OpenButton" Content="Open" />
+        <Button x:Name="RefreshButton" Content="Refresh" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

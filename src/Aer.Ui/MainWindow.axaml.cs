@@ -60,6 +60,60 @@ public partial class MainWindow : Window
     /// </summary>
     internal MainWindowViewModel ViewModel { get; } = new();
 
+    // ── The re-home facade (M19 Phase 2, #187) ─────────────────────────────────────────────────
+    // Every pre-shell control, reachable under its original name: the shell moved the controls
+    // into Home/Task/Author views (their new homes per docs/ux/information-architecture.md), and
+    // these internal properties are how this window's rendering code and the headless round trips
+    // keep addressing them — one migration per surface, no behavioral change. Phases 3–4 retire
+    // entries as they rebuild each surface properly.
+    internal TextBox TaskDirectoryPathBox => HomeViewControl.TaskDirectoryPathBox;
+    internal Button OpenButton => HomeViewControl.OpenButton;
+    internal Button RefreshButton => HomeViewControl.RefreshButton;
+
+    internal TextBox WorkflowTemplatePathBox => TaskViewControl.WorkflowTemplatePathBox;
+    internal TextBox BindingsFilePathBox => TaskViewControl.BindingsFilePathBox;
+    internal Button RunButton => TaskViewControl.RunButton;
+    internal Button StopButton => TaskViewControl.StopButton;
+    internal TextBlock RunStatusText => TaskViewControl.RunStatusText;
+    internal TextBlock StatusText => TaskViewControl.StatusText;
+    internal StackPanel StepsPanel => TaskViewControl.StepsPanel;
+    internal TextBlock CancelStatusText => TaskViewControl.CancelStatusText;
+    internal TextBlock DecisionStatusText => TaskViewControl.DecisionStatusText;
+    internal Canvas DagCanvas => TaskViewControl.DagCanvas;
+    internal StackPanel HistoryPanel => TaskViewControl.HistoryPanel;
+    internal StackPanel ConversationExecutionsPanel => TaskViewControl.ConversationExecutionsPanel;
+    internal StackPanel ConversationPanel => TaskViewControl.ConversationPanel;
+    internal StackPanel DecisionsPanel => TaskViewControl.DecisionsPanel;
+    internal StackPanel SupplementaryPanel => TaskViewControl.SupplementaryPanel;
+    internal StackPanel LineagePanel => TaskViewControl.LineagePanel;
+    internal TextBox ArtifactPreviewBox => TaskViewControl.ArtifactPreviewBox;
+    internal TextBox TemplateComparePathBox => TaskViewControl.TemplateComparePathBox;
+    internal Button CompareButton => TaskViewControl.CompareButton;
+    internal StackPanel DiffPanel => TaskViewControl.DiffPanel;
+
+    internal TextBox TemplateEditorPathBox => AuthorViewControl.TemplateEditorPathBox;
+    internal Button NewTemplateButton => AuthorViewControl.NewTemplateButton;
+    internal Button EditTemplateButton => AuthorViewControl.EditTemplateButton;
+    internal Button SaveTemplateButton => AuthorViewControl.SaveTemplateButton;
+    internal Button AddStepButton => AuthorViewControl.AddStepButton;
+    internal Canvas TemplateEditorDagCanvas => AuthorViewControl.TemplateEditorDagCanvas;
+    internal TextBox BindingsEditorPathBox => AuthorViewControl.BindingsEditorPathBox;
+    internal Button NewBindingsButton => AuthorViewControl.NewBindingsButton;
+    internal Button EditBindingsButton => AuthorViewControl.EditBindingsButton;
+    internal Button SaveBindingsButton => AuthorViewControl.SaveBindingsButton;
+    internal Button AddBindingEntryButton => AuthorViewControl.AddBindingEntryButton;
+    internal Button CheckBindingsAgainstTemplateButton => AuthorViewControl.CheckBindingsAgainstTemplateButton;
+
+    /// <summary>
+    /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
+    /// now live in the views' name scopes, so the window's own scope no longer resolves them — this
+    /// searches Home, Task, then Author, preserving every test's by-name lookup unchanged.
+    /// </summary>
+    internal T? FindViewControl<T>(string name) where T : Control
+        => HomeViewControl.FindControl<T>(name)
+           ?? TaskViewControl.FindControl<T>(name)
+           ?? AuthorViewControl.FindControl<T>(name);
+
     public MainWindow()
         : this(LocalUiConfigurationStore.CreateDefault(), WorkerAdapterRegistry.Default)
     {
@@ -132,18 +186,30 @@ public partial class MainWindow : Window
             RefreshBindingsTemplateCrossCheck();
         };
         CheckBindingsAgainstTemplateButton.Click += (_, _) => RefreshBindingsTemplateCrossCheck();
+        NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
+        NavTaskButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
+        NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
+        // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
+        // record) — fire-and-forget like every other event-handler entry point here.
+        ViewModel.SectionChanged += section =>
+        {
+            if (section == ShellSection.Home)
+            {
+                _ = RefreshHomeAsync(CancellationToken.None);
+            }
+        };
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;
     }
 
     /// <summary>
-    /// Populates <see cref="RecentsPanel"/> from Local UI Configuration (UI spec §3.1), plus (M15
+    /// Populates Home's cards + inbox from Local UI Configuration (UI spec §3.1), plus (M15
     /// Phase 1) pre-fills the Run action's bindings/template inputs from whatever was last
     /// remembered — call once at startup.
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await RefreshRecentsPanelAsync(cancellationToken);
+        await RefreshHomeAsync(cancellationToken);
 
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
         WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
@@ -154,7 +220,7 @@ public partial class MainWindow : Window
     /// <see cref="LoadAsync"/>, then — only on success — records it as the most recently opened
     /// directory and starts/stops live re-projection (M14 Phase 2, issue #119) depending on whether
     /// the projected workflow has reached a terminal state. This is what <see cref="OpenButton"/>
-    /// and a click on a <see cref="RecentsPanel"/> entry both call; <see cref="App"/>'s CLI-argument
+    /// and a Home task card's Open both call; <see cref="App"/>'s CLI-argument
     /// launch path calls it too, so a directory opened that way is remembered exactly like one
     /// opened by hand.
     /// <para>
@@ -169,6 +235,9 @@ public partial class MainWindow : Window
     public async Task OpenAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
         TaskDirectoryPathBox.Text = taskDirectoryPath;
+        // Opening a task is the one navigation the shell performs itself: whatever this open
+        // renders (a projection or its honest error message) renders in the Task view.
+        ViewModel.CurrentSection = ShellSection.Task;
 
         if (File.Exists(taskDirectoryPath) && !Directory.Exists(taskDirectoryPath))
         {
@@ -185,7 +254,7 @@ public partial class MainWindow : Window
         if (_session.LastLoadSucceeded)
         {
             await _session.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
-            await RefreshRecentsPanelAsync(cancellationToken);
+            await RefreshHomeAsync(cancellationToken);
         }
 
         UpdateLiveRefreshTimer();
@@ -339,6 +408,15 @@ public partial class MainWindow : Window
         }
 
         await LoadAsync(currentTaskDirectoryPath, cancellationToken);
+
+        // While the poller is observing an open task, a visible Home stays live too — the cards
+        // and inbox ride the same tick rather than owning a second timer (HomeViewModel's
+        // scan-scope decision of record).
+        if (ViewModel.IsHomeVisible)
+        {
+            await RefreshHomeAsync(cancellationToken);
+        }
+
         UpdateLiveRefreshTimer();
     }
 
@@ -1008,18 +1086,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RefreshRecentsPanelAsync(CancellationToken cancellationToken)
-    {
-        var recents = await _session.LoadRecentTaskDirectoriesAsync(cancellationToken);
-
-        RecentsPanel.Children.Clear();
-        foreach (var path in recents)
-        {
-            var button = new Button { Content = path };
-            button.Click += (_, _) => _ = OpenAsync(path);
-            RecentsPanel.Children.Add(button);
-        }
-    }
+    /// <summary>Rebuilds Home's task cards and decision inbox from Local UI Configuration + durable task contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
+    private Task RefreshHomeAsync(CancellationToken cancellationToken)
+        => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
 
     /// <summary>
     /// Polling, not a <see cref="System.IO.FileSystemWatcher"/> (issue #119's named open question):

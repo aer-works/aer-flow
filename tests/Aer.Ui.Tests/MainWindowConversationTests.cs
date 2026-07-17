@@ -104,7 +104,7 @@ public class MainWindowConversationTests
                 TurnLine(1, "initiator", "claude", "seed", "opening") + "\n",
                 TestContext.Current.CancellationToken);
 
-            var entriesPanel = window.FindControl<StackPanel>("ConversationExecutionsPanel")!;
+            var entriesPanel = window.FindViewControl<StackPanel>("ConversationExecutionsPanel")!;
             var row = Assert.Single(entriesPanel.Children.OfType<StackPanel>());
             var label = row.Children.OfType<TextBlock>().Single().Text!;
             Assert.StartsWith("architect —", label);
@@ -130,7 +130,7 @@ public class MainWindowConversationTests
 
             window.ShowConversation(transcriptDirectory, "architect — conversation");
 
-            var conversationPanel = window.FindControl<StackPanel>("ConversationPanel")!;
+            var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
             var turnBorders = conversationPanel.Children.OfType<Border>().ToList();
             Assert.Equal(2, turnBorders.Count);
 
@@ -167,7 +167,7 @@ public class MainWindowConversationTests
 
             window.ShowConversation(transcriptDirectory, "architect — conversation");
 
-            var conversationPanel = window.FindControl<StackPanel>("ConversationPanel")!;
+            var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
             // Header, turn 1, marker, turn 3 — the marker sits in place, later turns still render.
             Assert.Equal(2, conversationPanel.Children.OfType<Border>().Count());
             var marker = conversationPanel.Children.OfType<TextBlock>()
@@ -193,7 +193,7 @@ public class MainWindowConversationTests
 
             window.ShowConversation(transcriptDirectory, "architect — conversation");
 
-            var conversationPanel = window.FindControl<StackPanel>("ConversationPanel")!;
+            var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
             Assert.Single(conversationPanel.Children.OfType<Border>());
 
             // A still-running exchange appends a turn; the next load-on-refresh must show it
@@ -221,9 +221,9 @@ public class MainWindowConversationTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var entriesPanel = window.FindControl<StackPanel>("ConversationExecutionsPanel")!;
+            var entriesPanel = window.FindViewControl<StackPanel>("ConversationExecutionsPanel")!;
             Assert.Empty(entriesPanel.Children);
-            Assert.Empty(window.FindControl<StackPanel>("ConversationPanel")!.Children);
+            Assert.Empty(window.FindViewControl<StackPanel>("ConversationPanel")!.Children);
         }
         finally
         {

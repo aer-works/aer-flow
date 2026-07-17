@@ -15,6 +15,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
 {
     public ObservableCollection<PausedStepViewModel> PausedSteps { get; } = [];
 
+    /// <summary>Home's cards + decision inbox (M19 Phase 2, #187) — see <see cref="HomeViewModel"/>.</summary>
+    public HomeViewModel Home { get; } = new();
+
+    /// <summary>
+    /// Which shell section is active (M19 Phase 2, #187) — pure presentation state (like a text
+    /// box's contents, UI spec §4), never a projected fact. Opening a task navigates to
+    /// <see cref="ShellSection.Task"/>; everything else is the user's own navigation.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsHomeVisible))]
+    [NotifyPropertyChangedFor(nameof(IsTaskVisible))]
+    [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
+    private ShellSection currentSection = ShellSection.Home;
+
+    public bool IsHomeVisible => CurrentSection == ShellSection.Home;
+    public bool IsTaskVisible => CurrentSection == ShellSection.Task;
+    public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
+
     /// <summary>
     /// The template editor's state (M16 Phase 1, issue #150) — the authoring surface, deliberately
     /// its own child ViewModel rather than more fields here: authoring is a separate concern from
@@ -62,6 +80,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>In-window message surface for a targeted Cancel's outcome or failure (Phase 4) — the same precedent as <see cref="DecisionStatusText"/>.</summary>
     [ObservableProperty]
     private string cancelStatusText = string.Empty;
+
+    partial void OnCurrentSectionChanged(ShellSection value) => SectionChanged?.Invoke(value);
+
+    /// <summary>Raised on navigation so the shell can refresh the newly-activated section (Home rebuilds its cards/inbox on activation — its decision of record).</summary>
+    public event Action<ShellSection>? SectionChanged;
 
     partial void OnIsMutationInFlightChanged(bool value)
     {

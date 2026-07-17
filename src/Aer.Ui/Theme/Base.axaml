@@ -35,6 +35,11 @@
     <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
   </Style>
 
+  <Style Selector="TextBox.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Type.Mono.FontFamily}" />
+    <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
+  </Style>
+
   <!-- A card: the surface unit Home's task cards and inbox items are built from -->
   <Style Selector="Border.card">
     <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
@@ -48,6 +53,19 @@
   <Style Selector="Border.card.needs-you">
     <Setter Property="BorderBrush" Value="{DynamicResource Status.NeedsYou}" />
     <Setter Property="Background" Value="{DynamicResource Status.NeedsYouBg}" />
+  </Style>
+
+  <!-- A clickable card (Home's task cards) -->
+  <Style Selector="Button.card">
+    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.BorderSubtle}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+  <Style Selector="Button.card:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
   </Style>
 
 </Styles>
