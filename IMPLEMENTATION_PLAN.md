@@ -243,6 +243,13 @@ Per this document's session prompt: help implement the current phase only.
   keyboard gold standard), each mapped to the phase it informs in `docs/ux/design-language.md`.
   Changing the set is an owner decision, not an implementation one; Phase 5's human gate is
   judged against it.
+- **One product, not a collage (owner directive, 2026-07-17)** — the references calibrate the
+  bar, they never supply the look: AER Flow has one identity of its own, and stitching together
+  surfaces that each resemble their reference is the named failure mode. The identity is carried
+  by the token system + status system + motion rules + vocabulary — defined once in
+  `design-language.md` and implemented by every client (desktop now, remote/web later), so all
+  surfaces read as the same product wearing different windows. Phase 5's review question is
+  two-sided: holds up beside the reference *and* unmistakably the same product throughout.
 - **The vocabulary map is total for primary text and never renames semantics** — a spec term in
   a label/button/status line is a defect (Phase 6 checks for it), and a plain word that would
   imply behavior the engine doesn't have is wrong, not the engine ("send back" *is* supersede,

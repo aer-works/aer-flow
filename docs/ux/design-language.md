@@ -24,6 +24,24 @@ The products this should feel like, each tied to the part of M19 it informs:
 The set is the owner's (sourced via their Gemini design exploration, adopted here verbatim);
 changing it is an owner decision, not an implementation one.
 
+### One product, not a collage (owner directive, 2026-07-17)
+
+The references **calibrate the bar; they do not supply the look**. AER Flow has one identity —
+its own — and every reference is consulted for the quality of a specific decision (how Linear
+paces an inbox, how n8n keeps a canvas calm), never for its visual style. The failure mode this
+rules out: a Home that looks like Linear, a canvas that looks like n8n, an Author view that
+looks like Dagster, stitched together. Phase 5's review question (§ above) is therefore
+two-sided — "does each surface hold up beside its reference?" **and** "do all surfaces
+unmistakably belong to the same product?"
+
+What makes the identity portable: everything below — the tokens, the one status system, the
+motion rules, the vocabulary — is the product's look, defined once, owned here, and rendered by
+whatever client exists. The desktop app (this milestone), a remote client (candidate M20), and
+any eventual web surface implement *this document*, not each other and not the references; a
+user moving between them should experience the same product wearing different windows. That is
+the same boundary Phase 2 enforces in code (`Aer.Ui.Core` under `Aer.Ui`), applied to design:
+the identity lives in the system, not in any one skin.
+
 ## Design tokens
 
 Named tokens, defined once as the shared theme resource (Phase 2), consumed by name everywhere.
