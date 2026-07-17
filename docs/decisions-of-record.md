@@ -9,6 +9,48 @@ first. Each entry cites the phase that decided it; the full phase plans — goal
 the open questions each phase resolved — live in the plan file's git history and the linked
 issues.
 
+## M18: Conversation View
+
+- **A malformed transcript line projects as an explicit `TranscriptLine.Malformed` marker in
+  place, never a silent skip and never a whole-projection failure** — resolving Phase 1's named
+  open question in favor of the marker, per `DecisionRecord.Resolved`'s
+  render-the-damage-honestly precedent. The marker carries only the 1-based line number: the raw
+  bytes stay on disk for §12 traceability, and the view has nothing else it could honestly
+  render. Blank/whitespace-only lines are skipped outright (they carry nothing to mark), and
+  extra JSON fields beyond §10.1's five never malform a turn — the contract says "at least"
+  (Phase 1).
+- **File order is projection order** — `TranscriptProjection.Lines` preserves the file exactly;
+  `Sequence` is projected data, never a sort key. §10.1 names file order as the order the turns
+  happened, so reordering would let a buggy producer's claim override the durable record
+  (Phase 1).
+- **`TranscriptProjectionLoader` opens with `FileShare.ReadWrite`** — the producing worker holds
+  the file open (`FileMode.Append` + `FileShare.Read`) for the whole exchange, so a
+  load-on-refresh against a still-running execution must read what is durably there so far
+  rather than fail on a sharing violation; whole lines are the writer's flush unit, so the only
+  mid-write shape a reader can observe is a torn final line, which projects as `Malformed`
+  (Phase 1).
+- **The conversation view lives in the existing flat window, not a new top-level view** —
+  resolving Phase 2's named open question: two sections directly after Execution history (entry
+  rows derived from `Lineage.Executions` filtered by `TranscriptProjectionLoader.HasTranscript`,
+  plus the rendered conversation), the anchor the existing surfaces made natural, with no new
+  navigation chrome ahead of M19's design pass. Rendering stays code-behind per M15's MVVM
+  decision of record — it is one-directional projection → controls, nothing to two-way-bind
+  (Phase 2).
+- **Which conversation is shown is local UI selection state (UI spec §4), never a projected
+  fact** — every `LoadAsync` re-renders the selection from the durable transcript as it exists
+  now (and clears it if the file is gone), so load-on-refresh follows a still-running exchange
+  through the existing refresh/live-timer path; each turn's `Prompt` renders inside a collapsed
+  per-turn `Expander`, on demand only (Phase 2).
+- **The gate is `Aer.Ui.Tests.ConversationRoundTripTests`** — the real `Aer.Workers.Dialogue`
+  executable dispatched through the real `WorkerAdapterRegistry.Default` via
+  `RunCommand.ExecuteAsync` over stub vendor CLIs, then the conversation view asserted control by
+  control over the resulting artifacts. This is the producer/consumer agreement check Phases 1–2
+  deliberately did not make (their fixtures were hand-written to §10.1's reader contract); the
+  second gate test proves a failed exchange's forensic prefix renders as a conversation — one
+  intact turn, no malformed marker, because the failing turn is never appended (M17 Phase 3's
+  decision). In `AerFlow.slnx`, so it runs on all three of `ci.yml`'s OSes by default; no live
+  gate or runbook, since nothing in this milestone touches a vendor CLI (Phase 3).
+
 ## M17: Dialogue Worker
 
 - **The walkthrough documents verified behavior, not intent** — every command in
