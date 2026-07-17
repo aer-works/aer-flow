@@ -254,7 +254,7 @@ CI, proven live by a recorded human run.
 **M18: Conversation View** — phase plan above. Progress:
 
 - ✅ Phase 1 — Transcript read seam (#177)
-- ⬜ Phase 2 — The conversation view (#178)
+- ✅ Phase 2 — The conversation view (#178)
 - ⬜ Phase 3 — Gate: conversation round trip in default CI (#179)
 
 Per this document's session prompt: help implement the current phase only.
@@ -279,6 +279,18 @@ Decisions of record from M18 (move to `docs/decisions-of-record.md` at completio
   rather than fail on a sharing violation; whole lines are the writer's flush unit, so the only
   mid-write shape a reader can observe is a torn final line, which projects as `Malformed`
   (Phase 1).
+- **The conversation view lives in the existing flat window, not a new top-level view** —
+  resolving Phase 2's named open question: two sections directly after Execution history (entry
+  rows derived from `Lineage.Executions` filtered by `TranscriptProjectionLoader.HasTranscript`,
+  plus the rendered conversation), the anchor the existing surfaces made natural, with no new
+  navigation chrome ahead of M19's design pass. Rendering stays code-behind per M15's MVVM
+  decision of record — it is one-directional projection → controls, nothing to two-way-bind
+  (Phase 2).
+- **Which conversation is shown is local UI selection state (UI spec §4), never a projected
+  fact** — every `LoadAsync` re-renders the selection from the durable transcript as it exists
+  now (and clears it if the file is gone), so load-on-refresh follows a still-running exchange
+  through the existing refresh/live-timer path; each turn's `Prompt` renders inside a collapsed
+  per-turn `Expander`, on demand only (Phase 2).
 
 ## Completed Milestones
 

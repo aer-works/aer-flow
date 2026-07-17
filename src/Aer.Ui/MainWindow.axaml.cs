@@ -8,6 +8,7 @@ using Aer.Flow.Templates;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using System.Linq;
@@ -29,6 +30,16 @@ public partial class MainWindow : Window
     private bool _lastLoadSucceeded;
     private WorkflowStatus? _lastWorkflowStatus;
     private WorkflowDefinitionSnapshot? _lastSnapshot;
+
+    /// <summary>
+    /// Which execution's conversation is currently shown (M18 Phase 2, issue #178) — local UI
+    /// selection state like <see cref="TaskDirectoryPathBox"/>'s text (UI spec §4), never a
+    /// projected fact: every <see cref="LoadAsync"/> re-renders the conversation from the durable
+    /// transcript this directory holds *now*, which is how load-on-refresh follows a still-running
+    /// exchange without any push/streaming channel.
+    /// </summary>
+    private string? _conversationOutputDirectory;
+    private string? _conversationLabel;
 
     /// <summary>
     /// The caller-retained delivery point (M15 Phase 4, issue #140) for whichever Run or Decide pump
@@ -700,6 +711,8 @@ public partial class MainWindow : Window
             RenderDecisions(projection);
             RenderSupplementaryExecutions(projection);
             RenderArtifactLineage(projection, taskDirectoryPath);
+            RenderConversationExecutions(projection, taskDirectoryPath);
+            RenderConversation();
             RebuildPausedSteps(projection, taskDirectoryPath);
             RebuildRunningExecutions(projection, taskDirectoryPath);
 
@@ -719,6 +732,8 @@ public partial class MainWindow : Window
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
             LineagePanel.Children.Clear();
+            ConversationExecutionsPanel.Children.Clear();
+            ClearConversation();
             ArtifactPreviewBox.Text = string.Empty;
             DiffPanel.Children.Clear();
             ViewModel.PausedSteps.Clear();
@@ -754,6 +769,8 @@ public partial class MainWindow : Window
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
             LineagePanel.Children.Clear();
+            ConversationExecutionsPanel.Children.Clear();
+            ClearConversation();
             ArtifactPreviewBox.Text = string.Empty;
             DiffPanel.Children.Clear();
             ViewModel.PausedSteps.Clear();
@@ -776,6 +793,8 @@ public partial class MainWindow : Window
             DecisionsPanel.Children.Clear();
             SupplementaryPanel.Children.Clear();
             LineagePanel.Children.Clear();
+            ConversationExecutionsPanel.Children.Clear();
+            ClearConversation();
             ArtifactPreviewBox.Text = string.Empty;
             DiffPanel.Children.Clear();
             ViewModel.PausedSteps.Clear();
@@ -1272,6 +1291,139 @@ public partial class MainWindow : Window
         {
             ArtifactPreviewBox.Text = $"Cannot preview '{System.IO.Path.GetFileName(filePath)}': {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the conversation entry rows (M18 Phase 2, issue #178; UI spec §10.1): one row per
+    /// execution whose durable output directory contains a transcript — discovery by content
+    /// alone, never by which worker or binding produced the execution, so the row set is a pure
+    /// projection of the artifact directories (§11), exactly like
+    /// <see cref="RenderArtifactLineage"/>'s file buttons. Strictly per-execution: a retried or
+    /// superseded step lists one row per attempt that recorded a transcript, each opening its own
+    /// conversation.
+    /// </summary>
+    private void RenderConversationExecutions(TaskProjection projection, string taskDirectoryPath)
+    {
+        ConversationExecutionsPanel.Children.Clear();
+
+        var artifactsRootPath = System.IO.Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
+
+        foreach (var execution in projection.Lineage.Executions)
+        {
+            var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, execution.ExecutionId);
+            if (!TranscriptProjectionLoader.HasTranscript(outputDirectory))
+            {
+                continue;
+            }
+
+            var label = execution.StepId is { } stepId
+                ? $"{stepId} — {execution.ExecutionId} ({execution.Worker})"
+                : $"(supplementary) — {execution.ExecutionId} ({execution.Worker})";
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+
+            var viewButton = new Button { Content = "View conversation" };
+            viewButton.Click += (_, _) => ShowConversation(outputDirectory, label);
+            row.Children.Add(viewButton);
+
+            ConversationExecutionsPanel.Children.Add(row);
+        }
+    }
+
+    /// <summary>
+    /// Renders one execution's transcript as the conversation view (M18 Phase 2, issue #178) and
+    /// remembers the selection so every subsequent <see cref="LoadAsync"/> re-renders it from the
+    /// durable file — load-on-refresh (riding the same refresh/live-timer path as every other
+    /// projection surface) is how the view follows a still-running exchange; there is deliberately
+    /// no push/streaming channel (UI spec §10, live streaming assigned to no milestone). Public and
+    /// directly callable for the same testability reason as <see cref="ShowArtifactPreviewAsync"/>.
+    /// </summary>
+    public void ShowConversation(string executionOutputDirectory, string label)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(executionOutputDirectory);
+        ArgumentException.ThrowIfNullOrEmpty(label);
+
+        _conversationOutputDirectory = executionOutputDirectory;
+        _conversationLabel = label;
+        RenderConversation();
+    }
+
+    private void ClearConversation()
+    {
+        _conversationOutputDirectory = null;
+        _conversationLabel = null;
+        ConversationPanel.Children.Clear();
+    }
+
+    private void RenderConversation()
+    {
+        ConversationPanel.Children.Clear();
+
+        if (_conversationOutputDirectory is null)
+        {
+            return;
+        }
+
+        // A selection can legitimately point at nothing durable by the next refresh (the task
+        // directory was deleted or recreated) — clear rather than render a guess (§12).
+        if (TranscriptProjectionLoader.Load(_conversationOutputDirectory) is not { } transcript)
+        {
+            ClearConversation();
+            return;
+        }
+
+        ConversationPanel.Children.Add(new TextBlock { Text = _conversationLabel, FontWeight = FontWeight.SemiBold });
+
+        if (transcript.Lines.Count == 0)
+        {
+            ConversationPanel.Children.Add(new TextBlock { Text = "(transcript exists but records no turns yet)" });
+            return;
+        }
+
+        foreach (var line in transcript.Lines)
+        {
+            ConversationPanel.Children.Add(line switch
+            {
+                TranscriptLine.Turn turn => RenderTurn(turn),
+                TranscriptLine.Malformed malformed => new TextBlock
+                {
+                    Text = $"line {malformed.LineNumber}: not a schema-valid turn — left as recorded in {TranscriptProjectionLoader.TranscriptFileName}",
+                    Foreground = Brushes.IndianRed,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                _ => throw new InvalidOperationException($"Unknown transcript line kind: {line.GetType().Name}"),
+            });
+        }
+    }
+
+    private static Border RenderTurn(TranscriptLine.Turn turn)
+    {
+        var content = new StackPanel { Spacing = 4 };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"{turn.Sequence} · {turn.Role} ({turn.Vendor})",
+            FontWeight = FontWeight.SemiBold,
+        });
+        content.Children.Add(new TextBlock { Text = turn.Text, TextWrapping = TextWrapping.Wrap });
+
+        // Prompt on demand only (the phase plan's default): durable and §12-traceable, but each
+        // prompt embeds the entire prior transcript (M17's full-transcript threading), so
+        // expanded-by-default would drown the conversation in its own repetition.
+        content.Children.Add(new Expander
+        {
+            Header = "Prompt",
+            IsExpanded = false,
+            Content = new TextBlock { Text = turn.Prompt, TextWrapping = TextWrapping.Wrap },
+        });
+
+        return new Border
+        {
+            BorderBrush = Brushes.Gray,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8),
+            Child = content,
+        };
     }
 
     /// <summary>

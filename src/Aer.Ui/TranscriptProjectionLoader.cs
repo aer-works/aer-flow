@@ -17,6 +17,17 @@ public static class TranscriptProjectionLoader
     public const string TranscriptFileName = "transcript.jsonl";
 
     /// <summary>
+    /// §10.1's discovery rule by itself, without loading the file: whether this execution's output
+    /// directory offers a conversation projection at all. Kept on the loader so no caller re-encodes
+    /// the rule (or the file name) for cheap existence checks over many executions.
+    /// </summary>
+    public static bool HasTranscript(string executionOutputDirectory)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(executionOutputDirectory);
+        return File.Exists(Path.Combine(executionOutputDirectory, TranscriptFileName));
+    }
+
+    /// <summary>
     /// Loads the transcript projection for one execution's output directory, or <c>null</c> when
     /// the directory or file does not exist — absence means "this execution has no conversation
     /// projection", never an error. An empty or partial file is not absence: a failed exchange's
