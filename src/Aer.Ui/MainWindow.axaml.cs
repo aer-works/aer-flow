@@ -197,6 +197,24 @@ public partial class MainWindow : Window
             {
                 _ = RefreshHomeAsync(CancellationToken.None);
             }
+
+            // M19 Phase 4 (#189): the read-only vendor-readiness line refreshes on Author
+            // activation — presence can change while the app is open (a CLI just installed).
+            if (section == ShellSection.Author)
+            {
+                ViewModel.NewWorkflow.RefreshVendorReadiness();
+            }
+        };
+        // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task
+        // directory beside the authored files (one workspace per workflow, tasks inside it), then
+        // the shell navigates to the Task view and drives the same RunAsync as the Run button.
+        ViewModel.NewWorkflow.RunRequested += async (workflowFilePath, bindingsFilePath) =>
+        {
+            var taskDirectoryPath = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(workflowFilePath)!,
+                $"task-{DateTime.Now:yyyyMMdd-HHmmss}");
+            ViewModel.CurrentSection = ShellSection.Task;
+            await RunAsync(taskDirectoryPath, workflowFilePath, bindingsFilePath);
         };
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;

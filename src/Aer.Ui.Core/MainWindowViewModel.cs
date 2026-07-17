@@ -49,6 +49,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// </summary>
     public BindingsEditorViewModel BindingsEditor { get; } = new();
 
+    /// <summary>The guided New Workflow flow (M19 Phase 4, #189) — the Author view's primary surface; the file editors above are its advanced disclosure.</summary>
+    public NewWorkflowViewModel NewWorkflow { get; } = new();
+
     /// <summary>
     /// One entry per currently-running or cancellation-pending execution (M15 Phase 4, issue #140) —
     /// the §7 targeted-Cancel surface, alongside <see cref="PausedSteps"/>' decision surface.
