@@ -255,7 +255,7 @@ CI, proven live by a recorded human run.
 
 - ✅ Phase 1 — Transcript read seam (#177)
 - ✅ Phase 2 — The conversation view (#178)
-- ⬜ Phase 3 — Gate: conversation round trip in default CI (#179)
+- ✅ Phase 3 — Gate: conversation round trip in default CI (#179)
 
 Per this document's session prompt: help implement the current phase only.
 
@@ -291,6 +291,15 @@ Decisions of record from M18 (move to `docs/decisions-of-record.md` at completio
   now (and clears it if the file is gone), so load-on-refresh follows a still-running exchange
   through the existing refresh/live-timer path; each turn's `Prompt` renders inside a collapsed
   per-turn `Expander`, on demand only (Phase 2).
+- **The gate is `Aer.Ui.Tests.ConversationRoundTripTests`** — the real `Aer.Workers.Dialogue`
+  executable dispatched through the real `WorkerAdapterRegistry.Default` via
+  `RunCommand.ExecuteAsync` over stub vendor CLIs, then the conversation view asserted control by
+  control over the resulting artifacts. This is the producer/consumer agreement check Phases 1–2
+  deliberately did not make (their fixtures were hand-written to §10.1's reader contract); the
+  second gate test proves a failed exchange's forensic prefix renders as a conversation — one
+  intact turn, no malformed marker, because the failing turn is never appended (M17 Phase 3's
+  decision). In `AerFlow.slnx`, so it runs on all three of `ci.yml`'s OSes by default; no live
+  gate or runbook, since nothing in this milestone touches a vendor CLI (Phase 3).
 
 ## Completed Milestones
 
