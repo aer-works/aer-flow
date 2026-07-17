@@ -212,6 +212,10 @@
       <TextBlock Text="Execution history:" FontWeight="Bold" />
       <StackPanel x:Name="HistoryPanel" Spacing="2" />
 
+      <TextBlock Text="Conversation (executions with a durable transcript — UI spec §10.1):" FontWeight="Bold" />
+      <StackPanel x:Name="ConversationExecutionsPanel" Spacing="4" />
+      <StackPanel x:Name="ConversationPanel" Spacing="6" />
+
       <TextBlock Text="Recorded decisions:" FontWeight="Bold" />
       <StackPanel x:Name="DecisionsPanel" Spacing="2" />
 
