@@ -134,8 +134,18 @@ recents list stays Local UI Configuration) with a decision inbox — everything 
 tasks currently waiting on the human, grouped and one click from acting. A behavior-preserving
 re-home of every existing surface: all headless round trips re-pointed and green.
 
-**Produces:** the shell; every M14–M18 surface reachable in its new home.
-**Excludes:** surface redesigns (Phase 3), authoring changes (Phase 4), styling (Phase 5).
+**Constraint (the remote-ready seam):** the shell is built against a clean read-model +
+mutation-interface seam — views render projections and raise intents; no new view does file I/O
+or pump hosting in code-behind, and the existing code-behind I/O migrates behind the seam as
+each surface is re-homed. This is UI spec §13's replaceability made real in the code: the
+surface becomes swappable (Avalonia today, a browser/remote client later) and the candidate
+remote milestone (see Notes for future work) becomes attaching a host API to a seam that already
+exists, not a rewrite. Same-process, same behavior — this constraint changes structure only.
+
+**Produces:** the shell; every M14–M18 surface reachable in its new home, rendered through the
+seam.
+**Excludes:** surface redesigns (Phase 3), authoring changes (Phase 4), styling (Phase 5); any
+network/remote capability (the seam is in-process — remote is a future milestone's question).
 **Open questions resolved in this phase:**
 - **The inbox's scan scope** — only the open task vs. all recent task directories (both
   §11-deterministic; the difference is refresh cost and how the inbox feels when empty).
@@ -289,4 +299,17 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 ## Notes for future work
 
 - **A third worker adapter (`Aer.Adapters`)** — Claude shipped in M11 Phase 2 (#85), Gemini/`agy` in M12 Phase 1 (#95). Before adding another vendor, read closed spike [#21](https://github.com/aer-works/aer-flow/issues/21)'s recorded findings — stdin stalls, permission-flag vocabularies, and path-interpolation behavior differ per CLI and are exactly what the adapter seam exists to absorb. (M17 Phase 4's dialogue adapter is not this note's case: it spawns aer's own dialogue worker executable, not another vendor's CLI — the vendor quirks stay inside the worker, which inherits them from the two existing adapters' recorded findings.)
+- **Remote access (candidate M20)** — the owner's stated eventual goal: drive AER from a phone
+  the way Claude Code's app remote-controls a desktop session. The architecture already divides
+  the right way — the desktop must stay the host regardless (the pump is in-process with the §15
+  lock per M15's decision of record, and the vendor CLIs are subscription-authenticated there,
+  exactly the property to keep), while everything a thin client needs is already guaranteed:
+  durable-file truth, deterministic projection (§11), one mutation interface (§14), replaceable
+  surfaces (§13). The likely shape: a host process exposing the read model + mutation interface,
+  and a browser/PWA client (decision inbox first — approve/send-back from anywhere is the
+  value; authoring can stay desktop). Two questions gate it, both deliberate spec work, not
+  code: reopening §20's no-daemon stance (a remote host is a daemon — the standing Event Store
+  performance ledger entry is already waiting on the same revisit), and the new trust boundary
+  (client auth for a network API; vendor credentials never leave the desktop). M19 Phase 2's
+  remote-ready seam is the enabling investment; plan the rest only when it becomes current.
 - **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.
