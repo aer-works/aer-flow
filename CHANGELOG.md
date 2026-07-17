@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/aer-works/aer-flow/compare/v0.12.0...v0.13.0) (2026-07-17)
+
+
+### Features
+
+* **ui:** M18 Phase 1 — Transcript read seam ([#182](https://github.com/aer-works/aer-flow/issues/182)) ([4aef5d2](https://github.com/aer-works/aer-flow/commit/4aef5d2d354a50c7a531f7e6d2afe896cbdee37c))
+* **ui:** M18 Phase 2 — The conversation view ([#183](https://github.com/aer-works/aer-flow/issues/183)) ([1e57b8d](https://github.com/aer-works/aer-flow/commit/1e57b8d1062710a8791e3821b5f65f07649a8e78))
+* **ui:** M18 Phase 3 — Gate: conversation round trip in default CI ([#184](https://github.com/aer-works/aer-flow/issues/184)) ([b495890](https://github.com/aer-works/aer-flow/commit/b49589030fdbc959202c3983b7ec2063c08acfc9))
+
+
+### Documentation
+
+* **plan:** Define the M18 (Conversation View) phase plan and settle the transcript artifact contract ([#180](https://github.com/aer-works/aer-flow/issues/180)) ([5249530](https://github.com/aer-works/aer-flow/commit/524953067f3bc72b53d61667d916af421ecf4eee))
+
 ## [0.12.0](https://github.com/aer-works/aer-flow/compare/v0.11.0...v0.12.0) (2026-07-17)
 
 
