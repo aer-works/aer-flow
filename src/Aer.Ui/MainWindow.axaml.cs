@@ -530,16 +530,20 @@ public partial class MainWindow : Window
         ViewModel.TaskHeadlineText = "A workflow file — not a running task.";
     }
 
-    private static readonly IReadOnlyDictionary<StepStatus, IBrush> BackgroundByStatus = new Dictionary<StepStatus, IBrush>
-    {
-        [StepStatus.Pending] = Brushes.WhiteSmoke,
-        [StepStatus.Running] = Brushes.LightSkyBlue,
-        [StepStatus.Succeeded] = Brushes.LightGreen,
-        [StepStatus.Failed] = Brushes.IndianRed,
-        [StepStatus.Cancelled] = Brushes.LightGray,
-        [StepStatus.Paused] = Brushes.Khaki,
-        [StepStatus.Rejected] = Brushes.IndianRed,
-    };
+    /// <summary>The one status system's token keys (M19 Phase 5, #190) — line color and area tint per <see cref="StepStatus"/>, resolved from the active theme at render time so the DAG follows light/dark like every other surface.</summary>
+    private static readonly IReadOnlyDictionary<StepStatus, (string Border, string Background)> StatusTokenKeys =
+        new Dictionary<StepStatus, (string, string)>
+        {
+            [StepStatus.Pending] = ("Status.Idle", "Status.IdleBg"),
+            [StepStatus.Running] = ("Status.Running", "Status.RunningBg"),
+            [StepStatus.Succeeded] = ("Status.Succeeded", "Status.SucceededBg"),
+            [StepStatus.Failed] = ("Status.Failed", "Status.FailedBg"),
+            [StepStatus.Cancelled] = ("Status.Idle", "Status.IdleBg"),
+            [StepStatus.Paused] = ("Status.NeedsYou", "Status.NeedsYouBg"),
+            [StepStatus.Rejected] = ("Status.Failed", "Status.FailedBg"),
+        };
+
+    private IBrush Token(string key) => this.FindResource(key) as IBrush ?? Brushes.Transparent;
 
     private const double DagCellWidth = 170;
     private const double DagCellHeight = 90;
@@ -611,7 +615,7 @@ public partial class MainWindow : Window
                 EndPoint = new Point(
                     to.Column * DagCellWidth + DagNodeWidth / 2,
                     to.Rank * DagCellHeight),
-                Stroke = edge.IsSupersede ? Brushes.DarkOrange : Brushes.Gray,
+                Stroke = edge.IsSupersede ? Token("Status.Stale") : Token("Color.Border"),
                 StrokeThickness = 1.5,
             };
 
@@ -626,9 +630,11 @@ public partial class MainWindow : Window
         foreach (var node in layout.Nodes)
         {
             var status = statusByStepId?.GetValueOrDefault(node.StepId);
-            var background = status is { } knownStatus
-                ? BackgroundByStatus.GetValueOrDefault(knownStatus, Brushes.WhiteSmoke)
-                : Brushes.WhiteSmoke;
+            // A bound task's node carries its status as border + tint (the one status system);
+            // a raw template's node is a plain surface — nothing has executed, nothing to say.
+            var (borderBrush, background) = status is { } knownStatus && StatusTokenKeys.TryGetValue(knownStatus, out var keys)
+                ? (Token(keys.Border), Token(keys.Background))
+                : (Token("Color.Border"), Token("Color.Surface"));
 
             var label = status is { } renderedStatus
                 ? $"{node.StepId}\n{node.Worker}\n{renderedStatus}"
@@ -646,13 +652,16 @@ public partial class MainWindow : Window
                 Width = DagNodeWidth,
                 Height = DagNodeHeight,
                 Background = background,
-                BorderBrush = Brushes.Black,
-                BorderThickness = new Thickness(1),
+                BorderBrush = borderBrush,
+                BorderThickness = new Thickness(1.5),
+                CornerRadius = this.FindResource("Radius.Medium") is CornerRadius radius ? radius : default,
                 Child = new TextBlock
                 {
                     Text = label,
                     TextAlignment = TextAlignment.Center,
                     TextWrapping = TextWrapping.Wrap,
+                    FontSize = this.FindResource("Type.Caption.FontSize") as double? ?? 12,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 },
             };
 
@@ -986,7 +995,7 @@ public partial class MainWindow : Window
                 TranscriptLine.Malformed malformed => new TextBlock
                 {
                     Text = $"line {malformed.LineNumber}: not a schema-valid turn — left as recorded in {TranscriptProjectionLoader.TranscriptFileName}",
-                    Foreground = Brushes.IndianRed,
+                    Foreground = Token("Status.Failed"),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 _ => throw new InvalidOperationException($"Unknown transcript line kind: {line.GetType().Name}"),
@@ -994,7 +1003,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static Border RenderTurn(TranscriptLine.Turn turn)
+    private Border RenderTurn(TranscriptLine.Turn turn)
     {
         var content = new StackPanel { Spacing = 4 };
         content.Children.Add(new TextBlock
@@ -1016,8 +1025,10 @@ public partial class MainWindow : Window
 
         return new Border
         {
-            BorderBrush = Brushes.Gray,
+            Background = Token("Color.Surface"),
+            BorderBrush = Token("Color.BorderSubtle"),
             BorderThickness = new Thickness(1),
+            CornerRadius = this.FindResource("Radius.Medium") is CornerRadius radius ? radius : default,
             Padding = new Thickness(8),
             Child = content,
         };

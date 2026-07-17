@@ -24,7 +24,7 @@
                 <TextBlock Text="{Binding StatusText}" />
                 <TextBlock Classes="mono" Text="{Binding PreviewText}" TextWrapping="Wrap"
                            IsVisible="{Binding HasPreview}" MaxHeight="180" />
-                <Button Content="Review" Command="{Binding ReviewCommand}" />
+                <Button Classes="accent" Content="Review" Command="{Binding ReviewCommand}" HorizontalAlignment="Left" />
               </StackPanel>
             </Border>
           </DataTemplate>
@@ -32,6 +32,16 @@
       </ItemsControl>
 
       <TextBlock Classes="heading" Text="Tasks" />
+      <!-- The empty state says what to do next (Phase 5): first run, no history yet. -->
+      <Border Classes="card" IsVisible="{Binding Home.HasNoTasks}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="No tasks yet." FontWeight="SemiBold" />
+          <TextBlock Classes="secondary" TextWrapping="Wrap"
+                     Text="Create a workflow and run it — or open an existing task folder below." />
+          <Button x:Name="CreateWorkflowButton" Classes="accent" Content="Create a workflow"
+                  HorizontalAlignment="Left" Click="OnCreateWorkflowClick" />
+        </StackPanel>
+      </Border>
       <ItemsControl x:Name="TaskCardsList" ItemsSource="{Binding Home.TaskCards}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:TaskCardViewModel">

@@ -1,7 +1,9 @@
 <!-- M19 Phase 2 (#187): the navigation shell — docs/ux/information-architecture.md's flat
      three-destination navigation over the re-homed views. All views stay instantiated (visibility
-     toggled), so control state and test round trips survive navigation exactly as they survived
-     scrolling in the single stacked window this replaces. -->
+     toggled), so control state and tests survive navigation exactly as they survived scrolling in
+     the single stacked window this replaces. Phase 5 (#190): chrome — the rail carries the
+     product name and the active section in accent; sizes leave room for the DAG-primary task
+     view. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
@@ -9,14 +11,21 @@
         x:Class="Aer.Ui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="AER Flow"
-        Width="960" Height="720">
+        Icon="/Assets/aer.ico"
+        Width="1200" Height="800"
+        MinWidth="900" MinHeight="640">
   <DockPanel>
     <Border DockPanel.Dock="Left" Background="{DynamicResource Color.Surface}"
             BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0">
-      <StackPanel Margin="8" Spacing="4" Width="120">
-        <Button x:Name="NavHomeButton" Content="Home" HorizontalAlignment="Stretch" />
-        <Button x:Name="NavTaskButton" Content="Task" HorizontalAlignment="Stretch" />
-        <Button x:Name="NavAuthorButton" Content="Author" HorizontalAlignment="Stretch" />
+      <StackPanel Margin="8" Spacing="4" Width="132">
+        <TextBlock Classes="heading" Text="AER Flow" Margin="12,8,12,12"
+                   Foreground="{DynamicResource Color.Accent}" />
+        <Button x:Name="NavHomeButton" Classes="nav" Classes.selected="{Binding IsHomeVisible}"
+                Content="Home" HorizontalAlignment="Stretch" />
+        <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsTaskVisible}"
+                Content="Task" HorizontalAlignment="Stretch" />
+        <Button x:Name="NavAuthorButton" Classes="nav" Classes.selected="{Binding IsAuthorVisible}"
+                Content="Author" HorizontalAlignment="Stretch" />
       </StackPanel>
     </Border>
     <Panel>

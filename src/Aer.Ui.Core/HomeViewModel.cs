@@ -33,6 +33,10 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     private string inboxSummaryText = "Nothing is waiting on you.";
 
+    /// <summary>True when there is no task history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
+    [ObservableProperty]
+    private bool hasNoTasks = true;
+
     /// <summary>
     /// Rebuilds cards and inbox from the recents list. A listed directory that no longer loads is
     /// stale list state (§3) — skipped, never surfaced as an error; it simply has no card this
@@ -94,6 +98,7 @@ public sealed partial class HomeViewModel : ObservableObject
             }
         }
 
+        HasNoTasks = TaskCards.Count == 0;
         InboxSummaryText = InboxItems.Count switch
         {
             0 when TaskCards.Count == 0 => "Nothing is waiting on you.",

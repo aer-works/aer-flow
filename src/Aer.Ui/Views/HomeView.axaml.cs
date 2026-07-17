@@ -1,4 +1,6 @@
+using Aer.Ui.Core;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace Aer.Ui.Views;
 
@@ -6,4 +8,13 @@ namespace Aer.Ui.Views;
 public partial class HomeView : UserControl
 {
     public HomeView() => InitializeComponent();
+
+    /// <summary>The empty state's one action (Phase 5, #190): straight to the guided New Workflow flow.</summary>
+    private void OnCreateWorkflowClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CurrentSection = ShellSection.Author;
+        }
+    }
 }

@@ -84,7 +84,10 @@ public class MainWindowDagTests
             Assert.Contains("Succeeded", textByStepId["critic"].Text);
             Assert.Contains("Succeeded", textByStepId["publisher"].Text);
 
-            Assert.Equal(Brushes.LightGreen, nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect")).Background);
+            // M19 Phase 5 (#190): status renders from the token system, not named framework colors.
+            Assert.Equal(
+                window.FindResource("Status.SucceededBg"),
+                nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect")).Background);
 
             // architect (rank 0) sits directly above critic (rank 1), which sits above publisher (rank 2).
             Assert.Equal(0d, Canvas.GetTop(nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect"))));
@@ -127,7 +130,8 @@ public class MainWindowDagTests
         Assert.DoesNotContain("Succeeded", ((TextBlock)nodeC.Child!).Text);
         Assert.DoesNotContain("Pending", ((TextBlock)nodeC.Child!).Text);
 
-        Assert.Equal(Brushes.WhiteSmoke, nodeC.Background);
+        // M19 Phase 5 (#190): a template node is a plain surface — no status tint to carry.
+        Assert.Equal(window.FindResource("Color.Surface"), nodeC.Background);
     }
 
     [AvaloniaFact]

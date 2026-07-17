@@ -1,7 +1,7 @@
-<!-- M19 Phase 2 (#187): the base styles every surface inherits — the "nothing ships
-     default-themed" floor over FluentTheme, consuming Tokens.axaml by name. Text roles are style
-     classes (display/heading/caption/secondary/mono), the idiomatic Avalonia counterpart of
-     design-language.md's type tokens; the full custom control theme is Phase 5's pass. -->
+<!-- M19 Phase 2 (#187) grew this as the "nothing ships default-themed" floor; Phase 5 (#190)
+     makes it the custom control theme over FluentTheme: every stock control re-skinned to the
+     token system (design-language.md), with motion as short brush transitions — confirm, don't
+     perform. Everything here consumes Tokens.axaml by name; a raw value is a defect. -->
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
@@ -11,6 +11,7 @@
     <Setter Property="FontSize" Value="{DynamicResource Type.Body.FontSize}" />
   </Style>
 
+  <!-- Text roles -->
   <Style Selector="TextBlock.display">
     <Setter Property="FontSize" Value="{DynamicResource Type.Display.FontSize}" />
     <Setter Property="FontWeight" Value="SemiBold" />
@@ -35,9 +36,83 @@
     <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
   </Style>
 
+  <!-- Stock controls, re-skinned to the tokens (Phase 5). Property-level restyling over
+       FluentTheme's templates — the shapes are fine, the identity comes from color/radius. -->
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.Text}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+    <Setter Property="Padding" Value="12,6" />
+  </Style>
+  <Style Selector="Button /template/ ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.Text}" />
+  </Style>
+  <Style Selector="Button:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentPressed}" />
+  </Style>
+
+  <!-- The one loud button per surface: Run / Save and run / Approve -->
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentHover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentHover}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+  <Style Selector="Button.accent:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentPressed}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentPressed}" />
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Border}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+  </Style>
+
   <Style Selector="TextBox.mono">
     <Setter Property="FontFamily" Value="{DynamicResource Type.Mono.FontFamily}" />
     <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
+  </Style>
+
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Border}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+  </Style>
+
+  <Style Selector="Expander">
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
+  </Style>
+
+  <Style Selector="TabItem">
+    <Setter Property="FontSize" Value="{DynamicResource Type.Body.FontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="MinHeight" Value="36" />
+  </Style>
+  <Style Selector="TabItem:selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
   <!-- A card: the surface unit Home's task cards and inbox items are built from -->
@@ -55,7 +130,7 @@
     <Setter Property="Background" Value="{DynamicResource Status.NeedsYouBg}" />
   </Style>
 
-  <!-- A clickable card (Home's task cards) -->
+  <!-- A clickable card (Home's task cards, the step chips) -->
   <Style Selector="Button.card">
     <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.BorderSubtle}" />
@@ -70,6 +145,24 @@
   <Style Selector="Button.card:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+  </Style>
+
+  <!-- The navigation rail: quiet buttons, accent only on the active section -->
+  <Style Selector="Button.nav">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="12,8" />
+  </Style>
+  <Style Selector="Button.nav.selected">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
 
 </Styles>
