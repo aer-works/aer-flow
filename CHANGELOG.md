@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.0](https://github.com/aer-works/aer-flow/compare/v0.11.0...v0.12.0) (2026-07-17)
+
+
+### Features
+
+* **adapters:** M17 Phase 4 — Dispatch integration: the third adapter ([#174](https://github.com/aer-works/aer-flow/issues/174)) ([0b11c9a](https://github.com/aer-works/aer-flow/commit/0b11c9a1970fd6fb0ebd4bb6ce4f48489bd14cdb))
+* **dialogue:** M17 Phase 5 — Gates: stub round trip in default CI + live dialogue runbook ([#175](https://github.com/aer-works/aer-flow/issues/175)) ([5cac1f5](https://github.com/aer-works/aer-flow/commit/5cac1f5fc48ce17975f64268564b290af985b0ea))
+* **workers:** M17 Phase 2 — Transcript contract + dialogue worker skeleton ([#172](https://github.com/aer-works/aer-flow/issues/172)) ([d4e0f95](https://github.com/aer-works/aer-flow/commit/d4e0f952ddc14a351ec50f29d65847d88f38b70b))
+* **workers:** M17 Phase 3 — Turn loop, termination, and failure semantics ([#173](https://github.com/aer-works/aer-flow/issues/173)) ([b974809](https://github.com/aer-works/aer-flow/commit/b9748097ef9e0c0e55a95d9f470494c8e83aee8d))
+
+
+### Documentation
+
+* M17 Phase 1 — Real-workflow walkthrough (§18.1 baseline) ([#171](https://github.com/aer-works/aer-flow/issues/171)) ([e2e8e3d](https://github.com/aer-works/aer-flow/commit/e2e8e3dff178e67600ef44ced0b8999bcaa9d266))
+* **plan:** Promote UI spec to v1.0 and plan M17–M19 ([#169](https://github.com/aer-works/aer-flow/issues/169)) ([d995738](https://github.com/aer-works/aer-flow/commit/d9957383eea4af343fbc8e42209e91f6a6b7305a))
+
 ## [0.11.0](https://github.com/aer-works/aer-flow/compare/v0.10.0...v0.11.0) (2026-07-16)
 
 
