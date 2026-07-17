@@ -217,7 +217,7 @@ CI, proven live by a recorded human run.
 - ✅ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
 - ✅ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
 - ✅ Phase 3 — Turn loop, termination, and failure semantics (#166)
-- ⬜ Phase 4 — Dispatch integration: the third adapter (#167)
+- ✅ Phase 4 — Dispatch integration: the third adapter (#167)
 - ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
 
 Per this document's session prompt: help implement the current phase only.
@@ -318,6 +318,32 @@ Decisions of record from M17:
   `ProcessVendorTurnClient` now redirects and reads stderr, concurrently with stdout via
   `Task.WhenAll` before `WaitForExitAsync`, avoiding the pipe deadlock a chatty CLI's unread stream
   would otherwise risk (Phase 3).
+- **`DialogueWorkerAdapter` reuses `WorkerInvocation.PromptTemplate` to carry the dialogue-worker
+  config file's static path**, resolving Phase 4's named open question against "a required input."
+  `ArtifactManager.ResolveInputPaths` only ever resolves a step's declared `Inputs` from an ancestor
+  step's declared `Outputs` — there is no static-file input kind in this codebase — so the required-
+  input shape would force every workflow using this worker to add a step whose only job is producing
+  a static file, for content (seed prompt, per-side preambles, stop condition) that is exactly as
+  static and per-role as `Model`/`PermissionScope` already are. Reusing the already-"forwarded
+  verbatim" `PromptTemplate` needs zero Flow or engine change, matching the milestone's first fact
+  (Phase 4).
+- **The dialogue executable is located via a `ProjectReference` (`Aer.Adapters` → `Aer.Workers.Dialogue`),
+  invoked as `dotnet exec <dll>`** — the identical mechanism `tests/Aer.Flow.Tests/TestSupport/CrashTestHostLauncher`
+  already proved for a different Exe-output `ProjectReference` (M10 Phase 4), now used in production
+  code for the first time. Resolves Phase 2's "how it ships" open question in favor of "rides `aer`'s
+  existing `dotnet tool` package": confirmed live via `dotnet pack`, the transitive reference alone
+  puts `Aer.Workers.Dialogue.dll`/`.deps.json`/`.runtimeconfig.json` in the packed nupkg's
+  `tools/net10.0/any/` next to `Aer.Cli.dll`, no separate package or extra packing step needed
+  (Phase 4).
+- **The registry key is `"dialogue"`, generalizing M12's "names the capability, not the binary" rule**
+  one step further: `"claude"`/`"gemini"` name vendors, `"dialogue"` names a worker that isn't a
+  vendor CLI at all (Phase 4).
+- **Dispatch integration is proven by a real, unstubbed run**: `Aer.Cli.Tests.DialogueDispatchEndToEndTests`
+  binds a step to `"dialogue"` through the real `WorkerAdapterRegistry.Default` (not a shell-stub test
+  adapter, unlike every other `*EndToEndTests` in this project) and runs it to terminal via
+  `RunCommand.ExecuteAsync` — the real `dotnet exec` spawn, the real `Aer.Workers.Dialogue` executable,
+  and its own child spawns of two stub vendor scripts all actually execute. CI-safe on every OS: no
+  real vendor CLI or network access involved (Phase 4).
 
 ## Completed Milestones
 

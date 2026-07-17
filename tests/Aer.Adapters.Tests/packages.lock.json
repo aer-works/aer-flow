@@ -102,7 +102,8 @@
       "aer.adapters": {
         "type": "Project",
         "dependencies": {
-          "Aer.Flow": "[1.0.0, )"
+          "Aer.Flow": "[0.11.0, )",
+          "Aer.Workers.Dialogue": "[0.11.0, )"
         }
       },
       "aer.core": {
@@ -113,6 +114,9 @@
         "dependencies": {
           "Aer.Core": "[1.0.0, )"
         }
+      },
+      "aer.workers.dialogue": {
+        "type": "Project"
       }
     }
   }
