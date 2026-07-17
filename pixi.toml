@@ -15,6 +15,13 @@ build-core = { cmd = "cargo build", cwd = "external/aer-core" }
 
 build = { cmd = "dotnet build", depends-on = ["build-core"] }
 test = { cmd = "dotnet test", depends-on = ["build-core"] }
+# Coverage report (#199): collects per-test-project Cobertura via coverlet, merges into an HTML
+# report + text summary at artifacts/coverage/report/ (open index.html, or read Summary.txt).
+# Results are wiped first so stale collections never skew the merge. Excludes source-generated
+# code by attribute (coverage.runsettings); external/aer-core's Rust library is invisible to .NET
+# coverage by nature — its own `pixi run coverage` (cargo-llvm-cov) lives in the aer-core repo.
+coverage = { cmd = "rm -rf artifacts/coverage && dotnet tool restore && dotnet test --collect:\"XPlat Code Coverage\" --settings coverage.runsettings --results-directory artifacts/coverage && dotnet reportgenerator -reports:artifacts/coverage/**/coverage.cobertura.xml -targetdir:artifacts/coverage/report \"-reporttypes:Html;TextSummary\" \"-assemblyfilters:+Aer.*\"", depends-on = ["build-core"] }
+
 fmt = "dotnet format"
 fmt-check = "dotnet format --verify-no-changes"
 lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }
