@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="clr-namespace:Aer.Ui"
+        xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
         x:Class="Aer.Ui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="AER Flow UI"

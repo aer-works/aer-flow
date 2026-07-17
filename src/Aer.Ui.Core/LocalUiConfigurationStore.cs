@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Local UI Configuration (UI spec §3.1, §4): a remembered list of recently opened task

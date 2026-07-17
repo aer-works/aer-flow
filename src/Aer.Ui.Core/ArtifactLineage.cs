@@ -1,6 +1,6 @@
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Every execution's artifact output directory, plus — for each of its declared inputs — which

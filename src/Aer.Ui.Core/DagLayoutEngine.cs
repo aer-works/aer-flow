@@ -1,6 +1,6 @@
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Computes a <see cref="DagLayout"/> from a workflow's step declarations — the same

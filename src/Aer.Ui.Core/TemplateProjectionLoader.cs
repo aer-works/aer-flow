@@ -1,7 +1,7 @@
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Opens a raw, not-yet-instantiated <see cref="WorkflowDefinition"/> template file directly —

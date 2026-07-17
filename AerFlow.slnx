@@ -3,6 +3,7 @@
     <Project Path="src/Aer.Adapters/Aer.Adapters.csproj" />
     <Project Path="src/Aer.Cli/Aer.Cli.csproj" />
     <Project Path="src/Aer.Flow/Aer.Flow.csproj" />
+    <Project Path="src/Aer.Ui.Core/Aer.Ui.Core.csproj" />
     <Project Path="src/Aer.Ui/Aer.Ui.csproj" />
     <Project Path="src/Aer.Workers.Dialogue/Aer.Workers.Dialogue.csproj" />
   </Folder>

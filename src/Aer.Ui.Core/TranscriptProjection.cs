@@ -1,4 +1,4 @@
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// The conversation view's read model (M18 Phase 1, #177): one execution's <c>transcript.jsonl</c>

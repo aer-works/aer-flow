@@ -3,7 +3,7 @@ using System.Collections.Specialized;
 using Aer.Adapters;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// The worker-bindings editor's state (M16 Phase 4, issue #153) — the second authoring surface,

@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// <see cref="MainWindow"/>'s ViewModel layer (M15 Phase 2, issue #138) — introduced for exactly the

@@ -21,9 +21,14 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- M19 Phase 2 (#187): the moved presentation-agnostic types (projections, ViewModels) live in
+         the Aer.Ui.Core namespace now; a global using keeps every existing test's bare type names
+         resolving exactly as they did when the types sat in Aer.Ui. -->
+    <Using Include="Aer.Ui.Core" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Aer.Ui.Core\Aer.Ui.Core.csproj" />
     <ProjectReference Include="..\..\src\Aer.Ui\Aer.Ui.csproj" />
     <ProjectReference Include="..\..\src\Aer.Flow\Aer.Flow.csproj" />
     <!-- M15 Phase 1 (#137): MainWindow.RunAsync goes through the real RunCommand/IWorkerAdapter

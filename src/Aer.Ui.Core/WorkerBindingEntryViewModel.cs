@@ -4,7 +4,7 @@ using Aer.Flow.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// One worker-role row in the bindings editor (M16 Phase 4, issue #153) — the two-way-bound

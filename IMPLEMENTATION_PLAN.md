@@ -160,6 +160,18 @@ remote host (candidate M20) references `Aer.Ui.Core` and never `Aer.Ui`. This ph
 materializes Phase 1's design tokens as the shared theme resource every new surface consumes —
 nothing ships default-themed even mid-milestone. Same process, same behavior throughout.
 
+**Constraint (the re-home completes the MVVM migration; owner directive 2026-07-17):** M15
+Phase 2 deliberately scoped MVVM to the decision surface and editors, leaving read-only
+rendering as imperative code-behind and deferring the migration until a real need arrived —
+this re-home is that need, and "each surface migrates once" forbids re-homing a surface
+code-behind only to MVVM-ify it later. Each view gets a ViewModel in `Aer.Ui.Core`
+(CommunityToolkit.Mvvm, the established stack); imperative `Children.Add` rendering becomes
+observable item ViewModels rendered by XAML DataTemplates with compiled bindings; code-behind
+shrinks to view wiring and the genuinely visual (the DAG canvas, until Phase 3/5 make it a
+custom control). The seam gains from it directly: a remote client reuses the ViewModels, not
+just the loaders. Deliberately *not* adopted: a DI container — constructor-injected seams
+without a container remain the right size for this app.
+
 **Produces:** the shell; `Aer.Ui.Core`; every M14–M18 surface reachable in its new home,
 rendered through the seam with Phase 1's tokens.
 **Excludes:** surface redesigns (Phase 3), authoring changes (Phase 4), polish beyond the base

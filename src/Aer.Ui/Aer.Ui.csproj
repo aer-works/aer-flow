@@ -13,14 +13,12 @@
        phase's original console-app decision once real UI ambition (not this phase's "any styling
        worth defending" exclusion) made the tradeoff explicit. -->
   <ItemGroup>
-    <ProjectReference Include="..\Aer.Flow\Aer.Flow.csproj" />
-    <!-- M15 Phase 1 (#137): the mutation seam's decision of record — in-process reuse of M12's
-         command layer (RunCommand, then DecideCommand/CancelCommand/SupplyCommand in later phases),
-         the same static, adapter-registry-as-argument surface Aer.Cli's Program.cs already drives,
-         rather than spawning the installed aer binary. Aer.Adapters supplies the IWorkerAdapter
-         registry seam RunCommand.ExecuteAsync's second parameter needs. -->
-    <ProjectReference Include="..\Aer.Cli\Aer.Cli.csproj" />
-    <ProjectReference Include="..\Aer.Adapters\Aer.Adapters.csproj" />
+    <!-- M19 Phase 2 (#187): the remote-ready seam — everything presentation-agnostic (projection
+         loaders/projectors, ViewModels, task-session orchestration) lives in Aer.Ui.Core, which
+         carries no Avalonia reference; this project is the Avalonia skin over it. Aer.Flow /
+         Aer.Cli / Aer.Adapters flow transitively through it (the M15 Phase 1 in-process mutation
+         seam and M11 Phase 3 adapter-registry seam are unchanged, just re-homed). -->
+    <ProjectReference Include="..\Aer.Ui.Core\Aer.Ui.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,15 +26,6 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
-    <!-- M15 Phase 2 (#138): M14 Phase 1 deliberately deferred a ViewModel layer until a second
-         concrete need arrived — buttons whose enabled state is tied jointly to projected state and
-         an in-flight mutation, which this phase's paused-step decision surface is. CommunityToolkit.Mvvm
-         over hand-rolled INotifyPropertyChanged/ICommand or ReactiveUI: source-generator-based
-         ([ObservableProperty]/[RelayCommand]), no reactive-extensions dependency, the de facto
-         standard for Avalonia MVVM. Scoped to the new decision surface only — the existing read-only
-         rendering (DAG, history, lineage, diff) stays code-behind; migrating it is a future decision,
-         not one this phase's Approve/Reject surface needs to force. -->
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
   <PropertyGroup>

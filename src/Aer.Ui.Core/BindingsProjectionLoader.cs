@@ -1,6 +1,6 @@
 using Aer.Adapters;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Opens a worker-bindings config file directly for the bindings editor (M16 Phase 4, issue #153)

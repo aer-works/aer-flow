@@ -5,6 +5,7 @@ using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Templates;
+using Aer.Ui.Core;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;

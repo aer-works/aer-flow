@@ -3,7 +3,7 @@ using Aer.Flow.Domain;
 using Aer.Flow.Templates;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// The template editor's state (M16 Phase 1, issue #150; extended for Phase 2, issue #151) — the
