@@ -253,11 +253,32 @@ CI, proven live by a recorded human run.
 
 **M18: Conversation View** — phase plan above. Progress:
 
-- ⬜ Phase 1 — Transcript read seam (#177)
+- ✅ Phase 1 — Transcript read seam (#177)
 - ⬜ Phase 2 — The conversation view (#178)
 - ⬜ Phase 3 — Gate: conversation round trip in default CI (#179)
 
 Per this document's session prompt: help implement the current phase only.
+
+Decisions of record from M18 (move to `docs/decisions-of-record.md` at completion):
+
+- **A malformed transcript line projects as an explicit `TranscriptLine.Malformed` marker in
+  place, never a silent skip and never a whole-projection failure** — resolving Phase 1's named
+  open question in favor of the marker, per `DecisionRecord.Resolved`'s
+  render-the-damage-honestly precedent. The marker carries only the 1-based line number: the raw
+  bytes stay on disk for §12 traceability, and the view has nothing else it could honestly
+  render. Blank/whitespace-only lines are skipped outright (they carry nothing to mark), and
+  extra JSON fields beyond §10.1's five never malform a turn — the contract says "at least"
+  (Phase 1).
+- **File order is projection order** — `TranscriptProjection.Lines` preserves the file exactly;
+  `Sequence` is projected data, never a sort key. §10.1 names file order as the order the turns
+  happened, so reordering would let a buggy producer's claim override the durable record
+  (Phase 1).
+- **`TranscriptProjectionLoader` opens with `FileShare.ReadWrite`** — the producing worker holds
+  the file open (`FileMode.Append` + `FileShare.Read`) for the whole exchange, so a
+  load-on-refresh against a still-running execution must read what is durably there so far
+  rather than fail on a sharing violation; whole lines are the writer's flush unit, so the only
+  mid-write shape a reader can observe is a torn final line, which projects as `Malformed`
+  (Phase 1).
 
 ## Completed Milestones
 
