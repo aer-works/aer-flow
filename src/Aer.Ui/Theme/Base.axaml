@@ -63,6 +63,10 @@
     <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
     <Setter Property="Padding" Value="12" />
   </Style>
+  <Style Selector="Button.card.selected">
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+  </Style>
   <Style Selector="Button.card:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />

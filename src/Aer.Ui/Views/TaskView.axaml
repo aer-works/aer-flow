@@ -1,6 +1,8 @@
-<!-- M19 Phase 2 (#187): the Task view — every per-task surface M14–M18 built, re-homed from the
-     single stacked window, behavior-preserving (control names and rendering semantics unchanged;
-     Phase 3 redesigns the internals around the DAG as primary). -->
+<!-- M19 Phase 3 (#188): the Task view rebuilt human-first — needs-you first (inline decisions),
+     then the DAG as the primary surface with per-step drill-in tabs (attempts / outputs /
+     conversation / decisions), plain-language vocabulary throughout the primary text. The precise,
+     complete engine-level record stays one disclosure away in the Details expander (§12
+     traceability; ux-principles' progressive disclosure). -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
@@ -8,21 +10,144 @@
              x:DataType="vm:MainWindowViewModel">
   <ScrollViewer>
     <StackPanel Margin="24" Spacing="12">
-      <TextBlock Classes="display" Text="Task" />
+      <TextBlock Classes="display" Text="{Binding TaskHeadlineText}" />
 
-      <TextBlock Classes="heading" Text="Run (start a fresh task, or resume the open task after a pause or stop):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow template file (fresh start only)" />
-        <TextBox x:Name="BindingsFilePathBox" Width="300" PlaceholderText="Worker-bindings file" />
+        <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow file (fresh start only)" />
+        <TextBox x:Name="BindingsFilePathBox" Width="300"
+                 PlaceholderText="Who runs each step (bindings file)"
+                 ToolTip.Tip="Pre-filled with the last-used bindings file as a convenience — always visible, always swappable, never remembered authority (§4)." />
         <Button x:Name="RunButton" Content="Run" IsEnabled="{Binding !IsMutationInFlight}" />
         <Button x:Name="StopButton" Content="Stop" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop)." />
       </StackPanel>
       <TextBlock x:Name="RunStatusText" Text="{Binding RunStatusText}" />
 
-      <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
-      <StackPanel x:Name="StepsPanel" Spacing="4" />
+      <!-- Needs-you first: the review gate's inline decisions, in plain words, before anything
+           read-only. Same M15 commands, same semantics — Approve is Resume, Send back is
+           Supersede (feedback file mandatory), Retry is RetryWithRevision (§17). -->
+      <ItemsControl x:Name="PausedStepsList" ItemsSource="{Binding PausedSteps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:PausedStepViewModel">
+            <Border Classes="card needs-you" Margin="0,0,0,8">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="heading" Text="{Binding StepId, StringFormat='Waiting for your review — {0}'}" />
+                <TextBlock Classes="caption" Text="{Binding Label}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Content="Approve" Command="{Binding ApproveCommand}"
+                          ToolTip.Tip="Resume: accept this step's output and let the workflow continue (§17)." />
+                  <Button Content="Retry this step" Command="{Binding RetryCommand}"
+                          ToolTip.Tip="RetryWithRevision: run this step again, optionally with your feedback file attached (§17)." />
+                  <Button Content="Reject" Command="{Binding RejectCommand}"
+                          ToolTip.Tip="Reject: end this step here — the workflow does not continue past it (§17)." />
+                  <ItemsControl ItemsSource="{Binding SendBackTargets}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:SendBackTargetViewModel">
+                        <Button Content="{Binding Label}" Command="{Binding SendBackCommand}"
+                                ToolTip.Tip="Supersede: send the work back to an earlier step, with your feedback file — the feedback is what that step revises against (§17)." />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Feedback file:" VerticalAlignment="Center" />
+                  <TextBox Text="{Binding RevisionFilePath}" Width="260"
+                           PlaceholderText="Optional for Retry, required to send back" />
+                  <Button Content="Choose file…" Click="OnChooseFeedbackFileClick" />
+                  <TextBox Text="{Binding SupplementaryWorker}" Width="110" PlaceholderText="Worker role" />
+                  <TextBox Text="{Binding SupplementaryOutputName}" Width="110" PlaceholderText="Output name" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock x:Name="DecisionStatusText" Text="{Binding DecisionStatusText}" />
 
-      <TextBlock Classes="heading" Text="Running / pending executions — cancel (§7):" />
+      <!-- The DAG, primary: click a node to open that step's drill-in. -->
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="360">
+        <Canvas x:Name="DagCanvas" />
+      </ScrollViewer>
+
+      <ItemsControl x:Name="StepChipsList" ItemsSource="{Binding TaskSteps}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:StepItemViewModel">
+            <Button Classes="card" Classes.selected="{Binding IsSelected}" Margin="0,0,8,8"
+                    Command="{Binding SelectCommand}">
+              <StackPanel Spacing="2">
+                <TextBlock Text="{Binding StepId}" FontWeight="SemiBold" />
+                <TextBlock Classes="caption" Text="{Binding PlainStatusText}" />
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- The per-step drill-in: everything that used to sprawl as stacked sections, sliced to
+           the selected step. -->
+      <Border Classes="card" IsVisible="{Binding HasSelectedStep}">
+        <StackPanel Spacing="8" DataContext="{Binding SelectedStep}" x:DataType="vm:StepItemViewModel">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Classes="heading" Text="{Binding StepId}" />
+            <TextBlock Classes="secondary" Text="{Binding PlainStatusText}" VerticalAlignment="Center" />
+            <TextBlock Classes="caption" Text="{Binding Worker, StringFormat='runner: {0}'}" VerticalAlignment="Center" />
+          </StackPanel>
+          <TabControl>
+            <TabItem Header="Attempts">
+              <ItemsControl x:Name="AttemptsList" ItemsSource="{Binding AttemptLines}" Margin="0,8,0,0" />
+            </TabItem>
+            <TabItem Header="Outputs">
+              <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Classes="secondary" Text="Nothing produced yet." IsVisible="{Binding !HasOutputFiles}" />
+                <ItemsControl ItemsSource="{Binding OutputFiles}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ArtifactFileViewModel">
+                      <Button Content="{Binding Label}" Command="{Binding PreviewCommand}" Margin="0,0,4,4" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBox x:Name="ArtifactPreviewBox" IsReadOnly="True" AcceptsReturn="True"
+                         TextWrapping="Wrap" Height="140" Classes="mono" />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="Conversation">
+              <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Classes="secondary" Text="No conversation recorded for this step." IsVisible="{Binding !HasConversations}" />
+                <ItemsControl ItemsSource="{Binding Conversations}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ConversationRefViewModel">
+                      <Button Content="{Binding Label}" Command="{Binding ShowCommand}" Margin="0,0,4,4" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel x:Name="ConversationPanel" Spacing="6" />
+              </StackPanel>
+            </TabItem>
+            <TabItem Header="Decisions">
+              <StackPanel Spacing="8" Margin="0,8,0,0">
+                <TextBlock Classes="secondary" Text="No decisions recorded for this step." IsVisible="{Binding !HasDecisions}" />
+                <ItemsControl x:Name="StepDecisionsList" ItemsSource="{Binding DecisionLines}" />
+              </StackPanel>
+            </TabItem>
+          </TabControl>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="heading" Text="Working right now — stop a single attempt (§7):" />
       <ItemsControl x:Name="RunningExecutionsList" ItemsSource="{Binding RunningExecutions}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:RunningExecutionViewModel">
@@ -36,72 +161,36 @@
       </ItemsControl>
       <TextBlock x:Name="CancelStatusText" Text="{Binding CancelStatusText}" />
 
-      <TextBlock Classes="heading" Text="Paused steps — decide (§7's Approve/Reject/Retry/Send back):" />
-      <ItemsControl x:Name="PausedStepsList" ItemsSource="{Binding PausedSteps}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:PausedStepViewModel">
-            <StackPanel Spacing="4" Margin="0,0,0,8">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
-                <Button Content="Approve" Command="{Binding ApproveCommand}" />
-                <Button Content="Reject" Command="{Binding RejectCommand}" />
-                <Button Content="Retry" Command="{Binding RetryCommand}" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBox Text="{Binding RevisionFilePath}" Width="240"
-                         PlaceholderText="Revision file (optional for Retry, required to send back)" />
-                <TextBox Text="{Binding SupplementaryWorker}" Width="110" PlaceholderText="Worker role" />
-                <TextBox Text="{Binding SupplementaryOutputName}" Width="110" PlaceholderText="Output name" />
-              </StackPanel>
-              <ItemsControl ItemsSource="{Binding SendBackTargets}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="8" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:SendBackTargetViewModel">
-                    <Button Content="{Binding Label}" Command="{Binding SendBackCommand}" />
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-      <TextBlock x:Name="DecisionStatusText" Text="{Binding DecisionStatusText}" />
+      <!-- §12 traceability: the full, precise engine-level record — every fact the drill-in
+           re-slices, in spec vocabulary, one disclosure away. -->
+      <Expander Header="Details — the full record" IsExpanded="False">
+        <StackPanel Spacing="12" Margin="0,8,0,0">
+          <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
+          <StackPanel x:Name="StepsPanel" Spacing="4" />
 
-      <TextBlock Classes="heading" Text="Workflow graph:" />
-      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="360">
-        <Canvas x:Name="DagCanvas" />
-      </ScrollViewer>
+          <TextBlock Classes="heading" Text="Execution history:" />
+          <StackPanel x:Name="HistoryPanel" Spacing="2" />
 
-      <TextBlock Classes="heading" Text="Execution history:" />
-      <StackPanel x:Name="HistoryPanel" Spacing="2" />
+          <TextBlock Classes="heading" Text="Conversation (executions with a durable transcript — UI spec §10.1):" />
+          <StackPanel x:Name="ConversationExecutionsPanel" Spacing="4" />
 
-      <TextBlock Classes="heading" Text="Conversation (executions with a durable transcript — UI spec §10.1):" />
-      <StackPanel x:Name="ConversationExecutionsPanel" Spacing="4" />
-      <StackPanel x:Name="ConversationPanel" Spacing="6" />
+          <TextBlock Classes="heading" Text="Recorded decisions:" />
+          <StackPanel x:Name="DecisionsPanel" Spacing="2" />
 
-      <TextBlock Classes="heading" Text="Recorded decisions:" />
-      <StackPanel x:Name="DecisionsPanel" Spacing="2" />
+          <TextBlock Classes="heading" Text="Supplementary / human executions:" />
+          <StackPanel x:Name="SupplementaryPanel" Spacing="2" />
 
-      <TextBlock Classes="heading" Text="Supplementary / human executions:" />
-      <StackPanel x:Name="SupplementaryPanel" Spacing="2" />
+          <TextBlock Classes="heading" Text="Artifact lineage:" />
+          <StackPanel x:Name="LineagePanel" Spacing="6" />
 
-      <TextBlock Classes="heading" Text="Artifact lineage:" />
-      <StackPanel x:Name="LineagePanel" Spacing="6" />
-
-      <TextBlock Classes="heading" Text="Artifact preview:" />
-      <TextBox x:Name="ArtifactPreviewBox" IsReadOnly="True" AcceptsReturn="True"
-               TextWrapping="Wrap" Height="140" Classes="mono" />
-
-      <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="Template path to compare against (optional)" />
-        <Button x:Name="CompareButton" Content="Compare to template" />
-      </StackPanel>
-      <TextBlock Classes="heading" Text="Snapshot vs. template diff:" />
-      <StackPanel x:Name="DiffPanel" Spacing="2" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="Template path to compare against (optional)" />
+            <Button x:Name="CompareButton" Content="Compare to template" />
+          </StackPanel>
+          <TextBlock Classes="heading" Text="Snapshot vs. template diff:" />
+          <StackPanel x:Name="DiffPanel" Spacing="2" />
+        </StackPanel>
+      </Expander>
     </StackPanel>
   </ScrollViewer>
 </UserControl>
