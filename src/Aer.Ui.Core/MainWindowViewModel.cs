@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// <see cref="MainWindow"/>'s ViewModel layer (M15 Phase 2, issue #138) — introduced for exactly the
@@ -14,6 +14,24 @@ namespace Aer.Ui;
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     public ObservableCollection<PausedStepViewModel> PausedSteps { get; } = [];
+
+    /// <summary>Home's cards + decision inbox (M19 Phase 2, #187) — see <see cref="HomeViewModel"/>.</summary>
+    public HomeViewModel Home { get; } = new();
+
+    /// <summary>
+    /// Which shell section is active (M19 Phase 2, #187) — pure presentation state (like a text
+    /// box's contents, UI spec §4), never a projected fact. Opening a task navigates to
+    /// <see cref="ShellSection.Task"/>; everything else is the user's own navigation.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsHomeVisible))]
+    [NotifyPropertyChangedFor(nameof(IsTaskVisible))]
+    [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
+    private ShellSection currentSection = ShellSection.Home;
+
+    public bool IsHomeVisible => CurrentSection == ShellSection.Home;
+    public bool IsTaskVisible => CurrentSection == ShellSection.Task;
+    public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
 
     /// <summary>
     /// The template editor's state (M16 Phase 1, issue #150) — the authoring surface, deliberately
@@ -51,13 +69,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool isMutationInFlight;
 
-    /// <summary>In-window message surface for a decision's outcome or failure — the same precedent <c>RunStatusText</c> established (Phase 1).</summary>
+    /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
+    [ObservableProperty]
+    private string runStatusText = string.Empty;
+
+    /// <summary>In-window message surface for a decision's outcome or failure — the same precedent <see cref="RunStatusText"/> established (Phase 1).</summary>
     [ObservableProperty]
     private string decisionStatusText = string.Empty;
 
     /// <summary>In-window message surface for a targeted Cancel's outcome or failure (Phase 4) — the same precedent as <see cref="DecisionStatusText"/>.</summary>
     [ObservableProperty]
     private string cancelStatusText = string.Empty;
+
+    partial void OnCurrentSectionChanged(ShellSection value) => SectionChanged?.Invoke(value);
+
+    /// <summary>Raised on navigation so the shell can refresh the newly-activated section (Home rebuilds its cards/inbox on activation — its decision of record).</summary>
+    public event Action<ShellSection>? SectionChanged;
 
     partial void OnIsMutationInFlightChanged(bool value)
     {

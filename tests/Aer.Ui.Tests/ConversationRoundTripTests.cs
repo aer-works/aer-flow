@@ -47,7 +47,7 @@ public class ConversationRoundTripTests
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
             // Discovery: the run's single execution offers exactly one conversation row.
-            var entriesPanel = window.FindControl<StackPanel>("ConversationExecutionsPanel")!;
+            var entriesPanel = window.FindViewControl<StackPanel>("ConversationExecutionsPanel")!;
             var row = Assert.Single(entriesPanel.Children.OfType<StackPanel>());
             var label = row.Children.OfType<TextBlock>().Single().Text!;
             Assert.StartsWith("debate —", label);
@@ -58,7 +58,7 @@ public class ConversationRoundTripTests
 
             // The rendered conversation matches what the real worker's stub exchange produced:
             // two turns, in order, with §10.1's role/vendor labeling and the seed prompt on demand.
-            var conversationPanel = window.FindControl<StackPanel>("ConversationPanel")!;
+            var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
             var turnPanels = conversationPanel.Children.OfType<Border>()
                 .Select(border => (StackPanel)border.Child!)
                 .ToList();
@@ -110,7 +110,7 @@ public class ConversationRoundTripTests
 
             // The failed execution still gets a conversation row — the transcript on disk is the
             // forensic record M17 Phase 3 deliberately leaves (§10.1: partial is honest data).
-            var entriesPanel = window.FindControl<StackPanel>("ConversationExecutionsPanel")!;
+            var entriesPanel = window.FindViewControl<StackPanel>("ConversationExecutionsPanel")!;
             var row = Assert.Single(entriesPanel.Children.OfType<StackPanel>());
             var label = row.Children.OfType<TextBlock>().Single().Text!;
 
@@ -120,7 +120,7 @@ public class ConversationRoundTripTests
 
             // Exactly the prefix that completed before the failing turn: turn 1, intact, no
             // malformed marker — the failing turn was never appended (M17 Phase 3's decision).
-            var conversationPanel = window.FindControl<StackPanel>("ConversationPanel")!;
+            var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
             var turnPanel = (StackPanel)Assert.Single(conversationPanel.Children.OfType<Border>()).Child!;
             Assert.Equal("1 · initiator (claude)", turnPanel.Children.OfType<TextBlock>().First().Text);
             Assert.DoesNotContain(conversationPanel.Children.OfType<TextBlock>(),

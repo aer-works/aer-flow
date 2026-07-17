@@ -1,6 +1,6 @@
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// A step's position in a layered DAG drawing (UI spec §10), computed by <see cref="DagLayoutEngine"/>

@@ -1,9 +1,10 @@
 using System.Collections.ObjectModel;
+using Aer.Flow;
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
 using CommunityToolkit.Mvvm.ComponentModel;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// The template editor's state (M16 Phase 1, issue #150; extended for Phase 2, issue #151) — the
@@ -135,6 +136,102 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
         TemplateVersionText = definition.WorkflowTemplateVersion.ToString();
         IsOpen = true;
         RebuildStepsFromBaseline();
+    }
+
+    /// <summary>Starts a fresh session with its user-facing status line — the New-template action's whole behavior, moved here from <c>MainWindow</c> when the file half of authoring moved into this type (M19 Phase 2, #187).</summary>
+    public void StartNewFile()
+    {
+        StartNew();
+        StatusText = "New template — set its id, then Save.";
+    }
+
+    /// <summary>
+    /// Opens <paramref name="templateFilePath"/> into the editor (M16 Phase 1, issue #150) via the
+    /// engine's own <see cref="TemplateProjectionLoader"/>/<c>WorkflowDefinitionParser</c> — never a
+    /// second parser. Moved here from <c>MainWindow</c> code-behind (M19 Phase 2, #187): file I/O
+    /// belongs below the presentation seam, and the failure behavior is the editor's own — a failed
+    /// open must not leave a previous session's fields sitting in the editor as if they were this
+    /// file's.
+    /// </summary>
+    public async Task OpenFromFileAsync(string templateFilePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var definition = await TemplateProjectionLoader.LoadAsync(templateFilePath, cancellationToken).ConfigureAwait(true);
+            LoadFrom(definition);
+            StatusText = string.Empty;
+        }
+        catch (AerFlowException ex)
+        {
+            Close();
+            StatusText = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Saves the editor's current state to <paramref name="templateFilePath"/> through
+    /// <c>WorkflowDefinitionWriter</c>, so the saved file round-trips through the exact
+    /// parser/validator every other consumer uses (M16 Phase 1, issue #150). Implements Flow spec
+    /// §11.1's version-increment rule: a content-changing save increments
+    /// <c>WorkflowTemplateVersion</c> unless the user explicitly set a different version (respected
+    /// as-is, exactly like a hand-editor); a no-op save writes nothing and increments nothing; a
+    /// brand-new template's first save has no predecessor, so it saves the version as entered.
+    /// Deliberately not gated on any mutation-in-flight flag: a template file is not durable task
+    /// state, no §15 task lock is involved (UI spec §5).
+    /// </summary>
+    public async Task SaveToFileAsync(string templateFilePath, CancellationToken cancellationToken = default)
+    {
+        if (Baseline is not { } baseline)
+        {
+            StatusText = "Nothing to save — create a new template or open one in the editor first.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(templateFilePath))
+        {
+            StatusText = "Enter a template file path to save to.";
+            return;
+        }
+
+        // Phase 2's save-validity decision of record: Save stays blocked until the in-progress state
+        // both parses and passes WorkflowDefinitionValidator — "the writer validates before writing"
+        // is not loosened (this type's own remarks explain why).
+        var (candidate, errors) = BuildCandidate();
+        if (candidate is null || errors.Count > 0)
+        {
+            StatusText = string.Join(" ", errors);
+            return;
+        }
+
+        if (BaselineIsPersisted && DefinitionsAreEqual(candidate, baseline))
+        {
+            // §11.1: never increment on a no-op save — and there is nothing to write either; the
+            // file already contains exactly this state.
+            StatusText = "No changes to save.";
+            return;
+        }
+
+        if (BaselineIsPersisted && candidate.WorkflowTemplateVersion == baseline.WorkflowTemplateVersion)
+        {
+            candidate = candidate with { WorkflowTemplateVersion = baseline.WorkflowTemplateVersion + 1 };
+        }
+
+        try
+        {
+            await WorkflowDefinitionWriter.SaveToFileAsync(candidate, templateFilePath, cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is AerFlowException or IOException or UnauthorizedAccessException)
+        {
+            // A structurally invalid definition (WorkflowDefinitionValidationException) or an
+            // unwritable path renders as the editor's status message; nothing was written.
+            StatusText = ex.Message;
+            return;
+        }
+
+        // Re-anchor dirty tracking to what the file now actually contains — including the
+        // incremented version, which must show in the box rather than silently diverge from disk.
+        LoadFrom(candidate);
+        StatusText = $"Saved '{templateFilePath}' (version {candidate.WorkflowTemplateVersion}).";
     }
 
     /// <summary>Ends the editing session (a failed Open-in-editor must not leave a stale one behind).</summary>

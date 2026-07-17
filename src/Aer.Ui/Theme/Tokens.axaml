@@ -1,0 +1,89 @@
+<!-- M19 Phase 2 (#187): docs/ux/design-language.md's token system, materialized. These are the
+     product's identity carried as named resources (the one-product-not-a-collage directive):
+     every surface consumes tokens by name — a raw hex value, ad-hoc font size, or magic pixel
+     number in a view is a defect from this phase onward. Semantic color only: light and dark are
+     two mappings of one system (ThemeDictionaries), never two themes. -->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <ResourceDictionary.ThemeDictionaries>
+
+    <!-- Light -->
+    <ResourceDictionary x:Key="Default">
+      <SolidColorBrush x:Key="Color.Background">#F7F8F9</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Surface">#FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.SurfaceRaised">#FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Border">#D7DBDF</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.BorderSubtle">#E8EAEC</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Text">#1A1D21</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.TextSecondary">#5B6572</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.TextDisabled">#9AA3AD</SolidColorBrush>
+
+      <SolidColorBrush x:Key="Color.Accent">#0F7B7B</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentHover">#0C6666</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentPressed">#0A5252</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBg">#E3F1F1</SolidColorBrush>
+
+      <SolidColorBrush x:Key="Status.Running">#2563EB</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYou">#B45309</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYouBg">#FEF3C7</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Succeeded">#15803D</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Failed">#B91C1C</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Idle">#6B7280</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Stale">#7C3AED</SolidColorBrush>
+    </ResourceDictionary>
+
+    <!-- Dark: same system, second mapping. Depth leans on surface steps, not shadows. -->
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="Color.Background">#15171B</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Surface">#1D2025</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.SurfaceRaised">#25292F</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Border">#343A42</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.BorderSubtle">#2A2F36</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Text">#E8EAED</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.TextSecondary">#9BA3AE</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.TextDisabled">#5D656F</SolidColorBrush>
+
+      <SolidColorBrush x:Key="Color.Accent">#2CB5B5</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentHover">#45C4C4</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentPressed">#1E9E9E</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBg">#123B3B</SolidColorBrush>
+
+      <SolidColorBrush x:Key="Status.Running">#60A5FA</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYou">#FBBF24</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYouBg">#3B2F12</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Succeeded">#4ADE80</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Failed">#F87171</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Idle">#9CA3AF</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Stale">#A78BFA</SolidColorBrush>
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- Type scale (Inter is the app default family via WithInterFont; mono for artifact/transcript content) -->
+  <x:Double x:Key="Type.Display.FontSize">24</x:Double>
+  <x:Double x:Key="Type.Heading.FontSize">17</x:Double>
+  <x:Double x:Key="Type.Body.FontSize">14</x:Double>
+  <x:Double x:Key="Type.Caption.FontSize">12</x:Double>
+  <x:Double x:Key="Type.Mono.FontSize">13</x:Double>
+  <FontFamily x:Key="Type.Mono.FontFamily">Cascadia Mono,Consolas,Menlo,monospace</FontFamily>
+
+  <!-- 4px spacing grid -->
+  <x:Double x:Key="Space.1">4</x:Double>
+  <x:Double x:Key="Space.2">8</x:Double>
+  <x:Double x:Key="Space.3">12</x:Double>
+  <x:Double x:Key="Space.4">16</x:Double>
+  <x:Double x:Key="Space.5">20</x:Double>
+  <x:Double x:Key="Space.6">24</x:Double>
+  <x:Double x:Key="Space.8">32</x:Double>
+
+  <!-- Shape: two radii, no rounded-rectangle zoo -->
+  <CornerRadius x:Key="Radius.Small">4</CornerRadius>
+  <CornerRadius x:Key="Radius.Medium">8</CornerRadius>
+
+  <!-- Motion durations (milliseconds) — consumed by Phase 5's animations; named now so nothing invents its own -->
+  <x:Double x:Key="Motion.Fast">120</x:Double>
+  <x:Double x:Key="Motion.Base">200</x:Double>
+  <x:Double x:Key="Motion.Slow">320</x:Double>
+
+</ResourceDictionary>

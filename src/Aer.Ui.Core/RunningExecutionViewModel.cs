@@ -2,7 +2,7 @@ using Aer.Flow.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Invokes a targeted Cancel for <paramref name="executionId"/> (M15 Phase 4, issue #140). The

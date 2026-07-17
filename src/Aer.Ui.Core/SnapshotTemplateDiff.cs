@@ -1,6 +1,6 @@
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Whether — and how — a task's bound <see cref="WorkflowDefinitionSnapshot"/> has diverged from

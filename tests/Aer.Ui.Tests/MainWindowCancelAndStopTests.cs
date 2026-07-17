@@ -61,8 +61,8 @@ public class MainWindowCancelAndStopTests
 
             await AwaitWithTimeoutAsync(runTask, TestTimeout);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Equal(["worker: Cancelled"], stepsPanel.Children.OfType<TextBlock>().Select(b => b.Text).ToList());
 
@@ -125,7 +125,7 @@ public class MainWindowCancelAndStopTests
             // re-opening a task this window never itself ran) — the same "ask, don't infer" bindings
             // box CancelExecutionAsync reads from (Phase 1's decision of record) needs a value before
             // it can wrap a fresh CancelCommand call.
-            window.FindControl<TextBox>("BindingsFilePathBox")!.Text = bindingsFilePath;
+            window.FindViewControl<TextBox>("BindingsFilePathBox")!.Text = bindingsFilePath;
 
             var running = Assert.Single(window.ViewModel.RunningExecutions);
             Assert.Equal(new StepId("orphan"), running.StepId);
@@ -141,8 +141,8 @@ public class MainWindowCancelAndStopTests
             Assert.Contains(events, e => e is FlowEvent.CancellationRequested cr && cr.ExecutionId == executionId);
             Assert.Contains(events, e => e is FlowEvent.ExecutionCancelled ec && ec.ExecutionId == executionId);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Equal(["orphan: Cancelled"], stepsPanel.Children.OfType<TextBlock>().Select(b => b.Text).ToList());
         }
@@ -172,7 +172,7 @@ public class MainWindowCancelAndStopTests
 
             await AwaitWithTimeoutAsync(runTask, TestTimeout);
 
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(
                 ["one: Cancelled", "two: Cancelled"],
                 stepsPanel.Children.OfType<TextBlock>().Select(b => b.Text).OrderBy(t => t).ToList());

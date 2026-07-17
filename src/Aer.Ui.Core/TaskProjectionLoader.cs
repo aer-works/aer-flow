@@ -2,7 +2,7 @@ using Aer.Flow.Projection;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// The seam this phase exists to prove (issue #118): opens a real task directory using exactly

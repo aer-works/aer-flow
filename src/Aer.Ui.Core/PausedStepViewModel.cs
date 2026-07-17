@@ -2,7 +2,7 @@ using Aer.Flow.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Invokes a decision for <paramref name="stepId"/>'s <paramref name="executionId"/> (M15 Phase 2,

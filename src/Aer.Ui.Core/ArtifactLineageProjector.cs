@@ -1,7 +1,7 @@
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Reconstructs <see cref="ArtifactLineage"/> from event history plus the artifacts directory

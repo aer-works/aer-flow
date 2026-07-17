@@ -1,6 +1,6 @@
 using Aer.Flow;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Raised when a directory the UI is pointed at is not a valid task directory. UI spec §3.1: a

@@ -1,0 +1,71 @@
+<!-- M19 Phase 2 (#187): the base styles every surface inherits — the "nothing ships
+     default-themed" floor over FluentTheme, consuming Tokens.axaml by name. Text roles are style
+     classes (display/heading/caption/secondary/mono), the idiomatic Avalonia counterpart of
+     design-language.md's type tokens; the full custom control theme is Phase 5's pass. -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Color.Background}" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.Text}" />
+    <Setter Property="FontSize" Value="{DynamicResource Type.Body.FontSize}" />
+  </Style>
+
+  <Style Selector="TextBlock.display">
+    <Setter Property="FontSize" Value="{DynamicResource Type.Display.FontSize}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.heading">
+    <Setter Property="FontSize" Value="{DynamicResource Type.Heading.FontSize}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="{DynamicResource Type.Caption.FontSize}" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Type.Mono.FontFamily}" />
+    <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
+  </Style>
+
+  <Style Selector="TextBox.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource Type.Mono.FontFamily}" />
+    <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
+  </Style>
+
+  <!-- A card: the surface unit Home's task cards and inbox items are built from -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.BorderSubtle}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+
+  <!-- The attention card: Status.NeedsYou is the loudest thing in the system (ux-principles §4) -->
+  <Style Selector="Border.card.needs-you">
+    <Setter Property="BorderBrush" Value="{DynamicResource Status.NeedsYou}" />
+    <Setter Property="Background" Value="{DynamicResource Status.NeedsYouBg}" />
+  </Style>
+
+  <!-- A clickable card (Home's task cards) -->
+  <Style Selector="Button.card">
+    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.BorderSubtle}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
+    <Setter Property="Padding" Value="12" />
+  </Style>
+  <Style Selector="Button.card:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+  </Style>
+
+</Styles>

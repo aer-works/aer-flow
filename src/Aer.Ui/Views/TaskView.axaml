@@ -1,0 +1,107 @@
+<!-- M19 Phase 2 (#187): the Task view — every per-task surface M14–M18 built, re-homed from the
+     single stacked window, behavior-preserving (control names and rendering semantics unchanged;
+     Phase 3 redesigns the internals around the DAG as primary). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
+             x:Class="Aer.Ui.Views.TaskView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="12">
+      <TextBlock Classes="display" Text="Task" />
+
+      <TextBlock Classes="heading" Text="Run (start a fresh task, or resume the open task after a pause or stop):" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow template file (fresh start only)" />
+        <TextBox x:Name="BindingsFilePathBox" Width="300" PlaceholderText="Worker-bindings file" />
+        <Button x:Name="RunButton" Content="Run" IsEnabled="{Binding !IsMutationInFlight}" />
+        <Button x:Name="StopButton" Content="Stop" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop)." />
+      </StackPanel>
+      <TextBlock x:Name="RunStatusText" Text="{Binding RunStatusText}" />
+
+      <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
+      <StackPanel x:Name="StepsPanel" Spacing="4" />
+
+      <TextBlock Classes="heading" Text="Running / pending executions — cancel (§7):" />
+      <ItemsControl x:Name="RunningExecutionsList" ItemsSource="{Binding RunningExecutions}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:RunningExecutionViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
+              <Button Content="Cancel" Command="{Binding CancelCommand}" />
+              <TextBlock Text="cancellation requested…" IsVisible="{Binding CancellationRequested}" VerticalAlignment="Center" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock x:Name="CancelStatusText" Text="{Binding CancelStatusText}" />
+
+      <TextBlock Classes="heading" Text="Paused steps — decide (§7's Approve/Reject/Retry/Send back):" />
+      <ItemsControl x:Name="PausedStepsList" ItemsSource="{Binding PausedSteps}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:PausedStepViewModel">
+            <StackPanel Spacing="4" Margin="0,0,0,8">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
+                <Button Content="Approve" Command="{Binding ApproveCommand}" />
+                <Button Content="Reject" Command="{Binding RejectCommand}" />
+                <Button Content="Retry" Command="{Binding RetryCommand}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBox Text="{Binding RevisionFilePath}" Width="240"
+                         PlaceholderText="Revision file (optional for Retry, required to send back)" />
+                <TextBox Text="{Binding SupplementaryWorker}" Width="110" PlaceholderText="Worker role" />
+                <TextBox Text="{Binding SupplementaryOutputName}" Width="110" PlaceholderText="Output name" />
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding SendBackTargets}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SendBackTargetViewModel">
+                    <Button Content="{Binding Label}" Command="{Binding SendBackCommand}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock x:Name="DecisionStatusText" Text="{Binding DecisionStatusText}" />
+
+      <TextBlock Classes="heading" Text="Workflow graph:" />
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="360">
+        <Canvas x:Name="DagCanvas" />
+      </ScrollViewer>
+
+      <TextBlock Classes="heading" Text="Execution history:" />
+      <StackPanel x:Name="HistoryPanel" Spacing="2" />
+
+      <TextBlock Classes="heading" Text="Conversation (executions with a durable transcript — UI spec §10.1):" />
+      <StackPanel x:Name="ConversationExecutionsPanel" Spacing="4" />
+      <StackPanel x:Name="ConversationPanel" Spacing="6" />
+
+      <TextBlock Classes="heading" Text="Recorded decisions:" />
+      <StackPanel x:Name="DecisionsPanel" Spacing="2" />
+
+      <TextBlock Classes="heading" Text="Supplementary / human executions:" />
+      <StackPanel x:Name="SupplementaryPanel" Spacing="2" />
+
+      <TextBlock Classes="heading" Text="Artifact lineage:" />
+      <StackPanel x:Name="LineagePanel" Spacing="6" />
+
+      <TextBlock Classes="heading" Text="Artifact preview:" />
+      <TextBox x:Name="ArtifactPreviewBox" IsReadOnly="True" AcceptsReturn="True"
+               TextWrapping="Wrap" Height="140" Classes="mono" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="Template path to compare against (optional)" />
+        <Button x:Name="CompareButton" Content="Compare to template" />
+      </StackPanel>
+      <TextBlock Classes="heading" Text="Snapshot vs. template diff:" />
+      <StackPanel x:Name="DiffPanel" Spacing="2" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

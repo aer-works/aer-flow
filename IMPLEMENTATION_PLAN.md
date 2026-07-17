@@ -160,6 +160,18 @@ remote host (candidate M20) references `Aer.Ui.Core` and never `Aer.Ui`. This ph
 materializes Phase 1's design tokens as the shared theme resource every new surface consumes —
 nothing ships default-themed even mid-milestone. Same process, same behavior throughout.
 
+**Constraint (the re-home completes the MVVM migration; owner directive 2026-07-17):** M15
+Phase 2 deliberately scoped MVVM to the decision surface and editors, leaving read-only
+rendering as imperative code-behind and deferring the migration until a real need arrived —
+this re-home is that need, and "each surface migrates once" forbids re-homing a surface
+code-behind only to MVVM-ify it later. Each view gets a ViewModel in `Aer.Ui.Core`
+(CommunityToolkit.Mvvm, the established stack); imperative `Children.Add` rendering becomes
+observable item ViewModels rendered by XAML DataTemplates with compiled bindings; code-behind
+shrinks to view wiring and the genuinely visual (the DAG canvas, until Phase 3/5 make it a
+custom control). The seam gains from it directly: a remote client reuses the ViewModels, not
+just the loaders. Deliberately *not* adopted: a DI container — constructor-injected seams
+without a container remain the right size for this app.
+
 **Produces:** the shell; `Aer.Ui.Core`; every M14–M18 surface reachable in its new home,
 rendered through the seam with Phase 1's tokens.
 **Excludes:** surface redesigns (Phase 3), authoring changes (Phase 4), polish beyond the base
@@ -227,7 +239,7 @@ human action item (CLAUDE.md's live-vendor rule).
 **M19: Product UX** — phase plan above. Progress:
 
 - ✅ Phase 1 — UX baseline, principles, and information architecture (#186)
-- ⬜ Phase 2 — Navigation shell: Home, Task, and Author views (#187)
+- ✅ Phase 2 — Navigation shell: Home, Task, and Author views (#187)
 - ⬜ Phase 3 — Task view, human-first (#188)
 - ⬜ Phase 4 — Guided authoring: no hand-edited config files (#189)
 - ⬜ Phase 5 — Visual design pass (#190)
@@ -270,6 +282,24 @@ Per this document's session prompt: help implement the current phase only.
   rules (semantic color only, 4px grid, two radii, three motion durations, status always
   color+icon+word); exact values are fixed when Phase 2 materializes the theme resource. A
   surface using a raw hex/size/pixel literal after Phase 2 is a defect.
+
+**Decisions of record (Phase 2):**
+
+- **The MVVM-completion constraint executed as written** — every re-homed surface's logic lives
+  in an `Aer.Ui.Core` ViewModel (CommunityToolkit.Mvvm source generators, compiled bindings);
+  `MainWindow` code-behind shrank to shell wiring plus a **transitional facade** of delegating
+  control properties, kept deliberately so the not-yet-rebuilt rendering paths and every
+  existing headless test compile unchanged — Phases 3–4 retire facade entries as they rebuild
+  each surface properly, and a facade entry surviving past its surface's rebuild is a defect.
+  No DI container, as recorded in the constraint.
+- **The inbox scans all recent task directories** (the phase's named open question) — Home
+  exists precisely for the moment no task is open yet; an inbox that only knew the open task
+  would be empty exactly when it matters most. Bounded by the store-capped recents list;
+  refreshes on Home activation plus the open task's poller tick — never its own timer.
+- **§3's stale-recents rule renders as the greyed `Unavailable` card** — a recent that no
+  longer loads stays visible ("Not available — moved, deleted, or not a task") with no inbox
+  items and no live status: reflected, never an error, never silently pruned — the user
+  recorded that history, and hiding it would misreport it.
 
 ## Completed Milestones
 

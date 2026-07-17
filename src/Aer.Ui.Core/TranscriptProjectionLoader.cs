@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Discovery and loading for the conversation view's read model (M18 Phase 1, #177; UI spec

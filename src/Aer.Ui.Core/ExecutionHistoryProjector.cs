@@ -1,6 +1,6 @@
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// Reconstructs <see cref="ExecutionHistory"/> from event history — a pure function over the exact

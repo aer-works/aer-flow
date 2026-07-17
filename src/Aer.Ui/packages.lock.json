@@ -45,12 +45,6 @@
           "Avalonia": "12.1.0"
         }
       },
-      "CommunityToolkit.Mvvm": {
-        "type": "Direct",
-        "requested": "[8.4.2, )",
-        "resolved": "8.4.2",
-        "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
-      },
       "Avalonia.Angle.Windows.Natives": {
         "type": "Transitive",
         "resolved": "2.1.27548.20260419",
@@ -136,6 +130,11 @@
           "Avalonia.Skia": "12.1.0"
         }
       },
+      "CommunityToolkit.Mvvm": {
+        "type": "Transitive",
+        "resolved": "8.4.2",
+        "contentHash": "WadCzGEc2U+3e20avRLng4qNtt4zoOGWrdUISqJWrHe3/FSnrYjuM5Sb4yQb09LhkBXrrI4Zt3dLKgRMbItsrg=="
+      },
       "HarfBuzzSharp": {
         "type": "Transitive",
         "resolved": "8.3.1.3",
@@ -207,15 +206,15 @@
       "aer": {
         "type": "Project",
         "dependencies": {
-          "Aer.Adapters": "[0.11.0, )",
-          "Aer.Flow": "[0.11.0, )"
+          "Aer.Adapters": "[0.13.0, )",
+          "Aer.Flow": "[0.13.0, )"
         }
       },
       "aer.adapters": {
         "type": "Project",
         "dependencies": {
-          "Aer.Flow": "[0.11.0, )",
-          "Aer.Workers.Dialogue": "[0.11.0, )"
+          "Aer.Flow": "[0.13.0, )",
+          "Aer.Workers.Dialogue": "[0.13.0, )"
         }
       },
       "aer.core": {
@@ -225,6 +224,15 @@
         "type": "Project",
         "dependencies": {
           "Aer.Core": "[1.0.0, )"
+        }
+      },
+      "aer.ui.core": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Adapters": "[0.13.0, )",
+          "Aer.Flow": "[0.13.0, )",
+          "CommunityToolkit.Mvvm": "[8.4.2, )",
+          "aer": "[0.13.0, )"
         }
       },
       "aer.workers.dialogue": {

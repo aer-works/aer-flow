@@ -5,6 +5,7 @@ using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Templates;
+using Aer.Ui.Core;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -23,13 +24,17 @@ public partial class MainWindow : Window
     private const string ArtifactsDirectoryName = "artifacts";
     private const int MaxArtifactPreviewLength = 8000;
 
-    private readonly LocalUiConfigurationStore _configurationStore;
-    private readonly IReadOnlyDictionary<string, IWorkerAdapter> _adapters;
+    /// <summary>
+    /// This window's presentation-agnostic half (M19 Phase 2, issue #187): projection loading, pump
+    /// hosting, and every mutation-interface call live on the session in <c>Aer.Ui.Core</c> — this
+    /// code-behind renders the session's outcomes and raises its intents, nothing more. The
+    /// constructor delegates wire the presentation half back in: the bindings box as the
+    /// ask-don't-infer path source, the 2-second poller as the mutation-progress renderer, and
+    /// <see cref="OpenAsync"/> as the settle-time re-open.
+    /// </summary>
+    private readonly TaskSession _session;
+
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private string? _currentTaskDirectoryPath;
-    private bool _lastLoadSucceeded;
-    private WorkflowStatus? _lastWorkflowStatus;
-    private WorkflowDefinitionSnapshot? _lastSnapshot;
 
     /// <summary>
     /// Which execution's conversation is currently shown (M18 Phase 2, issue #178) — local UI
@@ -40,34 +45,6 @@ public partial class MainWindow : Window
     /// </summary>
     private string? _conversationOutputDirectory;
     private string? _conversationLabel;
-
-    /// <summary>
-    /// The caller-retained delivery point (M15 Phase 4, issue #140) for whichever Run or Decide pump
-    /// this window itself currently has in flight — <see langword="null"/> whenever this process is
-    /// not hosting one. A targeted Cancel on an execution registered here is delivered in-process via
-    /// <see cref="InFlightExecutionRegistry.RequestCancellationAsync"/>, never a second mutation-surface
-    /// call, since §15's guard is already held for this call's entire duration (M10's decision of
-    /// record). Set immediately before <see cref="RunAsync"/>/<see cref="DecideAsync"/> starts its
-    /// pump and cleared in that same call's <c>finally</c>.
-    /// </summary>
-    private InFlightExecutionRegistry? _currentInFlightExecutions;
-
-    /// <summary>
-    /// The host-stop token source for whichever pump this window currently has in flight (issue #140)
-    /// — cancelling it is the Ctrl+C equivalent <c>Aer.Cli</c>'s <c>Program.cs</c> wires to
-    /// <c>Console.CancelKeyPress</c>, reused here for <see cref="StopAsync"/> and
-    /// <see cref="OnClosing"/>. Linked to whatever <see cref="CancellationToken"/> the caller passed
-    /// into <see cref="RunAsync"/>/<see cref="DecideAsync"/> (tests use this for their own cleanup),
-    /// so either source firing reaches the pump.
-    /// </summary>
-    private CancellationTokenSource? _currentHostStopSource;
-
-    /// <summary>
-    /// The background <see cref="Task.Run(Func{Task})"/> task driving whichever pump is currently in
-    /// flight — retained so <see cref="OnClosing"/> can wait for it to reach a durable fixed point
-    /// before actually closing the window, rather than abandoning it mid-write (issue #140).
-    /// </summary>
-    private Task? _currentPumpTask;
 
     /// <summary>Set once <see cref="OnClosing"/> has already stopped an in-flight pump and is closing the window for real — prevents re-entering the stop sequence from the follow-up programmatic <see cref="Window.Close()"/>.</summary>
     private bool _closeConfirmed;
@@ -82,6 +59,60 @@ public partial class MainWindow : Window
     /// this is scoped to that surface only, not the rest of the window's rendering.
     /// </summary>
     internal MainWindowViewModel ViewModel { get; } = new();
+
+    // ── The re-home facade (M19 Phase 2, #187) ─────────────────────────────────────────────────
+    // Every pre-shell control, reachable under its original name: the shell moved the controls
+    // into Home/Task/Author views (their new homes per docs/ux/information-architecture.md), and
+    // these internal properties are how this window's rendering code and the headless round trips
+    // keep addressing them — one migration per surface, no behavioral change. Phases 3–4 retire
+    // entries as they rebuild each surface properly.
+    internal TextBox TaskDirectoryPathBox => HomeViewControl.TaskDirectoryPathBox;
+    internal Button OpenButton => HomeViewControl.OpenButton;
+    internal Button RefreshButton => HomeViewControl.RefreshButton;
+
+    internal TextBox WorkflowTemplatePathBox => TaskViewControl.WorkflowTemplatePathBox;
+    internal TextBox BindingsFilePathBox => TaskViewControl.BindingsFilePathBox;
+    internal Button RunButton => TaskViewControl.RunButton;
+    internal Button StopButton => TaskViewControl.StopButton;
+    internal TextBlock RunStatusText => TaskViewControl.RunStatusText;
+    internal TextBlock StatusText => TaskViewControl.StatusText;
+    internal StackPanel StepsPanel => TaskViewControl.StepsPanel;
+    internal TextBlock CancelStatusText => TaskViewControl.CancelStatusText;
+    internal TextBlock DecisionStatusText => TaskViewControl.DecisionStatusText;
+    internal Canvas DagCanvas => TaskViewControl.DagCanvas;
+    internal StackPanel HistoryPanel => TaskViewControl.HistoryPanel;
+    internal StackPanel ConversationExecutionsPanel => TaskViewControl.ConversationExecutionsPanel;
+    internal StackPanel ConversationPanel => TaskViewControl.ConversationPanel;
+    internal StackPanel DecisionsPanel => TaskViewControl.DecisionsPanel;
+    internal StackPanel SupplementaryPanel => TaskViewControl.SupplementaryPanel;
+    internal StackPanel LineagePanel => TaskViewControl.LineagePanel;
+    internal TextBox ArtifactPreviewBox => TaskViewControl.ArtifactPreviewBox;
+    internal TextBox TemplateComparePathBox => TaskViewControl.TemplateComparePathBox;
+    internal Button CompareButton => TaskViewControl.CompareButton;
+    internal StackPanel DiffPanel => TaskViewControl.DiffPanel;
+
+    internal TextBox TemplateEditorPathBox => AuthorViewControl.TemplateEditorPathBox;
+    internal Button NewTemplateButton => AuthorViewControl.NewTemplateButton;
+    internal Button EditTemplateButton => AuthorViewControl.EditTemplateButton;
+    internal Button SaveTemplateButton => AuthorViewControl.SaveTemplateButton;
+    internal Button AddStepButton => AuthorViewControl.AddStepButton;
+    internal Canvas TemplateEditorDagCanvas => AuthorViewControl.TemplateEditorDagCanvas;
+    internal TextBox BindingsEditorPathBox => AuthorViewControl.BindingsEditorPathBox;
+    internal Button NewBindingsButton => AuthorViewControl.NewBindingsButton;
+    internal Button EditBindingsButton => AuthorViewControl.EditBindingsButton;
+    internal Button SaveBindingsButton => AuthorViewControl.SaveBindingsButton;
+    internal Button AddBindingEntryButton => AuthorViewControl.AddBindingEntryButton;
+    internal Button CheckBindingsAgainstTemplateButton => AuthorViewControl.CheckBindingsAgainstTemplateButton;
+
+    /// <summary>
+    /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
+    /// now live in the views' name scopes, so the window's own scope no longer resolves them — this
+    /// searches Home, Task, then Author, preserving every test's by-name lookup unchanged.
+    /// </summary>
+    internal T? FindViewControl<T>(string name) where T : Control
+        => HomeViewControl.FindControl<T>(name)
+           ?? TaskViewControl.FindControl<T>(name)
+           ?? AuthorViewControl.FindControl<T>(name);
 
     public MainWindow()
         : this(LocalUiConfigurationStore.CreateDefault(), WorkerAdapterRegistry.Default)
@@ -113,8 +144,14 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = ViewModel;
-        _configurationStore = configurationStore;
-        _adapters = adapters;
+        _session = new TaskSession(
+            configurationStore,
+            adapters,
+            ViewModel,
+            bindingsFilePathProvider: () => BindingsFilePathBox.Text,
+            mutationStarted: _liveRefreshTimer.Start,
+            mutationFailed: _liveRefreshTimer.Stop,
+            reopenTaskAsync: (taskDirectoryPath, cancellationToken) => OpenAsync(taskDirectoryPath, cancellationToken));
 
         // M16 Phase 4 (issue #153): adapter names are offered from the registry this window was
         // constructed with — reflect, don't invent — carried per-row on WorkerBindingEntryViewModel
@@ -149,21 +186,33 @@ public partial class MainWindow : Window
             RefreshBindingsTemplateCrossCheck();
         };
         CheckBindingsAgainstTemplateButton.Click += (_, _) => RefreshBindingsTemplateCrossCheck();
+        NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
+        NavTaskButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
+        NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
+        // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
+        // record) — fire-and-forget like every other event-handler entry point here.
+        ViewModel.SectionChanged += section =>
+        {
+            if (section == ShellSection.Home)
+            {
+                _ = RefreshHomeAsync(CancellationToken.None);
+            }
+        };
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;
     }
 
     /// <summary>
-    /// Populates <see cref="RecentsPanel"/> from Local UI Configuration (UI spec §3.1), plus (M15
+    /// Populates Home's cards + inbox from Local UI Configuration (UI spec §3.1), plus (M15
     /// Phase 1) pre-fills the Run action's bindings/template inputs from whatever was last
     /// remembered — call once at startup.
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await RefreshRecentsPanelAsync(cancellationToken);
+        await RefreshHomeAsync(cancellationToken);
 
-        BindingsFilePathBox.Text = await _configurationStore.LoadLastBindingsFilePathAsync(cancellationToken);
-        WorkflowTemplatePathBox.Text = await _configurationStore.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
+        BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
+        WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
     }
 
     /// <summary>
@@ -171,7 +220,7 @@ public partial class MainWindow : Window
     /// <see cref="LoadAsync"/>, then — only on success — records it as the most recently opened
     /// directory and starts/stops live re-projection (M14 Phase 2, issue #119) depending on whether
     /// the projected workflow has reached a terminal state. This is what <see cref="OpenButton"/>
-    /// and a click on a <see cref="RecentsPanel"/> entry both call; <see cref="App"/>'s CLI-argument
+    /// and a Home task card's Open both call; <see cref="App"/>'s CLI-argument
     /// launch path calls it too, so a directory opened that way is remembered exactly like one
     /// opened by hand.
     /// <para>
@@ -186,23 +235,26 @@ public partial class MainWindow : Window
     public async Task OpenAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
         TaskDirectoryPathBox.Text = taskDirectoryPath;
+        // Opening a task is the one navigation the shell performs itself: whatever this open
+        // renders (a projection or its honest error message) renders in the Task view.
+        ViewModel.CurrentSection = ShellSection.Task;
 
         if (File.Exists(taskDirectoryPath) && !Directory.Exists(taskDirectoryPath))
         {
-            _currentTaskDirectoryPath = null;
+            _session.SetCurrentTaskDirectory(null);
             await LoadTemplateAsync(taskDirectoryPath, cancellationToken);
             _liveRefreshTimer.Stop();
             return;
         }
 
-        _currentTaskDirectoryPath = taskDirectoryPath;
+        _session.SetCurrentTaskDirectory(taskDirectoryPath);
 
         await LoadAsync(taskDirectoryPath, cancellationToken);
 
-        if (_lastLoadSucceeded)
+        if (_session.LastLoadSucceeded)
         {
-            await _configurationStore.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
-            await RefreshRecentsPanelAsync(cancellationToken);
+            await _session.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
+            await RefreshHomeAsync(cancellationToken);
         }
 
         UpdateLiveRefreshTimer();
@@ -232,180 +284,13 @@ public partial class MainWindow : Window
         string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default)
     {
         TaskDirectoryPathBox.Text = taskDirectoryPath;
-        // Kept in sync here, not just read from at Run-button-click time, so a later decision
-        // (M15 Phase 2, issue #138) — which reads this same box rather than a remembered field, the
-        // same "ask, don't infer" discipline this box's own value already follows — has a bindings
-        // path to use even when RunAsync was invoked directly (a test, or a future non-button caller)
-        // rather than through the click handler that already reads this box.
+        // Kept in sync here, not just read from at Run-button-click time, so a later decision —
+        // whose bindings path the session asks this same box for at call time ("ask, don't infer",
+        // M14 Phase 2's decision of record) — has a value even when RunAsync was invoked directly
+        // (a test, or a future non-button caller) rather than through the click handler.
         BindingsFilePathBox.Text = bindingsFilePath;
-        _currentTaskDirectoryPath = taskDirectoryPath;
 
-        var options = new RunOptions(
-            string.IsNullOrWhiteSpace(workflowTemplateFilePath) ? null : workflowTemplateFilePath,
-            bindingsFilePath,
-            taskDirectoryPath);
-
-        // M15 Phase 2 (#138): RunButton's enabled state is now bound to ViewModel.IsMutationInFlight
-        // in MainWindow.axaml — the same flag gates the paused-step decision buttons — rather than
-        // toggled directly, so a Run and a decision can never both be in flight from this process at
-        // once (the underlying §15 lock could not support that regardless).
-        ViewModel.IsMutationInFlight = true;
-        RunStatusText.Text = "Running…";
-
-        // Started before the pump itself even begins: flow.jsonl is read with FileShare.ReadWrite
-        // and written with FileShare.Read (Aer.Flow.Store), so a concurrent poll while this call's
-        // own background dispatch is mid-write is safe by construction — this is what renders
-        // progress for however long a real dispatch takes, the same 2-second re-projection M14
-        // Phase 2 already built, not something this phase reinvents.
-        _liveRefreshTimer.Start();
-
-        // M15 Phase 4 (issue #140): a fresh registry and a host-stop source linked to the caller's
-        // own token, retained on this window for this call's whole duration so a targeted Cancel or
-        // the Stop button can reach this exact pump while it is in flight — either token firing
-        // reaches it, since MutationInterface's host-stop machinery races whatever token it is given.
-        var inFlightExecutions = new InFlightExecutionRegistry();
-        var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _currentInFlightExecutions = inFlightExecutions;
-        _currentHostStopSource = hostStopSource;
-
-        try
-        {
-            var pumpTask = Task.Run(
-                () => RunCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token), hostStopSource.Token);
-            _currentPumpTask = pumpTask;
-            await pumpTask.ConfigureAwait(true);
-
-            RunStatusText.Text = string.Empty;
-
-            if (!string.IsNullOrWhiteSpace(workflowTemplateFilePath))
-            {
-                await _configurationStore.RecordWorkflowTemplateFilePathAsync(workflowTemplateFilePath, cancellationToken);
-            }
-
-            await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken);
-        }
-        catch (AerFlowException ex)
-        {
-            // Same in-window-message precedent as LoadAsync (M14 Phase 1): a GUI has no
-            // stderr/exit-code convention to fail into, so a malformed template/bindings file or a
-            // WorkflowLockedException from a competing pump renders here rather than crashing.
-            _liveRefreshTimer.Stop();
-            RunStatusText.Text = ex.Message;
-            return;
-        }
-        finally
-        {
-            ViewModel.IsMutationInFlight = false;
-            _currentInFlightExecutions = null;
-            _currentHostStopSource = null;
-            _currentPumpTask = null;
-            hostStopSource.Dispose();
-        }
-
-        await OpenAsync(taskDirectoryPath, cancellationToken);
-    }
-
-    /// <summary>
-    /// The paused-step decision surface (issue #138; extended for Phase 3's artifact-carrying
-    /// decisions, issue #139): wraps <see cref="DecideCommand.ExecuteAsync"/> — the same static,
-    /// adapter-registry-as-argument call <c>aer decide</c> makes — exactly like <see cref="RunAsync"/>
-    /// wraps <c>RunCommand</c> (Phase 1). <paramref name="decisionType"/> is one of §7's four labels
-    /// mapped 1:1 onto <see cref="DecisionType"/> (<see cref="PausedStepViewModel"/>'s four commands)
-    /// — never a UI-invented decision type (UI spec §6).
-    /// <para>
-    /// When <paramref name="revisionFilePath"/> is non-null, this first runs the <c>aer supply</c>
-    /// half of M12 Phase 3's two-call round trip — minting, populating, and settling a supplementary
-    /// execution from <paramref name="supplementaryWorker"/>/<paramref name="supplementaryOutputName"/>
-    /// — then passes its <see cref="ExecutionId"/> to <c>aer decide</c> as <c>SupplementaryExecutionId</c>.
-    /// Both calls run under the same <see cref="MainWindowViewModel.IsMutationInFlight"/> window and
-    /// the same single poller start, since together they are one user-facing action (Retry or Send
-    /// back), not two.
-    /// </para>
-    /// Bindings are read from <see cref="BindingsFilePathBox"/>, the same box <see cref="RunAsync"/>
-    /// already asks for — never inferred or persisted per task (M14 Phase 2's decision of record).
-    /// </summary>
-    private async Task DecideAsync(
-        string taskDirectoryPath,
-        StepId stepId,
-        ExecutionId executionId,
-        DecisionType decisionType,
-        StepId? targetStepId,
-        string? revisionFilePath,
-        string? supplementaryWorker,
-        string? supplementaryOutputName,
-        CancellationToken cancellationToken = default)
-    {
-        ViewModel.DecisionStatusText = $"Deciding {stepId.Value}…";
-        ViewModel.IsMutationInFlight = true;
-
-        // Same reasoning as RunAsync (Phase 1): started before the pump itself begins, so the
-        // existing 2-second poller renders progress for however long this decision's pump (and, when
-        // a supplementary artifact rides it, the aer supply call ahead of it) takes to reach its next
-        // fixed point.
-        _liveRefreshTimer.Start();
-
-        // M15 Phase 4 (issue #140): retained the same way RunAsync retains one, for the same reason
-        // — a paused step whose Retry/Send-back decision dispatches a fresh process-bound attempt is
-        // itself something a targeted Cancel or the Stop button must be able to reach mid-pump.
-        var inFlightExecutions = new InFlightExecutionRegistry();
-        var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _currentInFlightExecutions = inFlightExecutions;
-        _currentHostStopSource = hostStopSource;
-
-        try
-        {
-            ExecutionId? supplementaryExecutionId = null;
-
-            if (revisionFilePath is not null)
-            {
-                var supplyOptions = new SupplyOptions(
-                    taskDirectoryPath,
-                    supplementaryWorker ?? string.Empty,
-                    supplementaryOutputName ?? string.Empty,
-                    revisionFilePath,
-                    BindingsFilePathBox.Text ?? string.Empty);
-
-                var supplyResult = await Task.Run(() => SupplyCommand.ExecuteAsync(supplyOptions, _adapters, hostStopSource.Token), hostStopSource.Token)
-                    .ConfigureAwait(true);
-
-                supplementaryExecutionId = supplyResult.ExecutionId;
-            }
-
-            var options = new DecideOptions(
-                taskDirectoryPath,
-                executionId.Value,
-                decisionType,
-                targetStepId,
-                supplementaryExecutionId?.Value,
-                BindingsFilePathBox.Text ?? string.Empty);
-
-            var pumpTask = Task.Run(
-                () => DecideCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token), hostStopSource.Token);
-            _currentPumpTask = pumpTask;
-            await pumpTask.ConfigureAwait(true);
-
-            ViewModel.DecisionStatusText = string.Empty;
-        }
-        catch (Exception ex) when (ex is AerFlowException or FileNotFoundException)
-        {
-            // Same in-window-message precedent as RunAsync/LoadAsync (M14 Phase 1): a
-            // WorkflowLockedException from a competing external pump, an invalid decision
-            // (ExternalDecisionValidator's §17.2 rules), or aer supply's FileNotFoundException for a
-            // mistyped revision file path, all render here rather than crashing.
-            _liveRefreshTimer.Stop();
-            ViewModel.DecisionStatusText = ex.Message;
-            return;
-        }
-        finally
-        {
-            ViewModel.IsMutationInFlight = false;
-            _currentInFlightExecutions = null;
-            _currentHostStopSource = null;
-            _currentPumpTask = null;
-            hostStopSource.Dispose();
-        }
-
-        await OpenAsync(taskDirectoryPath, cancellationToken);
+        await _session.RunAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken);
     }
 
     /// <summary>
@@ -413,11 +298,7 @@ public partial class MainWindow : Window
     /// (M16 Phase 1, issue #150) — nothing touches disk until <see cref="SaveTemplateAsync"/>.
     /// Deliberately synchronous: there is no file to read.
     /// </summary>
-    public void NewTemplate()
-    {
-        ViewModel.TemplateEditor.StartNew();
-        ViewModel.TemplateEditor.StatusText = "New template — set its id, then Save.";
-    }
+    public void NewTemplate() => ViewModel.TemplateEditor.StartNewFile();
 
     /// <summary>
     /// Opens <paramref name="templateFilePath"/> into the template editor (M16 Phase 1, issue #150)
@@ -433,20 +314,7 @@ public partial class MainWindow : Window
     public async Task OpenTemplateInEditorAsync(string templateFilePath, CancellationToken cancellationToken = default)
     {
         TemplateEditorPathBox.Text = templateFilePath;
-
-        try
-        {
-            var definition = await TemplateProjectionLoader.LoadAsync(templateFilePath, cancellationToken);
-            ViewModel.TemplateEditor.LoadFrom(definition);
-            ViewModel.TemplateEditor.StatusText = string.Empty;
-        }
-        catch (AerFlowException ex)
-        {
-            // Same in-window-message precedent as LoadAsync (M14 Phase 1) — and a failed open must
-            // not leave a previous session's fields sitting in the editor as if they were this file's.
-            ViewModel.TemplateEditor.Close();
-            ViewModel.TemplateEditor.StatusText = ex.Message;
-        }
+        await ViewModel.TemplateEditor.OpenFromFileAsync(templateFilePath, cancellationToken);
     }
 
     /// <summary>
@@ -463,73 +331,14 @@ public partial class MainWindow : Window
     /// visible only to future instantiations regardless (UI spec §5).
     /// </summary>
     public async Task SaveTemplateAsync(string templateFilePath, CancellationToken cancellationToken = default)
-    {
-        var editor = ViewModel.TemplateEditor;
-
-        if (editor.Baseline is not { } baseline)
-        {
-            editor.StatusText = "Nothing to save — create a new template or open one in the editor first.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(templateFilePath))
-        {
-            editor.StatusText = "Enter a template file path to save to.";
-            return;
-        }
-
-        // Phase 2's save-validity decision of record: Save stays blocked until the in-progress state
-        // both parses and passes WorkflowDefinitionValidator — Phase 1's "the writer validates before
-        // writing" rule is not loosened (TemplateEditorViewModel's own remarks explain why).
-        var (candidate, errors) = editor.BuildCandidate();
-        if (candidate is null || errors.Count > 0)
-        {
-            editor.StatusText = string.Join(" ", errors);
-            return;
-        }
-
-        if (editor.BaselineIsPersisted && TemplateEditorViewModel.DefinitionsAreEqual(candidate, baseline))
-        {
-            // §11.1: never increment on a no-op save — and there is nothing to write either; the
-            // file already contains exactly this state.
-            editor.StatusText = "No changes to save.";
-            return;
-        }
-
-        if (editor.BaselineIsPersisted && candidate.WorkflowTemplateVersion == baseline.WorkflowTemplateVersion)
-        {
-            candidate = candidate with { WorkflowTemplateVersion = baseline.WorkflowTemplateVersion + 1 };
-        }
-
-        try
-        {
-            await WorkflowDefinitionWriter.SaveToFileAsync(candidate, templateFilePath, cancellationToken);
-        }
-        catch (Exception ex) when (ex is AerFlowException or IOException or UnauthorizedAccessException)
-        {
-            // Same in-window-message precedent as LoadAsync (M14 Phase 1): a structurally invalid
-            // definition (WorkflowDefinitionValidationException) or an unwritable path renders here
-            // rather than crashing; nothing was written.
-            editor.StatusText = ex.Message;
-            return;
-        }
-
-        // Re-anchor dirty tracking to what the file now actually contains — including the
-        // incremented version, which must show in the box rather than silently diverge from disk.
-        editor.LoadFrom(candidate);
-        editor.StatusText = $"Saved '{templateFilePath}' (version {candidate.WorkflowTemplateVersion}).";
-    }
+        => await ViewModel.TemplateEditor.SaveToFileAsync(templateFilePath, cancellationToken);
 
     /// <summary>
     /// Starts a fresh worker-bindings editing session over an empty config (M16 Phase 4, issue #153)
     /// — nothing touches disk until <see cref="SaveBindingsAsync"/>. Deliberately synchronous: there
     /// is no file to read.
     /// </summary>
-    public void NewBindings()
-    {
-        ViewModel.BindingsEditor.StartNew();
-        ViewModel.BindingsEditor.StatusText = "New worker-bindings file — add entries, then Save.";
-    }
+    public void NewBindings() => ViewModel.BindingsEditor.StartNewFile();
 
     /// <summary>
     /// Opens <paramref name="bindingsFilePath"/> into the bindings editor (M16 Phase 4, issue #153)
@@ -541,22 +350,7 @@ public partial class MainWindow : Window
     public async Task OpenBindingsInEditorAsync(string bindingsFilePath, CancellationToken cancellationToken = default)
     {
         BindingsEditorPathBox.Text = bindingsFilePath;
-
-        try
-        {
-            var config = await BindingsProjectionLoader.LoadAsync(bindingsFilePath, cancellationToken);
-            ViewModel.BindingsEditor.LoadFrom(config);
-            ViewModel.BindingsEditor.StatusText = string.Empty;
-        }
-        catch (AerFlowException ex)
-        {
-            // Same in-window-message precedent as OpenTemplateInEditorAsync (M16 Phase 1) — and a
-            // failed open must not leave a previous session's rows sitting in the editor as if they
-            // were this file's.
-            ViewModel.BindingsEditor.Close();
-            ViewModel.BindingsEditor.StatusText = ex.Message;
-        }
-
+        await ViewModel.BindingsEditor.OpenFromFileAsync(bindingsFilePath, cancellationToken);
         RefreshBindingsTemplateCrossCheck();
     }
 
@@ -569,51 +363,7 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task SaveBindingsAsync(string bindingsFilePath, CancellationToken cancellationToken = default)
     {
-        var editor = ViewModel.BindingsEditor;
-
-        if (!editor.IsOpen)
-        {
-            editor.StatusText = "Nothing to save — create a new bindings file or open one in the editor first.";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(bindingsFilePath))
-        {
-            editor.StatusText = "Enter a bindings file path to save to.";
-            return;
-        }
-
-        if (!editor.TryBuildConfig(out var config, out var buildError))
-        {
-            editor.StatusText = buildError!;
-            return;
-        }
-
-        if (editor.BaselineIsPersisted && !editor.IsDirty)
-        {
-            // Same no-write, no-op-save precedent as SaveTemplateAsync (M16 Phase 1): the file
-            // already contains exactly this state.
-            editor.StatusText = "No changes to save.";
-            return;
-        }
-
-        try
-        {
-            await WorkerBindingConfigWriter.SaveToFileAsync(config!, bindingsFilePath, cancellationToken);
-        }
-        catch (Exception ex) when (ex is AerFlowException or IOException or UnauthorizedAccessException)
-        {
-            // Same in-window-message precedent as SaveTemplateAsync (M16 Phase 1): a config that
-            // fails to round-trip through the parser (blank Adapter/PromptTemplate) or an unwritable
-            // path renders here rather than crashing; nothing was written.
-            editor.StatusText = ex.Message;
-            return;
-        }
-
-        // Re-anchor dirty tracking to what the file now actually contains, the same as
-        // SaveTemplateAsync's trailing LoadFrom.
-        editor.LoadFrom(config!);
-        editor.StatusText = $"Saved '{bindingsFilePath}' ({config!.Count} entr{(config.Count == 1 ? "y" : "ies")}).";
+        await ViewModel.BindingsEditor.SaveToFileAsync(bindingsFilePath, cancellationToken);
         RefreshBindingsTemplateCrossCheck();
     }
 
@@ -640,24 +390,7 @@ public partial class MainWindow : Window
     /// </para>
     /// </summary>
     private void RefreshBindingsTemplateCrossCheck()
-    {
-        var bindingsEditor = ViewModel.BindingsEditor;
-        bindingsEditor.MissingTemplateWorkerNames.Clear();
-
-        if (!bindingsEditor.IsOpen || ViewModel.TemplateEditor.Baseline is not { } template)
-        {
-            return;
-        }
-
-        var boundWorkerNames = bindingsEditor.Entries.Select(entry => entry.WorkerName).ToHashSet();
-        foreach (var workerName in template.Steps.Select(step => step.Worker).Distinct())
-        {
-            if (!boundWorkerNames.Contains(workerName))
-            {
-                bindingsEditor.MissingTemplateWorkerNames.Add(workerName);
-            }
-        }
-    }
+        => ViewModel.BindingsEditor.RefreshTemplateCrossCheck(ViewModel.TemplateEditor.Baseline);
 
     /// <summary>
     /// Re-projects the currently open task directory in place (M14 Phase 2's change-observation
@@ -669,12 +402,21 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        if (_currentTaskDirectoryPath is null)
+        if (_session.CurrentTaskDirectoryPath is not { } currentTaskDirectoryPath)
         {
             return;
         }
 
-        await LoadAsync(_currentTaskDirectoryPath, cancellationToken);
+        await LoadAsync(currentTaskDirectoryPath, cancellationToken);
+
+        // While the poller is observing an open task, a visible Home stays live too — the cards
+        // and inbox ride the same tick rather than owning a second timer (HomeViewModel's
+        // scan-scope decision of record).
+        if (ViewModel.IsHomeVisible)
+        {
+            await RefreshHomeAsync(cancellationToken);
+        }
+
         UpdateLiveRefreshTimer();
     }
 
@@ -690,61 +432,49 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task LoadAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var projection = await TaskProjectionLoader.LoadAsync(taskDirectoryPath, cancellationToken);
+        var outcome = await _session.LoadAsync(taskDirectoryPath, cancellationToken);
 
-            // Unlike Aer.Flow's own library code, this continuation deliberately does not
-            // ConfigureAwait(false): it touches UI controls below, which must happen back on
-            // Avalonia's UI thread.
-            StatusText.Text = $"Workflow status: {projection.State.Status}";
-            StepsPanel.Children.Clear();
-            foreach (var step in projection.State.Steps)
-            {
-                StepsPanel.Children.Add(new TextBlock { Text = $"{step.StepId}: {step.Status}" });
-            }
-
-            var statusByStepId = projection.State.Steps.ToDictionary(step => step.StepId, step => step.Status);
-            RenderDag(projection.Snapshot.Steps, statusByStepId);
-
-            RenderExecutionHistory(projection);
-            RenderDecisions(projection);
-            RenderSupplementaryExecutions(projection);
-            RenderArtifactLineage(projection, taskDirectoryPath);
-            RenderConversationExecutions(projection, taskDirectoryPath);
-            RenderConversation();
-            RebuildPausedSteps(projection, taskDirectoryPath);
-            RebuildRunningExecutions(projection, taskDirectoryPath);
-
-            _lastLoadSucceeded = true;
-            _lastWorkflowStatus = projection.State.Status;
-            _lastSnapshot = projection.Snapshot;
-        }
-        catch (AerFlowException ex)
+        if (outcome.Projection is not { } projection)
         {
             // A real GUI has no stderr/exit-code convention to fail into (Aer.Cli's Program.cs
             // boundary) — an invalid task directory or a malformed snapshot/event log renders as an
-            // in-window message instead.
-            StatusText.Text = ex.Message;
-            StepsPanel.Children.Clear();
-            DagCanvas.Children.Clear();
-            HistoryPanel.Children.Clear();
-            DecisionsPanel.Children.Clear();
-            SupplementaryPanel.Children.Clear();
-            LineagePanel.Children.Clear();
-            ConversationExecutionsPanel.Children.Clear();
-            ClearConversation();
-            ArtifactPreviewBox.Text = string.Empty;
-            DiffPanel.Children.Clear();
-            ViewModel.PausedSteps.Clear();
-            ViewModel.DecisionStatusText = string.Empty;
-            ViewModel.RunningExecutions.Clear();
-            ViewModel.CancelStatusText = string.Empty;
-
-            _lastLoadSucceeded = false;
-            _lastWorkflowStatus = null;
-            _lastSnapshot = null;
+            // in-window message instead. The session has already cleared the mutation surfaces.
+            StatusText.Text = outcome.ErrorMessage;
+            ClearProjectionPanels();
+            return;
         }
+
+        StatusText.Text = $"Workflow status: {projection.State.Status}";
+        StepsPanel.Children.Clear();
+        foreach (var step in projection.State.Steps)
+        {
+            StepsPanel.Children.Add(new TextBlock { Text = $"{step.StepId}: {step.Status}" });
+        }
+
+        var statusByStepId = projection.State.Steps.ToDictionary(step => step.StepId, step => step.Status);
+        RenderDag(projection.Snapshot.Steps, statusByStepId);
+
+        RenderExecutionHistory(projection);
+        RenderDecisions(projection);
+        RenderSupplementaryExecutions(projection);
+        RenderArtifactLineage(projection, taskDirectoryPath);
+        RenderConversationExecutions(projection, taskDirectoryPath);
+        RenderConversation();
+    }
+
+    /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by task and template loads.</summary>
+    private void ClearProjectionPanels()
+    {
+        StepsPanel.Children.Clear();
+        DagCanvas.Children.Clear();
+        HistoryPanel.Children.Clear();
+        DecisionsPanel.Children.Clear();
+        SupplementaryPanel.Children.Clear();
+        LineagePanel.Children.Clear();
+        ConversationExecutionsPanel.Children.Clear();
+        ClearConversation();
+        ArtifactPreviewBox.Text = string.Empty;
+        DiffPanel.Children.Clear();
     }
 
     /// <summary>
@@ -757,55 +487,20 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task LoadTemplateAsync(string templateFilePath, CancellationToken cancellationToken)
     {
-        try
+        var outcome = await _session.LoadTemplateAsync(templateFilePath, cancellationToken);
+
+        if (outcome.Definition is not { } definition)
         {
-            var definition = await TemplateProjectionLoader.LoadAsync(templateFilePath, cancellationToken);
-
-            StatusText.Text =
-                $"Template: {definition.WorkflowTemplateId} v{definition.WorkflowTemplateVersion} " +
-                $"({definition.Steps.Count} step(s)) — not a task, no execution state.";
-            StepsPanel.Children.Clear();
-            HistoryPanel.Children.Clear();
-            DecisionsPanel.Children.Clear();
-            SupplementaryPanel.Children.Clear();
-            LineagePanel.Children.Clear();
-            ConversationExecutionsPanel.Children.Clear();
-            ClearConversation();
-            ArtifactPreviewBox.Text = string.Empty;
-            DiffPanel.Children.Clear();
-            ViewModel.PausedSteps.Clear();
-            ViewModel.DecisionStatusText = string.Empty;
-            ViewModel.RunningExecutions.Clear();
-            ViewModel.CancelStatusText = string.Empty;
-
-            RenderDag(definition.Steps, statusByStepId: null);
-
-            _lastLoadSucceeded = true;
-            _lastWorkflowStatus = null;
-            _lastSnapshot = null;
+            StatusText.Text = outcome.ErrorMessage;
+            ClearProjectionPanels();
+            return;
         }
-        catch (AerFlowException ex)
-        {
-            StatusText.Text = ex.Message;
-            StepsPanel.Children.Clear();
-            DagCanvas.Children.Clear();
-            HistoryPanel.Children.Clear();
-            DecisionsPanel.Children.Clear();
-            SupplementaryPanel.Children.Clear();
-            LineagePanel.Children.Clear();
-            ConversationExecutionsPanel.Children.Clear();
-            ClearConversation();
-            ArtifactPreviewBox.Text = string.Empty;
-            DiffPanel.Children.Clear();
-            ViewModel.PausedSteps.Clear();
-            ViewModel.DecisionStatusText = string.Empty;
-            ViewModel.RunningExecutions.Clear();
-            ViewModel.CancelStatusText = string.Empty;
 
-            _lastLoadSucceeded = false;
-            _lastWorkflowStatus = null;
-            _lastSnapshot = null;
-        }
+        StatusText.Text =
+            $"Template: {definition.WorkflowTemplateId} v{definition.WorkflowTemplateVersion} " +
+            $"({definition.Steps.Count} step(s)) — not a task, no execution state.";
+        ClearProjectionPanels();
+        RenderDag(definition.Steps, statusByStepId: null);
     }
 
     private static readonly IReadOnlyDictionary<StepStatus, IBrush> BackgroundByStatus = new Dictionary<StepStatus, IBrush>
@@ -995,147 +690,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Rebuilds <see cref="ViewModel"/>'s <see cref="MainWindowViewModel.PausedSteps"/> (M15 Phase 2,
-    /// issue #138) — one entry per step whose latest attempt is <see cref="StepStatus.Paused"/>,
-    /// carrying the <see cref="ExecutionId"/> a decision resolves (<see cref="StepState.LatestExecutionId"/>,
-    /// guaranteed non-null while paused). Rebuilt from scratch on every load, the same "projected
-    /// fact, not retained handler state" discipline every other render method here follows — a step
-    /// that resumes simply stops appearing next load, with nothing to reconcile.
-    /// </summary>
-    private void RebuildPausedSteps(TaskProjection projection, string taskDirectoryPath)
-    {
-        ViewModel.PausedSteps.Clear();
-
-        var stepDefinitionByStepId = projection.Snapshot.Steps.ToDictionary(step => step.StepId);
-
-        foreach (var stepState in projection.State.Steps)
-        {
-            if (stepState.Status != StepStatus.Paused || stepState.LatestExecutionId is not { } executionId)
-            {
-                continue;
-            }
-
-            // Every Paused step was paused by the Pause Engine only for a step declaring PausePoint
-            // (§17.1) — the same Flow-internal invariant ExternalDecisionValidator itself relies on.
-            var supersedeTargets = stepDefinitionByStepId[stepState.StepId].PausePoint!.SupersedeTargets;
-
-            ViewModel.PausedSteps.Add(new PausedStepViewModel(
-                stepState.StepId,
-                executionId,
-                supersedeTargets,
-                (stepId, decidedExecutionId, decisionType, targetStepId, revisionFilePath, supplementaryWorker, supplementaryOutputName) =>
-                    DecideAsync(
-                        taskDirectoryPath, stepId, decidedExecutionId, decisionType, targetStepId,
-                        revisionFilePath, supplementaryWorker, supplementaryOutputName))
-            {
-                IsEnabled = !ViewModel.IsMutationInFlight,
-            });
-        }
-    }
-
-    /// <summary>
-    /// Rebuilds <see cref="ViewModel"/>'s <see cref="MainWindowViewModel.RunningExecutions"/> (M15
-    /// Phase 4, issue #140) — one entry per process-bound step still <see cref="StepStatus.Running"/>
-    /// and one per step-less supplementary/human execution still pending (spec §17.3), the same
-    /// "projected fact, not retained handler state" discipline <see cref="RebuildPausedSteps"/>
-    /// already follows. <see cref="RunningExecutionViewModel.IsLocallyHosted"/> is derived once here,
-    /// from whether this window's own retained pump (<see cref="_currentInFlightExecutions"/>) is
-    /// currently the one driving <paramref name="taskDirectoryPath"/> — the only two mutations that
-    /// can ever be true at once share the same <see cref="MainWindowViewModel.IsMutationInFlight"/>
-    /// flag, so this is unambiguous.
-    /// </summary>
-    private void RebuildRunningExecutions(TaskProjection projection, string taskDirectoryPath)
-    {
-        ViewModel.RunningExecutions.Clear();
-
-        var isLocallyHostedTask = _currentInFlightExecutions is not null && _currentTaskDirectoryPath == taskDirectoryPath;
-
-        foreach (var stepState in projection.State.Steps)
-        {
-            if (stepState.Status != StepStatus.Running || stepState.LatestExecutionId is not { } executionId)
-            {
-                continue;
-            }
-
-            AddRunningExecution(stepState.StepId, executionId, isLocallyHostedTask, projection.State, taskDirectoryPath);
-        }
-
-        foreach (var stepLessExecution in projection.State.StepLessExecutions)
-        {
-            // Never locally hosted: a non-process dispatch never registers with
-            // InFlightExecutionRegistry in the first place (Phase 1's NonProcessCancellationDetector
-            // owns that tier directly, finalizing it within the same pump round it settles in).
-            AddRunningExecution(stepId: null, stepLessExecution.ExecutionId, isLocallyHosted: false, projection.State, taskDirectoryPath);
-        }
-    }
-
-    private void AddRunningExecution(
-        StepId? stepId, ExecutionId executionId, bool isLocallyHosted, FlowState state, string taskDirectoryPath)
-    {
-        var cancellationRequested = state.CancellationRequestedExecutionIds.Contains(executionId);
-
-        ViewModel.RunningExecutions.Add(new RunningExecutionViewModel(
-            stepId,
-            executionId,
-            isLocallyHosted,
-            cancellationRequested,
-            targetExecutionId => CancelExecutionAsync(taskDirectoryPath, targetExecutionId))
-        {
-            IsEnabled = isLocallyHosted || !ViewModel.IsMutationInFlight,
-        });
-    }
-
-    /// <summary>
-    /// The targeted-Cancel surface (M15 Phase 4, issue #140): delivered in-process via the retained
-    /// <see cref="InFlightExecutionRegistry"/> when this window's own pump currently has
-    /// <paramref name="executionId"/> in flight — a fast, idempotent signal, never a second
-    /// mutation-surface call, since §15's guard is already held for that pump's entire duration
-    /// (M10's decision of record). Otherwise this is the only way left to reach it: a brand-new
-    /// <see cref="CancelCommand"/> mutation call, wrapped exactly like <see cref="RunAsync"/> wraps
-    /// <c>RunCommand</c> — including the possibility of a <see cref="Aer.Flow.Concurrency.WorkflowLockedException"/>
-    /// from whatever process (or pump) currently holds the task's lock, rendered as an in-window
-    /// message rather than a button that pretends to work (the phase's own open question).
-    /// </summary>
-    private async Task CancelExecutionAsync(string taskDirectoryPath, ExecutionId executionId, CancellationToken cancellationToken = default)
-    {
-        if (_currentInFlightExecutions is { } registry && _currentTaskDirectoryPath == taskDirectoryPath)
-        {
-            await registry.RequestCancellationAsync(executionId, cancellationToken).ConfigureAwait(true);
-            return;
-        }
-
-        ViewModel.CancelStatusText = $"Cancelling {executionId.Value}…";
-        ViewModel.IsMutationInFlight = true;
-        _liveRefreshTimer.Start();
-
-        try
-        {
-            var options = new CancelOptions(taskDirectoryPath, executionId.Value, BindingsFilePathBox.Text ?? string.Empty);
-            await Task.Run(() => CancelCommand.ExecuteAsync(options, _adapters, cancellationToken: cancellationToken), cancellationToken)
-                .ConfigureAwait(true);
-
-            ViewModel.CancelStatusText = string.Empty;
-        }
-        catch (AerFlowException ex)
-        {
-            // Same in-window-message precedent as RunAsync/DecideAsync/LoadAsync (M14 Phase 1).
-            _liveRefreshTimer.Stop();
-            ViewModel.CancelStatusText = ex.Message;
-            return;
-        }
-        finally
-        {
-            ViewModel.IsMutationInFlight = false;
-        }
-
-        await OpenAsync(taskDirectoryPath, cancellationToken);
-    }
-
-    /// <summary>
     /// The Ctrl+C equivalent (§9's host-initiated stop; M15 Phase 4, issue #140): cancels whichever
     /// pump this window's own Run/Decide action currently has in flight — a no-op when nothing is.
     /// Fire-and-forget by design, mirroring <c>Aer.Cli.Program.cs</c>'s <c>Console.CancelKeyPress</c>
-    /// handler: cancelling <see cref="_currentHostStopSource"/> is only the signal.
+    /// handler: signalling <see cref="TaskSession.RequestHostStop"/> is only the signal.
     /// <see cref="RunAsync"/>/<see cref="DecideAsync"/>'s own awaited pump is what actually drives
     /// §9's intent-first record for every execution still in flight, then the durable
     /// <c>ExecutionCancelled</c> §7's second reflection phase needs, and clears
@@ -1143,7 +701,7 @@ public partial class MainWindow : Window
     /// </summary>
     public Task StopAsync()
     {
-        _currentHostStopSource?.Cancel();
+        _session.RequestHostStop();
         return Task.CompletedTask;
     }
 
@@ -1158,13 +716,13 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (_closeConfirmed || _currentPumpTask is not { IsCompleted: false } pumpTask)
+        if (_closeConfirmed || _session.CurrentPumpTask is not { IsCompleted: false } pumpTask)
         {
             return;
         }
 
         e.Cancel = true;
-        _currentHostStopSource?.Cancel();
+        _session.RequestHostStop();
         _ = CloseOncePumpSettlesAsync(pumpTask);
     }
 
@@ -1222,7 +780,7 @@ public partial class MainWindow : Window
     /// naming its declared inputs' resolved producers, then a row of buttons — one per file actually
     /// present in its output directory — each wired to <see cref="ShowArtifactPreviewAsync"/>.
     /// <paramref name="taskDirectoryPath"/> is <see cref="LoadAsync"/>'s own parameter, not
-    /// <see cref="_currentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
+    /// <see cref="TaskSession.CurrentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
     /// entry point in its own right (issue #118) that a caller may invoke without ever going through
     /// <see cref="OpenAsync"/> (which is the only place that field is set) — the rendered buttons must
     /// resolve against the directory this exact call just loaded, not a field that might still be
@@ -1430,7 +988,7 @@ public partial class MainWindow : Window
     /// The snapshot-vs-template diff surface (UI spec §5; M14 Phase 4, issue #121): loads
     /// <paramref name="templateFilePath"/> via <see cref="TemplateProjectionLoader"/> and compares it
     /// against the currently open task's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
-    /// Requires a task directory to already be open — <see cref="_lastSnapshot"/> is only ever set by
+    /// Requires a task directory to already be open — <see cref="TaskSession.LastSnapshot"/> is only ever set by
     /// <see cref="LoadAsync"/>'s success path, never by opening a raw template on its own, since a
     /// template with nothing bound to it has nothing to diff against.
     /// </summary>
@@ -1438,7 +996,7 @@ public partial class MainWindow : Window
     {
         DiffPanel.Children.Clear();
 
-        if (_lastSnapshot is not { } snapshot)
+        if (_session.LastSnapshot is not { } snapshot)
         {
             DiffPanel.Children.Add(new TextBlock { Text = "Open a task directory before comparing it to a template." });
             return;
@@ -1528,18 +1086,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RefreshRecentsPanelAsync(CancellationToken cancellationToken)
-    {
-        var recents = await _configurationStore.LoadRecentTaskDirectoriesAsync(cancellationToken);
-
-        RecentsPanel.Children.Clear();
-        foreach (var path in recents)
-        {
-            var button = new Button { Content = path };
-            button.Click += (_, _) => _ = OpenAsync(path);
-            RecentsPanel.Children.Add(button);
-        }
-    }
+    /// <summary>Rebuilds Home's task cards and decision inbox from Local UI Configuration + durable task contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
+    private Task RefreshHomeAsync(CancellationToken cancellationToken)
+        => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
 
     /// <summary>
     /// Polling, not a <see cref="System.IO.FileSystemWatcher"/> (issue #119's named open question):
@@ -1550,7 +1099,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateLiveRefreshTimer()
     {
-        if (_lastLoadSucceeded && _lastWorkflowStatus != WorkflowStatus.Terminal)
+        if (_session.ShouldLiveRefresh)
         {
             _liveRefreshTimer.Start();
         }

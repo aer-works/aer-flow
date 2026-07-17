@@ -39,7 +39,7 @@ public class MainWindowRetryAndSendBackTests
 
             await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);
 
             var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
@@ -66,7 +66,7 @@ public class MainWindowRetryAndSendBackTests
             await repausedStep.ApproveCommand.ExecuteAsync(null);
 
             Assert.Equal("Workflow status: Terminal", statusText.Text);
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(
                 ["flaky: Succeeded", "downstream: Succeeded"],
                 stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList());
@@ -90,7 +90,7 @@ public class MainWindowRetryAndSendBackTests
 
             await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);
 
             var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
@@ -117,13 +117,13 @@ public class MainWindowRetryAndSendBackTests
             Assert.Equal(new StepId("reviewer"), repausedStep.StepId);
             Assert.NotEqual(pausedStep.ExecutionId, repausedStep.ExecutionId);
 
-            var lineagePanel = window.FindControl<StackPanel>("LineagePanel")!;
+            var lineagePanel = window.FindViewControl<StackPanel>("LineagePanel")!;
             Assert.NotEmpty(lineagePanel.Children);
 
             await repausedStep.ApproveCommand.ExecuteAsync(null);
 
             Assert.Equal("Workflow status: Terminal", statusText.Text);
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(
                 ["source: Succeeded", "reviewer: Succeeded"],
                 stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList());

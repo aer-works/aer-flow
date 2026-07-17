@@ -1,6 +1,6 @@
 using Aer.Flow.Domain;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// A pure structural comparison between a task's bound <see cref="WorkflowDefinitionSnapshot"/> and

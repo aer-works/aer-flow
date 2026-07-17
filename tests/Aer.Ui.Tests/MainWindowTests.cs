@@ -65,8 +65,8 @@ public class MainWindowTests
             var window = new MainWindow();
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
 
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             var stepLines = stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList();
@@ -88,8 +88,8 @@ public class MainWindowTests
             var window = new MainWindow();
             await window.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
 
             Assert.Contains(notATaskDirectory, statusText.Text);
             Assert.Empty(stepsPanel.Children);

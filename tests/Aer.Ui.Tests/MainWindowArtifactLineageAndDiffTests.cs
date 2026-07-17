@@ -83,7 +83,7 @@ public class MainWindowArtifactLineageAndDiffTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var lineagePanel = window.FindControl<StackPanel>("LineagePanel")!;
+            var lineagePanel = window.FindViewControl<StackPanel>("LineagePanel")!;
             var texts = TextsOf(lineagePanel);
 
             Assert.Contains(texts, t => t.StartsWith("architect —"));
@@ -120,7 +120,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
             await window.ShowArtifactPreviewAsync(filePath, TestContext.Current.CancellationToken);
 
-            Assert.Contains("the-plan", window.FindControl<TextBox>("ArtifactPreviewBox")!.Text);
+            Assert.Contains("the-plan", window.FindViewControl<TextBox>("ArtifactPreviewBox")!.Text);
         }
         finally
         {
@@ -140,7 +140,7 @@ public class MainWindowArtifactLineageAndDiffTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var lineagePanel = window.FindControl<StackPanel>("LineagePanel")!;
+            var lineagePanel = window.FindViewControl<StackPanel>("LineagePanel")!;
             var planButton = lineagePanel.Children.OfType<WrapPanel>()
                 .SelectMany(panel => panel.Children.OfType<Button>())
                 .Single(button => (string)button.Content! == "plan");
@@ -151,7 +151,7 @@ public class MainWindowArtifactLineageAndDiffTests
             // handlers cannot be async void-awaited by the caller), so the file read genuinely races
             // the assertion — a single Task.Yield() only proved out on Windows CI's scheduling and
             // flaked on Linux/macOS. Poll the actual rendered result instead of the scheduler.
-            var previewBox = window.FindControl<TextBox>("ArtifactPreviewBox")!;
+            var previewBox = window.FindViewControl<TextBox>("ArtifactPreviewBox")!;
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while (string.IsNullOrEmpty(previewBox.Text) && DateTime.UtcNow < deadline)
             {
@@ -177,7 +177,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
             await window.ShowArtifactPreviewAsync(largeFilePath, TestContext.Current.CancellationToken);
 
-            var previewText = window.FindControl<TextBox>("ArtifactPreviewBox")!.Text!;
+            var previewText = window.FindViewControl<TextBox>("ArtifactPreviewBox")!.Text!;
             Assert.True(previewText.Length < 50_000);
             Assert.Contains("truncated", previewText);
         }
@@ -195,7 +195,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
         await window.ShowArtifactPreviewAsync(missingFilePath, TestContext.Current.CancellationToken);
 
-        Assert.Contains("Cannot preview", window.FindControl<TextBox>("ArtifactPreviewBox")!.Text);
+        Assert.Contains("Cannot preview", window.FindViewControl<TextBox>("ArtifactPreviewBox")!.Text);
     }
 
     private static WorkflowDefinition BaselineTemplate(int version = 1) => new(
@@ -236,7 +236,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
             Assert.Equal(
                 ["Open a task directory before comparing it to a template."],
-                TextsOf(window.FindControl<StackPanel>("DiffPanel")!));
+                TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!));
         }
         finally
         {
@@ -257,7 +257,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
-            var texts = TextsOf(window.FindControl<StackPanel>("DiffPanel")!);
+            var texts = TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!);
             Assert.Contains("No divergence: the bound snapshot matches the current template.", texts);
         }
         finally
@@ -281,7 +281,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
-            var texts = TextsOf(window.FindControl<StackPanel>("DiffPanel")!);
+            var texts = TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!);
             Assert.Single(texts);
             Assert.Contains("mismatch, not a divergence", texts[0]);
         }
@@ -315,7 +315,7 @@ public class MainWindowArtifactLineageAndDiffTests
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
-            var texts = TextsOf(window.FindControl<StackPanel>("DiffPanel")!);
+            var texts = TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!);
             Assert.Contains(texts, t => t.StartsWith("+ publisher"));
             Assert.Contains(texts, t => t.StartsWith("- critic"));
             Assert.Contains(texts, t => t.StartsWith("~ architect changed: retryPolicy"));

@@ -113,9 +113,9 @@ public class AuthoringRoundTripTests
 
             await window.RunAsync(taskDirectory, templatePath, bindingsPath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var runStatusText = window.FindControl<TextBlock>("RunStatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
 
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Equal(string.Empty, runStatusText.Text);
@@ -149,7 +149,7 @@ public class AuthoringRoundTripTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 
-            var stepsBeforeEdit = TextsOf(window.FindControl<StackPanel>("StepsPanel")!);
+            var stepsBeforeEdit = TextsOf(window.FindViewControl<StackPanel>("StepsPanel")!);
             Assert.NotEmpty(stepsBeforeEdit);
 
             await window.OpenTemplateInEditorAsync(templatePath, TestContext.Current.CancellationToken);
@@ -170,13 +170,13 @@ public class AuthoringRoundTripTests
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
-            var diffTexts = TextsOf(window.FindControl<StackPanel>("DiffPanel")!);
+            var diffTexts = TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!);
             Assert.Contains(diffTexts, text => text.Contains("+ publisher"));
             Assert.Contains(diffTexts, text => text.Contains("Bound snapshot is template version 1") && text.Contains("version 2"));
 
             // The diff view is read-only over the bound snapshot (M14 Phase 4's own decision of
             // record) — comparing to a diverged template must never re-render the task's own status.
-            var stepsAfterDiff = TextsOf(window.FindControl<StackPanel>("StepsPanel")!);
+            var stepsAfterDiff = TextsOf(window.FindViewControl<StackPanel>("StepsPanel")!);
             Assert.Equal(stepsBeforeEdit, stepsAfterDiff);
         }
         finally
@@ -222,9 +222,9 @@ public class AuthoringRoundTripTests
 
             await window.RunAsync(taskDirectory, templatePath, bindingsPath, TestContext.Current.CancellationToken);
 
-            var statusText = window.FindControl<TextBlock>("StatusText")!;
-            var runStatusText = window.FindControl<TextBlock>("RunStatusText")!;
-            var stepsPanel = window.FindControl<StackPanel>("StepsPanel")!;
+            var statusText = window.FindViewControl<TextBlock>("StatusText")!;
+            var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
+            var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
 
             Assert.Equal("Workflow status: Terminal", statusText.Text);
             Assert.Equal(string.Empty, runStatusText.Text);

@@ -3,7 +3,7 @@ using Aer.Flow.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-namespace Aer.Ui;
+namespace Aer.Ui.Core;
 
 /// <summary>
 /// One step's editable state within <see cref="TemplateEditorViewModel.Steps"/> (M16 Phase 2, issue
