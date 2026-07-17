@@ -3,7 +3,8 @@
 The durable decisions each completed milestone left behind — the constraints and precedents
 later work still leans on, extracted verbatim from each milestone's phase work as it completed.
 `IMPLEMENTATION_PLAN.md` keeps the roadmap, the current milestone's phase plan, and each
-completed milestone's summary + checklist; this file keeps the decisions. Newest milestone
+completed milestone's one-paragraph summary; each milestone's phase checklist lives in its
+closed GitHub milestone; this file keeps the decisions. Newest milestone
 first. Each entry cites the phase that decided it; the full phase plans — goals, boundaries, and
 the open questions each phase resolved — live in the plan file's git history and the linked
 issues.

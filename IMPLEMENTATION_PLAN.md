@@ -261,10 +261,10 @@ Per this document's session prompt: help implement the current phase only.
 
 ## Completed Milestones
 
-Completed milestones keep only a summary and their phase checklist here. Their decisions of
-record — the constraints and precedents later work still leans on — live in
-`docs/decisions-of-record.md`; the full phase plans — goals, boundaries, and the open questions
-each phase resolved — live in this file's git history and in the linked issues.
+Completed milestones keep only a one-paragraph summary here. Their phase checklists live in the
+closed GitHub milestones; their decisions of record — the constraints and precedents later work
+still leans on — in `docs/decisions-of-record.md`; and the full phase plans — goals, boundaries,
+and the open questions each phase resolved — in this file's git history and the linked issues.
 
 **M17: Dialogue Worker** — the first Case 2 encapsulated multi-model worker (Flow spec §18.2):
 `Aer.Workers.Dialogue`, a single executable running a bounded, multi-turn Claude ↔ Gemini (`agy`)
@@ -275,12 +275,6 @@ round trip proven in default CI on all three OSes and the live exchange gated by
 smoke-dialogue` (permanently a human action item, not yet recorded). Opened with the real-use
 walkthrough the project had been missing (`docs/walkthroughs/first-real-workflow.md`).
 
-- ✅ Phase 1 — Real-workflow walkthrough (§18.1 baseline) (#164)
-- ✅ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
-- ✅ Phase 3 — Turn loop, termination, and failure semantics (#166)
-- ✅ Phase 4 — Dispatch integration: the third adapter (#167)
-- ✅ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
-
 **M16: UI Authoring** — the last milestone of the original UI track: template and worker-bindings
 authoring in `Aer.Ui` — create/edit steps, dependencies, retry policies, metadata,
 `PausePoint`s/`SupersedeTargets`, and bindings entries, with live structural validation through
@@ -290,96 +284,38 @@ round-trip fidelity through the engine's own parsers/validators, and full author
 the divergence while the bound rendering stays byte-identical) proven in default CI on all three
 OSes.
 
-- ✅ Phase 1 — Template write seam + create/save walking skeleton (#150)
-- ✅ Phase 2 — Step & graph editing with live structural validation (#151)
-- ✅ Phase 3 — PausePoint + SupersedeTargets editing (#152)
-- ✅ Phase 4 — Worker-binding configuration editing (#153)
-- ✅ Phase 5 — Authoring round trips in default CI (#154)
-
 **M15: UI Control Surface** — the second UI-track milestone: every §7 user action — start/resume
 a workflow, Approve/Reject, Retry-with-revision, Send-back, and Cancel (targeted and host stop) —
 exposed in `Aer.Ui` exclusively through Flow's mutation interface, via in-process reuse of the CLI
 command layer, mapped onto Flow's closed `DecisionType` set, and proven by UI-driven round trips
 over shell-stub workers on all three CI OSes in default CI.
 
-- ✅ Phase 1 — Mutation seam + start/resume a workflow (#137)
-- ✅ Phase 2 — Resolve decisions: Approve / Reject (#138)
-- ✅ Phase 3 — Artifact-carrying decisions: Retry-with-revision + Send-back (#139)
-- ✅ Phase 4 — Cancel: targeted live-execution cancel + host stop (#140)
-- ✅ Phase 5 — UI-driven mutation round trips in default CI (#141)
-
 **M14: UI Projection** — the first UI-track milestone: `Aer.Ui`, an Avalonia desktop app
 consuming `Aer.Flow`'s read model in-process — task/execution/decision projection with live
 polling, the DAG view, artifact lineage, the snapshot-vs-template diff, and a golden-projection
 determinism gate in default CI. Read-only throughout: no mutations (M15), no authoring (M16).
-
-- ✅ Phase 1 — Stack decision + walking skeleton (#118)
-- ✅ Phase 2 — Task & execution projection + change observation (#119)
-- ✅ Phase 3 — DAG view (snapshot topology + status overlay) (#120)
-- ✅ Phase 4 — Artifact lineage + snapshot-vs-template diff (#121)
-- ✅ Phase 5 — Golden-projection determinism gate, wired into default CI (#122)
 
 **M13: Distribution** — turned `aer` from a checkout-only build into an installable
 `dotnet tool`: single-platform packing, version wiring from `release-please`, multi-RID
 native-lib bundling, and an unattended CI round-trip check proving install → run → uninstall
 works with no live vendor auth (`pixi run verify-pack`, `scripts/verify-pack-roundtrip.sh`).
 
-- ✅ Phase 1 — Pack `aer` as a `dotnet tool` (single-platform) (#107)
-- ✅ Phase 2 — Version wiring (release-please → package `Version`) (#108)
-- ✅ Phase 3 — Multi-RID native-lib bundling (Windows/Linux/macOS) (#109)
-- ✅ Phase 4 — Installed-tool round-trip check (wired into default CI) (#110)
-
 **M12: Full Control Surface** — the milestone that made the runnable library drivable: a second
 vendor (Gemini's `agy`) behind M11's unchanged protocol, and the mutation surface M9/M10 built
 exposed as `aer decide`/`aer cancel`, proven by a live mixed-vendor paused run decided from the
 terminal (`docs/runbooks/live-mixed-vendor-smoke.md`).
 
-- ✅ Phase 1 — Gemini worker adapter (headless `agy` CLI) (#95)
-- ✅ Phase 2 — `aer cancel` + Ctrl+C host-stop wiring (#96)
-- ✅ Phase 3 — `aer decide` + supplementary artifact recording (#97)
-- ✅ Phase 4 — Live mixed-vendor paused run (gated end-to-end) (#98)
-
 **M11: First Real Run** — the milestone that made the library runnable: the canonical
 worker-invocation protocol and adapter seam, the Claude adapter, the `aer run` pump, and a
 recorded green live two-step run (`docs/runbooks/live-claude-smoke.md`).
 
-- ✅ Phase 1 — Canonical worker-invocation protocol + `Aer.Adapters` seam (#84)
-- ✅ Phase 2 — Claude worker adapter (headless `claude` CLI) (#85)
-- ✅ Phase 3 — `aer run` pump (the CLI driver) (#86)
-- ✅ Phase 4 — Live two-step Claude run (gated end-to-end) (#87)
-
 **M10: Cancellation & Edge Cases** — on-demand cancellation through the single mutation surface (intent recorded first), and crash-recovery made whole by reading back the Core half of the log.
-
-- ✅ Phase 1 — Cancellation mutation surface: record, validate, non-process targets (#69)
-- ✅ Phase 2 — Live cancellation delivery: in-flight Core executions (#70)
-- ✅ Phase 3 — Crash-recovery reconciliation: reading back the Core log (#71)
-- ✅ Phase 4 — Cancellation + crash-recovery end-to-end integration tests (#72)
 
 **M9: External Decisions** — pause points, the four external decisions, the automatic invalidation cascade, human workers.
 
-- ✅ Phase 1 — Pause Engine (#57)
-- ✅ Phase 2 — External Decision Handler: record, validate, Resume/Reject (#58)
-- ✅ Phase 3 — RetryWithRevision + Supersede + the invalidation cascade (#59)
-- ✅ Phase 4 — Human worker support (#60)
-- ✅ Phase 5 — Pause/decision/supersede/human end-to-end integration tests (#61)
-
 **M8: Reactive Scheduler** — fan-out/fan-in DAG with retries and concurrent dispatch.
 
-- ✅ Phase 1 — Attempt-history projection (#45)
-- ✅ Phase 2 — Retry Engine + retry-aware readiness (#46)
-- ✅ Phase 3 — Reactive concurrent dispatch (#47)
-- ✅ Phase 4 — Fan-out/fan-in + retry end-to-end integration tests (#48)
-
 **M7: Foundation** — linear A → B → C end-to-end, happy path only.
-
-- ✅ Phase 1 — Domain model (#7)
-- ✅ Phase 2 — Log Manager (#8)
-- ✅ Phase 3 — Template Parser + Snapshot Binder (#9)
-- ✅ Phase 4 — State Projector (#10)
-- ✅ Phase 5 — Dependency Resolver (#11)
-- ✅ Phase 6 — Artifact Manager + Core Dispatcher (#12)
-- ✅ Phase 7 — Outcome Classifier + Contract Validator + Mutation Interface (#13)
-- ✅ Phase 8 — Concurrency Guard + end-to-end integration test (#14)
 
 ---
 
