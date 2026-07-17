@@ -275,6 +275,22 @@ Each visible conversation step must correspond to durable workflow artifacts or 
 
 The UI must never invent hidden runtime state that cannot be reconstructed from durable data. For a Case 2 encapsulated multi-model worker (AER Flow spec §18.2) that streams its internal turns via the Observation Tier, the UI may render those turns live as they arrive — but may not offer an action that pauses or redirects the worker mid-stream, since that capability does not exist (AER Flow spec §17.4).
 
+## 10.1 The Transcript Artifact Contract
+
+An execution offers a conversation-style projection if and only if its durable artifact directory contains a file named `transcript.jsonl`. Discovery is by durable content alone — the same self-describing rule as §3.1's task-directory discovery, applied one level down: no registry, no worker-binding inspection, no announcement by any component. Any worker that writes a conforming transcript gets the projection; the UI must not special-case which worker produced it.
+
+Each line of `transcript.jsonl` is one JSON object — one turn, in the order the turns happened — with at least:
+
+* `Sequence` — 1-based position of the turn in the exchange
+* `Role` — the speaking participant's logical name (e.g. `"initiator"`), never a vendor name
+* `Vendor` — the vendor that played the role for this turn
+* `Prompt` — the exact prompt text sent for this turn
+* `Text` — the turn text produced
+
+This names the **reader's contract** only. The producing schema is owned by the worker that writes it — AER Flow spec §18.2 places worker internals outside Flow's contract, and nothing in this section changes that. The UI consumes this contract as durable artifact data, never by depending on any worker's types.
+
+A transcript may be partial: a failed exchange leaves the turns that completed before the failure on disk as a forensic record. The conversation projection renders what is durably present — a partial transcript is not an error state, and the UI must not invent the missing remainder (§12).
+
 ---
 
 # 11. Deterministic Projection
