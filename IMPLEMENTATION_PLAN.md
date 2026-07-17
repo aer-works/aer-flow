@@ -226,7 +226,7 @@ human action item (CLAUDE.md's live-vendor rule).
 
 **M19: Product UX** — phase plan above. Progress:
 
-- ⬜ Phase 1 — UX baseline, principles, and information architecture (#186)
+- ✅ Phase 1 — UX baseline, principles, and information architecture (#186)
 - ⬜ Phase 2 — Navigation shell: Home, Task, and Author views (#187)
 - ⬜ Phase 3 — Task view, human-first (#188)
 - ⬜ Phase 4 — Guided authoring: no hand-edited config files (#189)
@@ -234,6 +234,42 @@ human action item (CLAUDE.md's live-vendor rule).
 - ⬜ Phase 6 — Gate: the non-expert path in default CI (#191)
 
 Per this document's session prompt: help implement the current phase only.
+
+**Decisions of record (Phase 1):**
+
+- **The reference set is the owner's, adopted verbatim (2026-07-17)** — Linear (inbox), GitLab
+  (to-dos), Dagster (Launchpad), Stately.ai (visual↔config sync), GitButler and Neovim/Neovide
+  (polished skin over presentation-agnostic core), n8n (DAG rendering), Raycast (chrome/tokens/
+  keyboard gold standard), each mapped to the phase it informs in `docs/ux/design-language.md`.
+  Changing the set is an owner decision, not an implementation one; Phase 5's human gate is
+  judged against it.
+- **One product, not a collage (owner directive, 2026-07-17)** — the references calibrate the
+  bar, they never supply the look: AER Flow has one identity of its own, and stitching together
+  surfaces that each resemble their reference is the named failure mode. The identity is carried
+  by the token system + status system + motion rules + vocabulary — defined once in
+  `design-language.md` and implemented by every client (desktop now, remote/web later), so all
+  surfaces read as the same product wearing different windows. Phase 5's review question is
+  two-sided: holds up beside the reference *and* unmistakably the same product throughout.
+  Corollaries: fit over fidelity (skip what doesn't suit the domain, without apology), and mine
+  the references for capabilities, not just polish — a standout affordance we lack is adapted
+  to our identity and folded into its natural phase, or surfaced to the owner if it would grow
+  scope.
+- **The vocabulary map is total for primary text and never renames semantics** — a spec term in
+  a label/button/status line is a defect (Phase 6 checks for it), and a plain word that would
+  imply behavior the engine doesn't have is wrong, not the engine ("send back" *is* supersede,
+  mandatory feedback artifact included). Spec terms survive in tooltips/disclosure for §12
+  traceability.
+- **The non-expert audit generated zero engine requirements** — all twelve rows
+  (`docs/ux/non-expert-audit.md`) are organization, language, or authoring ergonomics,
+  confirming the plan's first shaping fact. Two audit findings bind later phases beyond the
+  plan's text: Phase 4 owes a **vendor-readiness surface** (read-only presence check, "Claude:
+  available / Gemini: not found", never credential handling), and Phase 3's bindings pre-fill
+  is recorded as **convenience, never remembered authority** (a visible, swappable picker
+  default — §4's input-not-authority stance preserved).
+- **Tokens are a system, not values** — `design-language.md` fixes the token names, scales, and
+  rules (semantic color only, 4px grid, two radii, three motion durations, status always
+  color+icon+word); exact values are fixed when Phase 2 materializes the theme resource. A
+  surface using a raw hex/size/pixel literal after Phase 2 is a defect.
 
 ## Completed Milestones
 
