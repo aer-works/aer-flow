@@ -218,7 +218,7 @@ CI, proven live by a recorded human run.
 - ✅ Phase 2 — Transcript contract + dialogue worker skeleton (#165)
 - ✅ Phase 3 — Turn loop, termination, and failure semantics (#166)
 - ✅ Phase 4 — Dispatch integration: the third adapter (#167)
-- ⬜ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
+- ✅ Phase 5 — Gates: stub round trip in default CI + live dialogue runbook (#168)
 
 Per this document's session prompt: help implement the current phase only.
 
@@ -344,6 +344,31 @@ Decisions of record from M17:
   `RunCommand.ExecuteAsync` — the real `dotnet exec` spawn, the real `Aer.Workers.Dialogue` executable,
   and its own child spawns of two stub vendor scripts all actually execute. CI-safe on every OS: no
   real vendor CLI or network access involved (Phase 4).
+- **Gate (a) — the unattended stub-vendor dialogue round trip — was already satisfied by Phase 4's
+  own `DialogueDispatchEndToEndTests`**, not new work this phase adds: that test already binds a
+  step to `"dialogue"` through the real registry and runs it to `Terminal` with a schema-asserted
+  `transcript.jsonl`, and it already lives in `Aer.Cli.Tests` (part of `AerFlow.slnx`), so it already
+  runs on all three of `ci.yml`'s matrix OSes as a side effect of `pixi run test` — reconfirmed this
+  phase by re-running the full suite (`dotnet build -warnaserror`, `dotnet format
+  --verify-no-changes`, `dotnet test`, all green, no `Aer.Flow`/`Aer.Adapters`/projection-semantics
+  changes) rather than duplicated (Phase 5).
+- **Gate (b) is `LiveDialogueSmokeTest` (`tests/Aer.Cli.SmokeTests`) + `pixi run smoke-dialogue` +
+  `docs/runbooks/live-dialogue-smoke.md`**, built exactly on the `smoke-claude`/`smoke-mixed-vendor`
+  precedent: excluded from `AerFlow.slnx` so it never builds/runs by default, its `Initiator`/
+  `Responder` spawn the real `claude`/`agy` CLIs directly (`ProcessVendorTurnClient`'s no-shell
+  invocation, M17 Phase 3) using the same one-shot-text-turn flags `ClaudeWorkerAdapter`/
+  `GeminiWorkerAdapter` already build for a top-level dispatch, and its workflow/bindings/dialogue-
+  config fixtures are generated at test run time (not static fixture files) since
+  `WorkerInvocation.PromptTemplate` must carry a real absolute path to the generated config file, the
+  same reason `DialogueDispatchEndToEndTests` generates its own fixtures rather than reading static
+  ones. A short, cheap exchange (`TurnBudget: 2`, a one-sentence seed prompt) — the same "keep a live
+  gate fast" reasoning `live-claude-smoke.md`'s single-sentence draft prompt uses (Phase 5).
+- **The live run itself was not recorded this phase and stays a permanent human action item, per
+  CLAUDE.md's live-vendor rule** — this session's host happened to carry an authenticated `claude`
+  CLI (the same coincidence `live-claude-smoke.md` documents for M11) but no `agy`, so running
+  `smoke-dialogue` here would prove only half the gate. Left un-run rather than worked around;
+  `docs/runbooks/live-dialogue-smoke.md` records "none yet" until a host with both CLIs
+  authenticated actually runs it (Phase 5).
 
 ## Completed Milestones
 
