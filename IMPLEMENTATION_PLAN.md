@@ -242,7 +242,9 @@ human action item (CLAUDE.md's live-vendor rule).
 - ✅ Phase 2 — Navigation shell: Home, Task, and Author views (#187)
 - ✅ Phase 3 — Task view, human-first (#188)
 - ✅ Phase 4 — Guided authoring: no hand-edited config files (#189)
-- ⬜ Phase 5 — Visual design pass (#190)
+- ✅ Phase 5 — Visual design pass (#190) — implementation complete; the phase's human gate (the
+  owner's design review against the Phase 1 reference set) is folded into the owner's
+  post-milestone overall review, per the owner's 2026-07-17 direction.
 - ⬜ Phase 6 — Gate: the non-expert path in default CI (#191)
 
 Per this document's session prompt: help implement the current phase only.
@@ -341,6 +343,23 @@ Per this document's session prompt: help implement the current phase only.
   `WorkerBindingConfigWriter`) — guided output and hand-authored files can never diverge in
   format, and the M16 editors remain in the Author view as the advanced disclosure (the Phase 3
   Details pattern, applied to authoring).
+
+**Decisions of record (Phase 5):**
+
+- **Property-level restyling over Fluent's templates, not template replacement** — the custom
+  control theme re-skins every stock control through token-valued property setters (color,
+  radius, padding, focus, per-state brushes with Motion.Fast transitions); Fluent's control
+  *shapes* are kept. Full re-templating buys nothing the identity needs and re-owns behavior
+  (focus, accessibility) the framework already gets right.
+- **Status renders as border + tint, never fill-only** — the `Status.*Bg` tint tokens joined
+  both theme variants; the DAG node carries its status as a colored border over a tinted
+  surface with the status word in the label (color+icon+word discipline, DAG tests re-pointed
+  from named framework colors to token lookups — the only test change the phase needed).
+- **One accent button per surface** — Run, Approve, Save and run, Review, Create a workflow;
+  everything else stays quiet. The nav rail marks the active section in accent.
+- **The app icon is the mark, generated, committed** — a mini-DAG on the accent teal,
+  multi-size PNG-in-ICO, produced by a scripted render (no design-tool dependency); regenerate
+  by re-running the script if the accent ever changes.
 
 ## Completed Milestones
 
