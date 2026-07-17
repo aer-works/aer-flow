@@ -75,12 +75,17 @@ M17–M19 are the post-UI-track sequence, planned at M16's completion by re-chec
 
 ## M19: Product UX — Phase Plan
 
-**Goal:** the product a non-expert can drive end to end (the owner's stated bar at M18's
-completion): a task-first, plain-language UI where every path runs through pickers, forms, and
-guided flows — never a typed path, a raw JSON textarea, or a hand-edited config file — organized
-the way CyboFlow organizes attention: a central view grouped by what needs the human next, the
-workflow graph as the primary visualization, review surfaces one click away. Everything the UI
-does today survives; what changes is organization, language, and authoring ergonomics.
+**Goal:** the product a non-expert can drive end to end, looking and feeling like a premium
+product (the owner's stated bar at M18's completion): a task-first, plain-language UI where
+every path runs through pickers, forms, and guided flows — never a typed path, a raw JSON
+textarea, or a hand-edited config file — organized the way CyboFlow organizes attention: a
+central view grouped by what needs the human next, the workflow graph as the primary
+visualization, review surfaces one click away. "Premium" is planned, not vibes: Phase 1 defines
+the design language (tokens, type, motion, and a reference bar), Phases 2–4 build with it from
+day one so nothing ships default-themed, and Phase 5 is the polish pass whose completion
+includes the owner's design sign-off — a human gate, like every live-run gate before it.
+Everything the UI does today survives; what changes is organization, language, authoring
+ergonomics, and finish.
 
 Four facts shape the plan. First, **Flow, Core, and the workers change by zero lines, and the
 durable contracts change by zero bytes.** Templates, bindings, worker-config sidecars, task
@@ -121,10 +126,15 @@ assumes AI/systems expertise or a hand-edited file — each is a requirement on 
 Produce `docs/ux/`: the UX principles (plain language everywhere — no spec-section numbers or
 engine jargon as user-facing text, with spec terms surviving in tooltips for §12 traceability; a
 task-first vocabulary map, e.g. supersede → "send back", PausePoint → "review gate"; progressive
-disclosure — advanced detail exists but is never the entry path) and the information
-architecture (Home with task cards + the decision inbox, Task view, Author view).
+disclosure — advanced detail exists but is never the entry path); the information architecture
+(Home with task cards + the decision inbox, Task view, Author view); and the **design language**
+— the premium bar made concrete rather than left as vibes: a reference set the owner signs off
+on (the products this should feel like), design tokens (type scale on the bundled Inter, a
+spacing grid, light + dark color tokens, radii/elevation), and motion principles (view
+transitions, hover/pressed states, live status changes, loading states). Phase 2 materializes
+the tokens as a shared theme resource; Phase 5 is judged against this document.
 
-**Produces:** the UX principles + IA doc; the audited requirements list.
+**Produces:** the UX principles + IA + design language doc; the audited requirements list.
 **Excludes:** any code (Phases 2–5).
 
 ### Phase 2 — Navigation shell: Home, Task, and Author views (#187)
@@ -134,18 +144,27 @@ recents list stays Local UI Configuration) with a decision inbox — everything 
 tasks currently waiting on the human, grouped and one click from acting. A behavior-preserving
 re-home of every existing surface: all headless round trips re-pointed and green.
 
-**Constraint (the remote-ready seam):** the shell is built against a clean read-model +
-mutation-interface seam — views render projections and raise intents; no new view does file I/O
-or pump hosting in code-behind, and the existing code-behind I/O migrates behind the seam as
-each surface is re-homed. This is UI spec §13's replaceability made real in the code: the
-surface becomes swappable (Avalonia today, a browser/remote client later) and the candidate
-remote milestone (see Notes for future work) becomes attaching a host API to a seam that already
-exists, not a rewrite. Same-process, same behavior — this constraint changes structure only.
+**Constraint (the remote-ready seam, compiler-enforced):** the shell is built against a clean
+read-model + mutation-interface seam — views render projections and raise intents; no new view
+does file I/O or pump hosting in code-behind — and the seam is held by the type system, not
+discipline: the presentation-agnostic layer moves to a new Avalonia-free project,
+**`Aer.Ui.Core`** — the projection loaders/projectors (`TaskProjection`, `ExecutionHistory`,
+`ArtifactLineage`, transcript, DAG layout, snapshot/template diff, bindings/template loaders)
+and the task-session orchestration that today lives in `MainWindow` code-behind (open/refresh,
+pump hosting with the retained `InFlightExecutionRegistry`, the mutation-interface calls) —
+leaving `Aer.Ui` as the Avalonia skin over it. Not speculative generalization: the boundary is
+already M14's decision of record (presentation-layer, deliberately not engine-owned); the split
+only makes the compiler enforce it, and it lands *as part of* the re-home — each surface
+migrates once, into its new home and behind the seam, never a separate refactor pass. The future
+remote host (candidate M20) references `Aer.Ui.Core` and never `Aer.Ui`. This phase also
+materializes Phase 1's design tokens as the shared theme resource every new surface consumes —
+nothing ships default-themed even mid-milestone. Same process, same behavior throughout.
 
-**Produces:** the shell; every M14–M18 surface reachable in its new home, rendered through the
-seam.
-**Excludes:** surface redesigns (Phase 3), authoring changes (Phase 4), styling (Phase 5); any
-network/remote capability (the seam is in-process — remote is a future milestone's question).
+**Produces:** the shell; `Aer.Ui.Core`; every M14–M18 surface reachable in its new home,
+rendered through the seam with Phase 1's tokens.
+**Excludes:** surface redesigns (Phase 3), authoring changes (Phase 4), polish beyond the base
+tokens (Phase 5); any network/remote capability (the seam is in-process — remote is a future
+milestone's question).
 **Open questions resolved in this phase:**
 - **The inbox's scan scope** — only the open task vs. all recent task directories (both
   §11-deterministic; the difference is refresh cost and how the inbox feels when empty).
@@ -177,13 +196,18 @@ it. Validation surfaced as inline guidance; Run from the end of the flow without
   adapter quirk catalog spike #21 isolated behind the adapter seam.
 
 ### Phase 5 — Visual design pass (#190)
-The original M19 content, styling the final shape: one coherent visual system across the Phase
-2–4 surfaces — typography, spacing, a color + status iconography system (one status → one
-color/icon everywhere), empty states that say what to do next, window sizing that respects the
-new IA.
+The premium pass, styling the final shape against Phase 1's design language: a custom control
+theme over default Fluent (nothing ships looking like a stock developer tool), the DAG rendered
+as a first-class visual (smooth edges, real node styling, status carried by the one color/icon
+system used everywhere), motion (view transitions, hover/pressed states, animated live-status
+changes, loading states), dark + light themes from the same tokens, empty states that say what
+to do next, window chrome and app icon, high-DPI crispness.
 
-**Produces:** the finished look; every surface visually consistent.
+**Produces:** the finished look; every surface visually consistent and to the bar.
 **Excludes:** any behavior change.
+**Gate:** behavior tests stay green as always, but look-and-feel is not CI-assertable — this
+phase completes only on the owner's design review against Phase 1's reference set, recorded as
+a human gate exactly like every live-vendor gate before it.
 
 ### Phase 6 — Gate: the non-expert path in default CI (#191)
 The milestone's gate, unattended on all three OSes: one headless round trip driving the whole
@@ -311,5 +335,7 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
   code: reopening §20's no-daemon stance (a remote host is a daemon — the standing Event Store
   performance ledger entry is already waiting on the same revisit), and the new trust boundary
   (client auth for a network API; vendor credentials never leave the desktop). M19 Phase 2's
-  remote-ready seam is the enabling investment; plan the rest only when it becomes current.
+  remote-ready seam — and its `Aer.Ui.Core` split, which the host process would reference
+  without ever touching `Aer.Ui` — is the enabling investment; plan the rest only when it
+  becomes current.
 - **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.
