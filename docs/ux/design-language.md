@@ -42,6 +42,17 @@ user moving between them should experience the same product wearing different wi
 the same boundary Phase 2 enforces in code (`Aer.Ui.Core` under `Aer.Ui`), applied to design:
 the identity lives in the system, not in any one skin.
 
+Two corollaries (owner, same directive):
+
+* **Fit over fidelity.** Anything in a reference that doesn't make sense for this domain is
+  skipped without apology — being unlike the reference is fine; being unlike ourselves is not.
+* **Mine them for capabilities, not just polish.** When a reference offers a genuinely great
+  affordance we lack (say, a Raycast-style command palette over tasks and actions, or Linear's
+  one-keystroke inbox triage), that's worth pursuing: adapt it to our identity and vocabulary,
+  fold it into the phase it naturally belongs to if it fits the phase's scope, and surface it
+  to the owner as a candidate if it would grow scope. The reference set is a quality bar *and*
+  a hunting ground — what it is not is a style guide.
+
 ## Design tokens
 
 Named tokens, defined once as the shared theme resource (Phase 2), consumed by name everywhere.

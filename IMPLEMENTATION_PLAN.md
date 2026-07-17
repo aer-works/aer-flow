@@ -250,6 +250,10 @@ Per this document's session prompt: help implement the current phase only.
   `design-language.md` and implemented by every client (desktop now, remote/web later), so all
   surfaces read as the same product wearing different windows. Phase 5's review question is
   two-sided: holds up beside the reference *and* unmistakably the same product throughout.
+  Corollaries: fit over fidelity (skip what doesn't suit the domain, without apology), and mine
+  the references for capabilities, not just polish — a standout affordance we lack is adapted
+  to our identity and folded into its natural phase, or surfaced to the owner if it would grow
+  scope.
 - **The vocabulary map is total for primary text and never renames semantics** — a spec term in
   a label/button/status line is a defect (Phase 6 checks for it), and a plain word that would
   imply behavior the engine doesn't have is wrong, not the engine ("send back" *is* supersede,
