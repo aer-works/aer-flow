@@ -460,6 +460,13 @@ public partial class MainWindow : Window
         RenderArtifactLineage(projection, taskDirectoryPath);
         RenderConversationExecutions(projection, taskDirectoryPath);
         RenderConversation();
+
+        // M19 Phase 3 (#188): the per-step drill-in — built after the session has rebuilt
+        // PausedSteps, so each paused step's inline decision card is the same live VM instance.
+        ViewModel.RebuildTaskSteps(
+            projection, taskDirectoryPath,
+            previewFileAsync: filePath => ShowArtifactPreviewAsync(filePath),
+            showConversation: ShowConversation);
     }
 
     /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by task and template loads.</summary>
@@ -475,6 +482,7 @@ public partial class MainWindow : Window
         ClearConversation();
         ArtifactPreviewBox.Text = string.Empty;
         DiffPanel.Children.Clear();
+        ViewModel.ClearTaskSteps();
     }
 
     /// <summary>
@@ -501,6 +509,7 @@ public partial class MainWindow : Window
             $"({definition.Steps.Count} step(s)) — not a task, no execution state.";
         ClearProjectionPanels();
         RenderDag(definition.Steps, statusByStepId: null);
+        ViewModel.TaskHeadlineText = "A workflow file — not a running task.";
     }
 
     private static readonly IReadOnlyDictionary<StepStatus, IBrush> BackgroundByStatus = new Dictionary<StepStatus, IBrush>
@@ -529,7 +538,11 @@ public partial class MainWindow : Window
     /// every node still renders, just without a status-derived background in the template case.
     /// </summary>
     private void RenderDag(IReadOnlyList<WorkflowStepDefinition> steps, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
-        => RenderDag(DagLayoutEngine.Layout(steps), DagCanvas, statusByStepId);
+        => RenderDag(
+            DagLayoutEngine.Layout(steps), DagCanvas, statusByStepId,
+            // M19 Phase 3 (#188): a node click opens that step's drill-in — task canvas only; the
+            // template editor's preview has no task state to drill into.
+            onNodeSelect: stepId => ViewModel.SelectStepById(stepId.Value));
 
     /// <summary>
     /// Re-layouts and renders <see cref="TemplateEditorViewModel.PreviewLayout"/> into
@@ -552,7 +565,9 @@ public partial class MainWindow : Window
         RenderDag(layout, TemplateEditorDagCanvas, statusByStepId: null);
     }
 
-    private void RenderDag(DagLayout layout, Canvas canvas, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
+    private void RenderDag(
+        DagLayout layout, Canvas canvas, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId,
+        Action<StepId>? onNodeSelect = null)
     {
         canvas.Children.Clear();
 
@@ -622,6 +637,12 @@ public partial class MainWindow : Window
                     TextWrapping = TextWrapping.Wrap,
                 },
             };
+
+            if (onNodeSelect is { } select)
+            {
+                var stepId = node.StepId;
+                border.PointerPressed += (_, _) => select(stepId);
+            }
 
             Canvas.SetLeft(border, node.Column * DagCellWidth);
             Canvas.SetTop(border, node.Rank * DagCellHeight);

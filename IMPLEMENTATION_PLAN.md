@@ -240,7 +240,7 @@ human action item (CLAUDE.md's live-vendor rule).
 
 - ✅ Phase 1 — UX baseline, principles, and information architecture (#186)
 - ✅ Phase 2 — Navigation shell: Home, Task, and Author views (#187)
-- ⬜ Phase 3 — Task view, human-first (#188)
+- ✅ Phase 3 — Task view, human-first (#188)
 - ⬜ Phase 4 — Guided authoring: no hand-edited config files (#189)
 - ⬜ Phase 5 — Visual design pass (#190)
 - ⬜ Phase 6 — Gate: the non-expert path in default CI (#191)
@@ -300,6 +300,26 @@ Per this document's session prompt: help implement the current phase only.
   longer loads stays visible ("Not available — moved, deleted, or not a task") with no inbox
   items and no live status: reflected, never an error, never silently pruned — the user
   recorded that history, and hiding it would misreport it.
+
+**Decisions of record (Phase 3):**
+
+- **The drill-in is a pure re-slice; the full record stays one disclosure away** — the per-step
+  tabs (attempts / outputs / conversation / decisions) assert nothing the task-level panels
+  don't already render; those precise, spec-vocabulary panels moved intact into a single
+  collapsed **Details** expander (§12 traceability; ux-principles' progressive disclosure), not
+  deleted. Their facade entries therefore stay until the phase that actually rebuilds them away
+  — the retirement rule binds per surface, and these surfaces became the disclosure layer.
+- **One decision authority, inline** — the needs-you-first decision cards bind the *same*
+  `PausedStepViewModel` instances M15's decision surface rebuilds; the drill-in's paused step
+  holds a reference, never a copy. Plain words on the buttons (Approve / Retry this step /
+  Reject / Send back), spec terms in the tooltips.
+- **The feedback-file picker is convenience over the same visible property** — the OS file
+  dialog writes `RevisionFilePath`, the property the text box still binds and headless tests
+  still set; a picker cannot be driven headlessly, and the path stays visible and swappable
+  (the audit's convenience-never-authority stance, applied to files).
+- **Live-follow needed no new mechanism** — the M15 2-second poller already refreshes while
+  the open task is non-terminal, and M18's conversation selection re-renders on every load;
+  "on by default" was already the recorded behavior, now confirmed as the phase requirement.
 
 ## Completed Milestones
 
