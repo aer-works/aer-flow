@@ -425,6 +425,7 @@
         "dependencies": {
           "Aer.Adapters": "[0.13.0, )",
           "Aer.Flow": "[0.13.0, )",
+          "Aer.Workers.Dialogue": "[0.13.0, )",
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "aer": "[0.13.0, )"
         }

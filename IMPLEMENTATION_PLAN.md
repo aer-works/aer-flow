@@ -241,7 +241,7 @@ human action item (CLAUDE.md's live-vendor rule).
 - ✅ Phase 1 — UX baseline, principles, and information architecture (#186)
 - ✅ Phase 2 — Navigation shell: Home, Task, and Author views (#187)
 - ✅ Phase 3 — Task view, human-first (#188)
-- ⬜ Phase 4 — Guided authoring: no hand-edited config files (#189)
+- ✅ Phase 4 — Guided authoring: no hand-edited config files (#189)
 - ⬜ Phase 5 — Visual design pass (#190)
 - ⬜ Phase 6 — Gate: the non-expert path in default CI (#191)
 
@@ -320,6 +320,27 @@ Per this document's session prompt: help implement the current phase only.
 - **Live-follow needed no new mechanism** — the M15 2-second poller already refreshes while
   the open task is non-terminal, and M18's conversation selection re-renders on every load;
   "on by default" was already the recorded behavior, now confirmed as the phase requirement.
+
+**Decisions of record (Phase 4):**
+
+- **Authored files live in a UI-managed default workspace** (the phase's first named open
+  question) — `Documents/AER Flow/<workflow-name>`, visible in the flow and swappable via a
+  folder picker, never required; task directories are created inside it per run
+  (`task-<timestamp>`). Explicit-everywhere would put a path decision back at the start of the
+  non-expert's very first action — the exact failure the audit's walkthrough recorded.
+- **Vendor invocation knowledge lives with its owner, never in the UI** (the second named open
+  question) — dialogue participants' command shapes moved from per-smoke-test duplication into
+  `DialogueParticipantPresets` (Aer.Workers.Dialogue: the worker that invokes them), the
+  read-only PATH probe lives in `VendorCliPresence` (Aer.Adapters: the layer that owns binary
+  names), and the guided flow's presets pass **no explicit PermissionScope** — the adapter's own
+  default governs, explained in plain words. The UI re-encodes nothing spike #21 isolated.
+- **The readiness surface is informational, never a gate** — "Claude: available / Gemini: not
+  found", refreshed on Author activation; nothing in the save/run path reads it (the audit's
+  vendor-readiness finding, delivered read-only as recorded).
+- **Guided save goes through the editors' own writers** (`WorkflowDefinitionWriter`,
+  `WorkerBindingConfigWriter`) — guided output and hand-authored files can never diverge in
+  format, and the M16 editors remain in the Author view as the advanced disclosure (the Phase 3
+  Details pattern, applied to authoring).
 
 ## Completed Milestones
 

@@ -8,7 +8,88 @@
              x:DataType="vm:MainWindowViewModel">
   <ScrollViewer>
     <StackPanel Margin="24" Spacing="12">
-      <TextBlock Classes="display" Text="Author" />
+      <TextBlock Classes="display" Text="Create a workflow" />
+
+      <!-- M19 Phase 4 (#189): the guided flow — form-first, no typed paths, no raw JSON; saving
+           writes the same durable files the advanced editors below edit by hand. -->
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Name:" VerticalAlignment="Center" />
+            <TextBox Text="{Binding NewWorkflow.WorkflowName}" Width="240" PlaceholderText="e.g. draft-and-review" />
+            <TextBlock Text="Saved in:" VerticalAlignment="Center" Classes="secondary" />
+            <TextBlock x:Name="WorkspacePathText" Text="{Binding NewWorkflow.EffectiveWorkspacePath}"
+                       VerticalAlignment="Center" Classes="caption" />
+            <Button Content="Change folder…" Click="OnChooseWorkspaceClick" />
+          </StackPanel>
+
+          <ItemsControl x:Name="VendorReadinessList" ItemsSource="{Binding NewWorkflow.VendorReadinessLines}" />
+
+          <Button Content="Add a step" Command="{Binding NewWorkflow.AddStepCommand}" />
+          <ItemsControl x:Name="GuidedStepsList" ItemsSource="{Binding NewWorkflow.Steps}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:GuidedStepViewModel">
+                <Border Classes="card" Margin="0,0,0,8">
+                  <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBox Text="{Binding Name}" Width="160" PlaceholderText="Step name" />
+                      <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}" Width="120" />
+                      <TextBox Text="{Binding ProducesFileName}" Width="180" PlaceholderText="Produces (file name)" />
+                      <TextBox Text="{Binding Model}" Width="160" PlaceholderText="Model (optional)" />
+                      <CheckBox Content="Review gate" IsChecked="{Binding HasReviewGate}"
+                                ToolTip.Tip="Pause here for your review before the workflow continues — approve, retry, send back, or reject (§17)." />
+                      <Button Content="Remove" Command="{Binding RemoveCommand}" />
+                    </StackPanel>
+                    <TextBlock Classes="caption" Text="{Binding PermissionExplanation}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="Runs after:" VerticalAlignment="Center" />
+                      <ItemsControl ItemsSource="{Binding DependsOnOptions}">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="8" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:GuidedDependsOnOptionViewModel">
+                            <CheckBox Content="{Binding StepName}" IsChecked="{Binding IsSelected}" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                    <TextBox Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="52"
+                             PlaceholderText="What should this step's runner do?" IsVisible="{Binding !IsDialogue}" />
+                    <StackPanel Spacing="4" IsVisible="{Binding IsDialogue}">
+                      <TextBox Text="{Binding SeedPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="40"
+                               PlaceholderText="Opening prompt — what the conversation is about" />
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBox Text="{Binding TurnBudgetText}" Width="80" PlaceholderText="Turns" />
+                        <TextBox Text="{Binding InitiatorPreamble}" Width="260" PlaceholderText="First voice's instructions (Claude)" />
+                        <TextBox Text="{Binding ResponderPreamble}" Width="260" PlaceholderText="Second voice's instructions (Gemini)" />
+                      </StackPanel>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <ItemsControl x:Name="GuidanceList" ItemsSource="{Binding NewWorkflow.GuidanceMessages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Text="{Binding}" Foreground="{DynamicResource Status.NeedsYou}" TextWrapping="Wrap" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Save" Command="{Binding NewWorkflow.SaveCommand}" />
+            <Button Content="Save and run" Command="{Binding NewWorkflow.SaveAndRunCommand}" />
+            <TextBlock x:Name="NewWorkflowStatusText" Text="{Binding NewWorkflow.StatusText}" VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="display" Text="Advanced — edit the files directly" />
 
       <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task, §5):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
