@@ -51,7 +51,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool isMutationInFlight;
 
-    /// <summary>In-window message surface for a decision's outcome or failure — the same precedent <c>RunStatusText</c> established (Phase 1).</summary>
+    /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
+    [ObservableProperty]
+    private string runStatusText = string.Empty;
+
+    /// <summary>In-window message surface for a decision's outcome or failure — the same precedent <see cref="RunStatusText"/> established (Phase 1).</summary>
     [ObservableProperty]
     private string decisionStatusText = string.Empty;
 

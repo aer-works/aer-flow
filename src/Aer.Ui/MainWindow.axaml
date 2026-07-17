@@ -23,7 +23,7 @@
         <Button x:Name="RunButton" Content="Run" IsEnabled="{Binding !IsMutationInFlight}" />
         <Button x:Name="StopButton" Content="Stop" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop)." />
       </StackPanel>
-      <TextBlock x:Name="RunStatusText" />
+      <TextBlock x:Name="RunStatusText" Text="{Binding RunStatusText}" />
 
       <TextBlock Text="Template editor (create or edit a template file — never a bound task, §5):" FontWeight="Bold" />
       <StackPanel Orientation="Horizontal" Spacing="8">

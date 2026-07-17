@@ -91,6 +91,113 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
         RecomputeIsDirty();
     }
 
+    /// <summary>Starts a fresh session with its user-facing status line — the New-bindings action's whole behavior, moved here from <c>MainWindow</c> when the file half of authoring moved into this type (M19 Phase 2, #187).</summary>
+    public void StartNewFile()
+    {
+        StartNew();
+        StatusText = "New worker-bindings file — add entries, then Save.";
+    }
+
+    /// <summary>
+    /// Opens <paramref name="bindingsFilePath"/> into the editor (M16 Phase 4, issue #153) via
+    /// <see cref="BindingsProjectionLoader"/> — never a second parser. Moved here from
+    /// <c>MainWindow</c> code-behind (M19 Phase 2, #187), same failure behavior as
+    /// <see cref="TemplateEditorViewModel.OpenFromFileAsync"/>: a failed open must not leave a
+    /// previous session's rows behind.
+    /// </summary>
+    public async Task OpenFromFileAsync(string bindingsFilePath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var config = await BindingsProjectionLoader.LoadAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
+            LoadFrom(config);
+            StatusText = string.Empty;
+        }
+        catch (Aer.Flow.AerFlowException ex)
+        {
+            Close();
+            StatusText = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Saves the editor's current rows to <paramref name="bindingsFilePath"/> through
+    /// <c>WorkerBindingConfigWriter</c>, so the saved file round-trips through the exact
+    /// <c>WorkerBindingConfigParser.Parse</c> every other consumer uses (M16 Phase 4, issue #153).
+    /// Unlike the template editor's save, there is no version field to increment — a bindings file
+    /// has no §11.1 counterpart.
+    /// </summary>
+    public async Task SaveToFileAsync(string bindingsFilePath, CancellationToken cancellationToken = default)
+    {
+        if (!IsOpen)
+        {
+            StatusText = "Nothing to save — create a new bindings file or open one in the editor first.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(bindingsFilePath))
+        {
+            StatusText = "Enter a bindings file path to save to.";
+            return;
+        }
+
+        if (!TryBuildConfig(out var config, out var buildError))
+        {
+            StatusText = buildError!;
+            return;
+        }
+
+        if (BaselineIsPersisted && !IsDirty)
+        {
+            // Same no-write, no-op-save precedent as the template editor's save (M16 Phase 1): the
+            // file already contains exactly this state.
+            StatusText = "No changes to save.";
+            return;
+        }
+
+        try
+        {
+            await WorkerBindingConfigWriter.SaveToFileAsync(config!, bindingsFilePath, cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is Aer.Flow.AerFlowException or IOException or UnauthorizedAccessException)
+        {
+            // A config that fails to round-trip through the parser (blank Adapter/PromptTemplate) or
+            // an unwritable path renders as the editor's status message; nothing was written.
+            StatusText = ex.Message;
+            return;
+        }
+
+        // Re-anchor dirty tracking to what the file now actually contains.
+        LoadFrom(config!);
+        StatusText = $"Saved '{bindingsFilePath}' ({config!.Count} entr{(config.Count == 1 ? "y" : "ies")}).";
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="MissingTemplateWorkerNames"/> (UI spec §9's advisory cross-check, M16
+    /// Phase 4's named open question) against <paramref name="templateBaseline"/> — the template
+    /// editor's own in-memory state, passed in by the caller rather than reached for, so this stays
+    /// a read-only consultation of already-computed state. Advisory display only, never a save gate
+    /// (§9): <see cref="SaveToFileAsync"/> never consults this.
+    /// </summary>
+    public void RefreshTemplateCrossCheck(Aer.Flow.Domain.WorkflowDefinition? templateBaseline)
+    {
+        MissingTemplateWorkerNames.Clear();
+
+        if (!IsOpen || templateBaseline is null)
+        {
+            return;
+        }
+
+        var boundWorkerNames = Entries.Select(entry => entry.WorkerName).ToHashSet();
+        foreach (var workerName in templateBaseline.Steps.Select(step => step.Worker).Distinct())
+        {
+            if (!boundWorkerNames.Contains(workerName))
+            {
+                MissingTemplateWorkerNames.Add(workerName);
+            }
+        }
+    }
+
     /// <summary>Ends the editing session (a failed Open-in-editor must not leave a stale one behind).</summary>
     public void Close()
     {
