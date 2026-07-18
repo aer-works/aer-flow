@@ -90,6 +90,7 @@ public sealed class TaskSession
     public bool LastLoadSucceeded { get; private set; }
     public WorkflowStatus? LastWorkflowStatus { get; private set; }
     public WorkflowDefinitionSnapshot? LastSnapshot { get; private set; }
+    public bool IsDaemonConfigured => !string.IsNullOrEmpty(_daemonUrl);
     public bool IsClientMode => _isClientMode;
 
     /// <summary>
@@ -168,7 +169,7 @@ public sealed class TaskSession
         _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 
-    private async Task<bool> EnsureDaemonConnectedAsync(CancellationToken cancellationToken)
+    public async Task<bool> EnsureDaemonConnectedAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(_daemonUrl)) return false;
         if (_isClientMode) return true;

@@ -421,6 +421,7 @@
       "aer.ui": {
         "type": "Project",
         "dependencies": {
+          "Aer.Daemon": "[0.13.0, )",
           "Aer.Ui.Core": "[0.13.0, )",
           "Avalonia": "[12.1.0, )",
           "Avalonia.Desktop": "[12.1.0, )",

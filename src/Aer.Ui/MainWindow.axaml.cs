@@ -341,6 +341,8 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        _ = _session.EnsureDaemonConnectedAsync(cancellationToken);
+
         await RefreshHomeAsync(cancellationToken);
 
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
@@ -924,12 +926,13 @@ public partial class MainWindow : Window
     /// </summary>
     public async void ConfirmCloseAndExit()
     {
-        if (_session.IsClientMode && ViewModel.RunningExecutions.Count > 0)
+        if (_session.IsDaemonConfigured)
         {
             Show();
             Activate();
 
-            var result = await ExitConfirmationWindow.ShowPromptAsync(this);
+            var hasRunningTasks = ViewModel.RunningExecutions.Count > 0;
+            var result = await ExitConfirmationWindow.ShowPromptAsync(this, hasRunningTasks);
             if (result == null)
             {
                 return;
@@ -942,15 +945,31 @@ public partial class MainWindow : Window
                 _ = _session.ShutdownDaemonAsync();
             }
             Close();
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+            }
         }
         else
         {
             _closeConfirmed = true;
-            if (_session.IsClientMode)
-            {
-                _ = _session.ShutdownDaemonAsync();
-            }
             Close();
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+            }
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        if (!_session.IsDaemonConfigured)
+        {
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+            }
         }
     }
 
@@ -961,7 +980,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_session.IsClientMode)
+        if (_session.IsDaemonConfigured)
         {
             e.Cancel = true;
             Hide();

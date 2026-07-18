@@ -19,6 +19,7 @@
          Aer.Cli / Aer.Adapters flow transitively through it (the M15 Phase 1 in-process mutation
          seam and M11 Phase 3 adapter-registry seam are unchanged, just re-homed). -->
     <ProjectReference Include="..\Aer.Ui.Core\Aer.Ui.Core.csproj" />
+    <ProjectReference Include="..\Aer.Daemon\Aer.Daemon.csproj" />
   </ItemGroup>
 
   <ItemGroup>
