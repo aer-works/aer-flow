@@ -1,5 +1,12 @@
 # Changelog
 
+**As of the release-please linked-versions migration (post-`0.14.0`), this repo no longer has one
+shared version.** Two independent release trains now exist — `core` (`Aer.Flow`/`Aer.Adapters`/
+`Aer.Workers.Dialogue`/`Aer.Cli`, tagged `cli-vX.Y.Z`) and `desktop` (`Aer.Ui.Core`/`Aer.Ui`/
+`Aer.Daemon`, tagged `ui-vX.Y.Z`) — each with its own changelog at its primary package's path
+(`src/Aer.Cli/CHANGELOG.md`, `src/Aer.Ui/CHANGELOG.md`). See `release-please-config.json`. Everything
+below this line is historical: the repo's single shared version through `0.14.0`.
+
 ## [0.14.0](https://github.com/aer-works/aer-flow/compare/v0.13.0...v0.14.0) (2026-07-18)
 
 
