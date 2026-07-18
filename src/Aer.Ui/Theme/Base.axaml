@@ -27,6 +27,14 @@
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
 
+  <!-- Emphasis within body text — step names, card titles, labels. Distinct from heading's larger
+       size and SemiBold; everything doing emphasis was using heading's weight ad hoc before this,
+       which is why text read as uniformly flat regardless of its actual role. -->
+  <Style Selector="TextBlock.body-strong">
+    <Setter Property="FontSize" Value="{DynamicResource Type.BodyStrong.FontSize}" />
+    <Setter Property="FontWeight" Value="Medium" />
+  </Style>
+
   <Style Selector="TextBlock.secondary">
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
@@ -43,8 +51,10 @@
     <Setter Property="Foreground" Value="{DynamicResource Color.Text}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Border}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
-    <Setter Property="Padding" Value="12,6" />
+    <!-- Radius.Medium, not .Small: the owner's "round buttons more" feedback — reuses the same
+         two-radii budget the cards already sit on rather than inventing a third radius. -->
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
+    <Setter Property="Padding" Value="14,7" />
   </Style>
   <Style Selector="Button /template/ ContentPresenter">
     <Setter Property="Transitions">
@@ -115,28 +125,45 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
-  <!-- A card: the surface unit Home's task cards and inbox items are built from -->
+  <!-- A card: the surface unit Home's task cards and inbox items are built from. SurfaceRaised +
+       Elevation.Raised (not the page's own Color.Surface) is what makes a card read as a distinct,
+       lifted object rather than a flat-colored rectangle sitting on the same plane as the page. -->
   <Style Selector="Border.card">
-    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceRaised}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.BorderSubtle}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
-    <Setter Property="Padding" Value="12" />
+    <!-- Space.4 (16px) — Thickness properties can't consume the double-typed Space.* tokens
+         through DynamicResource (no implicit conversion at runtime; throws InvalidCastException),
+         so the value is inlined here instead of tokenized. -->
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="BoxShadow" Value="{DynamicResource Elevation.Raised}" />
   </Style>
 
-  <!-- The attention card: Status.NeedsYou is the loudest thing in the system (ux-principles §4) -->
+  <!-- The attention card: Status.NeedsYou is the loudest thing in the system (ux-principles §4) —
+       Elevation.Overlay gives it more lift than an ordinary card, on top of its border/fill. -->
   <Style Selector="Border.card.needs-you">
     <Setter Property="BorderBrush" Value="{DynamicResource Status.NeedsYou}" />
+    <Setter Property="BorderThickness" Value="1.5" />
     <Setter Property="Background" Value="{DynamicResource Status.NeedsYouBg}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource Elevation.Overlay}" />
   </Style>
 
-  <!-- A clickable card (Home's task cards, the step chips) -->
+  <!-- A clickable card (Home's task cards, the step chips). BoxShadow lives on Button, not
+       Border, so it targets the template's ContentPresenter, same as the hover/pressed setters
+       below already do for Background/BorderBrush. -->
   <Style Selector="Button.card">
-    <Setter Property="Background" Value="{DynamicResource Color.Surface}" />
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceRaised}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.BorderSubtle}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
-    <Setter Property="Padding" Value="12" />
+    <!-- Space.4 (16px) — Thickness properties can't consume the double-typed Space.* tokens
+         through DynamicResource (no implicit conversion at runtime; throws InvalidCastException),
+         so the value is inlined here instead of tokenized. -->
+    <Setter Property="Padding" Value="16" />
+  </Style>
+  <Style Selector="Button.card /template/ ContentPresenter">
+    <Setter Property="BoxShadow" Value="{DynamicResource Elevation.Raised}" />
   </Style>
   <Style Selector="Button.card.selected">
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />

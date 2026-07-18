@@ -11,7 +11,10 @@
     <!-- Light -->
     <ResourceDictionary x:Key="Default">
       <SolidColorBrush x:Key="Color.Background">#F7F8F9</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.Surface">#FFFFFF</SolidColorBrush>
+      <!-- Surface/SurfaceRaised were identical (#FFFFFF/#FFFFFF) — no color step, so nothing read
+           as elevated. Base content now sits a hair below pure white; raised surfaces (cards,
+           the needs-you callout) keep #FFFFFF and pick up Elevation.Raised/.Overlay's shadow. -->
+      <SolidColorBrush x:Key="Color.Surface">#FBFBFC</SolidColorBrush>
       <SolidColorBrush x:Key="Color.SurfaceRaised">#FFFFFF</SolidColorBrush>
       <SolidColorBrush x:Key="Color.Border">#D7DBDF</SolidColorBrush>
       <SolidColorBrush x:Key="Color.BorderSubtle">#E8EAEC</SolidColorBrush>
@@ -24,21 +27,29 @@
       <SolidColorBrush x:Key="Color.AccentPressed">#0A5252</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentSubtleBg">#E3F1F1</SolidColorBrush>
 
-      <SolidColorBrush x:Key="Status.Running">#2563EB</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.NeedsYou">#B45309</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.NeedsYouBg">#FEF3C7</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Succeeded">#15803D</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Failed">#B91C1C</SolidColorBrush>
+      <!-- Desaturated from the prior stock Tailwind primaries (#2563EB/#B45309/#15803D/#B91C1C/
+           #7C3AED) — those read as a generic component-library default, not a considered palette. -->
+      <SolidColorBrush x:Key="Status.Running">#4C6C99</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYou">#A6741F</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYouBg">#F1E7D2</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Succeeded">#3F7D53</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Failed">#A8433D</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Idle">#6B7280</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Stale">#7C3AED</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Stale">#7A6BA3</SolidColorBrush>
 
       <!-- Status tints (M19 Phase 5, #190): the fill behind a status-colored border — the DAG
            nodes and any surface that carries a status as area rather than line. -->
-      <SolidColorBrush x:Key="Status.RunningBg">#DBEAFE</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.SucceededBg">#DCFCE7</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.FailedBg">#FEE2E2</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.IdleBg">#F3F4F6</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.StaleBg">#EDE9FE</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.RunningBg">#E4E9F0</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.SucceededBg">#E2ECE4</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.FailedBg">#F1E3E1</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.IdleBg">#F0F1F3</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.StaleBg">#E9E5EF</SolidColorBrush>
+
+      <!-- Elevation (design-language.md's shape/depth section): shadow + the Surface/SurfaceRaised
+           color step above. Light leans on both shadow and the color step. -->
+      <BoxShadows x:Key="Elevation.Flat">0 0 0 0 Transparent</BoxShadows>
+      <BoxShadows x:Key="Elevation.Raised">0 1 3 0 #221A1D21</BoxShadows>
+      <BoxShadows x:Key="Elevation.Overlay">0 4 16 0 #331A1D21</BoxShadows>
     </ResourceDictionary>
 
     <!-- Dark: same system, second mapping. Depth leans on surface steps, not shadows. -->
@@ -57,19 +68,26 @@
       <SolidColorBrush x:Key="Color.AccentPressed">#1E9E9E</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentSubtleBg">#123B3B</SolidColorBrush>
 
-      <SolidColorBrush x:Key="Status.Running">#60A5FA</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.NeedsYou">#FBBF24</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.NeedsYouBg">#3B2F12</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Succeeded">#4ADE80</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Failed">#F87171</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Running">#6E93C2</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYou">#C9A15C</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.NeedsYouBg">#332C1E</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Succeeded">#5FAE7C</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Failed">#C97F79</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Idle">#9CA3AF</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Stale">#A78BFA</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Stale">#9684C4</SolidColorBrush>
 
-      <SolidColorBrush x:Key="Status.RunningBg">#152A4A</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.SucceededBg">#12331E</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.FailedBg">#3B1717</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.RunningBg">#1E2836</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.SucceededBg">#1E2A22</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.FailedBg">#302321</SolidColorBrush>
       <SolidColorBrush x:Key="Status.IdleBg">#22262C</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.StaleBg">#2A2140</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.StaleBg">#26222E</SolidColorBrush>
+
+      <!-- Elevation: dark leans on the Surface/SurfaceRaised color step alone (already distinct
+           here) — a shadow barely reads against a near-black background, per the file header's
+           existing "depth leans on surface steps, not shadows" convention. -->
+      <BoxShadows x:Key="Elevation.Flat">0 0 0 0 Transparent</BoxShadows>
+      <BoxShadows x:Key="Elevation.Raised">0 0 0 0 Transparent</BoxShadows>
+      <BoxShadows x:Key="Elevation.Overlay">0 4 16 0 #4D000000</BoxShadows>
     </ResourceDictionary>
 
   </ResourceDictionary.ThemeDictionaries>
@@ -78,6 +96,8 @@
   <x:Double x:Key="Type.Display.FontSize">24</x:Double>
   <x:Double x:Key="Type.Heading.FontSize">17</x:Double>
   <x:Double x:Key="Type.Body.FontSize">14</x:Double>
+  <!-- Emphasis within body — step names, labels — never the same weight as a heading. -->
+  <x:Double x:Key="Type.BodyStrong.FontSize">14</x:Double>
   <x:Double x:Key="Type.Caption.FontSize">12</x:Double>
   <x:Double x:Key="Type.Mono.FontSize">13</x:Double>
   <FontFamily x:Key="Type.Mono.FontFamily">Cascadia Mono,Consolas,Menlo,monospace</FontFamily>
