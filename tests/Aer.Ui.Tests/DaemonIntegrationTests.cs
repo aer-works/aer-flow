@@ -141,6 +141,31 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Pairing_Locks_Out_After_Max_Failed_Attempts()
+    {
+        // A real code is active, but every guess below is deliberately wrong — proving the
+        // pairing endpoint can't be brute-forced across its 60s validity window: after enough
+        // wrong guesses, even the correct code is rejected until a fresh one is generated.
+        var codeResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
+        var codeData = await codeResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var code = codeData.GetProperty("code").GetString();
+        var wrongCode = code == "000000" ? "111111" : "000000";
+
+        using var remoteClient = new HttpClient();
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var wrongResponse = await remoteClient.PostAsJsonAsync(
+                $"{BaseUrl}/api/pairing/pair", new { Code = wrongCode, ClientName = "Attacker" }, TestContext.Current.CancellationToken);
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, wrongResponse.StatusCode);
+        }
+
+        // Attempts are now exhausted — even the real code must be rejected.
+        var finalResponse = await remoteClient.PostAsJsonAsync(
+            $"{BaseUrl}/api/pairing/pair", new { Code = code, ClientName = "Test Mobile App" }, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, finalResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task Request_Without_Token_Is_Rejected_With_401()
     {
         using var remoteClient = new HttpClient();

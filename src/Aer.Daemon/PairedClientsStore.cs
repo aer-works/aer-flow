@@ -140,17 +140,25 @@ public class PairedClientsStore
 
 public static class PairingCodeManager
 {
+    /// <summary>
+    /// A 6-digit code (~900k values) is guessable by brute force against an unauthenticated
+    /// endpoint well within the 60s window unless attempts are capped — this bounds a would-be
+    /// attacker to a handful of guesses per code instead of thousands per second.
+    /// </summary>
+    private const int MaxAttempts = 5;
+
     private static readonly object _lock = new();
     private static string? _activeCode;
     private static DateTime _expiry;
+    private static int _attempts;
 
     public static string GenerateCode()
     {
         lock (_lock)
         {
-            var random = new Random();
-            _activeCode = random.Next(100000, 999999).ToString();
+            _activeCode = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
             _expiry = DateTime.UtcNow.AddSeconds(60);
+            _attempts = 0;
             return _activeCode;
         }
     }
@@ -159,11 +167,25 @@ public static class PairingCodeManager
     {
         lock (_lock)
         {
-            if (_activeCode != null && _activeCode == code && DateTime.UtcNow < _expiry)
+            if (_activeCode == null || DateTime.UtcNow >= _expiry)
+            {
+                return false;
+            }
+
+            if (_attempts >= MaxAttempts)
+            {
+                _activeCode = null; // Locked out — a fresh code is required.
+                return false;
+            }
+
+            _attempts++;
+
+            if (_activeCode == code)
             {
                 _activeCode = null; // Consume
                 return true;
             }
+
             return false;
         }
     }

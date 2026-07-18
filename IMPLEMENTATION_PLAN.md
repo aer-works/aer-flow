@@ -75,6 +75,18 @@ M14–M16 are that UI track, splitting the roadmap's original single "UI" row th
 
 M17–M19 are the post-UI-track sequence, planned at M16's completion by re-checking the original project goal against what had shipped. Half of that goal exists and is proven live: vendor-to-vendor task hand-off on subscriptions (M12's recorded mixed-vendor gate). The other half — letting the two models actually talk to each other — does not: today §17.5's supersede loop makes the *human* the relay for every round of the exchange. **M17** builds the first Case 2 worker (the dialogue worker — the concrete thing the conversation view has been waiting on), opening with the real-use walkthrough the project is also missing. **M18** renders M17's durable transcript as UI spec §10's conversation view — load-on-refresh first; live Observation-Tier turn streaming stays unassigned until a concrete need names it. **M19** was originally scoped as a visual/UX design pass alone ("no new capability"), sequenced last so it styles the UI's final shape. At M18's completion the owner raised the bar: a user should not have to be an AI expert to use the product, and should never have to hand-edit a config file — with CyboFlow's human-first structure (a central view organized by what needs the human next: permission, decision, or action) the named inspiration. M19 is therefore redefined as a product-UX milestone; the original design pass survives as its next-to-last phase, still styling the final shape. M19's phase-by-phase plan lived here through its six phases; see this file's git history for the full text and `docs/decisions-of-record.md` for what it left behind.
 
+**M20** shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`, a
+loopback-only REST/WebSocket host API with token auth, and — ahead of any actual remote client
+existing — a pairing protocol (`--remote` binds beyond loopback; transient codes mint long-lived
+paired-client tokens) so the trust boundary exists before a client needs to cross it. Deliberately
+out of scope for M20, carried forward for whichever milestone builds the actual remote client:
+- **TLS for `--remote` mode.** Currently plaintext HTTP even off-loopback — fine while nothing
+  turns `--remote` on from the UI, not fine once a real client does.
+- **Paired-token expiry and revocation.** `PairedClientsStore` can add a client; nothing removes
+  one short of hand-editing `~/.aer/paired_clients.json`.
+- Pairing-code brute-force resistance (CSPRNG + a 5-attempt lockout) shipped in M20 itself — not
+  deferred, since it was cheap and closes a real hole in the scaffold as committed.
+
 ---
 
 ## Current Milestone
