@@ -19,11 +19,14 @@
         <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow file (fresh start only)" />
         <TextBox x:Name="BindingsFilePathBox" Width="300"
                  PlaceholderText="Who runs each step (bindings file)"
-                 ToolTip.Tip="Pre-filled with the last-used bindings file as a convenience — always visible, always swappable, never remembered authority (§4)." />
-        <Button x:Name="RunButton" Classes="accent" IsEnabled="{Binding !IsMutationInFlight}">
+                 ToolTip.Tip="Who runs each step — always visible, always swappable, never remembered as authority." />
+        <!-- Owner feedback: "does Run make sense on a finished task?" — disabled once the open
+             task has actually finished, rather than leaving a click that quietly does nothing. -->
+        <Button x:Name="RunButton" Classes="accent" IsEnabled="{Binding CanRun}"
+                ToolTip.Tip="{Binding RunButtonToolTipText}">
           <AccessText Text="R_un" />
         </Button>
-        <Button x:Name="StopButton" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop).">
+        <Button x:Name="StopButton" ToolTip.Tip="Cancel every execution this window currently has in flight.">
           <AccessText Text="_Stop" />
         </Button>
       </StackPanel>
@@ -44,17 +47,34 @@
                 </StackPanel>
                 <TextBlock Classes="caption" Text="{Binding Label}" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
+                  <!-- #218: Approve/Retry/Reject reuse the status check/refresh/cross glyphs
+                       already established (#206) — same shapes, same meaning, no new vocabulary. -->
                   <Button Classes="accent" Command="{Binding ApproveCommand}"
-                          ToolTip.Tip="Resume: accept this step's output and let the workflow continue (§17).">
-                    <AccessText Text="A_pprove" />
+                          ToolTip.Tip="Accept this step's output and let the workflow continue.">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                      <Path Classes="action-icon" Data="{StaticResource Icon.Check}"
+                            StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                            Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" />
+                      <AccessText Text="A_pprove" VerticalAlignment="Center" />
+                    </StackPanel>
                   </Button>
                   <Button Command="{Binding RetryCommand}"
-                          ToolTip.Tip="RetryWithRevision: run this step again, optionally with your feedback file attached (§17).">
-                    <AccessText Text="_Retry this step" />
+                          ToolTip.Tip="Run this step again, optionally with your feedback file attached.">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                      <Path Classes="action-icon" Data="{StaticResource Icon.Refresh}"
+                            StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                            Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" />
+                      <AccessText Text="_Retry this step" VerticalAlignment="Center" />
+                    </StackPanel>
                   </Button>
                   <Button Command="{Binding RejectCommand}"
-                          ToolTip.Tip="Reject: end this step here — the workflow does not continue past it (§17).">
-                    <AccessText Text="Re_ject" />
+                          ToolTip.Tip="End this step here — the workflow does not continue past it.">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                      <Path Classes="action-icon" Data="{StaticResource Icon.Cross}"
+                            StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                            Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" />
+                      <AccessText Text="Re_ject" VerticalAlignment="Center" />
+                    </StackPanel>
                   </Button>
                   <ItemsControl ItemsSource="{Binding SendBackTargets}">
                     <ItemsControl.ItemsPanel>
@@ -65,7 +85,7 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:SendBackTargetViewModel">
                         <Button Content="{Binding Label}" Command="{Binding SendBackCommand}"
-                                ToolTip.Tip="Supersede: send the work back to an earlier step, with your feedback file — the feedback is what that step revises against (§17)." />
+                                ToolTip.Tip="Send the work back to an earlier step, with your feedback file — the feedback is what that step revises against." />
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
@@ -160,7 +180,8 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ArtifactFileViewModel">
-                      <Button Content="{Binding Label}" Command="{Binding PreviewCommand}" Margin="0,0,4,4" />
+                      <Button Content="{Binding Label}" Command="{Binding PreviewCommand}"
+                              Classes="chip" Classes.selected="{Binding IsSelected}" Margin="0,0,4,4" />
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -191,51 +212,63 @@
         </StackPanel>
       </Border>
 
-      <TextBlock Classes="heading" Text="Working right now — stop a single attempt (§7):" />
-      <ItemsControl x:Name="RunningExecutionsList" ItemsSource="{Binding RunningExecutions}">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:RunningExecutionViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
-              <Button Content="Cancel" Command="{Binding CancelCommand}" />
-              <TextBlock Text="cancellation requested…" IsVisible="{Binding CancellationRequested}" VerticalAlignment="Center" />
-            </StackPanel>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-      <TextBlock x:Name="CancelStatusText" Text="{Binding CancelStatusText}" />
+      <!-- Owner feedback: this rendered its heading with nothing underneath whenever nothing was
+           actually running — hidden entirely rather than shown as an unexplained blank panel. -->
+      <StackPanel Spacing="12" IsVisible="{Binding HasRunningExecutions}">
+        <TextBlock Classes="heading" Text="Working right now — stop a single attempt:" />
+        <ItemsControl x:Name="RunningExecutionsList" ItemsSource="{Binding RunningExecutions}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:RunningExecutionViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding Label}" Width="280" VerticalAlignment="Center" />
+                <Button Content="Cancel" Command="{Binding CancelCommand}" />
+                <TextBlock Text="cancellation requested…" IsVisible="{Binding CancellationRequested}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock x:Name="CancelStatusText" Text="{Binding CancelStatusText}" />
+      </StackPanel>
 
       <!-- §12 traceability: the full, precise engine-level record — every fact the drill-in
            re-slices, in spec vocabulary, one disclosure away. Wrapped in a card (rather than
            templating Expander's own chrome, which has no BoxShadow property to target) so this
-           gets the same elevation treatment as every other surface. -->
-      <Border Classes="card">
+           gets the same elevation treatment as every other surface. Padding="0" (#220): Expander's
+           own template already pads its content — the card's default 16px on top of that was
+           double-padding the one surface in the view that's already the most content-dense. -->
+      <Border Classes="card" Padding="0">
       <Expander Header="Details — the full record" IsExpanded="False">
-        <StackPanel Spacing="12" Margin="0,8,0,0">
+        <!-- Space.3 (12px) — Thickness can't consume DynamicResource (see the card Padding
+             comments elsewhere), so this stays inlined, but on the grid, not an arbitrary value. -->
+        <StackPanel Spacing="{DynamicResource Space.3}" Margin="0,8,0,0">
           <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
-          <StackPanel x:Name="StepsPanel" Spacing="4" />
+          <StackPanel x:Name="StepsPanel" Spacing="{DynamicResource Space.1}" />
 
           <TextBlock Classes="heading" Text="Execution history:" />
-          <StackPanel x:Name="HistoryPanel" Spacing="2" />
+          <StackPanel x:Name="HistoryPanel" Spacing="{DynamicResource Space.1}" />
 
-          <TextBlock Classes="heading" Text="Conversation (executions with a durable transcript — UI spec §10.1):" />
-          <StackPanel x:Name="ConversationExecutionsPanel" Spacing="4" />
+          <TextBlock Classes="heading" Text="Conversation (executions with a durable transcript):" />
+          <StackPanel x:Name="ConversationExecutionsPanel" Spacing="{DynamicResource Space.1}" />
 
           <TextBlock Classes="heading" Text="Recorded decisions:" />
-          <StackPanel x:Name="DecisionsPanel" Spacing="2" />
+          <StackPanel x:Name="DecisionsPanel" Spacing="{DynamicResource Space.1}" />
 
-          <TextBlock Classes="heading" Text="Supplementary / human executions:" />
-          <StackPanel x:Name="SupplementaryPanel" Spacing="2" />
+          <!-- #213: plain-language renames per docs/ux/ux-principles.md's vocabulary map — these
+               stay one disclosure away (this Expander), so the precise spec terms survive in the
+               tooltips/ids next to each entry, per the map's own "survives in disclosure
+               surfaces" rule; only the section headers themselves needed to change. -->
+          <TextBlock Classes="heading" Text="Extra runs — revised attempts and manually-supplied results:" />
+          <StackPanel x:Name="SupplementaryPanel" Spacing="{DynamicResource Space.1}" />
 
-          <TextBlock Classes="heading" Text="Artifact lineage:" />
-          <StackPanel x:Name="LineagePanel" Spacing="6" />
+          <TextBlock Classes="heading" Text="Output history — earlier versions of each file:" />
+          <StackPanel x:Name="LineagePanel" Spacing="{DynamicResource Space.2}" />
 
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="Template path to compare against (optional)" />
-            <Button x:Name="CompareButton" Content="Compare to template" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="Workflow file to compare against (optional)" />
+            <Button x:Name="CompareButton" Content="Compare to a workflow file" />
           </StackPanel>
-          <TextBlock Classes="heading" Text="Snapshot vs. template diff:" />
-          <StackPanel x:Name="DiffPanel" Spacing="2" />
+          <TextBlock Classes="heading" Text="Changes vs. that workflow file:" />
+          <StackPanel x:Name="DiffPanel" Spacing="{DynamicResource Space.1}" />
         </StackPanel>
       </Expander>
       </Border>

@@ -44,6 +44,14 @@ public static class PlainLanguage
         _ when projection.State.Steps.Any(s => s.Status is StepStatus.Failed or StepStatus.Rejected) => "Failed",
         _ => "Finished",
     };
+
+    /// <summary>
+    /// #215: real execution/decision ids are 32-char generated Guids — pure visual noise to a
+    /// non-expert user inline in the drill-in's primary text. Truncated to a short prefix, still
+    /// enough to distinguish attempts by eye; the untruncated id remains in the Details disclosure
+    /// (§12 traceability), which this projection never touches.
+    /// </summary>
+    public static string ShortId(string id) => id.Length > 8 ? id[..8] : id;
 }
 
 /// <summary>
@@ -103,14 +111,38 @@ public sealed partial class StepItemViewModel : ObservableObject
     private void Select() => _select(this);
 }
 
-/// <summary>One durable output file of one execution, previewable in place — the same file-listing + plain-text-preview ceiling as M14 (issue #121), re-sliced per step.</summary>
-public sealed partial class ArtifactFileViewModel(string label, string filePath, Func<string, Task> previewAsync)
+/// <summary>
+/// One durable output file of one execution, previewable in place — the same file-listing +
+/// plain-text-preview ceiling as M14 (issue #121), re-sliced per step. <see cref="IsSelected"/>
+/// (#211) tracks which file's content the step's single preview surface currently shows, so the
+/// chip that produced it stays visually indicated instead of the previous selection lingering.
+/// </summary>
+public sealed partial class ArtifactFileViewModel : ObservableObject
 {
-    public string Label { get; } = label;
-    public string FilePath { get; } = filePath;
+    private readonly Func<string, Task> _previewAsync;
+    private readonly Action<ArtifactFileViewModel> _select;
+
+    public ArtifactFileViewModel(
+        string label, string filePath, Func<string, Task> previewAsync, Action<ArtifactFileViewModel> select)
+    {
+        Label = label;
+        FilePath = filePath;
+        _previewAsync = previewAsync;
+        _select = select;
+    }
+
+    public string Label { get; }
+    public string FilePath { get; }
+
+    [ObservableProperty]
+    private bool isSelected;
 
     [RelayCommand]
-    private Task Preview() => previewAsync(FilePath);
+    private Task Preview()
+    {
+        _select(this);
+        return _previewAsync(FilePath);
+    }
 }
 
 /// <summary>One execution of the step that recorded a durable transcript — opens M18's conversation view unchanged in behavior (discovery by transcript presence alone, §10.1).</summary>
@@ -164,7 +196,7 @@ public static class StepItemProjector
                 };
                 attemptLines.Add(
                     $"Attempt {index + 1} of {attempts.Count}: " +
-                    $"{PlainLanguage.ForStep(attempt.Status)}{classificationSuffix} ({attempt.ExecutionId})");
+                    $"{PlainLanguage.ForStep(attempt.Status)}{classificationSuffix} ({PlainLanguage.ShortId(attempt.ExecutionId.ToString())})");
             }
 
             var outputFiles = new List<ArtifactFileViewModel>();
@@ -175,15 +207,16 @@ public static class StepItemProjector
                 foreach (var fileName in execution.OutputFiles)
                 {
                     outputFiles.Add(new ArtifactFileViewModel(
-                        $"{fileName} ({execution.ExecutionId})",
+                        $"{fileName} ({PlainLanguage.ShortId(execution.ExecutionId.ToString())})",
                         Path.Combine(outputDirectory, fileName),
-                        previewFileAsync));
+                        previewFileAsync,
+                        select: file => SelectOutputFile(outputFiles, file)));
                 }
 
                 if (TranscriptProjectionLoader.HasTranscript(outputDirectory))
                 {
                     conversations.Add(new ConversationRefViewModel(
-                        $"{stepState.StepId} — {execution.ExecutionId} ({execution.Worker})",
+                        $"{stepState.StepId} — {PlainLanguage.ShortId(execution.ExecutionId.ToString())} ({execution.Worker})",
                         outputDirectory,
                         showConversation));
                 }
@@ -199,7 +232,7 @@ public static class StepItemProjector
                     var target = decision.TargetStepId is { } targetStepId ? $" to {targetStepId}" : string.Empty;
                     var pending = decision.Resolved ? string.Empty : " — not carried out yet";
                     return $"{PlainLanguage.ForDecision(decision.DecisionType)}{target} " +
-                           $"({decision.DecisionId} on {decision.ReferencedExecutionId}){pending}";
+                           $"({PlainLanguage.ShortId(decision.DecisionId.ToString())} on {PlainLanguage.ShortId(decision.ReferencedExecutionId.ToString())}){pending}";
                 })
                 .ToList();
 
@@ -217,5 +250,14 @@ public static class StepItemProjector
         }
 
         return items;
+    }
+
+    /// <summary>#211: marks exactly one output file of the step selected — mirrors <see cref="StepItemViewModel"/>'s own sibling-clearing selection pattern, scoped to one step's file list.</summary>
+    private static void SelectOutputFile(IReadOnlyList<ArtifactFileViewModel> files, ArtifactFileViewModel selected)
+    {
+        foreach (var file in files)
+        {
+            file.IsSelected = ReferenceEquals(file, selected);
+        }
     }
 }

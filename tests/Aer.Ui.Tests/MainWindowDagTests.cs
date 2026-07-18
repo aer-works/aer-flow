@@ -226,10 +226,10 @@ public class MainWindowDagTests
             var architectNode = dagCanvas.Children.OfType<Border>()
                 .Single(node => LabelOf(node).Text!.StartsWith("architect"));
 
-            // Tokens.axaml's Dark dictionary, not Default's light palette. Values updated for the
-            // post-M19 desaturated status palette (issue #206) — was #12331E/#4ADE80.
+            // Tokens.axaml's Dark dictionary, not Default's light palette. Border updated for the
+            // #216 accent/status-succeeded color separation — was #5FAE7C.
             Assert.Equal(Color.Parse("#1E2A22"), ((ISolidColorBrush)architectNode.Background!).Color);
-            Assert.Equal(Color.Parse("#5FAE7C"), ((ISolidColorBrush)architectNode.BorderBrush!).Color);
+            Assert.Equal(Color.Parse("#4CAE68"), ((ISolidColorBrush)architectNode.BorderBrush!).Color);
         }
         finally
         {

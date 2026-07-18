@@ -9,12 +9,18 @@ using Aer.Ui.Core;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Media;
 using Avalonia.Threading;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Avalonia.Win32;
+
+
 
 [assembly: InternalsVisibleTo("Aer.Ui.Tests")]
 
@@ -144,6 +150,10 @@ public partial class MainWindow : Window
     public MainWindow(LocalUiConfigurationStore configurationStore, IReadOnlyDictionary<string, IWorkerAdapter> adapters)
     {
         InitializeComponent();
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            Win32Properties.AddWndProcHookCallback(this, WndProcHook);
+        }
         DataContext = ViewModel;
         _session = new TaskSession(
             configurationStore,
@@ -217,8 +227,107 @@ public partial class MainWindow : Window
             ViewModel.CurrentSection = ShellSection.Task;
             await RunAsync(taskDirectoryPath, workflowFilePath, bindingsFilePath);
         };
+        // #211: the Outputs preview box is imperative control state, not bound — nothing cleared
+        // or refreshed it when the drill-in moved to a different step, so it kept showing the
+        // previously-selected step's last-previewed file. Clear on every change, then auto-load
+        // the new step's first output (if it has one) so a freshly-opened step's Outputs tab isn't
+        // just an unexplained blank box either.
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainWindowViewModel.SelectedStep))
+            {
+                _ = ShowSelectedStepFirstOutputAsync();
+            }
+        };
         Closed += (_, _) => _liveRefreshTimer.Stop();
         Closing += OnClosing;
+    }
+
+    /// <summary>
+    /// #217: keeps the custom title bar's maximize/restore glyph in sync with <see cref="Window.WindowState"/>
+    /// regardless of what changed it — this window's own two maximize entry points, but also Aero
+    /// Snap, the taskbar, and Win+Up/Down, none of which route through this window's own click handlers.
+    /// </summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty)
+        {
+            UpdateMaximizeRestoreIcon((WindowState)change.NewValue!);
+        }
+    }
+
+    /// <summary>The #211 hook above's body — its own method so a test can await it deterministically instead of racing the fire-and-forget subscription.</summary>
+    private Task ShowSelectedStepFirstOutputAsync()
+    {
+        ArtifactPreviewBox.Text = string.Empty;
+        var firstOutput = ViewModel.SelectedStep?.OutputFiles.FirstOrDefault();
+        return firstOutput is null ? Task.CompletedTask : firstOutput.PreviewCommand.ExecuteAsync(null);
+    }
+
+    // ── #217: the custom title bar's own chrome. MainWindow.axaml marks the bar and its three
+    // buttons with chrome:WindowDecorationProperties.ElementRole (TitleBar/MinimizeButton/
+    // MaximizeButton/CloseButton), which is what gives native drag-to-move, double-click-to-
+    // maximize, and Aero-Snap/taskbar integration on platforms that honor it. The handlers below
+    // are a second, always-active path to the same four actions — belt-and-suspenders for
+    // whichever platform or input device doesn't route through the non-client role. ─────────────
+
+    /// <summary>Drag-to-move: <see cref="Window.BeginMoveDrag"/> on any left-press over the bar's empty space (the icon/title label is IsHitTestVisible="False"; the three buttons handle their own clicks and never bubble a press up to this handler).</summary>
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            BeginMoveDrag(e);
+        }
+    }
+
+    /// <summary>Double-click-to-maximize: the one title-bar convention <see cref="OnTitleBarPointerPressed"/>'s drag doesn't already cover for free.</summary>
+    private void OnTitleBarDoubleTapped(object? sender, TappedEventArgs e) => ToggleMaximizeRestore();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STYLESTRUCT
+    {
+        public int styleOld;
+        public int styleNew;
+    }
+
+    private const uint WM_STYLECHANGING = 0x007C;
+    private const int GWL_STYLE = -16;
+    private const int WS_MINIMIZEBOX = 0x00020000;
+    private const int WS_MAXIMIZEBOX = 0x00010000;
+    private const int WS_CAPTION = 0x00C00000;
+    private const int WS_SYSMENU = 0x00080000;
+
+    private IntPtr WndProcHook(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_STYLECHANGING && (int)wParam == GWL_STYLE)
+        {
+            var styleStruct = Marshal.PtrToStructure<STYLESTRUCT>(lParam);
+            styleStruct.styleNew |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+            Marshal.StructureToPtr(styleStruct, lParam, false);
+        }
+        return IntPtr.Zero;
+    }
+
+    private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximizeRestoreClick(object? sender, RoutedEventArgs e) => ToggleMaximizeRestore();
+
+    private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
+
+    private void ToggleMaximizeRestore()
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    /// <summary>Swaps the maximize button between a square (maximize) and an overlapping-squares
+    /// glyph (restore) — the same convention every platform's own caption buttons use, so a
+    /// maximized window doesn't offer the same "maximize" affordance twice.</summary>
+    private void UpdateMaximizeRestoreIcon(WindowState state)
+    {
+        var isMaximized = state == WindowState.Maximized;
+        MaximizeButtonIcon.Data = Geometry.Parse(isMaximized
+            ? "M 3,5 L 9,5 L 9,11 L 3,11 Z M 5,5 L 5,3 L 11,3 L 11,9 L 9,9"
+            : "M 3,3 L 11,3 L 11,11 L 3,11 Z");
+        MaximizeButton.SetValue(ToolTip.TipProperty, isMaximized ? "Restore" : "Maximize");
     }
 
     /// <summary>
@@ -460,9 +569,11 @@ public partial class MainWindow : Window
             // in-window message instead. The session has already cleared the mutation surfaces.
             StatusText.Text = outcome.ErrorMessage;
             ClearProjectionPanels();
+            ViewModel.IsTaskFinished = false;
             return;
         }
 
+        ViewModel.IsTaskFinished = projection.State.Status == WorkflowStatus.Terminal;
         StatusText.Text = $"Workflow status: {projection.State.Status}";
         StepsPanel.Children.Clear();
         foreach (var step in projection.State.Steps)
@@ -515,6 +626,8 @@ public partial class MainWindow : Window
     private async Task LoadTemplateAsync(string templateFilePath, CancellationToken cancellationToken)
     {
         var outcome = await _session.LoadTemplateAsync(templateFilePath, cancellationToken);
+
+        ViewModel.IsTaskFinished = false;
 
         if (outcome.Definition is not { } definition)
         {

@@ -37,7 +37,7 @@
                       <TextBox Text="{Binding ProducesFileName}" Width="180" PlaceholderText="Produces (file name)" />
                       <TextBox Text="{Binding Model}" Width="160" PlaceholderText="Model (optional)" />
                       <CheckBox Content="Review gate" IsChecked="{Binding HasReviewGate}"
-                                ToolTip.Tip="Pause here for your review before the workflow continues — approve, retry, send back, or reject (§17)." />
+                                ToolTip.Tip="Pause here for your review before the workflow continues — approve, retry, send back, or reject." />
                       <Button Content="Remove" Command="{Binding RemoveCommand}" />
                     </StackPanel>
                     <TextBlock Classes="caption" Text="{Binding PermissionExplanation}" />
@@ -73,10 +73,19 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
 
+          <!-- Owner feedback: liked the guidance concept but found it "hard to parse — just lots of
+               text." Every line rendered in Status.NeedsYou (the loudest color in the system,
+               design-language.md's status table) regardless of whether it was a real blocker or
+               just "give it a name" on a form nobody has filled in yet — an empty form starts with
+               two guidance lines by construction, so the loudest color in the app was the very
+               first thing a new user saw, and it stayed that loud as more lines stacked up while
+               filling the form in normally. Secondary/caption styling with a plain dash marker
+               reads as gentle in-progress hints, matching what these actually are (Validate() has
+               no severity tier — they're all the same kind of "not done yet" fact). -->
           <ItemsControl x:Name="GuidanceList" ItemsSource="{Binding NewWorkflow.GuidanceMessages}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="x:String">
-                <TextBlock Text="{Binding}" Foreground="{DynamicResource Status.NeedsYou}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{Binding StringFormat='— {0}'}" TextWrapping="Wrap" />
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
@@ -89,9 +98,15 @@
         </StackPanel>
       </Border>
 
-      <TextBlock Classes="display" Text="Advanced — edit the files directly" />
-
-      <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task, §5):" />
+      <!-- #219: hidden by default — the raw template/bindings editors used to sit permanently
+           visible below the guided flow, one long scrollable list mixing a beginner path with an
+           expert one with no signal about which to use. Collapsed here (Padding="0": Expander
+           already pads its content, see the same reasoning on TaskView's Details expander), the
+           guided card above is unambiguously the primary, default path. -->
+      <Border Classes="card" Padding="0">
+      <Expander Header="Advanced — edit the files directly" IsExpanded="False">
+      <StackPanel Spacing="{DynamicResource Space.3}" Margin="16,8,16,16">
+      <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBox x:Name="TemplateEditorPathBox" Width="360" PlaceholderText="Template file to edit / save to" />
         <Button x:Name="NewTemplateButton" Content="New template" />
@@ -106,7 +121,7 @@
       </StackPanel>
       <TextBlock x:Name="TemplateEditorStatusText" Text="{Binding TemplateEditor.StatusText}" />
 
-      <TextBlock Classes="heading" Text="Steps (§8 — add/remove, edit fields, choose DependsOn from declared steps):" />
+      <TextBlock Classes="heading" Text="Steps (add/remove, edit fields, choose which steps each one depends on):" />
       <Button x:Name="AddStepButton" Content="Add step" IsEnabled="{Binding TemplateEditor.IsOpen}" />
       <ItemsControl x:Name="StepsEditorList" ItemsSource="{Binding TemplateEditor.Steps}">
         <ItemsControl.ItemTemplate>
@@ -136,9 +151,12 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <CheckBox Content="Pause point" IsChecked="{Binding HasPausePoint}" />
+                <!-- #213: matches the guided flow's own "Review gate" wording above (AuthorView's
+                     M19 Phase 4 addition already used the vocabulary map — this M16 advanced
+                     editor predates that phase and had not been caught up until now). -->
+                <CheckBox Content="Review gate" IsChecked="{Binding HasPausePoint}" />
                 <StackPanel IsVisible="{Binding HasPausePoint}" Spacing="4">
-                  <TextBlock Text="Supersede targets (this step's transitive ancestors):" />
+                  <TextBlock Text="Steps you can send back to:" />
                   <ItemsControl ItemsSource="{Binding SupersedeTargetOptions}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -172,7 +190,7 @@
         <Canvas x:Name="TemplateEditorDagCanvas" />
       </ScrollViewer>
 
-      <TextBlock Classes="heading" Text="Worker-bindings editor (create or edit a bindings file — §9; never persisted in a task directory):" />
+      <TextBlock Classes="heading" Text="Worker-bindings editor (create or edit a bindings file — never persisted in a task directory):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBox x:Name="BindingsEditorPathBox" Width="360" PlaceholderText="Bindings file to edit / save to" />
         <Button x:Name="NewBindingsButton" Content="New bindings" />
@@ -217,6 +235,9 @@
         </ItemsControl.ItemsPanel>
       </ItemsControl>
       <TextBlock x:Name="BindingsEditorStatusText" Text="{Binding BindingsEditor.StatusText}" />
+      </StackPanel>
+      </Expander>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

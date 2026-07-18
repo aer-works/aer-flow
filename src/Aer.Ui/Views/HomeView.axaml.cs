@@ -1,6 +1,9 @@
 using Aer.Ui.Core;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
+using System;
+using System.IO;
 
 namespace Aer.Ui.Views;
 
@@ -17,4 +20,43 @@ public partial class HomeView : UserControl
             viewModel.CurrentSection = ShellSection.Author;
         }
     }
+
+    /// <summary>
+    /// #212: a folder picker for "Open a task" — the same <see cref="AuthorView.OnChooseWorkspaceClick"/>
+    /// pattern (write the picked path into the visible text box, never a hidden field), so Open
+    /// still reads from <see cref="TaskDirectoryPathBox"/> exactly as it always has.
+    /// <para>
+    /// Owner feedback: asked for a default task directory on Home. Recent tasks already have their
+    /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>TaskCards</c>) — the
+    /// best "default" for a task you've already run. What was missing was a starting point for a
+    /// task you haven't opened yet: this picker now opens in the same
+    /// <c>Documents/AER Flow</c> workspace root <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/>
+    /// writes guided-flow output under, instead of wherever the OS last remembered — that's the one
+    /// place a fresh task is actually likely to be.
+    /// </para>
+    /// </summary>
+    private async void OnBrowseTaskDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanPickFolder: true } storageProvider)
+        {
+            return;
+        }
+
+        var suggestedStartLocation = await storageProvider.TryGetFolderFromPathAsync(DefaultWorkspaceDirectoryPath);
+
+        var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a task folder",
+            AllowMultiple = false,
+            SuggestedStartLocation = suggestedStartLocation,
+        });
+
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } localPath)
+        {
+            TaskDirectoryPathBox.Text = localPath;
+        }
+    }
+
+    private static string DefaultWorkspaceDirectoryPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AER Flow");
 }
