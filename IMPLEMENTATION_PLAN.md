@@ -65,6 +65,8 @@ Which milestone introduces which capabilities.
 | **M18: Conversation View** | 25 | M17 (a transcript to project); M14 |
 | **M19: Product UX** | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18 |
 | **M20: Daemonization & Remote Control** | 26 (exposing read model + mutation over network API), 27 (remote client protocol / mobile gateway) | M19 |
+| **M21: Generic Dialogue & Project Packaging** | 28 (Generic Dialogue configuration schema & loops), 29 (Unified Project Package model with profile segregation) | M20 |
+| **M22: UI Visual Overhaul** | 30 (Curve-based Bezier DAG rendering, brand icons), 31 (Rich markdown output previewer), 32 (Keyboard-first triage modal) | M21 |
 
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
@@ -79,12 +81,11 @@ M17–M19 are the post-UI-track sequence, planned at M16's completion by re-chec
 
 **M20: Daemonization & Remote Control** — progress:
 
-- ⬜ Phase 1 — Daemon Scaffold, Host API & Local IPC (#204)
-- ⬜ Phase 2 — UI Connection & Flow Client Migration (#205)
-- ⬜ Phase 3 — System Tray integration and notification system (#206)
-- ⬜ Phase 4 — Remote API Gateway & Trust Boundary Spec (#207)
-
-Per this document's session prompt: help implement the current phase only.
+- [x] Phase 1 — Daemon Scaffold, Host API & Local IPC (#204)
+- [x] Phase 2 — UI Connection & Flow Client Migration (#205)
+- ⬜ Phase 3 — System Tray integration, Lifecycle & Auth Security (#206)
+- ⬜ Phase 4 — Shell-less direct worker execution (#208)
+- ⬜ Phase 5 — Remote API Gateway & Trust Boundary Spec (#207)
 
 ---
 
@@ -102,13 +103,60 @@ Per this document's session prompt: help implement the current phase only.
 - **Verification**: Desktop application loads, starts, and reacts to running workflows served from the daemon.
 - **Open Questions**: How does the UI find the local daemon port? (A local discovery file or fixed port configuration).
 
-### Phase 3: System Tray integration and notification system
-- **Goal**: Add a system tray client wrapper for the desktop app. Ensure that closing the window only hides the UI while the task runner tray icon keeps the daemon alive in the background. Trigger local OS notifications (toasts) when a workflow reaches a `PausePoint` and needs human decision/input.
-- **Verification**: Closing the window does not abort running tasks; notifications pop when a step pauses.
+### Phase 3: System Tray integration, Lifecycle & Auth Security
+- **Goal**: Add a system tray client wrapper for the desktop app. Ensure that closing the window only hides the UI while the task runner tray icon keeps the daemon alive in the background. Address lifecycle and security details:
+  - **Single-instance Enforcement**: Mutex-based check (`Global\AerDaemonMutex_{UserName}`) to prevent duplicate processes and port conflicts.
+  - **IPC Auth Token**: Write a cryptographically secure token to `%USERPROFILE%\.aer\daemon.token` with owner-read permissions (`0600`). Require all client HTTP and WebSocket handshakes to provide this token.
+  - **Process Supervision**: UI acts as supervisor, monitoring the daemon process and auto-relaunching it on unexpected exits.
+  - **Version Skew**: Verify daemon version on startup; terminate and respawn new daemon if mismatch is detected.
+- **Verification**: Closing the window does not abort running tasks; notifications pop when a step pauses; unauthorized requests to daemon are rejected with `401 Unauthorized`.
 
-### Phase 4: Remote API Gateway & Trust Boundary Spec
+### Phase 4: Shell-less direct worker execution (Security Hardening)
+- **Goal**: Harden the process execution model by removing the `cmd.exe /c` (Windows) and `sh -c` (Unix) wrappers.
+  - **Native Stdin Redirection**: Configure Rust process creation in `aer-core` (`windows.rs` and `unix.rs`) to set `.stdin(Stdio::null())` by default.
+  - **Engine-Side Expansion**: Parse and expand environment variables (`%AER_INPUT_n%` / `%AER_OUTPUT_DIR%`) inside C# `CoreDispatcher.cs` before native task invocation.
+  - **Direct Invocation**: Refactor `ClaudeWorkerAdapter` and `GeminiWorkerAdapter` to return direct executable binaries (e.g. `claude`, `gemini`) and direct arguments list.
+- **Verification**: All unit, E2E, and UI tests pass; test prompt containing command separators (like `&` or `;`) executes literally as text without triggering secondary processes.
+
+### Phase 5: Remote API Gateway & Trust Boundary Spec
 - **Goal**: Define the remote access protocol and authentication boundary. Implement client key pairing so that a phone client can connect securely over local Wi-Fi or a reverse proxy without leaking subscription credentials (vendor credentials never leave the desktop).
 - **Verification**: Handshake verification tests proving only paired client keys can access mutations.
+
+---
+
+## M21: Generic Dialogue & Project Packaging — Phase Plan
+
+**Goal:** Author multi-turn dialogue steps directly within the UI and bundle workflow assets into portable task packages while separating machine-specific bindings config.
+
+### Phase 1: Generic Dialogue Config Schema & Loops
+- **Goal**: Generalize the Dialogue Worker so that the number of turns, seed prompts, and agent rules are read dynamically from the workflow step definition rather than a hardcoded C# worker.
+- **Verification**: UI authoring and engine execution of custom 3-turn Claude ↔ Gemini loops configured entirely in the visual step editor.
+
+### Phase 2: Project Packages & Binding Segregation
+- **Goal**: Implement the `.aerproj` or unified project folder model. Task directories store only the portable snapshot, template, and event log, while pointing to a named profile configuration reference (`"bindings-profile": "default"`). The actual profile mappings remain stored in the user's private `%USERPROFILE%\.aer\profiles.json`.
+- **Verification**: Open a task directory on a different machine; verify it maps to local tools and runs successfully without modification.
+
+### Phase 3: Visual Diff Viewer for Revisions
+- **Goal**: Build a side-by-side file revision diff panel in the UI to visualize step revisions and changes made during a "Send back" feedback loop.
+- **Verification**: Editing a template step and generating a new revision displays clear visual file additions, deletions, and modifications.
+
+---
+
+## M22: UI Visual Overhaul — Phase Plan
+
+**Goal:** Transform the visual layout of AER Flow into a premium desktop product matching reference-caliber tools (Linear, Raycast).
+
+### Phase 1: Curved Bezier DAG Canvas & Hover States
+- **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
+- **Verification**: Seamless rendering, city hover states, and smooth drag-and-drop interactions.
+
+### Phase 2: Rich Markdown Output Previewer
+- **Goal**: Integrate a markdown engine (e.g., `Markdown.Avalonia`) to render step artifact output previews as rich formatted text, headers, checklists, and tables, replacing the raw TextBox.
+- **Verification**: Standard markdown output files are rendered with high-fidelity typography, colors, and table structures.
+
+### Phase 3: Keyboard-First Triage Mode
+- **Goal**: Add keyboard-first navigation to the Home triage screen. When a step pauses for review, enable quick keys (`A` to approve, `S` to send back) with highly visible keyboard badges, maximizing non-expert efficiency.
+- **Verification**: Complete task reviews and decisions purely from the keyboard.
 
 ---
 
