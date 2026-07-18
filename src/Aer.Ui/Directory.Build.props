@@ -6,10 +6,10 @@
        carries the real, release-please-patched Version. Aer.Ui.Core stays on the root file's static
        Version; nothing reads its own assembly version independently. Imports the root file first for
        shared settings, then overrides just Version. -->
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"/>
 
   <PropertyGroup>
-    <Version>0.14.0</Version>
+    <Version>0.15.0</Version>
   </PropertyGroup>
 
 </Project>
