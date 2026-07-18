@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Aer.Ui.Tests;
 
+[Collection("DaemonIntegrationTests")]
 public class DaemonIntegrationTests : IAsyncLifetime
 {
     private Task? _daemonTask;
@@ -20,7 +21,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         // Start Daemon on port 5050
-        _daemonTask = DaemonHost.RunDaemonAsync(new[] { "--port", "5050" });
+        _daemonTask = DaemonHost.RunDaemonAsync(new[] { "--port", "5050", "--no-mutex" });
 
         // Wait for daemon to spin up
         for (int i = 0; i < 30; i++)

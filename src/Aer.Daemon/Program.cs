@@ -25,12 +25,18 @@ namespace Aer.Daemon
 
         public static async Task RunDaemonAsync(string[] args)
         {
-            var username = Environment.UserName;
-            using var mutex = new Mutex(true, $"Global\\AerDaemonMutex_{username}", out var createdNew);
-            if (!createdNew)
+            var noMutex = args.Contains("--no-mutex");
+            Mutex? mutex = null;
+            if (!noMutex)
             {
-                Console.WriteLine("Another instance of Aer.Daemon is already running.");
-                return;
+                var username = Environment.UserName;
+                mutex = new Mutex(true, $"Global\\AerDaemonMutex_{username}", out var createdNew);
+                if (!createdNew)
+                {
+                    Console.WriteLine("Another instance of Aer.Daemon is already running.");
+                    mutex.Dispose();
+                    return;
+                }
             }
 
             // Setup local data directory ~/.aer
@@ -435,6 +441,7 @@ namespace Aer.Daemon
             });
 
             await app.RunAsync();
+            mutex?.Dispose();
         }
     }
 
