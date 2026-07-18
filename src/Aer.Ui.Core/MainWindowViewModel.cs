@@ -54,9 +54,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// One entry per currently-running or cancellation-pending execution (M15 Phase 4, issue #140) —
-    /// the §7 targeted-Cancel surface, alongside <see cref="PausedSteps"/>' decision surface.
+    /// the targeted-Cancel surface, alongside <see cref="PausedSteps"/>' decision surface.
     /// </summary>
     public ObservableCollection<RunningExecutionViewModel> RunningExecutions { get; } = [];
+
+    /// <summary>
+    /// Owner feedback: the "Working right now" section rendered its heading even with nothing
+    /// running underneath, reading as a blank/broken panel rather than an honest empty state.
+    /// <see cref="RunningExecutions"/> is cleared and refilled in place on the same long-lived
+    /// <c>MainWindowViewModel</c> instance (<c>TaskSession.RebuildRunningExecutions</c>), so this
+    /// needs its own change notification rather than the "new instance per rebuild" pattern
+    /// <see cref="TaskStepsViewModel.HasOutputFiles"/> and its siblings rely on.
+    /// </summary>
+    public bool HasRunningExecutions => RunningExecutions.Count > 0;
+
+    public MainWindowViewModel()
+    {
+        RunningExecutions.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRunningExecutions));
+    }
 
     /// <summary>
     /// True for the duration of any mutation call this UI process itself is driving — a Run or a
@@ -70,7 +85,27 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// exactly while this flag is true (Phase 4) — see <see cref="RunningExecutionViewModel.UpdateEnabled"/>.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRun))]
     private bool isMutationInFlight;
+
+    /// <summary>
+    /// Owner feedback: "does Run make sense on a finished task? or is it a re-run?" — it's neither:
+    /// <c>MutationInterface.StartWorkflowAsync</c>'s pump finds nothing ready and nothing in flight
+    /// for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> task and returns the
+    /// same state unchanged, a safe but silent no-op. Rather than leave that ambiguous, Run is
+    /// disabled once the open task has actually finished — set by <c>MainWindow.LoadAsync</c> from
+    /// the loaded projection's <c>State.Status</c>, alongside every other read-only render there.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRun))]
+    [NotifyPropertyChangedFor(nameof(RunButtonToolTipText))]
+    private bool isTaskFinished;
+
+    public bool CanRun => !IsMutationInFlight && !IsTaskFinished;
+
+    public string RunButtonToolTipText => IsTaskFinished
+        ? "This task has already finished — there's nothing left to run."
+        : "Start a fresh task from a workflow file, or resume the task open above.";
 
     /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
     [ObservableProperty]

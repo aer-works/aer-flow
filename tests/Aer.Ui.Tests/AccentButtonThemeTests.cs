@@ -32,8 +32,8 @@ public class AccentButtonThemeTests
         var contentPresenter = runButton.GetVisualDescendants().OfType<ContentPresenter>().First();
 
         // Tokens.axaml's Default (light) dictionary's Color.Accent — not any SystemAccentColor-derived brush.
-        Assert.Equal(Color.Parse("#0F7B7B"), ((ISolidColorBrush)contentPresenter.Background!).Color);
-        Assert.Equal(Color.Parse("#0F7B7B"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
+        Assert.Equal(Color.Parse("#0E6FA8"), ((ISolidColorBrush)contentPresenter.Background!).Color);
+        Assert.Equal(Color.Parse("#0E6FA8"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
     }
 
     [AvaloniaFact]
@@ -48,7 +48,7 @@ public class AccentButtonThemeTests
         var contentPresenter = runButton.GetVisualDescendants().OfType<ContentPresenter>().First();
 
         // Tokens.axaml's Dark dictionary's Color.Accent.
-        Assert.Equal(Color.Parse("#2CB5B5"), ((ISolidColorBrush)contentPresenter.Background!).Color);
-        Assert.Equal(Color.Parse("#2CB5B5"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
+        Assert.Equal(Color.Parse("#3B9FD6"), ((ISolidColorBrush)contentPresenter.Background!).Color);
+        Assert.Equal(Color.Parse("#3B9FD6"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
     }
 }

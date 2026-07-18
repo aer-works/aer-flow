@@ -8,35 +8,110 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
         xmlns:views="clr-namespace:Aer.Ui.Views"
+        xmlns:chrome="clr-namespace:Avalonia.Controls.Chrome;assembly=Avalonia.Controls"
         x:Class="Aer.Ui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="AER Flow"
         Icon="/Assets/aer.ico"
         Width="1200" Height="800"
-        MinWidth="900" MinHeight="640">
+        MinWidth="900" MinHeight="640"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="40"
+        WindowDecorations="BorderOnly">
   <DockPanel>
+    <!-- #217: a fully custom title bar via Avalonia 12's WindowDecorationProperties.ElementRole
+         (chrome:) attached property — the real replacement for v11's now-removed
+         ExtendClientAreaChromeHints="NoChrome". WindowDecorations="BorderOnly" on the Window above
+         is the other required half: "Full" (the default) keeps the OS drawing its own native
+         titlebar underneath the extended client area — this Border was rendering *on top of* that
+         native titlebar, not instead of it, which is what produced the visible double title bar.
+         BorderOnly keeps the OS-drawn resizable frame (edge-drag resize, shadow) but drops its
+         titlebar/caption entirely, leaving this Border as the only thing painted there. Marking an
+         element with a role (TitleBar/MinimizeButton/MaximizeButton/CloseButton) tells the OS this
+         exact Avalonia-rendered element *is* that piece of chrome (drag/double-click-maximize on
+         TitleBar; native HTMINBUTTON/HTMAXBUTTON/HTCLOSE behavior on the buttons) while the element
+         itself stays completely normal, fully-styleable Avalonia content — Cursor="Hand" and
+         Color.Accent hover (Button.titlebar-* in Base.axaml) apply exactly like any other button,
+         which plain OS-native chrome could never take app styling for. The Click handlers below
+         are kept as a second, harmless path to the same action in case a given platform doesn't
+         route the non-client action through for a given role. -->
+    <Border x:Name="TitleBar" DockPanel.Dock="Top" Height="40"
+            chrome:WindowDecorationProperties.ElementRole="TitleBar"
+            Background="{DynamicResource Color.SurfaceRaised}"
+            BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,0,1"
+            PointerPressed="OnTitleBarPointerPressed" DoubleTapped="OnTitleBarDoubleTapped">
+      <DockPanel LastChildFill="False">
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
+                    Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+          <Image Source="/Assets/aer.ico" Width="16" Height="16" />
+          <TextBlock Classes="body-strong" Text="AER Flow" Foreground="{DynamicResource Color.Accent}"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button x:Name="MinimizeButton" Classes="titlebar-button"
+                  chrome:WindowDecorationProperties.ElementRole="MinimizeButton"
+                  Click="OnMinimizeClick" ToolTip.Tip="Minimize">
+            <!-- A pure horizontal line has a zero-height Geometry.Bounds — Stretch="Uniform" (every
+                 sibling icon's convention, keyed to the shared 16-unit design grid) computes its
+                 scale factor from that Bounds rect, and a zero-height source collapsed this to a
+                 barely-visible dot instead of a dash. The transparent Move points at 3,3 and 11,11
+                 give the geometry the exact same 8x8 bounding box as Maximize/Close, making it
+                 scale and center identically in the 14x14 space. -->
+            <Path Data="M 3,3 M 11,11 M 3,7 L 11,7" Classes="titlebar-icon"
+                  StrokeThickness="1.3" StrokeLineCap="Round" Width="14" Height="14" Stretch="Uniform" />
+          </Button>
+          <Button x:Name="MaximizeButton" Classes="titlebar-button"
+                  chrome:WindowDecorationProperties.ElementRole="MaximizeButton"
+                  Click="OnMaximizeRestoreClick" ToolTip.Tip="Maximize">
+            <Path x:Name="MaximizeButtonIcon" Data="M 3,3 L 11,3 L 11,11 L 3,11 Z" Classes="titlebar-icon"
+                  StrokeThickness="1.3" StrokeJoin="Round" Width="14" Height="14" Stretch="Uniform" />
+          </Button>
+          <Button x:Name="CloseButton" Classes="titlebar-button close"
+                  chrome:WindowDecorationProperties.ElementRole="CloseButton"
+                  Click="OnCloseClick" ToolTip.Tip="Close">
+            <Path Data="M 3,3 L 11,11 M 11,3 L 3,11" Classes="titlebar-icon"
+                  StrokeThickness="1.3" StrokeLineCap="Round" Width="14" Height="14" Stretch="Uniform" />
+          </Button>
+        </StackPanel>
+      </DockPanel>
+    </Border>
     <!-- Post-M19 design review (#206): the nav rail is a raised surface too, not just cards
          (Elevation was previously only wired into Border.card/Button.card). -->
     <Border DockPanel.Dock="Left" Background="{DynamicResource Color.SurfaceRaised}"
             BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0"
             BoxShadow="{DynamicResource Elevation.Raised}">
       <StackPanel Margin="8" Spacing="4" Width="132">
-        <TextBlock Classes="heading" Text="AER Flow" Margin="12,8,12,12"
-                   Foreground="{DynamicResource Color.Accent}" />
         <!-- ux-principles.md §5, "keyboard-first, mouse-complete": AccessText's underscore is a
              real Alt+letter mnemonic (Avalonia's built-in AccessKeyHandler), not decoration — it
              both binds the shortcut and renders the visible hint the principle calls for. -->
+        <!-- #218: nav icons, same stroke-Path pattern as the status icons (#206) — stroke follows
+             the button's own Foreground so selected/hover states color the icon for free. -->
         <Button x:Name="NavHomeButton" Classes="nav" Classes.selected="{Binding IsHomeVisible}"
                 HorizontalAlignment="Stretch">
-          <AccessText Text="_Home" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Home}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="_Home" VerticalAlignment="Center" />
+          </StackPanel>
         </Button>
         <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsTaskVisible}"
                 HorizontalAlignment="Stretch">
-          <AccessText Text="_Task" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="_Task" VerticalAlignment="Center" />
+          </StackPanel>
         </Button>
         <Button x:Name="NavAuthorButton" Classes="nav" Classes.selected="{Binding IsAuthorVisible}"
                 HorizontalAlignment="Stretch">
-          <AccessText Text="_Author" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Author}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="_Author" VerticalAlignment="Center" />
+          </StackPanel>
         </Button>
       </StackPanel>
     </Border>

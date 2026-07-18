@@ -62,7 +62,7 @@ public class TaskDrillInTests
         return taskDirectory;
     }
 
-    /// <summary>Paused at critic after one architect failure + success; c-1 has a durable output file.</summary>
+    /// <summary>Paused at critic after one architect failure + success; a-2 and c-1 each have a durable output file.</summary>
     private static async Task<string> CreatePausedTaskDirectoryAsync(CancellationToken cancellationToken)
     {
         var taskDirectory = await CreateTaskDirectoryAsync(
@@ -77,6 +77,10 @@ public class TaskDrillInTests
                 new FlowEvent.WorkflowPaused(new ExecutionId("c-1"), Critic),
             ],
             cancellationToken);
+
+        var architectOutputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_a-2");
+        Directory.CreateDirectory(architectOutputDirectory);
+        await File.WriteAllTextAsync(Path.Combine(architectOutputDirectory, "plan"), "The plan.", cancellationToken);
 
         var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
         Directory.CreateDirectory(outputDirectory);
@@ -145,11 +149,61 @@ public class TaskDrillInTests
             await file.PreviewCommand.ExecuteAsync(null);
 
             Assert.Equal("The critique.", window.FindViewControl<TextBox>("ArtifactPreviewBox")!.Text);
+            Assert.True(file.IsSelected);
         }
         finally
         {
             Directory.Delete(taskDirectory, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// Regression test for issue #211: the preview box used to be pure imperative control state
+    /// with nothing hooking <see cref="MainWindowViewModel.SelectedStep"/> changing, so switching
+    /// steps left the *previous* step's last-previewed output showing. Now it clears and
+    /// auto-loads the newly-selected step's own first output, and the chip that produced the
+    /// shown content carries <see cref="ArtifactFileViewModel.IsSelected"/>.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Switching_the_selected_step_clears_and_reloads_the_output_preview()
+    {
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            // Needs-you-first auto-selects critic; its own single output auto-loads too.
+            var previewBox = window.FindViewControl<TextBox>("ArtifactPreviewBox")!;
+            await PollUntilAsync(() => previewBox.Text == "The critique.", TestContext.Current.CancellationToken);
+
+            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            Assert.True(Assert.Single(critic.OutputFiles).IsSelected);
+
+            // Switching to architect must not keep showing critic's content — it clears, then
+            // auto-loads architect's own first output.
+            window.ViewModel.SelectStepById("architect");
+            await PollUntilAsync(() => previewBox.Text == "The plan.", TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.True(Assert.Single(architect.OutputFiles).IsSelected);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>Polls instead of a fixed delay — the preview load is fired-and-forgotten off a PropertyChanged handler, the same genuine-race shape <see cref="MainWindowArtifactLineageAndDiffTests"/> already documented for the click-handler path.</summary>
+    private static async Task PollUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10, cancellationToken);
+        }
+
+        Assert.True(condition());
     }
 
     [AvaloniaFact]
@@ -201,13 +255,13 @@ public class TaskDrillInTests
 
             var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
             Assert.Equal(
-                ["Sent back to architect (decision-1 on c-1) — not carried out yet"],
+                ["Sent back to architect (decision on c-1) — not carried out yet"],
                 critic.DecisionLines);
 
             // The send-back's target step carries the same decision — it is about that step too.
             var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
             Assert.Equal(
-                ["Sent back to architect (decision-1 on c-1) — not carried out yet"],
+                ["Sent back to architect (decision on c-1) — not carried out yet"],
                 architect.DecisionLines);
         }
         finally

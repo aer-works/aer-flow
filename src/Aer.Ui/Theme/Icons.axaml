@@ -22,4 +22,24 @@
   <!-- Stale: a ring left open with a small arrow tick — the refresh mark. -->
   <StreamGeometry x:Key="Icon.Refresh">M 12.8,5.2 A 5,5 0 1 0 13,8 M 13,8 L 13,5.3 M 13,8 L 10.3,7.3</StreamGeometry>
 
+  <!-- #218: navigation rail + common actions, same 16x16 hand-drawn stroke set as the status
+       icons above — Approve reuses Icon.Check and Reject reuses Icon.Cross (the issue's own
+       "approve/check", "reject/cross" pairing); Retry reuses Icon.Refresh (an "again" arrow
+       already exists, no need for a near-duplicate). Only the four genuinely new glyphs live
+       here: Home, Task, Author, and Folder (the picker button, #212). -->
+  <StreamGeometry x:Key="Icon.Home">M 2,8 L 8,2.5 L 14,8 M 4,6.8 L 4,13 L 12,13 L 12,6.8</StreamGeometry>
+
+  <!-- A checklist — three list lines, the last one shorter (owner feedback: both the original
+       two-circles-and-a-diagonal draft *and* the flowchart-node draft that replaced it still read
+       as an old telephone handset at 14x14 — a branching-node glyph reads as a graph only at a
+       size big enough to show its joints, which this rail icon isn't. A list needs no such
+       resolution, and "task" maps to "item on a list" as directly as "author" maps to a pencil. -->
+  <StreamGeometry x:Key="Icon.Task">M 3,4 L 13,4 M 3,8 L 13,8 M 3,12 L 9,12</StreamGeometry>
+
+  <!-- A pencil — authoring. -->
+  <StreamGeometry x:Key="Icon.Author">M 3,13 L 3.8,10.2 L 10.3,3.7 L 12.3,5.7 L 5.8,12.2 Z M 9.1,4.9 L 11.1,6.9</StreamGeometry>
+
+  <!-- A folder — the browse/open action. -->
+  <StreamGeometry x:Key="Icon.Folder">M 2,5.5 L 6,5.5 L 7.3,7 L 14,7 L 14,12.5 L 2,12.5 Z</StreamGeometry>
+
 </ResourceDictionary>

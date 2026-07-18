@@ -55,12 +55,24 @@
          two-radii budget the cards already sit on rather than inventing a third radius. -->
     <Setter Property="CornerRadius" Value="{DynamicResource Radius.Medium}" />
     <Setter Property="Padding" Value="14,7" />
+    <!-- #214: every clickable control is a Button (cards, nav, chips included) — one setter here
+         covers all of them, no per-class duplication needed. -->
+    <Setter Property="Cursor" Value="Hand" />
+    <!-- Owner feedback: nav rail hover/selection "flashed" — Foreground is set directly on Button
+         (not the ContentPresenter the Background/BorderBrush Transitions below cover), so any
+         Foreground change snapped instantly with no fade. Same BrushTransition treatment. -->
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Foreground" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
   </Style>
   <Style Selector="Button /template/ ContentPresenter">
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.12" />
         <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+        <BrushTransition Property="Foreground" Duration="0:0:0.12" />
       </Transitions>
     </Setter>
   </Style>
@@ -197,6 +209,81 @@
   <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+  <Style Selector="Button.nav.selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
+  </Style>
+
+  <!-- #218: nav icons track the same Foreground the nav button's own text uses — Path.Stroke
+       doesn't inherit Foreground the way TextBlock does, so this mirrors Button.nav/.selected's
+       Foreground setters above explicitly, keyed off the same classes. The Transitions setter
+       (owner feedback: the previously-selected item's icon "flashed" on switch) matches the same
+       BrushTransition every other Stroke/Background color change in this file already has —
+       without it, only the surrounding text/background faded while the icon snapped instantly. -->
+  <Style Selector="Path.nav-icon, Path.action-icon, Path.titlebar-icon">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Stroke" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.nav Path.nav-icon">
+    <Setter Property="Stroke" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+  <Style Selector="Button.nav.selected Path.nav-icon">
+    <Setter Property="Stroke" Value="{DynamicResource Color.Accent}" />
+  </Style>
+
+  <!-- #218: action-button icons (Approve/Retry/Reject/Browse) — same reasoning as nav-icon above. -->
+  <Style Selector="Button Path.action-icon">
+    <Setter Property="Stroke" Value="{DynamicResource Color.Text}" />
+  </Style>
+  <Style Selector="Button.accent Path.action-icon">
+    <Setter Property="Stroke" Value="White" />
+  </Style>
+
+  <Style Selector="Button.titlebar-button">
+    <Setter Property="Width" Value="44" />
+    <Setter Property="Height" Value="40" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.titlebar-button:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.titlebar-button:pointerover Path.titlebar-icon">
+    <Setter Property="Stroke" Value="{DynamicResource Color.Accent}" />
+  </Style>
+  <!-- Close gets the platform-standard red hover instead of the accent tint every other caption
+       button uses — "this ends the app" is a distinct signal from "this is the active section." -->
+  <Style Selector="Button.titlebar-button.close:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#E81123" />
+  </Style>
+  <Style Selector="Button.titlebar-button.close:pointerover Path.titlebar-icon">
+    <Setter Property="Stroke" Value="White" />
+  </Style>
+  <Style Selector="Path.titlebar-icon">
+    <Setter Property="Stroke" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+
+  <!-- A small selectable pill (#211): the Outputs tab's output-file buttons. Radius.Small, not
+       .Medium — chips are one step down from a card, per design-language.md's shape table. -->
+  <Style Selector="Button.chip">
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Radius.Small}" />
+  </Style>
+  <Style Selector="Button.chip.selected">
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
   </Style>
 
 </Styles>

@@ -22,17 +22,22 @@
       <SolidColorBrush x:Key="Color.TextSecondary">#5B6572</SolidColorBrush>
       <SolidColorBrush x:Key="Color.TextDisabled">#9AA3AD</SolidColorBrush>
 
-      <SolidColorBrush x:Key="Color.Accent">#0F7B7B</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.AccentHover">#0C6666</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.AccentPressed">#0A5252</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.AccentSubtleBg">#E3F1F1</SolidColorBrush>
+      <!-- #216 post-M19 review: Color.Accent moved from a teal that read as "the same green
+           family" as Status.Succeeded (41deg apart on the wheel) to a blue-teal (~200deg,
+           ~60deg from Succeeded) — distinct at a glance as "primary action" vs. "this succeeded"
+           without abandoning the cool, restrained identity design-language.md calls for. -->
+      <SolidColorBrush x:Key="Color.Accent">#0E6FA8</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentHover">#0C5F8F</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentPressed">#0A4D74</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBg">#DFEDF5</SolidColorBrush>
 
       <!-- Desaturated from the prior stock Tailwind primaries (#2563EB/#B45309/#15803D/#B91C1C/
            #7C3AED) — those read as a generic component-library default, not a considered palette. -->
       <SolidColorBrush x:Key="Status.Running">#4C6C99</SolidColorBrush>
       <SolidColorBrush x:Key="Status.NeedsYou">#A6741F</SolidColorBrush>
       <SolidColorBrush x:Key="Status.NeedsYouBg">#F1E7D2</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Succeeded">#3F7D53</SolidColorBrush>
+      <!-- #216: pushed further toward true/forest green, away from Color.Accent's blue-teal. -->
+      <SolidColorBrush x:Key="Status.Succeeded">#2F7A42</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Failed">#A8433D</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Idle">#6B7280</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Stale">#7A6BA3</SolidColorBrush>
@@ -63,15 +68,16 @@
       <SolidColorBrush x:Key="Color.TextSecondary">#9BA3AE</SolidColorBrush>
       <SolidColorBrush x:Key="Color.TextDisabled">#5D656F</SolidColorBrush>
 
-      <SolidColorBrush x:Key="Color.Accent">#2CB5B5</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.AccentHover">#45C4C4</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.AccentPressed">#1E9E9E</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.AccentSubtleBg">#123B3B</SolidColorBrush>
+      <!-- #216: same blue-teal shift as light — see that dictionary's comment. -->
+      <SolidColorBrush x:Key="Color.Accent">#3B9FD6</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentHover">#57B3E8</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentPressed">#2C86BA</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBg">#17293A</SolidColorBrush>
 
       <SolidColorBrush x:Key="Status.Running">#6E93C2</SolidColorBrush>
       <SolidColorBrush x:Key="Status.NeedsYou">#C9A15C</SolidColorBrush>
       <SolidColorBrush x:Key="Status.NeedsYouBg">#332C1E</SolidColorBrush>
-      <SolidColorBrush x:Key="Status.Succeeded">#5FAE7C</SolidColorBrush>
+      <SolidColorBrush x:Key="Status.Succeeded">#4CAE68</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Failed">#C97F79</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Idle">#9CA3AF</SolidColorBrush>
       <SolidColorBrush x:Key="Status.Stale">#9684C4</SolidColorBrush>

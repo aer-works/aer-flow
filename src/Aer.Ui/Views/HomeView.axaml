@@ -79,8 +79,19 @@
 
       <StackPanel Spacing="{DynamicResource Space.3}">
       <TextBlock Classes="heading" Text="Open a task" />
+      <!-- #212: the text box stays as a visible, hand-editable fallback (never the only way in) —
+           Browse is the primary path for a user with no reliable way to type a correct path. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-        <TextBox x:Name="TaskDirectoryPathBox" Width="480" PlaceholderText="Task directory path" />
+        <TextBox x:Name="TaskDirectoryPathBox" Width="420" PlaceholderText="Task directory path" />
+        <Button x:Name="BrowseTaskDirectoryButton" Click="OnBrowseTaskDirectoryClick"
+                ToolTip.Tip="Pick a task folder instead of typing its path">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="action-icon" Data="{StaticResource Icon.Folder}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="_Browse…" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
         <Button x:Name="OpenButton"><AccessText Text="_Open" /></Button>
         <Button x:Name="RefreshButton"><AccessText Text="Re_fresh" /></Button>
       </StackPanel>
