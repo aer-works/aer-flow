@@ -9,6 +9,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Line = Avalonia.Controls.Shapes.Line;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 
 namespace Aer.Ui.Tests;
 
@@ -21,6 +22,12 @@ namespace Aer.Ui.Tests;
 /// </summary>
 public class MainWindowDagTests
 {
+    /// <summary>A node's content is a vertical <see cref="StackPanel"/> (an optional status icon
+    /// above the label) since the post-M19 design review added a per-status glyph to DAG nodes
+    /// (issue #206/#209) — the label <see cref="TextBlock"/> is no longer <c>Border.Child</c>
+    /// directly.</summary>
+    private static TextBlock LabelOf(Border node) => ((StackPanel)node.Child!).Children.OfType<TextBlock>().Single();
+
     [AvaloniaFact]
     public async Task Renders_a_bound_tasks_dag_with_a_status_overlay()
     {
@@ -78,8 +85,8 @@ public class MainWindowDagTests
             Assert.All(lines, line => Assert.Null(line.StrokeDashArray));
 
             var textByStepId = nodes.ToDictionary(
-                node => ((TextBlock)node.Child!).Text!.Split('\n')[0],
-                node => (TextBlock)node.Child!);
+                node => LabelOf(node).Text!.Split('\n')[0],
+                LabelOf);
 
             Assert.Contains("Succeeded", textByStepId["architect"].Text);
             Assert.Contains("Succeeded", textByStepId["critic"].Text);
@@ -88,13 +95,19 @@ public class MainWindowDagTests
             // M19 Phase 5 (#190): status renders from the token system, not named framework colors.
             Assert.Equal(
                 window.FindResource("Status.SucceededBg"),
-                nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect")).Background);
+                nodes.Single(node => LabelOf(node).Text!.StartsWith("architect")).Background);
+
+            // A known status also carries a status icon (post-M19 design review, #206/#209) — the
+            // same glyph mapping every other status-bearing surface uses.
+            var architectContent = (StackPanel)nodes.Single(node => LabelOf(node).Text!.StartsWith("architect")).Child!;
+            var architectIcon = Assert.Single(architectContent.Children.OfType<ShapePath>());
+            Assert.Equal(window.FindResource("Icon.Check"), architectIcon.Data);
 
             // architect (rank 0) sits directly above critic (rank 1), which sits above publisher (rank 2).
-            Assert.Equal(0d, Canvas.GetTop(nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect"))));
-            Assert.True(Canvas.GetTop(nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("critic"))) > 0);
-            Assert.True(Canvas.GetTop(nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("publisher")))
-                > Canvas.GetTop(nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("critic"))));
+            Assert.Equal(0d, Canvas.GetTop(nodes.Single(node => LabelOf(node).Text!.StartsWith("architect"))));
+            Assert.True(Canvas.GetTop(nodes.Single(node => LabelOf(node).Text!.StartsWith("critic"))) > 0);
+            Assert.True(Canvas.GetTop(nodes.Single(node => LabelOf(node).Text!.StartsWith("publisher")))
+                > Canvas.GetTop(nodes.Single(node => LabelOf(node).Text!.StartsWith("critic"))));
         }
         finally
         {
@@ -126,10 +139,13 @@ public class MainWindowDagTests
         Assert.Equal(4, lines.Count);
         Assert.Single(lines, line => line.StrokeDashArray is not null);
 
-        var nodeC = nodes.Single(node => ((TextBlock)node.Child!).Text!.StartsWith("c"));
-        Assert.Contains("[pause -> a]", ((TextBlock)nodeC.Child!).Text);
-        Assert.DoesNotContain("Succeeded", ((TextBlock)nodeC.Child!).Text);
-        Assert.DoesNotContain("Pending", ((TextBlock)nodeC.Child!).Text);
+        var nodeC = nodes.Single(node => LabelOf(node).Text!.StartsWith("c"));
+        Assert.Contains("[pause -> a]", LabelOf(nodeC).Text);
+        Assert.DoesNotContain("Succeeded", LabelOf(nodeC).Text);
+        Assert.DoesNotContain("Pending", LabelOf(nodeC).Text);
+
+        // A template node has no status, so no icon (nothing has executed, nothing to say).
+        Assert.Empty(((StackPanel)nodeC.Child!).Children.OfType<ShapePath>());
 
         // M19 Phase 5 (#190): a template node is a plain surface — no status tint to carry.
         Assert.Equal(window.FindResource("Color.Surface"), nodeC.Background);
@@ -208,11 +224,12 @@ public class MainWindowDagTests
 
             var dagCanvas = window.FindViewControl<Canvas>("DagCanvas")!;
             var architectNode = dagCanvas.Children.OfType<Border>()
-                .Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect"));
+                .Single(node => LabelOf(node).Text!.StartsWith("architect"));
 
-            // Tokens.axaml's Dark dictionary, not Default's light #DCFCE7/#15803D.
-            Assert.Equal(Color.Parse("#12331E"), ((ISolidColorBrush)architectNode.Background!).Color);
-            Assert.Equal(Color.Parse("#4ADE80"), ((ISolidColorBrush)architectNode.BorderBrush!).Color);
+            // Tokens.axaml's Dark dictionary, not Default's light palette. Values updated for the
+            // post-M19 desaturated status palette (issue #206) — was #12331E/#4ADE80.
+            Assert.Equal(Color.Parse("#1E2A22"), ((ISolidColorBrush)architectNode.Background!).Color);
+            Assert.Equal(Color.Parse("#5FAE7C"), ((ISolidColorBrush)architectNode.BorderBrush!).Color);
         }
         finally
         {

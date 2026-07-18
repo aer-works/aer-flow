@@ -15,17 +15,29 @@
         Width="1200" Height="800"
         MinWidth="900" MinHeight="640">
   <DockPanel>
-    <Border DockPanel.Dock="Left" Background="{DynamicResource Color.Surface}"
-            BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0">
+    <!-- Post-M19 design review (#206): the nav rail is a raised surface too, not just cards
+         (Elevation was previously only wired into Border.card/Button.card). -->
+    <Border DockPanel.Dock="Left" Background="{DynamicResource Color.SurfaceRaised}"
+            BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0"
+            BoxShadow="{DynamicResource Elevation.Raised}">
       <StackPanel Margin="8" Spacing="4" Width="132">
         <TextBlock Classes="heading" Text="AER Flow" Margin="12,8,12,12"
                    Foreground="{DynamicResource Color.Accent}" />
+        <!-- ux-principles.md §5, "keyboard-first, mouse-complete": AccessText's underscore is a
+             real Alt+letter mnemonic (Avalonia's built-in AccessKeyHandler), not decoration — it
+             both binds the shortcut and renders the visible hint the principle calls for. -->
         <Button x:Name="NavHomeButton" Classes="nav" Classes.selected="{Binding IsHomeVisible}"
-                Content="Home" HorizontalAlignment="Stretch" />
+                HorizontalAlignment="Stretch">
+          <AccessText Text="_Home" />
+        </Button>
         <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsTaskVisible}"
-                Content="Task" HorizontalAlignment="Stretch" />
+                HorizontalAlignment="Stretch">
+          <AccessText Text="_Task" />
+        </Button>
         <Button x:Name="NavAuthorButton" Classes="nav" Classes.selected="{Binding IsAuthorVisible}"
-                Content="Author" HorizontalAlignment="Stretch" />
+                HorizontalAlignment="Stretch">
+          <AccessText Text="_Author" />
+        </Button>
       </StackPanel>
     </Border>
     <Panel>

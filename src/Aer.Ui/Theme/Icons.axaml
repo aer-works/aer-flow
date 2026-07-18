@@ -1,0 +1,25 @@
+<!-- M19 post-milestone design review (issue #206): design-language.md's status table specifies an
+     icon per status ("color + icon + word, never color alone" — TaskCardViewModel's own comment
+     said as much and nothing consumed it). One geometry set, drawn by hand at a 16x16 grid so
+     every status icon shares stroke weight and proportion — status is told by shape, color is
+     reinforcement, not the only signal. Stroke-based (Path, not PathIcon) so line glyphs
+     (check/cross/ring) don't need a closed fill area. -->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Succeeded: checkmark -->
+  <StreamGeometry x:Key="Icon.Check">M 3,8.5 L 6.5,12 L 13,4</StreamGeometry>
+
+  <!-- Failed: cross -->
+  <StreamGeometry x:Key="Icon.Cross">M 4,4 L 12,12 M 12,4 L 4,12</StreamGeometry>
+
+  <!-- Idle (hollow) / NeedsYou (filled) — one circle, two fill treatments at the call site. -->
+  <StreamGeometry x:Key="Icon.Dot">M 13,8 A 5,5 0 1 1 3,8 A 5,5 0 1 1 13,8 Z</StreamGeometry>
+
+  <!-- Running: an open ring — the static frame of a spinner (no motion in this pass, #208 owns animation). -->
+  <StreamGeometry x:Key="Icon.Ring">M 8,3 A 5,5 0 1 1 3.66,10.5</StreamGeometry>
+
+  <!-- Stale: a ring left open with a small arrow tick — the refresh mark. -->
+  <StreamGeometry x:Key="Icon.Refresh">M 12.8,5.2 A 5,5 0 1 0 13,8 M 13,8 L 13,5.3 M 13,8 L 10.3,7.3</StreamGeometry>
+
+</ResourceDictionary>

@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:Aer.Ui.Converters"
              x:Class="Aer.Ui.App"
              RequestedThemeVariant="Default">
   <Application.Resources>
@@ -7,7 +8,11 @@
       <ResourceDictionary.MergedDictionaries>
         <!-- M19 Phase 2 (#187): the design-language token system — every surface consumes these by name -->
         <ResourceInclude Source="/Theme/Tokens.axaml" />
+        <!-- Post-M19 design review (#206): status icon geometries -->
+        <ResourceInclude Source="/Theme/Icons.axaml" />
       </ResourceDictionary.MergedDictionaries>
+      <conv:StatusToIconGeometryConverter x:Key="StatusToIconGeometryConverter" />
+      <conv:StatusToIconBrushConverter x:Key="StatusToIconBrushConverter" />
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>
