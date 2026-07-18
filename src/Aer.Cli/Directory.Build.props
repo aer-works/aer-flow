@@ -6,10 +6,10 @@
        Aer.Workers.Dialogue stay on the root file's static Version; nothing reads their own assembly
        version independently. Imports the root file first for shared settings
        (IncludeSourceRevisionInInformationalVersion etc.), then overrides just Version. -->
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"/>
 
   <PropertyGroup>
-    <Version>0.14.0</Version>
+    <Version>0.15.0</Version>
   </PropertyGroup>
 
 </Project>
