@@ -19,4 +19,17 @@
     <FluentTheme />
     <StyleInclude Source="/Theme/Base.axaml" />
   </Application.Styles>
+  <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/aer.ico" ToolTipText="AER Flow">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="Show MainWindow" Click="MenuShow_Click" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Exit" Click="MenuExit_Click" />
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
 </Application>

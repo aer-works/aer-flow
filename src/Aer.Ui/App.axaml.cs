@@ -34,4 +34,21 @@ public partial class App : Application
 
         base.OnFrameworkInitializationCompleted();
     }
+
+    public void MenuShow_Click(object? sender, System.EventArgs e)
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null)
+        {
+            desktop.MainWindow.Show();
+            desktop.MainWindow.Activate();
+        }
+    }
+
+    public void MenuExit_Click(object? sender, System.EventArgs e)
+    {
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow is MainWindow mainWindow)
+        {
+            mainWindow.ConfirmCloseAndExit();
+        }
+    }
 }

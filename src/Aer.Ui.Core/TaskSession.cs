@@ -26,7 +26,7 @@ public record DecideTaskRequest(
     string? SupplementaryWorker = null,
     string? SupplementaryOutputName = null);
 public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
-public record DaemonVersionInfo(string Version);
+public record DaemonVersionInfo(string Version, bool HasRunningTasks);
 
 public class BindingsPathHolder
 {
@@ -90,6 +90,7 @@ public sealed class TaskSession
     public bool LastLoadSucceeded { get; private set; }
     public WorkflowStatus? LastWorkflowStatus { get; private set; }
     public WorkflowDefinitionSnapshot? LastSnapshot { get; private set; }
+    public bool IsClientMode => _isClientMode;
 
     /// <summary>
     /// The background task driving whichever pump is currently in flight — retained so the desktop's
@@ -195,11 +196,19 @@ public sealed class TaskSession
                     await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
                     return true;
                 }
-                else
+                else if (meta != null && !meta.HasRunningTasks)
                 {
-                    // Version skew! Force shutdown running daemon to respawn updated one
+                    // Version skew! Force shutdown running daemon to respawn updated one (safe since no tasks are running)
                     await _httpClient.PostAsync($"{_activeDaemonUrl}/api/daemon/shutdown", null, cancellationToken).ConfigureAwait(true);
                     await Task.Delay(500, cancellationToken).ConfigureAwait(true);
+                }
+                else
+                {
+                    // Version skew, but daemon has running tasks in flight. We must not terminate it;
+                    // continue using the running daemon to preserve task integrity.
+                    _isClientMode = true;
+                    await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
+                    return true;
                 }
             }
         }
@@ -778,6 +787,21 @@ public sealed class TaskSession
         }
 
         _currentHostStopSource?.Cancel();
+    }
+
+    public async Task ShutdownDaemonAsync()
+    {
+        if (_activeDaemonUrl != null)
+        {
+            try
+            {
+                await _httpClient.PostAsync($"{_activeDaemonUrl}/api/daemon/shutdown", null).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Ignore
+            }
+        }
     }
 
     private void RebuildPausedSteps(TaskProjection projection, string taskDirectoryPath)

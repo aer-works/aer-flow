@@ -922,9 +922,53 @@ public partial class MainWindow : Window
     /// <see cref="OpenAsync"/>), this closes the window for real — a plain, uncancelled close, since
     /// <see cref="_closeConfirmed"/> is now set.
     /// </summary>
+    public async void ConfirmCloseAndExit()
+    {
+        if (_session.IsClientMode && ViewModel.RunningExecutions.Count > 0)
+        {
+            Show();
+            Activate();
+
+            var result = await ExitConfirmationWindow.ShowPromptAsync(this);
+            if (result == null)
+            {
+                return;
+            }
+
+            _closeConfirmed = true;
+            if (result == true)
+            {
+                _session.RequestHostStop();
+                _ = _session.ShutdownDaemonAsync();
+            }
+            Close();
+        }
+        else
+        {
+            _closeConfirmed = true;
+            if (_session.IsClientMode)
+            {
+                _ = _session.ShutdownDaemonAsync();
+            }
+            Close();
+        }
+    }
+
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (_closeConfirmed || _session.CurrentPumpTask is not { IsCompleted: false } pumpTask)
+        if (_closeConfirmed)
+        {
+            return;
+        }
+
+        if (_session.IsClientMode)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
+        if (_session.CurrentPumpTask is not { IsCompleted: false } pumpTask)
         {
             return;
         }
@@ -950,6 +994,8 @@ public partial class MainWindow : Window
         _closeConfirmed = true;
         Close();
     }
+
+
 
     private void RenderDecisions(TaskProjection projection)
     {

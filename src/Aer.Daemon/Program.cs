@@ -170,6 +170,14 @@ namespace Aer.Daemon
             var app = builder.Build();
             App = app;
 
+            bool SafeEquals(string a, string b)
+            {
+                if (a.Length != b.Length) return false;
+                var aBytes = System.Text.Encoding.UTF8.GetBytes(a);
+                var bBytes = System.Text.Encoding.UTF8.GetBytes(b);
+                return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
+            }
+
             // Authentication Middleware verifying the Bearer token
             app.Use(async (context, next) =>
             {
@@ -185,7 +193,7 @@ namespace Aer.Daemon
                     var queryToken = context.Request.Query["token"].ToString().Trim();
                     var headerToken = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "").Trim();
 
-                    if (queryToken == token || headerToken == token)
+                    if (SafeEquals(queryToken, token) || SafeEquals(headerToken, token))
                     {
                         await next(context);
                         return;
@@ -197,7 +205,7 @@ namespace Aer.Daemon
                     if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                     {
                         var requestToken = authHeader.Substring("Bearer ".Length).Trim();
-                        if (requestToken == token)
+                        if (SafeEquals(requestToken, token))
                         {
                             await next(context);
                             return;
@@ -254,7 +262,11 @@ namespace Aer.Daemon
             });
 
             // Version metadata endpoint
-            app.MapGet("/api/version", () => Results.Ok(new { Version = typeof(DaemonHost).Assembly.GetName().Version?.ToString() ?? "1.0.0" }));
+            app.MapGet("/api/version", (TaskSession session) => Results.Ok(new 
+            { 
+                Version = typeof(DaemonHost).Assembly.GetName().Version?.ToString() ?? "1.0.0",
+                HasRunningTasks = session.ShouldLiveRefresh
+            }));
 
             // Graceful shutdown endpoint
             app.MapPost("/api/daemon/shutdown", (IHostApplicationLifetime lifetime) =>
@@ -302,10 +314,17 @@ namespace Aer.Daemon
 
                 _ = Task.Run(async () =>
                 {
-                    await session.RunAsync(
-                        request.DirectoryPath,
-                        request.WorkflowTemplateFilePath,
-                        request.BindingsFilePath);
+                    try
+                    {
+                        await session.RunAsync(
+                            request.DirectoryPath,
+                            request.WorkflowTemplateFilePath,
+                            request.BindingsFilePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error executing task run in background: {ex}");
+                    }
                 });
 
                 return Results.Ok();
@@ -317,15 +336,22 @@ namespace Aer.Daemon
 
                 _ = Task.Run(async () =>
                 {
-                    await session.DecideAsync(
-                        request.DirectoryPath,
-                        new StepId(request.StepId),
-                        new ExecutionId(request.ExecutionId),
-                        request.DecisionType,
-                        request.TargetStepId != null ? new StepId(request.TargetStepId) : null,
-                        request.RevisionFilePath,
-                        request.SupplementaryWorker,
-                        request.SupplementaryOutputName);
+                    try
+                    {
+                        await session.DecideAsync(
+                            request.DirectoryPath,
+                            new StepId(request.StepId),
+                            new ExecutionId(request.ExecutionId),
+                            request.DecisionType,
+                            request.TargetStepId != null ? new StepId(request.TargetStepId) : null,
+                            request.RevisionFilePath,
+                            request.SupplementaryWorker,
+                            request.SupplementaryOutputName);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error executing task decide in background: {ex}");
+                    }
                 });
 
                 return Results.Ok();
