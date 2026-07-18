@@ -205,23 +205,68 @@ Loop §5 as many rounds as the work deserves; approve (§4) when it's done. Ther
 
 ## 6. The same thing, in the UI
 
-`Aer.Ui` is the same engine surface with eyes. Launch it, click **Open** and pick the task
-directory from §3 (or pass the path as a CLI argument):
+`Aer.Ui` is the same engine surface with eyes — and, since M19, it no longer requires knowing any
+of the vocabulary above. Three screens: **Home** (what needs you), **Task** (one run, drilled in),
+**Author** (build a workflow with no hand-written files).
 
-- The **DAG view** shows the two steps with live status (the window re-polls every 2 seconds
-  while anything is running); **history** lists every attempt including the superseded ones;
-  **lineage** shows which execution's output fed which — the send-back rounds are all visible,
-  nothing is overwritten.
-- A paused step renders with **Approve** / **Reject** buttons, a revision-file box, and — because
-  the template declared it — a **"Send back to architect"** button. Filling the revision-file /
-  worker / output boxes and clicking send-back runs exactly §5's `supply` + `decide` pair as one
-  action. Targets that aren't declared `SupersedeTargets` are never offered.
-- **Run** does what §3 did (it asks for the template and bindings paths — bindings are asked for
-  on every mutation, never remembered as authority), **Stop** is Ctrl+C's equivalent, and per-
-  execution **Cancel** appears while something is in flight.
-- The **template and bindings editors** (M16) author these files from blank with live structural
-  validation — the walkthrough's two example files are buildable entirely in the UI, and the
-  editor refuses to save anything the engine's own validator would reject.
+### 6.1 Author it, don't hand-write it
+
+Open **Author**. This is the guided flow — no template JSON, no bindings JSON, nothing typed as a
+path:
+
+- Give the workflow a name; the UI shows where it'll be saved (`Documents/AER Flow/<name>` by
+  default, changeable via **Change folder…**).
+- **Add a step** twice — one named `architect`, one named `critic`. Each step picks a runner
+  (Claude or Gemini) from a dropdown, a file name it produces, and — for `critic` — check **Runs
+  after: architect** and check **Review gate** (this is §2's `PausePoint`/`SupersedeTargets`
+  pair; the UI infers the valid send-back targets from what a step depends on, so there's nothing
+  to declare separately). Type each step's prompt in plain language directly into its box; there's
+  a line under each runner showing what it can read/write, so the architect/critic permission
+  distinction from §2 is visible without being a config field.
+- A line above the steps reports whether `claude`/`agy` are actually on `PATH` and authenticated —
+  informational only, never a gate; you can save and inspect a workflow with no vendor logged in.
+- **Save** writes the same `workflow.json`/bindings sidecar files §2 describes by hand — open them
+  afterward and they're identical in substance to the example files, just generated. **Save and
+  run** does that plus starts the run immediately, landing you on the Task view already open to it.
+
+The M16 template/bindings editors are still there, under **Advanced — edit the files directly**,
+for exactly the case this walkthrough started with: hand-authoring or hand-editing the JSON. The
+guided flow above is the path a first-time user takes; nothing about the durable files changes
+depending on which one you used.
+
+### 6.2 Watch it run, decide from Home or Task
+
+**Home** answers "what needs me?" first: a **Waiting on you** section lists every paused step
+across every task you have open, each with a preview of what it produced and a one-click
+**Review** button — this is the decision inbox, and it's what a send-back-heavy workflow like this
+one actually feels like day to day, since you're rarely watching one task at a time. Below it,
+**Tasks** lists every run as a card (title, plain-language status, its directory) — click one to
+open it in the Task view. First run, nothing here yet: the empty state points straight at
+**Create a workflow**.
+
+**Task** is where a single run lives. When `critic` pauses, its card is at the very top — before
+the graph, before anything else — under the heading **Waiting for your review — critic**, with the
+same four actions §5 used, just as buttons: **Approve** (`resume`), **Retry this step**
+(`retry-with-revision`), **Reject**, and — because `architect` is a valid target — **"Send back to
+architect"**. A **Feedback file** box (with a **Choose file…** picker) plus worker/output-name
+boxes are right there in the same card; filling them and clicking send-back runs exactly §5's
+`supply` + `decide` pair as one action. Only targets the template actually allows are ever
+offered.
+
+Below the decision card sits the DAG (click either node to drill into it) and, for the selected
+step, tabs: **Attempts**, **Outputs** (click a file to preview it inline), **Conversation**, and
+**Decisions** — each a plain-language re-slice of that one step's record, so you don't have to
+read the whole task to understand one node. Everything §3's `cat` command showed you is one click
+away as **Outputs → critique**.
+
+**Run** does what §3 did (same template/bindings paths, same "bindings are asked for every time,
+never remembered" rule), **Stop** is Ctrl+C's equivalent, and per-execution **Cancel** appears
+while something is in flight.
+
+If you want the full engine-level record in spec vocabulary — every attempt, every execution id,
+the raw snapshot/template diff — it's one click away under **Details — the full record**, an
+expander at the bottom of the Task view. Nothing from the old single-screen layout was removed;
+it's now the second click instead of the only view.
 
 ## 7. Dry run without any vendor auth (stub CLIs)
 
