@@ -10,6 +10,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Media;
 using Avalonia.Threading;
 using System.Linq;
@@ -543,12 +544,24 @@ public partial class MainWindow : Window
             [StepStatus.Rejected] = ("Status.Failed", "Status.FailedBg"),
         };
 
-    private IBrush Token(string key) => this.FindResource(key) as IBrush ?? Brushes.Transparent;
+    // this.FindResource(key) (no theme argument) resolves against ThemeVariant.Default, never this
+    // window's ActualThemeVariant -- it silently matches Tokens.axaml's literal x:Key="Default"
+    // dictionary (the light palette) regardless of which variant the window is actually rendering
+    // in, unlike XAML DynamicResource bindings, which are ActualThemeVariant-aware. Every DAG node
+    // border/fill went through this before the fix, producing light-palette color against the
+    // dark-palette inherited text -- the washed-out boxes.
+    private IBrush Token(string key) =>
+        this.TryFindResource(key, ActualThemeVariant, out var value) && value is IBrush brush
+            ? brush
+            : Brushes.Transparent;
 
     private const double DagCellWidth = 170;
-    private const double DagCellHeight = 90;
+    private const double DagCellHeight = 150;
     private const double DagNodeWidth = 150;
-    private const double DagNodeHeight = 56;
+    // Tall enough for the icon plus up to 4 label lines (step id, worker, status, optional
+    // pause line) at Type.Caption.FontSize — 56 fit the old text-only, 2-line label but let a
+    // 3-4 line label with the #206 status icon on top spill past the border.
+    private const double DagNodeHeight = 96;
 
     /// <summary>
     /// Renders <see cref="DagLayoutEngine.Layout"/>'s result over <paramref name="steps"/> as boxes
@@ -647,6 +660,43 @@ public partial class MainWindow : Window
                     : "\n[pause]";
             }
 
+            var textBlock = new TextBlock
+            {
+                Text = label,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = this.FindResource("Type.Caption.FontSize") as double? ?? 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            };
+
+            // Post-M19 design review (#206/#209): status icon per node, same glyph set and mapping
+            // as every other status-bearing surface — a raw template's node has no status, so no
+            // icon (nothing has executed, nothing to say, same as its plain-surface color).
+            var content = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Spacing = 4,
+            };
+            if (status is { } iconStatus)
+            {
+                content.Children.Add(new ShapePath
+                {
+                    Data = this.FindResource(Converters.StatusIconMap.GeometryKeyFor(iconStatus)) as Geometry,
+                    Stroke = borderBrush,
+                    StrokeThickness = 1.6,
+                    StrokeLineCap = PenLineCap.Round,
+                    StrokeJoin = PenLineJoin.Round,
+                    Width = 14,
+                    Height = 14,
+                    Stretch = Stretch.Uniform,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                });
+            }
+
+            content.Children.Add(textBlock);
+
             var border = new Border
             {
                 Width = DagNodeWidth,
@@ -655,14 +705,7 @@ public partial class MainWindow : Window
                 BorderBrush = borderBrush,
                 BorderThickness = new Thickness(1.5),
                 CornerRadius = this.FindResource("Radius.Medium") is CornerRadius radius ? radius : default,
-                Child = new TextBlock
-                {
-                    Text = label,
-                    TextAlignment = TextAlignment.Center,
-                    TextWrapping = TextWrapping.Wrap,
-                    FontSize = this.FindResource("Type.Caption.FontSize") as double? ?? 12,
-                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                },
+                Child = content,
             };
 
             if (onNodeSelect is { } select)

@@ -25,7 +25,7 @@
 
           <ItemsControl x:Name="VendorReadinessList" ItemsSource="{Binding NewWorkflow.VendorReadinessLines}" />
 
-          <Button Content="Add a step" Command="{Binding NewWorkflow.AddStepCommand}" />
+          <Button Command="{Binding NewWorkflow.AddStepCommand}"><AccessText Text="Ad_d a step" /></Button>
           <ItemsControl x:Name="GuidedStepsList" ItemsSource="{Binding NewWorkflow.Steps}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:GuidedStepViewModel">
@@ -82,8 +82,8 @@
           </ItemsControl>
 
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Save" Command="{Binding NewWorkflow.SaveCommand}" />
-            <Button Classes="accent" Content="Save and run" Command="{Binding NewWorkflow.SaveAndRunCommand}" />
+            <Button Command="{Binding NewWorkflow.SaveCommand}"><AccessText Text="_Save" /></Button>
+            <Button Classes="accent" Command="{Binding NewWorkflow.SaveAndRunCommand}"><AccessText Text="Save and _run" /></Button>
             <TextBlock x:Name="NewWorkflowStatusText" Text="{Binding NewWorkflow.StatusText}" VerticalAlignment="Center" />
           </StackPanel>
         </StackPanel>
