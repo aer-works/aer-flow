@@ -61,7 +61,7 @@ namespace Aer.Daemon
             var port = (portIndex >= 0 && portIndex < args.Length - 1) ? int.Parse(args[portIndex + 1]) : 5000;
 
             var activePort = port;
-            if (port != 0)
+            if (portIndex < 0 && port != 0)
             {
                 try
                 {
