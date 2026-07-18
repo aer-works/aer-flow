@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.14.0](https://github.com/aer-works/aer-flow/compare/v0.13.0...v0.14.0) (2026-07-18)
+
+
+### Features
+
+* Milestone 20 - Daemonization, Security, and Remote Control ([#223](https://github.com/aer-works/aer-flow/issues/223)) ([5a5b604](https://github.com/aer-works/aer-flow/commit/5a5b604d41e717ba643f18093c407b581b3666bd))
+* **ui:** M19 Phase 2 - Navigation shell, Aer.Ui.Core seam, MVVM re-home, and the decision inbox ([#195](https://github.com/aer-works/aer-flow/issues/195)) ([2f25168](https://github.com/aer-works/aer-flow/commit/2f25168d843c609d986a0a73679e93087577c831))
+* **ui:** M19 Phase 3 - Task view, human-first ([#196](https://github.com/aer-works/aer-flow/issues/196)) ([2743338](https://github.com/aer-works/aer-flow/commit/2743338e07313087221d6c091dceea3fe9592d0f))
+* **ui:** M19 Phase 4 - Guided authoring, no hand-edited config files ([#197](https://github.com/aer-works/aer-flow/issues/197)) ([a3ef3b8](https://github.com/aer-works/aer-flow/commit/a3ef3b86c282194478e2247967a720356a93e86c))
+* **ui:** M19 Phase 5 - Visual design pass ([#198](https://github.com/aer-works/aer-flow/issues/198)) ([8b500f5](https://github.com/aer-works/aer-flow/commit/8b500f56d6e0eb2e7d5175f2d58bfe8d675a1c9a))
+* **ui:** M19 Phase 6 - Gate: the non-expert path in default CI ([#201](https://github.com/aer-works/aer-flow/issues/201)) ([d0602e0](https://github.com/aer-works/aer-flow/commit/d0602e03d83b7186632279341553a7bcbd35d62f))
+
+
+### Bug Fixes
+
+* **ui:** DAG node colors resolve the window's actual theme variant ([#205](https://github.com/aer-works/aer-flow/issues/205)) ([5dee3e1](https://github.com/aer-works/aer-flow/commit/5dee3e152ef64805c3fbfca631777f7e8d259413))
+* **ui:** Polish title bar, navigation rail transitions, and step preview cache ([#221](https://github.com/aer-works/aer-flow/issues/221)) ([fc0ae3c](https://github.com/aer-works/aer-flow/commit/fc0ae3c17a66542a3a18dbf11073e11c2990bfc7))
+
+
+### Documentation
+
+* Fold M19 decisions of record; prune completed phase plan ([#203](https://github.com/aer-works/aer-flow/issues/203)) ([dfe946e](https://github.com/aer-works/aer-flow/commit/dfe946e02fba39883dd67d01f088dc1072d26413))
+* **plan:** Define the M19 (Product UX) phase plan, redefine M19 scope, and settle the worker-config write-model gap ([#192](https://github.com/aer-works/aer-flow/issues/192)) ([943df5c](https://github.com/aer-works/aer-flow/commit/943df5cbbb382cce71dcf7bb0821c1a3d39a9a62))
+* **ux:** M19 Phase 1 - UX baseline, principles, and information architecture ([#194](https://github.com/aer-works/aer-flow/issues/194)) ([cfa484a](https://github.com/aer-works/aer-flow/commit/cfa484a4a5bc39dd4b5afe01317b9d445ad540b4))
+
+
+### Continuous Integration
+
+* Code coverage report task (coverlet + ReportGenerator) ([#200](https://github.com/aer-works/aer-flow/issues/200)) ([d640b96](https://github.com/aer-works/aer-flow/commit/d640b9602f622789444aa551b5a3a71e5d617aa7))
+
 ## [0.13.0](https://github.com/aer-works/aer-flow/compare/v0.12.0...v0.13.0) (2026-07-17)
 
 
