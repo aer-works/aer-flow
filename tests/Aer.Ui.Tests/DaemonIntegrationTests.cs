@@ -27,7 +27,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         {
             try
             {
-                var response = await _client.GetAsync($"{BaseUrl}/api/tasks/recent");
+                var response = await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     break;
@@ -35,7 +35,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
             }
             catch
             {
-                await Task.Delay(100);
+                await Task.Delay(100, TestContext.Current.CancellationToken);
             }
         }
 
@@ -75,16 +75,16 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetRecentTasks_ReturnsOk()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/tasks/recent");
+        var response = await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
-        var recent = await response.Content.ReadFromJsonAsync<IReadOnlyList<string>>();
+        var recent = await response.Content.ReadFromJsonAsync<IReadOnlyList<string>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(recent);
     }
 
     [Fact]
     public async Task OpenTask_WithMissingDirectory_ReturnsBadRequest()
     {
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(""));
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(""), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -92,7 +92,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task OpenTask_WithInvalidDirectory_ReturnsBadRequest()
     {
         var invalidDir = Path.Combine(_tempTaskDirectory!, "non_existent_folder_abc_123");
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(invalidDir));
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(invalidDir), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

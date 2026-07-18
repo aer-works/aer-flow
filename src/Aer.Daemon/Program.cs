@@ -254,22 +254,4 @@ namespace Aer.Daemon
         }
     }
 
-    // Request models
-    public record OpenTaskRequest(string DirectoryPath);
-    public record RunTaskRequest(string DirectoryPath, string? WorkflowTemplateFilePath, string BindingsFilePath);
-    public record DecideTaskRequest(
-        string DirectoryPath,
-        string StepId,
-        string ExecutionId,
-        DecisionType DecisionType,
-        string? TargetStepId = null,
-        string? RevisionFilePath = null,
-        string? SupplementaryWorker = null,
-        string? SupplementaryOutputName = null);
-    public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
-
-    public class BindingsPathHolder
-    {
-        public string? BindingsFilePath { get; set; }
-    }
 }
