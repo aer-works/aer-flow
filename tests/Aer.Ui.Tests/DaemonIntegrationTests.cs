@@ -104,4 +104,46 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(invalidDir), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Pairing_Flow_Succeeds_And_Enables_Auth()
+    {
+        // 1. Get pairing code (authenticated via loopback token)
+        var codeResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
+        Assert.True(codeResponse.IsSuccessStatusCode);
+        var codeData = await codeResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var code = codeData.GetProperty("code").GetString();
+        Assert.NotNull(code);
+
+        // 2. Pair remote client (public POST, no auth headers on request client)
+        using var remoteClient = new HttpClient();
+        var pairRequest = new { Code = code, ClientName = "Test Mobile App" };
+        var pairResponse = await remoteClient.PostAsJsonAsync($"{BaseUrl}/api/pairing/pair", pairRequest, TestContext.Current.CancellationToken);
+        Assert.True(pairResponse.IsSuccessStatusCode);
+        var pairData = await pairResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var pairedToken = pairData.GetProperty("token").GetString();
+        Assert.NotNull(pairedToken);
+
+        // 3. Make a request using the newly paired token (should be authorized)
+        remoteClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", pairedToken);
+        var recentTasksResponse = await remoteClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.OK, recentTasksResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pairing_With_Invalid_Code_Returns_BadRequest()
+    {
+        using var remoteClient = new HttpClient();
+        var pairRequest = new { Code = "999999", ClientName = "Test Mobile App" };
+        var pairResponse = await remoteClient.PostAsJsonAsync($"{BaseUrl}/api/pairing/pair", pairRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, pairResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Request_Without_Token_Is_Rejected_With_401()
+    {
+        using var remoteClient = new HttpClient();
+        var response = await remoteClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }

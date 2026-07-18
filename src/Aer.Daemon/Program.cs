@@ -76,9 +76,18 @@ namespace Aer.Daemon
                 }
             }
 
+            var isRemote = args.Contains("--remote");
+
             builder.WebHost.ConfigureKestrel(options =>
             {
-                options.ListenLocalhost(activePort);
+                if (isRemote)
+                {
+                    options.Listen(System.Net.IPAddress.Any, activePort);
+                }
+                else
+                {
+                    options.ListenLocalhost(activePort);
+                }
             });
 
             // Configure JSON options
@@ -92,6 +101,7 @@ namespace Aer.Daemon
             builder.Services.AddSingleton(LocalUiConfigurationStore.CreateDefault());
             builder.Services.AddSingleton<IReadOnlyDictionary<string, IWorkerAdapter>>(WorkerAdapterRegistry.Default);
             builder.Services.AddSingleton<MainWindowViewModel>();
+            builder.Services.AddSingleton<PairedClientsStore>();
 
             // Thread-safe container for bindings path
             var bindingsPathHolder = new BindingsPathHolder();
@@ -181,35 +191,45 @@ namespace Aer.Daemon
             // Authentication Middleware verifying the Bearer token
             app.Use(async (context, next) =>
             {
-                // Allow public access to version endpoint
-                if (context.Request.Path == "/api/version" && context.Request.Method == "GET")
+                // Allow public access to version endpoint and pairing pairing endpoint
+                if ((context.Request.Path == "/api/version" && context.Request.Method == "GET") ||
+                    (context.Request.Path == "/api/pairing/pair" && context.Request.Method == "POST"))
                 {
                     await next(context);
                     return;
                 }
 
+                string requestToken = "";
                 if (context.WebSockets.IsWebSocketRequest)
                 {
                     var queryToken = context.Request.Query["token"].ToString().Trim();
                     var headerToken = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "").Trim();
-
-                    if (SafeEquals(queryToken, token) || SafeEquals(headerToken, token))
-                    {
-                        await next(context);
-                        return;
-                    }
+                    requestToken = !string.IsNullOrEmpty(queryToken) ? queryToken : headerToken;
                 }
                 else
                 {
                     var authHeader = context.Request.Headers["Authorization"].ToString();
                     if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                     {
-                        var requestToken = authHeader.Substring("Bearer ".Length).Trim();
-                        if (SafeEquals(requestToken, token))
-                        {
-                            await next(context);
-                            return;
-                        }
+                        requestToken = authHeader.Substring("Bearer ".Length).Trim();
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(requestToken))
+                {
+                    // 1. Verify against local loopback token
+                    if (SafeEquals(requestToken, token))
+                    {
+                        await next(context);
+                        return;
+                    }
+
+                    // 2. Verify against paired clients
+                    var store = context.RequestServices.GetRequiredService<PairedClientsStore>();
+                    if (store.ValidateToken(requestToken))
+                    {
+                        await next(context);
+                        return;
                     }
                 }
 
@@ -273,6 +293,30 @@ namespace Aer.Daemon
             {
                 lifetime.StopApplication();
                 return Results.Ok("Shutting down...");
+            });
+
+            // Generates a 6-digit pairing code (only callable if authorized, typically by local UI)
+            app.MapGet("/api/pairing/code", () =>
+            {
+                var code = PairingCodeManager.GenerateCode();
+                return Results.Ok(new { Code = code, ExpiresInSeconds = 60 });
+            });
+
+            // Exposes pairing verification (public endpoint)
+            app.MapPost("/api/pairing/pair", ([FromBody] PairRequest request, PairedClientsStore store) =>
+            {
+                if (string.IsNullOrEmpty(request.Code) || string.IsNullOrEmpty(request.ClientName))
+                {
+                    return Results.BadRequest("Code and ClientName are required.");
+                }
+
+                if (PairingCodeManager.ValidateAndConsume(request.Code))
+                {
+                    var token = store.AddClient(request.ClientName);
+                    return Results.Ok(new { Token = token });
+                }
+
+                return Results.Json(new { Error = "Invalid or expired pairing code." }, statusCode: StatusCodes.Status400BadRequest);
             });
 
             // REST endpoints
@@ -392,5 +436,11 @@ namespace Aer.Daemon
 
             await app.RunAsync();
         }
+    }
+
+    public class PairRequest
+    {
+        public string Code { get; set; } = string.Empty;
+        public string ClientName { get; set; } = string.Empty;
     }
 }
