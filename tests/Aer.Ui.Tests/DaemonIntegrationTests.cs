@@ -27,7 +27,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         {
             try
             {
-                var response = await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+                var response = await _client.GetAsync($"{BaseUrl}/api/version", TestContext.Current.CancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     break;
@@ -37,6 +37,15 @@ public class DaemonIntegrationTests : IAsyncLifetime
             {
                 await Task.Delay(100, TestContext.Current.CancellationToken);
             }
+        }
+
+        // Configure client authorization header
+        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+        var tokenFile = Path.Combine(aerDir, "daemon.token");
+        if (File.Exists(tokenFile))
+        {
+            var token = (await File.ReadAllTextAsync(tokenFile, TestContext.Current.CancellationToken)).Trim();
+            _client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         }
 
         // Create a temporary task directory for testing

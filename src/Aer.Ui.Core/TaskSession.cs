@@ -5,6 +5,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
 using Aer.Flow;
@@ -25,6 +26,7 @@ public record DecideTaskRequest(
     string? SupplementaryWorker = null,
     string? SupplementaryOutputName = null);
 public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
+public record DaemonVersionInfo(string Version);
 
 public class BindingsPathHolder
 {
@@ -32,10 +34,11 @@ public class BindingsPathHolder
 }
 
 /// <summary>
-/// One task-facing session's orchestration (M19 Phase 2, issue #187), updated in M20 Phase 2 to
+/// One task-facing session's orchestration (M19 Phase 2, issue #187), updated in M20 Phase 2/3 to
 /// support client-first daemonization: connects to Aer.Daemon background host process via REST/WebSockets
 /// to execute pumps and stream real-time task projections. Falls back to in-process execution seamlessly
-/// if the daemon cannot be reached or started.
+/// if the daemon cannot be reached or started. Enforces global mutex single-instance checks, 
+/// local auth tokens, process supervision, and version-skew protection.
 /// </summary>
 public sealed class TaskSession
 {
@@ -60,6 +63,7 @@ public sealed class TaskSession
     private readonly SynchronizationContext? _syncContext = SynchronizationContext.Current;
 
     private bool _isClientMode;
+    private string? _activeDaemonUrl;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _wsCts;
 
@@ -132,18 +136,71 @@ public sealed class TaskSession
     public Task<string?> LoadLastWorkflowTemplateFilePathAsync(CancellationToken cancellationToken = default)
         => _configurationStore.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
 
+    private (string Url, string Token)? GetDaemonConnectionInfo()
+    {
+        if (string.IsNullOrEmpty(_daemonUrl)) return null;
+
+        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+        if (!Directory.Exists(aerDir)) return null;
+
+        var tokenFile = Path.Combine(aerDir, "daemon.token");
+        if (!File.Exists(tokenFile)) return null;
+
+        var token = File.ReadAllText(tokenFile).Trim();
+
+        var portFile = Path.Combine(aerDir, "daemon.port");
+        var activePort = 5000;
+        if (File.Exists(portFile))
+        {
+            if (int.TryParse(File.ReadAllText(portFile).Trim(), out var p))
+            {
+                activePort = p;
+            }
+        }
+
+        var url = $"http://localhost:{activePort}";
+        return (url, token);
+    }
+
+    private void ConfigureHttpClientHeaders(string token)
+    {
+        _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+    }
+
     private async Task<bool> EnsureDaemonConnectedAsync(CancellationToken cancellationToken)
     {
+        if (string.IsNullOrEmpty(_daemonUrl)) return false;
         if (_isClientMode) return true;
+
+        var conn = GetDaemonConnectionInfo();
+        _activeDaemonUrl = conn?.Url ?? _daemonUrl;
+        var token = conn?.Token;
+
+        if (token != null)
+        {
+            ConfigureHttpClientHeaders(token);
+        }
 
         try
         {
-            var response = await _httpClient.GetAsync($"{_daemonUrl}/api/tasks/recent", cancellationToken).ConfigureAwait(true);
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", cancellationToken).ConfigureAwait(true);
             if (response.IsSuccessStatusCode)
             {
-                _isClientMode = true;
-                await StartWebSocketListenerAsync(cancellationToken).ConfigureAwait(true);
-                return true;
+                var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: cancellationToken).ConfigureAwait(true);
+                var clientVersion = typeof(TaskSession).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+
+                if (meta != null && meta.Version == clientVersion)
+                {
+                    _isClientMode = true;
+                    await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
+                    return true;
+                }
+                else
+                {
+                    // Version skew! Force shutdown running daemon to respawn updated one
+                    await _httpClient.PostAsync($"{_activeDaemonUrl}/api/daemon/shutdown", null, cancellationToken).ConfigureAwait(true);
+                    await Task.Delay(500, cancellationToken).ConfigureAwait(true);
+                }
             }
         }
         catch
@@ -192,15 +249,25 @@ public sealed class TaskSession
                 var process = Process.Start(startInfo);
                 if (process != null)
                 {
+                    _ = Task.Run(() => SuperviseDaemonProcessAsync(process), CancellationToken.None);
+
                     for (int i = 0; i < 30; i++)
                     {
                         try
                         {
-                            var response = await _httpClient.GetAsync($"{_daemonUrl}/api/tasks/recent", cancellationToken).ConfigureAwait(true);
+                            var newConn = GetDaemonConnectionInfo();
+                            _activeDaemonUrl = newConn?.Url ?? _daemonUrl;
+                            var newToken = newConn?.Token;
+                            if (newToken != null)
+                            {
+                                ConfigureHttpClientHeaders(newToken);
+                            }
+
+                            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", cancellationToken).ConfigureAwait(true);
                             if (response.IsSuccessStatusCode)
                             {
                                 _isClientMode = true;
-                                await StartWebSocketListenerAsync(cancellationToken).ConfigureAwait(true);
+                                await StartWebSocketListenerAsync(_activeDaemonUrl, newToken, cancellationToken).ConfigureAwait(true);
                                 return true;
                             }
                         }
@@ -221,12 +288,36 @@ public sealed class TaskSession
         return false;
     }
 
-    private async Task StartWebSocketListenerAsync(CancellationToken cancellationToken)
+    private async Task SuperviseDaemonProcessAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            if (_isClientMode)
+            {
+                _isClientMode = false;
+                if (CurrentTaskDirectoryPath != null)
+                {
+                    _ = EnsureDaemonConnectedAsync(CancellationToken.None);
+                }
+            }
+        }
+        catch
+        {
+            // Supervision failed
+        }
+    }
+
+    private async Task StartWebSocketListenerAsync(string resolvedUrl, string? token, CancellationToken cancellationToken)
     {
         _wsCts?.Cancel();
         _wsCts = new CancellationTokenSource();
         _webSocket = new ClientWebSocket();
-        var wsUrl = _daemonUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/api/ws";
+        var wsUrl = resolvedUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/api/ws";
+        if (token != null)
+        {
+            wsUrl += $"?token={token}";
+        }
         try
         {
             await _webSocket.ConnectAsync(new Uri(wsUrl), cancellationToken).ConfigureAwait(true);
@@ -303,7 +394,7 @@ public sealed class TaskSession
         {
             try
             {
-                var response = await _httpClient.PostAsJsonAsync($"{_daemonUrl}/api/tasks/open", new OpenTaskRequest(taskDirectoryPath), cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/open", new OpenTaskRequest(taskDirectoryPath), cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     var projection = await response.Content.ReadFromJsonAsync<TaskProjection>(cancellationToken: cancellationToken).ConfigureAwait(true);
@@ -397,7 +488,7 @@ public sealed class TaskSession
                 ViewModel.RunStatusText = "Running…";
                 _mutationStarted();
 
-                var response = await _httpClient.PostAsJsonAsync($"{_daemonUrl}/api/tasks/run", request, cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/run", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     ViewModel.RunStatusText = string.Empty;
@@ -511,7 +602,7 @@ public sealed class TaskSession
                     supplementaryWorker,
                     supplementaryOutputName);
 
-                var response = await _httpClient.PostAsJsonAsync($"{_daemonUrl}/api/tasks/decide", request, cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/decide", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     ViewModel.DecisionStatusText = string.Empty;
@@ -615,7 +706,7 @@ public sealed class TaskSession
                 _mutationStarted();
 
                 var request = new CancelTaskRequest(taskDirectoryPath, executionId.Value);
-                var response = await _httpClient.PostAsJsonAsync($"{_daemonUrl}/api/tasks/cancel", request, cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/cancel", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     ViewModel.CancelStatusText = string.Empty;
@@ -680,9 +771,9 @@ public sealed class TaskSession
     /// </summary>
     public void RequestHostStop()
     {
-        if (_isClientMode && CurrentTaskDirectoryPath != null)
+        if (_isClientMode && CurrentTaskDirectoryPath != null && _activeDaemonUrl != null)
         {
-            _ = _httpClient.PostAsJsonAsync($"{_daemonUrl}/api/tasks/cancel", new CancelTaskRequest(CurrentTaskDirectoryPath, null));
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/cancel", new CancelTaskRequest(CurrentTaskDirectoryPath, null));
             return;
         }
 

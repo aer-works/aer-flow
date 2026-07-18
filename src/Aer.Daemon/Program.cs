@@ -2,12 +2,16 @@ using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Ui.Core;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 
 [assembly: InternalsVisibleTo("Aer.Ui.Tests")]
 
@@ -21,14 +25,60 @@ namespace Aer.Daemon
 
         public static async Task RunDaemonAsync(string[] args)
         {
+            var username = Environment.UserName;
+            using var mutex = new Mutex(true, $"Global\\AerDaemonMutex_{username}", out var createdNew);
+            if (!createdNew)
+            {
+                Console.WriteLine("Another instance of Aer.Daemon is already running.");
+                return;
+            }
+
+            // Setup local data directory ~/.aer
+            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+            Directory.CreateDirectory(aerDir);
+
+            // Generate token if not exists
+            var tokenFile = Path.Combine(aerDir, "daemon.token");
+            string token;
+            if (File.Exists(tokenFile))
+            {
+                token = (await File.ReadAllTextAsync(tokenFile)).Trim();
+            }
+            else
+            {
+                token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+                await File.WriteAllTextAsync(tokenFile, token);
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(tokenFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                }
+            }
+
             var builder = WebApplication.CreateBuilder(args);
 
             // Ensure daemon listens on a fixed localhost port (allow override via --port)
             var portIndex = Array.IndexOf(args, "--port");
             var port = (portIndex >= 0 && portIndex < args.Length - 1) ? int.Parse(args[portIndex + 1]) : 5000;
+
+            var activePort = port;
+            if (port != 0)
+            {
+                try
+                {
+                    using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                    listener.Start();
+                    listener.Stop();
+                }
+                catch (System.Net.Sockets.SocketException)
+                {
+                    // Port is in use! Fall back to port 0 (dynamic port allocation)
+                    activePort = 0;
+                }
+            }
+
             builder.WebHost.ConfigureKestrel(options =>
             {
-                options.ListenLocalhost(port);
+                options.ListenLocalhost(activePort);
             });
 
             // Configure JSON options
@@ -120,6 +170,45 @@ namespace Aer.Daemon
             var app = builder.Build();
             App = app;
 
+            // Authentication Middleware verifying the Bearer token
+            app.Use(async (context, next) =>
+            {
+                // Allow public access to version endpoint
+                if (context.Request.Path == "/api/version" && context.Request.Method == "GET")
+                {
+                    await next(context);
+                    return;
+                }
+
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    var queryToken = context.Request.Query["token"].ToString().Trim();
+                    var headerToken = context.Request.Headers["Authorization"].ToString().Replace("Bearer ", "").Trim();
+
+                    if (queryToken == token || headerToken == token)
+                    {
+                        await next(context);
+                        return;
+                    }
+                }
+                else
+                {
+                    var authHeader = context.Request.Headers["Authorization"].ToString();
+                    if (authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var requestToken = authHeader.Substring("Bearer ".Length).Trim();
+                        if (requestToken == token)
+                        {
+                            await next(context);
+                            return;
+                        }
+                    }
+                }
+
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsync("Unauthorized");
+            });
+
             app.UseWebSockets();
 
             // WebSocket endpoint
@@ -164,6 +253,16 @@ namespace Aer.Daemon
                 }
             });
 
+            // Version metadata endpoint
+            app.MapGet("/api/version", () => Results.Ok(new { Version = typeof(DaemonHost).Assembly.GetName().Version?.ToString() ?? "1.0.0" }));
+
+            // Graceful shutdown endpoint
+            app.MapPost("/api/daemon/shutdown", (IHostApplicationLifetime lifetime) =>
+            {
+                lifetime.StopApplication();
+                return Results.Ok("Shutting down...");
+            });
+
             // REST endpoints
             app.MapGet("/api/tasks/recent", async (TaskSession session) =>
             {
@@ -201,10 +300,9 @@ namespace Aer.Daemon
 
                 pathHolder.BindingsFilePath = request.BindingsFilePath;
 
-                // Start background run pump asynchronously - don't block the HTTP request
                 _ = Task.Run(async () =>
                 {
-                    var outcome = await session.RunAsync(
+                    await session.RunAsync(
                         request.DirectoryPath,
                         request.WorkflowTemplateFilePath,
                         request.BindingsFilePath);
@@ -217,7 +315,6 @@ namespace Aer.Daemon
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
 
-                // Start background decide pump asynchronously
                 _ = Task.Run(async () =>
                 {
                     await session.DecideAsync(
@@ -250,8 +347,24 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
+            // Write active port to discovery file on startup
+            app.Lifetime.ApplicationStarted.Register(() =>
+            {
+                var server = app.Services.GetRequiredService<IServer>();
+                var addressesFeature = server.Features.Get<IServerAddressesFeature>();
+                if (addressesFeature != null)
+                {
+                    var firstUrl = addressesFeature.Addresses.FirstOrDefault();
+                    if (firstUrl != null)
+                    {
+                        var uri = new Uri(firstUrl);
+                        var portFile = Path.Combine(aerDir, "daemon.port");
+                        File.WriteAllText(portFile, uri.Port.ToString());
+                    }
+                }
+            });
+
             await app.RunAsync();
         }
     }
-
 }
