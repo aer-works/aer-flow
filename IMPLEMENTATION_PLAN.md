@@ -64,6 +64,10 @@ Which milestone introduces which capabilities.
 | **M17: Dialogue Worker** | 24 (first Case 2 worker); plus the real-use walkthrough doc | M12 (both vendor CLIs proven live) |
 | **M18: Conversation View** | 25 | M17 (a transcript to project); M14 |
 | **M19: Product UX** | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18 |
+| **M20: Daemonization & Remote Control** | 26 (exposing read model + mutation over network API), 27 (remote client protocol / mobile gateway) | M19 |
+| **M21: Generic Dialogue & Project Packaging** | 28 (Generic Dialogue configuration schema & loops), 29 (Unified Project Package model with profile segregation) | M20 |
+| **M22: UI Visual Overhaul** | 30 (Curve-based Bezier DAG rendering, brand icons), 31 (Rich markdown output previewer), 32 (Keyboard-first triage modal) | M21 |
+
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
@@ -71,13 +75,68 @@ M14–M16 are that UI track, splitting the roadmap's original single "UI" row th
 
 M17–M19 are the post-UI-track sequence, planned at M16's completion by re-checking the original project goal against what had shipped. Half of that goal exists and is proven live: vendor-to-vendor task hand-off on subscriptions (M12's recorded mixed-vendor gate). The other half — letting the two models actually talk to each other — does not: today §17.5's supersede loop makes the *human* the relay for every round of the exchange. **M17** builds the first Case 2 worker (the dialogue worker — the concrete thing the conversation view has been waiting on), opening with the real-use walkthrough the project is also missing. **M18** renders M17's durable transcript as UI spec §10's conversation view — load-on-refresh first; live Observation-Tier turn streaming stays unassigned until a concrete need names it. **M19** was originally scoped as a visual/UX design pass alone ("no new capability"), sequenced last so it styles the UI's final shape. At M18's completion the owner raised the bar: a user should not have to be an AI expert to use the product, and should never have to hand-edit a config file — with CyboFlow's human-first structure (a central view organized by what needs the human next: permission, decision, or action) the named inspiration. M19 is therefore redefined as a product-UX milestone; the original design pass survives as its next-to-last phase, still styling the final shape. M19's phase-by-phase plan lived here through its six phases; see this file's git history for the full text and `docs/decisions-of-record.md` for what it left behind.
 
+**M20** shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`, a
+loopback-only REST/WebSocket host API with token auth, and — ahead of any actual remote client
+existing — a pairing protocol (`--remote` binds beyond loopback; transient codes mint long-lived
+paired-client tokens) so the trust boundary exists before a client needs to cross it. Deliberately
+out of scope for M20, carried forward for whichever milestone builds the actual remote client:
+- **TLS for `--remote` mode.** Currently plaintext HTTP even off-loopback — fine while nothing
+  turns `--remote` on from the UI, not fine once a real client does.
+- **Paired-token expiry and revocation.** `PairedClientsStore` can add a client; nothing removes
+  one short of hand-editing `~/.aer/paired_clients.json`.
+- Pairing-code brute-force resistance (CSPRNG + a 5-attempt lockout) shipped in M20 itself — not
+  deferred, since it was cheap and closes a real hole in the scaffold as committed.
+
 ---
 
 ## Current Milestone
 
-No milestone is currently active — M19 completed all six phases (#186–#191). The next milestone
-(a remote host is the owner's named eventual goal, candidate M20 — see "Notes for future work"
-below) is scoped once the owner's post-milestone review lands.
+**M21: Generic Dialogue & Project Packaging** — progress:
+
+- [ ] Phase 1 — Generic Dialogue Config Schema & Loops
+- [ ] Phase 2 — Project Packages & Binding Segregation
+- [ ] Phase 3 — Visual Diff Viewer for Revisions
+- [ ] Phase 4 — Multi-Agent Teamwork Preview (Mock)
+
+---
+
+## M21: Generic Dialogue & Project Packaging — Phase Plan
+
+**Goal:** Author multi-turn dialogue steps directly within the UI and bundle workflow assets into portable task packages while separating machine-specific bindings config.
+
+### Phase 1: Generic Dialogue Config Schema & Loops
+- **Goal**: Generalize the Dialogue Worker so that the number of turns, seed prompts, and agent rules are read dynamically from the workflow step definition rather than a hardcoded C# worker.
+- **Verification**: UI authoring and engine execution of custom 3-turn Claude ↔ Gemini loops configured entirely in the visual step editor.
+
+### Phase 2: Project Packages & Binding Segregation
+- **Goal**: Implement the `.aerproj` or unified project folder model. Task directories store only the portable snapshot, template, and event log, while pointing to a named profile configuration reference (`"bindings-profile": "default"`). The actual profile mappings remain stored in the user's private `%USERPROFILE%\.aer\profiles.json`.
+- **Verification**: Open a task directory on a different machine; verify it maps to local tools and runs successfully without modification.
+
+### Phase 3: Visual Diff Viewer for Revisions
+- **Goal**: Build a side-by-side file revision diff panel in the UI to visualize step revisions and changes made during a "Send back" feedback loop.
+- **Verification**: Editing a template step and generating a new revision displays clear visual file additions, deletions, and modifications.
+
+### Phase 4: Multi-Agent Teamwork Preview (Mock)
+- **Goal**: Introduce a teamwork-preview screen in the UI that mocks the collaborative multi-agent hierarchy (dialogue worker loops running concurrently and reporting back to the parent coordinator), allowing the user to preview dialogue loop relationships.
+- **Verification**: Selecting "Teamwork Preview" displays a mock multi-turn layout showing simulated real-time token traffic and step transitions.
+
+---
+
+## M22: UI Visual Overhaul — Phase Plan
+
+**Goal:** Transform the visual layout of AER Flow into a premium desktop product matching reference-caliber tools (Linear, Raycast).
+
+### Phase 1: Curved Bezier DAG Canvas & Hover States
+- **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
+- **Verification**: Seamless rendering, hover states, and smooth drag-and-drop interactions.
+
+### Phase 2: Rich Markdown Output Previewer
+- **Goal**: Integrate a markdown engine (e.g., `Markdown.Avalonia`) to render step artifact output previews as rich formatted text, headers, checklists, and tables, replacing the raw TextBox.
+- **Verification**: Standard markdown output files are rendered with high-fidelity typography, colors, and table structures.
+
+### Phase 3: Keyboard-First Triage Mode
+- **Goal**: Add keyboard-first navigation to the Home triage screen. When a step pauses for review, enable quick keys (`A` to approve, `S` to send back) with highly visible keyboard badges, maximizing non-expert efficiency.
+- **Verification**: Complete task reviews and decisions purely from the keyboard.
 
 ---
 
@@ -87,6 +146,8 @@ Completed milestones keep only a one-paragraph summary here. Their phase checkli
 closed GitHub milestones; their decisions of record — the constraints and precedents later work
 still leans on — in `docs/decisions-of-record.md`; and the full phase plans — goals, boundaries,
 and the open questions each phase resolved — in this file's git history and the linked issues.
+
+**M20: Daemonization & Remote Control** — extracted the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Exposed task read models, mutation interfaces, and WebSocket real-time updates over a loopback and remote-accessible API. Added single-instance mutex enforcement, constant-time authentication token validation, and process lifecycle supervision. Hardened tool invocation security by replacing command shell spawners (`cmd.exe /c` / `sh -c`) with shell-less direct binary execution and C#-side environment variable expansion. Designed and implemented the client-pairing gateway protocol allowing secure LAN/Wi-Fi remote clients to connect and authenticate against the daemon.
 
 **M19: Product UX** — the product-UX overhaul the owner scoped at M18's completion: a
 navigation shell (Home's decision inbox + task cards, Task, Author) built behind a new

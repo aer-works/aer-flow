@@ -60,9 +60,17 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(target);
 
+        // Resolve variable values from request.Environment
+        var pathVariables = request.Environment
+            .OfType<EnvironmentVariable.AerComputed>()
+            .ToDictionary(v => v.Name, v => v.Value);
+
+        // Perform expansion on target arguments
+        var expandedArgs = target.Args.Select(arg => ExpandVariables(arg, pathVariables)).ToList();
+
         // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a
         // dispatcher for a NonProcess execution, §17.3) — Timeout is therefore always set.
-        using var task = new AerTask(target.Program, [.. target.Args]).WithTimeout(request.Timeout!.Value);
+        using var task = new AerTask(target.Program, [.. expandedArgs]).WithTimeout(request.Timeout!.Value);
 
         foreach (var environmentVariable in request.Environment)
         {
@@ -131,4 +139,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         AerExitReason.CancelRequested => CoreExitReason.CancelRequested,
         _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown AerExitReason."),
     };
+
+    private static string ExpandVariables(string arg, Dictionary<string, string> vars)
+    {
+        var sortedVars = vars.OrderByDescending(v => v.Key.Length).ToList();
+        foreach (var (name, value) in sortedVars)
+        {
+            arg = arg.Replace($"%{name}%", value)  // Windows syntax
+                     .Replace($"${name}", value);  // Unix syntax
+        }
+        return arg;
+    }
 }

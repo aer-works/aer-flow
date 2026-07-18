@@ -121,8 +121,11 @@ public partial class MainWindow : Window
            ?? TaskViewControl.FindControl<T>(name)
            ?? AuthorViewControl.FindControl<T>(name);
 
+    private static readonly bool IsUnderTest = AppDomain.CurrentDomain.GetAssemblies()
+        .Any(a => a.FullName != null && (a.FullName.Contains("xunit") || a.FullName.Contains("Test") || a.FullName.Contains("test")));
+
     public MainWindow()
-        : this(LocalUiConfigurationStore.CreateDefault(), WorkerAdapterRegistry.Default)
+        : this(LocalUiConfigurationStore.CreateDefault(), WorkerAdapterRegistry.Default, IsUnderTest ? null : "http://localhost:5000")
     {
     }
 
@@ -134,7 +137,7 @@ public partial class MainWindow : Window
     /// registry (M11 Phase 3).
     /// </summary>
     public MainWindow(LocalUiConfigurationStore configurationStore)
-        : this(configurationStore, WorkerAdapterRegistry.Default)
+        : this(configurationStore, WorkerAdapterRegistry.Default, IsUnderTest ? null : "http://localhost:5000")
     {
     }
 
@@ -147,7 +150,7 @@ public partial class MainWindow : Window
     /// <c>Aer.Ui.Tests</c> can substitute a deterministic shell-stub registry instead of resolving a
     /// live vendor CLI.
     /// </summary>
-    public MainWindow(LocalUiConfigurationStore configurationStore, IReadOnlyDictionary<string, IWorkerAdapter> adapters)
+    public MainWindow(LocalUiConfigurationStore configurationStore, IReadOnlyDictionary<string, IWorkerAdapter> adapters, string? daemonUrl = null)
     {
         InitializeComponent();
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -162,7 +165,8 @@ public partial class MainWindow : Window
             bindingsFilePathProvider: () => BindingsFilePathBox.Text,
             mutationStarted: _liveRefreshTimer.Start,
             mutationFailed: _liveRefreshTimer.Stop,
-            reopenTaskAsync: (taskDirectoryPath, cancellationToken) => OpenAsync(taskDirectoryPath, cancellationToken));
+            reopenTaskAsync: (taskDirectoryPath, cancellationToken) => OpenAsync(taskDirectoryPath, cancellationToken),
+            daemonUrl: daemonUrl);
 
         // M16 Phase 4 (issue #153): adapter names are offered from the registry this window was
         // constructed with — reflect, don't invent — carried per-row on WorkerBindingEntryViewModel
@@ -337,6 +341,8 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        _ = _session.EnsureDaemonConnectedAsync(cancellationToken);
+
         await RefreshHomeAsync(cancellationToken);
 
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
@@ -918,9 +924,70 @@ public partial class MainWindow : Window
     /// <see cref="OpenAsync"/>), this closes the window for real — a plain, uncancelled close, since
     /// <see cref="_closeConfirmed"/> is now set.
     /// </summary>
+    public async void ConfirmCloseAndExit()
+    {
+        if (_session.IsDaemonConfigured)
+        {
+            Show();
+            Activate();
+
+            var hasRunningTasks = ViewModel.RunningExecutions.Count > 0;
+            var result = await ExitConfirmationWindow.ShowPromptAsync(this, hasRunningTasks);
+            if (result == null)
+            {
+                return;
+            }
+
+            _closeConfirmed = true;
+            if (result == true)
+            {
+                _session.RequestHostStop();
+                _ = _session.ShutdownDaemonAsync();
+            }
+            Close();
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+            }
+        }
+        else
+        {
+            _closeConfirmed = true;
+            Close();
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+            }
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        if (!_session.IsDaemonConfigured)
+        {
+            if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+            }
+        }
+    }
+
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (_closeConfirmed || _session.CurrentPumpTask is not { IsCompleted: false } pumpTask)
+        if (_closeConfirmed)
+        {
+            return;
+        }
+
+        if (_session.IsDaemonConfigured)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
+        if (_session.CurrentPumpTask is not { IsCompleted: false } pumpTask)
         {
             return;
         }
@@ -946,6 +1013,8 @@ public partial class MainWindow : Window
         _closeConfirmed = true;
         Close();
     }
+
+
 
     private void RenderDecisions(TaskProjection projection)
     {
