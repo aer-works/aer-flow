@@ -10,6 +10,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Layout;
+using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Media;
 using Avalonia.Threading;
 using System.Linq;
@@ -656,6 +657,43 @@ public partial class MainWindow : Window
                     : "\n[pause]";
             }
 
+            var textBlock = new TextBlock
+            {
+                Text = label,
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = this.FindResource("Type.Caption.FontSize") as double? ?? 12,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            };
+
+            // Post-M19 design review (#206/#209): status icon per node, same glyph set and mapping
+            // as every other status-bearing surface — a raw template's node has no status, so no
+            // icon (nothing has executed, nothing to say, same as its plain-surface color).
+            var content = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Spacing = 4,
+            };
+            if (status is { } iconStatus)
+            {
+                content.Children.Add(new ShapePath
+                {
+                    Data = this.FindResource(Converters.StatusIconMap.GeometryKeyFor(iconStatus)) as Geometry,
+                    Stroke = borderBrush,
+                    StrokeThickness = 1.6,
+                    StrokeLineCap = PenLineCap.Round,
+                    StrokeJoin = PenLineJoin.Round,
+                    Width = 14,
+                    Height = 14,
+                    Stretch = Stretch.Uniform,
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                });
+            }
+
+            content.Children.Add(textBlock);
+
             var border = new Border
             {
                 Width = DagNodeWidth,
@@ -664,14 +702,7 @@ public partial class MainWindow : Window
                 BorderBrush = borderBrush,
                 BorderThickness = new Thickness(1.5),
                 CornerRadius = this.FindResource("Radius.Medium") is CornerRadius radius ? radius : default,
-                Child = new TextBlock
-                {
-                    Text = label,
-                    TextAlignment = TextAlignment.Center,
-                    TextWrapping = TextWrapping.Wrap,
-                    FontSize = this.FindResource("Type.Caption.FontSize") as double? ?? 12,
-                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                },
+                Child = content,
             };
 
             if (onNodeSelect is { } select)

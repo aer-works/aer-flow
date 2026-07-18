@@ -74,12 +74,19 @@
     <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentPressed}" />
   </Style>
 
-  <!-- The one loud button per surface: Run / Save and run / Approve -->
+  <!-- The one loud button per surface: Run / Save and run / Approve. FluentTheme reserves the
+       class name "accent" on Button for its own SystemAccentColor-based styling (issue #209 —
+       the OS accent color, not Color.Accent, was winning) — setting Background/BorderBrush on
+       Button itself lets that built-in styling win depending on theme variant. Targeting the
+       template's ContentPresenter directly (the same mechanism the pointerover/pressed states
+       below already use) forces Color.Accent to win unconditionally. -->
   <Style Selector="Button.accent">
-    <Setter Property="Background" Value="{DynamicResource Color.Accent}" />
     <Setter Property="Foreground" Value="White" />
-    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
     <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.accent /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.Accent}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
   </Style>
   <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentHover}" />

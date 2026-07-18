@@ -49,8 +49,10 @@
           <TextBlock Classes="body-strong" Text="No tasks yet." />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
                      Text="Create a workflow and run it — or open an existing task folder below." />
-          <Button x:Name="CreateWorkflowButton" Classes="accent" Content="Create a workflow"
-                  HorizontalAlignment="Left" Click="OnCreateWorkflowClick" />
+          <Button x:Name="CreateWorkflowButton" Classes="accent"
+                  HorizontalAlignment="Left" Click="OnCreateWorkflowClick">
+            <AccessText Text="_Create a workflow" />
+          </Button>
         </StackPanel>
       </Border>
       <ItemsControl x:Name="TaskCardsList" ItemsSource="{Binding Home.TaskCards}">
@@ -79,8 +81,8 @@
       <TextBlock Classes="heading" Text="Open a task" />
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
         <TextBox x:Name="TaskDirectoryPathBox" Width="480" PlaceholderText="Task directory path" />
-        <Button x:Name="OpenButton" Content="Open" />
-        <Button x:Name="RefreshButton" Content="Refresh" />
+        <Button x:Name="OpenButton"><AccessText Text="_Open" /></Button>
+        <Button x:Name="RefreshButton"><AccessText Text="Re_fresh" /></Button>
       </StackPanel>
       </StackPanel>
     </StackPanel>

@@ -20,8 +20,12 @@
         <TextBox x:Name="BindingsFilePathBox" Width="300"
                  PlaceholderText="Who runs each step (bindings file)"
                  ToolTip.Tip="Pre-filled with the last-used bindings file as a convenience — always visible, always swappable, never remembered authority (§4)." />
-        <Button x:Name="RunButton" Classes="accent" Content="Run" IsEnabled="{Binding !IsMutationInFlight}" />
-        <Button x:Name="StopButton" Content="Stop" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop)." />
+        <Button x:Name="RunButton" Classes="accent" IsEnabled="{Binding !IsMutationInFlight}">
+          <AccessText Text="R_un" />
+        </Button>
+        <Button x:Name="StopButton" ToolTip.Tip="Cancel every execution this window currently has in flight (§9 host stop).">
+          <AccessText Text="_Stop" />
+        </Button>
       </StackPanel>
       <TextBlock x:Name="RunStatusText" Text="{Binding RunStatusText}" />
 
@@ -40,12 +44,18 @@
                 </StackPanel>
                 <TextBlock Classes="caption" Text="{Binding Label}" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Button Classes="accent" Content="Approve" Command="{Binding ApproveCommand}"
-                          ToolTip.Tip="Resume: accept this step's output and let the workflow continue (§17)." />
-                  <Button Content="Retry this step" Command="{Binding RetryCommand}"
-                          ToolTip.Tip="RetryWithRevision: run this step again, optionally with your feedback file attached (§17)." />
-                  <Button Content="Reject" Command="{Binding RejectCommand}"
-                          ToolTip.Tip="Reject: end this step here — the workflow does not continue past it (§17)." />
+                  <Button Classes="accent" Command="{Binding ApproveCommand}"
+                          ToolTip.Tip="Resume: accept this step's output and let the workflow continue (§17).">
+                    <AccessText Text="A_pprove" />
+                  </Button>
+                  <Button Command="{Binding RetryCommand}"
+                          ToolTip.Tip="RetryWithRevision: run this step again, optionally with your feedback file attached (§17).">
+                    <AccessText Text="_Retry this step" />
+                  </Button>
+                  <Button Command="{Binding RejectCommand}"
+                          ToolTip.Tip="Reject: end this step here — the workflow does not continue past it (§17).">
+                    <AccessText Text="Re_ject" />
+                  </Button>
                   <ItemsControl ItemsSource="{Binding SendBackTargets}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
@@ -196,7 +206,10 @@
       <TextBlock x:Name="CancelStatusText" Text="{Binding CancelStatusText}" />
 
       <!-- §12 traceability: the full, precise engine-level record — every fact the drill-in
-           re-slices, in spec vocabulary, one disclosure away. -->
+           re-slices, in spec vocabulary, one disclosure away. Wrapped in a card (rather than
+           templating Expander's own chrome, which has no BoxShadow property to target) so this
+           gets the same elevation treatment as every other surface. -->
+      <Border Classes="card">
       <Expander Header="Details — the full record" IsExpanded="False">
         <StackPanel Spacing="12" Margin="0,8,0,0">
           <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
@@ -225,6 +238,7 @@
           <StackPanel x:Name="DiffPanel" Spacing="2" />
         </StackPanel>
       </Expander>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>
