@@ -64,6 +64,8 @@ Which milestone introduces which capabilities.
 | **M17: Dialogue Worker** | 24 (first Case 2 worker); plus the real-use walkthrough doc | M12 (both vendor CLIs proven live) |
 | **M18: Conversation View** | 25 | M17 (a transcript to project); M14 |
 | **M19: Product UX** | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18 |
+| **M20: Daemonization & Remote Control** | 26 (exposing read model + mutation over network API), 27 (remote client protocol / mobile gateway) | M19 |
+
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
@@ -75,9 +77,38 @@ M17–M19 are the post-UI-track sequence, planned at M16's completion by re-chec
 
 ## Current Milestone
 
-No milestone is currently active — M19 completed all six phases (#186–#191). The next milestone
-(a remote host is the owner's named eventual goal, candidate M20 — see "Notes for future work"
-below) is scoped once the owner's post-milestone review lands.
+**M20: Daemonization & Remote Control** — progress:
+
+- ⬜ Phase 1 — Daemon Scaffold, Host API & Local IPC (#204)
+- ⬜ Phase 2 — UI Connection & Flow Client Migration (#205)
+- ⬜ Phase 3 — System Tray integration and notification system (#206)
+- ⬜ Phase 4 — Remote API Gateway & Trust Boundary Spec (#207)
+
+Per this document's session prompt: help implement the current phase only.
+
+---
+
+## M20: Daemonization & Remote Control — Phase Plan
+
+**Goal:** Extract the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Expose the task read models and mutation interfaces over a network-ready API (HTTP/WebSockets/gRPC). Re-route the desktop app (`Aer.Ui`) to consume this API as a client, ensuring background execution continues unimpeded when the UI closes, and establish the trust boundary and protocol required to safely drive execution from a remote client (e.g. a phone or mobile web app).
+
+### Phase 1: Daemon Scaffold, Host API & Local IPC
+- **Goal**: Create a new background service project (`Aer.Daemon`), extract the scheduling pump and event loop from `Aer.Ui` into it, and implement an API (via ASP.NET Core Web API or gRPC) that exposes task projections and mutation endpoints.
+- **Verification**: Integration tests proving a headless client can fetch task states and post decisions to the daemon.
+- **Open Questions**: Do we use local named pipes, gRPC, or lightweight HTTP/WebSockets for IPC? (HTTP/WebSockets is recommended because it is network-ready and easily shared with web/mobile clients).
+
+### Phase 2: UI Connection & Flow Client Migration
+- **Goal**: Refactor `Aer.Ui.Core` ViewModels to connect to the daemon API instead of maintaining an in-process Event Store and scheduler. The UI should subscribe to a WebSocket connection for real-time model changes instead of a 2-second polling loop.
+- **Verification**: Desktop application loads, starts, and reacts to running workflows served from the daemon.
+- **Open Questions**: How does the UI find the local daemon port? (A local discovery file or fixed port configuration).
+
+### Phase 3: System Tray integration and notification system
+- **Goal**: Add a system tray client wrapper for the desktop app. Ensure that closing the window only hides the UI while the task runner tray icon keeps the daemon alive in the background. Trigger local OS notifications (toasts) when a workflow reaches a `PausePoint` and needs human decision/input.
+- **Verification**: Closing the window does not abort running tasks; notifications pop when a step pauses.
+
+### Phase 4: Remote API Gateway & Trust Boundary Spec
+- **Goal**: Define the remote access protocol and authentication boundary. Implement client key pairing so that a phone client can connect securely over local Wi-Fi or a reverse proxy without leaking subscription credentials (vendor credentials never leave the desktop).
+- **Verification**: Handshake verification tests proving only paired client keys can access mutations.
 
 ---
 
