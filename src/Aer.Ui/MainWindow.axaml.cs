@@ -556,9 +556,12 @@ public partial class MainWindow : Window
             : Brushes.Transparent;
 
     private const double DagCellWidth = 170;
-    private const double DagCellHeight = 90;
+    private const double DagCellHeight = 150;
     private const double DagNodeWidth = 150;
-    private const double DagNodeHeight = 56;
+    // Tall enough for the icon plus up to 4 label lines (step id, worker, status, optional
+    // pause line) at Type.Caption.FontSize — 56 fit the old text-only, 2-line label but let a
+    // 3-4 line label with the #206 status icon on top spill past the border.
+    private const double DagNodeHeight = 96;
 
     /// <summary>
     /// Renders <see cref="DagLayoutEngine.Layout"/>'s result over <paramref name="steps"/> as boxes
