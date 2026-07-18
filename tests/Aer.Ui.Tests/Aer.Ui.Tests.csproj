@@ -35,6 +35,7 @@
          seam, not a hand-built WorkerBinding, so tests need both directly. -->
     <ProjectReference Include="..\..\src\Aer.Cli\Aer.Cli.csproj" />
     <ProjectReference Include="..\..\src\Aer.Adapters\Aer.Adapters.csproj" />
+    <ProjectReference Include="..\..\src\Aer.Daemon\Aer.Daemon.csproj" />
   </ItemGroup>
 
   <ItemGroup>

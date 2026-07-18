@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Aer.Adapters/Aer.Adapters.csproj" />
     <Project Path="src/Aer.Cli/Aer.Cli.csproj" />
+    <Project Path="src/Aer.Daemon/Aer.Daemon.csproj" />
     <Project Path="src/Aer.Flow/Aer.Flow.csproj" />
     <Project Path="src/Aer.Ui.Core/Aer.Ui.Core.csproj" />
     <Project Path="src/Aer.Ui/Aer.Ui.csproj" />
