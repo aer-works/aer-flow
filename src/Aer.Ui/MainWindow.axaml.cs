@@ -17,6 +17,10 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Avalonia.Win32;
+
+
 
 [assembly: InternalsVisibleTo("Aer.Ui.Tests")]
 
@@ -146,6 +150,10 @@ public partial class MainWindow : Window
     public MainWindow(LocalUiConfigurationStore configurationStore, IReadOnlyDictionary<string, IWorkerAdapter> adapters)
     {
         InitializeComponent();
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            Win32Properties.AddWndProcHookCallback(this, WndProcHook);
+        }
         DataContext = ViewModel;
         _session = new TaskSession(
             configurationStore,
@@ -275,6 +283,31 @@ public partial class MainWindow : Window
 
     /// <summary>Double-click-to-maximize: the one title-bar convention <see cref="OnTitleBarPointerPressed"/>'s drag doesn't already cover for free.</summary>
     private void OnTitleBarDoubleTapped(object? sender, TappedEventArgs e) => ToggleMaximizeRestore();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct STYLESTRUCT
+    {
+        public int styleOld;
+        public int styleNew;
+    }
+
+    private const uint WM_STYLECHANGING = 0x007C;
+    private const int GWL_STYLE = -16;
+    private const int WS_MINIMIZEBOX = 0x00020000;
+    private const int WS_MAXIMIZEBOX = 0x00010000;
+    private const int WS_CAPTION = 0x00C00000;
+    private const int WS_SYSMENU = 0x00080000;
+
+    private IntPtr WndProcHook(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_STYLECHANGING && (int)wParam == GWL_STYLE)
+        {
+            var styleStruct = Marshal.PtrToStructure<STYLESTRUCT>(lParam);
+            styleStruct.styleNew |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+            Marshal.StructureToPtr(styleStruct, lParam, false);
+        }
+        return IntPtr.Zero;
+    }
 
     private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 

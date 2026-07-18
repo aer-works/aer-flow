@@ -67,7 +67,7 @@
       </Transitions>
     </Setter>
   </Style>
-  <Style Selector="Button /template/ ContentPresenter">
+  <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.12" />
@@ -76,12 +76,12 @@
       </Transitions>
     </Setter>
   </Style>
-  <Style Selector="Button:pointerover /template/ ContentPresenter">
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
     <Setter Property="Foreground" Value="{DynamicResource Color.Text}" />
   </Style>
-  <Style Selector="Button:pressed /template/ ContentPresenter">
+  <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentPressed}" />
   </Style>
@@ -96,16 +96,16 @@
     <Setter Property="Foreground" Value="White" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
-  <Style Selector="Button.accent /template/ ContentPresenter">
+  <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.Accent}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
   </Style>
-  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentHover}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentHover}" />
     <Setter Property="Foreground" Value="White" />
   </Style>
-  <Style Selector="Button.accent:pressed /template/ ContentPresenter">
+  <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentPressed}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentPressed}" />
   </Style>
@@ -181,40 +181,49 @@
          so the value is inlined here instead of tokenized. -->
     <Setter Property="Padding" Value="16" />
   </Style>
-  <Style Selector="Button.card /template/ ContentPresenter">
+  <Style Selector="Button.card /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="BoxShadow" Value="{DynamicResource Elevation.Raised}" />
   </Style>
   <Style Selector="Button.card.selected">
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
   </Style>
-  <Style Selector="Button.card:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.card:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
   </Style>
 
   <!-- The navigation rail: quiet buttons, accent only on the active section -->
   <Style Selector="Button.nav">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
     <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="Padding" Value="12,8" />
   </Style>
-  <Style Selector="Button.nav.selected">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
-    <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+  <Style Selector="Button.nav /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBgTransparent}" />
     <Setter Property="BorderBrush" Value="Transparent" />
-  </Style>
-  <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
-  <Style Selector="Button.nav.selected:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.nav.selected">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+  <Style Selector="Button.nav.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
+  </Style>
+  <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
 
   <!-- #218: nav icons track the same Foreground the nav button's own text uses — Path.Stroke
@@ -249,27 +258,43 @@
     <Setter Property="Width" Value="44" />
     <Setter Property="Height" Value="40" />
     <Setter Property="Padding" Value="0" />
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="CornerRadius" Value="0" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Cursor" Value="Hand" />
   </Style>
-  <Style Selector="Button.titlebar-button:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.titlebar-button /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBgTransparent}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.titlebar-button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
   <Style Selector="Button.titlebar-button:pointerover Path.titlebar-icon">
     <Setter Property="Stroke" Value="{DynamicResource Color.Accent}" />
   </Style>
+  <Style Selector="Button.titlebar-button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.titlebar-button.close /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Color.CloseHoverTransparent}" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
   <!-- Close gets the platform-standard red hover instead of the accent tint every other caption
        button uses — "this ends the app" is a distinct signal from "this is the active section." -->
-  <Style Selector="Button.titlebar-button.close:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.titlebar-button.close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="#E81123" />
+    <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
   <Style Selector="Button.titlebar-button.close:pointerover Path.titlebar-icon">
     <Setter Property="Stroke" Value="White" />
+  </Style>
+  <Style Selector="Button.titlebar-button.close:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="#F1707A" />
+    <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
   <Style Selector="Path.titlebar-icon">
     <Setter Property="Stroke" Value="{DynamicResource Color.TextSecondary}" />

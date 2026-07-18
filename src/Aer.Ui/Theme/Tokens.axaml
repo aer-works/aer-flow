@@ -30,6 +30,11 @@
       <SolidColorBrush x:Key="Color.AccentHover">#0C5F8F</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentPressed">#0A4D74</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentSubtleBg">#DFEDF5</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBgTransparent">#01DFEDF5</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.CloseHoverTransparent">#01E81123</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.ClosePressedTransparent">#01F1707A</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBgPressedTransparent">#010A4D74</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBgHoverTransparent">#010C5F8F</SolidColorBrush>
 
       <!-- Desaturated from the prior stock Tailwind primaries (#2563EB/#B45309/#15803D/#B91C1C/
            #7C3AED) — those read as a generic component-library default, not a considered palette. -->
@@ -73,6 +78,11 @@
       <SolidColorBrush x:Key="Color.AccentHover">#57B3E8</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentPressed">#2C86BA</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentSubtleBg">#17293A</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBgTransparent">#0117293A</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.CloseHoverTransparent">#01E81123</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.ClosePressedTransparent">#01F1707A</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBgPressedTransparent">#012C86BA</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.AccentSubtleBgHoverTransparent">#0157B3E8</SolidColorBrush>
 
       <SolidColorBrush x:Key="Status.Running">#6E93C2</SolidColorBrush>
       <SolidColorBrush x:Key="Status.NeedsYou">#C9A15C</SolidColorBrush>
