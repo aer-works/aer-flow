@@ -543,7 +543,16 @@ public partial class MainWindow : Window
             [StepStatus.Rejected] = ("Status.Failed", "Status.FailedBg"),
         };
 
-    private IBrush Token(string key) => this.FindResource(key) as IBrush ?? Brushes.Transparent;
+    // this.FindResource(key) (no theme argument) resolves against ThemeVariant.Default, never this
+    // window's ActualThemeVariant -- it silently matches Tokens.axaml's literal x:Key="Default"
+    // dictionary (the light palette) regardless of which variant the window is actually rendering
+    // in, unlike XAML DynamicResource bindings, which are ActualThemeVariant-aware. Every DAG node
+    // border/fill went through this before the fix, producing light-palette color against the
+    // dark-palette inherited text -- the washed-out boxes.
+    private IBrush Token(string key) =>
+        this.TryFindResource(key, ActualThemeVariant, out var value) && value is IBrush brush
+            ? brush
+            : Brushes.Transparent;
 
     private const double DagCellWidth = 170;
     private const double DagCellHeight = 90;

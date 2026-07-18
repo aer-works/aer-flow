@@ -7,6 +7,7 @@ using Aer.Ui.Tests.TestSupport;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Line = Avalonia.Controls.Shapes.Line;
 
 namespace Aer.Ui.Tests;
@@ -143,5 +144,79 @@ public class MainWindowDagTests
         await window.OpenAsync(fixturePath, TestContext.Current.CancellationToken);
 
         Assert.False(window.IsLiveRefreshTimerEnabled);
+    }
+
+    /// <summary>
+    /// Regression test for a real M19 Phase 5 defect found post-milestone (2026-07-18): the DAG
+    /// node's <c>Token</c> helper called <c>this.FindResource(key)</c>, an overload that resolves
+    /// against <see cref="ThemeVariant.Default"/> unconditionally rather than the window's actual
+    /// active variant — silently matching Tokens.axaml's literal <c>x:Key="Default"</c> dictionary
+    /// (the light palette) even when the window is rendering Dark, unlike XAML
+    /// <c>DynamicResource</c> bindings, which are <c>ActualThemeVariant</c>-aware. The prior DAG
+    /// tests never caught this because they compared <c>Token</c>'s output against
+    /// <c>window.FindResource(...)</c> — the same buggy call on both sides of the assertion. This
+    /// test forces <see cref="ThemeVariant.Dark"/> and asserts against the literal dark-palette hex
+    /// values from Tokens.axaml, so a regression to the Default-only overload fails loudly.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Dag_node_colors_resolve_against_the_windows_actual_theme_variant_not_always_default()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-dag-theme-{Guid.NewGuid():N}");
+        try
+        {
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
+            var snapshot = SnapshotBinder.Bind(definition);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["architect"] = new WorkerBinding.Process(
+                    new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                    ShellWorkerCommands.WriteFile("plan", "the-plan"),
+                    TimeSpan.FromSeconds(30)),
+                ["critic"] = new WorkerBinding.Process(
+                    new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
+                    ShellWorkerCommands.CopyFirstInputTo("review"),
+                    TimeSpan.FromSeconds(30)),
+                ["publisher"] = new WorkerBinding.Process(
+                    new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
+                    ShellWorkerCommands.CopyFirstInputTo("summary"),
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                var reader = new FlowEventLogReader(logPath);
+                var dispatcher = new CoreDispatcher(writer);
+
+                await MutationInterface.StartWorkflowAsync(
+                    new WorkflowId("wf-ui-dag-theme-e2e"),
+                    taskDirectory,
+                    snapshot,
+                    bindings,
+                    Path.Combine(taskDirectory, "artifacts"),
+                    reader,
+                    writer,
+                    dispatcher,
+                    cancellationToken: TestContext.Current.CancellationToken);
+            }
+
+            var window = new MainWindow { RequestedThemeVariant = ThemeVariant.Dark };
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var dagCanvas = window.FindViewControl<Canvas>("DagCanvas")!;
+            var architectNode = dagCanvas.Children.OfType<Border>()
+                .Single(node => ((TextBlock)node.Child!).Text!.StartsWith("architect"));
+
+            // Tokens.axaml's Dark dictionary, not Default's light #DCFCE7/#15803D.
+            Assert.Equal(Color.Parse("#12331E"), ((ISolidColorBrush)architectNode.Background!).Color);
+            Assert.Equal(Color.Parse("#4ADE80"), ((ISolidColorBrush)architectNode.BorderBrush!).Color);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
     }
 }
