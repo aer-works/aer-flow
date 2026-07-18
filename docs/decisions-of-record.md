@@ -9,6 +9,130 @@ first. Each entry cites the phase that decided it; the full phase plans — goal
 the open questions each phase resolved — live in the plan file's git history and the linked
 issues.
 
+## M19: Product UX
+
+- **The reference set is the owner's, adopted verbatim (2026-07-17)** — Linear (inbox), GitLab
+  (to-dos), Dagster (Launchpad), Stately.ai (visual↔config sync), GitButler and Neovim/Neovide
+  (polished skin over presentation-agnostic core), n8n (DAG rendering), Raycast (chrome/tokens/
+  keyboard gold standard), each mapped to the phase it informs in `docs/ux/design-language.md`.
+  Changing the set is an owner decision, not an implementation one; Phase 5's human gate is
+  judged against it (Phase 1).
+- **One product, not a collage (owner directive, 2026-07-17)** — the references calibrate the
+  bar, they never supply the look: AER Flow has one identity of its own, and stitching together
+  surfaces that each resemble their reference is the named failure mode. The identity is carried
+  by the token system + status system + motion rules + vocabulary — defined once in
+  `design-language.md` and implemented by every client (desktop now, remote/web later), so all
+  surfaces read as the same product wearing different windows. Phase 5's review question is
+  two-sided: holds up beside the reference *and* unmistakably the same product throughout.
+  Corollaries: fit over fidelity (skip what doesn't suit the domain, without apology), and mine
+  the references for capabilities, not just polish — a standout affordance we lack is adapted
+  to our identity and folded into its natural phase, or surfaced to the owner if it would grow
+  scope (Phase 1).
+- **The vocabulary map is total for primary text and never renames semantics** — a spec term in
+  a label/button/status line is a defect (Phase 6 checks for it), and a plain word that would
+  imply behavior the engine doesn't have is wrong, not the engine ("send back" *is* supersede,
+  mandatory feedback artifact included). Spec terms survive in tooltips/disclosure for §12
+  traceability (Phase 1).
+- **The non-expert audit generated zero engine requirements** — all twelve rows
+  (`docs/ux/non-expert-audit.md`) are organization, language, or authoring ergonomics,
+  confirming the plan's first shaping fact. Two audit findings bind later phases beyond the
+  plan's text: Phase 4 owes a **vendor-readiness surface** (read-only presence check, "Claude:
+  available / Gemini: not found", never credential handling), and Phase 3's bindings pre-fill
+  is recorded as **convenience, never remembered authority** (a visible, swappable picker
+  default — §4's input-not-authority stance preserved) (Phase 1).
+- **Tokens are a system, not values** — `design-language.md` fixes the token names, scales, and
+  rules (semantic color only, 4px grid, two radii, three motion durations, status always
+  color+icon+word); exact values are fixed when Phase 2 materializes the theme resource. A
+  surface using a raw hex/size/pixel literal after Phase 2 is a defect (Phase 1).
+- **The MVVM-completion constraint executed as written** — every re-homed surface's logic lives
+  in an `Aer.Ui.Core` ViewModel (CommunityToolkit.Mvvm source generators, compiled bindings);
+  `MainWindow` code-behind shrank to shell wiring plus a **transitional facade** of delegating
+  control properties, kept deliberately so the not-yet-rebuilt rendering paths and every
+  existing headless test compile unchanged — Phases 3–4 retire facade entries as they rebuild
+  each surface properly, and a facade entry surviving past its surface's rebuild is a defect.
+  No DI container, as recorded in the constraint (Phase 2).
+- **The inbox scans all recent task directories** (the phase's named open question) — Home
+  exists precisely for the moment no task is open yet; an inbox that only knew the open task
+  would be empty exactly when it matters most. Bounded by the store-capped recents list;
+  refreshes on Home activation plus the open task's poller tick — never its own timer (Phase 2).
+- **§3's stale-recents rule renders as the greyed `Unavailable` card** — a recent that no
+  longer loads stays visible ("Not available — moved, deleted, or not a task") with no inbox
+  items and no live status: reflected, never an error, never silently pruned — the user
+  recorded that history, and hiding it would misreport it (Phase 2).
+- **The drill-in is a pure re-slice; the full record stays one disclosure away** — the per-step
+  tabs (attempts / outputs / conversation / decisions) assert nothing the task-level panels
+  don't already render; those precise, spec-vocabulary panels moved intact into a single
+  collapsed **Details** expander (§12 traceability; ux-principles' progressive disclosure), not
+  deleted. Their facade entries therefore stay until the phase that actually rebuilds them away
+  — the retirement rule binds per surface, and these surfaces became the disclosure layer
+  (Phase 3).
+- **One decision authority, inline** — the needs-you-first decision cards bind the *same*
+  `PausedStepViewModel` instances M15's decision surface rebuilds; the drill-in's paused step
+  holds a reference, never a copy. Plain words on the buttons (Approve / Retry this step /
+  Reject / Send back), spec terms in the tooltips (Phase 3).
+- **The feedback-file picker is convenience over the same visible property** — the OS file
+  dialog writes `RevisionFilePath`, the property the text box still binds and headless tests
+  still set; a picker cannot be driven headlessly, and the path stays visible and swappable
+  (the audit's convenience-never-authority stance, applied to files) (Phase 3).
+- **Live-follow needed no new mechanism** — the M15 2-second poller already refreshes while
+  the open task is non-terminal, and M18's conversation selection re-renders on every load;
+  "on by default" was already the recorded behavior, now confirmed as the phase requirement
+  (Phase 3).
+- **Authored files live in a UI-managed default workspace** (the phase's first named open
+  question) — `Documents/AER Flow/<workflow-name>`, visible in the flow and swappable via a
+  folder picker, never required; task directories are created inside it per run
+  (`task-<timestamp>`). Explicit-everywhere would put a path decision back at the start of the
+  non-expert's very first action — the exact failure the audit's walkthrough recorded (Phase 4).
+- **Vendor invocation knowledge lives with its owner, never in the UI** (the second named open
+  question) — dialogue participants' command shapes moved from per-smoke-test duplication into
+  `DialogueParticipantPresets` (Aer.Workers.Dialogue: the worker that invokes them), the
+  read-only PATH probe lives in `VendorCliPresence` (Aer.Adapters: the layer that owns binary
+  names), and the guided flow's presets pass **no explicit PermissionScope** — the adapter's own
+  default governs, explained in plain words. The UI re-encodes nothing spike #21 isolated
+  (Phase 4).
+- **The readiness surface is informational, never a gate** — "Claude: available / Gemini: not
+  found", refreshed on Author activation; nothing in the save/run path reads it (the audit's
+  vendor-readiness finding, delivered read-only as recorded) (Phase 4).
+- **Guided save goes through the editors' own writers** (`WorkflowDefinitionWriter`,
+  `WorkerBindingConfigWriter`) — guided output and hand-authored files can never diverge in
+  format, and the M16 editors remain in the Author view as the advanced disclosure (the Phase 3
+  Details pattern, applied to authoring) (Phase 4).
+- **Property-level restyling over Fluent's templates, not template replacement** — the custom
+  control theme re-skins every stock control through token-valued property setters (color,
+  radius, padding, focus, per-state brushes with Motion.Fast transitions); Fluent's control
+  *shapes* are kept. Full re-templating buys nothing the identity needs and re-owns behavior
+  (focus, accessibility) the framework already gets right (Phase 5).
+- **Status renders as border + tint, never fill-only** — the `Status.*Bg` tint tokens joined
+  both theme variants; the DAG node carries its status as a colored border over a tinted
+  surface with the status word in the label (color+icon+word discipline, DAG tests re-pointed
+  from named framework colors to token lookups — the only test change the phase needed) (Phase 5).
+- **One accent button per surface** — Run, Approve, Save and run, Review, Create a workflow;
+  everything else stays quiet. The nav rail marks the active section in accent (Phase 5).
+- **The app icon is the mark, generated, committed** — a mini-DAG on the accent teal,
+  multi-size PNG-in-ICO, produced by a scripted render (no design-tool dependency); regenerate
+  by re-running the script if the accent ever changes (Phase 5).
+- **The dialogue step's stub is a script at the adapter-registry boundary, not a fake vendor
+  CLI** — `NonExpertPathGateTests` registers a `StubDialogueScriptAdapter` under the `"dialogue"`
+  key that dispatches a local PowerShell/sh script writing a schema-valid transcript and the
+  declared output directly, bypassing `DialogueWorkerAdapter`/`DialogueRunner` entirely.
+  `DialogueParticipantPresets` hardcodes real `claude`/`agy` command shapes with no swap point
+  reachable from the guided-authoring UI, so stubbing at that level isn't available to this test
+  the way `ShellCommandWorkerAdapter` stubs the single-vendor step. This is judged acceptable
+  because the live dialogue exchange itself is already M18's proven gate (`smoke-dialogue`); this
+  gate's job is the UI/session/projection path around it — authoring, running, pausing, reading
+  the conversation, sending back, finishing — which the stub exercises completely (Phase 6).
+- **One headless test drives the entire non-expert path, not a suite of smaller ones** — author
+  (zero hand-authored files, both a single-vendor and a dialogue step) → run → pause at the
+  review gate → read the conversation through the Phase 3 drill-in → send back with a feedback
+  file → resume to terminal, all through the real `MainWindow`/`NewWorkflowViewModel` controls.
+  Splitting it would lose the property the gate exists to prove: that the whole path composes,
+  not just its parts in isolation (Phase 6).
+- **The walkthrough's CLI sections stay untouched; only its UI section is rewritten** — the CLI
+  surface and durable file formats didn't change in M19, so `first-real-workflow.md`'s CLI
+  commands and JSON stay exactly as a CLI user needs them; its UI section is rebuilt against
+  Home/Task/Author and the guided authoring flow, closing the loop the Phase 1 audit opened
+  against this same document (Phase 6).
+
 ## M18: Conversation View
 
 - **A malformed transcript line projects as an explicit `TranscriptLine.Malformed` marker in
