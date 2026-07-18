@@ -245,7 +245,7 @@ human action item (CLAUDE.md's live-vendor rule).
 - ✅ Phase 5 — Visual design pass (#190) — implementation complete; the phase's human gate (the
   owner's design review against the Phase 1 reference set) is folded into the owner's
   post-milestone overall review, per the owner's 2026-07-17 direction.
-- ⬜ Phase 6 — Gate: the non-expert path in default CI (#191)
+- ✅ Phase 6 — Gate: the non-expert path in default CI (#191)
 
 Per this document's session prompt: help implement the current phase only.
 
@@ -360,6 +360,30 @@ Per this document's session prompt: help implement the current phase only.
 - **The app icon is the mark, generated, committed** — a mini-DAG on the accent teal,
   multi-size PNG-in-ICO, produced by a scripted render (no design-tool dependency); regenerate
   by re-running the script if the accent ever changes.
+
+**Decisions of record (Phase 6):**
+
+- **The dialogue step's stub is a script at the adapter-registry boundary, not a fake vendor
+  CLI** — `NonExpertPathGateTests` registers a `StubDialogueScriptAdapter` under the `"dialogue"`
+  key that dispatches a local PowerShell/sh script writing a schema-valid transcript and the
+  declared output directly, bypassing `DialogueWorkerAdapter`/`DialogueRunner` entirely.
+  `DialogueParticipantPresets` hardcodes real `claude`/`agy` command shapes with no swap point
+  reachable from the guided-authoring UI, so stubbing at that level isn't available to this test
+  the way `ShellCommandWorkerAdapter` stubs the single-vendor step. This is judged acceptable
+  because the live dialogue exchange itself is already M18's proven gate (`smoke-dialogue`); this
+  gate's job is the UI/session/projection path around it — authoring, running, pausing, reading
+  the conversation, sending back, finishing — which the stub exercises completely.
+- **One headless test drives the entire non-expert path, not a suite of smaller ones** — author
+  (zero hand-authored files, both a single-vendor and a dialogue step) → run → pause at the
+  review gate → read the conversation through the Phase 3 drill-in → send back with a feedback
+  file → resume to terminal, all through the real `MainWindow`/`NewWorkflowViewModel` controls.
+  Splitting it would lose the property the gate exists to prove: that the whole path composes,
+  not just its parts in isolation.
+- **The walkthrough's CLI sections (§1–5) are untouched; only its UI section is rewritten** — the
+  CLI surface and the durable file formats didn't change in M19, so §1–5's commands and JSON stay
+  exactly as a CLI user would need them. §6 is rebuilt against Home/Task/Author and the guided
+  authoring flow, split into "author it" and "watch it run, decide" — the walkthrough was the
+  Phase 1 audit's source document, so keeping it accurate is the milestone closing its own loop.
 
 ## Completed Milestones
 
