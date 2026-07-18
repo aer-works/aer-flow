@@ -79,48 +79,12 @@ M17–M19 are the post-UI-track sequence, planned at M16's completion by re-chec
 
 ## Current Milestone
 
-**M20: Daemonization & Remote Control** — progress:
+**M21: Generic Dialogue & Project Packaging** — progress:
 
-- [x] Phase 1 — Daemon Scaffold, Host API & Local IPC (#204)
-- [x] Phase 2 — UI Connection & Flow Client Migration (#205)
-- ⬜ Phase 3 — System Tray integration, Lifecycle & Auth Security (#206)
-- ⬜ Phase 4 — Shell-less direct worker execution (#208)
-- ⬜ Phase 5 — Remote API Gateway & Trust Boundary Spec (#207)
-
----
-
-## M20: Daemonization & Remote Control — Phase Plan
-
-**Goal:** Extract the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Expose the task read models and mutation interfaces over a network-ready API (HTTP/WebSockets/gRPC). Re-route the desktop app (`Aer.Ui`) to consume this API as a client, ensuring background execution continues unimpeded when the UI closes, and establish the trust boundary and protocol required to safely drive execution from a remote client (e.g. a phone or mobile web app).
-
-### Phase 1: Daemon Scaffold, Host API & Local IPC
-- **Goal**: Create a new background service project (`Aer.Daemon`), extract the scheduling pump and event loop from `Aer.Ui` into it, and implement an API (via ASP.NET Core Web API or gRPC) that exposes task projections and mutation endpoints.
-- **Verification**: Integration tests proving a headless client can fetch task states and post decisions to the daemon.
-- **Open Questions**: Do we use local named pipes, gRPC, or lightweight HTTP/WebSockets for IPC? (HTTP/WebSockets is recommended because it is network-ready and easily shared with web/mobile clients).
-
-### Phase 2: UI Connection & Flow Client Migration
-- **Goal**: Refactor `Aer.Ui.Core` ViewModels to connect to the daemon API instead of maintaining an in-process Event Store and scheduler. The UI should subscribe to a WebSocket connection for real-time model changes instead of a 2-second polling loop.
-- **Verification**: Desktop application loads, starts, and reacts to running workflows served from the daemon.
-- **Open Questions**: How does the UI find the local daemon port? (A local discovery file or fixed port configuration).
-
-### Phase 3: System Tray integration, Lifecycle & Auth Security
-- **Goal**: Add a system tray client wrapper for the desktop app. Ensure that closing the window only hides the UI while the task runner tray icon keeps the daemon alive in the background. Address lifecycle and security details:
-  - **Single-instance Enforcement**: Mutex-based check (`Global\AerDaemonMutex_{UserName}`) to prevent duplicate processes and port conflicts.
-  - **IPC Auth Token**: Write a cryptographically secure token to `%USERPROFILE%\.aer\daemon.token` with owner-read permissions (`0600`). Require all client HTTP and WebSocket handshakes to provide this token.
-  - **Process Supervision**: UI acts as supervisor, monitoring the daemon process and auto-relaunching it on unexpected exits.
-  - **Version Skew**: Verify daemon version on startup; terminate and respawn new daemon if mismatch is detected.
-- **Verification**: Closing the window does not abort running tasks; notifications pop when a step pauses; unauthorized requests to daemon are rejected with `401 Unauthorized`.
-
-### Phase 4: Shell-less direct worker execution (Security Hardening)
-- **Goal**: Harden the process execution model by removing the `cmd.exe /c` (Windows) and `sh -c` (Unix) wrappers.
-  - **Native Stdin Redirection**: Configure Rust process creation in `aer-core` (`windows.rs` and `unix.rs`) to set `.stdin(Stdio::null())` by default.
-  - **Engine-Side Expansion**: Parse and expand environment variables (`%AER_INPUT_n%` / `%AER_OUTPUT_DIR%`) inside C# `CoreDispatcher.cs` before native task invocation.
-  - **Direct Invocation**: Refactor `ClaudeWorkerAdapter` and `GeminiWorkerAdapter` to return direct executable binaries (e.g. `claude`, `gemini`) and direct arguments list.
-- **Verification**: All unit, E2E, and UI tests pass; test prompt containing command separators (like `&` or `;`) executes literally as text without triggering secondary processes.
-
-### Phase 5: Remote API Gateway & Trust Boundary Spec
-- **Goal**: Define the remote access protocol and authentication boundary. Implement client key pairing so that a phone client can connect securely over local Wi-Fi or a reverse proxy without leaking subscription credentials (vendor credentials never leave the desktop).
-- **Verification**: Handshake verification tests proving only paired client keys can access mutations.
+- [ ] Phase 1 — Generic Dialogue Config Schema & Loops
+- [ ] Phase 2 — Project Packages & Binding Segregation
+- [ ] Phase 3 — Visual Diff Viewer for Revisions
+- [ ] Phase 4 — Multi-Agent Teamwork Preview (Mock)
 
 ---
 
@@ -140,6 +104,10 @@ M17–M19 are the post-UI-track sequence, planned at M16's completion by re-chec
 - **Goal**: Build a side-by-side file revision diff panel in the UI to visualize step revisions and changes made during a "Send back" feedback loop.
 - **Verification**: Editing a template step and generating a new revision displays clear visual file additions, deletions, and modifications.
 
+### Phase 4: Multi-Agent Teamwork Preview (Mock)
+- **Goal**: Introduce a teamwork-preview screen in the UI that mocks the collaborative multi-agent hierarchy (dialogue worker loops running concurrently and reporting back to the parent coordinator), allowing the user to preview dialogue loop relationships.
+- **Verification**: Selecting "Teamwork Preview" displays a mock multi-turn layout showing simulated real-time token traffic and step transitions.
+
 ---
 
 ## M22: UI Visual Overhaul — Phase Plan
@@ -148,7 +116,7 @@ M17–M19 are the post-UI-track sequence, planned at M16's completion by re-chec
 
 ### Phase 1: Curved Bezier DAG Canvas & Hover States
 - **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
-- **Verification**: Seamless rendering, city hover states, and smooth drag-and-drop interactions.
+- **Verification**: Seamless rendering, hover states, and smooth drag-and-drop interactions.
 
 ### Phase 2: Rich Markdown Output Previewer
 - **Goal**: Integrate a markdown engine (e.g., `Markdown.Avalonia`) to render step artifact output previews as rich formatted text, headers, checklists, and tables, replacing the raw TextBox.
@@ -166,6 +134,8 @@ Completed milestones keep only a one-paragraph summary here. Their phase checkli
 closed GitHub milestones; their decisions of record — the constraints and precedents later work
 still leans on — in `docs/decisions-of-record.md`; and the full phase plans — goals, boundaries,
 and the open questions each phase resolved — in this file's git history and the linked issues.
+
+**M20: Daemonization & Remote Control** — extracted the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Exposed task read models, mutation interfaces, and WebSocket real-time updates over a loopback and remote-accessible API. Added single-instance mutex enforcement, constant-time authentication token validation, and process lifecycle supervision. Hardened tool invocation security by replacing command shell spawners (`cmd.exe /c` / `sh -c`) with shell-less direct binary execution and C#-side environment variable expansion. Designed and implemented the client-pairing gateway protocol allowing secure LAN/Wi-Fi remote clients to connect and authenticate against the daemon.
 
 **M19: Product UX** — the product-UX overhaul the owner scoped at M18's completion: a
 navigation shell (Home's decision inbox + task cards, Task, Author) built behind a new
