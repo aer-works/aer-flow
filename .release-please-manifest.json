@@ -1,3 +1,9 @@
 {
-  ".": "0.14.0"
+  "src/Aer.Flow": "0.14.0",
+  "src/Aer.Adapters": "0.14.0",
+  "src/Aer.Workers.Dialogue": "0.14.0",
+  "src/Aer.Cli": "0.14.0",
+  "src/Aer.Ui.Core": "0.14.0",
+  "src/Aer.Ui": "0.14.0",
+  "src/Aer.Daemon": "0.14.0"
 }

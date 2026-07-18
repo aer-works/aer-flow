@@ -1,11 +1,13 @@
 <Project>
 
-  <!-- M13 Phase 2 (#108): single source of truth for the repo's version. release-please-config.json's
-       extra-files entry bumps <Version> here directly on every release PR merge, the same way it
-       already bumps .release-please-manifest.json/CHANGELOG.md, visible to every local `dotnet
-       build` rather than only a CI-only pack-time override. Directory.Build.props at the repo root
-       is auto-imported by every project below it, so Aer.Cli's packed version flag output (and
-       every other project's AssemblyInformationalVersion) comes from this one place. -->
+  <!-- M13 Phase 2 (#108) set this up as the repo's single shared version; the release-please
+       linked-versions migration (two groups — "core": Aer.Flow/Aer.Adapters/Aer.Workers.Dialogue/
+       Aer.Cli, "desktop": Aer.Ui.Core/Aer.Ui/Aer.Daemon — see release-please-config.json) moved real,
+       release-please-patched versioning onto each group's shipped artifact's own local
+       Directory.Build.props (Aer.Cli's, Aer.Ui's, Aer.Daemon's). This root Version is now just the
+       static default every other project (Aer.Flow, Aer.Adapters, Aer.Workers.Dialogue, Aer.Ui.Core)
+       inherits — none of them are independently packed/shipped, so nothing reads their own assembly
+       version, and it no longer needs to move on its own. -->
   <PropertyGroup>
     <Version>0.14.0</Version>
 
