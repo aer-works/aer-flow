@@ -24,7 +24,7 @@ public class GeminiWorkerAdapterTests
         Assert.Equal("--mode", target.Args[2]);
         Assert.Equal("accept-edits", target.Args[3]);
         Assert.Equal("--add-dir", target.Args[4]);
-        
+
         var artifactsRootVar = OperatingSystem.IsWindows() ? "%AER_ARTIFACTS_ROOT%" : "$AER_ARTIFACTS_ROOT";
         Assert.Equal(artifactsRootVar, target.Args[5]);
     }

@@ -503,7 +503,7 @@ public sealed class TaskSession
                 {
                     ViewModel.RunStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
-                    
+
                     if (!string.IsNullOrWhiteSpace(workflowTemplateFilePath))
                     {
                         await _configurationStore.RecordWorkflowTemplateFilePathAsync(workflowTemplateFilePath, cancellationToken).ConfigureAwait(true);

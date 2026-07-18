@@ -282,8 +282,8 @@ namespace Aer.Daemon
             });
 
             // Version metadata endpoint
-            app.MapGet("/api/version", (TaskSession session) => Results.Ok(new 
-            { 
+            app.MapGet("/api/version", (TaskSession session) => Results.Ok(new
+            {
                 Version = typeof(DaemonHost).Assembly.GetName().Version?.ToString() ?? "1.0.0",
                 HasRunningTasks = session.ShouldLiveRefresh
             }));

@@ -17,7 +17,7 @@ public class ExitConfirmationWindow : Window
         Height = 150;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         CanResize = false;
-        
+
         FontFamily = new FontFamily("Inter, Outfit, Roboto, system-ui");
 
         // Bind Window properties dynamically to support dark and light theme resource switching
@@ -26,7 +26,7 @@ public class ExitConfirmationWindow : Window
 
         // Content stack
         var mainStack = new StackPanel { Margin = new Thickness(20), Spacing = 16 };
-        
+
         var messageText = hasRunningTasks
             ? "An active task is running. Cancel task and exit, or quit UI only (leaving task running)?"
             : "Close AER Flow? You can stop the background daemon and exit, or quit the UI only (leaving the daemon running).";
@@ -58,7 +58,7 @@ public class ExitConfirmationWindow : Window
         };
         cancelAndExitButton.Bind(Button.BackgroundProperty, this.GetResourceObservable("Color.Accent"));
         cancelAndExitButton.Foreground = Brushes.White;
-        
+
         var quitUiOnlyButton = new Button
         {
             Content = "Quit UI Only",
@@ -84,7 +84,7 @@ public class ExitConfirmationWindow : Window
         buttonsStack.Children.Add(keepRunningButton);
 
         mainStack.Children.Add(buttonsStack);
-        
+
         Content = mainStack;
     }
 
