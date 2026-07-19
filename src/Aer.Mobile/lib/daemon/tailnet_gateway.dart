@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:tailscale/tailscale.dart';
@@ -25,13 +27,16 @@ class TailnetGateway {
   /// otherwise.
   http.Client get client => Tailscale.instance.http.client;
 
-  /// Brings the embedded node up. No `authKey` is passed — on a device with no persisted tailnet
-  /// identity yet, `tsnet` returns `needsLogin` with [TailscaleStatus.authUrl] populated instead of
-  /// throwing; the caller opens that URL in a browser and waits for [onStateChange] to reach
-  /// [NodeState.running]. On later launches, persisted credentials reconnect with no auth key and
-  /// no browser step at all.
-  Future<TailscaleStatus> ensureUp() {
-    return Tailscale.instance.up(hostname: 'aer-mobile');
+  /// Brings the embedded node up. On a device with no persisted tailnet identity yet, the
+  /// `tailscale` package's worker refuses to start at all without a non-empty [authKey] (confirmed
+  /// against its vendored source, `worker/entrypoint.dart`) — so first enrollment needs a real key,
+  /// not the empty-string-then-`needsLogin` flow this package's docs describe for *reconnecting* a
+  /// device whose credentials expired. [authKey] is expected to come from the desktop's pairing QR
+  /// (a reusable key configured once in `Aer.Daemon`, M21 Phase 7 follow-up) rather than typed by
+  /// hand. Once a device has enrolled, later launches reconnect from persisted state with no key
+  /// and no browser step.
+  Future<TailscaleStatus> ensureUp({String authKey = ''}) {
+    return Tailscale.instance.up(hostname: 'aer-mobile', authKey: authKey);
   }
 
   /// Waits for the node to reach [NodeState.running], for use after [ensureUp] returned
@@ -42,6 +47,30 @@ class TailnetGateway {
     return onStateChange
         .firstWhere((state) => state == NodeState.running)
         .timeout(timeout);
+  }
+
+  /// Resolves a `needsLogin` snapshot from [ensureUp] into either a login URL to open, or `null` if
+  /// the node reaches [NodeState.running] on its own first.
+  ///
+  /// `up()` resolves as soon as it observes the first `needsLogin` snapshot, which can land well
+  /// before the control plane finishes processing the registration — confirmed live: with a valid
+  /// auth key, the device registers successfully (visible immediately in the Tailscale admin
+  /// console) while the client still reports `needsLogin` for some seconds afterward, with
+  /// [TailscaleStatus.authUrl] never populating at all because no interactive step is actually
+  /// needed. Only throws if neither outcome arrives in time, since an authKey-based join can
+  /// legitimately still fall through to a real interactive login (e.g. a re-registration the
+  /// control plane didn't accept for some other reason).
+  Future<Uri?> resolveNeedsLogin({Duration timeout = const Duration(seconds: 45)}) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      final status = await Tailscale.instance.status();
+      if (status.state == NodeState.running) return null;
+      if (status.authUrl != null) return status.authUrl;
+      if (DateTime.now().isAfter(deadline)) {
+        throw TimeoutException('Tailscale did not finish signing in.');
+      }
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
   }
 }
 

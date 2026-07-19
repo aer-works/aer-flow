@@ -32,6 +32,13 @@ class _PairingScreenState extends State<PairingScreen> {
   String? _statusText;
   final _tailnet = TailnetGateway();
 
+  // Set only by a QR scan (M21 Phase 7 follow-up, #246) — the desktop embeds its configured
+  // reusable Tailscale auth key as a `tskey` query param alongside `host`/`code`
+  // (RemoteViewModel.GeneratePairingCodeAsync) so a phone's own embedded tsnet node can enroll
+  // non-interactively. Manual host+code entry has no way to carry this along, so tailnet pairing
+  // requires the QR scan — see the check in `_pair` below.
+  String? _scannedTailscaleAuthKey;
+
   @override
   void dispose() {
     _hostController.dispose();
@@ -65,6 +72,7 @@ class _PairingScreenState extends State<PairingScreen> {
     setState(() {
       _hostController.text = host;
       _codeController.text = code;
+      _scannedTailscaleAuthKey = uri.queryParameters['tskey'];
     });
   }
 
@@ -79,6 +87,16 @@ class _PairingScreenState extends State<PairingScreen> {
 
     final host = _hostController.text.trim();
     final tailnetRouted = isTailnetHost(host);
+    if (tailnetRouted && (_scannedTailscaleAuthKey?.isEmpty ?? true)) {
+      setState(() {
+        _isPairing = false;
+        _errorText =
+            'This tailnet host needs the Tailscale auth key that rides along in the QR code — '
+            'scan it instead of entering the host by hand.';
+      });
+      return;
+    }
+
     try {
       // A tailnet-only host (M21 Phase 7, #246) isn't reachable over the phone's regular network
       // stack at all — tsnet is userspace-only, with no OS-level route for it — so pairing itself
@@ -107,7 +125,7 @@ class _PairingScreenState extends State<PairingScreen> {
     } catch (e) {
       setState(
         () => _errorText =
-            'Could not reach $host — check the host and that Aer.Daemon is running with --remote.',
+            'Could not reach $host — check the host and that Aer.Daemon is running with --remote. ($e)',
       );
     } finally {
       if (mounted) {
@@ -124,7 +142,9 @@ class _PairingScreenState extends State<PairingScreen> {
   /// Later launches reconnect from persisted credentials with no browser step.
   Future<http.Client> _joinTailnet() async {
     setState(() => _statusText = 'Connecting to Tailscale...');
-    final status = await _tailnet.ensureUp();
+    final status = await _tailnet.ensureUp(
+      authKey: _scannedTailscaleAuthKey ?? '',
+    );
 
     if (status.state == NodeState.needsMachineAuth) {
       throw DaemonException(
@@ -133,26 +153,26 @@ class _PairingScreenState extends State<PairingScreen> {
     }
 
     if (status.needsLogin) {
-      final authUrl = status.authUrl;
-      if (authUrl == null) {
-        throw DaemonException(
-          'Tailscale needs sign-in but returned no login URL.',
+      final authUrl = status.authUrl ?? await _tailnet.resolveNeedsLogin();
+      // A valid auth key can finish registering (and reach `running`) before the client ever
+      // reports a login URL at all — see `resolveNeedsLogin`'s remarks. Only open a browser when
+      // there's actually a URL to show.
+      if (authUrl != null) {
+        setState(
+          () => _statusText =
+              'Sign in to Tailscale in the browser that just opened...',
         );
-      }
-      setState(
-        () => _statusText =
-            'Sign in to Tailscale in the browser that just opened...',
-      );
-      final opened = await launchUrl(
-        authUrl,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened) {
-        throw DaemonException(
-          'Could not open the Tailscale sign-in page ($authUrl).',
+        final opened = await launchUrl(
+          authUrl,
+          mode: LaunchMode.externalApplication,
         );
+        if (!opened) {
+          throw DaemonException(
+            'Could not open the Tailscale sign-in page ($authUrl).',
+          );
+        }
+        await _tailnet.waitUntilRunning();
       }
-      await _tailnet.waitUntilRunning();
     }
 
     return _tailnet.client;
