@@ -211,7 +211,12 @@ items now that a real remote client exists to harden against.
     §9 step 4), same as desktop's own ungated Stop button. There's no domain gap here: ending a
     paused step is what Reject already does. Fixed by only showing "Cancel run" in the app-bar menu
     when `projection.status == 'Running'` (mirrors how desktop already gates its per-execution
-    `CanCancel`), so the snackbar is truthful again with no wording change needed.
+    `CanCancel`), so the snackbar is truthful again with no wording change needed. Verified against
+    a genuine live execution (a real `claude` dispatch, not a synthetic fixture): with the task
+    `Running`, the phone's Cancel run correctly appeared, and tapping it drove the step's status
+    from `Running` to `Cancelled` and the workflow to `Terminal` server-side — confirming the
+    whole-run cancel path actually terminates a live worker process end-to-end from the phone, not
+    just the client-side gating.
 - **Status**: Phase 2 is done. App, backend additions, and both test suites (`pixi run test`,
   `pixi run mobile-test`) pass (635/635 .NET, 4/4 Flutter). Verified on real hardware — see below.
 - **Verification**: done, on real hardware, 2026-07-18 — a Pixel 10 Pro on the same home Wi-Fi as
