@@ -230,6 +230,8 @@ public sealed class TaskSession
     /// </summary>
     private async Task<bool> SpawnDaemonProcessAsync(string extraArgs, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrEmpty(_daemonUrl)) return false;
+
         try
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
