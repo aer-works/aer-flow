@@ -49,12 +49,12 @@
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <TextBlock Text="Name:" VerticalAlignment="Center" />
-                      <TextBox Text="{Binding Name}" Width="160" PlaceholderText="Step name" />
+                      <TextBox Text="{Binding Name}" Width="160" />
                       <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}" Width="120" />
                       <TextBlock Text="Produces:" VerticalAlignment="Center" />
-                      <TextBox Text="{Binding ProducesFileName}" Width="180" PlaceholderText="Produces (file name)" />
+                      <TextBox Text="{Binding ProducesFileName}" Width="180" PlaceholderText="(file name)" />
                       <TextBlock Text="Model:" VerticalAlignment="Center" />
-                      <TextBox Text="{Binding Model}" Width="160" PlaceholderText="Model (optional)" />
+                      <TextBox Text="{Binding Model}" Width="160" PlaceholderText="(optional)" />
                       <CheckBox Content="Review gate" IsChecked="{Binding HasReviewGate}"
                                 ToolTip.Tip="Pause here for your review before the workflow continues — approve, retry, send back, or reject." />
                       <Button Content="Remove" Command="{Binding RemoveCommand}" />
@@ -80,14 +80,14 @@
                     <StackPanel Spacing="4" IsVisible="{Binding IsDialogue}">
                       <TextBlock Text="Opening prompt:" />
                       <TextBox Text="{Binding SeedPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="40"
-                               PlaceholderText="Opening prompt — what the conversation is about" />
+                               PlaceholderText="What the conversation is about" />
                       <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="Turns:" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding TurnBudgetText}" Width="80" PlaceholderText="Turns" />
+                        <TextBox Text="{Binding TurnBudgetText}" Width="80" />
                         <TextBlock Text="Claude's instructions:" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding InitiatorPreamble}" Width="260" PlaceholderText="First voice's instructions (Claude)" />
+                        <TextBox Text="{Binding InitiatorPreamble}" Width="260" />
                         <TextBlock Text="Gemini's instructions:" VerticalAlignment="Center" />
-                        <TextBox Text="{Binding ResponderPreamble}" Width="260" PlaceholderText="Second voice's instructions (Gemini)" />
+                        <TextBox Text="{Binding ResponderPreamble}" Width="260" />
                       </StackPanel>
                     </StackPanel>
                   </StackPanel>
@@ -132,7 +132,7 @@
       <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Template file:" VerticalAlignment="Center" />
-        <TextBox x:Name="TemplateEditorPathBox" Width="360" PlaceholderText="Template file to edit / save to" />
+        <TextBox x:Name="TemplateEditorPathBox" Width="360" />
         <Button x:Name="NewTemplateButton" Content="New template" />
         <Button x:Name="EditTemplateButton" Content="Open in editor" />
         <Button x:Name="SaveTemplateButton" Content="Save" IsEnabled="{Binding TemplateEditor.IsDirty}" />
@@ -140,15 +140,14 @@
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Template ID:" VerticalAlignment="Center" />
         <TextBox Text="{Binding TemplateEditor.TemplateId}" Width="300"
-                 PlaceholderText="WorkflowTemplateId" IsEnabled="{Binding TemplateEditor.IsOpen}" />
+                 IsEnabled="{Binding TemplateEditor.IsOpen}" />
         <TextBlock Text="Version:" VerticalAlignment="Center" />
         <TextBox Text="{Binding TemplateEditor.TemplateVersionText}" Width="120"
-                 PlaceholderText="Version" IsEnabled="{Binding TemplateEditor.IsOpen}" />
+                 IsEnabled="{Binding TemplateEditor.IsOpen}" />
       </StackPanel>
       <TextBlock x:Name="TemplateEditorStatusText" Text="{Binding TemplateEditor.StatusText}" />
-      <TextBlock Classes="caption" IsVisible="{Binding !TemplateEditor.IsOpen}"
-                 Text="Nothing open yet — click New template or Open in editor above. The steps, validation, and graph sections below fill in once a template is open." />
 
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding TemplateEditor.IsOpen}">
       <TextBlock Classes="heading" Text="Steps (add/remove, edit fields, choose which steps each one depends on):" />
       <Button x:Name="AddStepButton" Content="Add step" IsEnabled="{Binding TemplateEditor.IsOpen}" />
       <ItemsControl x:Name="StepsEditorList" ItemsSource="{Binding TemplateEditor.Steps}">
@@ -158,18 +157,18 @@
               <StackPanel Spacing="4">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <TextBlock Text="Step ID:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding StepId}" Width="140" PlaceholderText="StepId" />
+                  <TextBox Text="{Binding StepId}" Width="140" />
                   <TextBlock Text="Worker:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding Worker}" Width="140" PlaceholderText="Worker" />
+                  <TextBox Text="{Binding Worker}" Width="140" />
                   <TextBlock Text="Max attempts:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding MaxAttemptsText}" Width="90" PlaceholderText="MaxAttempts" />
+                  <TextBox Text="{Binding MaxAttemptsText}" Width="90" />
                   <Button Content="Remove" Command="{Binding RemoveCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <TextBlock Text="Inputs:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding InputsText}" Width="220" PlaceholderText="Inputs (comma-separated)" />
+                  <TextBox Text="{Binding InputsText}" Width="220" PlaceholderText="(comma-separated)" />
                   <TextBlock Text="Outputs:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding OutputsText}" Width="220" PlaceholderText="Outputs (comma-separated)" />
+                  <TextBox Text="{Binding OutputsText}" Width="220" PlaceholderText="(comma-separated)" />
                 </StackPanel>
                 <TextBlock Text="Depends on:" />
                 <ItemsControl ItemsSource="{Binding DependsOnOptions}">
@@ -222,19 +221,19 @@
       <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="280">
         <Canvas x:Name="TemplateEditorDagCanvas" />
       </ScrollViewer>
+      </StackPanel>
 
       <TextBlock Classes="heading" Text="Worker-bindings editor (create or edit a bindings file — never persisted in a task directory):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Bindings file:" VerticalAlignment="Center" />
-        <TextBox x:Name="BindingsEditorPathBox" Width="360" PlaceholderText="Bindings file to edit / save to" />
+        <TextBox x:Name="BindingsEditorPathBox" Width="360" />
         <Button x:Name="NewBindingsButton" Content="New bindings" />
         <Button x:Name="EditBindingsButton" Content="Open in editor" />
         <Button x:Name="SaveBindingsButton" Content="Save" IsEnabled="{Binding BindingsEditor.IsDirty}" />
         <Button x:Name="AddBindingEntryButton" Content="Add entry" IsEnabled="{Binding BindingsEditor.IsOpen}" />
         <Button x:Name="CheckBindingsAgainstTemplateButton" Content="Check against open template" IsEnabled="{Binding BindingsEditor.IsOpen}" />
       </StackPanel>
-      <TextBlock Classes="caption" IsVisible="{Binding !BindingsEditor.IsOpen}"
-                 Text="Nothing open yet — click New bindings or Open in editor above. Entries (including permissions) appear here once a bindings file is open." />
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding BindingsEditor.IsOpen}">
       <ItemsControl x:Name="BindingEntriesList" ItemsSource="{Binding BindingsEditor.Entries}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:WorkerBindingEntryViewModel">
@@ -242,23 +241,23 @@
               <StackPanel Spacing="4">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <TextBlock Text="Worker name:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding WorkerName}" Width="150" PlaceholderText="Worker role name" />
+                  <TextBox Text="{Binding WorkerName}" Width="150" />
                   <TextBlock Text="Adapter:" VerticalAlignment="Center" />
                   <ComboBox ItemsSource="{Binding AdapterCandidates}" Text="{Binding Adapter}" IsEditable="True"
-                            Width="120" PlaceholderText="Adapter" />
+                            Width="120" />
                   <TextBlock Text="Model:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding Model}" Width="150" PlaceholderText="Model (optional)" />
+                  <TextBox Text="{Binding Model}" Width="150" PlaceholderText="(optional)" />
                   <TextBlock Text="Timeout:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding TimeoutText}" Width="90" PlaceholderText="Timeout (hh:mm:ss)" />
+                  <TextBox Text="{Binding TimeoutText}" Width="90" PlaceholderText="(hh:mm:ss)" />
                   <Button Content="Remove" Command="{Binding RemoveCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <TextBlock Text="Contract name:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding ContractWorkerName}" Width="150" PlaceholderText="Contract WorkerName" />
+                  <TextBox Text="{Binding ContractWorkerName}" Width="150" />
                   <TextBlock Text="Required inputs:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding RequiredInputsText}" Width="200" PlaceholderText="Required inputs (comma-separated)" />
+                  <TextBox Text="{Binding RequiredInputsText}" Width="200" PlaceholderText="(comma-separated)" />
                   <TextBlock Text="Optional metadata:" VerticalAlignment="Center" />
-                  <TextBox Text="{Binding OptionalMetadataText}" Width="200" PlaceholderText="Optional metadata (comma-separated)" />
+                  <TextBox Text="{Binding OptionalMetadataText}" Width="200" PlaceholderText="(comma-separated)" />
                 </StackPanel>
                 <!-- M21 Phase 1 (permission-scope model): the builder is the default, primary path
                      (Blank rows start here) — four grant categories plus a shell-command pattern
@@ -269,7 +268,7 @@
                   <TextBlock Text="Permissions:" VerticalAlignment="Center" />
                   <CheckBox Content="Advanced (raw)" IsChecked="{Binding IsAdvancedPermissionScope}" />
                   <TextBox Text="{Binding PermissionScope}" Width="220" IsVisible="{Binding IsAdvancedPermissionScope}"
-                           PlaceholderText="Permission scope (raw, vendor-specific)" />
+                           PlaceholderText="(raw, vendor-specific)" />
                   <CheckBox Content="Read files" IsChecked="{Binding GrantReadFiles}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
                   <CheckBox Content="Write files" IsChecked="{Binding GrantWriteFiles}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
                   <CheckBox Content="Run shell commands" IsChecked="{Binding GrantRunShellCommands}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
@@ -280,10 +279,10 @@
                 <TextBlock Text="{Binding PermissionGrantGapWarning}" TextWrapping="Wrap"
                            Foreground="{DynamicResource Status.Failed}" IsVisible="{Binding HasPermissionGrantGapWarning}" />
                 <TextBlock Text="Prompt template:" />
-                <TextBox Text="{Binding PromptTemplate}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" PlaceholderText="Prompt template" />
+                <TextBox Text="{Binding PromptTemplate}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" />
                 <TextBlock Text="Produced outputs (raw JSON array):" />
                 <TextBox Text="{Binding ProducedOutputsJson}" AcceptsReturn="True" TextWrapping="Wrap" Height="60"
-                         Classes="mono" PlaceholderText="Produced outputs (raw JSON array)" />
+                         Classes="mono" />
               </StackPanel>
             </Border>
           </DataTemplate>
@@ -297,6 +296,7 @@
           </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
       </ItemsControl>
+      </StackPanel>
       <TextBlock x:Name="BindingsEditorStatusText" Text="{Binding BindingsEditor.StatusText}" />
       </StackPanel>
       </Expander>

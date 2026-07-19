@@ -83,7 +83,7 @@
            Browse is the primary path for a user with no reliable way to type a correct path. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
         <TextBlock Text="Task directory:" VerticalAlignment="Center" />
-        <TextBox x:Name="TaskDirectoryPathBox" Width="420" PlaceholderText="Task directory path" />
+        <TextBox x:Name="TaskDirectoryPathBox" Width="420" />
         <Button x:Name="BrowseTaskDirectoryButton" Click="OnBrowseTaskDirectoryClick"
                 ToolTip.Tip="Pick a task folder instead of typing its path">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
