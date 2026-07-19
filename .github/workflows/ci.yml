@@ -60,6 +60,14 @@ jobs:
           cache: true
           cache-dependency-path: "**/packages.lock.json"
 
+      # M21 Phase 5 (#242): src/Aer.Sidecar's Go toolchain. Explicit setup rather than assuming a
+      # runner image already has one -- unlike Rust/.NET, that assumption turned out false for
+      # macos-latest (`go: command not found` in CI, found live on PR #244's first run).
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: src/Aer.Sidecar/go.sum
+
       - name: Check formatting
         run: pixi run fmt-check
 

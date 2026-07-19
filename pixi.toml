@@ -15,10 +15,14 @@ build-core = { cmd = "cargo build", cwd = "external/aer-core" }
 
 # M21 Phase 5 (#242): the tsnet-embedding sidecar Aer.Daemon spawns as a child process in --remote
 # mode. Go-only (no .NET tsnet binding exists) — a separate toolchain, same convention as the Rust
-# one above: installed separately, not pixi-managed (Windows: `winget install GoLang.Go`). No
-# dotnet build depends on this at compile time (Aer.Daemon only needs the compiled binary present
-# at runtime, when it actually spawns it), but it's part of the full verification loop below.
-build-sidecar = { cmd = "go build -o bin/aer-sidecar.exe .", cwd = "src/Aer.Sidecar" }
+# one above: installed separately, not pixi-managed locally (Windows: `winget install GoLang.Go`);
+# CI installs it explicitly via actions/setup-go (ci.yml) rather than assuming a runner image
+# already has one — that assumption turned out false for macos-latest. No dotnet build depends on
+# this at compile time (Aer.Daemon only needs the compiled binary present at runtime, when it
+# actually spawns it), but it's part of the full verification loop below. Output name has no .exe
+# on linux-64/osx-arm64 (overridden below) — Aer.Daemon.csproj's copy-if-exists looks for plain
+# `aer-sidecar` on non-Windows, matching Go's own native naming convention.
+build-sidecar = { cmd = "go build -o bin/aer-sidecar .", cwd = "src/Aer.Sidecar" }
 test-sidecar = { cmd = "go test ./...", cwd = "src/Aer.Sidecar" }
 lint-sidecar = { cmd = "go vet ./...", cwd = "src/Aer.Sidecar" }
 fmt-sidecar = { cmd = "gofmt -w .", cwd = "src/Aer.Sidecar" }
@@ -80,3 +84,8 @@ smoke-dialogue = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQua
 # one-step workflow whose `claude` adapter is satisfied by a local stub binary (no network), asserts
 # the declared output landed on disk, then uninstalls -- see scripts/verify-pack-roundtrip.sh.
 verify-pack = { cmd = "bash scripts/verify-pack-roundtrip.sh", depends-on = ["pack"] }
+
+# M21 Phase 5 (#242): Windows-only override of build-sidecar's output name -- Aer.Daemon.csproj's
+# copy-if-exists looks for aer-sidecar.exe specifically on Windows (native Go/.exe convention).
+[target.win-64.tasks]
+build-sidecar = { cmd = "go build -o bin/aer-sidecar.exe .", cwd = "src/Aer.Sidecar" }
