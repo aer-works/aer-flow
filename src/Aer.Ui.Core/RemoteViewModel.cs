@@ -17,6 +17,15 @@ namespace Aer.Ui.Core;
 /// if a phone's general-purpose camera app ever scans it outside the app.
 /// </para>
 /// </summary>
+/// <summary>The Go tsnet sidecar's state as exactly one of four mutually exclusive phases (Phase 5, #242) — see <see cref="RemoteViewModel.CurrentSidecarPhase"/>.</summary>
+public enum SidecarPhase
+{
+    Starting,
+    NeedsSignIn,
+    Ready,
+    Unavailable,
+}
+
 public sealed partial class RemoteViewModel : ObservableObject
 {
     public RemoteViewModel()
@@ -38,6 +47,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     private string? host;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
     private int? port;
 
     [ObservableProperty]
@@ -61,23 +71,40 @@ public sealed partial class RemoteViewModel : ObservableObject
 
     // M21 Phase 5 (#242): the Go tsnet sidecar's state, polled while remote access is on and not
     // yet Ready (MainWindow's existing 1s pairing-countdown timer drives RefreshSidecarStatusAsync
-    // too — see ShouldPollSidecarStatus). Not proven live end to end (no cross-network run has
-    // exercised the resulting tailnet address yet), but this is what makes that runnable at all
-    // instead of reading ~/.aer/sidecar-spawn.log by hand.
+    // too — see ShouldPollSidecarStatus). Not proven live end to end until this session's own
+    // manual test (owner completed real tsnet enrollment, confirmed connected in the Tailscale
+    // admin console) — see IMPLEMENTATION_PLAN.md. The four fields below are read only through
+    // CurrentSidecarPhase/the Is*-phase booleans, never directly in the view: found live that
+    // binding each field's own Has* flag independently let more than one of the view's sections
+    // render at once during in-between polls (e.g. a just-cleared AuthUrl racing a not-yet-set
+    // TailscaleIp), instead of exactly one state ever being true at a time.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShouldPollSidecarStatus))]
+    [NotifyPropertyChangedFor(nameof(CurrentSidecarPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarStarting))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarNeedsSignIn))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarReadyPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
     private bool sidecarReady;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSidecarAuthUrl))]
+    [NotifyPropertyChangedFor(nameof(CurrentSidecarPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarStarting))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarNeedsSignIn))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarReadyPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
     private string? sidecarAuthUrl;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSidecarTailnetHost))]
+    [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
     private string? sidecarTailscaleIp;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSidecarError))]
+    [NotifyPropertyChangedFor(nameof(CurrentSidecarPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarStarting))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarNeedsSignIn))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarReadyPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
     private string? sidecarError;
 
     [ObservableProperty]
@@ -86,12 +113,27 @@ public sealed partial class RemoteViewModel : ObservableObject
     public bool HasHost => Host != null;
     public bool HasError => ErrorText != null;
     public bool HasPairedClients => PairedClients.Count > 0;
-    public bool HasSidecarAuthUrl => SidecarAuthUrl != null;
-    public bool HasSidecarError => SidecarError != null;
     public string? SidecarTailnetHost => SidecarTailscaleIp != null && Port != null ? $"{SidecarTailscaleIp}:{Port}" : null;
-    public bool HasSidecarTailnetHost => SidecarTailnetHost != null;
     public bool ShouldPollSidecarStatus => IsRemoteEnabled && !SidecarReady;
     public string ToggleButtonText => IsRemoteEnabled ? "Turn off remote access" : "Turn on remote access";
+
+    /// <summary>
+    /// The sidecar's state as exactly one of four mutually exclusive phases — the single source of
+    /// truth the view binds against, instead of three independently-bindable Has* flags that could
+    /// render simultaneously. Order matters: Ready wins over a stale AuthUrl (the sidecar clears its
+    /// own AuthUrl on becoming ready, but a client-side field only updates on the next poll), and an
+    /// explicit error only counts once there's neither a pending sign-in nor a ready state to show.
+    /// </summary>
+    public SidecarPhase CurrentSidecarPhase =>
+        SidecarReady ? SidecarPhase.Ready
+        : SidecarAuthUrl != null ? SidecarPhase.NeedsSignIn
+        : SidecarError != null ? SidecarPhase.Unavailable
+        : SidecarPhase.Starting;
+
+    public bool IsSidecarStarting => CurrentSidecarPhase == SidecarPhase.Starting;
+    public bool IsSidecarNeedsSignIn => CurrentSidecarPhase == SidecarPhase.NeedsSignIn;
+    public bool IsSidecarReadyPhase => CurrentSidecarPhase == SidecarPhase.Ready;
+    public bool IsSidecarUnavailable => CurrentSidecarPhase == SidecarPhase.Unavailable;
 
     /// <summary>
     /// Refreshes the daemon's current bind mode/port, this machine's LAN address, and a fresh

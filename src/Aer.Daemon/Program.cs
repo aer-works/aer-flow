@@ -526,7 +526,10 @@ namespace Aer.Daemon
 
                 if (sidecarStatusPort is not { } port)
                 {
-                    return Results.Ok(new { Ready = false, Error = "starting" });
+                    // No Error here -- absence of AuthUrl/Error/Ready is itself "still starting" to
+                    // the client (RemoteViewModel.CurrentSidecarPhase's fallback case), not a
+                    // distinct sentinel string to keep in sync between the two ends.
+                    return Results.Ok(new { Ready = false });
                 }
 
                 try
