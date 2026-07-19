@@ -68,6 +68,13 @@ namespace Aer.Daemon
 
             var builder = WebApplication.CreateBuilder(args);
 
+            // Default graceful-shutdown budget is 30s — found live: even after tying the /api/ws
+            // receive loop's ReceiveAsync to context.RequestAborted (so it CAN unblock promptly on
+            // shutdown), a real shutdown-then-respawn toggle still took over 20s end to end. Rather
+            // than keep chasing which specific connection/timer is still cooperative-cancellation-shy,
+            // bound the worst case directly: after this, Kestrel force-aborts anything still open.
+            builder.Host.ConfigureHostOptions(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
+
             // Ensure daemon listens on a fixed localhost port (allow override via --port)
             var portIndex = Array.IndexOf(args, "--port");
             var port = (portIndex >= 0 && portIndex < args.Length - 1) ? int.Parse(args[portIndex + 1]) : 5000;
@@ -292,7 +299,14 @@ namespace Aer.Daemon
                     {
                         while (webSocket.State == WebSocketState.Open)
                         {
-                            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                            // CancellationToken.None here meant this loop had no way to unblock on
+                            // app shutdown — found live: SetRemoteEnabledAsync's shutdown-then-respawn
+                            // toggle stalled for the full ~30s default graceful-shutdown grace period
+                            // (HostOptions.ShutdownTimeout) before the host force-aborted this stuck
+                            // connection, since the receive loop itself never observed shutdown at
+                            // all. context.RequestAborted is signaled promptly on app shutdown as well
+                            // as client disconnect, so this now unblocks immediately either way.
+                            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), context.RequestAborted);
                             if (result.MessageType == WebSocketMessageType.Close)
                             {
                                 await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);

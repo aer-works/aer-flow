@@ -44,6 +44,15 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     /// <summary>
+    /// Drives <see cref="RemoteViewModel.TickPairingCodeCountdown"/> once a second while the Remote
+    /// section is open — the label was previously set once from the fetch response and never
+    /// updated, so "Expires in 60s" stayed frozen even long after the daemon's own 60s expiry
+    /// (<c>PairingCodeManager.ValidateAndConsume</c>) had made the code genuinely dead. Auto-fetches
+    /// a fresh code on reaching 0 rather than leaving a visibly-expired one on screen.
+    /// </summary>
+    private readonly DispatcherTimer _pairingCountdownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    /// <summary>
     /// Which execution's conversation is currently shown (M18 Phase 2, issue #178) — local UI
     /// selection state like <see cref="TaskDirectoryPathBox"/>'s text (UI spec §4), never a
     /// projected fact: every <see cref="LoadAsync"/> re-renders the conversation from the durable
@@ -232,6 +241,19 @@ public partial class MainWindow : Window
             if (section == ShellSection.Remote)
             {
                 _ = ViewModel.Remote.RefreshAsync(_session);
+                _pairingCountdownTimer.Start();
+            }
+            else
+            {
+                _pairingCountdownTimer.Stop();
+            }
+        };
+        _pairingCountdownTimer.Tick += (_, _) =>
+        {
+            ViewModel.Remote.TickPairingCodeCountdown();
+            if (ViewModel.Remote.PairingCodeExpiresInSeconds <= 0)
+            {
+                _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
             }
         };
         // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task
@@ -257,7 +279,11 @@ public partial class MainWindow : Window
                 _ = ShowSelectedStepFirstOutputAsync();
             }
         };
-        Closed += (_, _) => _liveRefreshTimer.Stop();
+        Closed += (_, _) =>
+        {
+            _liveRefreshTimer.Stop();
+            _pairingCountdownTimer.Stop();
+        };
         Closing += OnClosing;
     }
 

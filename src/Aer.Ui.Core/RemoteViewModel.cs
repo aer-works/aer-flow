@@ -91,17 +91,48 @@ public sealed partial class RemoteViewModel : ObservableObject
         }
     }
 
-    /// <summary>Fetches a fresh 60-second pairing code and rebuilds the QR against it — a separate, explicitly re-callable step since a code expires well before most other state does.</summary>
+    /// <summary>
+    /// One second of the pairing code's countdown (driven by <c>MainWindow</c>'s
+    /// <c>DispatcherTimer</c>, the same pattern as its live-refresh timer — <c>Aer.Ui.Core</c>
+    /// stays Avalonia-free, so the timer itself lives in the view layer). Floors at 0 rather than
+    /// going negative; the caller is expected to fetch a fresh code once it does, since the daemon
+    /// actually invalidates the code server-side at 60s (<c>PairingCodeManager.ValidateAndConsume</c>)
+    /// — before this existed, the label was set once from the fetch response and never updated, so
+    /// it always read "Expires in 60s" even long after the code had gone stale.
+    /// </summary>
+    public void TickPairingCodeCountdown()
+    {
+        if (PairingCodeExpiresInSeconds > 0)
+        {
+            PairingCodeExpiresInSeconds--;
+        }
+    }
+
+    /// <summary>
+    /// Fetches a fresh 60-second pairing code and rebuilds the QR against it — a separate,
+    /// explicitly re-callable step since a code expires well before most other state does. On
+    /// failure, keeps whatever code/QR was already showing and surfaces an error instead of
+    /// blanking the screen — the countdown's own auto-refresh calls this the instant it hits 0, and
+    /// a single transient failure right at that moment used to silently wipe a still-legible QR the
+    /// user might be mid-scan against.
+    /// </summary>
     public async Task GeneratePairingCodeAsync(TaskSession session, CancellationToken cancellationToken = default)
     {
-        var code = await session.GetPairingCodeAsync(cancellationToken).ConfigureAwait(true);
-        if (code == null || Host == null)
+        if (Host == null)
         {
             PairingCode = null;
             QrPngBytes = null;
             return;
         }
 
+        var code = await session.GetPairingCodeAsync(cancellationToken).ConfigureAwait(true);
+        if (code == null)
+        {
+            ErrorText = "Could not reach Aer.Daemon for a new pairing code — will keep retrying.";
+            return;
+        }
+
+        ErrorText = null;
         PairingCode = code.Code;
         PairingCodeExpiresInSeconds = code.ExpiresInSeconds;
         QrPngBytes = BuildQrPng($"aer://pair?host={Uri.EscapeDataString(Host)}&code={Uri.EscapeDataString(code.Code)}");
@@ -121,6 +152,11 @@ public sealed partial class RemoteViewModel : ObservableObject
                 ErrorText = outcome.ErrorMessage;
                 return;
             }
+        }
+        catch (Exception ex)
+        {
+            ErrorText = $"Toggle failed unexpectedly: {ex.Message}";
+            return;
         }
         finally
         {
