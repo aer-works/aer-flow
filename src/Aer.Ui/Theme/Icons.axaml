@@ -42,4 +42,7 @@
   <!-- A folder — the browse/open action. -->
   <StreamGeometry x:Key="Icon.Folder">M 2,5.5 L 6,5.5 L 7.3,7 L 14,7 L 14,12.5 L 2,12.5 Z</StreamGeometry>
 
+  <!-- A broadcast/signal glyph — Remote nav destination (M21 Phase 3, #234): a dot with two arcs, the standard "wireless" pictogram. -->
+  <StreamGeometry x:Key="Icon.Remote">M 8,12.5 A 0.6,0.6 0 1 1 7.99,12.5 M 5.3,10 A 4,4 0 0 1 10.7,10 M 3,7.7 A 7.5,7.5 0 0 1 13,7.7</StreamGeometry>
+
 </ResourceDictionary>

@@ -20,6 +20,11 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- M21 Phase 3 (issue #234): pairing QR generation for the Enable Remote Access view.
+         PngByteQRCode is a pure-C# PNG writer (no System.Drawing), so this stays consistent with
+         Aer.Ui.Core's no-Avalonia, cross-platform (win/linux/mac) constraint above — Aer.Ui's view
+         layer turns the resulting bytes into an Avalonia Bitmap. -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
   <PropertyGroup>

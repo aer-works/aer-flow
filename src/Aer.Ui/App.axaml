@@ -13,6 +13,7 @@
       </ResourceDictionary.MergedDictionaries>
       <conv:StatusToIconGeometryConverter x:Key="StatusToIconGeometryConverter" />
       <conv:StatusToIconBrushConverter x:Key="StatusToIconBrushConverter" />
+      <conv:ByteArrayToBitmapConverter x:Key="ByteArrayToBitmapConverter" />
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>

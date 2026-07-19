@@ -26,7 +26,7 @@ public record DecideTaskRequest(
     string? SupplementaryWorker = null,
     string? SupplementaryOutputName = null);
 public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
-public record DaemonVersionInfo(string Version, bool HasRunningTasks);
+public record DaemonVersionInfo(string Version, bool HasRunningTasks, bool IsRemote = false);
 
 public class BindingsPathHolder
 {
@@ -218,6 +218,20 @@ public sealed class TaskSession
             // Connect failed
         }
 
+        return await SpawnDaemonProcessAsync("", cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Launches a fresh <c>Aer.Daemon</c> child process (appending <paramref name="extraArgs"/> to
+    /// its command line, e.g. <c>--remote</c>) and polls <c>/api/version</c> until it answers or 30
+    /// attempts are exhausted. Shared by <see cref="EnsureDaemonConnectedAsync"/>'s cold-start path
+    /// and <see cref="SetRemoteEnabledAsync"/>'s shutdown-then-respawn (M21 Phase 3, issue #234) —
+    /// both need the exact same "start it, then wait for it to come up" dance.
+    /// </summary>
+    private async Task<bool> SpawnDaemonProcessAsync(string extraArgs, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(_daemonUrl)) return false;
+
         try
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -243,6 +257,11 @@ public sealed class TaskSession
                 }
             }
 
+            if (!string.IsNullOrEmpty(extraArgs))
+            {
+                args = string.IsNullOrEmpty(args) ? extraArgs : $"{args} {extraArgs}";
+            }
+
             var hasDll = File.Exists(Path.Combine(baseDir, "Aer.Daemon.dll"));
             var hasExe = File.Exists(Path.Combine(baseDir, "Aer.Daemon.exe")) || File.Exists(Path.Combine(baseDir, "Aer.Daemon"));
 
@@ -254,15 +273,44 @@ public sealed class TaskSession
                     Arguments = args,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                 };
                 var process = Process.Start(startInfo);
                 if (process != null)
                 {
+                    // Previously unredirected, so a spawn failure (bind conflict, unhandled
+                    // exception at startup, anything) was completely invisible — the polling loop
+                    // below just kept failing with no way to tell why. Async reads (not sync
+                    // ReadToEnd) so a chatty child can't block on a full stdout/stderr pipe buffer.
+                    try
+                    {
+                        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+                        Directory.CreateDirectory(aerDir);
+                        var logPath = Path.Combine(aerDir, "daemon-spawn.log");
+                        File.WriteAllText(logPath, $"--- spawn {DateTime.UtcNow:O} (args: {args}) ---{Environment.NewLine}");
+                        process.OutputDataReceived += (_, e) => { if (e.Data != null) TryAppendLog(logPath, e.Data); };
+                        process.ErrorDataReceived += (_, e) => { if (e.Data != null) TryAppendLog(logPath, e.Data); };
+                        process.BeginOutputReadLine();
+                        process.BeginErrorReadLine();
+                    }
+                    catch
+                    {
+                        // Best-effort diagnostics only — never block a real spawn attempt on logging.
+                    }
+
                     _ = Task.Run(() => SuperviseDaemonProcessAsync(process), CancellationToken.None);
 
                     for (int i = 0; i < 30; i++)
                     {
+                        // A child process that has already exited (e.g. it lost the single-instance
+                        // mutex race against a still-shutting-down old daemon — found live, M22
+                        // planning: a caller that respawns without confirming the old process is
+                        // truly gone first hits exactly this) will never answer /api/version. Fail
+                        // fast instead of burning the rest of this loop's budget on a dead process.
+                        if (process.HasExited) break;
+
                         try
                         {
                             var newConn = GetDaemonConnectionInfo();
@@ -273,13 +321,24 @@ public sealed class TaskSession
                                 ConfigureHttpClientHeaders(newToken);
                             }
 
-                            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", cancellationToken).ConfigureAwait(true);
+                            // Each attempt gets its own short deadline rather than inheriting
+                            // _httpClient's full 5s default — 30 attempts at up to 5s each could
+                            // stretch this loop to minutes if a request ever hangs instead of
+                            // failing fast (found live: a stale port mid-handoff did exactly this).
+                            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            attemptCts.CancelAfter(TimeSpan.FromMilliseconds(400));
+
+                            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", attemptCts.Token).ConfigureAwait(true);
                             if (response.IsSuccessStatusCode)
                             {
                                 _isClientMode = true;
                                 await StartWebSocketListenerAsync(_activeDaemonUrl, newToken, cancellationToken).ConfigureAwait(true);
                                 return true;
                             }
+                        }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                        {
+                            // This attempt's own short deadline elapsed, not the caller's token — keep polling.
                         }
                         catch
                         {
@@ -296,6 +355,23 @@ public sealed class TaskSession
 
         _isClientMode = false;
         return false;
+    }
+
+    private static readonly Lock LogLock = new();
+
+    private static void TryAppendLog(string logPath, string line)
+    {
+        try
+        {
+            lock (LogLock)
+            {
+                File.AppendAllText(logPath, line + Environment.NewLine);
+            }
+        }
+        catch
+        {
+            // Best-effort diagnostics only.
+        }
     }
 
     private async Task SuperviseDaemonProcessAsync(Process process)
@@ -788,6 +864,152 @@ public sealed class TaskSession
         }
 
         _currentHostStopSource?.Cancel();
+    }
+
+    /// <summary>Current remote-access state, for the Enable Remote Access view (M21 Phase 3, issue #234).</summary>
+    public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningTasks);
+
+    /// <summary>A freshly generated pairing code, mirroring <c>/api/pairing/code</c>'s response shape.</summary>
+    public sealed record PairingCode(string Code, int ExpiresInSeconds);
+
+    /// <summary>Reads the daemon's current bind mode and port straight from <c>/api/version</c> — not cached, since the whole point is to detect drift after a toggle.</summary>
+    public async Task<RemoteAccessStatus?> GetRemoteAccessStatusAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            if (meta == null) return null;
+
+            var port = new Uri(_activeDaemonUrl).Port;
+            return new RemoteAccessStatus(meta.IsRemote, port, meta.HasRunningTasks);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<PairingCode?> GetPairingCodeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/pairing/code", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<PairingCode>(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Flips the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel rebind
+    /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the
+    /// daemon down and respawns it with/without <c>--remote</c>, reusing the same
+    /// shutdown-then-respawn move <see cref="EnsureDaemonConnectedAsync"/> already makes on version
+    /// skew. Refuses while a task is in flight, since bouncing the daemon would orphan it.
+    /// </summary>
+    public async Task<MutationOutcome> SetRemoteEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await SetRemoteEnabledAsyncCore(enabled, cancellationToken).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            LogToggleDiagnostic($"SetRemoteEnabledAsync threw: {ex}");
+            throw;
+        }
+    }
+
+    private async Task<MutationOutcome> SetRemoteEnabledAsyncCore(bool enabled, CancellationToken cancellationToken)
+    {
+        LogToggleDiagnostic($"SetRemoteEnabledAsync(enabled={enabled}) start, _activeDaemonUrl={_activeDaemonUrl}");
+        var status = await GetRemoteAccessStatusAsync(cancellationToken).ConfigureAwait(true);
+        if (status == null)
+        {
+            LogToggleDiagnostic("GetRemoteAccessStatusAsync returned null -> Could not reach Aer.Daemon.");
+            return new MutationOutcome("Could not reach Aer.Daemon.");
+        }
+        LogToggleDiagnostic($"status: IsRemote={status.IsRemote}, HasRunningTasks={status.HasRunningTasks}, Port={status.Port}");
+        if (status.HasRunningTasks) return new MutationOutcome("Can't change remote access while a task is running — finish or pause it first.");
+        if (status.IsRemote == enabled) return new MutationOutcome(null);
+
+        await ShutdownDaemonAsync().ConfigureAwait(true);
+        LogToggleDiagnostic("ShutdownDaemonAsync completed");
+        _isClientMode = false;
+
+        // A fixed sleep here raced the old process's real shutdown time. A first fix attempt
+        // replaced it with polling the old daemon's /api/version until the request failed — but
+        // that misfired too: a request that times out because the daemon is briefly slow to
+        // respond while mid-graceful-shutdown (still holding its listening socket and
+        // single-instance mutex) looks identical, over HTTP, to a request that fails because
+        // nothing is listening at all. Found live via ~/.aer/daemon-spawn.log: the respawn below
+        // fired while the old process — in the OLD mode — was still actually running, hit
+        // "Another instance of Aer.Daemon is already running.", and died immediately. The
+        // single-instance guard itself (see Aer.Daemon/Program.cs's RunDaemonAsync) is an OS-named
+        // mutex that only exists while some process holds it — polling for that directly is an
+        // unambiguous signal, not a timing inference.
+        var exited = await WaitForDaemonToExitAsync(cancellationToken).ConfigureAwait(true);
+        LogToggleDiagnostic($"WaitForDaemonToExitAsync returned {exited}");
+        if (!exited)
+        {
+            return new MutationOutcome("Aer.Daemon is taking a while to shut down — try again in a moment.");
+        }
+
+        var started = await SpawnDaemonProcessAsync(enabled ? "--remote" : "", cancellationToken).ConfigureAwait(true);
+        LogToggleDiagnostic($"SpawnDaemonProcessAsync returned {started}");
+        return started ? new MutationOutcome(null) : new MutationOutcome("Could not restart Aer.Daemon.");
+    }
+
+    private static void LogToggleDiagnostic(string line)
+    {
+        try
+        {
+            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+            Directory.CreateDirectory(aerDir);
+            TryAppendLog(Path.Combine(aerDir, "toggle-diagnostic.log"), $"{DateTime.UtcNow:O} {line}");
+        }
+        catch
+        {
+            // Best-effort diagnostics only.
+        }
+    }
+
+    /// <summary>
+    /// Polls the daemon's single-instance mutex (same name Aer.Daemon/Program.cs's
+    /// <c>RunDaemonAsync</c> creates) until no process holds it, or ~12s elapses. The daemon's own
+    /// <c>HostOptions.ShutdownTimeout</c> is explicitly bounded to 3s (see
+    /// <c>Aer.Daemon/Program.cs</c>'s <c>RunDaemonAsync</c>), so this only needs enough margin above
+    /// that for the shutdown request's own round trip plus process teardown — not the old 30s
+    /// default's worth. A mutex check has no false positives the way the HTTP-timing check it
+    /// replaced did, so a longer budget here costs time, not correctness.
+    /// </summary>
+    private static async Task<bool> WaitForDaemonToExitAsync(CancellationToken cancellationToken)
+    {
+        var mutexName = $"Global\\AerDaemonMutex_{Environment.UserName}";
+
+        for (int i = 0; i < 60; i++)
+        {
+            if (!Mutex.TryOpenExisting(mutexName, out var existing))
+            {
+                return true;
+            }
+
+            existing.Dispose();
+            await Task.Delay(200, cancellationToken).ConfigureAwait(true);
+        }
+
+        return false;
     }
 
     public async Task ShutdownDaemonAsync()

@@ -3,6 +3,10 @@
          preview): not in the default Flutter template, since a bare `flutter create` app makes
          no network calls. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- QR scanning for pairing (M21 Phase 3, issue #234) — mobile_scanner needs this at runtime;
+         also declared so Play Store/`flutter build` don't silently omit camera hardware features. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
         android:label="AER Flow"
         android:name="${applicationName}"

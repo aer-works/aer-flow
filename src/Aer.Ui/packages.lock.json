@@ -169,6 +169,11 @@
         "resolved": "0.11.6",
         "contentHash": "NdNWGDiZ6eS/Mf/9+QHR91cj1K7Hy+PX9yrHI/zM7xFYuj9IWT2uxtB6sCHjrnxAeLV9fut1R6zHDUGKX6f9lQ=="
       },
+      "QRCoder": {
+        "type": "Transitive",
+        "resolved": "1.6.0",
+        "contentHash": "XmPA81eo+oRxBuyVdswsSkTGTE1d3thfF11Z1PdD7oB56A6HU4G4AAOdySmGRMb/cljwlFTMWUtosGEnwpS6GA=="
+      },
       "SkiaSharp": {
         "type": "Transitive",
         "resolved": "3.119.4",
@@ -206,15 +211,15 @@
       "aer": {
         "type": "Project",
         "dependencies": {
-          "Aer.Adapters": "[0.13.0, )",
-          "Aer.Flow": "[0.13.0, )"
+          "Aer.Adapters": "[0.14.0, )",
+          "Aer.Flow": "[0.14.0, )"
         }
       },
       "aer.adapters": {
         "type": "Project",
         "dependencies": {
-          "Aer.Flow": "[0.13.0, )",
-          "Aer.Workers.Dialogue": "[0.13.0, )"
+          "Aer.Flow": "[0.14.0, )",
+          "Aer.Workers.Dialogue": "[0.14.0, )"
         }
       },
       "aer.core": {
@@ -223,9 +228,9 @@
       "aer.daemon": {
         "type": "Project",
         "dependencies": {
-          "Aer.Adapters": "[0.13.0, )",
-          "Aer.Flow": "[0.13.0, )",
-          "Aer.Ui.Core": "[0.13.0, )"
+          "Aer.Adapters": "[0.14.0, )",
+          "Aer.Flow": "[0.14.0, )",
+          "Aer.Ui.Core": "[0.14.0, )"
         }
       },
       "aer.flow": {
@@ -237,11 +242,12 @@
       "aer.ui.core": {
         "type": "Project",
         "dependencies": {
-          "Aer.Adapters": "[0.13.0, )",
-          "Aer.Flow": "[0.13.0, )",
-          "Aer.Workers.Dialogue": "[0.13.0, )",
+          "Aer.Adapters": "[0.14.0, )",
+          "Aer.Flow": "[0.14.0, )",
+          "Aer.Workers.Dialogue": "[0.14.0, )",
           "CommunityToolkit.Mvvm": "[8.4.2, )",
-          "aer": "[0.13.0, )"
+          "QRCoder": "[1.6.0, )",
+          "aer": "[0.15.0, )"
         }
       },
       "aer.workers.dialogue": {
