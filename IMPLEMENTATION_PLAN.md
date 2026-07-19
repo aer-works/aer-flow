@@ -46,6 +46,8 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 27 | **Permission Scope Model** | Vendor-neutral structured worker permission grants (categories: `ReadFiles`/`WriteFiles`/`RunShellCommands` with a pattern allowlist/`NetworkAccess`) replacing the opaque `PermissionScope` string, translated per-vendor inside each adapter's `Resolve` (Adapter Isolation) | CLAUDE.md rule #2 |
 | 28 | **Mobile Remote Client** | `Aer.Mobile` (Flutter/Android): pairing, a WebSocket-driven decision inbox, Approve/Reject/Cancel over the existing daemon REST API | — |
 | 29 | **Zero-Config Tailscale Transport** | Embedded `tsnet` (a Go sidecar the daemon supervises) on desktop, `flutter_tsnet` on mobile — no separate Tailscale app install required by the end user, BYO free Tailscale account | — |
+| 30 | **Workflow Template Library** | Built-in, pre-authored `WorkflowDefinition`+bindings pairs (Solo run, Review run) a user picks from instead of hand-authoring; daemon-side materialization so a client with no filesystem access (a phone) can start a task | — |
+| 31 | **Artifact-Referenced Supply** | Decide-by-artifact-reference (execution id + filename, resolved server-side via the Artifact Manager) as an alternative to `aer supply`'s raw local `SourceFilePath`, so a client with no filesystem access can send an already-produced artifact back as Supersede revision content | §17.2, §17.5; §16 |
 
 ---
 
@@ -70,8 +72,9 @@ Which milestone introduces which capabilities.
 | **M19: Product UX** | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18 |
 | **M20: Daemonization & Remote Control** | 26 (Daemon Network API) | M19 |
 | **M21: Zero-Config Remote Control & Permission Scopes** | 27 (Permission Scope Model), 28 (Mobile Remote Client), 29 (Zero-Config Tailscale Transport) | M20 |
-| **M22: Generic Dialogue & Project Packaging** | 30 (Generic Dialogue configuration schema & loops), 31 (Unified Project Package model with profile segregation) | M21 |
-| **M23: UI Visual Overhaul** | 32 (Curve-based Bezier DAG rendering, brand icons), 33 (Rich markdown output previewer), 34 (Keyboard-first triage modal) | M22 |
+| **M22: Workflow Template Library** | 30 (Workflow Template Library), 31 (Artifact-Referenced Supply) | M21 |
+| **M23: Generic Dialogue & Project Packaging** | 32 (Generic Dialogue configuration schema & loops), 33 (Unified Project Package model with profile segregation) | M22 |
+| **M24: UI Visual Overhaul** | 34 (Curve-based Bezier DAG rendering, brand icons), 35 (Rich markdown output previewer), 36 (Keyboard-first triage modal) | M23 |
 
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
@@ -274,7 +277,78 @@ items now that a real remote client exists to harden against.
 
 ---
 
-## M22: Generic Dialogue & Project Packaging — Phase Plan
+## M22: Workflow Template Library — Phase Plan
+
+**Goal:** A small built-in library of pre-authored workflow templates a user picks from — no
+authoring needed — on both `Aer.Ui` and `Aer.Mobile`. This also gives the phone its first-ever way
+to start a brand-new task: today it can only watch/decide on a task the desktop already started,
+since `/api/tasks/run` requires real paths on the daemon host's filesystem, which a phone has no
+way to supply. Two templates, not a general template system: a single-vendor **Solo run** (one
+step, whichever vendor CLI is actually installed) and a two-vendor **Review run** (one vendor
+drafts, the other reviews, either order) — the already-proven `draft-review-paused-*` two-step DAG
+shape, live-smoke-verified by `LiveMixedVendorPausedRunSmokeTest`. Vendor choice for both is
+auto-picked from `VendorCliPresence`'s existing PATH probe when only one vendor is installed, and
+asked only when there's an actual choice to make. Full remote-control parity (DAG/history/lineage
+viewing, RetryWithRevision, non-Review-run Supersede from the phone) is a real future direction but
+explicitly out of scope here — noted under M24 instead.
+
+### Phase 1: Built-in Template Catalog
+- **Goal**: Two built-in workflow shapes — Solo run and Review run (`PausePoint.SupersedeTargets`
+  declared back to the draft step) — as embedded resources in `Aer.Flow`, exposed via a new
+  `BuiltInWorkflowTemplates` catalog type (`Id`/`Title`/`Description` + parsed `WorkflowDefinition`
+  + bindings dict, vendor slots left as a parameter so Solo/Review materialize against whichever
+  vendor(s) `VendorCliPresence` finds installed). Round-tripped through the existing
+  `WorkflowDefinitionWriter`/`Parser` and `WorkerBindingConfigWriter`/`Parser` exactly like
+  hand-written fixtures are. No new engine capability.
+- **Verification**: a round-trip test per catalog entry, across both vendor assignments (parses/
+  validates cleanly, same bar as existing fixtures).
+
+### Phase 2: Daemon Template Endpoints
+- **Goal**: `GET /api/templates` (list id/title/description, for both picker UIs) and
+  `POST /api/templates/run` (`{TemplateId, TaskName?}` — no paths at all) that materializes the
+  picked template into a fresh directory under a daemon-owned default root (`~/.aer/tasks/`) and
+  dispatches through the existing `RunCommand`/`TaskSession.RunAsync` path unchanged.
+- **Verification**: an integration test in `DaemonIntegrationTests.cs`'s existing style — POST
+  `/api/templates/run` with only a template id, assert a task starts and reaches
+  Running/Paused with no caller-supplied path anywhere in the request.
+
+### Phase 3: Desktop Template Picker
+- **Goal**: a "Start from a template" entry point alongside full guided authoring — Solo run asks a
+  vendor dropdown only if both are installed, Review run asks a drafts-first/reviews-first order
+  only if both are installed. Materializes the picked template into a fresh task directory using
+  the same `task-{timestamp}` naming `NewWorkflowViewModel.RunRequested` already uses, then calls
+  the existing unchanged `RunAsync`. No new daemon capability. "Send back to draft" already works
+  for free via the existing `PausedStepViewModel.SendBackTargets`/Supersede machinery.
+- **Verification**: manual — pick each template (both vendor assignments where applicable), confirm
+  each runs correctly end to end; for Review run, confirm "Send back to draft" resumes the draft
+  step with the supplied revision.
+
+### Phase 4: Mobile Template Picker
+- **Goal**: `daemon_client.dart` gains `listTemplates`/`runTemplate`; a new picker screen reachable
+  from the "no task open" empty state, calling Phase 2's endpoint (vendor/order choice surfaced the
+  same way as desktop's Phase 3). The first time the phone can start a task rather than only watch
+  one.
+- **Verification**: real-device, same bar as M21 Phase 2 — from a freshly paired phone with nothing
+  open, pick each template, confirm it starts and the decision inbox picks it up exactly like a
+  desktop-started task would.
+
+### Phase 5: Mobile Send-Back
+- **Goal**: close the one gap Phase 4 leaves — Review run's "send back to draft" from the phone.
+  Daemon: extend the decide path to accept a supplementary artifact by reference (execution id +
+  filename of something the task already produced) instead of a raw `SourceFilePath`, resolving it
+  server-side via the same `ArtifactManager.ResolveOutputDirectory` path the artifact-preview
+  endpoint already uses, then reusing `SupplyCommand`'s existing mint-and-copy logic unchanged.
+  Mobile: a "Send back to `<author>`" button on the review step's paused card, referencing that
+  step's own last-produced output — no manual path/worker/output-name entry, since those are
+  template-known constants for a built-in template.
+- **Verification**: an integration test mirroring `Reject_TriggersASecondWebSocketBroadcast_...`'s
+  style — decide-by-artifact-reference against a paused review step, assert the draft step resumes
+  with the reviewer's output as its supplementary input; real-device confirmation that tapping
+  "Send back" from the phone does the same thing the desktop button already does.
+
+---
+
+## M23: Generic Dialogue & Project Packaging — Phase Plan
 
 **Goal:** Author multi-turn dialogue steps directly within the UI and bundle workflow assets into portable task packages while separating machine-specific bindings config.
 
@@ -296,9 +370,35 @@ items now that a real remote client exists to harden against.
 
 ---
 
-## M23: UI Visual Overhaul — Phase Plan
+## M24: UI Visual Overhaul — Phase Plan
 
 **Goal:** Transform the visual layout of AER Flow into a premium desktop product matching reference-caliber tools (Linear, Raycast).
+
+**Also carries a real future direction, not yet phased:** full remote-control parity from
+`Aer.Mobile` — DAG/history/lineage viewing, `RetryWithRevision`, and general (non-Review-run)
+Supersede, all currently desktop-only. M22 deliberately scoped mobile to two built-in templates
+plus Review-run send-back rather than building this; the owner's own framing during M22 planning —
+"I do eventually want to have more control than this remotely, but this is a good start" — is the
+reason it's tracked here instead of dropped. No phase commitment yet; revisit scoping this
+milestone's phase list against whichever of these the owner actually wants once M22 has shipped and
+the two-template picker has real usage to learn from.
+
+**Also carries a second future direction, not yet phased: an animated brand mark.** Settled during
+icon-refresh discussion alongside M22 planning: the approved mark (a two-source fan-in "Y", tested
+down to 16×16 — see `docs/decisions-of-record.md`) rotates 180° into a fan-out "Λ", a crossbar
+strokes in to complete a capital "A", then "ER Flow" reveals to finish the "AER Flow" wordmark —
+the mark doing double duty as logo and lettermark. Deliberately **one static mark, not two**: the
+fan-in "Y" is the only static asset anywhere (app icon, GitHub avatar, docs header, everything) —
+fan-out never ships as a standalone image, only as a mid-transition animation frame, which is also
+why fan-out's small-size legibility doesn't need chasing (hand-tuned proportions, optical
+correction) the way a real second static mark would: it's never shown at favicon/avatar scale, only
+at splash/loading size where the direct-downscale test that failed it as an icon doesn't apply. Not
+scoped to one surface — use it wherever a brand moment already exists or makes sense, desktop or
+mobile alike (candidates: `Aer.Ui` startup/splash, `Aer.Mobile` cold-start splash, a loading state
+either app already shows) rather than building one bespoke implementation and calling the note
+closed. Real engineering per platform (Avalonia keyframe/transform + a stroke-draw animation for the
+crossbar on desktop; Flutter's own equivalent on mobile — no shared animation asset between them) —
+no phase commitment yet, phase this against the rest of M24's plan once M22 has shipped.
 
 ### Phase 1: Curved Bezier DAG Canvas & Hover States
 - **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
