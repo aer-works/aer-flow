@@ -124,4 +124,68 @@ public class GeminiWorkerAdapterTests
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(null!, ArchitectContract));
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(new WorkerInvocation("Draft a plan."), null!));
     }
+
+    // M21 Phase 1: the structured PermissionGrant builder path. The tests above are untouched —
+    // proving a hand-typed raw PermissionScope (including "yolo", a value outside the --mode
+    // vocabulary the structured translator emits) still resolves identically.
+
+    [Theory]
+    [InlineData(false, false, "default")]
+    [InlineData(true, false, "plan")]
+    [InlineData(true, true, "accept-edits")]
+    [InlineData(false, true, "accept-edits")]
+    public void A_permission_grant_maps_read_write_combinations_to_the_matching_mode(
+        bool readFiles, bool writeFiles, string expectedMode)
+    {
+        var grant = new PermissionGrant(ReadFiles: readFiles, WriteFiles: writeFiles);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Equal(expectedMode, target.Args[3]);
+    }
+
+    [Fact]
+    public void A_permission_grant_takes_precedence_over_a_raw_permission_scope_when_both_are_set()
+    {
+        var grant = new PermissionGrant(WriteFiles: true);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionScope: "yolo", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Equal("accept-edits", target.Args[3]);
+    }
+
+    [Fact]
+    public void Requesting_shell_commands_is_refused_rather_than_approximated()
+    {
+        var grant = new PermissionGrant(RunShellCommands: true);
+
+        var ex = Assert.Throws<PermissionGrantUnsupportedException>(() => new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract));
+
+        Assert.Equal("gemini", ex.AdapterName);
+    }
+
+    [Fact]
+    public void Requesting_network_access_is_refused_rather_than_approximated()
+    {
+        var grant = new PermissionGrant(NetworkAccess: true);
+
+        var ex = Assert.Throws<PermissionGrantUnsupportedException>(() => new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract));
+
+        Assert.Equal("gemini", ex.AdapterName);
+    }
+
+    [Fact]
+    public void TryTranslatePermissionGrant_refuses_shell_commands_without_throwing()
+    {
+        var adapter = new GeminiWorkerAdapter();
+
+        var succeeded = adapter.TryTranslatePermissionGrant(
+            new PermissionGrant(RunShellCommands: true), out var resolved, out var gapReason);
+
+        Assert.False(succeeded);
+        Assert.Null(resolved);
+        Assert.NotNull(gapReason);
+    }
 }

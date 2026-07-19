@@ -172,7 +172,7 @@ public partial class MainWindow : Window
         // constructed with — reflect, don't invent — carried per-row on WorkerBindingEntryViewModel
         // rather than bound from a shared ancestor, since ItemsControl.ItemTemplate's DataContext is
         // the entry itself.
-        ViewModel.BindingsEditor.SetAdapterCandidates(adapters.Keys.OrderBy(name => name, StringComparer.Ordinal).ToList());
+        ViewModel.BindingsEditor.SetAdapterRegistry(adapters);
 
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
         OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);

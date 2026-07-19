@@ -31,7 +31,7 @@ public static class WorkerBindingResolver
                 throw new UnknownWorkerAdapterException(entry.Adapter);
             }
 
-            var invocation = new WorkerInvocation(entry.PromptTemplate, entry.Model, entry.PermissionScope);
+            var invocation = new WorkerInvocation(entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant);
             var target = adapter.Resolve(invocation, entry.Contract);
 
             bindings[workerName] = new WorkerBinding.Process(entry.Contract, target, entry.Timeout);

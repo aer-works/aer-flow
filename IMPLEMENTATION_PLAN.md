@@ -98,7 +98,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 
 **M21: Zero-Config Remote Control & Permission Scopes** — progress:
 
-- [ ] Phase 1 — Permission-Scope Model
+- [x] Phase 1 — Permission-Scope Model
 - [ ] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
 - [ ] Phase 3 — Desktop Pairing UX
 - [ ] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)

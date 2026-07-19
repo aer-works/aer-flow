@@ -12,8 +12,18 @@ namespace Aer.Ui.Tests;
 /// </summary>
 public class MainWindowBindingsEditorTests
 {
+    // "claude"/"gemini" carry the real adapters (M21 Phase 1): none of these tests ever dispatch
+    // (Resolve is never called), so this is safe, and it lets the permission-grant-builder tests
+    // exercise the real ClaudeWorkerAdapter/GeminiWorkerAdapter IPermissionGrantTranslator
+    // implementations rather than a stub. "dialogue" stays a NoopWorkerAdapter specifically to cover
+    // the "adapter has no structured builder support at all" gap path.
     private static readonly IReadOnlyDictionary<string, IWorkerAdapter> Adapters =
-        new Dictionary<string, IWorkerAdapter> { ["claude"] = new NoopWorkerAdapter(), ["gemini"] = new NoopWorkerAdapter() };
+        new Dictionary<string, IWorkerAdapter>
+        {
+            ["claude"] = new ClaudeWorkerAdapter(),
+            ["gemini"] = new GeminiWorkerAdapter(),
+            ["dialogue"] = new NoopWorkerAdapter(),
+        };
 
     private static string FixturePath(string fileName) => Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);
 
@@ -79,7 +89,7 @@ public class MainWindowBindingsEditorTests
         window.ViewModel.BindingsEditor.AddEntry();
         var entry = Assert.Single(window.ViewModel.BindingsEditor.Entries);
 
-        Assert.Equal(["claude", "gemini"], entry.AdapterCandidates);
+        Assert.Equal(["claude", "dialogue", "gemini"], entry.AdapterCandidates);
     }
 
     [AvaloniaFact]
@@ -102,6 +112,11 @@ public class MainWindowBindingsEditorTests
             var critic = window.ViewModel.BindingsEditor.Entries.Single(e => e.WorkerName == "critic");
             Assert.Equal("plan", critic.RequiredInputsText);
             Assert.Contains("review", critic.ProducedOutputsJson);
+
+            // M21 Phase 1: neither fixture entry carries a structured PermissionGrant, so both load
+            // into Advanced mode — round-trip fidelity for a file this new builder never wrote.
+            Assert.True(critic.IsAdvancedPermissionScope);
+            Assert.Equal("read-only", critic.PermissionScope);
         }
         finally
         {
@@ -341,6 +356,175 @@ public class MainWindowBindingsEditorTests
         finally
         {
             File.Delete(bindingsPath);
+        }
+    }
+
+    // M21 Phase 1: the structured permission-grant builder — save/reopen round trip, precedence
+    // over a stale raw string, live in-UI gap surfacing, and Save refusing to persist a grant the
+    // selected adapter can't honor.
+
+    [AvaloniaFact]
+    public async Task A_permission_grant_built_via_checkboxes_round_trips_as_the_structured_field()
+    {
+        var path = TempBindingsPath();
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "architect";
+            entry.Adapter = "claude";
+            entry.PromptTemplate = "Draft a plan.";
+            entry.TimeoutText = "00:05:00";
+            entry.GrantWriteFiles = true;
+            entry.GrantRunShellCommands = true;
+            entry.ShellCommandPatternsText = "git:*, npm:*";
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+            Assert.Contains("Saved", window.ViewModel.BindingsEditor.StatusText);
+
+            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
+            var saved = parsed["architect"];
+            Assert.Null(saved.PermissionScope);
+            Assert.NotNull(saved.PermissionGrant);
+            Assert.True(saved.PermissionGrant!.WriteFiles);
+            Assert.False(saved.PermissionGrant.ReadFiles);
+            Assert.Equal(["git:*", "npm:*"], saved.PermissionGrant.ShellCommandPatterns);
+
+            // Reopening lands back in Builder mode with the same checkboxes — round-trip fidelity.
+            await window.OpenBindingsInEditorAsync(path, TestContext.Current.CancellationToken);
+            var reopened = window.ViewModel.BindingsEditor.Entries[0];
+            Assert.False(reopened.IsAdvancedPermissionScope);
+            Assert.True(reopened.GrantWriteFiles);
+            Assert.True(reopened.GrantRunShellCommands);
+            Assert.Equal("git:*, npm:*", reopened.ShellCommandPatternsText);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task An_unconfigured_builder_grant_saves_as_no_permission_field_at_all()
+    {
+        // Mirrors the pre-existing "blank PermissionScope means fall through to the adapter's
+        // default" behavior for a never-touched builder row — Blank() defaults to Builder mode, but
+        // nothing checked must not persist an explicit "grant nothing" record (see PermissionGrant's
+        // own IsEmpty doc).
+        var path = TempBindingsPath();
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "architect";
+            entry.Adapter = "claude";
+            entry.PromptTemplate = "Draft a plan.";
+            entry.TimeoutText = "00:05:00";
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
+            var saved = parsed["architect"];
+            Assert.Null(saved.PermissionScope);
+            Assert.Null(saved.PermissionGrant);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Advanced_mode_persists_the_raw_string_and_ignores_stale_builder_checkboxes()
+    {
+        var path = TempBindingsPath();
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "architect";
+            entry.Adapter = "claude";
+            entry.PromptTemplate = "Draft a plan.";
+            entry.TimeoutText = "00:05:00";
+            entry.GrantReadFiles = true; // set before switching, to prove Advanced mode ignores it
+            entry.IsAdvancedPermissionScope = true;
+            entry.PermissionScope = "Write,Bash(git:*)";
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
+            var saved = parsed["architect"];
+            Assert.Equal("Write,Bash(git:*)", saved.PermissionScope);
+            Assert.Null(saved.PermissionGrant);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [AvaloniaFact]
+    public void An_unsupported_grant_shows_a_live_gap_warning_before_save()
+    {
+        var window = NewWindow();
+        window.NewBindings();
+        window.ViewModel.BindingsEditor.AddEntry();
+        var entry = window.ViewModel.BindingsEditor.Entries[0];
+        entry.Adapter = "gemini";
+
+        Assert.False(entry.HasPermissionGrantGapWarning);
+
+        entry.GrantRunShellCommands = true;
+
+        Assert.True(entry.HasPermissionGrantGapWarning);
+        Assert.Contains("agy", entry.PermissionGrantGapWarning);
+    }
+
+    [AvaloniaFact]
+    public void An_adapter_with_no_translator_shows_a_no_builder_support_gap_warning()
+    {
+        var window = NewWindow();
+        window.NewBindings();
+        window.ViewModel.BindingsEditor.AddEntry();
+        var entry = window.ViewModel.BindingsEditor.Entries[0];
+        entry.Adapter = "dialogue";
+
+        entry.GrantReadFiles = true;
+
+        Assert.True(entry.HasPermissionGrantGapWarning);
+        Assert.Contains("no structured permission builder support", entry.PermissionGrantGapWarning);
+    }
+
+    [AvaloniaFact]
+    public async Task Saving_an_unsupported_grant_is_refused_and_writes_nothing()
+    {
+        var path = TempBindingsPath();
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "architect";
+            entry.Adapter = "gemini";
+            entry.PromptTemplate = "Draft a plan.";
+            entry.TimeoutText = "00:05:00";
+            entry.GrantNetworkAccess = true;
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            Assert.Contains("can't be saved", window.ViewModel.BindingsEditor.StatusText);
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 }

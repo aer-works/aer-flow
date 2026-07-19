@@ -9,10 +9,48 @@ namespace Aer.Adapters;
 /// <see cref="WorkerInvocation"/>/<see cref="WorkerContract"/> pair into a direct <c>agy</c>
 /// (Google Gemini CLI) invocation without shell wrappers. Bypasses cmd.exe and sh, eliminating quoting and
 /// command injection risks. Stdin redirection to null is handled natively by the process host.
+/// <para>
+/// <b>M21 Phase 1's <see cref="IPermissionGrantTranslator"/>:</b> unlike Claude's per-tool
+/// <c>--allowedTools</c>, <c>agy</c>'s <c>--mode</c> is a single coarse setting with only three
+/// confirmed values (<c>default</c>, <c>accept-edits</c>, <c>plan</c>) — there is no confirmed
+/// non-interactive mode that auto-approves shell commands or network/web-fetch tool calls without
+/// prompting (headless <c>-p</c> execution can't answer an interactive prompt, so an unsupported
+/// grant would hang rather than fail cleanly). Requesting <see cref="PermissionGrant.RunShellCommands"/>
+/// or <see cref="PermissionGrant.NetworkAccess"/> is therefore always refused here rather than
+/// approximated to the nearest mode — see <see cref="TryTranslatePermissionGrant"/>.
+/// </para>
 /// </summary>
-public sealed class GeminiWorkerAdapter : IWorkerAdapter
+public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
     private const string DefaultPermissionScope = "accept-edits";
+
+    public bool TryTranslatePermissionGrant(PermissionGrant grant, out string? resolvedValue, out string? gapReason)
+    {
+        ArgumentNullException.ThrowIfNull(grant);
+
+        if (grant.RunShellCommands)
+        {
+            resolvedValue = null;
+            gapReason = "agy has no confirmed non-interactive --mode value that auto-approves shell " +
+                "commands without prompting, so requesting shell access cannot be honored by the " +
+                "structured builder. Use the Advanced raw permission-scope field with a --mode value " +
+                "verified against your installed agy CLI instead.";
+            return false;
+        }
+
+        if (grant.NetworkAccess)
+        {
+            resolvedValue = null;
+            gapReason = "agy has no confirmed non-interactive --mode value that auto-approves " +
+                "network/web-fetch tool calls without prompting, so requesting network access cannot " +
+                "be honored by the structured builder. Use the Advanced raw permission-scope field instead.";
+            return false;
+        }
+
+        resolvedValue = grant.WriteFiles ? "accept-edits" : grant.ReadFiles ? "plan" : "default";
+        gapReason = null;
+        return true;
+    }
 
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
     {
@@ -21,7 +59,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter
 
         var isWindows = OperatingSystem.IsWindows();
         var prompt = BuildPrompt(invocation.PromptTemplate, contract, isWindows);
-        var permissionScope = invocation.PermissionScope ?? DefaultPermissionScope;
+        var permissionScope = ResolvePermissionScope(invocation);
         var artifactsRoot = EnvironmentReference("AER_ARTIFACTS_ROOT", isWindows);
 
         List<string> args =
@@ -38,6 +76,31 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter
         }
 
         return new CoreDispatchTarget("agy", [.. args]);
+    }
+
+    /// <summary>
+    /// A structured <see cref="WorkerInvocation.PermissionGrant"/> always wins over the raw
+    /// <see cref="WorkerInvocation.PermissionScope"/> string (<see cref="PermissionGrant"/>'s own
+    /// docs record this precedence).
+    /// </summary>
+    /// <exception cref="PermissionGrantUnsupportedException">
+    /// <paramref name="invocation"/> carries a <see cref="WorkerInvocation.PermissionGrant"/>
+    /// <see cref="TryTranslatePermissionGrant"/> refuses (<see cref="PermissionGrant.RunShellCommands"/>
+    /// or <see cref="PermissionGrant.NetworkAccess"/>).
+    /// </exception>
+    private string ResolvePermissionScope(WorkerInvocation invocation)
+    {
+        if (invocation.PermissionGrant is { } grant)
+        {
+            if (!TryTranslatePermissionGrant(grant, out var resolved, out var gapReason))
+            {
+                throw new PermissionGrantUnsupportedException("gemini", gapReason!);
+            }
+
+            return resolved!;
+        }
+
+        return invocation.PermissionScope ?? DefaultPermissionScope;
     }
 
     private static string BuildPrompt(string promptTemplate, WorkerContract contract, bool isWindows)

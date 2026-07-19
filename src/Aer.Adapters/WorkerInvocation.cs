@@ -27,8 +27,23 @@ namespace Aer.Adapters;
 /// </param>
 /// <param name="Model">The vendor model identifier to invoke, if the vendor takes one. Null when not applicable.</param>
 /// <param name="PermissionScope">
-/// The scoped permission grant to pre-authorize (e.g. Claude's <c>--allowedTools</c> value) — each
-/// vendor's flag and vocabulary differs (spike #21), which is exactly why this is an opaque string
-/// the adapter alone interprets, never a shared enum Aer.Flow or this record would have to version.
+/// The raw, hand-typed permission grant to pre-authorize (e.g. Claude's <c>--allowedTools</c>
+/// value) — each vendor's flag and vocabulary differs (spike #21), which is exactly why this is an
+/// opaque string the adapter alone interprets, never a shared enum Aer.Flow or this record would
+/// have to version. Superseded by <paramref name="PermissionGrant"/> when both are set (M21 Phase
+/// 1) — kept only as the bindings editor's "Advanced" escape hatch for vendor vocabulary the
+/// structured model can't yet express.
 /// </param>
-public sealed record WorkerInvocation(string PromptTemplate, string? Model = null, string? PermissionScope = null);
+/// <param name="PermissionGrant">
+/// The structured, vendor-neutral permission grant (M21 Phase 1) — the bindings editor's builder-UI
+/// primary path. When set, an <see cref="IPermissionGrantTranslator"/>-implementing adapter's
+/// <c>Resolve</c> translates it into the vendor-native flag value itself, ignoring
+/// <paramref name="PermissionScope"/> entirely (<see cref="PermissionGrant"/>'s own docs record this
+/// precedence). Null means "no structured grant configured" — the same "fall through to the
+/// adapter's own default" behavior a null <paramref name="PermissionScope"/> already has.
+/// </param>
+public sealed record WorkerInvocation(
+    string PromptTemplate,
+    string? Model = null,
+    string? PermissionScope = null,
+    PermissionGrant? PermissionGrant = null);

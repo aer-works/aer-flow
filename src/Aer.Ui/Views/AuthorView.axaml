@@ -209,7 +209,6 @@
                   <ComboBox ItemsSource="{Binding AdapterCandidates}" Text="{Binding Adapter}" IsEditable="True"
                             Width="120" PlaceholderText="Adapter" />
                   <TextBox Text="{Binding Model}" Width="150" PlaceholderText="Model (optional)" />
-                  <TextBox Text="{Binding PermissionScope}" Width="150" PlaceholderText="Permission scope (optional)" />
                   <TextBox Text="{Binding TimeoutText}" Width="90" PlaceholderText="Timeout (hh:mm:ss)" />
                   <Button Content="Remove" Command="{Binding RemoveCommand}" />
                 </StackPanel>
@@ -218,6 +217,25 @@
                   <TextBox Text="{Binding RequiredInputsText}" Width="200" PlaceholderText="Required inputs (comma-separated)" />
                   <TextBox Text="{Binding OptionalMetadataText}" Width="200" PlaceholderText="Optional metadata (comma-separated)" />
                 </StackPanel>
+                <!-- M21 Phase 1 (permission-scope model): the builder is the default, primary path
+                     (Blank rows start here) — four grant categories plus a shell-command pattern
+                     allowlist, translated per-vendor by ClaudeWorkerAdapter/GeminiWorkerAdapter.
+                     "Advanced" switches to the pre-existing raw PermissionScope text box for vendor
+                     vocabulary the structured model can't express yet. -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Permissions:" VerticalAlignment="Center" />
+                  <CheckBox Content="Advanced (raw)" IsChecked="{Binding IsAdvancedPermissionScope}" />
+                  <TextBox Text="{Binding PermissionScope}" Width="220" IsVisible="{Binding IsAdvancedPermissionScope}"
+                           PlaceholderText="Permission scope (raw, vendor-specific)" />
+                  <CheckBox Content="Read files" IsChecked="{Binding GrantReadFiles}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
+                  <CheckBox Content="Write files" IsChecked="{Binding GrantWriteFiles}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
+                  <CheckBox Content="Run shell commands" IsChecked="{Binding GrantRunShellCommands}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
+                  <TextBox Text="{Binding ShellCommandPatternsText}" Width="150" PlaceholderText="Command patterns (e.g. git:*)"
+                           IsVisible="{Binding ShowShellCommandPatterns}" />
+                  <CheckBox Content="Network access" IsChecked="{Binding GrantNetworkAccess}" IsVisible="{Binding !IsAdvancedPermissionScope}" />
+                </StackPanel>
+                <TextBlock Text="{Binding PermissionGrantGapWarning}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Status.Failed}" IsVisible="{Binding HasPermissionGrantGapWarning}" />
                 <TextBox Text="{Binding PromptTemplate}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" PlaceholderText="Prompt template" />
                 <TextBox Text="{Binding ProducedOutputsJson}" AcceptsReturn="True" TextWrapping="Wrap" Height="60"
                          Classes="mono" PlaceholderText="Produced outputs (raw JSON array)" />

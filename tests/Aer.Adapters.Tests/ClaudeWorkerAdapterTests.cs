@@ -122,4 +122,52 @@ public class ClaudeWorkerAdapterTests
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(null!, ArchitectContract));
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(new WorkerInvocation("Draft a plan."), null!));
     }
+
+    // M21 Phase 1: the structured PermissionGrant builder path. The tests above are untouched —
+    // proving a hand-typed raw PermissionScope still resolves identically is exactly "don't touch
+    // the existing cases."
+
+    [Fact]
+    public void A_permission_grant_composes_every_category_into_allowedTools_in_a_fixed_order()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Equal("Read,Edit,Write,Bash,WebFetch,WebSearch", target.Args[3]);
+    }
+
+    [Fact]
+    public void A_permission_grant_scopes_shell_commands_to_its_patterns_when_given()
+    {
+        var grant = new PermissionGrant(RunShellCommands: true, ShellCommandPatterns: ["git:*", "npm:*"]);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Equal("Bash(git:*),Bash(npm:*)", target.Args[3]);
+    }
+
+    [Fact]
+    public void A_permission_grant_takes_precedence_over_a_raw_permission_scope_when_both_are_set()
+    {
+        var grant = new PermissionGrant(ReadFiles: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionScope: "Write,Bash(git:*)", PermissionGrant: grant),
+            ArchitectContract);
+
+        Assert.Equal("Read", target.Args[3]);
+    }
+
+    [Fact]
+    public void TryTranslatePermissionGrant_never_refuses_for_claude()
+    {
+        var adapter = new ClaudeWorkerAdapter();
+
+        var succeeded = adapter.TryTranslatePermissionGrant(
+            new PermissionGrant(RunShellCommands: true, NetworkAccess: true), out var resolved, out var gapReason);
+
+        Assert.True(succeeded);
+        Assert.Equal("Bash,WebFetch,WebSearch", resolved);
+        Assert.Null(gapReason);
+    }
 }
