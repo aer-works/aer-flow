@@ -26,6 +26,14 @@ fmt = "dotnet format"
 fmt-check = "dotnet format --verify-no-changes"
 lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }
 
+# M21 Phase 2 (#232): Flutter/Dart aren't pixi-managed — installed separately, on PATH, same
+# convention as the .NET SDK and Rust toolchain above. mobile-build produces a debug APK only:
+# Aer.Mobile is sideload-only for this milestone (no Play Store signing/release config exists).
+mobile-analyze = { cmd = "flutter analyze", cwd = "src/Aer.Mobile" }
+mobile-test = { cmd = "flutter test", cwd = "src/Aer.Mobile" }
+mobile-build = { cmd = "flutter build apk --debug", cwd = "src/Aer.Mobile" }
+mobile-run = { cmd = "flutter run", cwd = "src/Aer.Mobile" }
+
 # M13 Phase 1 (#107): packs Aer.Cli as an installable global dotnet tool (nupkg), embedding the
 # native aer_core library for the current host OS. Not part of `build`/`test`/`lint` — packing
 # isn't needed for everyday development, only for the install round trip this phase's runbook-style

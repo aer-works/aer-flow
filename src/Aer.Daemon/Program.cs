@@ -1,11 +1,13 @@
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
+using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Ui.Core;
@@ -21,6 +23,10 @@ namespace Aer.Daemon
 {
     public static class DaemonHost
     {
+        // M21 Phase 2 (#232): see the /api/tasks/artifact handler below for why this is larger
+        // than HomeViewModel's 400-char inbox snippet.
+        private const int ArtifactPreviewMaxLength = 50_000;
+
         public static WebApplication? App { get; set; }
 
         public static async Task RunDaemonAsync(string[] args)
@@ -116,15 +122,24 @@ namespace Aer.Daemon
             // Active WebSocket connections
             var webSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
 
-            // Helper method for sending state to a single socket
-            async Task SendStateAsync(WebSocket socket, TaskProjection projection)
+            // Helper method for sending state to a single socket. DirectoryPath (M21 Phase 2, #232)
+            // is added as a sibling property rather than a TaskProjection field: the desktop client
+            // deserializes this same payload straight into TaskProjection and silently ignores
+            // unmapped members, so this is additive and can't break it. Aer.Mobile needs it because
+            // /api/tasks/decide and /api/tasks/cancel take an explicit directoryPath — with no way
+            // to derive it from the projection itself, a client that only ever observes the WS
+            // stream (never having called /api/tasks/open itself) would have no directory to send
+            // decisions against.
+            async Task SendStateAsync(WebSocket socket, TaskProjection projection, string? directoryPath)
             {
-                var json = JsonSerializer.Serialize(projection, new JsonSerializerOptions
+                var options = new JsonSerializerOptions
                 {
                     Converters = { new JsonStringEnumConverter() },
                     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                });
-                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                };
+                var node = JsonSerializer.SerializeToNode(projection, options)!.AsObject();
+                node["DirectoryPath"] = directoryPath;
+                var bytes = System.Text.Encoding.UTF8.GetBytes(node.ToJsonString(options));
                 if (socket.State == WebSocketState.Open)
                 {
                     await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
@@ -132,14 +147,14 @@ namespace Aer.Daemon
             }
 
             // Helper method for broadcasting state to all sockets
-            async Task BroadcastStateAsync(TaskProjection projection)
+            async Task BroadcastStateAsync(TaskProjection projection, string? directoryPath)
             {
                 var activeSockets = webSockets.Where(s => s.State == WebSocketState.Open).ToList();
                 foreach (var socket in activeSockets)
                 {
                     try
                     {
-                        await SendStateAsync(socket, projection);
+                        await SendStateAsync(socket, projection, directoryPath);
                     }
                     catch
                     {
@@ -165,7 +180,7 @@ namespace Aer.Daemon
                         var outcome = await session.LoadAsync(taskDirectoryPath, cancellationToken);
                         if (outcome.Projection != null)
                         {
-                            await BroadcastStateAsync(outcome.Projection);
+                            await BroadcastStateAsync(outcome.Projection, taskDirectoryPath);
                         }
                     }
                 };
@@ -193,6 +208,16 @@ namespace Aer.Daemon
                 var bBytes = System.Text.Encoding.UTF8.GetBytes(b);
                 return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
             }
+
+            // Must run before the auth middleware below: context.WebSockets.IsWebSocketRequest is
+            // populated by this middleware (it wires up IHttpWebSocketFeature), not by Kestrel
+            // directly. Registered afterward, it silently evaluated false for every WS handshake,
+            // so the auth check fell through to the plain-Authorization-header branch — which the
+            // WS client never sets (only ever the ?token= query string) — and every WS connection
+            // was rejected with 401. Masked until now by a bare catch{} around the client's
+            // connect call (TaskSession.StartWebSocketListenerAsync); found while building
+            // Aer.Mobile (M21 Phase 2, #232), whose decision inbox depends entirely on this stream.
+            app.UseWebSockets();
 
             // Authentication Middleware verifying the Bearer token
             app.Use(async (context, next) =>
@@ -243,8 +268,6 @@ namespace Aer.Daemon
                 await context.Response.WriteAsync("Unauthorized");
             });
 
-            app.UseWebSockets();
-
             // WebSocket endpoint
             app.Map("/api/ws", async (HttpContext context, TaskSession session) =>
             {
@@ -259,7 +282,7 @@ namespace Aer.Daemon
                         var outcome = await session.LoadAsync(session.CurrentTaskDirectoryPath);
                         if (outcome.Projection != null)
                         {
-                            await SendStateAsync(webSocket, outcome.Projection);
+                            await SendStateAsync(webSocket, outcome.Projection, session.CurrentTaskDirectoryPath);
                         }
                     }
 
@@ -349,7 +372,7 @@ namespace Aer.Daemon
                     {
                         pathHolder.BindingsFilePath = bindingsPath;
                     }
-                    await BroadcastStateAsync(outcome.Projection);
+                    await BroadcastStateAsync(outcome.Projection, request.DirectoryPath);
                     return Results.Ok(outcome.Projection);
                 }
                 return Results.BadRequest(outcome.ErrorMessage);
@@ -421,6 +444,53 @@ namespace Aer.Daemon
                 }
 
                 return Results.Ok();
+            });
+
+            // M21 Phase 2 (#232): a client with no access to the daemon host's filesystem
+            // (Aer.Mobile) otherwise has no way to see what it's approving — TaskProjection only
+            // ever carries file *paths*, never bytes (HomeViewModel's desktop-side inbox preview
+            // reads artifact content straight off local disk). fileName is validated against the
+            // execution's own recorded OutputFiles rather than trusted as a raw path component,
+            // the same containment guarantee that desktop-side preview already relies on. Text
+            // content only — capped well above the Home inbox snippet's 400 chars, since a phone
+            // has no "open the real file" fallback, but still bounded so one huge artifact can't
+            // stall a slow LAN/cellular transfer.
+            app.MapGet("/api/tasks/artifact", async (string directoryPath, string executionId, string fileName, TaskSession session) =>
+            {
+                if (string.IsNullOrEmpty(directoryPath) || string.IsNullOrEmpty(executionId) || string.IsNullOrEmpty(fileName))
+                {
+                    return Results.BadRequest("directoryPath, executionId, and fileName are required.");
+                }
+
+                var outcome = await session.LoadAsync(directoryPath);
+                if (outcome.Projection is not { } projection)
+                {
+                    return Results.BadRequest(outcome.ErrorMessage);
+                }
+
+                var execution = projection.Lineage.Executions.FirstOrDefault(e => e.ExecutionId.Value == executionId);
+                if (execution is null || !execution.OutputFiles.Contains(fileName))
+                {
+                    return Results.NotFound();
+                }
+
+                var outputDirectory = ArtifactManager.ResolveOutputDirectory(
+                    Path.Combine(directoryPath, "artifacts"), execution.ExecutionId);
+
+                try
+                {
+                    var content = await File.ReadAllTextAsync(Path.Combine(outputDirectory, fileName));
+                    var truncated = content.Length > ArtifactPreviewMaxLength;
+                    return Results.Ok(new
+                    {
+                        Content = truncated ? content[..ArtifactPreviewMaxLength] + "…" : content,
+                        Truncated = truncated,
+                    });
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    return Results.NotFound();
+                }
             });
 
             // Write active port to discovery file on startup

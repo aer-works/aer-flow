@@ -83,6 +83,37 @@ jobs:
           path: external/aer-core/target/debug/${{ matrix.lib-name }}
           if-no-files-found: error
 
+  # M21 Phase 2 (#232): Aer.Mobile is a separate Dart/Flutter toolchain with no dependency on
+  # aer_core or the .NET solution, so it gets its own job rather than joining the matrix above.
+  # ubuntu-latest's GitHub-hosted image ships the Android SDK already, so `flutter build apk
+  # --debug` catches Android toolchain breaks in CI even though the dev machine that wrote this
+  # doesn't have the Android SDK installed locally (see docs/runbooks, or #232's own discussion).
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: src/Aer.Mobile
+
+      - name: Analyze
+        run: flutter analyze
+        working-directory: src/Aer.Mobile
+
+      - name: Test
+        run: flutter test
+        working-directory: src/Aer.Mobile
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+        working-directory: src/Aer.Mobile
+
   # M13 Phase 3 (#109): gathers the native libs the test matrix above built on all three OSes into
   # one fat nupkg — the same install command (`dotnet tool install --global aer`) then works
   # regardless of host OS. Runs after `test` so it only packs libraries that already passed lint
