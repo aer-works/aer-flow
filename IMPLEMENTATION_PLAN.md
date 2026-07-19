@@ -107,7 +107,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 - [x] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
 - [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - [ ] Phase 6 — Close M20's Deferred Hardening
-- [ ] Phase 7 — `Aer.Mobile`: tsnet Toolchain + Interactive Tailnet Join
+- [x] Phase 7 — `Aer.Mobile`: tsnet Toolchain + Tailnet Join
 - [ ] Phase 8 — `Aer.Mobile`: WS-over-tsnet Transport
 
 ---
@@ -367,43 +367,70 @@ items now that a real remote client exists to harden against.
   reachability (the other half of this phase's original verification bar) is **not yet verified** —
   it depends on Phase 5's live proof landing first.
 
-### Phase 7: `Aer.Mobile` — tsnet Toolchain + Interactive Tailnet Join
+### Phase 7: `Aer.Mobile` — tsnet Toolchain + Tailnet Join
 - **Goal**: split out of issue #245 (originally scoped as one "embed tsnet in Aer.Mobile" issue) —
   prove the two hard blockers before writing any transport code: the Android build actually produces
   an APK with the `tailscale` package's Go/NDK native step, and a phone can join the tailnet at all.
   Sequenced ahead of Phase 8's WebSocket work specifically because both were unproven risk.
-- **Auth model decision of record**: the original candidate design (a Tailscale OAuth client minting
-  a fresh auth key per pairing) was rejected as too much one-time admin-console setup for what it
-  buys. Instead the phone's own `tsnet` node calls `up()` with no auth key on first run — `tsnet`
-  returns its own interactive login URL instead of throwing, the phone opens it once via
-  `url_launcher`, and it's a known tailnet device from then on. Identical in shape to the desktop
-  sidecar's own "Sign in to Tailscale" flow (Phase 5) — no new `Aer.Daemon`/sidecar work at all.
+- **Auth model decision of record (revised from the original plan, after real-device testing):** the
+  first candidate design (a Tailscale OAuth client minting a fresh auth key per pairing) was rejected
+  as too much one-time admin-console setup. The second design — the phone's own `tsnet` node calling
+  `up()` with no auth key on first run, mirroring the desktop sidecar's keyless interactive
+  enrollment — turned out **not to be reachable through the `tailscale` Dart package's public API**:
+  its worker (`lib/src/worker/entrypoint.dart`) hard-throws `TailscaleUpException` whenever `authKey`
+  is empty and no local state exists yet, rather than returning `needsLogin`. Confirmed live on a
+  real device before any further design work, not just read from source.
+  <br>**Final design**: a reusable Tailscale auth key, generated once by the desktop owner in the
+  Tailscale admin console and pasted into `Aer.Ui`'s Remote Access screen (`RemoteViewModel`'s
+  `TailscaleAuthKey`, persisted via `LocalUiConfigurationStore`). It rides along as a `tskey` query
+  param in the same pairing QR the phone already scans (`RemoteViewModel.GeneratePairingCodeAsync`)
+  — never sent over the network, only rendered into the on-screen QR image — so scanning the QR
+  remains the phone's *entire* setup step, same as before. This is materially less setup than the
+  rejected OAuth design (one pasted key vs. an ACL tag + OAuth client + secret-at-rest + Tailscale
+  API code), and each Aer install is single-tenant against its own owner's own tailnet — a new user
+  self-generates their own key in their own admin console, never something requested from anyone
+  else. Manual host+code entry (the QR-scan fallback) can't carry a key, so tailnet-only pairing
+  requires the QR scan; `PairingScreen` surfaces a clear error rather than the raw Tailscale
+  exception if a tailnet host is entered by hand with no scanned key.
+  <br>**Key lifecycle, for operators**: the auth key's own expiry (settable up to 90 days when
+  generating it) only bounds how long that key can enroll *new* phones — already-enrolled phones are
+  unaffected once it expires; the desktop owner just pastes a fresh key for the next new phone. A
+  *separate*, per-device Tailscale setting ("key expiry", commonly ~180 days by default, disableable
+  per device in the admin console) governs whether an already-enrolled phone eventually needs to
+  re-authenticate — unrelated to anything this phase built.
 - **Built**: the `tailscale` package (0.5.0) added to `Aer.Mobile`; a `TailnetGateway` wrapper
   (`lib/daemon/tailnet_gateway.dart`) around `Tailscale.instance`'s `init`/`up`/`http.client`/
-  `onStateChange`; the pairing screen detects a tailnet-only host (Tailscale's CGNAT range,
-  100.64.0.0/10 — the same range the desktop's `SidecarTailnetHost` always uses) and drives the
-  interactive sign-in before pairing. Both the connectivity proof (`GET /api/version`) and the
-  pairing call itself route through `Tailscale.instance.http.client` — a real corrected finding
-  versus the original issue text, which assumed only later REST calls would need tsnet-routing: a
-  100.x address has no route through the phone's regular OS network stack at all (`tsnet` is
-  userspace-only), so pairing itself has to go over it too. `CredentialsStore` gained a
-  `tsnetRouted` flag so a relaunch knows to bring the node back up before reconnecting. Added the
-  `android.intent.action.VIEW`/`https` `<queries>` manifest entry `url_launcher` needs on
-  Android 11+ package visibility.
+  `onStateChange`, plus `resolveNeedsLogin` (see below); the pairing screen detects a tailnet-only
+  host (Tailscale's CGNAT range, 100.64.0.0/10 — the same range the desktop's `SidecarTailnetHost`
+  always uses) and joins the tailnet with the QR-scanned key before pairing. Both the connectivity
+  proof (`GET /api/version`) and the pairing call itself route through `Tailscale.instance.http.client`
+  — a real corrected finding versus the original issue text, which assumed only later REST calls
+  would need tsnet-routing: a 100.x address has no route through the phone's regular OS network
+  stack at all (`tsnet` is userspace-only), so pairing itself has to go over it too. `CredentialsStore`
+  gained a `tsnetRouted` flag so a relaunch knows to bring the node back up before reconnecting.
+  Added the `android.intent.action.VIEW`/`https` `<queries>` manifest entry `url_launcher` needs on
+  Android 11+ package visibility. On the desktop side: `LocalUiConfigurationStore`/`TaskSession`
+  gained the `TailscaleAuthKey` load/save round trip, and `RemoteView.axaml` gained the key
+  entry field, all gated to the local owner (the key never crosses the daemon's HTTP surface).
+- **Real-device finding: `up()` can resolve on a transient `needsLogin` snapshot even with a valid
+  auth key.** With a valid key, registration can succeed server-side (the phone shows up in the
+  Tailscale admin console immediately) while the client still reports `needsLogin` for several
+  seconds afterward, with `authUrl` never populating at all because no interactive step is actually
+  needed — confirmed live, reproducibly, on cellular. `TailnetGateway.resolveNeedsLogin` polls
+  `status()` and resolves as soon as *either* `authUrl` appears *or* the node reaches `running` on
+  its own, rather than only waiting on the former and timing out.
 - **Known local-Windows-only build quirk**: the `tailscale` package's native-asset build hook needs
   `GOCACHE`/`%LocalAppData%` in the environment it sees; a Windows-only Gradle/`flutter test`
   invocation path strips those before invoking it, and building the package's Windows-host native
   stub (only needed for `flutter test`, not the Android build) separately needs a C compiler (MinGW
-  gcc) not installed on this dev machine. Reasoned (not yet confirmed at the time of writing) to be
-  Windows-host-specific and not a CI concern: Go on Linux locates its cache via `$HOME`, which
-  survives the same env stripping, and `ubuntu-latest` ships gcc.
-- **Not yet done / not provable in an agent session**: real on-device pairing — build an APK, sign
-  in interactively, confirm the phone appears in the Tailscale admin console, get a real
-  `/api/version` response back over the tailnet. Same permanently-human-gated shape as Phase 4/5's
-  cross-network proofs.
-- **Verification**: `flutter analyze` clean against the real installed package API; `flutter build
-  apk --debug` succeeds locally (Android/ARM). Real-device pairing **unproven** — pending the
-  owner's own run, same bar as this milestone's other live-Tailscale gates.
+  gcc) not installed on this dev machine. Confirmed Windows-host-specific and not a CI concern via a
+  fully green CI run: `mobile` job (`ubuntu-latest`) passes `flutter test` and `flutter build apk`
+  cleanly once given a Go 1.26+ toolchain (`actions/setup-go@v5`, this job's own prior gap).
+- **Verification — done, real device:** built a debug APK, installed on a physical Pixel 10 Pro over
+  `adb`, and completed a real pairing over the tailnet — including one run with the phone off Wi-Fi
+  entirely (cellular only), proving the cross-network case, not just same-LAN. The phone joined the
+  tailnet non-interactively via the QR-embedded key, appeared in the Tailscale admin console, and a
+  real `/api/version` response (and the pairing call itself) round-tripped over tsnet end to end.
 
 ### Phase 8: `Aer.Mobile` — WS-over-tsnet Transport
 - **Goal**: real-time `watch()` behavior over the tsnet transport Phase 7 proved out, matching what
@@ -415,8 +442,9 @@ items now that a real remote client exists to harden against.
   `cancelRun`, `openTask`, `fetchArtifact`) and `watch()` gets a tsnet-routed variant; LAN-paired
   mode's existing `http`/`web_socket_channel` calls stay untouched.
 - **Verification (planned)**: unit coverage for the WS frame encode/decode logic (no live network
-  needed), plus a real cross-network run — phone on cellular, desktop on Wi-Fi, both only joined via
-  their embedded tsnet nodes — reusing `docs/runbooks/tailscale-cross-network-proof.md`'s shape.
+  needed), plus a real run over the WS transport specifically — the tailnet join and cross-network
+  path itself (phone on cellular, desktop on Wi-Fi) is already proven in Phase 7; this phase's own
+  live check only needs to confirm the new WS framing round-trips correctly on top of it.
 
 ---
 
