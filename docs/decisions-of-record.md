@@ -110,7 +110,17 @@ issues.
   everything else stays quiet. The nav rail marks the active section in accent (Phase 5).
 - **The app icon is the mark, generated, committed** — a mini-DAG on the accent teal,
   multi-size PNG-in-ICO, produced by a scripted render (no design-tool dependency); regenerate
-  by re-running the script if the accent ever changes (Phase 5).
+  by re-running the script if the accent ever changes (Phase 5). Refreshed post-M21 (issue #238,
+  standalone follow-up, no milestone): a two-source fan-in mark on the real `Color.Accent` →
+  `Color.AccentPressed` gradient token (this bullet's original render predated that token
+  existing), curved Bezier edges instead of straight, tested down to 16×16 before being chosen
+  over a fan-out alternative (illegible under 32px — the crowded single top node smears into the
+  curve strokes; fan-in's two separate top nodes hold a readable silhouette at every size). Given
+  to `Aer.Mobile` for the first time too (previously Flutter's unmodified stock icon) — one mark,
+  shared across desktop and mobile launcher icons. An animated fan-in→fan-out→"A"→"AER Flow"
+  wordmark treatment was considered for a splash/loading surface and is tracked as a future
+  direction under M24, not built here — motion resolves the letterform ambiguity a static icon
+  can't, so the animated and static marks intentionally differ.
 - **The dialogue step's stub is a script at the adapter-registry boundary, not a fake vendor
   CLI** — `NonExpertPathGateTests` registers a `StubDialogueScriptAdapter` under the `"dialogue"`
   key that dispatches a local PowerShell/sh script writing a schema-valid transcript and the
