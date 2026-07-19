@@ -48,9 +48,12 @@
                 <Border Classes="card" Margin="0,0,0,8">
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="Name:" VerticalAlignment="Center" />
                       <TextBox Text="{Binding Name}" Width="160" PlaceholderText="Step name" />
                       <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}" Width="120" />
+                      <TextBlock Text="Produces:" VerticalAlignment="Center" />
                       <TextBox Text="{Binding ProducesFileName}" Width="180" PlaceholderText="Produces (file name)" />
+                      <TextBlock Text="Model:" VerticalAlignment="Center" />
                       <TextBox Text="{Binding Model}" Width="160" PlaceholderText="Model (optional)" />
                       <CheckBox Content="Review gate" IsChecked="{Binding HasReviewGate}"
                                 ToolTip.Tip="Pause here for your review before the workflow continues — approve, retry, send back, or reject." />
@@ -71,14 +74,19 @@
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
                     </StackPanel>
+                    <TextBlock Text="Prompt:" IsVisible="{Binding !IsDialogue}" />
                     <TextBox Text="{Binding Prompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="52"
                              PlaceholderText="What should this step's runner do?" IsVisible="{Binding !IsDialogue}" />
                     <StackPanel Spacing="4" IsVisible="{Binding IsDialogue}">
+                      <TextBlock Text="Opening prompt:" />
                       <TextBox Text="{Binding SeedPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="40"
                                PlaceholderText="Opening prompt — what the conversation is about" />
                       <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Turns:" VerticalAlignment="Center" />
                         <TextBox Text="{Binding TurnBudgetText}" Width="80" PlaceholderText="Turns" />
+                        <TextBlock Text="Claude's instructions:" VerticalAlignment="Center" />
                         <TextBox Text="{Binding InitiatorPreamble}" Width="260" PlaceholderText="First voice's instructions (Claude)" />
+                        <TextBlock Text="Gemini's instructions:" VerticalAlignment="Center" />
                         <TextBox Text="{Binding ResponderPreamble}" Width="260" PlaceholderText="Second voice's instructions (Gemini)" />
                       </StackPanel>
                     </StackPanel>
@@ -123,14 +131,17 @@
       <StackPanel Spacing="{DynamicResource Space.3}" Margin="16,8,16,16">
       <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Template file:" VerticalAlignment="Center" />
         <TextBox x:Name="TemplateEditorPathBox" Width="360" PlaceholderText="Template file to edit / save to" />
         <Button x:Name="NewTemplateButton" Content="New template" />
         <Button x:Name="EditTemplateButton" Content="Open in editor" />
         <Button x:Name="SaveTemplateButton" Content="Save" IsEnabled="{Binding TemplateEditor.IsDirty}" />
       </StackPanel>
       <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Template ID:" VerticalAlignment="Center" />
         <TextBox Text="{Binding TemplateEditor.TemplateId}" Width="300"
                  PlaceholderText="WorkflowTemplateId" IsEnabled="{Binding TemplateEditor.IsOpen}" />
+        <TextBlock Text="Version:" VerticalAlignment="Center" />
         <TextBox Text="{Binding TemplateEditor.TemplateVersionText}" Width="120"
                  PlaceholderText="Version" IsEnabled="{Binding TemplateEditor.IsOpen}" />
       </StackPanel>
@@ -146,13 +157,18 @@
             <Border Classes="card" Margin="0,0,0,8">
               <StackPanel Spacing="4">
                 <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Step ID:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding StepId}" Width="140" PlaceholderText="StepId" />
+                  <TextBlock Text="Worker:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding Worker}" Width="140" PlaceholderText="Worker" />
+                  <TextBlock Text="Max attempts:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding MaxAttemptsText}" Width="90" PlaceholderText="MaxAttempts" />
                   <Button Content="Remove" Command="{Binding RemoveCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Inputs:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding InputsText}" Width="220" PlaceholderText="Inputs (comma-separated)" />
+                  <TextBlock Text="Outputs:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding OutputsText}" Width="220" PlaceholderText="Outputs (comma-separated)" />
                 </StackPanel>
                 <TextBlock Text="Depends on:" />
@@ -209,6 +225,7 @@
 
       <TextBlock Classes="heading" Text="Worker-bindings editor (create or edit a bindings file — never persisted in a task directory):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="Bindings file:" VerticalAlignment="Center" />
         <TextBox x:Name="BindingsEditorPathBox" Width="360" PlaceholderText="Bindings file to edit / save to" />
         <Button x:Name="NewBindingsButton" Content="New bindings" />
         <Button x:Name="EditBindingsButton" Content="Open in editor" />
@@ -224,16 +241,23 @@
             <Border Classes="card" Margin="0,0,0,8">
               <StackPanel Spacing="4">
                 <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Worker name:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding WorkerName}" Width="150" PlaceholderText="Worker role name" />
+                  <TextBlock Text="Adapter:" VerticalAlignment="Center" />
                   <ComboBox ItemsSource="{Binding AdapterCandidates}" Text="{Binding Adapter}" IsEditable="True"
                             Width="120" PlaceholderText="Adapter" />
+                  <TextBlock Text="Model:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding Model}" Width="150" PlaceholderText="Model (optional)" />
+                  <TextBlock Text="Timeout:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding TimeoutText}" Width="90" PlaceholderText="Timeout (hh:mm:ss)" />
                   <Button Content="Remove" Command="{Binding RemoveCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Contract name:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding ContractWorkerName}" Width="150" PlaceholderText="Contract WorkerName" />
+                  <TextBlock Text="Required inputs:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding RequiredInputsText}" Width="200" PlaceholderText="Required inputs (comma-separated)" />
+                  <TextBlock Text="Optional metadata:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding OptionalMetadataText}" Width="200" PlaceholderText="Optional metadata (comma-separated)" />
                 </StackPanel>
                 <!-- M21 Phase 1 (permission-scope model): the builder is the default, primary path
@@ -255,7 +279,9 @@
                 </StackPanel>
                 <TextBlock Text="{Binding PermissionGrantGapWarning}" TextWrapping="Wrap"
                            Foreground="{DynamicResource Status.Failed}" IsVisible="{Binding HasPermissionGrantGapWarning}" />
+                <TextBlock Text="Prompt template:" />
                 <TextBox Text="{Binding PromptTemplate}" AcceptsReturn="True" TextWrapping="Wrap" Height="60" PlaceholderText="Prompt template" />
+                <TextBlock Text="Produced outputs (raw JSON array):" />
                 <TextBox Text="{Binding ProducedOutputsJson}" AcceptsReturn="True" TextWrapping="Wrap" Height="60"
                          Classes="mono" PlaceholderText="Produced outputs (raw JSON array)" />
               </StackPanel>
