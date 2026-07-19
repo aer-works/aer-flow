@@ -44,10 +44,14 @@ public sealed partial class RemoteViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasHost))]
+    [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     private string? host;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
+    [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     private int? port;
 
     [ObservableProperty]
@@ -97,6 +101,9 @@ public sealed partial class RemoteViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
+    [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
     private string? sidecarTailscaleIp;
 
     [ObservableProperty]
@@ -107,15 +114,23 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
     private string? sidecarError;
 
-    [ObservableProperty]
-    private byte[]? tailnetQrPngBytes;
-
     public bool HasHost => Host != null;
     public bool HasError => ErrorText != null;
     public bool HasPairedClients => PairedClients.Count > 0;
     public string? SidecarTailnetHost => SidecarTailscaleIp != null && Port != null ? $"{SidecarTailscaleIp}:{Port}" : null;
     public bool ShouldPollSidecarStatus => IsRemoteEnabled && !SidecarReady;
     public string ToggleButtonText => IsRemoteEnabled ? "Turn off remote access" : "Turn on remote access";
+
+    /// <summary>
+    /// The single host the "Pair a phone" section's QR/code target — the tailnet address once the
+    /// sidecar is ready (Tailscale supersedes LAN, per the M21 Phase 5/6 decision of record), falling
+    /// back to the LAN address otherwise. Found live that showing a second, separate Tailscale QR
+    /// alongside this one was genuinely confusing (two QR codes, unclear which to scan) — there is
+    /// now ever only one pairing target displayed.
+    /// </summary>
+    public string? EffectivePairingHost => SidecarTailnetHost ?? Host;
+    public bool HasEffectivePairingHost => EffectivePairingHost != null;
+    public bool IsPairingOverTailnet => SidecarTailnetHost != null;
 
     /// <summary>
     /// The sidecar's state as exactly one of four mutually exclusive phases — the single source of
@@ -178,10 +193,9 @@ public sealed partial class RemoteViewModel : ObservableObject
                 SidecarAuthUrl = null;
                 SidecarTailscaleIp = null;
                 SidecarError = null;
-                TailnetQrPngBytes = null;
             }
 
-            if (Host != null)
+            if (EffectivePairingHost != null)
             {
                 await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
             }
@@ -236,9 +250,10 @@ public sealed partial class RemoteViewModel : ObservableObject
         SidecarTailscaleIp = status.TailscaleIp;
         SidecarError = status.Error;
 
-        // The tailnet QR/host only exists once SidecarTailscaleIp is known -- rebuild it the
-        // moment enrollment completes rather than waiting for the next unrelated code refresh.
-        if (justBecameReady && Host != null)
+        // EffectivePairingHost switches from LAN to tailnet the instant SidecarReady flips -- rebuild
+        // the single pairing QR against the new host right away rather than waiting for the next
+        // unrelated code refresh, so "Pair a phone" doesn't keep showing a stale LAN QR after ready.
+        if (justBecameReady && EffectivePairingHost != null)
         {
             await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
         }
@@ -294,7 +309,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// </summary>
     public async Task GeneratePairingCodeAsync(TaskSession session, CancellationToken cancellationToken = default)
     {
-        if (Host == null)
+        if (EffectivePairingHost is not { } pairingHost)
         {
             PairingCode = null;
             QrPngBytes = null;
@@ -311,15 +326,7 @@ public sealed partial class RemoteViewModel : ObservableObject
         ErrorText = null;
         PairingCode = code.Code;
         PairingCodeExpiresInSeconds = code.ExpiresInSeconds;
-        QrPngBytes = BuildQrPng($"aer://pair?host={Uri.EscapeDataString(Host)}&code={Uri.EscapeDataString(code.Code)}");
-
-        // Same code, second QR against the sidecar's tailnet address (Phase 5, #242) — only once
-        // tsnet enrollment is actually done; the code is a shared secret, not host-bound, so
-        // whichever of the two a phone scans first just consumes it, same as re-scanning the LAN
-        // QR twice already would.
-        TailnetQrPngBytes = SidecarTailnetHost is { } tailnetHost
-            ? BuildQrPng($"aer://pair?host={Uri.EscapeDataString(tailnetHost)}&code={Uri.EscapeDataString(code.Code)}")
-            : null;
+        QrPngBytes = BuildQrPng($"aer://pair?host={Uri.EscapeDataString(pairingHost)}&code={Uri.EscapeDataString(code.Code)}");
     }
 
     /// <summary>The toggle button's action — public and directly callable (not a <c>[RelayCommand]</c>), the same reason <see cref="HomeViewModel.RefreshAsync"/> takes a <see cref="TaskSession"/> parameter rather than capturing one: this ViewModel is constructed before the session exists (<see cref="MainWindowViewModel"/>'s property-initializer <c>new()</c>), so the view's code-behind supplies it at call time instead.</summary>

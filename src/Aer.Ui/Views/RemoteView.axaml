@@ -43,27 +43,25 @@
           <Button x:Name="RemoteOpenSidecarAuthButton" Classes="accent" HorizontalAlignment="Left" Content="Sign in to Tailscale" />
         </StackPanel>
 
-        <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.IsSidecarReadyPhase}">
-          <TextBlock Classes="secondary" TextWrapping="Wrap"
-                     Text="Ready. This works from any network (e.g. a phone on cellular data), as long as it's signed into the same Tailscale account." />
-          <Border Classes="card" Width="240" Height="240" HorizontalAlignment="Left">
-            <Image Source="{Binding Remote.TailnetQrPngBytes, Converter={StaticResource ByteArrayToBitmapConverter}}"
-                   Width="220" Height="220" Stretch="Uniform" />
-          </Border>
-          <StackPanel Spacing="{DynamicResource Space.1}">
-            <TextBlock Classes="caption" Text="Tailnet host" />
-            <TextBlock Classes="mono" Text="{Binding Remote.SidecarTailnetHost}" />
-          </StackPanel>
-        </StackPanel>
+        <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding Remote.IsSidecarReadyPhase}"
+                   Text="Ready — see &quot;Pair a phone&quot; below, now reachable from any network." />
 
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                    IsVisible="{Binding Remote.IsSidecarUnavailable}" Text="{Binding Remote.SidecarError}" />
       </StackPanel>
 
-      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasHost}">
+      <!-- Single pairing target (Phase 5/6, #242/#243): EffectivePairingHost prefers the sidecar's
+           tailnet address once ready, falling back to LAN otherwise. Found live that showing a
+           second, separate Tailscale QR alongside this one was confusing (two QR codes, unclear
+           which to scan), so there is now ever only one. -->
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasEffectivePairingHost}">
         <TextBlock Classes="heading" Text="Pair a phone" />
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                    Text="Open Aer.Mobile, scan this code (or type the host and code in by hand), and it's paired." />
+        <TextBlock Classes="caption" IsVisible="{Binding Remote.IsPairingOverTailnet}"
+                   Text="Via Tailscale — works from any network the phone has data on." />
+        <TextBlock Classes="caption" IsVisible="{Binding !Remote.IsPairingOverTailnet}"
+                   Text="Via local network — phone must be on the same Wi-Fi." />
         <Border Classes="card" Width="240" Height="240" HorizontalAlignment="Left">
           <Image Source="{Binding Remote.QrPngBytes, Converter={StaticResource ByteArrayToBitmapConverter}}"
                  Width="220" Height="220" Stretch="Uniform" />
@@ -71,7 +69,7 @@
         <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.3}">
           <StackPanel Spacing="{DynamicResource Space.1}">
             <TextBlock Classes="caption" Text="Host" />
-            <TextBlock Classes="mono" Text="{Binding Remote.Host}" />
+            <TextBlock Classes="mono" Text="{Binding Remote.EffectivePairingHost}" />
           </StackPanel>
           <StackPanel Spacing="{DynamicResource Space.1}">
             <TextBlock Classes="caption" Text="Pairing code" />
@@ -87,7 +85,7 @@
         </StackPanel>
       </StackPanel>
 
-      <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !Remote.HasHost}"
+      <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !Remote.HasEffectivePairingHost}"
                  Text="No network connection found — can't generate a pairing code until this computer is on a network." />
 
       <!-- Phase 6 (#243): PairedClientsStore could add a client but never remove one — this is the
