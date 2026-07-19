@@ -267,22 +267,34 @@ items now that a real remote client exists to harden against.
   scan never dead-ends. `android.permission.CAMERA` (+ an optional `android.hardware.camera`
   feature) added to the main manifest, the same "not in Flutter's bare template" gap Phase 2 hit
   for `INTERNET`.
-- **Status**: Phase 3 is code-complete and automated-verified. `pixi run test` (636/636 .NET, up
-  from 635 — a new `GetVersion_ReportsIsRemote_FalseForALoopbackOnlyDaemon` integration test),
-  `pixi run mobile-analyze`/`mobile-test` (4/4), `pixi run fmt-check`, `pixi run lint`, and
-  `pixi run mobile-build` all clean. **Not yet exercised on real hardware** — scanning the desktop's
-  QR from a phone and completing pairing with no manual typing is this phase's actual verification
-  bar (same as Phase 2's own precedent) and is a human action item, not something closable from an
-  agent session alone.
-- **Verification**: scan the QR from `Aer.Mobile`'s pairing screen, complete pairing with no manual
-  IP/code typing. **Pending** — needs a real Android phone.
+- **Status**: Phase 3 is done. `pixi run test` (636/636 .NET, up from 635 — a new
+  `GetVersion_ReportsIsRemote_FalseForALoopbackOnlyDaemon` integration test), `pixi run
+  mobile-analyze`/`mobile-test` (4/4), `pixi run fmt-check`, `pixi run lint`, and `pixi run
+  mobile-build` all clean. Verified on real hardware — see below.
+- **Verification**: done, on real hardware, 2026-07-19 — scanning the desktop's QR from
+  `Aer.Mobile`'s pairing screen and completing pairing with no manual IP/code typing. First attempt
+  surfaced three real-device-only bugs, fixed in a follow-up commit before the retest passed: the
+  pairing-code countdown never ticked (a stale "Expires in 60s" stayed on screen instead of
+  refreshing the code past expiry); `LanAddress.TryGetPrimary()` was picking this machine's WSL
+  Hyper-V vEthernet adapter over its real Wi-Fi adapter (same virtual-adapter ambiguity documented in
+  `LanAddress.cs`'s own remarks), which scanned fine but then hung on connect — fixed by filtering
+  adapters by name/description; and the `--remote` toggle reliably failed to restart the daemon.
+  With those fixed, the QR scan completed pairing end to end with no manual host/code entry on
+  either side.
 
 ### Phase 4: Cross-Network Proof via Tailscale (Manual Install)
 - **Goal**: Prove the "from anywhere" property using Phases 2–3 unchanged — standalone Tailscale
   apps on both ends (BYO free account), different networks, same pair/approve flow as Phase 2's LAN
   test. Zero new code; de-risks Phase 5 by confirming the daemon API has no LAN-only assumption.
+- **Key finding**: the pairing QR always encodes the desktop's LAN IP — `LanAddress.TryGetPrimary()`
+  deliberately filters out Tailscale's virtual adapter (same logic that filters WSL/VMware/etc.), so
+  cross-network pairing needs manual host entry (the desktop's tailnet IP) instead of a QR scan.
+  See `docs/runbooks/tailscale-cross-network-proof.md` for the full runbook.
+- **Status**: runbook shipped (#240). **Not yet run** — needs a real phone on a network separate
+  from the desktop and a personal Tailscale account on both ends; a human action item, same as
+  Phase 2/3's real-hardware gates.
 - **Verification**: phone on cellular data, desktop on home Wi-Fi, both on the same personal tailnet —
-  approve a paused task from the phone.
+  approve a paused task from the phone. **Pending** — see the runbook above.
 
 ### Phase 5: Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - **Goal**: Remove the manual Tailscale app install from Phase 4. Desktop: a `tsnet`-based Go
