@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using QRCoder;
 
 namespace Aer.Ui.Core;
@@ -15,10 +17,27 @@ namespace Aer.Ui.Core;
 /// if a phone's general-purpose camera app ever scans it outside the app.
 /// </para>
 /// </summary>
+/// <summary>The Go tsnet sidecar's state as exactly one of four mutually exclusive phases (Phase 5, #242) — see <see cref="RemoteViewModel.CurrentSidecarPhase"/>.</summary>
+public enum SidecarPhase
+{
+    Starting,
+    NeedsSignIn,
+    Ready,
+    Unavailable,
+}
+
 public sealed partial class RemoteViewModel : ObservableObject
 {
+    public RemoteViewModel()
+    {
+        PairedClients.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPairedClients));
+    }
+
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleButtonText))]
+    [NotifyPropertyChangedFor(nameof(ShouldPollSidecarStatus))]
+    [NotifyPropertyChangedFor(nameof(ShowLanEncryptionWarning))]
     private bool isRemoteEnabled;
 
     [ObservableProperty]
@@ -26,7 +45,15 @@ public sealed partial class RemoteViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasHost))]
+    [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     private string? host;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
+    [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
+    private int? port;
 
     [ObservableProperty]
     private string? pairingCode;
@@ -44,9 +71,96 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasError))]
     private string? errorText;
 
+    /// <summary>Paired devices management list (Phase 6, #243) — populated on every <see cref="RefreshAsync"/>, independent of the current toggle state, since revocation is meaningful whether or not remote access happens to be on right now.</summary>
+    public ObservableCollection<PairedClientItemViewModel> PairedClients { get; } = new();
+
+    // M21 Phase 5 (#242): the Go tsnet sidecar's state, polled while remote access is on and not
+    // yet Ready (MainWindow's existing 1s pairing-countdown timer drives RefreshSidecarStatusAsync
+    // too — see ShouldPollSidecarStatus). Not proven live end to end until this session's own
+    // manual test (owner completed real tsnet enrollment, confirmed connected in the Tailscale
+    // admin console) — see IMPLEMENTATION_PLAN.md. The four fields below are read only through
+    // CurrentSidecarPhase/the Is*-phase booleans, never directly in the view: found live that
+    // binding each field's own Has* flag independently let more than one of the view's sections
+    // render at once during in-between polls (e.g. a just-cleared AuthUrl racing a not-yet-set
+    // TailscaleIp), instead of exactly one state ever being true at a time.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShouldPollSidecarStatus))]
+    [NotifyPropertyChangedFor(nameof(CurrentSidecarPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarStarting))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarNeedsSignIn))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarReadyPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
+    private bool sidecarReady;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentSidecarPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarStarting))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarNeedsSignIn))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarReadyPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
+    private string? sidecarAuthUrl;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
+    [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(ShowLanEncryptionWarning))]
+    private string? sidecarTailscaleIp;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentSidecarPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarStarting))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarNeedsSignIn))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarReadyPhase))]
+    [NotifyPropertyChangedFor(nameof(IsSidecarUnavailable))]
+    private string? sidecarError;
+
     public bool HasHost => Host != null;
     public bool HasError => ErrorText != null;
+    public bool HasPairedClients => PairedClients.Count > 0;
+    public string? SidecarTailnetHost => SidecarTailscaleIp != null && Port != null ? $"{SidecarTailscaleIp}:{Port}" : null;
+    public bool ShouldPollSidecarStatus => IsRemoteEnabled && !SidecarReady;
     public string ToggleButtonText => IsRemoteEnabled ? "Turn off remote access" : "Turn on remote access";
+
+    /// <summary>
+    /// The single host the "Pair a phone" section's QR/code target — the tailnet address once the
+    /// sidecar is ready (Tailscale supersedes LAN, per the M21 Phase 5/6 decision of record), falling
+    /// back to the LAN address otherwise. Found live that showing a second, separate Tailscale QR
+    /// alongside this one was genuinely confusing (two QR codes, unclear which to scan) — there is
+    /// now ever only one pairing target displayed.
+    /// </summary>
+    public string? EffectivePairingHost => SidecarTailnetHost ?? Host;
+    public bool HasEffectivePairingHost => EffectivePairingHost != null;
+    public bool IsPairingOverTailnet => SidecarTailnetHost != null;
+
+    /// <summary>
+    /// The plaintext-LAN warning only applies while traffic can actually still travel over plain
+    /// LAN: once the tsnet sidecar is ready and pairing has moved onto the tailnet, the transport is
+    /// WireGuard-encrypted end to end, and a warning that says otherwise is just wrong, not merely
+    /// stale. Found live: this card had no visibility binding at all before, so it kept saying
+    /// "traffic isn't encrypted yet" even after the sidecar reached Ready and every paired client was
+    /// reached over Tailscale.
+    /// </summary>
+    public bool ShowLanEncryptionWarning => IsRemoteEnabled && !IsPairingOverTailnet;
+
+    /// <summary>
+    /// The sidecar's state as exactly one of four mutually exclusive phases — the single source of
+    /// truth the view binds against, instead of three independently-bindable Has* flags that could
+    /// render simultaneously. Order matters: Ready wins over a stale AuthUrl (the sidecar clears its
+    /// own AuthUrl on becoming ready, but a client-side field only updates on the next poll), and an
+    /// explicit error only counts once there's neither a pending sign-in nor a ready state to show.
+    /// </summary>
+    public SidecarPhase CurrentSidecarPhase =>
+        SidecarReady ? SidecarPhase.Ready
+        : SidecarAuthUrl != null ? SidecarPhase.NeedsSignIn
+        : SidecarError != null ? SidecarPhase.Unavailable
+        : SidecarPhase.Starting;
+
+    public bool IsSidecarStarting => CurrentSidecarPhase == SidecarPhase.Starting;
+    public bool IsSidecarNeedsSignIn => CurrentSidecarPhase == SidecarPhase.NeedsSignIn;
+    public bool IsSidecarReadyPhase => CurrentSidecarPhase == SidecarPhase.Ready;
+    public bool IsSidecarUnavailable => CurrentSidecarPhase == SidecarPhase.Unavailable;
 
     /// <summary>
     /// Refreshes the daemon's current bind mode/port, this machine's LAN address, and a fresh
@@ -68,6 +182,7 @@ public sealed partial class RemoteViewModel : ObservableObject
             }
 
             IsRemoteEnabled = status.IsRemote;
+            Port = status.Port;
 
             var lanAddress = LanAddress.TryGetPrimary();
             Host = lanAddress != null ? $"{lanAddress}:{status.Port}" : null;
@@ -80,10 +195,132 @@ public sealed partial class RemoteViewModel : ObservableObject
                 _ => "Remote access is off — only this computer can reach Aer.Daemon.",
             };
 
-            if (Host != null)
+            if (IsRemoteEnabled)
+            {
+                await RefreshSidecarStatusAsync(session, cancellationToken).ConfigureAwait(true);
+            }
+            else
+            {
+                SidecarReady = false;
+                SidecarAuthUrl = null;
+                SidecarTailscaleIp = null;
+                SidecarError = null;
+            }
+
+            if (EffectivePairingHost != null)
             {
                 await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
             }
+
+            await RefreshPairedClientsAsync(session, cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Re-reads the paired-devices list. Called from <see cref="RefreshAsync"/> and again after a successful <see cref="RemovePairedClientAsync"/> so the list reflects the revocation immediately.</summary>
+    public async Task RefreshPairedClientsAsync(TaskSession session, CancellationToken cancellationToken = default)
+    {
+        var clients = await session.GetPairedClientsAsync(cancellationToken).ConfigureAwait(true);
+        if (clients == null) return;
+
+        PairedClients.Clear();
+        foreach (var client in clients)
+        {
+            PairedClients.Add(new PairedClientItemViewModel(
+                client.ClientId, client.Name, client.PairedAt,
+                clientId => RemovePairedClientAsync(session, clientId)));
+        }
+    }
+
+    /// <summary>
+    /// Re-reads the tsnet sidecar's state (Phase 5, #242) — called once from <see cref="RefreshAsync"/>
+    /// and then repeatedly from <c>MainWindow</c>'s existing 1s pairing-countdown timer while
+    /// <see cref="ShouldPollSidecarStatus"/> is true, so the one-time Tailscale sign-in link (and,
+    /// once enrollment finishes, the tailnet address) show up without a manual refresh. Doesn't
+    /// touch <see cref="IsBusy"/> — unlike <see cref="RefreshAsync"/>, this runs silently in the
+    /// background every second and shouldn't flicker the toggle button's enabled state.
+    /// </summary>
+    public async Task RefreshSidecarStatusAsync(TaskSession session, CancellationToken cancellationToken = default)
+    {
+        var status = await session.GetSidecarStatusAsync(cancellationToken).ConfigureAwait(true);
+        if (status == null)
+        {
+            SidecarReady = false;
+            SidecarAuthUrl = null;
+            SidecarTailscaleIp = null;
+            SidecarError = "Could not reach the zero-config (Tailscale) sidecar.";
+            return;
+        }
+
+        var justBecameReady = status.Ready && !SidecarReady;
+
+        SidecarReady = status.Ready;
+        SidecarAuthUrl = status.AuthUrl;
+        SidecarTailscaleIp = status.TailscaleIp;
+        SidecarError = status.Error;
+
+        // EffectivePairingHost switches from LAN to tailnet the instant SidecarReady flips -- rebuild
+        // the single pairing QR against the new host right away rather than waiting for the next
+        // unrelated code refresh, so "Pair a phone" doesn't keep showing a stale LAN QR after ready.
+        if (justBecameReady && EffectivePairingHost != null)
+        {
+            await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Signs the tsnet sidecar out and back into re-enrollment — the in-app replacement for
+    /// deleting the node from the Tailscale admin console and restarting Aer.Ui. Not a
+    /// <c>[RelayCommand]</c> for the same reason <see cref="ToggleRemoteAsync"/> isn't. The daemon's
+    /// <c>/api/remote/sidecar-forget</c> answers as soon as the sidecar accepts the request — this
+    /// just resets local state to <see cref="SidecarPhase.Starting"/> so the view falls back to
+    /// "Starting..." immediately rather than briefly showing a stale Ready/tailnet-host, and the next
+    /// few polls from <see cref="RefreshSidecarStatusAsync"/> pick up the fresh sign-in link.
+    /// </summary>
+    public async Task ForgetSidecarAsync(TaskSession session, CancellationToken cancellationToken = default)
+    {
+        IsBusy = true;
+        ErrorText = null;
+
+        try
+        {
+            var ok = await session.ForgetSidecarAsync(cancellationToken).ConfigureAwait(true);
+            if (!ok)
+            {
+                ErrorText = "Could not sign the sidecar out — it may not be running.";
+                return;
+            }
+
+            SidecarReady = false;
+            SidecarAuthUrl = null;
+            SidecarTailscaleIp = null;
+            SidecarError = null;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Revokes a paired device's token. Not a <c>[RelayCommand]</c> for the same reason <see cref="ToggleRemoteAsync"/> isn't — the view's code-behind supplies <paramref name="session"/> at call time.</summary>
+    public async Task RemovePairedClientAsync(TaskSession session, string clientId, CancellationToken cancellationToken = default)
+    {
+        IsBusy = true;
+        ErrorText = null;
+
+        try
+        {
+            var removed = await session.RevokePairedClientAsync(clientId, cancellationToken).ConfigureAwait(true);
+            if (!removed)
+            {
+                ErrorText = "Could not revoke that device — it may have already been removed.";
+                return;
+            }
+
+            await RefreshPairedClientsAsync(session, cancellationToken).ConfigureAwait(true);
         }
         finally
         {
@@ -118,7 +355,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// </summary>
     public async Task GeneratePairingCodeAsync(TaskSession session, CancellationToken cancellationToken = default)
     {
-        if (Host == null)
+        if (EffectivePairingHost is not { } pairingHost)
         {
             PairingCode = null;
             QrPngBytes = null;
@@ -135,7 +372,7 @@ public sealed partial class RemoteViewModel : ObservableObject
         ErrorText = null;
         PairingCode = code.Code;
         PairingCodeExpiresInSeconds = code.ExpiresInSeconds;
-        QrPngBytes = BuildQrPng($"aer://pair?host={Uri.EscapeDataString(Host)}&code={Uri.EscapeDataString(code.Code)}");
+        QrPngBytes = BuildQrPng($"aer://pair?host={Uri.EscapeDataString(pairingHost)}&code={Uri.EscapeDataString(code.Code)}");
     }
 
     /// <summary>The toggle button's action — public and directly callable (not a <c>[RelayCommand]</c>), the same reason <see cref="HomeViewModel.RefreshAsync"/> takes a <see cref="TaskSession"/> parameter rather than capturing one: this ViewModel is constructed before the session exists (<see cref="MainWindowViewModel"/>'s property-initializer <c>new()</c>), so the view's code-behind supplies it at call time instead.</summary>
@@ -173,4 +410,22 @@ public sealed partial class RemoteViewModel : ObservableObject
         var pngQrCode = new PngByteQRCode(data);
         return pngQrCode.GetGraphic(10);
     }
+}
+
+/// <summary>
+/// One row in the "Paired Devices" list (Phase 6, #243) — same shape as <c>HomeViewModel</c>'s
+/// <c>InboxItemViewModel</c>: a small, purpose-built item ViewModel whose <see cref="RemoveCommand"/>
+/// closes over the parent's already-available <c>TaskSession</c>, so the XAML can bind
+/// <c>Command="{Binding RemoveCommand}"</c> directly per row instead of the shell wiring a single
+/// static button (there's no way to know which row's button was clicked from a static handler).
+/// </summary>
+public sealed partial class PairedClientItemViewModel(
+    string clientId, string name, DateTime pairedAt, Func<string, Task> removeAsync)
+{
+    public string ClientId { get; } = clientId;
+    public string Name { get; } = name;
+    public DateTime PairedAt { get; } = pairedAt;
+
+    [RelayCommand]
+    private Task Remove() => removeAsync(ClientId);
 }

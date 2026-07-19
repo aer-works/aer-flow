@@ -911,6 +911,90 @@ public sealed class TaskSession
         }
     }
 
+    /// <summary>A paired device, mirroring <c>/api/pairing/clients</c>'s response shape (Phase 6, #243).</summary>
+    public sealed record PairedClientInfo(string ClientId, string Name, DateTime PairedAt);
+
+    /// <summary>Lists paired devices for the "Paired Devices" management list — desktop-owner-only, see <c>Program.cs</c>'s <c>IsLocalToken</c> gate.</summary>
+    public async Task<IReadOnlyList<PairedClientInfo>?> GetPairedClientsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/pairing/clients", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<IReadOnlyList<PairedClientInfo>>(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Revokes a paired device's token — its next request 401s immediately (Phase 6, #243).</summary>
+    public async Task<bool> RevokePairedClientAsync(string clientId, CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return false;
+
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"{_activeDaemonUrl}/api/pairing/clients/{Uri.EscapeDataString(clientId)}", cancellationToken).ConfigureAwait(true);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The Go tsnet sidecar's own state, mirrored via <c>/api/remote/sidecar-status</c>
+    /// (Phase 5, #242) — <c>Ready</c>/<c>TailscaleIp</c> once tsnet enrollment is complete,
+    /// <c>AuthUrl</c> while the one-time interactive Tailscale login is still pending, or
+    /// <c>Error</c> for anything else (sidecar binary missing, tsnet itself failed to start).</summary>
+    public sealed record SidecarStatus(bool Ready, string? AuthUrl, string? TailscaleIp, string? Error);
+
+    /// <summary>Not cached — proxies the sidecar's live <c>/status</c> straight through Aer.Daemon, so this never reports stale enrollment state.</summary>
+    public async Task<SidecarStatus?> GetSidecarStatusAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/remote/sidecar-status", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<SidecarStatus>(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Signs the tsnet sidecar out of its current tailnet and re-enters the one-time interactive
+    /// login flow — the in-app counterpart of deleting the node from the Tailscale admin console and
+    /// restarting Aer.Ui, which was previously the only way to disconnect it. Fire-and-forget on the
+    /// daemon side: the sidecar answers 202 immediately and does the actual logout/re-auth in the
+    /// background, so the next few <see cref="GetSidecarStatusAsync"/> polls are what surfaces the
+    /// fresh <c>AuthUrl</c> once it's ready.
+    /// </summary>
+    public async Task<bool> ForgetSidecarAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return false;
+
+        try
+        {
+            var response = await _httpClient.PostAsync($"{_activeDaemonUrl}/api/remote/sidecar-forget", null, cancellationToken).ConfigureAwait(true);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Flips the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel rebind
     /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the

@@ -1,2 +1,10 @@
 # SCM syntax highlighting & preventing 3-way merges
 pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
+
+# M21 Phase 5 (#242): gofmt is byte-strict about LF-only line endings. Without this, a Windows
+# checkout of src/Aer.Sidecar (Windows git's default core.autocrlf converts LF blobs to CRLF on
+# checkout) makes `gofmt -l .` report an already-clean file as needing formatting -- found live via
+# CI's Windows job failing fmt-check-sidecar despite an identical Linux job passing.
+*.go text eol=lf
+src/Aer.Sidecar/go.mod text eol=lf
+src/Aer.Sidecar/go.sum text eol=lf

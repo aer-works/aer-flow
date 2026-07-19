@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Net.Http;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -216,6 +218,110 @@ namespace Aer.Daemon
                 return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(aBytes, bBytes);
             }
 
+            // M21 Phase 5 (#242): the Go tsnet sidecar, spawned only in --remote mode. This is
+            // additive on top of the existing plain-LAN Kestrel bind above, not a replacement for
+            // it -- the tsnet path is not yet proven live (no cross-network run has exercised it,
+            // see IMPLEMENTATION_PLAN.md's Phase 5 entry), so Kestrel keeps listening on
+            // IPAddress.Any exactly as it did before. Retiring that proven path in favor of an
+            // unproven one in the same change would be a regression, not a hardening step -- Phase
+            // 6's loopback-only rebind is deliberately deferred until the sidecar path has an
+            // actual recorded green run, same convention CLAUDE.md's "Live-vendor smoke tests"
+            // section already applies to vendor-CLI gates.
+            Process? sidecarProcess = null;
+            int? sidecarStatusPort = null;
+            string? sidecarUnavailableReason = null;
+            var sidecarStatusPortFile = Path.Combine(aerDir, "sidecar-status.port");
+            var sidecarHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+
+            void TryAppendSidecarLog(string path, string line)
+            {
+                try { File.AppendAllText(path, line + Environment.NewLine); } catch { /* best-effort */ }
+            }
+
+            void TryStartSidecar(int kestrelPort)
+            {
+                var sidecarExeName = OperatingSystem.IsWindows() ? "aer-sidecar.exe" : "aer-sidecar";
+                var sidecarPath = Path.Combine(AppContext.BaseDirectory, sidecarExeName);
+                if (!File.Exists(sidecarPath))
+                {
+                    // Permanent, not "starting" -- without this, /api/remote/sidecar-status would
+                    // say "starting" forever instead of telling the UI (and whoever's staring at
+                    // it) that zero-config needs `pixi run build-sidecar` first.
+                    sidecarUnavailableReason = "aer-sidecar isn't built -- run `pixi run build-sidecar` (requires a Go toolchain), then restart remote access. Falling back to plain LAN.";
+                    Console.WriteLine($"aer-sidecar not found at {sidecarPath} -- --remote falls back to plain LAN only.");
+                    return;
+                }
+
+                try { if (File.Exists(sidecarStatusPortFile)) File.Delete(sidecarStatusPortFile); } catch { /* best-effort */ }
+
+                var stateDir = Path.Combine(aerDir, "sidecar-tsnet");
+                Directory.CreateDirectory(stateDir);
+
+                var args = $"--kestrel-port {kestrelPort} --status-port-file \"{sidecarStatusPortFile}\" --state-dir \"{stateDir}\" --hostname aer-{Environment.MachineName}";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = sidecarPath,
+                    Arguments = args,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                };
+
+                try
+                {
+                    sidecarProcess = Process.Start(startInfo);
+                }
+                catch (Exception ex)
+                {
+                    sidecarUnavailableReason = $"aer-sidecar failed to start: {ex.Message}";
+                    Console.WriteLine(sidecarUnavailableReason);
+                    return;
+                }
+
+                if (sidecarProcess == null) return;
+
+                var logPath = Path.Combine(aerDir, "sidecar-spawn.log");
+                try
+                {
+                    File.WriteAllText(logPath, $"--- spawn {DateTime.UtcNow:O} (args: {args}) ---{Environment.NewLine}");
+                    sidecarProcess.OutputDataReceived += (_, e) => { if (e.Data != null) TryAppendSidecarLog(logPath, e.Data); };
+                    sidecarProcess.ErrorDataReceived += (_, e) => { if (e.Data != null) TryAppendSidecarLog(logPath, e.Data); };
+                    sidecarProcess.BeginOutputReadLine();
+                    sidecarProcess.BeginErrorReadLine();
+                }
+                catch { /* diagnostics only, never block a real spawn attempt */ }
+
+                var startedProcess = sidecarProcess;
+                _ = Task.Run(async () =>
+                {
+                    // Status port is OS-assigned, so it's only known once the sidecar writes it --
+                    // same file-handoff convention as this daemon's own daemon.port. Not gated on
+                    // tsnet's Up() completing (that can block indefinitely on first-run interactive
+                    // auth): a sidecar that's alive and answering /status, but not yet Ready, still
+                    // has to surface its AuthURL somewhere -- see sidecar-spawn.log.
+                    for (var i = 0; i < 30; i++)
+                    {
+                        if (startedProcess.HasExited) return;
+                        try
+                        {
+                            if (File.Exists(sidecarStatusPortFile))
+                            {
+                                var text = (await File.ReadAllTextAsync(sidecarStatusPortFile)).Trim();
+                                if (int.TryParse(text, out var p))
+                                {
+                                    sidecarStatusPort = p;
+                                    return;
+                                }
+                            }
+                        }
+                        catch { /* keep retrying */ }
+                        await Task.Delay(200);
+                    }
+                }, CancellationToken.None);
+            }
+
             // Must run before the auth middleware below: context.WebSockets.IsWebSocketRequest is
             // populated by this middleware (it wires up IHttpWebSocketFeature), not by Kestrel
             // directly. Registered afterward, it silently evaluated false for every WS handshake,
@@ -361,6 +467,110 @@ namespace Aer.Daemon
                 }
 
                 return Results.Json(new { Error = "Invalid or expired pairing code." }, statusCode: StatusCodes.Status400BadRequest);
+            });
+
+            // Paired-device management (Phase 6, #243): revocation is a desktop-owner action, not
+            // something a paired mobile client should be able to do to itself or to siblings — gated
+            // to the local loopback token specifically, unlike most endpoints below which accept
+            // either the local token or any paired client's token.
+            bool IsLocalToken(HttpContext context)
+            {
+                var authHeader = context.Request.Headers["Authorization"].ToString();
+                if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
+                return SafeEquals(authHeader["Bearer ".Length..].Trim(), token);
+            }
+
+            app.MapGet("/api/pairing/clients", (HttpContext context, PairedClientsStore store) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can list paired devices." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                var clients = store.ListClients()
+                    .Select(c => new { c.ClientId, c.Name, c.PairedAt })
+                    .ToList();
+                return Results.Ok(clients);
+            });
+
+            app.MapDelete("/api/pairing/clients/{clientId}", (string clientId, HttpContext context, PairedClientsStore store) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can revoke paired devices." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                return store.RemoveClient(clientId) ? Results.Ok() : Results.NotFound();
+            });
+
+            // Sidecar readiness/auth-URL surfacing (#242): loopback-owner-only, same gating as the
+            // paired-clients endpoints above -- this is desktop setup state, not something a paired
+            // mobile client needs. Proxies the sidecar's own /status rather than caching it, so it's
+            // never stale relative to what the sidecar actually knows right now.
+            app.MapGet("/api/remote/sidecar-status", async (HttpContext context) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can view sidecar status." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                if (!isRemote)
+                {
+                    return Results.Ok(new { Ready = false, Error = "Remote access is off." });
+                }
+
+                if (sidecarUnavailableReason is { } reason)
+                {
+                    return Results.Ok(new { Ready = false, Error = reason });
+                }
+
+                if (sidecarStatusPort is not { } port)
+                {
+                    // No Error here -- absence of AuthUrl/Error/Ready is itself "still starting" to
+                    // the client (RemoteViewModel.CurrentSidecarPhase's fallback case), not a
+                    // distinct sentinel string to keep in sync between the two ends.
+                    return Results.Ok(new { Ready = false });
+                }
+
+                try
+                {
+                    var response = await sidecarHttpClient.GetAsync($"http://127.0.0.1:{port}/status");
+                    var body = await response.Content.ReadAsStringAsync();
+                    return Results.Content(body, "application/json");
+                }
+                catch (Exception ex)
+                {
+                    return Results.Ok(new { Ready = false, Error = $"sidecar unreachable: {ex.Message}" });
+                }
+            });
+
+            // Sidecar sign-out (#242 follow-up): the only way to disconnect the tsnet node used to
+            // be deleting it from the Tailscale admin console and restarting Aer.Ui -- this proxies
+            // the sidecar's own /forget, which logs the node out and immediately re-enters the
+            // interactive-login flow (a fresh AuthUrl shows up on the next sidecar-status poll).
+            app.MapPost("/api/remote/sidecar-forget", async (HttpContext context) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can sign the sidecar out." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                if (sidecarStatusPort is not { } port)
+                {
+                    return Results.Json(new { Error = "Sidecar isn't running." }, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                try
+                {
+                    var response = await sidecarHttpClient.PostAsync($"http://127.0.0.1:{port}/forget", null);
+                    return response.IsSuccessStatusCode
+                        ? Results.Accepted()
+                        : Results.Json(new { Error = $"sidecar rejected forget: {response.StatusCode}" }, statusCode: StatusCodes.Status502BadGateway);
+                }
+                catch (Exception ex)
+                {
+                    return Results.Json(new { Error = $"sidecar unreachable: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
+                }
             });
 
             // REST endpoints
@@ -521,8 +731,22 @@ namespace Aer.Daemon
                         var uri = new Uri(firstUrl);
                         var portFile = Path.Combine(aerDir, "daemon.port");
                         File.WriteAllText(portFile, uri.Port.ToString());
+
+                        if (isRemote)
+                        {
+                            TryStartSidecar(uri.Port);
+                        }
                     }
                 }
+            });
+
+            // Windows doesn't reap child processes when the parent exits -- an orphaned sidecar
+            // would keep holding its tsnet node and tailnet port. Covers both real shutdown and the
+            // shutdown-then-respawn toggle (RemoteViewModel.ToggleRemoteAsync), since both go
+            // through this same graceful-shutdown path.
+            app.Lifetime.ApplicationStopping.Register(() =>
+            {
+                try { sidecarProcess?.Kill(entireProcessTree: true); } catch { /* best-effort */ }
             });
 
             await app.RunAsync();
