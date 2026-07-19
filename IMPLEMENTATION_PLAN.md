@@ -383,6 +383,20 @@ reason it's tracked here instead of dropped. No phase commitment yet; revisit sc
 milestone's phase list against whichever of these the owner actually wants once M22 has shipped and
 the two-template picker has real usage to learn from.
 
+**Also carries a second future direction, not yet phased: an animated brand mark.** Settled during
+icon-refresh discussion alongside M22 planning: the approved mark (a two-source fan-in "Y", tested
+down to 16×16 — see `docs/decisions-of-record.md`) rotates 180° into a fan-out "Λ", a crossbar
+strokes in to complete a capital "A", then "ER Flow" reveals to finish the "AER Flow" wordmark —
+the mark doing double duty as logo and lettermark. Deliberately not attempted as a static icon
+(tested and rejected — an un-animated fan-out reads as a blob at small sizes and needs motion to
+read as "A" at all; a static icon should stay the fan-in mark). Not scoped to one surface — use it
+wherever a brand moment already exists or makes sense, desktop or mobile alike (candidates: `Aer.Ui`
+startup/splash, `Aer.Mobile` cold-start splash, a loading state either app already shows) rather
+than building one bespoke implementation and calling the note closed. Real engineering per platform
+(Avalonia keyframe/transform + a stroke-draw animation for the crossbar on desktop; Flutter's own
+equivalent on mobile — no shared animation asset between them) — no phase commitment yet, phase this
+against the rest of M24's plan once M22 has shipped.
+
 ### Phase 1: Curved Bezier DAG Canvas & Hover States
 - **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
 - **Verification**: Seamless rendering, hover states, and smooth drag-and-drop interactions.
