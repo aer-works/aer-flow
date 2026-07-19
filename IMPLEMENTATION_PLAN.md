@@ -99,7 +99,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 **M21: Zero-Config Remote Control & Permission Scopes** — progress:
 
 - [x] Phase 1 — Permission-Scope Model
-- [ ] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
+- [x] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
 - [ ] Phase 3 — Desktop Pairing UX
 - [ ] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
 - [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
@@ -141,18 +141,97 @@ items now that a real remote client exists to harden against.
   resolve identically.
 
 ### Phase 2: `Aer.Mobile` — Flutter Client, Proven Over LAN
-- **Goal**: New `src/Aer.Mobile/` Flutter/Android app: pairing screen (host + code entry, or QR
-  scan), a WebSocket-driven decision inbox mirroring `Aer.Ui`'s `TaskProjection` consumption, and
-  Approve/Reject/Cancel via the existing REST endpoints (`/api/pairing/pair`, `/api/tasks/recent`,
-  `/api/tasks/decide`, `/api/tasks/cancel`) — all already exist, zero backend changes needed.
-  Sideload-only (`flutter run` over USB or `flutter build apk --debug` + `adb install`), no Play
-  Store. Adds `pixi run mobile-build`/`mobile-run` tasks and a Flutter CI job. Adds this milestone's
-  own release-please package (component `mobile`, release-type `dart`) once `pubspec.yaml` exists —
-  deliberately not added by the release-please linked-versions migration (#225) ahead of this phase,
-  since a package path that doesn't exist yet would break the next release-please run.
-- **Verification**: phone on the same LAN as the desktop, pair via manually-read code (daemon started
-  with `--remote`), approve a paused task from the phone, confirm it resumes on desktop. Requires a
-  physical Android phone — a human action item the same way this repo's live-vendor smoke gates are.
+- **Goal**: New `src/Aer.Mobile/` Flutter/Android app: pairing screen (host + code entry — QR
+  scan deferred to Phase 3, nothing to scan against until the desktop side generates one),
+  a WebSocket-driven decision inbox mirroring `Aer.Ui`'s `TaskProjection` consumption, and
+  Approve/Reject via the existing REST endpoints (`/api/pairing/pair`, `/api/tasks/recent`,
+  `/api/tasks/open`, `/api/tasks/decide`, `/api/tasks/cancel`). Sideload-only (`flutter run` over
+  USB or `flutter build apk --debug` + `adb install`), no Play Store. Adds `pixi run
+  mobile-analyze`/`mobile-test`/`mobile-build`/`mobile-run` tasks and a Flutter CI job.
+  RetryWithRevision/Supersede aren't offered from the phone — both need a way to move file content
+  onto the daemon host that this phase doesn't build; deferred past Phase 2.
+  Two "zero backend changes" corrections found while building the client, both scoped and made
+  as part of this phase rather than blocking it:
+  - `TaskProjection` never carries file bytes, only paths on the daemon host — a phone has no
+    filesystem access to read them. Added `GET /api/tasks/artifact?directoryPath&executionId&fileName`
+    (read-only, same auth, `fileName` validated against the execution's own recorded `OutputFiles`)
+    so the decision inbox can show what it's approving.
+  - `TaskProjection` never carries a directory path either, and `/api/tasks/decide`/`/api/tasks/cancel`
+    require one — a client that only observes the WS stream (never having called `/api/tasks/open`
+    itself) had no way to learn it. Added `DirectoryPath` as a sibling property on the WS payload
+    (not a `TaskProjection` field — additive only, the desktop client already ignores unmapped
+    JSON members).
+  - Also found and fixed, unrelated to either of the above: `app.UseWebSockets()` was registered
+    *after* the auth middleware, so `context.WebSockets.IsWebSocketRequest` was always `false` at
+    auth-check time and every WS connection's query-string token was silently rejected with 401 —
+    masked since M20 by a bare `catch {}` around the desktop client's own WS connect call. This
+    means the desktop's own remote-mode live WS updates likely never worked either; fixed as part
+    of unblocking Aer.Mobile's decision inbox, which depends on the same path.
+  - The WS-auth fix proved the connect-time snapshot push works, but left the other half of the
+    inbox's core assumption unverified: that `/api/tasks/decide`/`/api/tasks/cancel` actually
+    trigger a *second* broadcast, not just a 200. Confirmed by reading (`TaskSession.DecideAsync`/
+    `CancelExecutionAsync`'s in-process fallback both reach the daemon's `reopenTaskAsync` closure,
+    which calls `BroadcastStateAsync`) and locked in with a new end-to-end test
+    (`Reject_TriggersASecondWebSocketBroadcast_SoAPhoneSeesTheDecisionLand`) that opens a real
+    paused task, connects a WS client, posts a Reject, and asserts a second `Terminal` snapshot
+    arrives on the same socket.
+  - Two Android manifest gaps found (neither catchable by `flutter analyze`/`flutter test`, only by
+    a real device — the exact step this phase's own verification defers): the default `flutter
+    create` template declares no `INTERNET` permission at all (added to the main manifest); and
+    Android blocks cleartext HTTP/WS by default for API 28+, which the daemon's plain `http`/`ws`
+    (TLS deferred to Phase 6) would hit on first request (`android:usesCleartextTraffic="true"`
+    added, scoped to the debug manifest only, matching this phase's debug/sideload-only build, so a
+    future release build doesn't silently inherit it).
+  Adds this milestone's own release-please package (component `mobile`, release-type `dart`,
+  standalone — not joined to either `linked-versions` group, since it version-bumps independently
+  off `pubspec.yaml`) now that `pubspec.yaml` exists — deliberately not added by the release-please
+  linked-versions migration (#225) ahead of this phase, since a package path that doesn't exist yet
+  would break the next release-please run.
+  Two more gaps found only by the real-device pass (see Verification below), neither catchable by
+  any automated check:
+  - `DecideCommand.ExecuteAsync` always loads a worker-bindings file, regardless of decision type
+    (even Reject/Cancel, which never invoke a worker) — a freshly-started daemon with no prior
+    `/api/tasks/run` call in-process has no bindings file configured, so Approve/Reject from the
+    phone failed *silently* (200 OK, no broadcast, error only visible in the daemon's own console).
+    Pre-existing `DecideCommand` behavior, not introduced by this phase, but Phase 2 is the first
+    path that can reach it without a desktop-side Run already having set it. Documented here as a
+    known rough edge for a real deployment (daemon started standalone, phone-only session); not
+    fixed in this phase — the workaround is starting the daemon via a desktop Run first, same as
+    today's only real usage pattern.
+  - The paused-step card disappearing the instant a decision resolves (correct — it drops off
+    `pausedSteps`) gave zero confirmation that Approve/Reject actually worked. Added a snackbar
+    ("Approved `<step>`" / "Rejected `<step>`") in `inbox_screen.dart`.
+  - App label fixed from the Flutter-default `aer_mobile` to `AER Flow`, matching `Aer.Ui`'s window
+    title (`MainWindow.axaml`'s `Title="AER Flow"`) — both the Android manifest `android:label` and
+    the `MaterialApp` title.
+  - "Cancel run" gave a false-positive "Run cancelled" snackbar even when nothing was actually
+    running: both `MutationInterface.RequestCancellationAsync` and `TaskSession.RequestHostStop()`
+    only affect an execution genuinely in flight — a Paused task's execution already *Succeeded*
+    (that's why it's paused), so cancelling it is a documented too-late no-op (`MutationInterface.cs`
+    §9 step 4), same as desktop's own ungated Stop button. There's no domain gap here: ending a
+    paused step is what Reject already does. Fixed by only showing "Cancel run" in the app-bar menu
+    when `projection.status == 'Running'` (mirrors how desktop already gates its per-execution
+    `CanCancel`), so the snackbar is truthful again with no wording change needed. Verified against
+    a genuine live execution (a real `claude` dispatch, not a synthetic fixture): with the task
+    `Running`, the phone's Cancel run correctly appeared, and tapping it drove the step's status
+    from `Running` to `Cancelled` and the workflow to `Terminal` server-side — confirming the
+    whole-run cancel path actually terminates a live worker process end-to-end from the phone, not
+    just the client-side gating.
+- **Status**: Phase 2 is done. App, backend additions, and both test suites (`pixi run test`,
+  `pixi run mobile-test`) pass (635/635 .NET, 4/4 Flutter). Verified on real hardware — see below.
+- **Verification**: done, on real hardware, 2026-07-18 — a Pixel 10 Pro on the same home Wi-Fi as
+  this desktop, daemon started standalone with `--remote --port 5000`. Paired via manually-read
+  6-digit code; a paused step appeared in the phone's inbox over WS with no prior phone action other
+  than pairing; the artifact preview (`review.md`) loaded via `GET /api/tasks/artifact`; Approve
+  resolved the step, the daemon projection reached `Terminal`, and the phone's card cleared via the
+  second WS broadcast. This machine had no Android SDK/`adb` going in — set up via the command-line
+  tools only (no full Android Studio): `cmdline-tools` + `platform-tools` + `platforms;android-36` +
+  `build-tools;28.0.3`, `flutter config --android-sdk`/`--jdk-dir` pointed at an existing OpenJDK 21
+  install. Reject, the multi-paused-step case, and Cancel were all subsequently exercised on the
+  same device against hand-crafted paused-task fixtures: Reject resolved its step to `Rejected`
+  correctly; two independent `PausePoint`s on sibling steps rendered as two cards, each resolvable
+  without affecting the other; Cancel surfaced the no-op finding above, fixed by gating the menu
+  item to `Running`-only.
 
 ### Phase 3: Desktop Pairing UX
 - **Goal**: `Aer.Ui` has no screen for initiating pairing today even though `/api/pairing/code`
