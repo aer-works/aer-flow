@@ -160,7 +160,8 @@ class _InboxScreenState extends State<InboxScreen> {
               if (value == 'cancel') _cancelRun();
             },
             itemBuilder: (context) => [
-              if (projection != null) const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
+              if (projection != null && projection.status == 'Running')
+                const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
               const PopupMenuItem(value: 'forget', child: Text('Forget pairing')),
             ],
           ),

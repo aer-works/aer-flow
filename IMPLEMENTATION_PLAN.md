@@ -200,10 +200,18 @@ items now that a real remote client exists to harden against.
     today's only real usage pattern.
   - The paused-step card disappearing the instant a decision resolves (correct — it drops off
     `pausedSteps`) gave zero confirmation that Approve/Reject actually worked. Added a snackbar
-    ("Approved `<step>`" / "Rejected `<step>`" / "Run cancelled") in `inbox_screen.dart`.
+    ("Approved `<step>`" / "Rejected `<step>`") in `inbox_screen.dart`.
   - App label fixed from the Flutter-default `aer_mobile` to `AER Flow`, matching `Aer.Ui`'s window
     title (`MainWindow.axaml`'s `Title="AER Flow"`) — both the Android manifest `android:label` and
     the `MaterialApp` title.
+  - "Cancel run" gave a false-positive "Run cancelled" snackbar even when nothing was actually
+    running: both `MutationInterface.RequestCancellationAsync` and `TaskSession.RequestHostStop()`
+    only affect an execution genuinely in flight — a Paused task's execution already *Succeeded*
+    (that's why it's paused), so cancelling it is a documented too-late no-op (`MutationInterface.cs`
+    §9 step 4), same as desktop's own ungated Stop button. There's no domain gap here: ending a
+    paused step is what Reject already does. Fixed by only showing "Cancel run" in the app-bar menu
+    when `projection.status == 'Running'` (mirrors how desktop already gates its per-execution
+    `CanCancel`), so the snackbar is truthful again with no wording change needed.
 - **Status**: Phase 2 is done. App, backend additions, and both test suites (`pixi run test`,
   `pixi run mobile-test`) pass (635/635 .NET, 4/4 Flutter). Verified on real hardware — see below.
 - **Verification**: done, on real hardware, 2026-07-18 — a Pixel 10 Pro on the same home Wi-Fi as
@@ -214,7 +222,11 @@ items now that a real remote client exists to harden against.
   second WS broadcast. This machine had no Android SDK/`adb` going in — set up via the command-line
   tools only (no full Android Studio): `cmdline-tools` + `platform-tools` + `platforms;android-36` +
   `build-tools;28.0.3`, `flutter config --android-sdk`/`--jdk-dir` pointed at an existing OpenJDK 21
-  install. Not yet exercised: Reject, Cancel, and the multi-paused-step case.
+  install. Reject, the multi-paused-step case, and Cancel were all subsequently exercised on the
+  same device against hand-crafted paused-task fixtures: Reject resolved its step to `Rejected`
+  correctly; two independent `PausePoint`s on sibling steps rendered as two cards, each resolvable
+  without affecting the other; Cancel surfaced the no-op finding above, fixed by gating the menu
+  item to `Running`-only.
 
 ### Phase 3: Desktop Pairing UX
 - **Goal**: `Aer.Ui` has no screen for initiating pairing today even though `/api/pairing/code`
