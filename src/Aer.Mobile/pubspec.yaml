@@ -42,6 +42,9 @@ dependencies:
   # The paired-client bearer token is a credential, not preference data — stored in the
   # platform keystore (Android Keystore-backed EncryptedSharedPreferences), never plaintext.
   flutter_secure_storage: ^9.2.2
+  # QR scanning for pairing (M21 Phase 3, issue #234) — actively maintained; qr_code_scanner is
+  # deprecated. Needs android.permission.CAMERA, added to the main manifest for this phase.
+  mobile_scanner: ^7.3.0
 
 dev_dependencies:
   flutter_test:

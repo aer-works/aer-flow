@@ -86,6 +86,20 @@ public class DaemonIntegrationTests : IAsyncLifetime
         }
     }
 
+    // M21 Phase 3 (issue #234): the Enable Remote Access view's toggle reads this field to know
+    // whether the daemon it's already talking to is bound loopback-only or --remote — this test
+    // daemon is started with neither flag (InitializeAsync's --port/--no-mutex only), so it must
+    // report false.
+    [Fact]
+    public async Task GetVersion_ReportsIsRemote_FalseForALoopbackOnlyDaemon()
+    {
+        var response = await _client.GetAsync($"{BaseUrl}/api/version", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+        var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(meta);
+        Assert.False(meta.IsRemote);
+    }
+
     [Fact]
     public async Task GetRecentTasks_ReturnsOk()
     {

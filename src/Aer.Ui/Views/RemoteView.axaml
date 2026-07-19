@@ -1,0 +1,60 @@
+<!-- M21 Phase 3 (issue #234): Enable Remote Access — the desktop half of pairing with Aer.Mobile.
+     Aer.Daemon has no live rebind (Program.cs bakes the remote flag's bind address in at process
+     start), so the toggle below is a real shutdown-and-respawn (RemoteViewModel.ToggleRemoteAsync),
+     not an in-place setting flip — IsBusy covers that multi-second gap. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
+             x:Class="Aer.Ui.Views.RemoteView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="{DynamicResource Space.8}" MaxWidth="760" HorizontalAlignment="Left">
+      <TextBlock Classes="display" Text="Remote Access" />
+
+      <StackPanel Spacing="{DynamicResource Space.3}">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Remote.StatusText}" />
+        <TextBlock Classes="secondary" Foreground="{DynamicResource Status.Failed}" TextWrapping="Wrap"
+                   Text="{Binding Remote.ErrorText}" IsVisible="{Binding Remote.HasError}" />
+        <Button x:Name="RemoteToggleButton" Classes="accent" HorizontalAlignment="Left"
+                Content="{Binding Remote.ToggleButtonText}" IsEnabled="{Binding !Remote.IsBusy}" />
+      </StackPanel>
+
+      <!-- design-language.md: color never carries meaning alone — the plain-language warning is
+           the actual signal, this border is just emphasis. -->
+      <Border Classes="card" BorderBrush="{DynamicResource Status.NeedsYou}">
+        <TextBlock Classes="secondary" TextWrapping="Wrap"
+                    Text="While remote access is on, anyone on this network can reach Aer.Daemon — traffic isn't encrypted yet (that's planned for a later phase). Turn it off when you're done pairing." />
+      </Border>
+
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasHost}">
+        <TextBlock Classes="heading" Text="Pair a phone" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap"
+                   Text="Open Aer.Mobile, scan this code (or type the host and code in by hand), and it's paired." />
+        <Border Classes="card" Width="240" Height="240" HorizontalAlignment="Left">
+          <Image Source="{Binding Remote.QrPngBytes, Converter={StaticResource ByteArrayToBitmapConverter}}"
+                 Width="220" Height="220" Stretch="Uniform" />
+        </Border>
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.3}">
+          <StackPanel Spacing="{DynamicResource Space.1}">
+            <TextBlock Classes="caption" Text="Host" />
+            <TextBlock Classes="mono" Text="{Binding Remote.Host}" />
+          </StackPanel>
+          <StackPanel Spacing="{DynamicResource Space.1}">
+            <TextBlock Classes="caption" Text="Pairing code" />
+            <TextBlock Classes="mono body-strong" Text="{Binding Remote.PairingCode}" />
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+          <TextBlock Classes="caption" VerticalAlignment="Center"
+                     Text="{Binding Remote.PairingCodeExpiresInSeconds, StringFormat='Expires in {0}s'}" />
+          <Button x:Name="RemoteRefreshCodeButton" IsEnabled="{Binding !Remote.IsBusy}">
+            <AccessText Text="Get a new _code" />
+          </Button>
+        </StackPanel>
+      </StackPanel>
+
+      <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !Remote.HasHost}"
+                 Text="No network connection found — can't generate a pairing code until this computer is on a network." />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

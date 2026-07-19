@@ -26,7 +26,7 @@ public record DecideTaskRequest(
     string? SupplementaryWorker = null,
     string? SupplementaryOutputName = null);
 public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
-public record DaemonVersionInfo(string Version, bool HasRunningTasks);
+public record DaemonVersionInfo(string Version, bool HasRunningTasks, bool IsRemote = false);
 
 public class BindingsPathHolder
 {
@@ -218,6 +218,18 @@ public sealed class TaskSession
             // Connect failed
         }
 
+        return await SpawnDaemonProcessAsync("", cancellationToken).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Launches a fresh <c>Aer.Daemon</c> child process (appending <paramref name="extraArgs"/> to
+    /// its command line, e.g. <c>--remote</c>) and polls <c>/api/version</c> until it answers or 30
+    /// attempts are exhausted. Shared by <see cref="EnsureDaemonConnectedAsync"/>'s cold-start path
+    /// and <see cref="SetRemoteEnabledAsync"/>'s shutdown-then-respawn (M21 Phase 3, issue #234) —
+    /// both need the exact same "start it, then wait for it to come up" dance.
+    /// </summary>
+    private async Task<bool> SpawnDaemonProcessAsync(string extraArgs, CancellationToken cancellationToken)
+    {
         try
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -241,6 +253,11 @@ public sealed class TaskSession
                     daemonPath = "dotnet";
                     args = $"\"{Path.Combine(baseDir, "Aer.Daemon.dll")}\"";
                 }
+            }
+
+            if (!string.IsNullOrEmpty(extraArgs))
+            {
+                args = string.IsNullOrEmpty(args) ? extraArgs : $"{args} {extraArgs}";
             }
 
             var hasDll = File.Exists(Path.Combine(baseDir, "Aer.Daemon.dll"));
@@ -788,6 +805,73 @@ public sealed class TaskSession
         }
 
         _currentHostStopSource?.Cancel();
+    }
+
+    /// <summary>Current remote-access state, for the Enable Remote Access view (M21 Phase 3, issue #234).</summary>
+    public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningTasks);
+
+    /// <summary>A freshly generated pairing code, mirroring <c>/api/pairing/code</c>'s response shape.</summary>
+    public sealed record PairingCode(string Code, int ExpiresInSeconds);
+
+    /// <summary>Reads the daemon's current bind mode and port straight from <c>/api/version</c> — not cached, since the whole point is to detect drift after a toggle.</summary>
+    public async Task<RemoteAccessStatus?> GetRemoteAccessStatusAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            if (meta == null) return null;
+
+            var port = new Uri(_activeDaemonUrl).Port;
+            return new RemoteAccessStatus(meta.IsRemote, port, meta.HasRunningTasks);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<PairingCode?> GetPairingCodeAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/pairing/code", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<PairingCode>(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Flips the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel rebind
+    /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the
+    /// daemon down and respawns it with/without <c>--remote</c>, reusing the same
+    /// shutdown-then-respawn move <see cref="EnsureDaemonConnectedAsync"/> already makes on version
+    /// skew. Refuses while a task is in flight, since bouncing the daemon would orphan it.
+    /// </summary>
+    public async Task<MutationOutcome> SetRemoteEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        var status = await GetRemoteAccessStatusAsync(cancellationToken).ConfigureAwait(true);
+        if (status == null) return new MutationOutcome("Could not reach Aer.Daemon.");
+        if (status.HasRunningTasks) return new MutationOutcome("Can't change remote access while a task is running — finish or pause it first.");
+        if (status.IsRemote == enabled) return new MutationOutcome(null);
+
+        await ShutdownDaemonAsync().ConfigureAwait(true);
+        await Task.Delay(500, cancellationToken).ConfigureAwait(true);
+        _isClientMode = false;
+
+        var started = await SpawnDaemonProcessAsync(enabled ? "--remote" : "", cancellationToken).ConfigureAwait(true);
+        return started ? new MutationOutcome(null) : new MutationOutcome("Could not restart Aer.Daemon.");
     }
 
     public async Task ShutdownDaemonAsync()

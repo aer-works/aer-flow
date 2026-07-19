@@ -314,7 +314,8 @@ namespace Aer.Daemon
             app.MapGet("/api/version", (TaskSession session) => Results.Ok(new
             {
                 Version = typeof(DaemonHost).Assembly.GetName().Version?.ToString() ?? "1.0.0",
-                HasRunningTasks = session.ShouldLiveRefresh
+                HasRunningTasks = session.ShouldLiveRefresh,
+                IsRemote = isRemote
             }));
 
             // Graceful shutdown endpoint

@@ -111,6 +111,9 @@ public partial class MainWindow : Window
     internal Button AddBindingEntryButton => AuthorViewControl.AddBindingEntryButton;
     internal Button CheckBindingsAgainstTemplateButton => AuthorViewControl.CheckBindingsAgainstTemplateButton;
 
+    internal Button RemoteToggleButton => RemoteViewControl.RemoteToggleButton;
+    internal Button RemoteRefreshCodeButton => RemoteViewControl.RemoteRefreshCodeButton;
+
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
     /// now live in the views' name scopes, so the window's own scope no longer resolves them — this
@@ -205,6 +208,9 @@ public partial class MainWindow : Window
         NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
         NavTaskButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
+        NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
+        RemoteToggleButton.Click += (_, _) => _ = ViewModel.Remote.ToggleRemoteAsync(_session);
+        RemoteRefreshCodeButton.Click += (_, _) => _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
         // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
         // record) — fire-and-forget like every other event-handler entry point here.
         ViewModel.SectionChanged += section =>
@@ -219,6 +225,13 @@ public partial class MainWindow : Window
             if (section == ShellSection.Author)
             {
                 ViewModel.NewWorkflow.RefreshVendorReadiness();
+            }
+
+            // M21 Phase 3 (#234): remote status + a fresh pairing code on every activation — a
+            // code expires in 60s, so a re-visit should never show a stale/dead one.
+            if (section == ShellSection.Remote)
+            {
+                _ = ViewModel.Remote.RefreshAsync(_session);
             }
         };
         // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task

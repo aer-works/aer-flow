@@ -100,7 +100,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 
 - [x] Phase 1 — Permission-Scope Model
 - [x] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
-- [ ] Phase 3 — Desktop Pairing UX
+- [x] Phase 3 — Desktop Pairing UX
 - [ ] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
 - [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - [ ] Phase 6 — Close M20's Deferred Hardening
@@ -238,8 +238,41 @@ items now that a real remote client exists to harden against.
   already exists (curl-only). Add an "Enable Remote Access" view: pairing code, a QR code encoding
   `{host, code}`, a `--remote` toggle, and a plain-language warning that `--remote` is unencrypted LAN
   traffic until Phase 6.
+- **Key finding before implementation**: `--remote` is baked into Kestrel's bind call at daemon
+  startup (`Program.cs:91-103`) — there is no live rebind. `Aer.Ui` also always auto-spawns the
+  daemon loopback-only (`TaskSession.EnsureDaemonConnectedAsync` never passed `--remote`). So the
+  toggle can't just flip a setting: it shuts the daemon down (`/api/daemon/shutdown`) and respawns
+  it with/without `--remote`, reusing the exact shutdown-then-respawn move the version-skew path
+  already made in that same method. Refused outright while a task is in flight (the existing
+  `HasRunningTasks` signal), since bouncing the daemon mid-run would orphan it.
+- **What shipped**: `/api/version` now also reports `IsRemote` (the daemon's own `isRemote` local,
+  closed over by the endpoint). `TaskSession` gained `GetRemoteAccessStatusAsync`,
+  `GetPairingCodeAsync`, and `SetRemoteEnabledAsync` (the guarded shutdown-and-respawn above); the
+  daemon-spawn logic was extracted into a shared `SpawnDaemonProcessAsync(extraArgs, ...)` helper so
+  both the cold-start path and the toggle share one "launch it, poll `/api/version` until it
+  answers" implementation. A new `LanAddress.TryGetPrimary()` (no such helper existed anywhere in
+  the codebase) picks a LAN-reachable IPv4 address, preferring RFC 1918 private ranges. `Aer.Ui.Core`
+  gained a `RemoteViewModel` (QRCoder's `PngByteQRCode` — pure C#, no `System.Drawing`, keeping
+  `Aer.Ui.Core`'s no-Avalonia constraint) and a fourth `ShellSection.Remote` nav destination;
+  `Aer.Ui` gained the `RemoteView` skin, a `ByteArrayToBitmapConverter` (the one place QR bytes
+  become a renderable `Bitmap`), and an `Icon.Remote` nav glyph.
+  **QR payload decision of record**: a plain `aer://pair?host=<host>&code=<code>` URI, not JSON —
+  simpler to encode/parse on both ends and unambiguous if scanned outside the app.
+  `Aer.Mobile` gained a `QrScanScreen` (`mobile_scanner`, actively maintained — `qr_code_scanner` is
+  deprecated) wired into `pairing_screen.dart`'s new "Scan QR code" button, parsing that URI and
+  falling back to the existing manual host/code fields on anything that doesn't parse — a garbled
+  scan never dead-ends. `android.permission.CAMERA` (+ an optional `android.hardware.camera`
+  feature) added to the main manifest, the same "not in Flutter's bare template" gap Phase 2 hit
+  for `INTERNET`.
+- **Status**: Phase 3 is code-complete and automated-verified. `pixi run test` (636/636 .NET, up
+  from 635 — a new `GetVersion_ReportsIsRemote_FalseForALoopbackOnlyDaemon` integration test),
+  `pixi run mobile-analyze`/`mobile-test` (4/4), `pixi run fmt-check`, `pixi run lint`, and
+  `pixi run mobile-build` all clean. **Not yet exercised on real hardware** — scanning the desktop's
+  QR from a phone and completing pairing with no manual typing is this phase's actual verification
+  bar (same as Phase 2's own precedent) and is a human action item, not something closable from an
+  agent session alone.
 - **Verification**: scan the QR from `Aer.Mobile`'s pairing screen, complete pairing with no manual
-  IP/code typing.
+  IP/code typing. **Pending** — needs a real Android phone.
 
 ### Phase 4: Cross-Network Proof via Tailscale (Manual Install)
 - **Goal**: Prove the "from anywhere" property using Phases 2–3 unchanged — standalone Tailscale

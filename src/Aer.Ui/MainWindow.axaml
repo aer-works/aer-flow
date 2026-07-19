@@ -113,12 +113,23 @@
             <AccessText Text="_Author" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+        <!-- M21 Phase 3 (#234): the fourth nav destination — pairing Aer.Mobile. -->
+        <Button x:Name="NavRemoteButton" Classes="nav" Classes.selected="{Binding IsRemoteVisible}"
+                HorizontalAlignment="Stretch">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Remote}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="Re_mote" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </Border>
     <Panel>
       <views:HomeView x:Name="HomeViewControl" IsVisible="{Binding IsHomeVisible}" />
       <views:TaskView x:Name="TaskViewControl" IsVisible="{Binding IsTaskVisible}" />
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
+      <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
     </Panel>
   </DockPanel>
 </Window>
