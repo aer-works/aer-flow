@@ -49,5 +49,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- M21 Phase 7 (#246): url_launcher's launchUrl silently returns false on Android 11+
+             without this — package visibility (https://developer.android.com/training/package-visibility)
+             hides browser apps from canLaunchUrl's query unless https/http intents are declared,
+             and that's exactly the failure mode for opening the interactive Tailscale sign-in page. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>
