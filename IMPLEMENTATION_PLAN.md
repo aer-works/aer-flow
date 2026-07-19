@@ -300,28 +300,70 @@ items now that a real remote client exists to harden against.
   building the test workflow, in `docs/runbooks/tailscale-cross-network-proof.md`.
 
 ### Phase 5: Zero-Config Tailscale Embedding (Time-Boxed Spike)
-- **Goal**: Remove the manual Tailscale app install from Phase 4. Desktop: a `tsnet`-based Go
-  sidecar process `Aer.Daemon` supervises (like it already supervises worker processes), lower risk
-  than a C# P/Invoke/cgo binding — no FFI marshaling, reuses the existing process-supervision pattern;
-  one-time interactive tailnet-auth link shown to the user. Mobile: `flutter_tsnet` (pin the
-  version — pre-1.0, expect breaking-change friction). Explicitly time-boxed: if either side doesn't
-  land cleanly, the milestone still ships — Phases 1–4 already deliver a real, working remote-control
-  product over manually-installed Tailscale; zero-config becomes a fast-follow, not a blocker.
+- **Goal**: Remove the manual Tailscale app install from Phase 4, desktop half only this pass (see
+  "Not yet done" below for mobile). No .NET `tsnet` binding exists (Go-only), so this is a separate
+  Go process, `src/Aer.Sidecar` (`aer-sidecar`), not a P/Invoke/cgo binding into `Aer.Daemon` itself.
+- **Key architecture correction** (found while implementing, corrects the original plan text above):
+  `tsnet` runs a userspace (gVisor) network stack that exists only *inside* the process that embeds
+  it — there is no OS-level network interface for a sibling process to bind to. That rules out "bind
+  Kestrel to the Tailscale-assigned interface address" (Phase 6's original plan, below) once the
+  interface is `tsnet`-embedded rather than a real adapter from a separately-installed app. Instead:
+  Kestrel stays loopback-reachable forever, and the sidecar — which does get a real tailnet IP via
+  `srv.Listen()` — TCP-splices every accepted connection byte-for-byte (`io.Copy`, both directions)
+  to Kestrel's loopback port. Protocol-agnostic by construction, so HTTP and the WebSocket upgrade
+  both pass through with zero HTTP awareness in the Go process.
+- **What's built and proven locally**: `Aer.Daemon` spawns `aer-sidecar` as a child process whenever
+  `--remote` is set (additive — see Phase 6 below for why the existing LAN bind is untouched),
+  passing it the real Kestrel port once Kestrel has actually bound it. The sidecar binds its own
+  loopback-only status listener first and writes the assigned port to a file
+  (`~/.aer/sidecar-status.port`) — the same port-file discovery convention `Aer.Daemon` already uses
+  for itself (`daemon.port`) — so `Aer.Daemon` can find and proxy it via `GET
+  /api/remote/sidecar-status` (owner-token-gated, like the paired-clients endpoints) without polling
+  or caching staleness. `Aer.Daemon` kills the sidecar on `ApplicationStopping` (Windows doesn't reap
+  child processes on parent exit). Verified locally: `go vet` clean, `gofmt`-clean, a unit test
+  (`main_test.go`) proving the splice is transparent in both directions, and a live local smoke run —
+  daemon spawned in `--remote` mode really did spawn the sidecar, discover its status port, and
+  `/api/remote/sidecar-status` surfaced the real tailnet interactive-login URL end to end; shutting
+  the daemon down really did kill the sidecar too (confirmed via process list, not just the exit
+  code).
+- **Not yet done / not provable in an agent session**: actual tsnet enrollment (clicking through the
+  login URL) and a cross-network proof of real HTTP/WebSocket traffic over the resulting tailnet
+  address — completing interactive OAuth has no headless path, same permanently-human-gated shape as
+  Phase 4's cross-network proof and `CLAUDE.md`'s "Live-vendor smoke tests" convention. Not marking
+  this phase's checkbox done on anything short of that actual recorded run. Mobile-side embedding
+  (`flutter_tsnet` vs. the newer `tailscale` Dart package) is untouched — still an open go/no-go
+  checkpoint, deferred to a follow-up issue rather than blocking this desktop-only pass. Bundling
+  `aer-sidecar.exe` for non-developer end users (so `--remote` doesn't require a local Go toolchain)
+  is also an explicit named follow-up, not part of this spike's success bar.
 - **Verification**: fresh phone + fresh desktop, neither with Tailscale pre-installed, complete
-  pairing with no manual Tailscale steps.
+  pairing with no manual Tailscale steps. **Unproven** — pending the live cross-network run above.
 
 ### Phase 6: Close M20's Deferred Hardening
 - **Goal**: M20 explicitly deferred TLS and paired-token revocation "for whichever milestone builds
-  the actual remote client" — this is that milestone. In place of implementing TLS: bind `--remote`
-  to the Tailscale-assigned interface address specifically (once Phase 5 lands) instead of
-  `IPAddress.Any` (`Program.cs`) — the tailnet's own WireGuard layer already encrypts everything
-  reaching that address, closing the real exposure (a plaintext port reachable by anyone on the same
-  physical LAN/Wi-Fi) without writing TLS termination code. If Phase 5 doesn't land, `--remote` stays
-  LAN-plaintext as today, documented as a known limitation same as M20 left it. Paired-token
-  revocation: a "Paired Devices" list in Phase 3's view with a Remove button — `PairedClientsStore`
-  can already add a client; add the missing remove path.
-- **Verification**: `--remote` bound to the tailnet address is unreachable from a plain-LAN client not
-  on the tailnet; revoking a paired device's token causes its next request to 401.
+  the actual remote client" — this is that milestone.
+- **Paired-token revocation — done**: a "Paired Devices" list in Phase 3's view (`RemoteView.axaml`)
+  with a Remove button, `PairedClientsStore.RemoveClient`, and owner-only
+  `GET`/`DELETE /api/pairing/clients{/id}` endpoints (gated to the local loopback token specifically
+  — a paired mobile client can't enumerate or revoke siblings). Covered by
+  `DaemonIntegrationTests`: revoking causes the next request on that token to 401, revoking an
+  unknown id 404s, and a paired client's own token can't call either endpoint.
+- **Exposure hardening — deliberately deferred, not done**: the original plan (bind `--remote` to the
+  Tailscale-assigned interface address instead of `IPAddress.Any`) doesn't apply once the interface
+  is `tsnet`-embedded rather than a real adapter (see Phase 5's architecture correction) — the
+  equivalent hardening is now "Kestrel never listens on anything but loopback; the sidecar carries
+  all remote reachability instead." That rebind is **not** made in this PR: Phase 5's `tsnet` path
+  is unproven live (above), and flipping Kestrel to loopback-only before that proof lands would
+  delete the one remote-access path that's actually shipped and working (Phases 1–4, plain-LAN
+  `--remote`) in favor of one that hasn't been exercised end to end. `Program.cs`'s `isRemote` branch
+  is therefore unchanged (`options.Listen(IPAddress.Any, activePort)`); `--remote` stays LAN-plaintext
+  exactly as Phases 1–4 left it, same "known limitation until proven" framing M20 originally used.
+  The sidecar runs alongside it (additive, not a replacement) once `--remote` is set, so it's
+  already in position to carry tailnet traffic the moment the phase above gets its live proof — at
+  which point flipping the bind and dropping (or demoting to an unlisted escape hatch) the LAN path
+  is the remaining, now-small follow-up change.
+- **Verification**: paired-token revocation → 401 is verified (automated test, passing). Tailnet-only
+  reachability (the other half of this phase's original verification bar) is **not yet verified** —
+  it depends on Phase 5's live proof landing first.
 
 ---
 
@@ -565,4 +607,21 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 ## Notes for future work
 
 - **A third worker adapter (`Aer.Adapters`)** — Claude shipped in M11 Phase 2 (#85), Gemini/`agy` in M12 Phase 1 (#95). Before adding another vendor, read closed spike [#21](https://github.com/aer-works/aer-flow/issues/21)'s recorded findings — stdin stalls, permission-flag vocabularies, and path-interpolation behavior differ per CLI and are exactly what the adapter seam exists to absorb. (M17 Phase 4's dialogue adapter is not this note's case: it spawns aer's own dialogue worker executable, not another vendor's CLI — the vendor quirks stay inside the worker, which inherits them from the two existing adapters' recorded findings.)
+- **True zero-signup multi-user remote control (post-M21)** — M21 Phases 5–6's "zero-config" only
+  removes the separate Tailscale app install; every user (including future ones, not just the
+  owner) still does a one-time Tailscale OAuth sign-in ("BYO free Tailscale account", per Phase
+  4/5's own goal text) via the link `tsnet`'s embedded node shows on first run. If the bar is ever
+  "a stranger installs only the Aer app, no third-party identity step at all," that requires
+  operating your own coordination/relay infrastructure instead of Tailscale's — a materially bigger
+  commitment (you become the operator of real network infrastructure relaying user traffic:
+  security surface, uptime, cost, abuse potential), not a Phase 5/6 refinement. Two candidate
+  shapes, not yet decided between: (1) self-hosted Headscale (Tailscale's open-source coordination
+  server) — reuses Phase 5's `tsnet` embedding almost unchanged, but hands every paired device a
+  real virtual-network interface and means operating/patching a general-purpose mesh-VPN control
+  plane that's a clean-room reimplementation of Tailscale's own protocol; (2) a purpose-built Aer
+  relay — a small server proxying only `Aer.Daemon`'s existing REST+WS API between an already-paired
+  phone and desktop, no general network access, nothing to keep in sync with an upstream project.
+  For a single-developer product, (2) is the smaller commitment for the same user-facing outcome
+  unless generic device-to-device networking beyond Aer's own use is actually wanted. Revisit this
+  only if/when real multi-user demand shows up — not a preemptive build.
 - **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.

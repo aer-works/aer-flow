@@ -13,8 +13,19 @@ version = "0.1.0"
 # have one.
 build-core = { cmd = "cargo build", cwd = "external/aer-core" }
 
-build = { cmd = "dotnet build", depends-on = ["build-core"] }
-test = { cmd = "dotnet test", depends-on = ["build-core"] }
+# M21 Phase 5 (#242): the tsnet-embedding sidecar Aer.Daemon spawns as a child process in --remote
+# mode. Go-only (no .NET tsnet binding exists) — a separate toolchain, same convention as the Rust
+# one above: installed separately, not pixi-managed (Windows: `winget install GoLang.Go`). No
+# dotnet build depends on this at compile time (Aer.Daemon only needs the compiled binary present
+# at runtime, when it actually spawns it), but it's part of the full verification loop below.
+build-sidecar = { cmd = "go build -o bin/aer-sidecar.exe .", cwd = "src/Aer.Sidecar" }
+test-sidecar = { cmd = "go test ./...", cwd = "src/Aer.Sidecar" }
+lint-sidecar = { cmd = "go vet ./...", cwd = "src/Aer.Sidecar" }
+fmt-sidecar = { cmd = "gofmt -w .", cwd = "src/Aer.Sidecar" }
+fmt-check-sidecar = { cmd = "test -z \"$(gofmt -l .)\"", cwd = "src/Aer.Sidecar" }
+
+build = { cmd = "dotnet build", depends-on = ["build-core", "build-sidecar"] }
+test = { cmd = "dotnet test", depends-on = ["build-core", "test-sidecar"] }
 # Coverage report (#199): collects per-test-project Cobertura via coverlet, merges into an HTML
 # report + text summary at artifacts/coverage/report/ (open index.html, or read Summary.txt).
 # Results are wiped first so stale collections never skew the merge. Excludes source-generated
@@ -23,8 +34,8 @@ test = { cmd = "dotnet test", depends-on = ["build-core"] }
 coverage = { cmd = "rm -rf artifacts/coverage && dotnet tool restore && dotnet test --collect:\"XPlat Code Coverage\" --settings coverage.runsettings --results-directory artifacts/coverage && dotnet reportgenerator -reports:artifacts/coverage/**/coverage.cobertura.xml -targetdir:artifacts/coverage/report \"-reporttypes:Html;TextSummary\" \"-assemblyfilters:+Aer.*\"", depends-on = ["build-core"] }
 
 fmt = "dotnet format"
-fmt-check = "dotnet format --verify-no-changes"
-lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core"] }
+fmt-check = { cmd = "dotnet format --verify-no-changes", depends-on = ["fmt-check-sidecar"] }
+lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core", "lint-sidecar"] }
 
 # M21 Phase 2 (#232): Flutter/Dart aren't pixi-managed — installed separately, on PATH, same
 # convention as the .NET SDK and Rust toolchain above. mobile-build produces a debug APK only:
