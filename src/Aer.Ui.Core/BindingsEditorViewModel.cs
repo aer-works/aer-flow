@@ -46,6 +46,15 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
     /// <summary>The candidate adapter names offered to every row (M15 Phase 1's registry, reflected — never invented).</summary>
     private IReadOnlyList<string> _adapterCandidates = [];
 
+    /// <summary>
+    /// The adapter registry itself (M21 Phase 1) — threaded down to each row so its permission-grant
+    /// builder can check <see cref="IPermissionGrantTranslator"/> support and live-validate a grant
+    /// against the row's currently-selected <see cref="WorkerBindingEntryViewModel.Adapter"/>, the
+    /// same "reflect, don't invent" seam <see cref="_adapterCandidates"/> already established for
+    /// names alone.
+    /// </summary>
+    private IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry = new Dictionary<string, IWorkerAdapter>();
+
     [ObservableProperty]
     private bool isOpen;
 
@@ -60,8 +69,17 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
         Entries.CollectionChanged += OnEntriesCollectionChanged;
     }
 
-    /// <summary>Wires the adapter-name candidates every row is constructed with — called once by <c>MainWindow</c>'s constructor, the same "registry is a constructor argument" seam M15 Phase 1 established.</summary>
-    internal void SetAdapterCandidates(IReadOnlyList<string> adapterCandidates) => _adapterCandidates = adapterCandidates;
+    /// <summary>
+    /// Wires the adapter registry every row is constructed with — called once by <c>MainWindow</c>'s
+    /// constructor, the same "registry is a constructor argument" seam M15 Phase 1 established for
+    /// adapter names. Derives <see cref="_adapterCandidates"/> from the same registry rather than
+    /// taking both separately, so there is exactly one source of truth for "what adapters exist."
+    /// </summary>
+    internal void SetAdapterRegistry(IReadOnlyDictionary<string, IWorkerAdapter> adapterRegistry)
+    {
+        _adapterRegistry = adapterRegistry;
+        _adapterCandidates = adapterRegistry.Keys.OrderBy(name => name, StringComparer.Ordinal).ToList();
+    }
 
     /// <summary>Starts a fresh editing session over an empty config — nothing touches disk until Save.</summary>
     public void StartNew()
@@ -84,7 +102,7 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
         Entries.Clear();
         foreach (var (workerName, entry) in config)
         {
-            Entries.Add(WorkerBindingEntryViewModel.FromEntry(workerName, entry, _adapterCandidates, RemoveEntry));
+            Entries.Add(WorkerBindingEntryViewModel.FromEntry(workerName, entry, _adapterCandidates, _adapterRegistry, RemoveEntry));
         }
 
         IsOpen = true;
@@ -211,7 +229,7 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
     }
 
     /// <summary>Adds one blank row, ready for editing.</summary>
-    public void AddEntry() => Entries.Add(WorkerBindingEntryViewModel.Blank(_adapterCandidates, RemoveEntry));
+    public void AddEntry() => Entries.Add(WorkerBindingEntryViewModel.Blank(_adapterCandidates, _adapterRegistry, RemoveEntry));
 
     private void RemoveEntry(WorkerBindingEntryViewModel entry) => Entries.Remove(entry);
 
@@ -332,5 +350,30 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
         && a.PromptTemplate == b.PromptTemplate
         && a.Timeout == b.Timeout
         && a.Model == b.Model
-        && a.PermissionScope == b.PermissionScope;
+        && a.PermissionScope == b.PermissionScope
+        && PermissionGrantEquals(a.PermissionGrant, b.PermissionGrant);
+
+    /// <summary>
+    /// Manual field-by-field comparison, not <see cref="PermissionGrant"/>'s own record
+    /// <c>==</c> — the same reason <see cref="EntryEquals"/> already hand-compares
+    /// <c>RequiredInputs</c>/<c>ProducedOutputs</c>/<c>OptionalMetadata</c> instead of trusting
+    /// <see cref="WorkerContract"/>'s equality: a list-typed member breaks record structural
+    /// equality (list/array equality is reference-based, not element-wise). A null
+    /// <see cref="PermissionGrant.ShellCommandPatterns"/> and an empty one are treated as equal so a
+    /// round trip through JSON (which deserializes an absent array as <see langword="null"/> but a
+    /// serialized empty one as <c>[]</c>) never reads as a spurious dirty state.
+    /// </summary>
+    private static bool PermissionGrantEquals(PermissionGrant? a, PermissionGrant? b)
+    {
+        if (a is null || b is null)
+        {
+            return a is null && b is null;
+        }
+
+        return a.ReadFiles == b.ReadFiles
+            && a.WriteFiles == b.WriteFiles
+            && a.RunShellCommands == b.RunShellCommands
+            && a.NetworkAccess == b.NetworkAccess
+            && (a.ShellCommandPatterns ?? []).SequenceEqual(b.ShellCommandPatterns ?? []);
+    }
 }

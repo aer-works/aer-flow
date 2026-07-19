@@ -19,10 +19,12 @@ namespace Aer.Adapters;
 /// <param name="Timeout">The per-execution timeout carried on the resolved <c>Aer.Flow.Mutation.WorkerBinding.Process</c>.</param>
 /// <param name="Model">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/>.</param>
 /// <param name="PermissionScope">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/>.</param>
+/// <param name="PermissionGrant">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/> — see its docs for precedence over <paramref name="PermissionScope"/>.</param>
 public sealed record WorkerBindingConfigEntry(
     string Adapter,
     WorkerContract Contract,
     string PromptTemplate,
     TimeSpan Timeout,
     string? Model = null,
-    string? PermissionScope = null);
+    string? PermissionScope = null,
+    PermissionGrant? PermissionGrant = null);

@@ -28,12 +28,27 @@ namespace Aer.Ui.Core;
 /// (including <c>OutputCondition</c>) is guaranteed by construction rather than by a hand-written
 /// mapping this phase would otherwise have to get right.
 /// </para>
+/// <para>
+/// <b>M21 Phase 1's builder-vs-Advanced toggle:</b> <see cref="IsAdvancedPermissionScope"/> picks
+/// between the pre-existing free-text <see cref="PermissionScope"/> box and the four
+/// <c>Grant*</c>/<see cref="ShellCommandPatternsText"/> checkbox-and-list fields
+/// <see cref="TryBuildEntry"/> composes into a <see cref="Adapters.PermissionGrant"/>. Exactly one
+/// of the two is ever persisted on <see cref="TryBuildEntry"/>'s built entry — never both — mirroring
+/// <see cref="WorkerInvocation"/>'s own documented precedence, so a saved file never carries an
+/// ambiguous "which one wins" state. <see cref="Blank"/> defaults new rows to the builder (the
+/// promoted, primary path per the phase plan); <see cref="FromEntry"/> instead derives the mode from
+/// which field the loaded entry actually has set, so opening an existing hand-typed
+/// <see cref="PermissionScope"/> round-trips into Advanced mode unchanged. If a hand-edited file
+/// somehow has both set, loading lands in Builder mode (structured wins, matching the resolver) and
+/// a subsequent Save normalizes the entry to that interpretation.
+/// </para>
 /// </summary>
 public sealed partial class WorkerBindingEntryViewModel : ObservableObject
 {
     private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
 
     private readonly Action<WorkerBindingEntryViewModel> _onRemove;
+    private readonly IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry;
 
     /// <summary>
     /// Candidate adapter names offered from the registry <c>MainWindow</c> was constructed with
@@ -77,18 +92,58 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
     [ObservableProperty]
     private string permissionScope = string.Empty;
 
-    private WorkerBindingEntryViewModel(IReadOnlyList<string> adapterCandidates, Action<WorkerBindingEntryViewModel> onRemove)
+    [ObservableProperty]
+    private bool isAdvancedPermissionScope;
+
+    [ObservableProperty]
+    private bool grantReadFiles;
+
+    [ObservableProperty]
+    private bool grantWriteFiles;
+
+    [ObservableProperty]
+    private bool grantRunShellCommands;
+
+    [ObservableProperty]
+    private string shellCommandPatternsText = string.Empty;
+
+    [ObservableProperty]
+    private bool grantNetworkAccess;
+
+    [ObservableProperty]
+    private string permissionGrantGapWarning = string.Empty;
+
+    /// <summary>The AuthorView visibility switch for the gap-warning line — matches this file's own established "expose a bool, don't bind on string length" convention (e.g. <c>!IsDialogue</c> elsewhere in AuthorView.axaml).</summary>
+    public bool HasPermissionGrantGapWarning => !string.IsNullOrEmpty(PermissionGrantGapWarning);
+
+    /// <summary>
+    /// The shell-command-patterns box's own visibility needs both "builder mode" and "shell grant
+    /// checked" — a compound condition Avalonia's single-property binding syntax can't express
+    /// without a MultiBinding/converter this file's other bindings don't use, so it's a computed
+    /// bool here instead (same reasoning as <see cref="HasPermissionGrantGapWarning"/>).
+    /// </summary>
+    public bool ShowShellCommandPatterns => !IsAdvancedPermissionScope && GrantRunShellCommands;
+
+    private WorkerBindingEntryViewModel(
+        IReadOnlyList<string> adapterCandidates,
+        IReadOnlyDictionary<string, IWorkerAdapter> adapterRegistry,
+        Action<WorkerBindingEntryViewModel> onRemove)
     {
         AdapterCandidates = adapterCandidates;
+        _adapterRegistry = adapterRegistry;
         _onRemove = onRemove;
     }
 
     /// <summary>A freshly-added blank row (<c>BindingsEditorViewModel.AddEntry</c>) — nothing loaded from any file yet.</summary>
-    public static WorkerBindingEntryViewModel Blank(IReadOnlyList<string> adapterCandidates, Action<WorkerBindingEntryViewModel> onRemove) =>
-        new(adapterCandidates, onRemove)
+    public static WorkerBindingEntryViewModel Blank(
+        IReadOnlyList<string> adapterCandidates,
+        IReadOnlyDictionary<string, IWorkerAdapter> adapterRegistry,
+        Action<WorkerBindingEntryViewModel> onRemove) =>
+        new(adapterCandidates, adapterRegistry, onRemove)
         {
             TimeoutText = "00:05:00",
             ProducedOutputsJson = "[]",
+            IsAdvancedPermissionScope = false,
         };
 
     /// <summary>Reconstructs one row from an already-parsed <see cref="WorkerBindingConfigEntry"/> — <c>BindingsEditorViewModel.LoadFrom</c>'s per-entry step.</summary>
@@ -96,8 +151,9 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
         string workerName,
         WorkerBindingConfigEntry entry,
         IReadOnlyList<string> adapterCandidates,
+        IReadOnlyDictionary<string, IWorkerAdapter> adapterRegistry,
         Action<WorkerBindingEntryViewModel> onRemove) =>
-        new(adapterCandidates, onRemove)
+        new(adapterCandidates, adapterRegistry, onRemove)
         {
             WorkerName = workerName,
             Adapter = entry.Adapter,
@@ -109,10 +165,90 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             TimeoutText = entry.Timeout.ToString(),
             Model = entry.Model ?? string.Empty,
             PermissionScope = entry.PermissionScope ?? string.Empty,
+            IsAdvancedPermissionScope = entry.PermissionGrant is null,
+            GrantReadFiles = entry.PermissionGrant?.ReadFiles ?? false,
+            GrantWriteFiles = entry.PermissionGrant?.WriteFiles ?? false,
+            GrantRunShellCommands = entry.PermissionGrant?.RunShellCommands ?? false,
+            ShellCommandPatternsText = entry.PermissionGrant?.ShellCommandPatterns is { Count: > 0 } patterns
+                ? string.Join(", ", patterns)
+                : string.Empty,
+            GrantNetworkAccess = entry.PermissionGrant?.NetworkAccess ?? false,
         };
 
     [RelayCommand]
     private void Remove() => _onRemove(this);
+
+    partial void OnAdapterChanged(string value) => RecomputePermissionGrantGapWarning();
+
+    partial void OnIsAdvancedPermissionScopeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowShellCommandPatterns));
+        RecomputePermissionGrantGapWarning();
+    }
+
+    partial void OnGrantReadFilesChanged(bool value) => RecomputePermissionGrantGapWarning();
+
+    partial void OnGrantWriteFilesChanged(bool value) => RecomputePermissionGrantGapWarning();
+
+    partial void OnGrantRunShellCommandsChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowShellCommandPatterns));
+        RecomputePermissionGrantGapWarning();
+    }
+
+    partial void OnShellCommandPatternsTextChanged(string value) => RecomputePermissionGrantGapWarning();
+
+    partial void OnGrantNetworkAccessChanged(bool value) => RecomputePermissionGrantGapWarning();
+
+    partial void OnPermissionGrantGapWarningChanged(string value) => OnPropertyChanged(nameof(HasPermissionGrantGapWarning));
+
+    /// <summary>
+    /// Live validation the builder UI shows inline (M21 Phase 1's "surface that gap in the UI
+    /// explicitly rather than silently dropping or downgrading it") — re-run on every field that
+    /// feeds a <see cref="Adapters.PermissionGrant"/>, plus <see cref="Adapter"/> itself since the
+    /// gap is adapter-specific. Empty whenever there's nothing to warn about: Advanced mode, an
+    /// adapter name not found in the registry (nothing to check yet), or an adapter with no
+    /// <see cref="IPermissionGrantTranslator"/> at all (<see cref="PermissionGrantGapWarning"/>
+    /// still fires here, but as "no builder support" rather than a per-category refusal).
+    /// </summary>
+    private void RecomputePermissionGrantGapWarning()
+    {
+        if (IsAdvancedPermissionScope)
+        {
+            PermissionGrantGapWarning = string.Empty;
+            return;
+        }
+
+        if (!_adapterRegistry.TryGetValue(Adapter, out var adapter))
+        {
+            PermissionGrantGapWarning = string.Empty;
+            return;
+        }
+
+        if (adapter is not IPermissionGrantTranslator translator)
+        {
+            PermissionGrantGapWarning = $"'{Adapter}' has no structured permission builder support — use Advanced instead.";
+            return;
+        }
+
+        var grant = BuildPermissionGrant();
+        if (grant.IsEmpty)
+        {
+            PermissionGrantGapWarning = string.Empty;
+            return;
+        }
+
+        PermissionGrantGapWarning = translator.TryTranslatePermissionGrant(grant, out _, out var gapReason)
+            ? string.Empty
+            : gapReason ?? "This adapter cannot express the selected permissions.";
+    }
+
+    private PermissionGrant BuildPermissionGrant() => new(
+        GrantReadFiles,
+        GrantWriteFiles,
+        GrantRunShellCommands,
+        SplitList(ShellCommandPatternsText),
+        GrantNetworkAccess);
 
     /// <summary>
     /// Builds this row's <see cref="WorkerBindingConfigEntry"/> — the only place a malformed
@@ -153,6 +289,32 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             return false;
         }
 
+        string? permissionScope = null;
+        PermissionGrant? permissionGrant = null;
+        if (IsAdvancedPermissionScope)
+        {
+            permissionScope = string.IsNullOrWhiteSpace(PermissionScope) ? null : PermissionScope;
+        }
+        else
+        {
+            var grant = BuildPermissionGrant();
+            if (!grant.IsEmpty)
+            {
+                // Mirrors PermissionGrantUnsupportedException's precedent (defense in depth at
+                // dispatch time) one layer earlier, at Save time, so the gap RecomputePermissionGrantGapWarning
+                // already shows inline also blocks persisting a grant the selected adapter can't honor.
+                if (_adapterRegistry.TryGetValue(Adapter, out var adapter) && adapter is IPermissionGrantTranslator translator
+                    && !translator.TryTranslatePermissionGrant(grant, out _, out var gapReason))
+                {
+                    entry = null;
+                    error = $"Permission grant for '{WorkerName}' can't be saved: {gapReason}";
+                    return false;
+                }
+
+                permissionGrant = grant;
+            }
+        }
+
         var contract = new WorkerContract(
             string.IsNullOrWhiteSpace(ContractWorkerName) ? WorkerName : ContractWorkerName,
             SplitList(RequiredInputsText),
@@ -165,7 +327,8 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             PromptTemplate,
             timeout,
             string.IsNullOrWhiteSpace(Model) ? null : Model,
-            string.IsNullOrWhiteSpace(PermissionScope) ? null : PermissionScope);
+            permissionScope,
+            permissionGrant);
         error = null;
         return true;
     }

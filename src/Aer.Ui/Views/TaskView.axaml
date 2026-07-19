@@ -16,9 +16,10 @@
                  Text="Open a task from Home, or create and run a workflow in Author — this view fills in as soon as a task is open." />
 
       <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="Workflow file (fresh start only)" />
+        <TextBlock Text="Workflow:" VerticalAlignment="Center" />
+        <TextBox x:Name="WorkflowTemplatePathBox" Width="300" PlaceholderText="(fresh start only)" />
+        <TextBlock Text="Bindings:" VerticalAlignment="Center" />
         <TextBox x:Name="BindingsFilePathBox" Width="300"
-                 PlaceholderText="Who runs each step (bindings file)"
                  ToolTip.Tip="Who runs each step — always visible, always swappable, never remembered as authority." />
         <!-- Owner feedback: "does Run make sense on a finished task?" — disabled once the open
              task has actually finished, rather than leaving a click that quietly does nothing. -->
@@ -95,8 +96,10 @@
                   <TextBox Text="{Binding RevisionFilePath}" Width="260"
                            PlaceholderText="Optional for Retry, required to send back" />
                   <Button Content="Choose file…" Click="OnChooseFeedbackFileClick" />
-                  <TextBox Text="{Binding SupplementaryWorker}" Width="110" PlaceholderText="Worker role" />
-                  <TextBox Text="{Binding SupplementaryOutputName}" Width="110" PlaceholderText="Output name" />
+                  <TextBlock Text="Worker:" VerticalAlignment="Center" />
+                  <TextBox Text="{Binding SupplementaryWorker}" Width="110" />
+                  <TextBlock Text="Output:" VerticalAlignment="Center" />
+                  <TextBox Text="{Binding SupplementaryOutputName}" Width="110" />
                 </StackPanel>
               </StackPanel>
             </Border>
@@ -264,7 +267,8 @@
           <StackPanel x:Name="LineagePanel" Spacing="{DynamicResource Space.2}" />
 
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="Workflow file to compare against (optional)" />
+            <TextBlock Text="Compare against:" VerticalAlignment="Center" />
+            <TextBox x:Name="TemplateComparePathBox" Width="480" PlaceholderText="(optional)" />
             <Button x:Name="CompareButton" Content="Compare to a workflow file" />
           </StackPanel>
           <TextBlock Classes="heading" Text="Changes vs. that workflow file:" />

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aer.Adapters;
 using Aer.Flow.Domain;
 using Aer.Workers.Dialogue;
 
@@ -72,6 +73,7 @@ public class GuidedAuthoringTests
             Assert.Equal(GuidedStepViewModel.DefaultTimeout, reviewBinding.Timeout);
             Assert.Null(reviewBinding.Model);
             Assert.Null(reviewBinding.PermissionScope);
+            Assert.Null(reviewBinding.PermissionGrant);
             Assert.Equal(["draft.md"], reviewBinding.Contract.RequiredInputs);
             Assert.Equal("review.md", Assert.Single(reviewBinding.Contract.ProducedOutputs).Name);
         }
@@ -206,6 +208,136 @@ public class GuidedAuthoringTests
         Assert.DoesNotContain(flow.GuidanceMessages, message => message.Contains("Gemini"));
     }
 
+    // M21 Phase 1 follow-up (owner feedback on the initial per-entry-only builder): permissions are
+    // set once per workflow and applied to every non-dialogue step at Save, not configured per step.
+
+    [Fact]
+    public async Task A_shared_permission_grant_applies_to_every_non_dialogue_step()
+    {
+        var workspacePath = NewWorkspacePath();
+        try
+        {
+            var flow = DraftAndReviewFlow(workspacePath);
+            flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter>
+            {
+                ["claude"] = new ClaudeWorkerAdapter(),
+                ["gemini"] = new GeminiWorkerAdapter(),
+            });
+            flow.GrantReadFiles = true;
+            flow.GrantWriteFiles = true;
+
+            var paths = await flow.SaveAsync(TestContext.Current.CancellationToken);
+
+            Assert.NotNull(paths);
+            var bindings = await BindingsProjectionLoader.LoadAsync(
+                paths.Value.BindingsFilePath, TestContext.Current.CancellationToken);
+            foreach (var stepName in new[] { "draft", "review" })
+            {
+                var grant = bindings[stepName].PermissionGrant;
+                Assert.NotNull(grant);
+                Assert.True(grant!.ReadFiles);
+                Assert.True(grant.WriteFiles);
+                Assert.Null(bindings[stepName].PermissionScope);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(workspacePath))
+            {
+                Directory.Delete(workspacePath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_dialogue_steps_binding_entry_is_unaffected_by_the_shared_permission_grant()
+    {
+        var workspacePath = NewWorkspacePath();
+        try
+        {
+            var flow = new NewWorkflowViewModel { WorkflowName = "debate", WorkspaceOverridePath = workspacePath };
+            flow.AddStepCommand.Execute(null);
+            var debate = flow.Steps[0];
+            debate.Name = "debate";
+            debate.Kind = GuidedStepKind.Dialogue;
+            debate.ProducesFileName = "verdict.md";
+            debate.SeedPrompt = "Open with your position.";
+            debate.TurnBudgetText = "2";
+            debate.InitiatorPreamble = "Argue for.";
+            debate.ResponderPreamble = "Argue against.";
+            flow.GrantReadFiles = true;
+            flow.GrantNetworkAccess = true;
+
+            var paths = await flow.SaveAsync(TestContext.Current.CancellationToken);
+
+            Assert.NotNull(paths);
+            var bindings = await BindingsProjectionLoader.LoadAsync(
+                paths.Value.BindingsFilePath, TestContext.Current.CancellationToken);
+            Assert.Null(bindings["debate"].PermissionGrant);
+            Assert.Null(bindings["debate"].PermissionScope);
+        }
+        finally
+        {
+            if (Directory.Exists(workspacePath))
+            {
+                Directory.Delete(workspacePath, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_permission_grant_an_in_use_adapter_cant_honor_blocks_save_with_a_plain_language_message()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() });
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        flow.GrantRunShellCommands = true;
+
+        Assert.Contains(
+            flow.GuidanceMessages,
+            message => message.Contains("gemini", StringComparison.Ordinal) && message.Contains("shell", StringComparison.OrdinalIgnoreCase));
+        Assert.False(flow.CanSave);
+        Assert.Null(await flow.SaveAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void An_adapter_with_no_structured_permission_builder_support_is_flagged_in_guidance()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["claude"] = new NoTranslatorWorkerAdapter() });
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Claude;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        flow.GrantReadFiles = true;
+
+        Assert.Contains(
+            flow.GuidanceMessages,
+            message => message.Contains("no structured permission builder support", StringComparison.Ordinal));
+        Assert.False(flow.CanSave);
+    }
+
+    [Fact]
+    public void Leaving_permissions_unset_never_blocks_save_even_with_no_adapter_registry()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+        flow.RefreshStructure();
+
+        Assert.Empty(flow.GuidanceMessages);
+        Assert.True(flow.CanSave);
+    }
+
     [Fact]
     public void Depends_on_options_follow_the_other_steps_names()
     {
@@ -223,4 +355,11 @@ public class GuidedAuthoringTests
         flow.RefreshStructure();
         Assert.True(flow.Steps[1].DependsOnOptions.Single(option => option.StepName == "draft").IsSelected);
     }
+}
+
+/// <summary>An adapter that never implements <see cref="IPermissionGrantTranslator"/> — the "no structured permission builder support" guidance path.</summary>
+internal sealed class NoTranslatorWorkerAdapter : IWorkerAdapter
+{
+    public Aer.Flow.Dispatch.CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract) =>
+        throw new NotSupportedException("This test adapter never dispatches a real invocation.");
 }

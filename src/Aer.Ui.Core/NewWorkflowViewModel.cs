@@ -33,6 +33,8 @@ public enum GuidedStepKind
 /// </summary>
 public sealed partial class NewWorkflowViewModel : ObservableObject
 {
+    private IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry = new Dictionary<string, IWorkerAdapter>();
+
     public ObservableCollection<GuidedStepViewModel> Steps { get; } = [];
     public ObservableCollection<string> GuidanceMessages { get; } = [];
     public ObservableCollection<string> VendorReadinessLines { get; } = [];
@@ -48,6 +50,60 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 
     [ObservableProperty]
     private string statusText = string.Empty;
+
+    // M21 Phase 1 follow-up: permissions live once per workflow, not once per step — a builder on
+    // every step card doesn't scale (most workflows want one policy, not N to fiddle with), and
+    // per-step controls only ever lived in the Advanced bindings editor anyway, invisible to anyone
+    // on the guided (primary) path. This shared grant is translated per adapter and applied to every
+    // non-dialogue step's binding entry at Save (see GuidedStepViewModel.BuildBindingEntryAsync);
+    // dialogue steps are untouched — their participants' permissions come from
+    // DialogueParticipantPresets, unrelated to this workflow-level grant.
+    [ObservableProperty]
+    private bool grantReadFiles;
+
+    [ObservableProperty]
+    private bool grantWriteFiles;
+
+    [ObservableProperty]
+    private bool grantRunShellCommands;
+
+    [ObservableProperty]
+    private string shellCommandPatternsText = string.Empty;
+
+    [ObservableProperty]
+    private bool grantNetworkAccess;
+
+    public bool ShowShellCommandPatterns => GrantRunShellCommands;
+
+    public void SetAdapterRegistry(IReadOnlyDictionary<string, IWorkerAdapter> adapterRegistry)
+    {
+        _adapterRegistry = adapterRegistry;
+        RefreshStructure();
+    }
+
+    internal PermissionGrant BuildPermissionGrant() => new(
+        GrantReadFiles,
+        GrantWriteFiles,
+        GrantRunShellCommands,
+        SplitList(ShellCommandPatternsText),
+        GrantNetworkAccess);
+
+    partial void OnGrantReadFilesChanged(bool value) => RefreshStructure();
+
+    partial void OnGrantWriteFilesChanged(bool value) => RefreshStructure();
+
+    partial void OnGrantRunShellCommandsChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowShellCommandPatterns));
+        RefreshStructure();
+    }
+
+    partial void OnShellCommandPatternsTextChanged(string value) => RefreshStructure();
+
+    partial void OnGrantNetworkAccessChanged(bool value) => RefreshStructure();
+
+    private static IReadOnlyList<string> SplitList(string text) =>
+        text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public string EffectiveWorkspacePath => WorkspaceOverridePath.Length > 0
         ? WorkspaceOverridePath
@@ -130,6 +186,33 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
                 yield return message;
             }
         }
+
+        var grant = BuildPermissionGrant();
+        if (!grant.IsEmpty)
+        {
+            var adapterNamesInUse = Steps
+                .Where(step => !step.IsDialogue)
+                .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini")
+                .Distinct();
+            foreach (var adapterName in adapterNamesInUse)
+            {
+                if (!_adapterRegistry.TryGetValue(adapterName, out var adapter))
+                {
+                    continue;
+                }
+
+                if (adapter is not IPermissionGrantTranslator translator)
+                {
+                    yield return $"'{adapterName}' has no structured permission builder support, so the permissions above won't apply to its steps.";
+                    continue;
+                }
+
+                if (!translator.TryTranslatePermissionGrant(grant, out _, out var gapReason))
+                {
+                    yield return $"The permissions above can't be granted to '{adapterName}' steps: {gapReason}";
+                }
+            }
+        }
     }
 
     public bool CanSave => WorkflowName.Length > 0 && Steps.Count > 0 && !Validate().Any();
@@ -194,9 +277,11 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 /// One authored step in the guided flow. Field names speak the vocabulary map ("what it
 /// produces", "review gate", "who runs it"); <see cref="BuildStepDefinition"/>/
 /// <see cref="BuildBindingEntryAsync"/> translate to the durable spec shapes. Vendor presets fill
-/// the invocation side (timeout, permissions, dialogue participants) from the layers that own
-/// that knowledge — <see cref="VendorCliPresence"/>'s adapters and
-/// <see cref="DialogueParticipantPresets"/> — never re-encoded here.
+/// the invocation side (timeout, dialogue participants) from the layers that own that knowledge —
+/// <see cref="VendorCliPresence"/>'s adapters and <see cref="DialogueParticipantPresets"/> — never
+/// re-encoded here. Permissions are the one exception: they're set once per workflow, not per
+/// step (<see cref="NewWorkflowViewModel.BuildPermissionGrant"/>), and applied here at
+/// <see cref="BuildBindingEntryAsync"/> time.
 /// </summary>
 public sealed partial class GuidedStepViewModel : ObservableObject
 {
@@ -251,19 +336,12 @@ public sealed partial class GuidedStepViewModel : ObservableObject
 
     public ObservableCollection<GuidedDependsOnOptionViewModel> DependsOnOptions { get; } = [];
 
-    /// <summary>The permission story in plain words — read-only text, because the presets deliberately pass no explicit scope: the adapter's own default governs (never re-encoded here).</summary>
-    public string PermissionExplanation => Kind switch
-    {
-        GuidedStepKind.Gemini => "May edit files in its work area (the runner's standard permissions).",
-        _ => "May write files in its work area (the runner's standard permissions).",
-    };
-
     [RelayCommand]
     private void Remove() => _owner.RemoveStep(this);
 
     partial void OnNameChanged(string value) => _owner.RefreshStructure();
 
-    partial void OnKindChanged(GuidedStepKind value) => OnPropertyChanged(nameof(PermissionExplanation));
+    partial void OnKindChanged(GuidedStepKind value) => _owner.RefreshStructure();
 
     internal void RefreshDependsOnOptions()
     {
@@ -353,13 +431,15 @@ public sealed partial class GuidedStepViewModel : ObservableObject
 
         if (!IsDialogue)
         {
+            var grant = _owner.BuildPermissionGrant();
             return new WorkerBindingConfigEntry(
                 Kind == GuidedStepKind.Claude ? "claude" : "gemini",
                 contract,
                 Prompt,
                 DefaultTimeout,
                 Model.Length > 0 ? Model : null,
-                PermissionScope: null);
+                PermissionScope: null,
+                PermissionGrant: grant.IsEmpty ? null : grant);
         }
 
         var dialogueConfig = new DialogueWorkerConfig(
