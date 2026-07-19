@@ -107,6 +107,8 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 - [x] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
 - [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - [ ] Phase 6 — Close M20's Deferred Hardening
+- [ ] Phase 7 — `Aer.Mobile`: tsnet Toolchain + Interactive Tailnet Join
+- [ ] Phase 8 — `Aer.Mobile`: WS-over-tsnet Transport
 
 ---
 
@@ -364,6 +366,57 @@ items now that a real remote client exists to harden against.
 - **Verification**: paired-token revocation → 401 is verified (automated test, passing). Tailnet-only
   reachability (the other half of this phase's original verification bar) is **not yet verified** —
   it depends on Phase 5's live proof landing first.
+
+### Phase 7: `Aer.Mobile` — tsnet Toolchain + Interactive Tailnet Join
+- **Goal**: split out of issue #245 (originally scoped as one "embed tsnet in Aer.Mobile" issue) —
+  prove the two hard blockers before writing any transport code: the Android build actually produces
+  an APK with the `tailscale` package's Go/NDK native step, and a phone can join the tailnet at all.
+  Sequenced ahead of Phase 8's WebSocket work specifically because both were unproven risk.
+- **Auth model decision of record**: the original candidate design (a Tailscale OAuth client minting
+  a fresh auth key per pairing) was rejected as too much one-time admin-console setup for what it
+  buys. Instead the phone's own `tsnet` node calls `up()` with no auth key on first run — `tsnet`
+  returns its own interactive login URL instead of throwing, the phone opens it once via
+  `url_launcher`, and it's a known tailnet device from then on. Identical in shape to the desktop
+  sidecar's own "Sign in to Tailscale" flow (Phase 5) — no new `Aer.Daemon`/sidecar work at all.
+- **Built**: the `tailscale` package (0.5.0) added to `Aer.Mobile`; a `TailnetGateway` wrapper
+  (`lib/daemon/tailnet_gateway.dart`) around `Tailscale.instance`'s `init`/`up`/`http.client`/
+  `onStateChange`; the pairing screen detects a tailnet-only host (Tailscale's CGNAT range,
+  100.64.0.0/10 — the same range the desktop's `SidecarTailnetHost` always uses) and drives the
+  interactive sign-in before pairing. Both the connectivity proof (`GET /api/version`) and the
+  pairing call itself route through `Tailscale.instance.http.client` — a real corrected finding
+  versus the original issue text, which assumed only later REST calls would need tsnet-routing: a
+  100.x address has no route through the phone's regular OS network stack at all (`tsnet` is
+  userspace-only), so pairing itself has to go over it too. `CredentialsStore` gained a
+  `tsnetRouted` flag so a relaunch knows to bring the node back up before reconnecting. Added the
+  `android.intent.action.VIEW`/`https` `<queries>` manifest entry `url_launcher` needs on
+  Android 11+ package visibility.
+- **Known local-Windows-only build quirk**: the `tailscale` package's native-asset build hook needs
+  `GOCACHE`/`%LocalAppData%` in the environment it sees; a Windows-only Gradle/`flutter test`
+  invocation path strips those before invoking it, and building the package's Windows-host native
+  stub (only needed for `flutter test`, not the Android build) separately needs a C compiler (MinGW
+  gcc) not installed on this dev machine. Reasoned (not yet confirmed at the time of writing) to be
+  Windows-host-specific and not a CI concern: Go on Linux locates its cache via `$HOME`, which
+  survives the same env stripping, and `ubuntu-latest` ships gcc.
+- **Not yet done / not provable in an agent session**: real on-device pairing — build an APK, sign
+  in interactively, confirm the phone appears in the Tailscale admin console, get a real
+  `/api/version` response back over the tailnet. Same permanently-human-gated shape as Phase 4/5's
+  cross-network proofs.
+- **Verification**: `flutter analyze` clean against the real installed package API; `flutter build
+  apk --debug` succeeds locally (Android/ARM). Real-device pairing **unproven** — pending the
+  owner's own run, same bar as this milestone's other live-Tailscale gates.
+
+### Phase 8: `Aer.Mobile` — WS-over-tsnet Transport
+- **Goal**: real-time `watch()` behavior over the tsnet transport Phase 7 proved out, matching what
+  LAN-paired mode already gets from `web_socket_channel`. The `tailscale` package has no WebSocket
+  support, so this needs a hand-rolled RFC 6455 client (handshake + text-frame framing) built
+  directly on the package's raw `tcp.dial`.
+- **Not started.** `DaemonClient` will branch on the `tsnetRouted` flag Phase 7 added to
+  `CredentialsStore` and pick this transport only then — every REST call (`recentTasks`, `decide`,
+  `cancelRun`, `openTask`, `fetchArtifact`) and `watch()` gets a tsnet-routed variant; LAN-paired
+  mode's existing `http`/`web_socket_channel` calls stay untouched.
+- **Verification (planned)**: unit coverage for the WS frame encode/decode logic (no live network
+  needed), plus a real cross-network run — phone on cellular, desktop on Wi-Fi, both only joined via
+  their embedded tsnet nodes — reusing `docs/runbooks/tailscale-cross-network-proof.md`'s shape.
 
 ---
 
