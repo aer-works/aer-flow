@@ -42,6 +42,10 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 23 | **UI Authoring** | Template/DAG/worker-binding editing with structural validation (cycles, `SupersedeTargets` ancestry); never touches a bound snapshot | UI spec §5, §8, §9 |
 | 24 | **Dialogue Worker** | The first Case 2 encapsulated multi-model worker: a bounded, multi-turn Claude ↔ Gemini exchange inside one `ExecutionRequest`, recorded as a durable transcript artifact; vendor CLIs invoked inside the worker boundary, subscriptions-only like the adapters | Flow spec §18.2; UI spec §10 |
 | 25 | **Conversation View** | Render a dialogue execution's durable transcript as a conversation-style projection | UI spec §10 |
+| 26 | **Daemon Network API** | Task read model + mutation interface exposed over REST/WebSocket (`Aer.Daemon`); loopback by default, `--remote` binds beyond it; pairing protocol mints long-lived paired-client tokens | M20 decisions of record |
+| 27 | **Permission Scope Model** | Vendor-neutral structured worker permission grants (categories: `ReadFiles`/`WriteFiles`/`RunShellCommands` with a pattern allowlist/`NetworkAccess`) replacing the opaque `PermissionScope` string, translated per-vendor inside each adapter's `Resolve` (Adapter Isolation) | CLAUDE.md rule #2 |
+| 28 | **Mobile Remote Client** | `Aer.Mobile` (Flutter/Android): pairing, a WebSocket-driven decision inbox, Approve/Reject/Cancel over the existing daemon REST API | — |
+| 29 | **Zero-Config Tailscale Transport** | Embedded `tsnet` (a Go sidecar the daemon supervises) on desktop, `flutter_tsnet` on mobile — no separate Tailscale app install required by the end user, BYO free Tailscale account | — |
 
 ---
 
@@ -64,9 +68,10 @@ Which milestone introduces which capabilities.
 | **M17: Dialogue Worker** | 24 (first Case 2 worker); plus the real-use walkthrough doc | M12 (both vendor CLIs proven live) |
 | **M18: Conversation View** | 25 | M17 (a transcript to project); M14 |
 | **M19: Product UX** | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18 |
-| **M20: Daemonization & Remote Control** | 26 (exposing read model + mutation over network API), 27 (remote client protocol / mobile gateway) | M19 |
-| **M21: Generic Dialogue & Project Packaging** | 28 (Generic Dialogue configuration schema & loops), 29 (Unified Project Package model with profile segregation) | M20 |
-| **M22: UI Visual Overhaul** | 30 (Curve-based Bezier DAG rendering, brand icons), 31 (Rich markdown output previewer), 32 (Keyboard-first triage modal) | M21 |
+| **M20: Daemonization & Remote Control** | 26 (Daemon Network API) | M19 |
+| **M21: Zero-Config Remote Control & Permission Scopes** | 27 (Permission Scope Model), 28 (Mobile Remote Client), 29 (Zero-Config Tailscale Transport) | M20 |
+| **M22: Generic Dialogue & Project Packaging** | 30 (Generic Dialogue configuration schema & loops), 31 (Unified Project Package model with profile segregation) | M21 |
+| **M23: UI Visual Overhaul** | 32 (Curve-based Bezier DAG rendering, brand icons), 33 (Rich markdown output previewer), 34 (Keyboard-first triage modal) | M22 |
 
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
@@ -91,16 +96,106 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 
 ## Current Milestone
 
-**M21: Generic Dialogue & Project Packaging** — progress:
+**M21: Zero-Config Remote Control & Permission Scopes** — progress:
 
-- [ ] Phase 1 — Generic Dialogue Config Schema & Loops
-- [ ] Phase 2 — Project Packages & Binding Segregation
-- [ ] Phase 3 — Visual Diff Viewer for Revisions
-- [ ] Phase 4 — Multi-Agent Teamwork Preview (Mock)
+- [ ] Phase 1 — Permission-Scope Model
+- [ ] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
+- [ ] Phase 3 — Desktop Pairing UX
+- [ ] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
+- [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
+- [ ] Phase 6 — Close M20's Deferred Hardening
 
 ---
 
-## M21: Generic Dialogue & Project Packaging — Phase Plan
+## M21: Zero-Config Remote Control & Permission Scopes — Phase Plan
+
+**Goal:** Prove that AER Flow can be driven remotely from a phone with zero required infrastructure
+(each user's own free Tailscale account, no separate app installs, no App Store), and give workers a
+structured, vendor-neutral permission model instead of hand-typed adapter flag strings. This folds in
+the owner's original candidate-M20 goal — drive AER from a phone the way Claude Code's app
+remote-controls a desktop session — now that M20 has actually shipped the daemon/network-API side of
+it; both of that note's gating questions (reopening the no-daemon spec stance, the new client-auth
+trust boundary) are resolved by M20's decisions of record.
+
+Sequencing principle: zero-config Tailscale embedding (`tsnet`/`flutter_tsnet`) is real, unproven
+engineering risk — no .NET `tsnet` binding exists anywhere, and `flutter_tsnet` is pre-1.0. What
+actually proves "this works" is a phone talking to the daemon end-to-end (pair → auth → WebSocket
+projection → REST decision), which is provable now over plain Tailscale (manual install) or LAN.
+Phases 1–4 build and prove the mobile client first; Phase 5 treats zero-config embedding as a
+time-boxed refinement on top, not a blocker. Phase 6 closes M20's two explicitly-deferred hardening
+items now that a real remote client exists to harden against.
+
+### Phase 1: Permission-Scope Model
+- **Goal**: Replace the opaque `PermissionScope` string (`WorkerInvocation.cs`,
+  `WorkerBindingConfigEntry.cs`) with a structured, vendor-neutral model — categories (`ReadFiles`,
+  `WriteFiles`, `RunShellCommands` with a pattern allowlist, `NetworkAccess`) — surfaced as a builder
+  UI in `Aer.Ui`'s bindings editor, translated per-vendor inside `ClaudeWorkerAdapter.Resolve`/
+  `GeminiWorkerAdapter.Resolve` (today: `--allowedTools <string>` for Claude, `--mode <string>` for
+  Gemini/`agy`, both forwarding the raw string verbatim). Keeps the raw-string field as an "Advanced"
+  escape hatch so existing bindings files round-trip unchanged. Where a category has no clean
+  per-vendor equivalent, surfaces the gap explicitly rather than silently downgrading — verify `agy`'s
+  actual permission vocabulary against its real CLI help before finalizing the translation table, not
+  yet confirmed to have clean parity with Claude's `--allowedTools`. Independent of every other phase.
+- **Verification**: round-trip test — build a scope in the UI, save a binding, resolve through both
+  adapters, assert expected flags; existing hand-written `PermissionScope` strings still load and
+  resolve identically.
+
+### Phase 2: `Aer.Mobile` — Flutter Client, Proven Over LAN
+- **Goal**: New `src/Aer.Mobile/` Flutter/Android app: pairing screen (host + code entry, or QR
+  scan), a WebSocket-driven decision inbox mirroring `Aer.Ui`'s `TaskProjection` consumption, and
+  Approve/Reject/Cancel via the existing REST endpoints (`/api/pairing/pair`, `/api/tasks/recent`,
+  `/api/tasks/decide`, `/api/tasks/cancel`) — all already exist, zero backend changes needed.
+  Sideload-only (`flutter run` over USB or `flutter build apk --debug` + `adb install`), no Play
+  Store. Adds `pixi run mobile-build`/`mobile-run` tasks and a Flutter CI job. Adds this milestone's
+  own release-please package (component `mobile`, release-type `dart`) once `pubspec.yaml` exists —
+  deliberately not added by the release-please linked-versions migration (#225) ahead of this phase,
+  since a package path that doesn't exist yet would break the next release-please run.
+- **Verification**: phone on the same LAN as the desktop, pair via manually-read code (daemon started
+  with `--remote`), approve a paused task from the phone, confirm it resumes on desktop. Requires a
+  physical Android phone — a human action item the same way this repo's live-vendor smoke gates are.
+
+### Phase 3: Desktop Pairing UX
+- **Goal**: `Aer.Ui` has no screen for initiating pairing today even though `/api/pairing/code`
+  already exists (curl-only). Add an "Enable Remote Access" view: pairing code, a QR code encoding
+  `{host, code}`, a `--remote` toggle, and a plain-language warning that `--remote` is unencrypted LAN
+  traffic until Phase 6.
+- **Verification**: scan the QR from `Aer.Mobile`'s pairing screen, complete pairing with no manual
+  IP/code typing.
+
+### Phase 4: Cross-Network Proof via Tailscale (Manual Install)
+- **Goal**: Prove the "from anywhere" property using Phases 2–3 unchanged — standalone Tailscale
+  apps on both ends (BYO free account), different networks, same pair/approve flow as Phase 2's LAN
+  test. Zero new code; de-risks Phase 5 by confirming the daemon API has no LAN-only assumption.
+- **Verification**: phone on cellular data, desktop on home Wi-Fi, both on the same personal tailnet —
+  approve a paused task from the phone.
+
+### Phase 5: Zero-Config Tailscale Embedding (Time-Boxed Spike)
+- **Goal**: Remove the manual Tailscale app install from Phase 4. Desktop: a `tsnet`-based Go
+  sidecar process `Aer.Daemon` supervises (like it already supervises worker processes), lower risk
+  than a C# P/Invoke/cgo binding — no FFI marshaling, reuses the existing process-supervision pattern;
+  one-time interactive tailnet-auth link shown to the user. Mobile: `flutter_tsnet` (pin the
+  version — pre-1.0, expect breaking-change friction). Explicitly time-boxed: if either side doesn't
+  land cleanly, the milestone still ships — Phases 1–4 already deliver a real, working remote-control
+  product over manually-installed Tailscale; zero-config becomes a fast-follow, not a blocker.
+- **Verification**: fresh phone + fresh desktop, neither with Tailscale pre-installed, complete
+  pairing with no manual Tailscale steps.
+
+### Phase 6: Close M20's Deferred Hardening
+- **Goal**: M20 explicitly deferred TLS and paired-token revocation "for whichever milestone builds
+  the actual remote client" — this is that milestone. In place of implementing TLS: bind `--remote`
+  to the Tailscale-assigned interface address specifically (once Phase 5 lands) instead of
+  `IPAddress.Any` (`Program.cs`) — the tailnet's own WireGuard layer already encrypts everything
+  reaching that address, closing the real exposure (a plaintext port reachable by anyone on the same
+  physical LAN/Wi-Fi) without writing TLS termination code. If Phase 5 doesn't land, `--remote` stays
+  LAN-plaintext as today, documented as a known limitation same as M20 left it. Paired-token
+  revocation: a "Paired Devices" list in Phase 3's view with a Remove button — `PairedClientsStore`
+  can already add a client; add the missing remove path.
+- **Verification**: `--remote` bound to the tailnet address is unreachable from a plain-LAN client not
+  on the tailnet; revoking a paired device's token causes its next request to 401.
+
+---
+
+## M22: Generic Dialogue & Project Packaging — Phase Plan
 
 **Goal:** Author multi-turn dialogue steps directly within the UI and bundle workflow assets into portable task packages while separating machine-specific bindings config.
 
@@ -122,7 +217,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 
 ---
 
-## M22: UI Visual Overhaul — Phase Plan
+## M23: UI Visual Overhaul — Phase Plan
 
 **Goal:** Transform the visual layout of AER Flow into a premium desktop product matching reference-caliber tools (Linear, Raycast).
 
@@ -243,19 +338,4 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
 ## Notes for future work
 
 - **A third worker adapter (`Aer.Adapters`)** — Claude shipped in M11 Phase 2 (#85), Gemini/`agy` in M12 Phase 1 (#95). Before adding another vendor, read closed spike [#21](https://github.com/aer-works/aer-flow/issues/21)'s recorded findings — stdin stalls, permission-flag vocabularies, and path-interpolation behavior differ per CLI and are exactly what the adapter seam exists to absorb. (M17 Phase 4's dialogue adapter is not this note's case: it spawns aer's own dialogue worker executable, not another vendor's CLI — the vendor quirks stay inside the worker, which inherits them from the two existing adapters' recorded findings.)
-- **Remote access (candidate M20)** — the owner's stated eventual goal: drive AER from a phone
-  the way Claude Code's app remote-controls a desktop session. The architecture already divides
-  the right way — the desktop must stay the host regardless (the pump is in-process with the §15
-  lock per M15's decision of record, and the vendor CLIs are subscription-authenticated there,
-  exactly the property to keep), while everything a thin client needs is already guaranteed:
-  durable-file truth, deterministic projection (§11), one mutation interface (§14), replaceable
-  surfaces (§13). The likely shape: a host process exposing the read model + mutation interface,
-  and a browser/PWA client (decision inbox first — approve/send-back from anywhere is the
-  value; authoring can stay desktop). Two questions gate it, both deliberate spec work, not
-  code: reopening §20's no-daemon stance (a remote host is a daemon — the standing Event Store
-  performance ledger entry is already waiting on the same revisit), and the new trust boundary
-  (client auth for a network API; vendor credentials never leave the desktop). M19 Phase 2's
-  remote-ready seam — and its `Aer.Ui.Core` split, which the host process would reference
-  without ever touching `Aer.Ui` — is the enabling investment; plan the rest only when it
-  becomes current.
 - **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.
