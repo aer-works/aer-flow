@@ -104,7 +104,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 - [x] Phase 1 — Permission-Scope Model
 - [x] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
 - [x] Phase 3 — Desktop Pairing UX
-- [ ] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
+- [x] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
 - [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - [ ] Phase 6 — Close M20's Deferred Hardening
 
@@ -290,11 +290,14 @@ items now that a real remote client exists to harden against.
   deliberately filters out Tailscale's virtual adapter (same logic that filters WSL/VMware/etc.), so
   cross-network pairing needs manual host entry (the desktop's tailnet IP) instead of a QR scan.
   See `docs/runbooks/tailscale-cross-network-proof.md` for the full runbook.
-- **Status**: runbook shipped (#240). **Not yet run** — needs a real phone on a network separate
-  from the desktop and a personal Tailscale account on both ends; a human action item, same as
-  Phase 2/3's real-hardware gates.
-- **Verification**: phone on cellular data, desktop on home Wi-Fi, both on the same personal tailnet —
-  approve a paused task from the phone. **Pending** — see the runbook above.
+- **Status**: done. Zero new code confirmed sufficient — the daemon's remote API had no LAN-only
+  assumption.
+- **Verification**: done, 2026-07-19 — desktop Tailscale 1.98.9 (Windows), phone a Pixel 10 Pro on
+  Tailscale for Android, cellular data (no shared LAN). Manual host entry (tailnet IP + code)
+  paired on the first attempt; a paused step pushed live to the phone's inbox over the WS
+  connection; a Reject decision from the phone resolved it and the daemon's own projection
+  confirmed `Terminal`. Full details, including an unrelated transient `claude` CLI flake hit while
+  building the test workflow, in `docs/runbooks/tailscale-cross-network-proof.md`.
 
 ### Phase 5: Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - **Goal**: Remove the manual Tailscale app install from Phase 4. Desktop: a `tsnet`-based Go

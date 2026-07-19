@@ -73,4 +73,27 @@ M21 Phase 4 is complete once this has been run successfully at least once. Recor
 device/network setup, and the Tailscale client versions used in `IMPLEMENTATION_PLAN.md`'s Phase 4
 entry — this file only documents *how* to run it, not a rolling log of every run.
 
-**Recorded green run:** none yet.
+**Recorded green run:** 2026-07-19, desktop Tailscale client 1.98.9 (Windows), phone a Pixel 10
+Pro on Tailscale for Android, cellular data (no shared LAN with the desktop). Manual host entry
+(`100.101.139.26:5000`) + pairing code succeeded on the first attempt. A live `Aer.Daemon --remote`
+instance (not through `Aer.Ui`'s toggle) ran a two-step Claude-only workflow so the proof didn't
+depend on a second vendor's CLI being authenticated on this host; `review` declared a `PausePoint`
+and reached `Paused` (its own execution incidentally also failed transiently — unrelated to this
+phase, see below — which is itself a valid pause-worthy outcome per the engine's contract). The
+paused card appeared in the phone's inbox with no manual refresh, live over the WS connection
+established at pairing. Reject from the phone resolved it; the daemon's own projection (queried via
+`/api/tasks/open`) confirmed `Terminal`/`Rejected` and a decision record, matching the second-WS-
+broadcast confirmation Phase 2 already proved over LAN.
+
+Windows Firewall had a pre-existing `aer.daemon.exe` allow rule for the Private/Public profiles, and
+the Tailscale adapter is itself categorized Private by Windows — no firewall changes were needed for
+this specific machine, but a fresh machine may need to grant `Aer.Daemon.exe` through the firewall on
+first `--remote` run (Windows' authenticated app prompt handles this in the normal `Aer.Ui` toggle
+flow).
+
+**Unrelated flake noticed, not a Phase 4 finding**: the first attempt's `draft` step (Claude,
+`--allowedTools Write`) wrote a fully correct output file but the CLI process still exited 1,
+failing the step outright under `MaxAttempts: 1`. Retried with `MaxAttempts: 3` and it succeeded on
+the next attempt. Likely a transient/host-contention issue with invoking a second `claude` CLI
+process from a session that is itself a running `claude` process — not investigated further since
+it's orthogonal to this phase's actual proof (transport over Tailscale, not adapter reliability).
