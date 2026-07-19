@@ -25,6 +25,22 @@
 
           <ItemsControl x:Name="VendorReadinessList" ItemsSource="{Binding NewWorkflow.VendorReadinessLines}" />
 
+          <!-- M21 Phase 1 follow-up: permissions are set once per workflow, not once per step — a
+               builder on every step card doesn't scale, and burying it in the Advanced bindings
+               editor made it invisible to anyone on the guided (primary) path. Applies to every
+               Claude/Gemini step at Save; dialogue steps are unaffected (their participants' own
+               permissions come from DialogueParticipantPresets). -->
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Permissions (applies to every Claude/Gemini step):" VerticalAlignment="Center" Classes="secondary" />
+            <CheckBox Content="Read files" IsChecked="{Binding NewWorkflow.GrantReadFiles}" />
+            <CheckBox Content="Write files" IsChecked="{Binding NewWorkflow.GrantWriteFiles}" />
+            <CheckBox Content="Run shell commands" IsChecked="{Binding NewWorkflow.GrantRunShellCommands}" />
+            <TextBox Text="{Binding NewWorkflow.ShellCommandPatternsText}" Width="150" PlaceholderText="Command patterns (e.g. git:*)"
+                     IsVisible="{Binding NewWorkflow.ShowShellCommandPatterns}" />
+            <CheckBox Content="Network access" IsChecked="{Binding NewWorkflow.GrantNetworkAccess}" />
+          </StackPanel>
+          <TextBlock Classes="caption" Text="Leave unchecked to use each runner's own default permissions." />
+
           <Button Command="{Binding NewWorkflow.AddStepCommand}"><AccessText Text="Ad_d a step" /></Button>
           <ItemsControl x:Name="GuidedStepsList" ItemsSource="{Binding NewWorkflow.Steps}">
             <ItemsControl.ItemTemplate>
@@ -40,7 +56,6 @@
                                 ToolTip.Tip="Pause here for your review before the workflow continues — approve, retry, send back, or reject." />
                       <Button Content="Remove" Command="{Binding RemoveCommand}" />
                     </StackPanel>
-                    <TextBlock Classes="caption" Text="{Binding PermissionExplanation}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <TextBlock Text="Runs after:" VerticalAlignment="Center" />
                       <ItemsControl ItemsSource="{Binding DependsOnOptions}">
@@ -120,6 +135,8 @@
                  PlaceholderText="Version" IsEnabled="{Binding TemplateEditor.IsOpen}" />
       </StackPanel>
       <TextBlock x:Name="TemplateEditorStatusText" Text="{Binding TemplateEditor.StatusText}" />
+      <TextBlock Classes="caption" IsVisible="{Binding !TemplateEditor.IsOpen}"
+                 Text="Nothing open yet — click New template or Open in editor above. The steps, validation, and graph sections below fill in once a template is open." />
 
       <TextBlock Classes="heading" Text="Steps (add/remove, edit fields, choose which steps each one depends on):" />
       <Button x:Name="AddStepButton" Content="Add step" IsEnabled="{Binding TemplateEditor.IsOpen}" />
@@ -199,6 +216,8 @@
         <Button x:Name="AddBindingEntryButton" Content="Add entry" IsEnabled="{Binding BindingsEditor.IsOpen}" />
         <Button x:Name="CheckBindingsAgainstTemplateButton" Content="Check against open template" IsEnabled="{Binding BindingsEditor.IsOpen}" />
       </StackPanel>
+      <TextBlock Classes="caption" IsVisible="{Binding !BindingsEditor.IsOpen}"
+                 Text="Nothing open yet — click New bindings or Open in editor above. Entries (including permissions) appear here once a bindings file is open." />
       <ItemsControl x:Name="BindingEntriesList" ItemsSource="{Binding BindingsEditor.Entries}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:WorkerBindingEntryViewModel">

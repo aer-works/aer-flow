@@ -173,6 +173,7 @@ public partial class MainWindow : Window
         // rather than bound from a shared ancestor, since ItemsControl.ItemTemplate's DataContext is
         // the entry itself.
         ViewModel.BindingsEditor.SetAdapterRegistry(adapters);
+        ViewModel.NewWorkflow.SetAdapterRegistry(adapters);
 
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
         OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);
