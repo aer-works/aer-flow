@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.16.0](https://github.com/aer-works/aer-flow/compare/ui-v0.15.0...ui-v0.16.0) (2026-07-19)
+
+
+### Features
+
+* **adapters:** Add structured PermissionGrant model for worker bindings ([#230](https://github.com/aer-works/aer-flow/issues/230)) ([b958e8d](https://github.com/aer-works/aer-flow/commit/b958e8d0a1126a5f9520ab9dcb70526ac0ec87bc))
+* **brand:** Refresh the AER mark and share it across desktop/mobile ([#239](https://github.com/aer-works/aer-flow/issues/239)) ([11a56e7](https://github.com/aer-works/aer-flow/commit/11a56e7822bda554ab43f5786f5705031a651720))
+* **daemon,ui,sidecar:** M21 Phase 5+6 — Zero-Config Tailscale Embedding + Close M20's Deferred Hardening ([#244](https://github.com/aer-works/aer-flow/issues/244)) ([90fb9f9](https://github.com/aer-works/aer-flow/commit/90fb9f9d01145befa3255b62823f8adb2bfc13dd))
+* **ui,mobile:** M21 Phase 3 — Desktop Pairing UX ([#235](https://github.com/aer-works/aer-flow/issues/235)) ([946743c](https://github.com/aer-works/aer-flow/commit/946743cd88176e05075f8c9264885e9ca830b57f))
+
 ## [0.15.0](https://github.com/aer-works/aer-flow/compare/ui-v0.14.0...ui-v0.15.0) (2026-07-18)
 
 

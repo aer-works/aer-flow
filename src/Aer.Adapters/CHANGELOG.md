@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.15.0...adapters-v0.16.0) (2026-07-19)
+
+
+### Features
+
+* **adapters:** Add structured PermissionGrant model for worker bindings ([#230](https://github.com/aer-works/aer-flow/issues/230)) ([b958e8d](https://github.com/aer-works/aer-flow/commit/b958e8d0a1126a5f9520ab9dcb70526ac0ec87bc))
+
 ## [0.15.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.14.0...adapters-v0.15.0) (2026-07-18)
 
 

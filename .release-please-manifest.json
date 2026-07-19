@@ -1,9 +1,10 @@
 {
-  "src/Aer.Flow": "0.15.0",
-  "src/Aer.Adapters": "0.15.0",
-  "src/Aer.Workers.Dialogue": "0.15.0",
-  "src/Aer.Cli": "0.15.0",
-  "src/Aer.Ui.Core": "0.15.0",
-  "src/Aer.Ui": "0.15.0",
-  "src/Aer.Daemon": "0.15.0"
+  "src/Aer.Flow": "0.16.0",
+  "src/Aer.Adapters": "0.16.0",
+  "src/Aer.Workers.Dialogue": "0.16.0",
+  "src/Aer.Cli": "0.16.0",
+  "src/Aer.Ui.Core": "0.16.0",
+  "src/Aer.Ui": "0.16.0",
+  "src/Aer.Daemon": "0.16.0",
+  "src/Aer.Mobile": "1.0.0"
 }

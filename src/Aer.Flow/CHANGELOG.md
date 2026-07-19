@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/aer-works/aer-flow/compare/flow-v0.15.0...flow-v0.16.0) (2026-07-19)
+
+
+### Miscellaneous
+
+* **flow:** Synchronize core versions
+
 ## [0.15.0](https://github.com/aer-works/aer-flow/compare/flow-v0.14.0...flow-v0.15.0) (2026-07-18)
 
 
