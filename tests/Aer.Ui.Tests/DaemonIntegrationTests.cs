@@ -191,6 +191,65 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    // M21 Phase 6 (#243): PairedClientsStore could add a client but never remove one — the missing
+    // revocation path M20 deferred until "whichever milestone builds the actual remote client".
+    private async Task<(string ClientId, string Token)> PairANewClientAsync(string name)
+    {
+        var codeResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
+        var codeData = await codeResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var code = codeData.GetProperty("code").GetString();
+
+        using var remoteClient = new HttpClient();
+        var pairResponse = await remoteClient.PostAsJsonAsync(
+            $"{BaseUrl}/api/pairing/pair", new { Code = code, ClientName = name }, TestContext.Current.CancellationToken);
+        var pairData = await pairResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var token = pairData.GetProperty("token").GetString()!;
+
+        var clientsResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/clients", TestContext.Current.CancellationToken);
+        var clients = await clientsResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var clientId = clients.EnumerateArray().Last(c => c.GetProperty("name").GetString() == name).GetProperty("clientId").GetString()!;
+
+        return (clientId, token);
+    }
+
+    [Fact]
+    public async Task RevokePairedClient_CausesNextRequest_ToBeUnauthorized()
+    {
+        var (clientId, token) = await PairANewClientAsync("Revocation Test Device");
+
+        using var pairedClient = new HttpClient();
+        pairedClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var beforeRevoke = await pairedClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.OK, beforeRevoke.StatusCode);
+
+        var deleteResponse = await _client.DeleteAsync($"{BaseUrl}/api/pairing/clients/{clientId}", TestContext.Current.CancellationToken);
+        Assert.True(deleteResponse.IsSuccessStatusCode);
+
+        var afterRevoke = await pairedClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, afterRevoke.StatusCode);
+    }
+
+    [Fact]
+    public async Task RevokeUnknownClientId_ReturnsNotFound()
+    {
+        var response = await _client.DeleteAsync($"{BaseUrl}/api/pairing/clients/does-not-exist", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PairedClient_CannotListOrRevokeOtherDevices()
+    {
+        var (_, token) = await PairANewClientAsync("Non-Owner Device");
+        using var pairedClient = new HttpClient();
+        pairedClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var listResponse = await pairedClient.GetAsync($"{BaseUrl}/api/pairing/clients", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, listResponse.StatusCode);
+
+        var deleteResponse = await pairedClient.DeleteAsync($"{BaseUrl}/api/pairing/clients/does-not-exist", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Forbidden, deleteResponse.StatusCode);
+    }
+
     // M21 Phase 2 (#232): /api/tasks/artifact — the only way a client with no access to the
     // daemon host's filesystem (Aer.Mobile) can see what it's approving.
     private static readonly StepId WorkerStep = new("worker");

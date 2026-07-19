@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using QRCoder;
 
 namespace Aer.Ui.Core;
@@ -17,6 +19,12 @@ namespace Aer.Ui.Core;
 /// </summary>
 public sealed partial class RemoteViewModel : ObservableObject
 {
+    public RemoteViewModel()
+    {
+        PairedClients.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPairedClients));
+    }
+
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleButtonText))]
     private bool isRemoteEnabled;
@@ -44,8 +52,12 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasError))]
     private string? errorText;
 
+    /// <summary>Paired devices management list (Phase 6, #243) — populated on every <see cref="RefreshAsync"/>, independent of the current toggle state, since revocation is meaningful whether or not remote access happens to be on right now.</summary>
+    public ObservableCollection<PairedClientItemViewModel> PairedClients { get; } = new();
+
     public bool HasHost => Host != null;
     public bool HasError => ErrorText != null;
+    public bool HasPairedClients => PairedClients.Count > 0;
     public string ToggleButtonText => IsRemoteEnabled ? "Turn off remote access" : "Turn on remote access";
 
     /// <summary>
@@ -84,6 +96,46 @@ public sealed partial class RemoteViewModel : ObservableObject
             {
                 await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
             }
+
+            await RefreshPairedClientsAsync(session, cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Re-reads the paired-devices list. Called from <see cref="RefreshAsync"/> and again after a successful <see cref="RemovePairedClientAsync"/> so the list reflects the revocation immediately.</summary>
+    public async Task RefreshPairedClientsAsync(TaskSession session, CancellationToken cancellationToken = default)
+    {
+        var clients = await session.GetPairedClientsAsync(cancellationToken).ConfigureAwait(true);
+        if (clients == null) return;
+
+        PairedClients.Clear();
+        foreach (var client in clients)
+        {
+            PairedClients.Add(new PairedClientItemViewModel(
+                client.ClientId, client.Name, client.PairedAt,
+                clientId => RemovePairedClientAsync(session, clientId)));
+        }
+    }
+
+    /// <summary>Revokes a paired device's token. Not a <c>[RelayCommand]</c> for the same reason <see cref="ToggleRemoteAsync"/> isn't — the view's code-behind supplies <paramref name="session"/> at call time.</summary>
+    public async Task RemovePairedClientAsync(TaskSession session, string clientId, CancellationToken cancellationToken = default)
+    {
+        IsBusy = true;
+        ErrorText = null;
+
+        try
+        {
+            var removed = await session.RevokePairedClientAsync(clientId, cancellationToken).ConfigureAwait(true);
+            if (!removed)
+            {
+                ErrorText = "Could not revoke that device — it may have already been removed.";
+                return;
+            }
+
+            await RefreshPairedClientsAsync(session, cancellationToken).ConfigureAwait(true);
         }
         finally
         {
@@ -173,4 +225,22 @@ public sealed partial class RemoteViewModel : ObservableObject
         var pngQrCode = new PngByteQRCode(data);
         return pngQrCode.GetGraphic(10);
     }
+}
+
+/// <summary>
+/// One row in the "Paired Devices" list (Phase 6, #243) — same shape as <c>HomeViewModel</c>'s
+/// <c>InboxItemViewModel</c>: a small, purpose-built item ViewModel whose <see cref="RemoveCommand"/>
+/// closes over the parent's already-available <c>TaskSession</c>, so the XAML can bind
+/// <c>Command="{Binding RemoveCommand}"</c> directly per row instead of the shell wiring a single
+/// static button (there's no way to know which row's button was clicked from a static handler).
+/// </summary>
+public sealed partial class PairedClientItemViewModel(
+    string clientId, string name, DateTime pairedAt, Func<string, Task> removeAsync)
+{
+    public string ClientId { get; } = clientId;
+    public string Name { get; } = name;
+    public DateTime PairedAt { get; } = pairedAt;
+
+    [RelayCommand]
+    private Task Remove() => removeAsync(ClientId);
 }

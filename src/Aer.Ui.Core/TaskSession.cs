@@ -911,6 +911,43 @@ public sealed class TaskSession
         }
     }
 
+    /// <summary>A paired device, mirroring <c>/api/pairing/clients</c>'s response shape (Phase 6, #243).</summary>
+    public sealed record PairedClientInfo(string ClientId, string Name, DateTime PairedAt);
+
+    /// <summary>Lists paired devices for the "Paired Devices" management list — desktop-owner-only, see <c>Program.cs</c>'s <c>IsLocalToken</c> gate.</summary>
+    public async Task<IReadOnlyList<PairedClientInfo>?> GetPairedClientsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/pairing/clients", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<IReadOnlyList<PairedClientInfo>>(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Revokes a paired device's token — its next request 401s immediately (Phase 6, #243).</summary>
+    public async Task<bool> RevokePairedClientAsync(string clientId, CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return false;
+
+        try
+        {
+            var response = await _httpClient.DeleteAsync($"{_activeDaemonUrl}/api/pairing/clients/{Uri.EscapeDataString(clientId)}", cancellationToken).ConfigureAwait(true);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Flips the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel rebind
     /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the

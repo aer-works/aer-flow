@@ -55,6 +55,29 @@
 
       <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !Remote.HasHost}"
                  Text="No network connection found — can't generate a pairing code until this computer is on a network." />
+
+      <!-- Phase 6 (#243): PairedClientsStore could add a client but never remove one — this is the
+           missing revocation path M20 deferred until "whichever milestone builds the actual remote
+           client" (M21). -->
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasPairedClients}">
+        <TextBlock Classes="heading" Text="Paired devices" />
+        <ItemsControl x:Name="PairedClientsList" ItemsSource="{Binding Remote.PairedClients}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:PairedClientItemViewModel">
+              <Border Classes="card" Margin="0,0,0,8">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.3}">
+                  <StackPanel Spacing="{DynamicResource Space.1}" HorizontalAlignment="Stretch">
+                    <TextBlock Classes="body-strong" Text="{Binding Name}" />
+                    <TextBlock Classes="caption" Text="{Binding PairedAt, StringFormat='Paired {0:g}'}" />
+                  </StackPanel>
+                  <Button Content="Remove" Command="{Binding RemoveCommand}"
+                          Foreground="{DynamicResource Status.Failed}" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

@@ -363,6 +363,40 @@ namespace Aer.Daemon
                 return Results.Json(new { Error = "Invalid or expired pairing code." }, statusCode: StatusCodes.Status400BadRequest);
             });
 
+            // Paired-device management (Phase 6, #243): revocation is a desktop-owner action, not
+            // something a paired mobile client should be able to do to itself or to siblings — gated
+            // to the local loopback token specifically, unlike most endpoints below which accept
+            // either the local token or any paired client's token.
+            bool IsLocalToken(HttpContext context)
+            {
+                var authHeader = context.Request.Headers["Authorization"].ToString();
+                if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
+                return SafeEquals(authHeader["Bearer ".Length..].Trim(), token);
+            }
+
+            app.MapGet("/api/pairing/clients", (HttpContext context, PairedClientsStore store) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can list paired devices." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                var clients = store.ListClients()
+                    .Select(c => new { c.ClientId, c.Name, c.PairedAt })
+                    .ToList();
+                return Results.Ok(clients);
+            });
+
+            app.MapDelete("/api/pairing/clients/{clientId}", (string clientId, HttpContext context, PairedClientsStore store) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can revoke paired devices." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                return store.RemoveClient(clientId) ? Results.Ok() : Results.NotFound();
+            });
+
             // REST endpoints
             app.MapGet("/api/tasks/recent", async (TaskSession session) =>
             {

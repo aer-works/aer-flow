@@ -104,6 +104,22 @@ public class PairedClientsStore
         return rawToken;
     }
 
+    public IReadOnlyList<PairedClient> ListClients()
+    {
+        return Load().Clients;
+    }
+
+    public bool RemoveClient(string clientId)
+    {
+        var data = Load();
+        var removed = data.Clients.RemoveAll(c => c.ClientId == clientId) > 0;
+        if (removed)
+        {
+            Save(data);
+        }
+        return removed;
+    }
+
     public bool ValidateToken(string rawToken)
     {
         if (string.IsNullOrEmpty(rawToken)) return false;
