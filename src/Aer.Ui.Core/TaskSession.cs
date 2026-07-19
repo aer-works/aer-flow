@@ -973,6 +973,29 @@ public sealed class TaskSession
     }
 
     /// <summary>
+    /// Signs the tsnet sidecar out of its current tailnet and re-enters the one-time interactive
+    /// login flow — the in-app counterpart of deleting the node from the Tailscale admin console and
+    /// restarting Aer.Ui, which was previously the only way to disconnect it. Fire-and-forget on the
+    /// daemon side: the sidecar answers 202 immediately and does the actual logout/re-auth in the
+    /// background, so the next few <see cref="GetSidecarStatusAsync"/> polls are what surfaces the
+    /// fresh <c>AuthUrl</c> once it's ready.
+    /// </summary>
+    public async Task<bool> ForgetSidecarAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return false;
+
+        try
+        {
+            var response = await _httpClient.PostAsync($"{_activeDaemonUrl}/api/remote/sidecar-forget", null, cancellationToken).ConfigureAwait(true);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Flips the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel rebind
     /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the
     /// daemon down and respawns it with/without <c>--remote</c>, reusing the same

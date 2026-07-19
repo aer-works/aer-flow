@@ -37,6 +37,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleButtonText))]
     [NotifyPropertyChangedFor(nameof(ShouldPollSidecarStatus))]
+    [NotifyPropertyChangedFor(nameof(ShowLanEncryptionWarning))]
     private bool isRemoteEnabled;
 
     [ObservableProperty]
@@ -104,6 +105,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(ShowLanEncryptionWarning))]
     private string? sidecarTailscaleIp;
 
     [ObservableProperty]
@@ -131,6 +133,16 @@ public sealed partial class RemoteViewModel : ObservableObject
     public string? EffectivePairingHost => SidecarTailnetHost ?? Host;
     public bool HasEffectivePairingHost => EffectivePairingHost != null;
     public bool IsPairingOverTailnet => SidecarTailnetHost != null;
+
+    /// <summary>
+    /// The plaintext-LAN warning only applies while traffic can actually still travel over plain
+    /// LAN: once the tsnet sidecar is ready and pairing has moved onto the tailnet, the transport is
+    /// WireGuard-encrypted end to end, and a warning that says otherwise is just wrong, not merely
+    /// stale. Found live: this card had no visibility binding at all before, so it kept saying
+    /// "traffic isn't encrypted yet" even after the sidecar reached Ready and every paired client was
+    /// reached over Tailscale.
+    /// </summary>
+    public bool ShowLanEncryptionWarning => IsRemoteEnabled && !IsPairingOverTailnet;
 
     /// <summary>
     /// The sidecar's state as exactly one of four mutually exclusive phases — the single source of
@@ -256,6 +268,40 @@ public sealed partial class RemoteViewModel : ObservableObject
         if (justBecameReady && EffectivePairingHost != null)
         {
             await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Signs the tsnet sidecar out and back into re-enrollment — the in-app replacement for
+    /// deleting the node from the Tailscale admin console and restarting Aer.Ui. Not a
+    /// <c>[RelayCommand]</c> for the same reason <see cref="ToggleRemoteAsync"/> isn't. The daemon's
+    /// <c>/api/remote/sidecar-forget</c> answers as soon as the sidecar accepts the request — this
+    /// just resets local state to <see cref="SidecarPhase.Starting"/> so the view falls back to
+    /// "Starting..." immediately rather than briefly showing a stale Ready/tailnet-host, and the next
+    /// few polls from <see cref="RefreshSidecarStatusAsync"/> pick up the fresh sign-in link.
+    /// </summary>
+    public async Task ForgetSidecarAsync(TaskSession session, CancellationToken cancellationToken = default)
+    {
+        IsBusy = true;
+        ErrorText = null;
+
+        try
+        {
+            var ok = await session.ForgetSidecarAsync(cancellationToken).ConfigureAwait(true);
+            if (!ok)
+            {
+                ErrorText = "Could not sign the sidecar out — it may not be running.";
+                return;
+            }
+
+            SidecarReady = false;
+            SidecarAuthUrl = null;
+            SidecarTailscaleIp = null;
+            SidecarError = null;
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 

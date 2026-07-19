@@ -544,6 +544,35 @@ namespace Aer.Daemon
                 }
             });
 
+            // Sidecar sign-out (#242 follow-up): the only way to disconnect the tsnet node used to
+            // be deleting it from the Tailscale admin console and restarting Aer.Ui -- this proxies
+            // the sidecar's own /forget, which logs the node out and immediately re-enters the
+            // interactive-login flow (a fresh AuthUrl shows up on the next sidecar-status poll).
+            app.MapPost("/api/remote/sidecar-forget", async (HttpContext context) =>
+            {
+                if (!IsLocalToken(context))
+                {
+                    return Results.Json(new { Error = "Only the local desktop owner can sign the sidecar out." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+
+                if (sidecarStatusPort is not { } port)
+                {
+                    return Results.Json(new { Error = "Sidecar isn't running." }, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                try
+                {
+                    var response = await sidecarHttpClient.PostAsync($"http://127.0.0.1:{port}/forget", null);
+                    return response.IsSuccessStatusCode
+                        ? Results.Accepted()
+                        : Results.Json(new { Error = $"sidecar rejected forget: {response.StatusCode}" }, statusCode: StatusCodes.Status502BadGateway);
+                }
+                catch (Exception ex)
+                {
+                    return Results.Json(new { Error = $"sidecar unreachable: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
+                }
+            });
+
             // REST endpoints
             app.MapGet("/api/tasks/recent", async (TaskSession session) =>
             {

@@ -124,6 +124,7 @@ public partial class MainWindow : Window
     internal Button RemoteToggleButton => RemoteViewControl.RemoteToggleButton;
     internal Button RemoteRefreshCodeButton => RemoteViewControl.RemoteRefreshCodeButton;
     internal Button RemoteOpenSidecarAuthButton => RemoteViewControl.RemoteOpenSidecarAuthButton;
+    internal Button RemoteForgetSidecarButton => RemoteViewControl.RemoteForgetSidecarButton;
 
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
@@ -234,6 +235,9 @@ public partial class MainWindow : Window
                 catch { /* best-effort */ }
             }
         };
+        // The only prior way to disconnect the sidecar's tsnet node was deleting it from the
+        // Tailscale admin console and restarting Aer.Ui — found live via direct user feedback.
+        RemoteForgetSidecarButton.Click += (_, _) => _ = ViewModel.Remote.ForgetSidecarAsync(_session);
         // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
         // record) — fire-and-forget like every other event-handler entry point here.
         ViewModel.SectionChanged += section =>
@@ -276,6 +280,15 @@ public partial class MainWindow : Window
             if (ViewModel.Remote.ShouldPollSidecarStatus)
             {
                 _ = ViewModel.Remote.RefreshSidecarStatusAsync(_session);
+            }
+
+            // Phase 6 (#243) follow-up: a phone pairing while this page is already open used to
+            // only show up in "Paired devices" after navigating away and back (RefreshPairedClientsAsync
+            // was only ever called from RefreshAsync's own activation/toggle path) — found live. Only
+            // polls while remote access is actually on, since a new pairing can't happen otherwise.
+            if (ViewModel.Remote.IsRemoteEnabled)
+            {
+                _ = ViewModel.Remote.RefreshPairedClientsAsync(_session);
             }
         };
         // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task

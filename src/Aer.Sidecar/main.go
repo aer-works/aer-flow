@@ -57,6 +57,48 @@ func (h *statusHolder) get() status {
 // first-class getter for this on tsnet.Server, so this is the documented approach: watch the log.
 var authURLPattern = regexp.MustCompile(`(https://login\.tailscale\.com/\S+)`)
 
+// forgetAndReauth signs the sidecar out of its current tailnet and immediately calls srv.Up again
+// to re-enter the interactive-login flow -- the same call main() itself blocks on during first-run
+// enrollment, so UserLogf emits a fresh authURLPattern match the same way, and Aer.Daemon's existing
+// sidecar-status poll picks up the new AuthUrl without any additional wiring.
+func forgetAndReauth(srv *tsnet.Server, holder *statusHolder) {
+	ctx := context.Background()
+
+	lc, err := srv.LocalClient()
+	if err != nil {
+		holder.set(func(s *status) { s.Error = fmt.Sprintf("could not get local client: %v", err) })
+		return
+	}
+
+	if err := lc.Logout(ctx); err != nil {
+		holder.set(func(s *status) { s.Error = fmt.Sprintf("logout failed: %v", err) })
+		return
+	}
+
+	holder.set(func(s *status) {
+		s.Ready = false
+		s.AuthURL = ""
+		s.TailscaleIP = ""
+		s.Error = ""
+	})
+
+	tsStatus, err := srv.Up(ctx)
+	if err != nil {
+		holder.set(func(s *status) { s.Error = err.Error() })
+		return
+	}
+
+	var tailscaleIP string
+	if len(tsStatus.TailscaleIPs) > 0 {
+		tailscaleIP = tsStatus.TailscaleIPs[0].String()
+	}
+	holder.set(func(s *status) {
+		s.Ready = true
+		s.AuthURL = ""
+		s.TailscaleIP = tailscaleIP
+	})
+}
+
 func main() {
 	kestrelPort := flag.Int("kestrel-port", 0, "Aer.Daemon's loopback Kestrel port to splice traffic to (required)")
 	statusPort := flag.Int("status-port", 0, "loopback port for this sidecar's own status endpoint (0 = OS-assigned)")
@@ -81,15 +123,6 @@ func main() {
 		log.Fatalf("aer-sidecar: could not write status port file: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(holder.get())
-	})
-	go func() {
-		_ = http.Serve(statusListener, mux)
-	}()
-
 	srv := &tsnet.Server{
 		Dir:      *stateDir,
 		Hostname: *hostname,
@@ -102,6 +135,32 @@ func main() {
 		},
 	}
 	defer srv.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(holder.get())
+	})
+	// /forget (M21 Phase 5 follow-up): the in-app counterpart of deleting the node from the
+	// Tailscale admin console and restarting Aer.Daemon, which was previously the only way to
+	// disconnect it. Runs in the background -- forgetAndReauth re-enters the same interactive-login
+	// flow main() itself blocks on below, so the fresh AuthUrl surfaces via UserLogf/holder exactly
+	// like first-run enrollment does.
+	mux.HandleFunc("/forget", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if !holder.get().Ready {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		go forgetAndReauth(srv, holder)
+		w.WriteHeader(http.StatusAccepted)
+	})
+	go func() {
+		_ = http.Serve(statusListener, mux)
+	}()
 
 	ctx := context.Background()
 	tsStatus, err := srv.Up(ctx)

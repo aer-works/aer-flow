@@ -15,13 +15,24 @@
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Remote.StatusText}" />
         <TextBlock Classes="secondary" Foreground="{DynamicResource Status.Failed}" TextWrapping="Wrap"
                    Text="{Binding Remote.ErrorText}" IsVisible="{Binding Remote.HasError}" />
-        <Button x:Name="RemoteToggleButton" Classes="accent" HorizontalAlignment="Left"
-                Content="{Binding Remote.ToggleButtonText}" IsEnabled="{Binding !Remote.IsBusy}" />
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+          <Button x:Name="RemoteToggleButton" Classes="accent" HorizontalAlignment="Left"
+                  Content="{Binding Remote.ToggleButtonText}" IsEnabled="{Binding !Remote.IsBusy}" />
+          <!-- Toggling is a real shutdown-and-respawn (RemoteViewModel's own remarks), not an
+               instant flip — found live that the button gave no feedback during that multi-second
+               gap, so a click could look like it silently did nothing. -->
+          <ProgressBar IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"
+                       IsVisible="{Binding Remote.IsBusy}" />
+        </StackPanel>
       </StackPanel>
 
       <!-- design-language.md: color never carries meaning alone — the plain-language warning is
-           the actual signal, this border is just emphasis. -->
-      <Border Classes="card" BorderBrush="{DynamicResource Status.NeedsYou}">
+           the actual signal, this border is just emphasis.
+           IsVisible bound to ShowLanEncryptionWarning (not always-on, as this had no gating at all
+           before): once the sidecar's tsnet path is Ready and pairing has moved onto it, traffic is
+           WireGuard-encrypted end to end, and this warning would be actively wrong, not just stale. -->
+      <Border Classes="card" BorderBrush="{DynamicResource Status.NeedsYou}"
+              IsVisible="{Binding Remote.ShowLanEncryptionWarning}">
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                     Text="While remote access is on, anyone on this network can reach Aer.Daemon — traffic isn't encrypted yet (that's planned for a later phase). Turn it off when you're done pairing." />
       </Border>
@@ -43,8 +54,15 @@
           <Button x:Name="RemoteOpenSidecarAuthButton" Classes="accent" HorizontalAlignment="Left" Content="Sign in to Tailscale" />
         </StackPanel>
 
-        <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding Remote.IsSidecarReadyPhase}"
-                   Text="Ready — see &quot;Pair a phone&quot; below, now reachable from any network." />
+        <StackPanel Spacing="{DynamicResource Space.2}" IsVisible="{Binding Remote.IsSidecarReadyPhase}">
+          <TextBlock Classes="secondary" TextWrapping="Wrap"
+                     Text="Ready — see &quot;Pair a phone&quot; below, now reachable from any network." />
+          <!-- The only prior way to disconnect this node was deleting it from the Tailscale admin
+               console and restarting Aer.Ui — found live via direct user feedback. Signs the sidecar
+               out and immediately back into the interactive re-enrollment flow. -->
+          <Button x:Name="RemoteForgetSidecarButton" HorizontalAlignment="Left"
+                  IsEnabled="{Binding !Remote.IsBusy}" Content="Sign out of Tailscale" />
+        </StackPanel>
 
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                    IsVisible="{Binding Remote.IsSidecarUnavailable}" Text="{Binding Remote.SidecarError}" />
@@ -77,7 +95,9 @@
           </StackPanel>
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-          <TextBlock Classes="caption" VerticalAlignment="Center"
+          <!-- MinWidth pins the cell so "Expires in 60s" -> "Expires in 5s" doesn't reflow the
+               button beside it every second as the digit count shrinks (found live). -->
+          <TextBlock Classes="caption" VerticalAlignment="Center" MinWidth="90"
                      Text="{Binding Remote.PairingCodeExpiresInSeconds, StringFormat='Expires in {0}s'}" />
           <Button x:Name="RemoteRefreshCodeButton" IsEnabled="{Binding !Remote.IsBusy}">
             <AccessText Text="Get a new _code" />
