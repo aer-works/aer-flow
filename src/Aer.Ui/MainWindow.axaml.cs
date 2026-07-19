@@ -125,6 +125,7 @@ public partial class MainWindow : Window
     internal Button RemoteRefreshCodeButton => RemoteViewControl.RemoteRefreshCodeButton;
     internal Button RemoteOpenSidecarAuthButton => RemoteViewControl.RemoteOpenSidecarAuthButton;
     internal Button RemoteForgetSidecarButton => RemoteViewControl.RemoteForgetSidecarButton;
+    internal Button SaveTailscaleAuthKeyButton => RemoteViewControl.SaveTailscaleAuthKeyButton;
 
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
@@ -238,6 +239,7 @@ public partial class MainWindow : Window
         // The only prior way to disconnect the sidecar's tsnet node was deleting it from the
         // Tailscale admin console and restarting Aer.Ui — found live via direct user feedback.
         RemoteForgetSidecarButton.Click += (_, _) => _ = ViewModel.Remote.ForgetSidecarAsync(_session);
+        SaveTailscaleAuthKeyButton.Click += (_, _) => _ = ViewModel.Remote.SaveTailscaleAuthKeyAsync(_session);
         // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
         // record) — fire-and-forget like every other event-handler entry point here.
         ViewModel.SectionChanged += section =>

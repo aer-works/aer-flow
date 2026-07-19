@@ -138,6 +138,12 @@ public sealed class TaskSession
     public Task<string?> LoadLastWorkflowTemplateFilePathAsync(CancellationToken cancellationToken = default)
         => _configurationStore.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
 
+    public Task<string?> LoadTailscaleAuthKeyAsync(CancellationToken cancellationToken = default)
+        => _configurationStore.LoadTailscaleAuthKeyAsync(cancellationToken);
+
+    public Task RecordTailscaleAuthKeyAsync(string? tailscaleAuthKey, CancellationToken cancellationToken = default)
+        => _configurationStore.RecordTailscaleAuthKeyAsync(tailscaleAuthKey, cancellationToken);
+
     private (string Url, string Token)? GetDaemonConnectionInfo()
     {
         if (string.IsNullOrEmpty(_daemonUrl)) return null;

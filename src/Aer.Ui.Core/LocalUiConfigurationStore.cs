@@ -89,11 +89,31 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// A reusable Tailscale auth key (M21 Phase 7 follow-up, #246): once the tsnet sidecar is ready,
+    /// the pairing QR embeds this so a phone's own embedded tsnet node can join the tailnet
+    /// non-interactively — the `tailscale` Dart package requires a real auth key for a device's
+    /// first-ever enrollment (confirmed against its vendored source; it does not support the
+    /// keyless-then-`needsLogin` flow for a device with zero prior state). One key, generated once in
+    /// the Tailscale admin console and pasted here, covers every phone that ever scans the QR — never
+    /// sent anywhere over the network, only rendered into the on-screen QR image.
+    /// </summary>
+    public async Task<string?> LoadTailscaleAuthKeyAsync(CancellationToken cancellationToken = default) =>
+        (await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false)).TailscaleAuthKey;
+
+    public async Task RecordTailscaleAuthKeyAsync(string? tailscaleAuthKey, CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        await SaveConfigurationAsync(
+            configuration with { TailscaleAuthKey = string.IsNullOrWhiteSpace(tailscaleAuthKey) ? null : tailscaleAuthKey.Trim() },
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<StoredConfiguration> LoadConfigurationAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(configFilePath))
         {
-            return new StoredConfiguration([], null, null);
+            return new StoredConfiguration([], null, null, null);
         }
 
         try
@@ -101,13 +121,13 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
             await using var stream = File.OpenRead(configFilePath);
             var configuration = await JsonSerializer.DeserializeAsync<StoredConfiguration>(stream, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            return configuration ?? new StoredConfiguration([], null, null);
+            return configuration ?? new StoredConfiguration([], null, null, null);
         }
         catch (JsonException)
         {
             // Local UI Configuration is a rebuildable convenience, never authoritative (§3.1) — a
             // corrupt file is treated as empty, not a startup failure.
-            return new StoredConfiguration([], null, null);
+            return new StoredConfiguration([], null, null, null);
         }
     }
 
@@ -135,5 +155,6 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     private sealed record StoredConfiguration(
         List<string> RecentTaskDirectories,
         string? LastBindingsFilePath,
-        string? LastWorkflowTemplateFilePath);
+        string? LastWorkflowTemplateFilePath,
+        string? TailscaleAuthKey);
 }
