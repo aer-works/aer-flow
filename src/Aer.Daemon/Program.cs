@@ -229,6 +229,7 @@ namespace Aer.Daemon
             // section already applies to vendor-CLI gates.
             Process? sidecarProcess = null;
             int? sidecarStatusPort = null;
+            string? sidecarUnavailableReason = null;
             var sidecarStatusPortFile = Path.Combine(aerDir, "sidecar-status.port");
             var sidecarHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
 
@@ -243,6 +244,10 @@ namespace Aer.Daemon
                 var sidecarPath = Path.Combine(AppContext.BaseDirectory, sidecarExeName);
                 if (!File.Exists(sidecarPath))
                 {
+                    // Permanent, not "starting" -- without this, /api/remote/sidecar-status would
+                    // say "starting" forever instead of telling the UI (and whoever's staring at
+                    // it) that zero-config needs `pixi run build-sidecar` first.
+                    sidecarUnavailableReason = "aer-sidecar isn't built -- run `pixi run build-sidecar` (requires a Go toolchain), then restart remote access. Falling back to plain LAN.";
                     Console.WriteLine($"aer-sidecar not found at {sidecarPath} -- --remote falls back to plain LAN only.");
                     return;
                 }
@@ -270,7 +275,8 @@ namespace Aer.Daemon
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"aer-sidecar failed to start: {ex.Message}");
+                    sidecarUnavailableReason = $"aer-sidecar failed to start: {ex.Message}";
+                    Console.WriteLine(sidecarUnavailableReason);
                     return;
                 }
 
@@ -511,6 +517,11 @@ namespace Aer.Daemon
                 if (!isRemote)
                 {
                     return Results.Ok(new { Ready = false, Error = "Remote access is off." });
+                }
+
+                if (sidecarUnavailableReason is { } reason)
+                {
+                    return Results.Ok(new { Ready = false, Error = reason });
                 }
 
                 if (sidecarStatusPort is not { } port)

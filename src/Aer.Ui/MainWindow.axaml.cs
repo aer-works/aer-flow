@@ -15,6 +15,7 @@ using Avalonia.Layout;
 using ShapePath = Avalonia.Controls.Shapes.Path;
 using Avalonia.Media;
 using Avalonia.Threading;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -122,6 +123,7 @@ public partial class MainWindow : Window
 
     internal Button RemoteToggleButton => RemoteViewControl.RemoteToggleButton;
     internal Button RemoteRefreshCodeButton => RemoteViewControl.RemoteRefreshCodeButton;
+    internal Button RemoteOpenSidecarAuthButton => RemoteViewControl.RemoteOpenSidecarAuthButton;
 
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
@@ -220,6 +222,18 @@ public partial class MainWindow : Window
         NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
         RemoteToggleButton.Click += (_, _) => _ = ViewModel.Remote.ToggleRemoteAsync(_session);
         RemoteRefreshCodeButton.Click += (_, _) => _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
+        // M21 Phase 5 (#242): the one-time interactive Tailscale sign-in the tsnet sidecar needs on
+        // first enrollment. UseShellExecute=true is the standard cross-platform "hand this URL to
+        // whatever the OS's default browser is" — Aer.Ui.Core has no process-launching capability
+        // of its own (kept Avalonia/OS-free), so this stays here with the rest of the button wiring.
+        RemoteOpenSidecarAuthButton.Click += (_, _) =>
+        {
+            if (ViewModel.Remote.SidecarAuthUrl is { } url)
+            {
+                try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+                catch { /* best-effort */ }
+            }
+        };
         // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
         // record) — fire-and-forget like every other event-handler entry point here.
         ViewModel.SectionChanged += section =>
@@ -254,6 +268,14 @@ public partial class MainWindow : Window
             if (ViewModel.Remote.PairingCodeExpiresInSeconds <= 0)
             {
                 _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
+            }
+
+            // M21 Phase 5 (#242): reuses this same 1s tick to poll the tsnet sidecar's status
+            // rather than a second timer — stops once Ready (the tailnet IP shouldn't change while
+            // the process runs), so this doesn't poll forever after enrollment completes.
+            if (ViewModel.Remote.ShouldPollSidecarStatus)
+            {
+                _ = ViewModel.Remote.RefreshSidecarStatusAsync(_session);
             }
         };
         // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task

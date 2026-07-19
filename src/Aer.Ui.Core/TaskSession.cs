@@ -948,6 +948,30 @@ public sealed class TaskSession
         }
     }
 
+    /// <summary>The Go tsnet sidecar's own state, mirrored via <c>/api/remote/sidecar-status</c>
+    /// (Phase 5, #242) — <c>Ready</c>/<c>TailscaleIp</c> once tsnet enrollment is complete,
+    /// <c>AuthUrl</c> while the one-time interactive Tailscale login is still pending, or
+    /// <c>Error</c> for anything else (sidecar binary missing, tsnet itself failed to start).</summary>
+    public sealed record SidecarStatus(bool Ready, string? AuthUrl, string? TailscaleIp, string? Error);
+
+    /// <summary>Not cached — proxies the sidecar's live <c>/status</c> straight through Aer.Daemon, so this never reports stale enrollment state.</summary>
+    public async Task<SidecarStatus?> GetSidecarStatusAsync(CancellationToken cancellationToken = default)
+    {
+        if (_activeDaemonUrl == null) return null;
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/remote/sidecar-status", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode) return null;
+
+            return await response.Content.ReadFromJsonAsync<SidecarStatus>(cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Flips the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel rebind
     /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the

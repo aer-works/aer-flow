@@ -26,6 +26,36 @@
                     Text="While remote access is on, anyone on this network can reach Aer.Daemon — traffic isn't encrypted yet (that's planned for a later phase). Turn it off when you're done pairing." />
       </Border>
 
+      <!-- M21 Phase 5 (#242): the Go tsnet sidecar Aer.Daemon spawns alongside the plain-LAN bind
+           above. Unproven live end to end as of this pass (no cross-network run has exercised the
+           tailnet address yet) — this is what makes trying that out possible without reading
+           ~/.aer/sidecar-spawn.log by hand. -->
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.IsRemoteEnabled}">
+        <TextBlock Classes="heading" Text="Zero-config remote (Tailscale)" />
+
+        <StackPanel Spacing="{DynamicResource Space.2}" IsVisible="{Binding Remote.HasSidecarAuthUrl}">
+          <TextBlock Classes="secondary" TextWrapping="Wrap"
+                     Text="Sign in to Tailscale once to finish enabling zero-config remote access — no separate Tailscale app install needed." />
+          <Button x:Name="RemoteOpenSidecarAuthButton" Classes="accent" HorizontalAlignment="Left" Content="Sign in to Tailscale" />
+        </StackPanel>
+
+        <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasSidecarTailnetHost}">
+          <TextBlock Classes="secondary" TextWrapping="Wrap"
+                     Text="Ready. This works from any network (e.g. a phone on cellular data), as long as it's signed into the same Tailscale account." />
+          <Border Classes="card" Width="240" Height="240" HorizontalAlignment="Left">
+            <Image Source="{Binding Remote.TailnetQrPngBytes, Converter={StaticResource ByteArrayToBitmapConverter}}"
+                   Width="220" Height="220" Stretch="Uniform" />
+          </Border>
+          <StackPanel Spacing="{DynamicResource Space.1}">
+            <TextBlock Classes="caption" Text="Tailnet host" />
+            <TextBlock Classes="mono" Text="{Binding Remote.SidecarTailnetHost}" />
+          </StackPanel>
+        </StackPanel>
+
+        <TextBlock Classes="secondary" TextWrapping="Wrap"
+                   IsVisible="{Binding Remote.HasSidecarError}" Text="{Binding Remote.SidecarError}" />
+      </StackPanel>
+
       <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasHost}">
         <TextBlock Classes="heading" Text="Pair a phone" />
         <TextBlock Classes="secondary" TextWrapping="Wrap"
