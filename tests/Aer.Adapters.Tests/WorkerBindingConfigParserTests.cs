@@ -126,6 +126,52 @@ public class WorkerBindingConfigParserTests
     }
 
     [Fact]
+    public void WorkingDirectory_is_optional_and_defaults_to_null()
+    {
+        var config = WorkerBindingConfigParser.Parse(ValidJson);
+
+        Assert.Null(config["architect"].WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_configured_WorkingDirectory_parses_through()
+    {
+        const string json = """
+            {
+              "architect": {
+                "Adapter": "echo",
+                "Contract": { "WorkerName": "architect", "RequiredInputs": [], "ProducedOutputs": [], "OptionalMetadata": [] },
+                "PromptTemplate": "Draft a plan.",
+                "Timeout": "00:05:00",
+                "WorkingDirectory": "myproject"
+              }
+            }
+            """;
+
+        var config = WorkerBindingConfigParser.Parse(json);
+
+        Assert.Equal("myproject", config["architect"].WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_blank_WorkingDirectory_throws()
+    {
+        const string json = """
+            {
+              "architect": {
+                "Adapter": "echo",
+                "Contract": { "WorkerName": "architect", "RequiredInputs": [], "ProducedOutputs": [], "OptionalMetadata": [] },
+                "PromptTemplate": "Draft a plan.",
+                "Timeout": "00:05:00",
+                "WorkingDirectory": "   "
+              }
+            }
+            """;
+
+        Assert.Throws<WorkerBindingConfigException>(() => WorkerBindingConfigParser.Parse(json));
+    }
+
+    [Fact]
     public async Task LoadFromFileAsync_reads_and_parses_a_file()
     {
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");

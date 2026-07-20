@@ -21,5 +21,6 @@ internal sealed class FakeEchoWorkerAdapter : IWorkerAdapter
             contract.WorkerName,
             .. contract.RequiredInputs,
             .. contract.ProducedOutputs.Select(o => o.Name),
-        ]);
+        ],
+        invocation.WorkingDirectory);
 }

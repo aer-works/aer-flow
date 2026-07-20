@@ -70,25 +70,43 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
         ArgumentNullException.ThrowIfNull(contract);
 
         var isWindows = OperatingSystem.IsWindows();
-        var configPath = EscapeUserContent(invocation.PromptTemplate, isWindows);
+        var resolvedConfigPath = ResolveConfigPath(invocation.PromptTemplate, invocation.BindingsFileDirectory);
+        var configPath = EscapeUserContent(resolvedConfigPath, isWindows);
 
-        return isWindows ? ResolveWindows(configPath) : ResolveUnix(configPath);
+        return isWindows
+            ? ResolveWindows(configPath, invocation.WorkingDirectory)
+            : ResolveUnix(configPath, invocation.WorkingDirectory);
     }
 
-    private static CoreDispatchTarget ResolveWindows(string configPath)
+    /// <summary>
+    /// M23 Phase 3's fix for the config sidecar's absolute-path portability bug (#272): a rooted
+    /// <paramref name="promptTemplate"/> passes through unchanged (the pre-Phase-3 behavior, still
+    /// legal), but a relative one — the shape the Template Editor's structured dialogue authoring
+    /// (M23 Phase 1) writes by default — resolves against <paramref name="bindingsFileDirectory"/>,
+    /// wherever the bindings file this invocation was resolved from currently lives. This is what
+    /// makes a bindings.json + sidecar pair portable: copy both files anywhere (a different
+    /// directory, a different machine) and this resolution still finds the sidecar, since it never
+    /// depends on the absolute path the sidecar happened to live at when it was first authored.
+    /// </summary>
+    private static string ResolveConfigPath(string promptTemplate, string? bindingsFileDirectory) =>
+        Path.IsPathRooted(promptTemplate) || string.IsNullOrEmpty(bindingsFileDirectory)
+            ? promptTemplate
+            : Path.GetFullPath(Path.Combine(bindingsFileDirectory, promptTemplate));
+
+    private static CoreDispatchTarget ResolveWindows(string configPath, string? workingDirectory)
     {
         List<string> args = ["/c", "dotnet", "exec", DialogueWorkerDllPath, configPath, "%AER_OUTPUT_DIR%"];
-        return new CoreDispatchTarget("cmd", args);
+        return new CoreDispatchTarget("cmd", args, workingDirectory);
     }
 
-    private static CoreDispatchTarget ResolveUnix(string configPath)
+    private static CoreDispatchTarget ResolveUnix(string configPath, string? workingDirectory)
     {
         var commandLine = new StringBuilder("dotnet exec ")
             .Append(Quote(DialogueWorkerDllPath))
             .Append(' ').Append(Quote(configPath))
             .Append(" \"$AER_OUTPUT_DIR\"");
 
-        return new CoreDispatchTarget("sh", ["-c", commandLine.ToString()]);
+        return new CoreDispatchTarget("sh", ["-c", commandLine.ToString()], workingDirectory);
     }
 
     /// <summary>

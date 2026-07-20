@@ -28,7 +28,8 @@ public class WorkerBindingConfigWriterTests
             "Draft a plan and write it to your output file.",
             TimeSpan.FromMinutes(5),
             Model: "claude-opus-4",
-            PermissionScope: "write-only"),
+            PermissionScope: "write-only",
+            WorkingDirectory: "/home/user/my-project"),
         ["critic"] = new WorkerBindingConfigEntry(
             "gemini",
             new WorkerContract(
@@ -65,6 +66,7 @@ public class WorkerBindingConfigWriterTests
                 Assert.Equal(entry.Timeout, parsedEntry.Timeout);
                 Assert.Equal(entry.Model, parsedEntry.Model);
                 Assert.Equal(entry.PermissionScope, parsedEntry.PermissionScope);
+                Assert.Equal(entry.WorkingDirectory, parsedEntry.WorkingDirectory);
                 Assert.Equal(entry.Contract.WorkerName, parsedEntry.Contract.WorkerName);
                 Assert.Equal(entry.Contract.RequiredInputs, parsedEntry.Contract.RequiredInputs);
                 Assert.Equal(entry.Contract.OptionalMetadata, parsedEntry.Contract.OptionalMetadata);

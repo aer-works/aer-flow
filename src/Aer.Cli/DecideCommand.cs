@@ -63,7 +63,9 @@ public static class DecideCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
-        var workerBindings = WorkerBindingResolver.Resolve(bindingConfig, adapters);
+        var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
+        var workerBindings = WorkerBindingResolver.Resolve(
+            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
         var referencedExecutionId = new ExecutionId(options.ExecutionId);

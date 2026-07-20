@@ -11,7 +11,14 @@ namespace Aer.Flow.Dispatch;
 /// <c>Aer.Flow</c> entirely, so the caller supplies it explicitly rather than the dispatcher
 /// interpreting <see cref="ExecutionRequest.Worker"/> itself.
 /// </summary>
-public sealed record CoreDispatchTarget(string Program, IReadOnlyList<string> Args);
+/// <param name="WorkingDirectory">
+/// The real, already-resolved absolute directory to spawn <see cref="Program"/> in (M23 Phase 3,
+/// #272), or <see langword="null"/> to keep the prior default (Core's own process working
+/// directory — AER's scratch artifacts folder, never a git-repo requirement). Vendor-agnostic: every
+/// <c>IWorkerAdapter</c> forwards <c>WorkerInvocation.WorkingDirectory</c> here unchanged, so a
+/// worker can operate on an arbitrary existing project the way it would run raw in a terminal.
+/// </param>
+public sealed record CoreDispatchTarget(string Program, IReadOnlyList<string> Args, string? WorkingDirectory = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -71,6 +78,11 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a
         // dispatcher for a NonProcess execution, §17.3) — Timeout is therefore always set.
         using var task = new AerTask(target.Program, [.. expandedArgs]).WithTimeout(request.Timeout!.Value);
+
+        if (target.WorkingDirectory is { } workingDirectory)
+        {
+            task.WithCwd(workingDirectory);
+        }
 
         foreach (var environmentVariable in request.Environment)
         {

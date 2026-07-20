@@ -103,6 +103,87 @@ public class DialogueDispatchEndToEndTests
         }
     }
 
+    /// <summary>
+    /// M23 Phase 3's own verification bullet (#272): "a bindings.json + dialogue sidecar copied to
+    /// a different simulated profile root still resolves and runs" — the fix for the sidecar's
+    /// prior absolute-path portability bug. Only the bindings file and its sidecar move between
+    /// "profile roots"; the participants' own stub scripts stay where they were written (moving an
+    /// entire project tree, scripts included, is not what this bullet is about — see
+    /// <see cref="WorkerBindingResolver.Resolve"/>'s <c>bindingsFileDirectory</c> parameter, which
+    /// resolves the sidecar's own reference only).
+    /// </summary>
+    [Fact]
+    public async Task A_bindings_file_and_dialogue_sidecar_copied_to_a_new_directory_still_resolves_and_runs()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"dialogue-portable-{Guid.NewGuid():N}");
+        var originalDirectory = Path.Combine(testRoot, "original-profile-root");
+        var copiedDirectory = Path.Combine(testRoot, "different-simulated-profile-root");
+        try
+        {
+            Directory.CreateDirectory(originalDirectory);
+            Directory.CreateDirectory(copiedDirectory);
+
+            var workflowFilePath = await WriteSingleDialogueStepWorkflowAsync(originalDirectory);
+            var originalBindingsFilePath = await WriteRelativeDialogueBindingsAsync(originalDirectory);
+
+            // First run, from where the pair was originally authored.
+            var firstTaskDirectory = Path.Combine(testRoot, "task-original");
+            var firstState = (await RunCommand.ExecuteAsync(
+                new RunOptions(workflowFilePath, originalBindingsFilePath, firstTaskDirectory), WorkerAdapterRegistry.Default)).State;
+            Assert.Equal(WorkflowStatus.Terminal, firstState.Status);
+            Assert.Equal(StepStatus.Succeeded, Assert.Single(firstState.Steps).Status);
+
+            // Only bindings.json and its sidecar move — never the scripts, never the workflow file.
+            File.Copy(originalBindingsFilePath, Path.Combine(copiedDirectory, "bindings.json"));
+            File.Copy(
+                Path.Combine(originalDirectory, "dialogue-config.json"), Path.Combine(copiedDirectory, "dialogue-config.json"));
+
+            var copiedBindingsFilePath = Path.Combine(copiedDirectory, "bindings.json");
+            var secondTaskDirectory = Path.Combine(testRoot, "task-copied");
+            var secondState = (await RunCommand.ExecuteAsync(
+                new RunOptions(workflowFilePath, copiedBindingsFilePath, secondTaskDirectory), WorkerAdapterRegistry.Default)).State;
+
+            Assert.Equal(WorkflowStatus.Terminal, secondState.Status);
+            Assert.Equal(StepStatus.Succeeded, Assert.Single(secondState.Steps).Status);
+        }
+        finally
+        {
+            Directory.Delete(testRoot, recursive: true);
+        }
+    }
+
+    /// <summary>Same shape as <see cref="WriteDialogueBindingsAsync"/>, except the entry's PromptTemplate is a bare relative file name instead of an absolute path — the portable shape M23 Phase 3's fix resolves.</summary>
+    private static async Task<string> WriteRelativeDialogueBindingsAsync(string directory)
+    {
+        var scriptDirectory = Path.Combine(directory, "scripts");
+        var dialogueConfig = new DialogueWorkerConfig(
+            SeedPrompt: "Open with your position.",
+            TurnBudget: 2,
+            FinalOutputName: "verdict.md",
+            StopSentinel: null,
+            Participants:
+            [
+                EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for."),
+                EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against."),
+            ]);
+
+        var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
+        await File.WriteAllTextAsync(dialogueConfigPath, JsonSerializer.Serialize(dialogueConfig));
+
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["debate"] = new WorkerBindingConfigEntry(
+                "dialogue",
+                new WorkerContract("debate", [], [new ProducedOutput("verdict.md")], []),
+                "dialogue-config.json",
+                TimeSpan.FromSeconds(30)),
+        };
+
+        var bindingsPath = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(bindingsPath, JsonSerializer.Serialize(config));
+        return bindingsPath;
+    }
+
     private static async Task<string> WriteThreePartyDialogueBindingsAsync(string directory)
     {
         var scriptDirectory = Path.Combine(directory, "scripts");

@@ -42,8 +42,30 @@ namespace Aer.Adapters;
 /// precedence). Null means "no structured grant configured" — the same "fall through to the
 /// adapter's own default" behavior a null <paramref name="PermissionScope"/> already has.
 /// </param>
+/// <param name="WorkingDirectory">
+/// The real, already-resolved absolute directory the spawned process should run in (M23 Phase 3,
+/// #272) — resolved by <see cref="WorkerBindingResolver.Resolve"/> from
+/// <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> (a rooted path used directly, or a
+/// per-machine profile name looked up in the local, never-portable profile mapping) before this
+/// record is ever constructed, so every adapter receives the same real path regardless of which
+/// machine or profile named it. Null keeps the prior default (no explicit cwd — AER's own scratch
+/// artifacts folder). Every <see cref="IWorkerAdapter"/> forwards this into the
+/// <see cref="Aer.Flow.Dispatch.CoreDispatchTarget"/> it builds unchanged — it carries no
+/// vendor-specific meaning, unlike <paramref name="PromptTemplate"/>.
+/// </param>
+/// <param name="BindingsFileDirectory">
+/// The directory the worker-bindings config file this invocation was resolved from lives in, if
+/// known (M23 Phase 3, #272) — plain context, not an instruction: most adapters ignore it entirely
+/// (<paramref name="PromptTemplate"/> is prose to them). <see cref="DialogueWorkerAdapter"/> is the
+/// one adapter that repurposes <paramref name="PromptTemplate"/> as a file path (its config
+/// sidecar's), so it alone resolves a non-rooted <paramref name="PromptTemplate"/> against this
+/// directory — the fix for the sidecar-path portability bug a bindings file copied to a new machine
+/// (or a different directory on the same one) otherwise hits.
+/// </param>
 public sealed record WorkerInvocation(
     string PromptTemplate,
     string? Model = null,
     string? PermissionScope = null,
-    PermissionGrant? PermissionGrant = null);
+    PermissionGrant? PermissionGrant = null,
+    string? WorkingDirectory = null,
+    string? BindingsFileDirectory = null);

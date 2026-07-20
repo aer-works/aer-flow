@@ -137,6 +137,74 @@ public class DialogueWorkerAdapterTests
         }
     }
 
+    /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged, same as ClaudeWorkerAdapterTests/GeminiWorkerAdapterTests.</summary>
+    [Fact]
+    public void A_configured_WorkingDirectory_is_forwarded_into_the_resolved_target()
+    {
+        var target = new DialogueWorkerAdapter().Resolve(
+            new WorkerInvocation("/configs/debate.json", WorkingDirectory: "/home/user/my-project"), DebateContract);
+
+        Assert.Equal("/home/user/my-project", target.WorkingDirectory);
+    }
+
+    /// <summary>
+    /// M23 Phase 3's fix for the config sidecar's absolute-path portability bug (#272): a
+    /// non-rooted PromptTemplate resolves against BindingsFileDirectory before being embedded in the
+    /// generated command — the same convention the Template Editor's own sidecar save/load already
+    /// established (M23 Phase 1's BindingsEditorViewModel).
+    /// </summary>
+    [Fact]
+    public void A_relative_PromptTemplate_resolves_against_BindingsFileDirectory()
+    {
+        var invocation = new WorkerInvocation("dialogue-debate.json", BindingsFileDirectory: "/configs");
+
+        var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
+
+        var expected = Path.GetFullPath(Path.Combine("/configs", "dialogue-debate.json"));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(expected, target.Args[4]);
+        }
+        else
+        {
+            Assert.Contains($"\"{expected}\"", target.Args[1]);
+        }
+    }
+
+    [Fact]
+    public void A_rooted_PromptTemplate_ignores_BindingsFileDirectory()
+    {
+        var invocation = new WorkerInvocation("/configs/debate.json", BindingsFileDirectory: "/somewhere-else");
+
+        var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("/configs/debate.json", target.Args[4]);
+        }
+        else
+        {
+            Assert.Contains("\"/configs/debate.json\"", target.Args[1]);
+        }
+    }
+
+    [Fact]
+    public void A_relative_PromptTemplate_with_no_BindingsFileDirectory_passes_through_unresolved()
+    {
+        var invocation = new WorkerInvocation("dialogue-debate.json");
+
+        var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal("dialogue-debate.json", target.Args[4]);
+        }
+        else
+        {
+            Assert.Contains("\"dialogue-debate.json\"", target.Args[1]);
+        }
+    }
+
     [Fact]
     public void Null_invocation_or_contract_throws()
     {

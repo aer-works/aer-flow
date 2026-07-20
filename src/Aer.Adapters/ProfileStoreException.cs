@@ -1,0 +1,24 @@
+using Aer.Flow;
+
+namespace Aer.Adapters;
+
+/// <summary>
+/// Raised when the local per-machine profile mapping (M23 Phase 3, #272; see
+/// <see cref="AerProfileStore"/>) fails to parse — malformed JSON at its configured path. Unlike
+/// <c>Aer.Ui.Core.LocalUiConfigurationStore</c>'s own local config file, a corrupt profile mapping is
+/// never silently treated as empty: a <see cref="WorkerBindingConfigEntry.WorkingDirectory"/>
+/// resolution that depends on it would otherwise fail with a confusing "unknown profile" error
+/// instead of the actual, fixable root cause.
+/// </summary>
+public sealed class ProfileStoreException : AerFlowException
+{
+    public ProfileStoreException(string message)
+        : base(message)
+    {
+    }
+
+    public ProfileStoreException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
