@@ -78,7 +78,8 @@ public class DialogueDispatchEndToEndTests
             var bindingsFilePath = await WriteThreePartyDialogueBindingsAsync(testRoot);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default)).State;
+            var finalState = (await RunCommand.ExecuteAsync(
+                options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             var stepState = Assert.Single(finalState.Steps);
@@ -87,14 +88,14 @@ public class DialogueDispatchEndToEndTests
             var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
-            var transcriptLines = await File.ReadAllLinesAsync(transcriptPath);
+            var transcriptLines = await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken);
             Assert.Equal(5, transcriptLines.Length);
             var turns = transcriptLines.Select(line => JsonSerializer.Deserialize<TranscriptTurn>(line)!).ToList();
             Assert.Equal(["architect", "critic", "arbiter", "architect", "critic"], turns.Select(t => t.Role));
             Assert.Equal([1, 2, 3, 4, 5], turns.Select(t => t.Sequence));
 
             var finalOutputPath = Path.Combine(outputDirectory, "verdict.md");
-            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath));
+            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath, TestContext.Current.CancellationToken));
         }
         finally
         {
