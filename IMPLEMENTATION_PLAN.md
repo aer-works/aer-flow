@@ -48,6 +48,8 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 29  | **Zero-Config Tailscale Transport** | Embedded `tsnet` (a Go sidecar the daemon supervises) on desktop, `flutter_tsnet` on mobile — no separate Tailscale app install required by the end user, BYO free Tailscale account                                                                                                 | —                              |
 | 30  | **Workflow Template Library**       | Built-in, pre-authored `WorkflowDefinition`+bindings pairs (Solo run, Review run) a user picks from instead of hand-authoring; daemon-side materialization so a client with no filesystem access (a phone) can start a task                                                          | —                              |
 | 31  | **Artifact-Referenced Supply**      | Decide-by-artifact-reference (execution id + filename, resolved server-side via the Artifact Manager) as an alternative to `aer supply`'s raw local `SourceFilePath`, so a client with no filesystem access can send an already-produced artifact back as Supersede revision content | §17.2, §17.5; §16              |
+| 32  | **Generic Dialogue Config & Loops** | The Dialogue Worker generalized from a fixed two-party Initiator/Responder exchange to an N-party, condition-stoppable, always-ceilinged loop, editable as a first-class Template Editor step instead of wizard-only                                                                | §18.2                          |
+| 33  | **Project-Directory-Bound Tasks**   | A task's worker invocation can set a real working directory (`AerTask.WithCwd`) instead of only AER's scratch artifacts folder, so a vendor CLI can operate on an arbitrary existing project the way it does run raw in a terminal; bindings stay portable across machines via per-machine profile mapping | —                               |
 
 ---
 
@@ -94,32 +96,29 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 **M23: Generic Dialogue & Project Packaging** — progress:
 
-- [ ] Phase 1 — Generic Dialogue Config Schema & Loops
-- [ ] Phase 2 — Project Packages & Binding Segregation
-- [ ] Phase 3 — Visual Diff Viewer for Revisions
-- [ ] Phase 4 — Multi-Agent Teamwork Preview (Mock)
+- [ ] Phase 1 — Generalize the Dialogue Worker
+- [ ] Phase 2 — Supersede-Chain Hardening
+- [ ] Phase 3 — Project-Directory-Bound Tasks & Portable Bindings
 
 ---
 
 ## M23: Generic Dialogue & Project Packaging — Phase Plan
 
-**Goal:** Author multi-turn dialogue steps directly within the UI and bundle workflow assets into portable task packages while separating machine-specific bindings config.
+**Goal:** Generalize the Dialogue Worker beyond a fixed two-party exchange, and let a task's worker invocation point at a real project directory — the actual founding gap behind capability 33 (below) — instead of only AER's own scratch artifacts folder, while keeping the resulting bindings portable across machines.
 
-### Phase 1: Generic Dialogue Config Schema & Loops
-- **Goal**: Generalize the Dialogue Worker so that the number of turns, seed prompts, and agent rules are read dynamically from the workflow step definition rather than a hardcoded C# worker.
-- **Verification**: UI authoring and engine execution of custom 3-turn Claude ↔ Gemini loops configured entirely in the visual step editor.
+This plan replaces an earlier draft (see git history) whose Phase 1 premise didn't match the code — `DialogueWorkerConfig` was already a fully data-driven record, not a hardcoded C# worker — and whose Phases 3/4 (Visual Diff Viewer, Multi-Agent Teamwork Preview) mapped to no capability this milestone was ever assigned. Revised in issue #252.
 
-### Phase 2: Project Packages & Binding Segregation
-- **Goal**: Implement the `.aerproj` or unified project folder model. Task directories store only the portable snapshot, template, and event log, while pointing to a named profile configuration reference (`"bindings-profile": "default"`). The actual profile mappings remain stored in the user's private `%USERPROFILE%\.aer\profiles.json`.
-- **Verification**: Open a task directory on a different machine; verify it maps to local tools and runs successfully without modification.
+### Phase 1: Generalize the Dialogue Worker (Capability 32)
+- **Goal**: Replace the fixed two-party Initiator/Responder shape with an N-party, condition-stoppable loop, safe by default (a hard ceiling always enforced regardless of configured `TurnBudget`), and a first-class Template Editor step type instead of wizard-only authoring.
+- **Verification**: Unit tests on the generalized turn loop (N=2 regression, N=3+ round-robin, `StopSentinel` early exit, ceiling enforcement); a Template Editor round trip with no hand-edited JSON. Acceptance: one real multi-turn correspondence run end-to-end.
 
-### Phase 3: Visual Diff Viewer for Revisions
-- **Goal**: Build a side-by-side file revision diff panel in the UI to visualize step revisions and changes made during a "Send back" feedback loop.
-- **Verification**: Editing a template step and generating a new revision displays clear visual file additions, deletions, and modifications.
+### Phase 2: Supersede-Chain Hardening
+- **Goal**: Resolve, with an explicit test-backed decision, whether an already-superseded step's target can legally be named in a second Supersede — currently neither forbidden nor tested.
+- **Verification**: New chained-supersede tests pass; no regressions in the existing supersede end-to-end tests.
 
-### Phase 4: Multi-Agent Teamwork Preview (Mock)
-- **Goal**: Introduce a teamwork-preview screen in the UI that mocks the collaborative multi-agent hierarchy (dialogue worker loops running concurrently and reporting back to the parent coordinator), allowing the user to preview dialogue loop relationships.
-- **Verification**: Selecting "Teamwork Preview" displays a mock multi-turn layout showing simulated real-time token traffic and step transitions.
+### Phase 3: Project-Directory-Bound Tasks & Portable Bindings (Capability 33)
+- **Goal**: Let a task's worker invocation set a real working directory — wiring `AerTask.WithCwd` (already a working native primitive, currently uncalled) through `WorkerInvocation` → the adapters → `CoreDispatchTarget` → `CoreDispatcher.DispatchAsync` — so Claude/Gemini can operate on an arbitrary existing project the way they do run raw in a terminal. No git-repo requirement; completion stays process-exit, same as today. Bundles the existing `WorkerBindingConfigEntry.PromptTemplate` absolute-path portability bug (breaks a dialogue step's bindings the moment a task moves to another machine) and a per-machine profile mapping (`%USERPROFILE%\.aer\profiles.json`) into the same phase.
+- **Verification**: An integration test asserting a spawned worker's actual cwd matches a configured `WorkingDirectory`; a manual run pointing a task at a real directory (tried against both a git repo and a plain folder) confirming file access works; a `bindings.json` + dialogue sidecar copied to a different simulated profile root still resolves and runs.
 
 ---
 
@@ -152,6 +151,13 @@ either app already shows) rather than building one bespoke implementation and ca
 closed. Real engineering per platform (Avalonia keyframe/transform + a stroke-draw animation for the
 crossbar on desktop; Flutter's own equivalent on mobile — no shared animation asset between them) —
 no phase commitment yet, phase this against the rest of M24's plan once M22 has shipped.
+
+**Also carries a third future direction, not yet phased: a Visual Diff Viewer for step revisions.**
+Drafted as an M23 phase, then dropped during M23 replanning (issue #252) because it mapped to no
+capability M23 was ever assigned, and it overlaps this milestone's own capability 35 (Rich markdown
+output previewer) closely enough that it belongs here instead — a side-by-side file-revision diff
+panel for a step's "Send back" feedback loop, scoped against M24's actual phase list once this
+milestone starts rather than assumed here.
 
 ### Phase 1: Curved Bezier DAG Canvas & Hover States
 - **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
