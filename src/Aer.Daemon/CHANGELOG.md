@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.16.0...daemon-v0.17.0) (2026-07-20)
+
+
+### Features
+
+* **templates:** implement built-in workflow template library ([#250](https://github.com/aer-works/aer-flow/issues/250)) ([#251](https://github.com/aer-works/aer-flow/issues/251)) ([2ca7490](https://github.com/aer-works/aer-flow/commit/2ca74902f829e24a6fe412030db373f78e473f17))
+
 ## [0.16.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.15.0...daemon-v0.16.0) (2026-07-19)
 
 
