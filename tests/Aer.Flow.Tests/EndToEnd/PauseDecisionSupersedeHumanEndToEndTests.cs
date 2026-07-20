@@ -295,6 +295,103 @@ public class PauseDecisionSupersedeHumanEndToEndTests
         }
     }
 
+    /// <summary>
+    /// M23 Phase 2's own acceptance bar (#271): a step already superseded once can legally be
+    /// superseded a second time, once the first cycle's consequence has fully settled (Architect
+    /// back to a fresh <see cref="StepStatus.Succeeded"/>, no longer <see cref="StepState.IsPendingSupersedeTarget"/>)
+    /// — the exact chain M24's chat primitive depends on (repeatedly superseding one step, once per
+    /// human turn). Extends <see cref="The_full_architect_critic_supersede_loop_reruns_both_steps_and_a_final_Resume_reaches_terminal"/>
+    /// with a second Supersede cycle in place of that test's final Resume, through the real
+    /// mutation interface end to end — not just <c>ExternalDecisionValidatorTests</c>' pure
+    /// validation of the same rule.
+    /// </summary>
+    [Fact]
+    public async Task A_second_Supersede_targeting_the_same_step_after_the_first_cycle_settles_reruns_it_again()
+    {
+        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var scriptDirectory = Path.Combine(taskDirectory, "scripts");
+        try
+        {
+            var snapshot = await LoadSnapshotAsync("architect-critic-supersede-workflow.json");
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["architect"] = new WorkerBinding.Process(
+                    new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                    ConsumeSupplementaryInputElseWrite(scriptDirectory, "plan", "feedback", "original-plan"),
+                    TimeSpan.FromSeconds(30)),
+                ["critic"] = new WorkerBinding.Process(
+                    new WorkerContract("critic", ["plan"], [new ProducedOutput("feedback")], []),
+                    AppendSuffixToFirstInput(scriptDirectory, "feedback", "-feedback"),
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+            var workflowId = new WorkflowId("wf-architect-critic-chained");
+
+            var firstPauseState = await MutationInterface.StartWorkflowAsync(
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+            var architectExecutionId1 = firstPauseState.Steps.Single(s => s.StepId == Architect).LatestExecutionId!.Value;
+            var criticExecutionId1 = firstPauseState.Steps.Single(s => s.StepId == Critic).LatestExecutionId!.Value;
+            var architectOutputDirectory1 = Path.Combine(artifactsRoot, $"execution_{architectExecutionId1}");
+
+            // Cycle 1, exactly as the sibling single-cycle test proves.
+            var secondPauseState = await MutationInterface.RecordDecisionAsync(
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
+                criticExecutionId1, DecisionType.Supersede, targetStepId: Architect, supplementaryExecutionId: criticExecutionId1, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(WorkflowStatus.Paused, secondPauseState.Status);
+            var architectExecutionId2 = secondPauseState.Steps.Single(s => s.StepId == Architect).LatestExecutionId!.Value;
+            var criticExecutionId2 = secondPauseState.Steps.Single(s => s.StepId == Critic).LatestExecutionId!.Value;
+            var architectOutputDirectory2 = Path.Combine(artifactsRoot, $"execution_{architectExecutionId2}");
+
+            // Architect's first-cycle consequence has fully settled by now: back to a fresh
+            // Succeeded, no longer a pending Supersede target — exactly what makes a second
+            // Supersede against it legal (ExternalDecisionValidatorTests proves the pure rule; this
+            // proves the real dispatch consequence).
+            Assert.Equal(StepStatus.Succeeded, secondPauseState.Steps.Single(s => s.StepId == Architect).Status);
+            Assert.False(secondPauseState.Steps.Single(s => s.StepId == Architect).IsPendingSupersedeTarget);
+
+            // Cycle 2: the same target, a second time, naming Critic's *second* execution as the
+            // new supplement — proving this isn't cycle 1 replayed, but a genuinely new decision.
+            var thirdPauseState = await MutationInterface.RecordDecisionAsync(
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
+                criticExecutionId2, DecisionType.Supersede, targetStepId: Architect, supplementaryExecutionId: criticExecutionId2, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Paused, thirdPauseState.Status);
+            var architectExecutionId3 = thirdPauseState.Steps.Single(s => s.StepId == Architect).LatestExecutionId!.Value;
+            var criticExecutionId3 = thirdPauseState.Steps.Single(s => s.StepId == Critic).LatestExecutionId!.Value;
+            Assert.NotEqual(architectExecutionId2, architectExecutionId3);
+            Assert.NotEqual(criticExecutionId2, criticExecutionId3);
+
+            // Architect's second rerun consumed Critic's *second* feedback artifact, not the first
+            // cycle's stale one — the second decision's own supplement actually took effect.
+            await AssertOutputExistsAsync(
+                artifactsRoot, thirdPauseState.Steps.Single(s => s.StepId == Architect), "plan", "original-plan-feedback-feedback");
+            await AssertOutputExistsAsync(
+                artifactsRoot, thirdPauseState.Steps.Single(s => s.StepId == Critic), "feedback", "original-plan-feedback-feedback-feedback");
+
+            // Every prior cycle's artifact directory persists untouched (§10, §16) — cycle 2 didn't
+            // erase or reuse cycle 1's.
+            Assert.True(Directory.Exists(architectOutputDirectory1));
+            Assert.Equal("original-plan", (await File.ReadAllTextAsync(Path.Combine(architectOutputDirectory1, "plan"), TestContext.Current.CancellationToken)).Trim());
+            Assert.True(Directory.Exists(architectOutputDirectory2));
+            Assert.Equal("original-plan-feedback", (await File.ReadAllTextAsync(Path.Combine(architectOutputDirectory2, "plan"), TestContext.Current.CancellationToken)).Trim());
+
+            var finalState = await MutationInterface.RecordDecisionAsync(
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
+                criticExecutionId3, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+            Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == Architect).Status);
+            Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == Critic).Status);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task A_human_step_mid_DAG_pauses_the_pump_until_the_test_drops_its_output_then_downstream_runs()
     {
