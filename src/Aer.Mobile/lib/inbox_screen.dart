@@ -200,7 +200,9 @@ class _InboxScreenState extends State<InboxScreen> {
                       title: Text(title),
                       subtitle: Text(desc),
                       value: id,
+                      // ignore: deprecated_member_use
                       groupValue: selectedTemplateId,
+                      // ignore: deprecated_member_use
                       onChanged: (val) {
                         if (val != null) setDialogState(() => selectedTemplateId = val);
                       },
@@ -267,6 +269,7 @@ class _InboxScreenState extends State<InboxScreen> {
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
               FilledButton(
                 onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
                   Navigator.pop(context);
                   try {
                     final dirPath = await client.runTemplate(
@@ -276,13 +279,11 @@ class _InboxScreenState extends State<InboxScreen> {
                       taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
                       customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
                     );
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Started template $selectedTemplateId ($dirPath)')),
-                      );
-                    }
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('Started template $selectedTemplateId ($dirPath)')),
+                    );
                   } on DaemonException catch (e) {
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+                    messenger.showSnackBar(SnackBar(content: Text(e.message)));
                   }
                 },
                 child: const Text('Start Task'),

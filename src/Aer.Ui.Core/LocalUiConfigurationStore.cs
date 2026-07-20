@@ -109,6 +109,8 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
             cancellationToken).ConfigureAwait(false);
     }
 
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
     private async Task<StoredConfiguration> LoadConfigurationAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(configFilePath))
@@ -116,31 +118,58 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
             return new StoredConfiguration([], null, null, null);
         }
 
-        try
+        for (var i = 0; i < 5; i++)
         {
-            await using var stream = File.OpenRead(configFilePath);
-            var configuration = await JsonSerializer.DeserializeAsync<StoredConfiguration>(stream, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            return configuration ?? new StoredConfiguration([], null, null, null);
+            try
+            {
+                await using var stream = new FileStream(configFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var configuration = await JsonSerializer.DeserializeAsync<StoredConfiguration>(stream, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                return configuration ?? new StoredConfiguration([], null, null, null);
+            }
+            catch (IOException) when (i < 4)
+            {
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            }
+            catch (JsonException)
+            {
+                // Local UI Configuration is a rebuildable convenience, never authoritative (§3.1) — a
+                // corrupt file is treated as empty, not a startup failure.
+                return new StoredConfiguration([], null, null, null);
+            }
         }
-        catch (JsonException)
-        {
-            // Local UI Configuration is a rebuildable convenience, never authoritative (§3.1) — a
-            // corrupt file is treated as empty, not a startup failure.
-            return new StoredConfiguration([], null, null, null);
-        }
+        return new StoredConfiguration([], null, null, null);
     }
 
     private async Task SaveConfigurationAsync(StoredConfiguration configuration, CancellationToken cancellationToken)
     {
-        var directory = Path.GetDirectoryName(configFilePath);
-        if (!string.IsNullOrEmpty(directory))
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            Directory.CreateDirectory(directory);
-        }
+            var directory = Path.GetDirectoryName(configFilePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
 
-        await using var stream = File.Create(configFilePath);
-        await JsonSerializer.SerializeAsync(stream, configuration, cancellationToken: cancellationToken).ConfigureAwait(false);
+            for (var i = 0; i < 5; i++)
+            {
+                try
+                {
+                    await using var stream = new FileStream(configFilePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                    await JsonSerializer.SerializeAsync(stream, configuration, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                catch (IOException) when (i < 4)
+                {
+                    await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>

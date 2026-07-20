@@ -234,8 +234,11 @@ class DaemonClient {
       'stepId': stepId,
       'executionId': executionId,
       'decisionType': decisionType,
+      // ignore: use_null_aware_elements
       if (targetStepId != null) 'targetStepId': targetStepId,
+      // ignore: use_null_aware_elements
       if (revisionFilePath != null) 'revisionFilePath': revisionFilePath,
+      // ignore: use_null_aware_elements
       if (artifactReference != null) 'artifactReference': artifactReference,
     };
     final response = await _post(
