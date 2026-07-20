@@ -54,6 +54,7 @@ public partial class TemplatePickerWindow : Window
         var secondaryVendor = ReviewRunRadio.IsChecked == true ? (SecondaryVendorCombo.SelectedItem?.ToString() ?? primaryVendor) : null;
         var taskName = string.IsNullOrWhiteSpace(TaskNameBox.Text) ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}" : TaskNameBox.Text.Trim();
         var customPrompt = string.IsNullOrWhiteSpace(CustomPromptBox.Text) ? null : CustomPromptBox.Text.Trim();
+        var secondaryCustomPrompt = string.IsNullOrWhiteSpace(SecondaryCustomPromptBox.Text) ? null : SecondaryCustomPromptBox.Text.Trim();
 
         var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
         var taskDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, taskName));
@@ -70,7 +71,8 @@ public partial class TemplatePickerWindow : Window
                 primaryVendor,
                 secondaryVendor,
                 taskDirectoryPath,
-                customPrompt).ConfigureAwait(true);
+                customPrompt,
+                secondaryCustomPrompt).ConfigureAwait(true);
 
             MaterializedTaskDirectoryPath = taskDirectoryPath;
             Close(true);

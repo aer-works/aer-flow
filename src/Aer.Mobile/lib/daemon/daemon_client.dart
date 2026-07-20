@@ -200,6 +200,7 @@ class DaemonClient {
     String? secondaryAdapter,
     String? taskName,
     String? customPrompt,
+    String? secondaryCustomPrompt,
   }) async {
     final response = await _post(
       Uri.http(host, '/api/templates/run'),
@@ -210,6 +211,7 @@ class DaemonClient {
         'secondaryAdapter': secondaryAdapter,
         'taskName': taskName,
         'customPrompt': customPrompt,
+        'secondaryCustomPrompt': secondaryCustomPrompt,
       }),
     );
     _throwIfFailed(response);

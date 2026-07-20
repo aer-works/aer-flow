@@ -170,6 +170,7 @@ class _InboxScreenState extends State<InboxScreen> {
       String secondaryVendor = 'gemini';
       final taskNameController = TextEditingController();
       final customPromptController = TextEditingController();
+      final secondaryCustomPromptController = TextEditingController();
 
       final availableVendorNames = vendors
           .where((v) => (v as Map<String, dynamic>)['isAvailable'] == true)
@@ -261,6 +262,14 @@ class _InboxScreenState extends State<InboxScreen> {
                         if (val != null) setDialogState(() => secondaryVendor = val);
                       },
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: secondaryCustomPromptController,
+                      decoration: const InputDecoration(
+                        labelText: "Reviewer's Instructions (Optional)",
+                        hintText: "e.g. Write your own roast back, don't critique the draft as a document",
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -278,6 +287,9 @@ class _InboxScreenState extends State<InboxScreen> {
                       secondaryAdapter: selectedTemplateId == 'review-run' ? secondaryVendor : null,
                       taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
                       customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
+                      secondaryCustomPrompt: selectedTemplateId == 'review-run' && secondaryCustomPromptController.text.trim().isNotEmpty
+                          ? secondaryCustomPromptController.text.trim()
+                          : null,
                     );
                     messenger.showSnackBar(
                       SnackBar(content: Text('Started template $selectedTemplateId ($dirPath)')),

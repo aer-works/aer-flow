@@ -47,6 +47,8 @@
       <StackPanel x:Name="SecondaryVendorPanel" Spacing="8" IsVisible="False">
         <TextBlock Classes="body-strong" Text="Reviewer Worker CLI Vendor:" />
         <ComboBox x:Name="SecondaryVendorCombo" HorizontalAlignment="Stretch" ItemTemplate="{StaticResource VendorComboItemTemplate}" />
+        <TextBlock Classes="body-strong" Text="Reviewer's Instructions (Optional):" />
+        <TextBox x:Name="SecondaryCustomPromptBox" PlaceholderText="e.g. Write your own roast back, don't critique the draft as a document" AcceptsReturn="True" Height="60" />
       </StackPanel>
 
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12" Margin="0,12,0,0">

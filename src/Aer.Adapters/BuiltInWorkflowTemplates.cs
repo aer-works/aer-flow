@@ -40,7 +40,8 @@ public static class BuiltInWorkflowTemplates
         string templateId,
         string primaryAdapter,
         string? secondaryAdapter = null,
-        string? customPrompt = null)
+        string? customPrompt = null,
+        string? secondaryCustomPrompt = null)
     {
         var normalizedPrimary = string.IsNullOrWhiteSpace(primaryAdapter) ? "claude" : primaryAdapter.Trim().ToLowerInvariant();
         var normalizedSecondary = string.IsNullOrWhiteSpace(secondaryAdapter) ? normalizedPrimary : secondaryAdapter.Trim().ToLowerInvariant();
@@ -127,7 +128,7 @@ public static class BuiltInWorkflowTemplates
                         RequiredInputs: ["draft.md"],
                         ProducedOutputs: [new ProducedOutput("review.md")],
                         OptionalMetadata: []),
-                    PromptTemplate: "Review draft.md carefully, provide feedback and recommendations, and write to review.md.",
+                    PromptTemplate: string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "Review draft.md carefully, provide feedback and recommendations, and write to review.md." : secondaryCustomPrompt,
                     Timeout: TimeSpan.FromMinutes(10),
                     PermissionGrant: defaultGrant)
             };
@@ -148,10 +149,11 @@ public static class BuiltInWorkflowTemplates
         string? secondaryAdapter,
         string taskDirectoryPath,
         string? customPrompt = null,
+        string? secondaryCustomPrompt = null,
         CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(taskDirectoryPath);
-        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt);
+        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt);
 
         var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
         var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
