@@ -45,7 +45,7 @@ public class WorkingDirectoryEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            ForceDeleteDirectory(testRoot);
         }
     }
 
@@ -76,7 +76,7 @@ public class WorkingDirectoryEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            ForceDeleteDirectory(testRoot);
         }
     }
 
@@ -144,5 +144,27 @@ public class WorkingDirectoryEndToEndTests
         var stderr = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
         Assert.True(process.ExitCode == 0, $"git {string.Join(' ', args)} failed: {stderr}");
+    }
+
+    /// <summary>
+    /// <c>git init</c>/<c>commit</c> leaves committed object files read-only by design — harmless on
+    /// Unix (directory-write permission is what governs deletion there), but Windows' own
+    /// <see cref="Directory.Delete(string, bool)"/> refuses to remove a read-only file regardless of
+    /// its parent directory's permissions, throwing <see cref="UnauthorizedAccessException"/>. Clears
+    /// the attribute on every file first so cleanup succeeds on every OS this test's git-repo variant runs on.
+    /// </summary>
+    private static void ForceDeleteDirectory(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+        }
+
+        Directory.Delete(path, recursive: true);
     }
 }

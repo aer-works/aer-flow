@@ -155,8 +155,8 @@ public class CoreDispatcherTests
 
             Assert.Equal(0, result.ExitCode);
             var printedCwd = (await File.ReadAllTextAsync(Path.Combine(outputDirectory, "hello.txt"))).Trim();
-            var expected = Path.TrimEndingDirectorySeparator(Path.GetFullPath(configuredWorkingDirectory));
-            var actual = Path.TrimEndingDirectorySeparator(Path.GetFullPath(printedCwd));
+            var expected = NormalizeRealPath(configuredWorkingDirectory);
+            var actual = NormalizeRealPath(printedCwd);
             Assert.Equal(expected, actual, ignoreCase: OperatingSystem.IsWindows());
         }
         finally
@@ -165,6 +165,24 @@ public class CoreDispatcherTests
             Directory.Delete(configuredWorkingDirectory, recursive: true);
             File.Delete(logPath);
         }
+    }
+
+    /// <summary>
+    /// macOS resolves <c>/tmp</c>/<c>/var</c> (and therefore the default <see cref="Path.GetTempPath"/>
+    /// root this test's directories live under) through a <c>/private</c> symlink at the OS level —
+    /// a spawned shell's <c>pwd</c> reports the fully-resolved path even though the configured cwd
+    /// was the pre-resolution one <see cref="Directory.CreateDirectory(string)"/> itself accepted.
+    /// <see cref="Path.GetFullPath(string)"/> never resolves symlinks, so without this, "the same
+    /// directory" fails a naive string comparison purely on this one OS. Only strips the prefix that
+    /// specific symlink introduces — not a general realpath resolution — so this stays exact
+    /// everywhere else.
+    /// </summary>
+    private static string NormalizeRealPath(string path)
+    {
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        return OperatingSystem.IsMacOS() && normalized.StartsWith("/private/", StringComparison.Ordinal)
+            ? normalized["/private".Length..]
+            : normalized;
     }
 
     private static ExecutionRequest MakeRequest(IReadOnlyList<EnvironmentVariable> environment) => new(
