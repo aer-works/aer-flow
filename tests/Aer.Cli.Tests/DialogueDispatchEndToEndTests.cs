@@ -59,6 +59,81 @@ public class DialogueDispatchEndToEndTests
         }
     }
 
+    /// <summary>
+    /// M23 Phase 1's own acceptance bar (#270): "one real multi-turn correspondence run end-to-end"
+    /// for the N-party generalization specifically — three participants, five turns, dispatched
+    /// through the same real engine/adapter/worker-binary path as the two-party test above (not just
+    /// <c>Aer.Workers.Dialogue.Tests.DialogueRunnerTests</c>' isolated-runner unit coverage of
+    /// round-robin sequencing).
+    /// </summary>
+    [Fact]
+    public async Task A_three_party_dialogue_step_round_robins_to_terminal_through_the_real_engine()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-3party-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            Directory.CreateDirectory(testRoot);
+            var workflowFilePath = await WriteSingleDialogueStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreePartyDialogueBindingsAsync(testRoot);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default)).State;
+
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+            var stepState = Assert.Single(finalState.Steps);
+            Assert.Equal(StepStatus.Succeeded, stepState.Status);
+
+            var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
+
+            var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
+            var transcriptLines = await File.ReadAllLinesAsync(transcriptPath);
+            Assert.Equal(5, transcriptLines.Length);
+            var turns = transcriptLines.Select(line => JsonSerializer.Deserialize<TranscriptTurn>(line)!).ToList();
+            Assert.Equal(["architect", "critic", "arbiter", "architect", "critic"], turns.Select(t => t.Role));
+            Assert.Equal([1, 2, 3, 4, 5], turns.Select(t => t.Sequence));
+
+            var finalOutputPath = Path.Combine(outputDirectory, "verdict.md");
+            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath));
+        }
+        finally
+        {
+            Directory.Delete(testRoot, recursive: true);
+        }
+    }
+
+    private static async Task<string> WriteThreePartyDialogueBindingsAsync(string directory)
+    {
+        var scriptDirectory = Path.Combine(directory, "scripts");
+        var dialogueConfig = new DialogueWorkerConfig(
+            SeedPrompt: "Open with your position.",
+            TurnBudget: 5,
+            FinalOutputName: "verdict.md",
+            StopSentinel: null,
+            Participants:
+            [
+                EchoingParticipant(scriptDirectory, "architect", "claude", "You design."),
+                EchoingParticipant(scriptDirectory, "critic", "gemini", "You critique."),
+                EchoingParticipant(scriptDirectory, "arbiter", "claude", "You decide."),
+            ]);
+
+        var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
+        await File.WriteAllTextAsync(dialogueConfigPath, JsonSerializer.Serialize(dialogueConfig));
+
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["debate"] = new WorkerBindingConfigEntry(
+                "dialogue",
+                new WorkerContract("debate", [], [new ProducedOutput("verdict.md")], []),
+                dialogueConfigPath,
+                TimeSpan.FromSeconds(30)),
+        };
+
+        var bindingsPath = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(bindingsPath, JsonSerializer.Serialize(config));
+        return bindingsPath;
+    }
+
     private static async Task<string> WriteSingleDialogueStepWorkflowAsync(string directory)
     {
         var definition = new WorkflowDefinition(
@@ -79,8 +154,11 @@ public class DialogueDispatchEndToEndTests
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
             StopSentinel: null,
-            Initiator: EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for."),
-            Responder: EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against."));
+            Participants:
+            [
+                EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for."),
+                EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against."),
+            ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
         await File.WriteAllTextAsync(dialogueConfigPath, JsonSerializer.Serialize(dialogueConfig));

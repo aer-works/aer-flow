@@ -38,7 +38,7 @@ The test drives `RunCommand.ExecuteAsync` — the same call `Program.cs` makes f
 a single-step workflow bound to the `"dialogue"` adapter. Unlike `smoke-claude`/
 `smoke-mixed-vendor`, the workflow and bindings aren't static fixture files: the dialogue worker's
 own config (`DialogueWorkerConfig`) is built and written to a temp directory at test run time, since
-its `Initiator`/`Responder` participants spawn `claude`/`agy` *directly* (no shell wrapper — see
+its `Participants` spawn `claude`/`agy` *directly* (no shell wrapper — see
 `ProcessVendorTurnClient`), using the same one-shot-text-turn flags `ClaudeWorkerAdapter`/
 `GeminiWorkerAdapter` build for a top-level dispatch, minus anything specific to Flow's own
 `AER_INPUT_<n>`/`AER_OUTPUT_DIR` convention (a per-turn call inside the worker boundary never needs
@@ -77,7 +77,7 @@ depend on what either model actually said).
   *before* the failing one stay on disk under the execution's `artifacts/` directory as a forensic
   record — check them for whichever vendor's turn actually failed.
 - **A specific vendor's turn is the problem**: re-run that vendor's exact command by hand — the
-  `Initiator`/`Responder` `Command`/`Args` this runbook's test builds mirror
+  per-`Participants`-entry `Command`/`Args` this runbook's test builds mirror
   `ClaudeWorkerAdapter`/`GeminiWorkerAdapter`'s own flags (`claude -p "..." --allowedTools Write
   --output-format text --model claude-haiku-4-5-20251001` / `agy -p "..." --mode accept-edits
   --model gemini-3-flash`) — to isolate a CLI-vs-worker issue. A clarifying question with no output

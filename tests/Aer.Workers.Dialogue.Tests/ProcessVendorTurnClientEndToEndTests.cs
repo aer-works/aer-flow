@@ -26,8 +26,7 @@ public class ProcessVendorTurnClientEndToEndTests
                 TurnBudget: 3,
                 FinalOutputName: "transcript-summary.md",
                 StopSentinel: null,
-                Initiator: initiator,
-                Responder: responder);
+                Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
             var turns = await runner.RunAsync(config, outputDirectory);
@@ -79,8 +78,7 @@ public class ProcessVendorTurnClientEndToEndTests
                 TurnBudget: 6,
                 FinalOutputName: "transcript-summary.md",
                 StopSentinel: "APPROVED",
-                Initiator: initiator,
-                Responder: responder);
+                Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
             var turns = await runner.RunAsync(config, outputDirectory);
@@ -114,8 +112,7 @@ public class ProcessVendorTurnClientEndToEndTests
                 TurnBudget: 4,
                 FinalOutputName: "transcript-summary.md",
                 StopSentinel: null,
-                Initiator: initiator,
-                Responder: responder);
+                Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
 
@@ -151,8 +148,7 @@ public class ProcessVendorTurnClientEndToEndTests
                 TurnBudget: 4,
                 FinalOutputName: "transcript-summary.md",
                 StopSentinel: null,
-                Initiator: initiator,
-                Responder: responder);
+                Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
 

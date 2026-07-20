@@ -95,14 +95,17 @@ public class LiveDialogueSmokeTest
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
             StopSentinel: null,
-            Initiator: new DialogueParticipant(
-                "initiator", "claude", "claude-haiku-4-5-20251001",
-                "You are debating in favor of the position. Respond in one sentence.",
-                "claude", ["-p", DialogueParticipant.PromptPlaceholder, "--allowedTools", "Write", "--output-format", "text", "--model", "claude-haiku-4-5-20251001"]),
-            Responder: new DialogueParticipant(
-                "responder", "gemini", "gemini-3-flash",
-                "You are debating against the position. Respond in one sentence.",
-                "agy", ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits", "--model", "gemini-3-flash"]));
+            Participants:
+            [
+                new DialogueParticipant(
+                    "initiator", "claude", "claude-haiku-4-5-20251001",
+                    "You are debating in favor of the position. Respond in one sentence.",
+                    "claude", ["-p", DialogueParticipant.PromptPlaceholder, "--allowedTools", "Write", "--output-format", "text", "--model", "claude-haiku-4-5-20251001"]),
+                new DialogueParticipant(
+                    "responder", "gemini", "gemini-3-flash",
+                    "You are debating against the position. Respond in one sentence.",
+                    "agy", ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits", "--model", "gemini-3-flash"]),
+            ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
         await File.WriteAllTextAsync(dialogueConfigPath, JsonSerializer.Serialize(dialogueConfig));

@@ -3,14 +3,15 @@ using System.Text;
 namespace Aer.Workers.Dialogue;
 
 /// <summary>
-/// Runs the dialogue exchange (M17 Phase 3, #166): alternating turns, starting with
-/// <see cref="DialogueWorkerConfig.Initiator"/>, writing each to <c>transcript.jsonl</c> as it
-/// happens and the final turn's text to <see cref="DialogueWorkerConfig.FinalOutputName"/> once the
-/// exchange ends. Ends on either of two conditions — <see cref="DialogueWorkerConfig.TurnBudget"/>
-/// turns having run, or a participant's turn containing <see cref="DialogueWorkerConfig.StopSentinel"/>
-/// — and fails the whole exchange (throwing <see cref="DialogueExecutionException"/>, caught by
-/// <see cref="Program"/> and mapped to a non-zero process exit) if a vendor CLI exits non-zero or
-/// produces no text for a turn.
+/// Runs the dialogue exchange (M17 Phase 3, #166; generalized to N-party round-robin M23 Phase 1,
+/// #270): turns round-robin through <see cref="DialogueWorkerConfig.Participants"/> in list order
+/// starting from index 0, writing each turn to <c>transcript.jsonl</c> as it happens and the final
+/// turn's text to <see cref="DialogueWorkerConfig.FinalOutputName"/> once the exchange ends. Ends on
+/// any of three conditions — the ceiling-clamped <see cref="DialogueWorkerConfig.TurnBudget"/> turns
+/// having run (see <see cref="DialogueWorkerConfig.HardTurnCeiling"/>), or a participant's turn
+/// containing <see cref="DialogueWorkerConfig.StopSentinel"/> — and fails the whole exchange
+/// (throwing <see cref="DialogueExecutionException"/>, caught by <see cref="Program"/> and mapped to
+/// a non-zero process exit) if a vendor CLI exits non-zero or produces no text for a turn.
 /// <para>
 /// <b>Context threading is the full transcript so far</b>, not a sliding window: each turn's prompt
 /// is its speaker's <see cref="DialogueParticipant.Preamble"/>, the exchange's
@@ -44,13 +45,14 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
 
         Directory.CreateDirectory(outputDirectory);
 
-        var turns = new List<TranscriptTurn>(config.TurnBudget);
+        var effectiveTurnBudget = Math.Min(config.TurnBudget, DialogueWorkerConfig.HardTurnCeiling);
+        var turns = new List<TranscriptTurn>(effectiveTurnBudget);
 
         await using (var transcript = new TranscriptWriter(Path.Combine(outputDirectory, "transcript.jsonl")))
         {
-            for (var sequence = 1; sequence <= config.TurnBudget; sequence++)
+            for (var sequence = 1; sequence <= effectiveTurnBudget; sequence++)
             {
-                var speaker = sequence % 2 == 1 ? config.Initiator : config.Responder;
+                var speaker = config.Participants[(sequence - 1) % config.Participants.Count];
                 var prompt = BuildPrompt(speaker, config.SeedPrompt, turns);
 
                 var result = await turnClient.SendTurnAsync(speaker, prompt, cancellationToken).ConfigureAwait(false);

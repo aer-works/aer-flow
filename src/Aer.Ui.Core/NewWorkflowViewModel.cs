@@ -447,8 +447,11 @@ public sealed partial class GuidedStepViewModel : ObservableObject
             int.Parse(TurnBudgetText),
             ProducesFileName,
             StopSentinel: null,
-            DialogueParticipantPresets.For("claude", "initiator", InitiatorPreamble, Model.Length > 0 ? Model : null),
-            DialogueParticipantPresets.For("gemini", "responder", ResponderPreamble, model: null));
+            Participants:
+            [
+                DialogueParticipantPresets.For("claude", "initiator", InitiatorPreamble, Model.Length > 0 ? Model : null),
+                DialogueParticipantPresets.For("gemini", "responder", ResponderPreamble, model: null),
+            ]);
 
         var sidecarPath = Path.Combine(workspacePath, $"dialogue-{Name}.json");
         await File.WriteAllTextAsync(

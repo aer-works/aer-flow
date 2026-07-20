@@ -10,22 +10,24 @@ public class DialogueWorkerConfigParserTests
           "TurnBudget": 4,
           "FinalOutputName": "transcript-summary.md",
           "StopSentinel": null,
-          "Initiator": {
-            "Role": "initiator",
-            "Vendor": "claude",
-            "Model": null,
-            "Preamble": "You are the architect.",
-            "Command": "claude",
-            "Args": ["-p", "{PROMPT}"]
-          },
-          "Responder": {
-            "Role": "responder",
-            "Vendor": "gemini",
-            "Model": null,
-            "Preamble": "You are the critic.",
-            "Command": "agy",
-            "Args": ["-p", "{PROMPT}"]
-          }
+          "Participants": [
+            {
+              "Role": "initiator",
+              "Vendor": "claude",
+              "Model": null,
+              "Preamble": "You are the architect.",
+              "Command": "claude",
+              "Args": ["-p", "{PROMPT}"]
+            },
+            {
+              "Role": "responder",
+              "Vendor": "gemini",
+              "Model": null,
+              "Preamble": "You are the critic.",
+              "Command": "agy",
+              "Args": ["-p", "{PROMPT}"]
+            }
+          ]
         }
         """;
 
@@ -38,10 +40,11 @@ public class DialogueWorkerConfigParserTests
         Assert.Equal(4, config.TurnBudget);
         Assert.Equal("transcript-summary.md", config.FinalOutputName);
         Assert.Null(config.StopSentinel);
-        Assert.Equal("initiator", config.Initiator.Role);
-        Assert.Equal("claude", config.Initiator.Vendor);
-        Assert.Equal("responder", config.Responder.Role);
-        Assert.Equal("gemini", config.Responder.Vendor);
+        Assert.Equal(2, config.Participants.Count);
+        Assert.Equal("initiator", config.Participants[0].Role);
+        Assert.Equal("claude", config.Participants[0].Vendor);
+        Assert.Equal("responder", config.Participants[1].Role);
+        Assert.Equal("gemini", config.Participants[1].Vendor);
     }
 
     [Fact]
@@ -84,6 +87,32 @@ public class DialogueWorkerConfigParserTests
         var json = ValidJson.Replace("\"Command\": \"claude\"", "\"Command\": \"\"");
 
         Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
+    }
+
+    [Fact]
+    public void Fewer_than_two_participants_throws()
+    {
+        const string json = """
+            {
+              "SeedPrompt": "Propose a design.",
+              "TurnBudget": 4,
+              "FinalOutputName": "transcript-summary.md",
+              "StopSentinel": null,
+              "Participants": [
+                {
+                  "Role": "initiator",
+                  "Vendor": "claude",
+                  "Model": null,
+                  "Preamble": "You are the architect.",
+                  "Command": "claude",
+                  "Args": ["-p", "{PROMPT}"]
+                }
+              ]
+            }
+            """;
+
+        var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
+        Assert.Contains("Participants", ex.Message);
     }
 
     private static string ReplaceField(string json, string field, string value) =>

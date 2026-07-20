@@ -10,8 +10,18 @@ public class DialogueRunnerTests
         TurnBudget: turnBudget,
         FinalOutputName: "final.md",
         StopSentinel: stopSentinel,
-        Initiator: new DialogueParticipant("initiator", "claude", null, "Initiator preamble", "stub-claude", ["{PROMPT}"]),
-        Responder: new DialogueParticipant("responder", "gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]));
+        Participants:
+        [
+            new DialogueParticipant("initiator", "claude", null, "Initiator preamble", "stub-claude", ["{PROMPT}"]),
+            new DialogueParticipant("responder", "gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]),
+        ]);
+
+    private static DialogueWorkerConfig BuildConfig(int turnBudget, IReadOnlyList<DialogueParticipant> participants, string? stopSentinel = null) => new(
+        SeedPrompt: "seed",
+        TurnBudget: turnBudget,
+        FinalOutputName: "final.md",
+        StopSentinel: stopSentinel,
+        Participants: participants);
 
     [Fact]
     public async Task Runs_exactly_TurnBudget_turns_alternating_speakers()
@@ -161,6 +171,53 @@ public class DialogueRunnerTests
 
             Assert.Contains("no text", ex.Message);
             Assert.False(File.Exists(Path.Combine(outputDirectory, "final.md")));
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Three_or_more_participants_round_robin_in_list_order()
+    {
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+        var participants = new List<DialogueParticipant>
+        {
+            new("first", "claude", null, "First preamble", "stub-claude", ["{PROMPT}"]),
+            new("second", "gemini", null, "Second preamble", "stub-gemini", ["{PROMPT}"]),
+            new("third", "claude", null, "Third preamble", "stub-claude-2", ["{PROMPT}"]),
+        };
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var turns = await runner.RunAsync(BuildConfig(7, participants), outputDirectory);
+
+            Assert.Equal(7, turns.Count);
+            Assert.Equal(
+                ["first", "second", "third", "first", "second", "third", "first"],
+                turns.Select(t => t.Role));
+            Assert.Equal([1, 2, 3, 4, 5, 6, 7], turns.Select(t => t.Sequence));
+        }
+        finally
+        {
+            Directory.Delete(outputDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_turn_budget_above_the_hard_ceiling_is_clamped_to_the_ceiling()
+    {
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var turns = await runner.RunAsync(BuildConfig(DialogueWorkerConfig.HardTurnCeiling * 10), outputDirectory);
+
+            Assert.Equal(DialogueWorkerConfig.HardTurnCeiling, turns.Count);
+            Assert.Equal(DialogueWorkerConfig.HardTurnCeiling, client.CallCount);
         }
         finally
         {
