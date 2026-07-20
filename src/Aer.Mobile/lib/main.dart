@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'daemon/credentials_store.dart';
+import 'daemon/tailnet_gateway.dart';
 import 'inbox_screen.dart';
 import 'pairing_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await TailnetGateway.init();
   runApp(const AerMobileApp());
 }
 
@@ -15,7 +18,9 @@ class AerMobileApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'AER Flow',
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple)),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+      ),
       home: const _StartupRouter(),
     );
   }

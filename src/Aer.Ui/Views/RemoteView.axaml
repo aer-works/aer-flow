@@ -80,6 +80,22 @@
                    Text="Via Tailscale — works from any network the phone has data on." />
         <TextBlock Classes="caption" IsVisible="{Binding !Remote.IsPairingOverTailnet}"
                    Text="Via local network — phone must be on the same Wi-Fi." />
+
+        <!-- M21 Phase 7 follow-up (#246): a phone's embedded tsnet node needs a real Tailscale auth
+             key on first enrollment — generate a reusable one in the Tailscale admin console
+             (Settings -> Keys) once, paste it here, and it rides along in every QR from then on. -->
+        <StackPanel Spacing="{DynamicResource Space.2}" IsVisible="{Binding Remote.IsPairingOverTailnet}">
+          <TextBlock Classes="caption" Text="Tailscale auth key (lets a phone join without a browser sign-in)" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <TextBox x:Name="TailscaleAuthKeyBox" Width="360" PasswordChar="•"
+                     Text="{Binding Remote.TailscaleAuthKey}" PlaceholderText="tskey-auth-..." />
+            <Button x:Name="SaveTailscaleAuthKeyButton" IsEnabled="{Binding !Remote.IsBusy}" Content="Save" />
+          </StackPanel>
+          <TextBlock Classes="caption" Foreground="{DynamicResource Status.NeedsYou}" TextWrapping="Wrap"
+                     IsVisible="{Binding Remote.NeedsTailscaleAuthKey}"
+                     Text="No key saved yet — scanning this QR will fail on a phone with no prior Tailscale sign-in." />
+        </StackPanel>
+
         <Border Classes="card" Width="240" Height="240" HorizontalAlignment="Left">
           <Image Source="{Binding Remote.QrPngBytes, Converter={StaticResource ByteArrayToBitmapConverter}}"
                  Width="220" Height="220" Stretch="Uniform" />

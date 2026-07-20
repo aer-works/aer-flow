@@ -101,6 +101,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # M21 Phase 7 (#246): the `tailscale` package's native-asset build hook cross-compiles a Go
+      # shared library (for `flutter build apk`'s Android NDK step, and again for `flutter test`'s
+      # host-platform stub) and requires Go 1.26+ itself -- ubuntu-latest's preinstalled toolchain
+      # is older, same reasoning as the `test` job's own `actions/setup-go@v5` step above.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable

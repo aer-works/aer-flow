@@ -64,6 +64,17 @@ public sealed partial class RemoteViewModel : ObservableObject
     [ObservableProperty]
     private byte[]? qrPngBytes;
 
+    /// <summary>
+    /// A reusable Tailscale auth key (M21 Phase 7 follow-up, #246), persisted via
+    /// <see cref="LocalUiConfigurationStore"/>. Embedded in the pairing QR whenever pairing is over
+    /// the tailnet, so a phone's embedded tsnet node can enroll non-interactively — see
+    /// <see cref="GeneratePairingCodeAsync"/> and that store's own remarks on why a network round
+    /// trip to fetch this from the daemon isn't needed at all: the QR is built client-side here.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NeedsTailscaleAuthKey))]
+    private string? tailscaleAuthKey;
+
     [ObservableProperty]
     private string statusText = "Checking...";
 
@@ -144,6 +155,9 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// </summary>
     public bool ShowLanEncryptionWarning => IsRemoteEnabled && !IsPairingOverTailnet;
 
+    /// <summary>Tailnet pairing needs a key to embed in the QR (see <see cref="TailscaleAuthKey"/>) — without one, the QR would reproduce the exact "no auth key and no existing session state" failure a fresh phone hits.</summary>
+    public bool NeedsTailscaleAuthKey => IsPairingOverTailnet && string.IsNullOrWhiteSpace(TailscaleAuthKey);
+
     /// <summary>
     /// The sidecar's state as exactly one of four mutually exclusive phases — the single source of
     /// truth the view binds against, instead of three independently-bindable Has* flags that could
@@ -183,6 +197,7 @@ public sealed partial class RemoteViewModel : ObservableObject
 
             IsRemoteEnabled = status.IsRemote;
             Port = status.Port;
+            TailscaleAuthKey = await session.LoadTailscaleAuthKeyAsync(cancellationToken).ConfigureAwait(true);
 
             var lanAddress = LanAddress.TryGetPrimary();
             Host = lanAddress != null ? $"{lanAddress}:{status.Port}" : null;
@@ -372,7 +387,29 @@ public sealed partial class RemoteViewModel : ObservableObject
         ErrorText = null;
         PairingCode = code.Code;
         PairingCodeExpiresInSeconds = code.ExpiresInSeconds;
-        QrPngBytes = BuildQrPng($"aer://pair?host={Uri.EscapeDataString(pairingHost)}&code={Uri.EscapeDataString(code.Code)}");
+
+        var payload = $"aer://pair?host={Uri.EscapeDataString(pairingHost)}&code={Uri.EscapeDataString(code.Code)}";
+        // M21 Phase 7 follow-up (#246): a phone's own embedded tsnet node needs a real auth key for
+        // its first-ever enrollment (the `tailscale` Dart package has no keyless first-enrollment
+        // path) — riding it along in the same QR keeps scanning the only setup step on the phone.
+        // Never sent over the network: TailscaleAuthKey is loaded straight from local config above,
+        // and this string only ever becomes pixels in QrPngBytes.
+        if (IsPairingOverTailnet && TailscaleAuthKey is { Length: > 0 } key)
+        {
+            payload += $"&tskey={Uri.EscapeDataString(key)}";
+        }
+
+        QrPngBytes = BuildQrPng(payload);
+    }
+
+    /// <summary>Persists an edited auth key and rebuilds the QR against it immediately, so the field's Save button doesn't need a full <see cref="RefreshAsync"/> round trip to take effect.</summary>
+    public async Task SaveTailscaleAuthKeyAsync(TaskSession session, CancellationToken cancellationToken = default)
+    {
+        await session.RecordTailscaleAuthKeyAsync(TailscaleAuthKey, cancellationToken).ConfigureAwait(true);
+        if (EffectivePairingHost != null)
+        {
+            await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
+        }
     }
 
     /// <summary>The toggle button's action — public and directly callable (not a <c>[RelayCommand]</c>), the same reason <see cref="HomeViewModel.RefreshAsync"/> takes a <see cref="TaskSession"/> parameter rather than capturing one: this ViewModel is constructed before the session exists (<see cref="MainWindowViewModel"/>'s property-initializer <c>new()</c>), so the view's code-behind supplies it at call time instead.</summary>
