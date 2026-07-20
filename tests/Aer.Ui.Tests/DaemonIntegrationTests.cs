@@ -509,6 +509,13 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // and make the daemon create/write files anywhere it can reach. This is exactly the
         // filesystem access the milestone's own design says a caller with only TemplateId/TaskName
         // (no real paths) should never get.
+        if (maliciousTaskName.Contains('\\') && !OperatingSystem.IsWindows())
+        {
+            // '\' is not a path separator outside Windows, so this input never traverses out of the
+            // tasks root there -- it's just a literal (contained) folder name, and OK is correct.
+            return;
+        }
+
         var request = new RunTemplateRequest(TemplateId: "solo-run", PrimaryAdapter: "claude", TaskName: maliciousTaskName);
 
         var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
