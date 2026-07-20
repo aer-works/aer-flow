@@ -214,7 +214,7 @@ class DaemonClient {
     );
     _throwIfFailed(response);
     final body = caseInsensitive(jsonDecode(response.body) as Map<String, dynamic>);
-    return body['taskDirectoryPath']?.toString() ?? '';
+    return (body['taskdirectorypath'] ?? body['taskDirectoryPath'])?.toString() ?? '';
   }
 
   /// decisionType is one of "Resume" | "Reject" | "Supersede" | "RetryWithRevision".
