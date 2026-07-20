@@ -641,7 +641,8 @@ namespace Aer.Daemon
                         request.PrimaryAdapter ?? "claude",
                         request.SecondaryAdapter,
                         taskDirectoryPath,
-                        request.CustomPrompt).ConfigureAwait(true);
+                        request.CustomPrompt,
+                        request.SecondaryCustomPrompt).ConfigureAwait(true);
 
                     var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
                     var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");

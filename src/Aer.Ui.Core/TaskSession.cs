@@ -34,7 +34,8 @@ public record RunTemplateRequest(
     string? PrimaryAdapter = null,
     string? SecondaryAdapter = null,
     string? TaskName = null,
-    string? CustomPrompt = null);
+    string? CustomPrompt = null,
+    string? SecondaryCustomPrompt = null);
 
 public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
 public record DaemonVersionInfo(string Version, bool HasRunningTasks, bool IsRemote = false);

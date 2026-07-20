@@ -46,6 +46,29 @@ public class BuiltInWorkflowTemplatesTests
     }
 
     [Fact]
+    public void Materialize_ReviewRun_DefaultsReviewerPromptWhenNoSecondaryCustomPromptGiven()
+    {
+        var (_, bindings) = BuiltInWorkflowTemplates.Materialize("review-run", "claude", "gemini", "Write a roast");
+
+        Assert.Equal(
+            "Review draft.md carefully, provide feedback and recommendations, and write to review.md.",
+            bindings["review-worker"].PromptTemplate);
+    }
+
+    [Fact]
+    public void Materialize_ReviewRun_UsesSecondaryCustomPromptForReviewerWhenGiven()
+    {
+        // Review follow-up (issue #255): the reviewer's prompt used to be hardcoded no matter what
+        // the drafter was asked to do -- e.g. asking the drafter for a roast still got the reviewer
+        // told to "review draft.md carefully" as a document, not respond to it.
+        var (_, bindings) = BuiltInWorkflowTemplates.Materialize(
+            "review-run", "claude", "gemini", "Write a roast", "Write your own roast back");
+
+        Assert.Equal("Write a roast", bindings["draft-worker"].PromptTemplate);
+        Assert.Equal("Write your own roast back", bindings["review-worker"].PromptTemplate);
+    }
+
+    [Fact]
     public async Task MaterializeToDirectoryAsync_PersistsValidFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "aer_template_test_" + Guid.NewGuid().ToString("N"));
