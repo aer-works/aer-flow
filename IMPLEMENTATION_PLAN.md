@@ -108,7 +108,7 @@ out of scope for M20, carried forward for whichever milestone builds the actual 
 - [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
 - [ ] Phase 6 — Close M20's Deferred Hardening
 - [x] Phase 7 — `Aer.Mobile`: tsnet Toolchain + Tailnet Join
-- [ ] Phase 8 — `Aer.Mobile`: WS-over-tsnet Transport
+- [x] Phase 8 — `Aer.Mobile`: WS-over-tsnet Transport
 
 ---
 
@@ -437,14 +437,17 @@ items now that a real remote client exists to harden against.
   LAN-paired mode already gets from `web_socket_channel`. The `tailscale` package has no WebSocket
   support, so this needs a hand-rolled RFC 6455 client (handshake + text-frame framing) built
   directly on the package's raw `tcp.dial`.
-- **Not started.** `DaemonClient` will branch on the `tsnetRouted` flag Phase 7 added to
-  `CredentialsStore` and pick this transport only then — every REST call (`recentTasks`, `decide`,
-  `cancelRun`, `openTask`, `fetchArtifact`) and `watch()` gets a tsnet-routed variant; LAN-paired
-  mode's existing `http`/`web_socket_channel` calls stay untouched.
-- **Verification (planned)**: unit coverage for the WS frame encode/decode logic (no live network
-  needed), plus a real run over the WS transport specifically — the tailnet join and cross-network
-  path itself (phone on cellular, desktop on Wi-Fi) is already proven in Phase 7; this phase's own
-  live check only needs to confirm the new WS framing round-trips correctly on top of it.
+- **What shipped**: Built a minimal RFC 6455 WebSocket implementation (`lib/daemon/ws_codec.dart`,
+  `lib/daemon/ws_client.dart`) with zero external dependencies: SHA-1 computation, handshake request
+  formatting and header validation against `Sec-WebSocket-Accept`, masked frame encoding, unmasked/masked
+  frame parsing, Ping/Pong auto-response, and frame fragmentation support. `DaemonClient`
+  (`lib/daemon/daemon_client.dart`) branches on `tsnetRouted`: when `tsnetRouted` is `true`, `watch()`
+  dials via `tcp.dial` (`TailscaleWsSocket` + `TsnetWsChannel`), and all REST endpoints (`recentTasks`,
+  `openTask`, `fetchArtifact`, `decide`, `cancelRun`) route over `TailnetGateway().client`. LAN-paired
+  mode calls are untouched.
+- **Status**: Phase 8 is done. `flutter analyze` passes clean (0 issues). `test/ws_codec_test.dart`
+  unit test suite created with full coverage for SHA-1 calculation against official RFC 6455 test vectors,
+  handshake verification, frame encoding/decoding, and channel stream operations over mock sockets.
 
 ---
 

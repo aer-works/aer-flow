@@ -39,7 +39,11 @@ class _InboxScreenState extends State<InboxScreen> {
       }
       return;
     }
-    _client = DaemonClient(host: credentials.host, token: credentials.token);
+    _client = DaemonClient(
+      host: credentials.host,
+      token: credentials.token,
+      tsnetRouted: credentials.tsnetRouted,
+    );
     _connect();
   }
 
