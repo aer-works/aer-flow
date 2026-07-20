@@ -86,88 +86,18 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 **M21** shipped zero-config remote control and structured permission scopes: vendor-neutral `PermissionGrant` models translated inside each adapter (`ReadFiles`, `WriteFiles`, `RunShellCommands`, `NetworkAccess`), `Aer.Mobile` (Flutter/Android) with QR-code pairing and live task streaming over WebSockets, zero-config Tailscale transport (`tsnet` sidecar on desktop, embedded `tsnet` via Go CGO / `tcp.dial` in `Aer.Mobile`), and M20's deferred token management (interactive revocation, 60s pairing code countdown).
 
+**M22** shipped the built-in workflow template library: pre-authored Solo Run and Review Run templates materialized against installed vendor CLIs via `BuiltInWorkflowTemplates`, daemon template catalog and execution REST endpoints (`GET /api/templates`, `POST /api/templates/run`), desktop `TemplatePickerWindow`, mobile Flutter template picker screen, and artifact-referenced supply allowing remote mobile send-back (Supersede) without host filesystem access.
+
 ---
 
 ## Current Milestone
 
-**M22: Workflow Template Library** — progress:
+**M23: Generic Dialogue & Project Packaging** — progress:
 
-- [ ] Phase 1 — Built-In Template Catalog
-- [ ] Phase 2 — Daemon Template Endpoints
-- [ ] Phase 3 — Desktop Template Picker
-- [ ] Phase 4 — Mobile Template Picker
-- [ ] Phase 5 — Mobile Send-Back
-
----
-
-## M22: Workflow Template Library — Phase Plan
-
-**Goal:** A small built-in library of pre-authored workflow templates a user picks from — no
-authoring needed — on both `Aer.Ui` and `Aer.Mobile`. This also gives the phone its first-ever way
-to start a brand-new task: today it can only watch/decide on a task the desktop already started,
-since `/api/tasks/run` requires real paths on the daemon host's filesystem, which a phone has no
-way to supply. Two templates, not a general template system: a single-vendor **Solo run** (one
-step, whichever vendor CLI is actually installed) and a two-vendor **Review run** (one vendor
-drafts, the other reviews, either order) — the already-proven `draft-review-paused-*` two-step DAG
-shape, live-smoke-verified by `LiveMixedVendorPausedRunSmokeTest`. Vendor choice for both is
-auto-picked from `VendorCliPresence`'s existing PATH probe when only one vendor is installed, and
-asked only when there's an actual choice to make. Full remote-control parity (DAG/history/lineage
-viewing, RetryWithRevision, non-Review-run Supersede from the phone) is a real future direction but
-explicitly out of scope here — noted under M24 instead.
-
-### Phase 1: Built-in Template Catalog
-- **Goal**: Two built-in workflow shapes — Solo run and Review run (`PausePoint.SupersedeTargets`
-  declared back to the draft step) — as embedded resources in `Aer.Flow`, exposed via a new
-  `BuiltInWorkflowTemplates` catalog type (`Id`/`Title`/`Description` + parsed `WorkflowDefinition`
-  + bindings dict, vendor slots left as a parameter so Solo/Review materialize against whichever
-  vendor(s) `VendorCliPresence` finds installed). Round-tripped through the existing
-  `WorkflowDefinitionWriter`/`Parser` and `WorkerBindingConfigWriter`/`Parser` exactly like
-  hand-written fixtures are. No new engine capability.
-- **Verification**: a round-trip test per catalog entry, across both vendor assignments (parses/
-  validates cleanly, same bar as existing fixtures).
-
-### Phase 2: Daemon Template Endpoints
-- **Goal**: `GET /api/templates` (list id/title/description, for both picker UIs) and
-  `POST /api/templates/run` (`{TemplateId, TaskName?}` — no paths at all) that materializes the
-  picked template into a fresh directory under a daemon-owned default root (`~/.aer/tasks/`) and
-  dispatches through the existing `RunCommand`/`TaskSession.RunAsync` path unchanged.
-- **Verification**: an integration test in `DaemonIntegrationTests.cs`'s existing style — POST
-  `/api/templates/run` with only a template id, assert a task starts and reaches
-  Running/Paused with no caller-supplied path anywhere in the request.
-
-### Phase 3: Desktop Template Picker
-- **Goal**: a "Start from a template" entry point alongside full guided authoring — Solo run asks a
-  vendor dropdown only if both are installed, Review run asks a drafts-first/reviews-first order
-  only if both are installed. Materializes the picked template into a fresh task directory using
-  the same `task-{timestamp}` naming `NewWorkflowViewModel.RunRequested` already uses, then calls
-  the existing unchanged `RunAsync`. No new daemon capability. "Send back to draft" already works
-  for free via the existing `PausedStepViewModel.SendBackTargets`/Supersede machinery.
-- **Verification**: manual — pick each template (both vendor assignments where applicable), confirm
-  each runs correctly end to end; for Review run, confirm "Send back to draft" resumes the draft
-  step with the supplied revision.
-
-### Phase 4: Mobile Template Picker
-- **Goal**: `daemon_client.dart` gains `listTemplates`/`runTemplate`; a new picker screen reachable
-  from the "no task open" empty state, calling Phase 2's endpoint (vendor/order choice surfaced the
-  same way as desktop's Phase 3). The first time the phone can start a task rather than only watch
-  one.
-- **Verification**: real-device, same bar as M21 Phase 2 — from a freshly paired phone with nothing
-  open, pick each template, confirm it starts and the decision inbox picks it up exactly like a
-  desktop-started task would.
-
-### Phase 5: Mobile Send-Back
-- **Goal**: close the one gap Phase 4 leaves — Review run's "send back to draft" from the phone.
-  Daemon: extend the decide path to accept a supplementary artifact by reference (execution id +
-  filename of something the task already produced) instead of a raw `SourceFilePath`, resolving it
-  server-side via the same `ArtifactManager.ResolveOutputDirectory` path the artifact-preview
-  endpoint already uses, then reusing `SupplyCommand`'s existing mint-and-copy logic unchanged.
-  Mobile: a "Send back to `<author>`" button on the review step's paused card, referencing that
-  step's own last-produced output — no manual path/worker/output-name entry, since those are
-  template-known constants for a built-in template.
-- **Verification**: an integration test mirroring `Reject_TriggersASecondWebSocketBroadcast_...`'s
-  style — decide-by-artifact-reference against a paused review step, assert the draft step resumes
-  with the reviewer's output as its supplementary input; real-device confirmation that tapping
-  "Send back" from the phone does the same thing the desktop button already does.
+- [ ] Phase 1 — Generic Dialogue Config Schema & Loops
+- [ ] Phase 2 — Project Packages & Binding Segregation
+- [ ] Phase 3 — Visual Diff Viewer for Revisions
+- [ ] Phase 4 — Multi-Agent Teamwork Preview (Mock)
 
 ---
 
@@ -243,6 +173,8 @@ Completed milestones keep only a one-paragraph summary here. Their phase checkli
 closed GitHub milestones; their decisions of record — the constraints and precedents later work
 still leans on — in `docs/decisions-of-record.md`; and the full phase plans — goals, boundaries,
 and the open questions each phase resolved — in this file's git history and the linked issues.
+
+**M22: Workflow Template Library** — shipped a built-in template catalog (`solo-run` and `review-run`) materialized against PATH-probed vendor CLIs (`claude`, `gemini`), daemon template endpoints (`GET /api/templates`, `POST /api/templates/run`), desktop (`TemplatePickerWindow`) and mobile (`inbox_screen.dart`) template picker UIs allowing zero-path task creation, and artifact-referenced supply enabling remote mobile send-back (Supersede) with no host filesystem access.
 
 **M21: Zero-Config Remote Control & Permission Scopes** — shipped structured vendor-neutral permission scope models (`PermissionGrant` for file and command access), `Aer.Mobile` (Flutter remote client) with QR code pairing and live task streaming over WebSockets, zero-config embedded Tailscale transport (`aer-sidecar` Go node on desktop, embedded `tsnet` via CGO and RFC 6455 `ws_codec.dart`/`ws_client.dart` over `tcp.dial` on mobile), and closed M20's deferred token management (60s pairing code countdown and interactive paired client revocation).
 

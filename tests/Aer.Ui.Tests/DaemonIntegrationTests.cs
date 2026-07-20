@@ -461,4 +461,41 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task GetTemplates_ReturnsCatalogAndVendorPresence()
+    {
+        var response = await _client.GetAsync($"{BaseUrl}/api/templates", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var hasTemplates = body.TryGetProperty("templates", out var templates) || body.TryGetProperty("Templates", out templates);
+        Assert.True(hasTemplates);
+        Assert.Equal(2, templates.GetArrayLength());
+
+        var hasVendors = body.TryGetProperty("availableVendors", out var vendors) || body.TryGetProperty("AvailableVendors", out vendors);
+        Assert.True(hasVendors);
+        Assert.True(vendors.GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task RunTemplate_MaterializesAndStartsTaskWithoutCallerSuppliedPaths()
+    {
+        var request = new RunTemplateRequest(
+            TemplateId: "solo-run",
+            PrimaryAdapter: "claude",
+            TaskName: "test-template-task-" + Guid.NewGuid().ToString("N"));
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var hasProp = body.TryGetProperty("taskDirectoryPath", out var dirProp) || body.TryGetProperty("TaskDirectoryPath", out dirProp);
+        Assert.True(hasProp);
+        var dirPath = dirProp.GetString();
+        Assert.NotNull(dirPath);
+        Assert.True(Directory.Exists(dirPath));
+        Assert.True(File.Exists(Path.Combine(dirPath, "workflow.json")));
+        Assert.True(File.Exists(Path.Combine(dirPath, "bindings.json")));
+    }
 }

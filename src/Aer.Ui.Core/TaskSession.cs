@@ -16,6 +16,8 @@ namespace Aer.Ui.Core;
 
 public record OpenTaskRequest(string DirectoryPath);
 public record RunTaskRequest(string DirectoryPath, string? WorkflowTemplateFilePath, string BindingsFilePath);
+public record ArtifactReference(string ExecutionId, string FileName);
+
 public record DecideTaskRequest(
     string DirectoryPath,
     string StepId,
@@ -24,7 +26,16 @@ public record DecideTaskRequest(
     string? TargetStepId = null,
     string? RevisionFilePath = null,
     string? SupplementaryWorker = null,
-    string? SupplementaryOutputName = null);
+    string? SupplementaryOutputName = null,
+    ArtifactReference? ArtifactReference = null);
+
+public record RunTemplateRequest(
+    string TemplateId,
+    string? PrimaryAdapter = null,
+    string? SecondaryAdapter = null,
+    string? TaskName = null,
+    string? CustomPrompt = null);
+
 public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
 public record DaemonVersionInfo(string Version, bool HasRunningTasks, bool IsRemote = false);
 

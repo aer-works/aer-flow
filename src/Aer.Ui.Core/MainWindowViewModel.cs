@@ -106,11 +106,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(RunButtonToolTipText))]
     private bool isTaskFinished;
 
-    public bool CanRun => !IsMutationInFlight && !IsTaskFinished;
+    public bool CanRun => !IsMutationInFlight;
 
-    public string RunButtonToolTipText => IsTaskFinished
-        ? "This task has already finished — there's nothing left to run."
-        : "Start a fresh task from a workflow file, or resume the task open above.";
+    public string RunButtonToolTipText => IsMutationInFlight
+        ? "Execution is currently in flight."
+        : "Start a fresh task from a workflow file, or resume/re-run the task open above.";
 
     /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
     [ObservableProperty]
@@ -155,14 +155,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         TaskProjection projection,
         string taskDirectoryPath,
         Func<string, Task> previewFileAsync,
-        Action<string, string> showConversation)
+        Action<string, string> showConversation,
+        IReadOnlyDictionary<string, string>? workerAdapters = null)
     {
         var previousSelectedStepId = SelectedStep?.StepId;
 
         TaskSteps.Clear();
         foreach (var item in StepItemProjector.Build(
             projection, taskDirectoryPath, PausedSteps, previewFileAsync, showConversation,
-            select: item => SelectedStep = item))
+            select: item => SelectedStep = item,
+            workerAdapters: workerAdapters))
         {
             TaskSteps.Add(item);
         }

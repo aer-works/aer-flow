@@ -664,11 +664,24 @@ public partial class MainWindow : Window
         RenderProjection(projection, taskDirectoryPath);
     }
 
+    private string? _lastRenderedProjectionFingerprint;
+
     /// <summary>
     /// Renders a loaded <see cref="TaskProjection"/> across all view panels without re-querying the session.
     /// </summary>
     public void RenderProjection(TaskProjection projection, string taskDirectoryPath)
     {
+        var stepsFingerprint = string.Join(",", projection.State.Steps.Select(s => $"{s.StepId.Value}:{s.Status}:{s.LatestExecutionId?.Value}"));
+        var attemptsCount = projection.History.AttemptsByStepId.Sum(kv => kv.Value.Count);
+        var convLength = _conversationOutputDirectory != null && File.Exists(System.IO.Path.Combine(_conversationOutputDirectory, "transcript.jsonl")) ? new FileInfo(System.IO.Path.Combine(_conversationOutputDirectory, "transcript.jsonl")).Length : 0;
+        var fingerprint = $"{taskDirectoryPath}|{projection.State.Status}|{stepsFingerprint}|{attemptsCount}|{projection.History.Decisions.Count}|{projection.Lineage.Executions.Count}|{convLength}";
+
+        if (_lastRenderedProjectionFingerprint == fingerprint)
+        {
+            return;
+        }
+        _lastRenderedProjectionFingerprint = fingerprint;
+
         TaskDirectoryPathBox.Text = taskDirectoryPath;
 
         var workflowPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "workflow-path");
@@ -689,6 +702,7 @@ public partial class MainWindow : Window
 
         ViewModel.IsTaskFinished = projection.State.Status == WorkflowStatus.Terminal;
         StatusText.Text = $"Workflow status: {projection.State.Status}";
+
         StepsPanel.Children.Clear();
         foreach (var step in projection.State.Steps)
         {
@@ -705,17 +719,59 @@ public partial class MainWindow : Window
         RenderConversationExecutions(projection, taskDirectoryPath);
         RenderConversation();
 
+        var workerAdapters = GetWorkerAdapters(taskDirectoryPath, BindingsFilePathBox.Text);
+
         // M19 Phase 3 (#188): the per-step drill-in — built after the session has rebuilt
         // PausedSteps, so each paused step's inline decision card is the same live VM instance.
         ViewModel.RebuildTaskSteps(
             projection, taskDirectoryPath,
             previewFileAsync: filePath => ShowArtifactPreviewAsync(filePath),
-            showConversation: ShowConversation);
+            showConversation: ShowConversation,
+            workerAdapters: workerAdapters);
+    }
+
+    private static Dictionary<string, string> GetWorkerAdapters(string taskDirectoryPath, string? bindingsFilePath)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var targetBindingsFile = bindingsFilePath;
+        if (string.IsNullOrWhiteSpace(targetBindingsFile) || !File.Exists(targetBindingsFile))
+        {
+            targetBindingsFile = System.IO.Path.Combine(taskDirectoryPath, "bindings.json");
+        }
+        if (!File.Exists(targetBindingsFile))
+        {
+            var metaFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path");
+            if (File.Exists(metaFile))
+            {
+                try { targetBindingsFile = File.ReadAllText(metaFile).Trim(); } catch { }
+            }
+        }
+        if (File.Exists(targetBindingsFile))
+        {
+            try
+            {
+                var json = File.ReadAllText(targetBindingsFile);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    if (prop.Value.TryGetProperty("Adapter", out var adapterProp) || prop.Value.TryGetProperty("adapter", out adapterProp))
+                    {
+                        if (adapterProp.GetString() is { } adapterStr)
+                        {
+                            result[prop.Name] = adapterStr;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+        return result;
     }
 
     /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by task and template loads.</summary>
     private void ClearProjectionPanels()
     {
+        _lastRenderedProjectionFingerprint = null;
         StepsPanel.Children.Clear();
         DagCanvas.Children.Clear();
         HistoryPanel.Children.Clear();

@@ -186,23 +186,62 @@ class DaemonClient {
     return body['content'].toString();
   }
 
-  /// decisionType is one of "Resume" | "Reject" — RetryWithRevision and Supersede need a way to
-  /// move file content onto the daemon host that this app doesn't yet have (deferred past Phase 2).
+  /// Lists available built-in workflow templates and vendor CLI presence.
+  Future<Map<String, dynamic>> listTemplates() async {
+    final response = await _get(Uri.http(host, '/api/templates'));
+    _throwIfFailed(response);
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Runs a built-in template on the daemon and returns the materialized task directory path.
+  Future<String> runTemplate({
+    required String templateId,
+    String? primaryAdapter,
+    String? secondaryAdapter,
+    String? taskName,
+    String? customPrompt,
+  }) async {
+    final response = await _post(
+      Uri.http(host, '/api/templates/run'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'templateId': templateId,
+        'primaryAdapter': primaryAdapter,
+        'secondaryAdapter': secondaryAdapter,
+        'taskName': taskName,
+        'customPrompt': customPrompt,
+      }),
+    );
+    _throwIfFailed(response);
+    final body = caseInsensitive(jsonDecode(response.body) as Map<String, dynamic>);
+    return body['taskDirectoryPath']?.toString() ?? '';
+  }
+
+  /// decisionType is one of "Resume" | "Reject" | "Supersede" | "RetryWithRevision".
+  /// Supports optional [artifactReference] ({'executionId': ..., 'fileName': ...}) for server-side
+  /// resolution when the client has no local filesystem access.
   Future<void> decide({
     required String directoryPath,
     required String stepId,
     required String executionId,
     required String decisionType,
+    String? targetStepId,
+    String? revisionFilePath,
+    Map<String, String>? artifactReference,
   }) async {
+    final payload = <String, dynamic>{
+      'directoryPath': directoryPath,
+      'stepId': stepId,
+      'executionId': executionId,
+      'decisionType': decisionType,
+      if (targetStepId != null) 'targetStepId': targetStepId,
+      if (revisionFilePath != null) 'revisionFilePath': revisionFilePath,
+      if (artifactReference != null) 'artifactReference': artifactReference,
+    };
     final response = await _post(
       Uri.http(host, '/api/tasks/decide'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'directoryPath': directoryPath,
-        'stepId': stepId,
-        'executionId': executionId,
-        'decisionType': decisionType,
-      }),
+      body: jsonEncode(payload),
     );
     _throwIfFailed(response);
   }

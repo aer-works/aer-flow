@@ -148,6 +148,41 @@ namespace Aer.Daemon
                 };
                 var node = JsonSerializer.SerializeToNode(projection, options)!.AsObject();
                 node["DirectoryPath"] = directoryPath;
+
+                if (!string.IsNullOrEmpty(directoryPath))
+                {
+                    var bindingsPath = Path.Combine(directoryPath, "bindings.json");
+                    if (!File.Exists(bindingsPath))
+                    {
+                        var metaPath = Path.Combine(directoryPath, ".aer", "bindings-path");
+                        if (File.Exists(metaPath))
+                        {
+                            try { bindingsPath = File.ReadAllText(metaPath).Trim(); } catch { }
+                        }
+                    }
+                    if (File.Exists(bindingsPath))
+                    {
+                        try
+                        {
+                            var json = File.ReadAllText(bindingsPath);
+                            using var doc = JsonDocument.Parse(json);
+                            var adaptersNode = new System.Text.Json.Nodes.JsonObject();
+                            foreach (var prop in doc.RootElement.EnumerateObject())
+                            {
+                                if (prop.Value.TryGetProperty("Adapter", out var adapterProp) || prop.Value.TryGetProperty("adapter", out adapterProp))
+                                {
+                                    if (adapterProp.GetString() is { } adapterStr)
+                                    {
+                                        adaptersNode[prop.Name] = adapterStr;
+                                    }
+                                }
+                            }
+                            node["WorkerAdapters"] = adaptersNode;
+                        }
+                        catch { }
+                    }
+                }
+
                 var bytes = System.Text.Encoding.UTF8.GetBytes(node.ToJsonString(options));
                 if (socket.State == WebSocketState.Open)
                 {
@@ -574,6 +609,67 @@ namespace Aer.Daemon
             });
 
             // REST endpoints
+            app.MapGet("/api/templates", () =>
+            {
+                var templates = BuiltInWorkflowTemplates.Catalog;
+                var availableVendors = VendorCliPresence.Probe();
+                return Results.Ok(new { Templates = templates, AvailableVendors = availableVendors });
+            });
+
+            app.MapPost("/api/templates/run", async ([FromBody] RunTemplateRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.TemplateId))
+                {
+                    return Results.BadRequest("TemplateId is required.");
+                }
+
+                var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
+                var folderName = string.IsNullOrWhiteSpace(request.TaskName)
+                    ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}"
+                    : request.TaskName.Trim();
+                var taskDirectoryPath = Path.Combine(baseTasksDir, folderName);
+
+                try
+                {
+                    await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync(
+                        request.TemplateId,
+                        request.PrimaryAdapter ?? "claude",
+                        request.SecondaryAdapter,
+                        taskDirectoryPath,
+                        request.CustomPrompt).ConfigureAwait(true);
+
+                    var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+                    var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
+
+                    pathHolder.BindingsFilePath = bindingsFilePath;
+                    session.SetCurrentTaskDirectory(taskDirectoryPath);
+                    await session.RecordOpenedAsync(taskDirectoryPath).ConfigureAwait(true);
+                    var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
+                    if (outcome.Projection != null)
+                    {
+                        await BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                    }
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await session.RunAsync(taskDirectoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(true);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Error running template task in background: {ex}");
+                        }
+                    });
+
+                    return Results.Ok(new { TaskDirectoryPath = taskDirectoryPath });
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(ex.Message);
+                }
+            });
+
             app.MapGet("/api/tasks/recent", async (TaskSession session) =>
             {
                 var directories = await session.LoadRecentTaskDirectoriesAsync();
@@ -632,6 +728,19 @@ namespace Aer.Daemon
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
 
+                var revisionFilePath = request.RevisionFilePath;
+                if (string.IsNullOrEmpty(revisionFilePath) && request.ArtifactReference != null)
+                {
+                    var outputDir = ArtifactManager.ResolveOutputDirectory(
+                        Path.Combine(request.DirectoryPath, "artifacts"),
+                        new ExecutionId(request.ArtifactReference.ExecutionId));
+                    var candidatePath = Path.Combine(outputDir, request.ArtifactReference.FileName);
+                    if (File.Exists(candidatePath))
+                    {
+                        revisionFilePath = candidatePath;
+                    }
+                }
+
                 _ = Task.Run(async () =>
                 {
                     try
@@ -642,7 +751,7 @@ namespace Aer.Daemon
                             new ExecutionId(request.ExecutionId),
                             request.DecisionType,
                             request.TargetStepId != null ? new StepId(request.TargetStepId) : null,
-                            request.RevisionFilePath,
+                            revisionFilePath,
                             request.SupplementaryWorker,
                             request.SupplementaryOutputName);
                     }
