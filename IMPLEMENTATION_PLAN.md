@@ -50,6 +50,10 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 | 31  | **Artifact-Referenced Supply**      | Decide-by-artifact-reference (execution id + filename, resolved server-side via the Artifact Manager) as an alternative to `aer supply`'s raw local `SourceFilePath`, so a client with no filesystem access can send an already-produced artifact back as Supersede revision content | §17.2, §17.5; §16              |
 | 32  | **Generic Dialogue Config & Loops** | The Dialogue Worker generalized from a fixed two-party Initiator/Responder exchange to an N-party, condition-stoppable, always-ceilinged loop, editable as a first-class Template Editor step instead of wizard-only                                                                | §18.2                          |
 | 33  | **Project-Directory-Bound Tasks**   | A task's worker invocation can set a real working directory (`AerTask.WithCwd`) instead of only AER's scratch artifacts folder, so a vendor CLI can operate on an arbitrary existing project the way it does run raw in a terminal; bindings stay portable across machines via per-machine profile mapping | —                               |
+| 34  | **Interactive Sessions (Chat)**     | A repeatedly-superseded single-step session driven by daemon-orchestrated `Supersede` decisions carrying human messages; native vendor session resume (not re-supplied transcript) carries context turn to turn, falling back to a synthesized context block only at a mid-session vendor handoff       | §17.2, §17.5                   |
+| 35  | **Worker Capability Discovery & Compact** | Surfaces each vendor's actual skills/agents/models as selectable options (filesystem scan for Claude, subcommand shell-out for `agy`) instead of requiring prior knowledge of a vendor's command vocabulary; a uniform "compact this conversation" action needing no vendor-specific cooperation | —                               |
+| 36  | **Codebase Sessions & Known Projects** | The Interactive Session primitive with a working directory bound (capability 33), plus a small registry of previously-used project directories so a client with no host filesystem access (a phone) can select one instead of typing a raw path                                                | —                               |
+| 37  | **Unified Task Creation**           | Chat/Codebase Session/Two-Vendor Dialogue as the default, zero-authoring front door on both desktop and mobile, replacing the built-in template picker as the primary entry point; full DAG/template authoring demoted to an explicit "Advanced" path, not removed                                | UI spec §5, §8, §9             |
 
 ---
 
@@ -76,7 +80,8 @@ Which milestone introduces which capabilities.
 | **M21: Zero-Config Remote Control & Permission Scopes** | 27 (Permission Scope Model), 28 (Mobile Remote Client), 29 (Zero-Config Tailscale Transport)                                                       | M20                                                                                 |
 | **M22: Workflow Template Library**                      | 30 (Workflow Template Library), 31 (Artifact-Referenced Supply)                                                                                    | M21                                                                                 |
 | **M23: Generic Dialogue & Project Packaging**           | 32 (Generic Dialogue configuration schema & loops), 33 (Unified Project Package model with profile segregation)                                    | M22                                                                                 |
-| **M24: UI Visual Overhaul**                             | 34 (Curve-based Bezier DAG rendering, brand icons), 35 (Rich markdown output previewer), 36 (Keyboard-first triage modal)                          | M23                                                                                 |
+| **M24: Interactive Sessions & Unified Task Creation**   | 34 (Interactive Sessions/Chat), 35 (Worker Capability Discovery & Compact), 36 (Codebase Sessions & Known Projects), 37 (Unified Task Creation)    | M23                                                                                 |
+| **M25: Final Polish**                                   | 38 (Curve-based Bezier DAG rendering, brand icons, status-change motion & skeleton loading), 39 (Rich markdown output previewer), 40 (Keyboard-first triage modal), 41 (Mobile Visual & UX Parity) | M24                                                                                 |
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
@@ -113,8 +118,8 @@ This plan replaces an earlier draft (see git history) whose Phase 1 premise didn
 - **Verification**: Unit tests on the generalized turn loop (N=2 regression, N=3+ round-robin, `StopSentinel` early exit, ceiling enforcement); a Template Editor round trip with no hand-edited JSON. Acceptance: one real multi-turn correspondence run end-to-end.
 
 ### Phase 2: Supersede-Chain Hardening
-- **Goal**: Resolve, with an explicit test-backed decision, whether an already-superseded step's target can legally be named in a second Supersede — currently neither forbidden nor tested.
-- **Verification**: New chained-supersede tests pass; no regressions in the existing supersede end-to-end tests.
+- **Goal**: Resolve, with an explicit test-backed decision, whether an already-superseded step's target can legally be named in a second Supersede — currently neither forbidden nor tested. This is the load-bearing prerequisite for M24's chat primitive (repeatedly superseding one step), not just hygiene.
+- **Verification**: New chained-supersede tests pass; no regressions in the existing supersede end-to-end tests. Folds in issue #159 (xunit v3 migration) as groundwork here, since this phase is otherwise the most test-writing-heavy phase left before M24's own much heavier verification load (a ~50-100-turn stress test) lands on the same test projects.
 
 ### Phase 3: Project-Directory-Bound Tasks & Portable Bindings (Capability 33)
 - **Goal**: Let a task's worker invocation set a real working directory — wiring `AerTask.WithCwd` (already a working native primitive, currently uncalled) through `WorkerInvocation` → the adapters → `CoreDispatchTarget` → `CoreDispatcher.DispatchAsync` — so Claude/Gemini can operate on an arbitrary existing project the way they do run raw in a terminal. No git-repo requirement; completion stays process-exit, same as today. Bundles the existing `WorkerBindingConfigEntry.PromptTemplate` absolute-path portability bug (breaks a dialogue step's bindings the moment a task moves to another machine) and a per-machine profile mapping (`%USERPROFILE%\.aer\profiles.json`) into the same phase.
@@ -122,9 +127,33 @@ This plan replaces an earlier draft (see git history) whose Phase 1 premise didn
 
 ---
 
-## M24: UI Visual Overhaul — Phase Plan
+## M24: Interactive Sessions & Unified Task Creation — Phase Plan
 
-**Goal:** Transform the visual layout of AER Flow into a premium desktop product matching reference-caliber tools (Linear, Raycast).
+**Goal:** Make AER a full replacement for Claude Code and Antigravity — one-on-one chat with a single vendor, running a vendor agent against a real project directory, and two vendors working together — "streaming tasks to and from them, but not interacting with them directly," on both desktop and mobile, as simple and easy to use as possible. Planned in issue #258.
+
+**The key architectural insight:** a chat "session" is a one-step workflow (no DAG, no cycle) that gets `Supersede`d once per human turn — reusing M9's Human Worker Support and M23 Phase 2's hardened supersede chains — requiring zero new `DecisionType` or `FlowEvent` fields. Conversation context carries forward via each vendor's own native session resumption (Claude's `--session-id`/`--resume`, `agy`'s `--continue`/`--conversation <id>`, both empirically verified working across separate process invocations) rather than a re-supplied transcript on every turn, with a synthesized context block used only at a mid-session vendor handoff. A concrete motivator: the roast-battle bug (issue #255, fixed in PR #256) showed the built-in templates fighting intent instead of serving it — this milestone replaces "fixed topology with baked-in language" with primitives shaped around what the user actually wants to do.
+
+### Phase 1: Interactive Sessions (Chat) (Capability 34)
+- **Goal**: A daemon-orchestrated, repeatedly-superseded single-step session driven by typed messages — the chat primitive everything else builds on. `POST /api/sessions/start` and `POST /api/sessions/send` are the only surface a client touches; each turn resumes the vendor's own native session id (captured from `agy`'s `--log-file` "Print mode: conversation=<id>" line on first turn for Gemini), dispatched via each vendor's minimal-overhead mode (Claude's `--bare`) by default. A per-session safety ceiling bounds both runaway quota burn and worst-case event-log growth; hitting it starts a fresh task/session, carrying context forward via the same summarization mechanism as a vendor handoff.
+- **Verification**: a multi-turn session confirms native session resumption (not re-sent context) on same-vendor turns; a stress test drives ~50-100 programmatic turns on one step to confirm the repeated-supersede pattern holds at real chat frequency (projection cost, artifact directory naming, replay time); a vendor-handoff test where turn 2 goes to a different adapter than turn 1 and still has turn 1's context; a latency comparison with/without minimal-overhead dispatch; ceiling enforcement test.
+
+### Phase 2: Worker Capability Discovery & In-Session Compact (Capability 35)
+- **Goal**: Let the user see and invoke what each vendor CLI actually supports (skills, agents, models) instead of only typing plain prose, plus a uniform "compact this conversation" action. `IWorkerAdapter` gains an optional discovery method (filesystem scan of `.claude/skills/*/SKILL.md` and `.claude/commands/*.md` for Claude; `agy agent`/`agy models`/`agy plugin list` shell-outs for Gemini), surfaced via `GET /api/sessions/{id}/commands`. Compact is an ordinary message asking the resumed session to summarize itself, then the daemon starts a fresh native session seeded with that summary.
+- **Verification**: discovery against this repo's own `.claude/` and `agy`'s real subcommands returns a non-empty, correctly-shaped list; a compact round-trip shrinks the stored transcript while preserving enough context that the next turn still makes sense.
+
+### Phase 3: Codebase Sessions & Known Projects (Capability 36)
+- **Goal**: The same session primitive pointed at a real project directory (composing Phase 1 with M23 Phase 3's `WorkingDirectory` wiring) instead of a scratch folder, plus a Known Projects registry (`{friendly name, path}`, modeled on `LocalUiConfigurationStore`'s capped recent-task-directory list) exposed via `GET /api/projects` so mobile — which can't browse the host filesystem — selects from it instead of typing a raw path. Gets its own conservative default `PermissionGrant` (M21) — e.g. `WriteFiles` on, `RunShellCommands` off by default — rather than inheriting a pipeline step's defaults, since repeated less-reviewed-per-turn dispatch is a bigger blast radius.
+- **Verification**: a codebase session started against this repo confirms file reads/writes land in the real directory; a known-project round trip (register on desktop, select from mobile); confirming the conservative default blocks an unrequested shell command until broadened.
+
+### Phase 4: Unified Task Creation (Desktop + Mobile) (Capability 37)
+- **Goal**: Replace the 2-canned-template picker with Chat, Codebase Session, and Two-Vendor Dialogue as the default, zero-authoring front door on both `Aer.Ui` and `Aer.Mobile` (extending `inbox_screen.dart`'s existing imperative-navigation pattern), each asking only for what it needs (vendor(s), optional directory, optional opening message). Extends M18's Conversation View to render a repeatedly-superseded single step's execution history, reusing the existing WebSocket push. The existing Solo Run / Review Run templates and full DAG authoring remain available under an explicit "Advanced" path — nothing removed, just no longer the front door.
+- **Verification**: starting and running a full chat, a codebase session, and a two-vendor dialogue from mobile with zero file-path input anywhere in the flow; the same from desktop.
+
+---
+
+## M25: Final Polish — Phase Plan
+
+**Goal:** Transform the visual layout of AER Flow into a premium product matching reference-caliber tools (Linear, Raycast) — on desktop *and* mobile, as the final milestone. Renumbered from the original "M24: UI Visual Overhaul" during M24/M25 replanning (issue #258) to make room for Interactive Sessions & Unified Task Creation as the new M24.
 
 **Also carries a real future direction, not yet phased:** full remote-control parity from
 `Aer.Mobile` — DAG/history/lineage viewing, `RetryWithRevision`, and general (non-Review-run)
@@ -132,8 +161,8 @@ Supersede, all currently desktop-only. M22 deliberately scoped mobile to two bui
 plus Review-run send-back rather than building this; the owner's own framing during M22 planning —
 "I do eventually want to have more control than this remotely, but this is a good start" — is the
 reason it's tracked here instead of dropped. No phase commitment yet; revisit scoping this
-milestone's phase list against whichever of these the owner actually wants once M22 has shipped and
-the two-template picker has real usage to learn from.
+milestone's phase list against whichever of these the owner actually wants once M24 has shipped and
+Unified Task Creation has real usage to learn from.
 
 **Also carries a second future direction, not yet phased: an animated brand mark.** Settled during
 icon-refresh discussion alongside M22 planning: the approved mark (a two-source fan-in "Y", tested
@@ -150,26 +179,30 @@ mobile alike (candidates: `Aer.Ui` startup/splash, `Aer.Mobile` cold-start splas
 either app already shows) rather than building one bespoke implementation and calling the note
 closed. Real engineering per platform (Avalonia keyframe/transform + a stroke-draw animation for the
 crossbar on desktop; Flutter's own equivalent on mobile — no shared animation asset between them) —
-no phase commitment yet, phase this against the rest of M24's plan once M22 has shipped.
+no phase commitment yet, phase this against the rest of M25's plan once M24 has shipped.
 
 **Also carries a third future direction, not yet phased: a Visual Diff Viewer for step revisions.**
 Drafted as an M23 phase, then dropped during M23 replanning (issue #252) because it mapped to no
-capability M23 was ever assigned, and it overlaps this milestone's own capability 35 (Rich markdown
+capability M23 was ever assigned, and it overlaps this milestone's own capability 39 (Rich markdown
 output previewer) closely enough that it belongs here instead — a side-by-side file-revision diff
-panel for a step's "Send back" feedback loop, scoped against M24's actual phase list once this
+panel for a step's "Send back" feedback loop, scoped against M25's actual phase list once this
 milestone starts rather than assumed here.
 
-### Phase 1: Curved Bezier DAG Canvas & Hover States
-- **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates.
-- **Verification**: Seamless rendering, hover states, and smooth drag-and-drop interactions.
+### Phase 1: Curved Bezier DAG Canvas & Motion (Capability 38)
+- **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates. Folds in issue #208 (status-change animation and skeleton loading states were never implemented): step-status transitions animate instead of snapping, and pending/loading UI shows skeleton placeholders instead of blank space.
+- **Verification**: Seamless rendering, hover states, and smooth drag-and-drop interactions; a status-change transition (e.g. Running → Paused) visibly animates; a loading view shows a skeleton state rather than a blank pane.
 
-### Phase 2: Rich Markdown Output Previewer
+### Phase 2: Rich Markdown Output Previewer (Capability 39)
 - **Goal**: Integrate a markdown engine (e.g., `Markdown.Avalonia`) to render step artifact output previews as rich formatted text, headers, checklists, and tables, replacing the raw TextBox.
 - **Verification**: Standard markdown output files are rendered with high-fidelity typography, colors, and table structures.
 
-### Phase 3: Keyboard-First Triage Mode
+### Phase 3: Keyboard-First Triage Mode (Capability 40)
 - **Goal**: Add keyboard-first navigation to the Home triage screen. When a step pauses for review, enable quick keys (`A` to approve, `S` to send back) with highly visible keyboard badges, maximizing non-expert efficiency.
 - **Verification**: Complete task reviews and decisions purely from the keyboard.
+
+### Phase 4: Mobile Visual & UX Parity (Capability 41)
+- **Goal**: A mobile-native design pass for `Aer.Mobile` — not a port of Phases 1-3's desktop-specific Bezier-curve/markdown-renderer work, but the same bar M19 already holds `Aer.Ui` to (token-driven styling, a considered visual identity, no rough-placeholder screens) — covering the new Chat/Codebase-session/Dialogue screens from M24 Phase 4 as well as the existing pairing/inbox screens.
+- **Verification**: scoped in detail once M24 has shipped and those screens exist to design against.
 
 ---
 
