@@ -47,7 +47,7 @@ public class MutationInterfaceCrashRecoveryTests
             var aResult = stub.EnqueueResult(A);
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var state = await runTask;
@@ -57,7 +57,7 @@ public class MutationInterfaceCrashRecoveryTests
             Assert.Equal(0, state.Steps.Single().ConsecutiveFailureCount);
 
             // The same attempt, not a retry: no new ExecutionRequestAccepted for this step.
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events.OfType<FlowEvent.ExecutionRequestAccepted>());
         }
         finally
@@ -80,14 +80,14 @@ public class MutationInterfaceCrashRecoveryTests
             var workflowId = new WorkflowId("wf");
 
             var executionId = await AcceptRequestAsync(writer, workflowId, artifactsRoot, A);
-            await writer.AppendAsync(new FlowEvent.CancellationRequested(executionId));
+            await writer.AppendAsync(new FlowEvent.CancellationRequested(executionId), TestContext.Current.CancellationToken);
 
             // Nothing enqueued: if the cancel didn't win, StartWorkflowAsync would try to dispatch A
             // (or, worse, C) and StubCoreDispatcher would throw.
             var stub = new StubCoreDispatcher();
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Cancelled, state.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Pending, state.Steps.Single(s => s.StepId == C).Status);
@@ -115,15 +115,15 @@ public class MutationInterfaceCrashRecoveryTests
 
             // Ran to a natural, successful exit while Flow was down (§6) — Core recorded both
             // lifecycle events, but no Flow-side outcome was ever appended for them.
-            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242));
-            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 0, CoreExitReason.Natural));
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
 
             var stub = new StubCoreDispatcher();
             var cResult = stub.EnqueueResult(C);
 
             // Nothing enqueued for A: it must be classified from the recorded exit, never dispatched.
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(C, await ReadNextDispatchAsync(stub));
             cResult.SetResult(Succeeded);
             var state = await runTask;
@@ -131,7 +131,7 @@ public class MutationInterfaceCrashRecoveryTests
             Assert.Equal(StepStatus.Succeeded, state.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Succeeded, state.Steps.Single(s => s.StepId == C).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events, e => e is FlowEvent.ExecutionSucceeded es && es.ExecutionId == executionId);
         }
         finally
@@ -154,14 +154,14 @@ public class MutationInterfaceCrashRecoveryTests
             var workflowId = new WorkflowId("wf");
 
             var executionId = await AcceptRequestAsync(writer, workflowId, artifactsRoot, A);
-            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242));
-            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 1, CoreExitReason.Natural));
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 1, CoreExitReason.Natural), TestContext.Current.CancellationToken);
 
             var stub = new StubCoreDispatcher();
             var retryResult = stub.EnqueueResult(A);
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             retryResult.SetResult(Succeeded);
             var state = await runTask;
@@ -169,7 +169,7 @@ public class MutationInterfaceCrashRecoveryTests
             Assert.Equal(StepStatus.Succeeded, state.Steps.Single().Status);
 
             // Two attempts total: the crash-recovered classification (Failed) plus the retry (Succeeded).
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(2, events.OfType<FlowEvent.ExecutionRequestAccepted>().Count());
             Assert.Single(events, e => e is FlowEvent.ExecutionFailed ef && ef.ExecutionId == executionId);
         }
@@ -196,14 +196,14 @@ public class MutationInterfaceCrashRecoveryTests
 
             // §7's third crash state: Core recorded the start, but this pump's predecessor died
             // before an exit was ever recorded — nothing to classify against.
-            await writer.AppendAsync(new CoreEvent.ExecutionStarted(orphanExecutionId, Pid: 4242));
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(orphanExecutionId, Pid: 4242), TestContext.Current.CancellationToken);
 
             var stub = new StubCoreDispatcher();
             var retryResult = stub.EnqueueResult(A);
 
             // Nothing enqueued for the orphan's own ExecutionId: it must never be dispatched again.
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             retryResult.SetResult(Succeeded);
             var state = await runTask;
@@ -211,7 +211,7 @@ public class MutationInterfaceCrashRecoveryTests
             Assert.Equal(StepStatus.Succeeded, state.Steps.Single().Status);
             Assert.NotEqual(orphanExecutionId, state.Steps.Single().LatestExecutionId);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var abandoned = Assert.Single(events.OfType<FlowEvent.ExecutionFailed>());
             Assert.Equal(orphanExecutionId, abandoned.ExecutionId);
             Assert.Equal(FailureClassification.Retryable, abandoned.FailureClassification);
@@ -240,14 +240,14 @@ public class MutationInterfaceCrashRecoveryTests
             var workflowId = new WorkflowId("wf");
 
             var orphanExecutionId = await AcceptRequestAsync(writer, workflowId, artifactsRoot, A);
-            await writer.AppendAsync(new CoreEvent.ExecutionStarted(orphanExecutionId, Pid: 4242));
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(orphanExecutionId, Pid: 4242), TestContext.Current.CancellationToken);
 
             // Nothing enqueued at all: MaxAttempts: 1 forecloses the retry, so the pump must reach
             // its fixed point without dispatching anything.
             var stub = new StubCoreDispatcher();
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Failed, state.Steps.Single().Status);
             Assert.Equal(orphanExecutionId, state.Steps.Single().LatestExecutionId);

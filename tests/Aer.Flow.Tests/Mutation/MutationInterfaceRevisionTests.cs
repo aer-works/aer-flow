@@ -45,7 +45,7 @@ public class MutationInterfaceRevisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             attempt1.SetResult(Failed);
             var pausedState = await pausedTask;
@@ -57,7 +57,7 @@ public class MutationInterfaceRevisionTests
             var attempt2 = stub.EnqueueResult(Architect);
             var resumedTask = MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                pausedExecutionId, DecisionType.RetryWithRevision);
+                pausedExecutionId, DecisionType.RetryWithRevision, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             attempt2.SetResult(Succeeded);
             var finalState = await resumedTask;
@@ -69,7 +69,7 @@ public class MutationInterfaceRevisionTests
             Assert.Equal(StepStatus.Paused, architect.Status);
             Assert.Equal(StepStatus.Succeeded, architect.PausedOutcome);
 
-            var accepted = (await reader.ReadAllAsync()).OfType<FlowEvent.ExecutionRequestAccepted>().ToList();
+            var accepted = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).OfType<FlowEvent.ExecutionRequestAccepted>().ToList();
             Assert.Equal(2, accepted.Count);
             Assert.NotEqual(accepted[0].Request.ExecutionId, accepted[1].Request.ExecutionId);
             Assert.DoesNotContain(accepted[1].Request.Environment, v => v.Name == "AER_SUPPLEMENTARY_INPUT");
@@ -100,7 +100,7 @@ public class MutationInterfaceRevisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Note, await ReadNextDispatchAsync(stub));
             noteResult.SetResult(Succeeded);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
@@ -113,12 +113,12 @@ public class MutationInterfaceRevisionTests
             var attempt2 = stub.EnqueueResult(Architect);
             var resumedTask = MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                pausedExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: noteExecutionId);
+                pausedExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: noteExecutionId, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             attempt2.SetResult(Succeeded);
             await resumedTask;
 
-            var accepted = (await reader.ReadAllAsync())
+            var accepted = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Where(e => e.Request.StepId == Architect)
                 .ToList();
@@ -152,7 +152,7 @@ public class MutationInterfaceRevisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             attempt1.SetResult(Failed);
             var pausedState = await pausedTask;
@@ -163,15 +163,15 @@ public class MutationInterfaceRevisionTests
             // — never calling RecordDecisionAsync itself, so nothing has run the pump yet.
             var decisionId = new DecisionId(Guid.NewGuid().ToString("n"));
             await writer.AppendAsync(new FlowEvent.ExternalDecisionRecorded(
-                decisionId, pausedExecutionId, DecisionType.RetryWithRevision, TargetStepId: null, SupplementaryExecutionId: null));
-            await writer.AppendAsync(new FlowEvent.WorkflowResumed(decisionId));
+                decisionId, pausedExecutionId, DecisionType.RetryWithRevision, TargetStepId: null, SupplementaryExecutionId: null), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.WorkflowResumed(decisionId), TestContext.Current.CancellationToken);
 
             var attempt2 = stub.EnqueueResult(Architect);
 
             // An ordinary StartWorkflowAsync call — not RecordDecisionAsync — proves the consequence
             // is a projected fact the pump re-derives on its own, not state the handler remembered.
             var recoveredTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             attempt2.SetResult(Succeeded);
             var finalState = await recoveredTask;
@@ -209,7 +209,7 @@ public class MutationInterfaceRevisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             architect1.SetResult(Succeeded);
             Assert.Equal(Critic, await ReadNextDispatchAsync(stub));
@@ -220,13 +220,13 @@ public class MutationInterfaceRevisionTests
 
             var decisionId = new DecisionId(Guid.NewGuid().ToString("n"));
             await writer.AppendAsync(new FlowEvent.ExternalDecisionRecorded(
-                decisionId, criticExecutionId, DecisionType.Supersede, TargetStepId: Architect, SupplementaryExecutionId: criticExecutionId));
-            await writer.AppendAsync(new FlowEvent.WorkflowResumed(decisionId));
+                decisionId, criticExecutionId, DecisionType.Supersede, TargetStepId: Architect, SupplementaryExecutionId: criticExecutionId), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.WorkflowResumed(decisionId), TestContext.Current.CancellationToken);
 
             var architect2 = stub.EnqueueResult(Architect);
 
             var recoveredTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             architect2.SetResult(Succeeded);
 
@@ -271,7 +271,7 @@ public class MutationInterfaceRevisionTests
             var workflowId = new WorkflowId("wf");
 
             var firstPauseTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             architect1.SetResult(Succeeded);
             Assert.Equal(Critic, await ReadNextDispatchAsync(stub));
@@ -289,7 +289,7 @@ public class MutationInterfaceRevisionTests
             var architect2 = stub.EnqueueResult(Architect);
             var supersedeTask = MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                criticExecutionId1, DecisionType.Supersede, targetStepId: Architect, supplementaryExecutionId: criticExecutionId1);
+                criticExecutionId1, DecisionType.Supersede, targetStepId: Architect, supplementaryExecutionId: criticExecutionId1, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(Architect, await ReadNextDispatchAsync(stub));
             architect2.SetResult(Succeeded);
 
@@ -308,12 +308,12 @@ public class MutationInterfaceRevisionTests
             // A1's artifact directory is untouched — history is never cleaned up (§10, §16).
             Assert.True(Directory.Exists(architectOutputDirectory1));
 
-            var criticAccepted = (await reader.ReadAllAsync())
+            var criticAccepted = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Single(e => e.Request.ExecutionId == criticExecutionId2);
             Assert.Equal(architectExecutionId2, criticAccepted.Request.UpstreamExecutionIds[Architect]);
 
-            var architectAccepted = (await reader.ReadAllAsync())
+            var architectAccepted = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Single(e => e.Request.ExecutionId == architectExecutionId2);
             var expectedSupplementPath = Path.Combine(artifactsRoot, $"execution_{criticExecutionId1}");
@@ -323,7 +323,7 @@ public class MutationInterfaceRevisionTests
 
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                criticExecutionId2, DecisionType.Resume);
+                criticExecutionId2, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == Architect).Status);

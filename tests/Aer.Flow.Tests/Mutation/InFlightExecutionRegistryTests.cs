@@ -53,7 +53,7 @@ public class InFlightExecutionRegistryTests
 
         registry.Register(A);
 
-        var cancelTask = registry.RequestCancellationAsync(A);
+        var cancelTask = registry.RequestCancellationAsync(A, TestContext.Current.CancellationToken);
         await writer.FirstAppendStarted;
 
         // A settled naturally (e.g. succeeded) exactly while its own targeted cancellation request

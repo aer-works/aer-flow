@@ -35,7 +35,7 @@ public class LiveMixedVendorPausedRunSmokeTest
         {
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var pausedResult = await RunCommand.ExecuteAsync(runOptions, WorkerAdapterRegistry.Default);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
             var draftState = pausedResult.State.Steps.Single(s => s.StepId.Value == "draft");
@@ -49,7 +49,7 @@ public class LiveMixedVendorPausedRunSmokeTest
                 taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
-            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, WorkerAdapterRegistry.Default);
+            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.All(finalResult.State.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));

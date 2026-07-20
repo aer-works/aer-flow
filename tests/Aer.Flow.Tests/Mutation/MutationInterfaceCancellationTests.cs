@@ -47,7 +47,7 @@ public class MutationInterfaceCancellationTests
             var workflowId = new WorkflowId("wf");
 
             var firstRunTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var firstState = await firstRunTask;
@@ -58,12 +58,12 @@ public class MutationInterfaceCancellationTests
             // Nothing enqueued for C on the stub: if cancellation somehow let it through,
             // StubCoreDispatcher would throw.
             var cancelledState = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Cancelled, cancelledState.Steps.Single(s => s.StepId == H).Status);
             Assert.Equal(StepStatus.Pending, cancelledState.Steps.Single(s => s.StepId == C).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events, e => e is FlowEvent.CancellationRequested cr && cr.ExecutionId == hExecutionId);
             Assert.Single(events, e => e is FlowEvent.ExecutionCancelled ec && ec.ExecutionId == hExecutionId);
 
@@ -94,20 +94,20 @@ public class MutationInterfaceCancellationTests
             var workflowId = new WorkflowId("wf");
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var state = await runTask;
             var aExecutionId = state.Steps.Single().LatestExecutionId!.Value;
 
-            var eventsBefore = await reader.ReadAllAsync();
+            var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             var finalState = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, aExecutionId);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, aExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single().Status);
 
-            var eventsAfter = await reader.ReadAllAsync();
+            var eventsAfter = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventsBefore.Count + 1, eventsAfter.Count);
             Assert.IsType<FlowEvent.CancellationRequested>(eventsAfter[^1]);
             Assert.DoesNotContain(eventsAfter, e => e is FlowEvent.ExecutionCancelled);
@@ -133,12 +133,12 @@ public class MutationInterfaceCancellationTests
             var stub = new StubCoreDispatcher();
 
             var firstState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             var hExecutionId = firstState.Steps.Single().LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Running, firstState.Steps.Single().Status);
 
             var cancelledState = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Paused, cancelledState.Steps.Single().Status);
             Assert.Equal(StepStatus.Cancelled, cancelledState.Steps.Single().PausedOutcome);
@@ -164,13 +164,13 @@ public class MutationInterfaceCancellationTests
             var workflowId = new WorkflowId("wf");
             var stub = new StubCoreDispatcher();
 
-            var eventsBefore = await reader.ReadAllAsync();
+            var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             await Assert.ThrowsAsync<UnknownExecutionIdException>(() => MutationInterface.RequestCancellationAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                new ExecutionId("no-such-execution")));
+                new ExecutionId("no-such-execution"), cancellationToken: TestContext.Current.CancellationToken));
 
-            var eventsAfter = await reader.ReadAllAsync();
+            var eventsAfter = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventsBefore.Count, eventsAfter.Count);
         }
         finally

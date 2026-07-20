@@ -43,6 +43,17 @@ public class ExternalDecisionValidatorTests
 
     private static StepState Pending(StepId stepId) => new(stepId, StepStatus.Pending, LatestExecutionId: null, NoUpstream);
 
+    /// <summary>
+    /// A step a prior Supersede already named as <c>TargetStepId</c>, whose consequence (the
+    /// re-dispatch) has not landed yet — <c>Status</c> still reads the stale pre-Supersede
+    /// <see cref="StepStatus.Succeeded"/> (StateProjector only advances it once a fresh
+    /// <c>ExecutionRequestAccepted</c> is recorded for the step), with
+    /// <see cref="StepState.IsPendingSupersedeTarget"/> the only signal a second Supersede against
+    /// it is currently illegal (M23 Phase 2, #271).
+    /// </summary>
+    private static StepState PendingSupersede(StepId stepId, ExecutionId executionId) =>
+        new(stepId, StepStatus.Succeeded, executionId, NoUpstream, IsPendingSupersedeTarget: true);
+
     private static void Validate(
         FlowState state,
         WorkflowDefinitionSnapshot snapshot,
@@ -313,6 +324,61 @@ public class ExternalDecisionValidatorTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [
                 Succeeded(Architect, ArchitectExecutionId),
+                Paused(Critic, CriticExecutionId, StepStatus.Succeeded),
+                Pending(Publisher),
+            ]);
+
+        var exception = Record.Exception(() => Validate(
+            state, Snapshot(new PausePoint([Architect])), DecisionType.Supersede, CriticExecutionId,
+            targetStepId: Architect, supplementaryExecutionId: CriticExecutionId,
+            succeededExecutionIds: new HashSet<ExecutionId> { CriticExecutionId }));
+
+        Assert.Null(exception);
+    }
+
+    /// <summary>
+    /// M23 Phase 2's decision of record (#271): a Supersede naming a target that already has a
+    /// pending, not-yet-dispatched Supersede consequence is rejected — closing the race a crash
+    /// between recording <c>WorkflowResumed</c> and the pump's re-dispatch would otherwise reopen
+    /// (see <see cref="PendingSupersede"/>'s remarks; StateProjector's
+    /// <c>pendingSupplementaryExecutionIdByStepId</c> would silently overwrite the first decision's
+    /// supplement with the second's rather than raising any error on its own).
+    /// </summary>
+    [Fact]
+    public void Supersede_targeting_a_step_with_an_already_pending_Supersede_consequence_is_invalid()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                PendingSupersede(Architect, ArchitectExecutionId),
+                Paused(Critic, CriticExecutionId, StepStatus.Succeeded),
+                Pending(Publisher),
+            ]);
+
+        var ex = Assert.Throws<InvalidExternalDecisionException>(() => Validate(
+            state, Snapshot(new PausePoint([Architect])), DecisionType.Supersede, CriticExecutionId,
+            targetStepId: Architect, supplementaryExecutionId: CriticExecutionId,
+            succeededExecutionIds: new HashSet<ExecutionId> { CriticExecutionId }));
+
+        Assert.Contains("pending Supersede", ex.Message);
+    }
+
+    /// <summary>
+    /// M23 Phase 2's other half of the same decision (#271): once a target's prior Supersede
+    /// consequence has actually settled — <see cref="StepState.IsPendingSupersedeTarget"/> false
+    /// again, <c>Status</c> back to a fresh <see cref="StepStatus.Succeeded"/> — a second Supersede
+    /// naming it is legal. This is the load-bearing case for M24's chat primitive (repeatedly
+    /// superseding one step); the end-to-end chain itself is proved live in
+    /// <c>PauseDecisionSupersedeHumanEndToEndTests</c>.
+    /// </summary>
+    [Fact]
+    public void Supersede_targeting_a_step_whose_prior_Supersede_consequence_has_already_settled_is_valid()
+    {
+        var settledExecutionId = new ExecutionId("A2");
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                Succeeded(Architect, settledExecutionId),
                 Paused(Critic, CriticExecutionId, StepStatus.Succeeded),
                 Pending(Publisher),
             ]);

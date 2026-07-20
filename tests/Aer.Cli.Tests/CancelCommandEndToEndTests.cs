@@ -24,20 +24,20 @@ public class CancelCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters)).State;
+            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
 
             var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
             Assert.NotNull(architectExecutionId);
 
             var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, bindingsFilePath);
-            var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, Adapters)).State;
+            var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
             Assert.All(canceledState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var cancellationEvents = events.OfType<FlowEvent.CancellationRequested>().ToList();
             Assert.Single(cancellationEvents);
             Assert.Equal(architectExecutionId.Value, cancellationEvents[0].ExecutionId);
@@ -60,7 +60,7 @@ public class CancelCommandEndToEndTests
             var cancelOptions = new CancelOptions(taskDirectory, "exec-1", bindingsFilePath);
 
             await Assert.ThrowsAsync<SnapshotLoadException>(
-                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters));
+                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -79,11 +79,11 @@ public class CancelCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            await RunCommand.ExecuteAsync(runOptions, Adapters);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var cancelOptions = new CancelOptions(taskDirectory, "not-a-real-execution-id", bindingsFilePath);
             await Assert.ThrowsAsync<UnknownExecutionIdException>(
-                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters));
+                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -102,14 +102,14 @@ public class CancelCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            await RunCommand.ExecuteAsync(runOptions, Adapters);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var malformedBindingsPath = Path.Combine(testRoot, "malformed.json");
-            await File.WriteAllTextAsync(malformedBindingsPath, "{ not valid json");
+            await File.WriteAllTextAsync(malformedBindingsPath, "{ not valid json", TestContext.Current.CancellationToken);
             var cancelOptions = new CancelOptions(taskDirectory, "whatever", malformedBindingsPath);
 
             await Assert.ThrowsAsync<WorkerBindingConfigException>(
-                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters));
+                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
         }
         finally
         {

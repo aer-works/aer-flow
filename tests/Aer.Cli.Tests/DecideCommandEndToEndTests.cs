@@ -31,7 +31,7 @@ public class DecideCommandEndToEndTests
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
@@ -39,7 +39,7 @@ public class DecideCommandEndToEndTests
                 taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
-            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters);
+            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.All(finalResult.State.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
@@ -61,14 +61,14 @@ public class DecideCommandEndToEndTests
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
             var decideOptions = new DecideOptions(
                 taskDirectory, pausedExecutionId.Value, DecisionType.Reject, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
-            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters);
+            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.Equal(StepStatus.Rejected, finalResult.State.Steps.Single(s => s.StepId.Value == "a").Status);
@@ -91,22 +91,22 @@ public class DecideCommandEndToEndTests
             var bindingsFilePath = await WriteRetryWithRevisionBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
             var flakyPausedState = pausedResult.State.Steps.Single(s => s.StepId.Value == "flaky");
             Assert.Equal(StepStatus.Failed, flakyPausedState.PausedOutcome);
             var pausedExecutionId = flakyPausedState.LatestExecutionId!.Value;
 
             var revisionFilePath = Path.Combine(testRoot, "revised.md");
-            await File.WriteAllTextAsync(revisionFilePath, "revised-result");
+            await File.WriteAllTextAsync(revisionFilePath, "revised-result", TestContext.Current.CancellationToken);
             var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", revisionFilePath, bindingsFilePath);
-            var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters);
+            var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
             Assert.Empty(supplyResult.Command.State.StepLessExecutions);
 
             var decideOptions = new DecideOptions(
                 taskDirectory, pausedExecutionId.Value, DecisionType.RetryWithRevision, TargetStepId: null,
                 supplyResult.ExecutionId.Value, bindingsFilePath);
-            var retriedResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters);
+            var retriedResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var flakyAfterRetry = retriedResult.State.Steps.Single(s => s.StepId.Value == "flaky");
             Assert.Equal(StepStatus.Paused, flakyAfterRetry.Status);
@@ -116,7 +116,7 @@ public class DecideCommandEndToEndTests
             var resumeOptions = new DecideOptions(
                 taskDirectory, flakyAfterRetry.LatestExecutionId!.Value.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
-            var finalResult = await DecideCommand.ExecuteAsync(resumeOptions, Adapters);
+            var finalResult = await DecideCommand.ExecuteAsync(resumeOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.Equal(StepStatus.Succeeded, finalResult.State.Steps.Single(s => s.StepId.Value == "flaky").Status);
@@ -127,7 +127,7 @@ public class DecideCommandEndToEndTests
                 artifactsRoot,
                 $"execution_{finalResult.State.Steps.Single(s => s.StepId.Value == "downstream").LatestExecutionId}",
                 "final");
-            Assert.Equal("revised-result", (await File.ReadAllTextAsync(downstreamOutput)).Trim());
+            Assert.Equal("revised-result", (await File.ReadAllTextAsync(downstreamOutput, TestContext.Current.CancellationToken)).Trim());
         }
         finally
         {
@@ -146,20 +146,20 @@ public class DecideCommandEndToEndTests
             var bindingsFilePath = await WriteSupersedeBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var firstPauseResult = await RunCommand.ExecuteAsync(runOptions, Adapters);
+            var firstPauseResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, firstPauseResult.State.Status);
             var reviewerExecutionId1 = firstPauseResult.State.Steps.Single(s => s.StepId.Value == "reviewer").LatestExecutionId!.Value;
             var sourceExecutionId1 = firstPauseResult.State.Steps.Single(s => s.StepId.Value == "source").LatestExecutionId!.Value;
 
             var revisionFilePath = Path.Combine(testRoot, "revision.txt");
-            await File.WriteAllTextAsync(revisionFilePath, "revised-plan");
+            await File.WriteAllTextAsync(revisionFilePath, "revised-plan", TestContext.Current.CancellationToken);
             var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", revisionFilePath, bindingsFilePath);
-            var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters);
+            var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
 
             var supersedeOptions = new DecideOptions(
                 taskDirectory, reviewerExecutionId1.Value, DecisionType.Supersede, new StepId("source"),
                 supplyResult.ExecutionId.Value, bindingsFilePath);
-            var secondPauseResult = await DecideCommand.ExecuteAsync(supersedeOptions, Adapters);
+            var secondPauseResult = await DecideCommand.ExecuteAsync(supersedeOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Paused, secondPauseResult.State.Status);
             var sourceExecutionId2 = secondPauseResult.State.Steps.Single(s => s.StepId.Value == "source").LatestExecutionId!.Value;
@@ -169,12 +169,12 @@ public class DecideCommandEndToEndTests
 
             var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
             var sourceOutput2 = Path.Combine(artifactsRoot, $"execution_{sourceExecutionId2}", "plan");
-            Assert.Equal("revised-plan", (await File.ReadAllTextAsync(sourceOutput2)).Trim());
+            Assert.Equal("revised-plan", (await File.ReadAllTextAsync(sourceOutput2, TestContext.Current.CancellationToken)).Trim());
 
             var resumeOptions = new DecideOptions(
                 taskDirectory, reviewerExecutionId2.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
-            var finalResult = await DecideCommand.ExecuteAsync(resumeOptions, Adapters);
+            var finalResult = await DecideCommand.ExecuteAsync(resumeOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.Equal(StepStatus.Succeeded, finalResult.State.Steps.Single(s => s.StepId.Value == "source").Status);
@@ -197,19 +197,19 @@ public class DecideCommandEndToEndTests
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
             var invalidOptions = new DecideOptions(
                 taskDirectory, "not-a-real-execution-id", DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
-            await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => DecideCommand.ExecuteAsync(invalidOptions, Adapters));
+            await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => DecideCommand.ExecuteAsync(invalidOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken));
 
             // The paused workflow is still perfectly resolvable by a valid decision afterward.
             var validOptions = new DecideOptions(
                 taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
-            var finalResult = await DecideCommand.ExecuteAsync(validOptions, Adapters);
+            var finalResult = await DecideCommand.ExecuteAsync(validOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
         }
         finally
@@ -230,7 +230,7 @@ public class DecideCommandEndToEndTests
             var options = new DecideOptions(
                 taskDirectory, "exec-1", DecisionType.Resume, TargetStepId: null, SupplementaryExecutionId: null, bindingsFilePath);
 
-            await Assert.ThrowsAsync<SnapshotLoadException>(() => DecideCommand.ExecuteAsync(options, Adapters));
+            await Assert.ThrowsAsync<SnapshotLoadException>(() => DecideCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {

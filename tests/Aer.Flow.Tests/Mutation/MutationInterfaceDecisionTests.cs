@@ -43,7 +43,7 @@ public class MutationInterfaceDecisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var pausedState = await pausedTask;
@@ -53,7 +53,7 @@ public class MutationInterfaceDecisionTests
             var bResult = stub.EnqueueResult(B);
             var resumedTask = MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                pausedExecutionId, DecisionType.Resume);
+                pausedExecutionId, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(B, await ReadNextDispatchAsync(stub));
             bResult.SetResult(Succeeded);
             var finalState = await resumedTask;
@@ -62,7 +62,7 @@ public class MutationInterfaceDecisionTests
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == B).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events.OfType<FlowEvent.ExternalDecisionRecorded>());
             Assert.Single(events.OfType<FlowEvent.WorkflowResumed>());
         }
@@ -91,7 +91,7 @@ public class MutationInterfaceDecisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var pausedState = await pausedTask;
@@ -101,13 +101,13 @@ public class MutationInterfaceDecisionTests
             // Nothing enqueued for B on the stub: if Reject dispatched it, StubCoreDispatcher throws.
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                pausedExecutionId, DecisionType.Reject);
+                pausedExecutionId, DecisionType.Reject, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Rejected, finalState.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Pending, finalState.Steps.Single(s => s.StepId == B).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.DoesNotContain(events, e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId == B);
         }
         finally
@@ -133,18 +133,18 @@ public class MutationInterfaceDecisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             await pausedTask;
 
-            var eventsBefore = await reader.ReadAllAsync();
+            var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                new ExecutionId("no-such-execution"), DecisionType.Resume));
+                new ExecutionId("no-such-execution"), DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken));
 
-            var eventsAfter = await reader.ReadAllAsync();
+            var eventsAfter = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventsBefore.Count, eventsAfter.Count);
         }
         finally

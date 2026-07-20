@@ -41,9 +41,9 @@ public class WorkflowEndToEndTests
         var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, snapshotPath);
+            await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -66,7 +66,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-e2e"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-e2e"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(3, finalState.Steps.Count);
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
@@ -94,7 +94,7 @@ public class WorkflowEndToEndTests
         var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
             using var heldByAnotherInstance = ConcurrencyGuard.Acquire(taskDirectory);
@@ -111,7 +111,7 @@ public class WorkflowEndToEndTests
                 Path.Combine(taskDirectory, "artifacts"),
                 reader,
                 writer,
-                dispatcher));
+                dispatcher, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -128,7 +128,7 @@ public class WorkflowEndToEndTests
         var logPath = Path.Combine(taskDirectory, "flow.jsonl");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
             var bindings = new Dictionary<string, WorkerBinding>
@@ -156,7 +156,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-diamond"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-diamond"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(4, finalState.Steps.Count);
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
@@ -188,7 +188,7 @@ public class WorkflowEndToEndTests
         var markerFilePath = Path.Combine(taskDirectory, "flaky.marker");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
             var bindings = new Dictionary<string, WorkerBinding>
@@ -208,13 +208,13 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-flaky"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-flaky"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepStateById = finalState.Steps.ToDictionary(s => s.StepId);
             Assert.Equal(StepStatus.Succeeded, stepStateById[Flaky].Status);
             Assert.Equal(StepStatus.Succeeded, stepStateById[Downstream].Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var flakyExecutionIds = GetAcceptedExecutionIds(events, Flaky);
 
             // §10's history shape: two attempts, distinct ExecutionIds, first failed then succeeded.
@@ -247,7 +247,7 @@ public class WorkflowEndToEndTests
         var markerFilePath = Path.Combine(taskDirectory, "reviewer.marker");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
             var bindings = new Dictionary<string, WorkerBinding>
@@ -267,12 +267,12 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-self-iteration"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-self-iteration"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var reviewerState = finalState.Steps.Single(s => s.StepId == Reviewer);
             Assert.Equal(StepStatus.Succeeded, reviewerState.Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var executionIds = GetAcceptedExecutionIds(events, Reviewer);
             Assert.Equal(2, executionIds.Count);
             Assert.Equal(StepStatus.Failed, GetTerminalStatus(events, executionIds[0]));
@@ -299,7 +299,7 @@ public class WorkflowEndToEndTests
         var scriptDirectory = Path.Combine(taskDirectory, "scripts");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
             var bindings = new Dictionary<string, WorkerBinding>
@@ -315,14 +315,14 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-permanent"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-permanent"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var permanentState = finalState.Steps.Single(s => s.StepId == Permanent);
             Assert.Equal(StepStatus.Failed, permanentState.Status);
             Assert.Equal(FailureClassification.Permanent, permanentState.LatestFailureClassification);
 
             // Exactly one attempt despite MaxAttempts: 3 remaining — the Permanent short-circuit (§8.1).
-            var executionIds = GetAcceptedExecutionIds(await reader.ReadAllAsync(), Permanent);
+            var executionIds = GetAcceptedExecutionIds(await reader.ReadAllAsync(TestContext.Current.CancellationToken), Permanent);
             Assert.Single(executionIds);
         }
         finally
@@ -340,7 +340,7 @@ public class WorkflowEndToEndTests
         var logPath = Path.Combine(taskDirectory, "flow.jsonl");
         try
         {
-            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath);
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
             var bindings = new Dictionary<string, WorkerBinding>
@@ -360,7 +360,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-exhaustion"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-exhaustion"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepStateById = finalState.Steps.ToDictionary(s => s.StepId);
             Assert.Equal(StepStatus.Failed, stepStateById[Flaky].Status);
@@ -368,7 +368,7 @@ public class WorkflowEndToEndTests
             // Downstream never dispatched — the workflow reached a fixed point instead.
             Assert.Equal(StepStatus.Pending, stepStateById[Downstream].Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var executionIds = GetAcceptedExecutionIds(events, Flaky);
             Assert.Equal(2, executionIds.Count);
             Assert.All(executionIds, id => Assert.Equal(StepStatus.Failed, GetTerminalStatus(events, id)));
@@ -411,8 +411,8 @@ public class WorkflowEndToEndTests
                         [],
                         new Dictionary<StepId, ExecutionId>());
 
-                    await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request));
-                    await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId));
+                    await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+                    await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), TestContext.Current.CancellationToken);
                 }
             }
 
@@ -421,7 +421,7 @@ public class WorkflowEndToEndTests
             var stopwatch = Stopwatch.StartNew();
             for (var i = 0; i < rounds; i++)
             {
-                await reader.ReadAllAsync();
+                await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             }
 
             stopwatch.Stop();

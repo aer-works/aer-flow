@@ -15,7 +15,7 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         var reader = new FlowEventLogReader(path);
 
-        var events = await reader.ReadAllAsync();
+        var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(events);
     }
@@ -28,12 +28,12 @@ public class FlowEventLogReaderTests
         {
             await using (var writer = new FlowEventLogWriter(path))
             {
-                await writer.AppendAsync(MakeEvent("exec-1"));
-                await writer.AppendAsync(MakeEvent("exec-2"));
-                await writer.AppendAsync(MakeEvent("exec-3"));
+                await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-3"), TestContext.Current.CancellationToken);
             }
 
-            var events = await new FlowEventLogReader(path).ReadAllAsync();
+            var events = await new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken);
 
             var ids = events.Cast<FlowEvent.ExecutionSucceeded>().Select(e => e.ExecutionId.Value);
             Assert.Equal(new[] { "exec-1", "exec-2", "exec-3" }, ids);
@@ -52,9 +52,9 @@ public class FlowEventLogReaderTests
         {
             var completeLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry));
             var tornLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-2")), typeof(LogEntry))[..5];
-            await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8);
+            await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8, TestContext.Current.CancellationToken);
 
-            var events = await new FlowEventLogReader(path).ReadAllAsync();
+            var events = await new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken);
 
             var succeeded = Assert.Single(events);
             Assert.Equal("exec-1", Assert.IsType<FlowEvent.ExecutionSucceeded>(succeeded).ExecutionId.Value);
@@ -71,9 +71,9 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         try
         {
-            await File.WriteAllTextAsync(path, "{ not valid json }\n", Encoding.UTF8);
+            await File.WriteAllTextAsync(path, "{ not valid json }\n", Encoding.UTF8, TestContext.Current.CancellationToken);
 
-            await Assert.ThrowsAsync<FlowEventLogReadException>(() => new FlowEventLogReader(path).ReadAllAsync());
+            await Assert.ThrowsAsync<FlowEventLogReadException>(() => new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -89,14 +89,14 @@ public class FlowEventLogReaderTests
         {
             await using (var writer = new FlowEventLogWriter(path))
             {
-                await writer.AppendAsync(MakeEvent("exec-1"));
-                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42));
+                await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42), TestContext.Current.CancellationToken);
                 await writer.AppendAsync(
-                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural));
-                await writer.AppendAsync(MakeEvent("exec-2"));
+                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken);
             }
 
-            var events = await new FlowEventLogReader(path).ReadAllAsync();
+            var events = await new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken);
 
             var ids = events.Cast<FlowEvent.ExecutionSucceeded>().Select(e => e.ExecutionId.Value);
             Assert.Equal(new[] { "exec-1", "exec-2" }, ids);
@@ -113,7 +113,7 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         var reader = new FlowEventLogReader(path);
 
-        var events = await reader.ReadAllCoreEventsAsync();
+        var events = await reader.ReadAllCoreEventsAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(events);
     }
@@ -126,14 +126,14 @@ public class FlowEventLogReaderTests
         {
             await using (var writer = new FlowEventLogWriter(path))
             {
-                await writer.AppendAsync(MakeEvent("exec-1"));
-                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42));
+                await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42), TestContext.Current.CancellationToken);
                 await writer.AppendAsync(
-                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural));
-                await writer.AppendAsync(MakeEvent("exec-2"));
+                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken);
             }
 
-            var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync();
+            var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync(TestContext.Current.CancellationToken);
 
             Assert.Collection(
                 events,
@@ -156,9 +156,9 @@ public class FlowEventLogReaderTests
             var exitedEvent = new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural);
             var completeLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(startedEvent), typeof(LogEntry));
             var tornLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(exitedEvent), typeof(LogEntry))[..5];
-            await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8);
+            await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8, TestContext.Current.CancellationToken);
 
-            var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync();
+            var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync(TestContext.Current.CancellationToken);
 
             var started = Assert.Single(events);
             Assert.Equal("exec-1", Assert.IsType<CoreEvent.ExecutionStarted>(started).ExecutionId.Value);
@@ -175,9 +175,9 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         try
         {
-            await File.WriteAllTextAsync(path, "{ not valid json }\n", Encoding.UTF8);
+            await File.WriteAllTextAsync(path, "{ not valid json }\n", Encoding.UTF8, TestContext.Current.CancellationToken);
 
-            await Assert.ThrowsAsync<FlowEventLogReadException>(() => new FlowEventLogReader(path).ReadAllCoreEventsAsync());
+            await Assert.ThrowsAsync<FlowEventLogReadException>(() => new FlowEventLogReader(path).ReadAllCoreEventsAsync(TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -193,14 +193,14 @@ public class FlowEventLogReaderTests
         {
             await using (var writer = new FlowEventLogWriter(path))
             {
-                await writer.AppendAsync(MakeEvent("exec-1"));
-                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42));
+                await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42), TestContext.Current.CancellationToken);
                 await writer.AppendAsync(
-                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural));
-                await writer.AppendAsync(MakeEvent("exec-2"));
+                    new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken);
             }
 
-            var snapshot = await new FlowEventLogReader(path).ReadSnapshotAsync();
+            var snapshot = await new FlowEventLogReader(path).ReadSnapshotAsync(TestContext.Current.CancellationToken);
 
             var flowIds = snapshot.FlowEvents.Cast<FlowEvent.ExecutionSucceeded>().Select(e => e.ExecutionId.Value);
             Assert.Equal(new[] { "exec-1", "exec-2" }, flowIds);

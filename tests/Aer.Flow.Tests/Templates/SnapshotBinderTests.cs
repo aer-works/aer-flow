@@ -65,9 +65,9 @@ public class SnapshotBinderTests
         var path = Path.Combine(Path.GetTempPath(), $"snapshot-{Guid.NewGuid():N}.json");
         try
         {
-            await SnapshotBinder.PersistAsync(snapshot, path);
+            await SnapshotBinder.PersistAsync(snapshot, path, TestContext.Current.CancellationToken);
 
-            var json = await File.ReadAllTextAsync(path);
+            var json = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
             var reloaded = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(json);
 
             Assert.NotNull(reloaded);
@@ -87,7 +87,7 @@ public class SnapshotBinderTests
         var path = Path.Combine(directory, "snapshot.json");
         try
         {
-            await SnapshotBinder.PersistAsync(snapshot, path);
+            await SnapshotBinder.PersistAsync(snapshot, path, TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(path));
         }
@@ -105,18 +105,18 @@ public class SnapshotBinderTests
     {
         var templatePath = Path.Combine(Path.GetTempPath(), $"template-{Guid.NewGuid():N}.json");
         var snapshotPath = Path.Combine(Path.GetTempPath(), $"snapshot-{Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(SampleDefinition()));
+        await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(SampleDefinition()), TestContext.Current.CancellationToken);
         try
         {
-            var loaded = await WorkflowDefinitionParser.LoadFromFileAsync(templatePath);
+            var loaded = await WorkflowDefinitionParser.LoadFromFileAsync(templatePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(loaded);
-            await SnapshotBinder.PersistAsync(snapshot, snapshotPath);
+            await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
 
             // Edit the template on disk after the snapshot was bound and persisted.
             var edited = SampleDefinition() with { WorkflowTemplateVersion = 4 };
-            await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(edited));
+            await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(edited), TestContext.Current.CancellationToken);
 
-            var reloaded = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(await File.ReadAllTextAsync(snapshotPath));
+            var reloaded = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(await File.ReadAllTextAsync(snapshotPath, TestContext.Current.CancellationToken));
 
             Assert.NotNull(reloaded);
             Assert.Equal(3, reloaded.WorkflowTemplateVersion);

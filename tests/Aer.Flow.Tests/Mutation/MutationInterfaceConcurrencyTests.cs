@@ -55,7 +55,7 @@ public class MutationInterfaceConcurrencyTests
             var bindings = MakeBindings();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
@@ -113,7 +113,7 @@ public class MutationInterfaceConcurrencyTests
             var bindings = MakeBindings();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             var firstRound = new[] { await ReadNextDispatchAsync(stub), await ReadNextDispatchAsync(stub) };
             Assert.Equal(new HashSet<StepId> { slow, flaky }, new HashSet<StepId>(firstRound));
@@ -131,7 +131,7 @@ public class MutationInterfaceConcurrencyTests
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
             Assert.Equal(0, finalState.Steps.Single(s => s.StepId == flaky).ConsecutiveFailureCount);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var flakyAttempts = events
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Where(e => e.Request.StepId == flaky)
@@ -172,7 +172,7 @@ public class MutationInterfaceConcurrencyTests
             var bindings = MakeBindings();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             await ReadNextDispatchAsync(stub);
             await ReadNextDispatchAsync(stub);
@@ -183,7 +183,7 @@ public class MutationInterfaceConcurrencyTests
 
             await workflowTask;
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var acceptedOrder = events
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Select(e => e.Request.StepId)

@@ -32,7 +32,7 @@ public class RunCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var finalState = (await RunCommand.ExecuteAsync(options, Adapters)).State;
+            var finalState = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(3, finalState.Steps.Count);
@@ -46,7 +46,7 @@ public class RunCommandEndToEndTests
 
             // WorkflowId defaults to the bound snapshot's WorkflowTemplateId when not given.
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var requests = events.OfType<FlowEvent.ExecutionRequestAccepted>().Select(e => e.Request).ToList();
             Assert.Equal(3, requests.Count);
             Assert.All(requests, request => Assert.Equal("three-step-linear", request.WorkflowId.Value));
@@ -68,18 +68,18 @@ public class RunCommandEndToEndTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var firstRun = (await RunCommand.ExecuteAsync(options, Adapters)).State;
+            var firstRun = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.All(firstRun.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
             var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-            var eventCountAfterFirstRun = (await new FlowEventLogReader(logPath).ReadAllAsync()).Count;
+            var eventCountAfterFirstRun = (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
-            var secondRun = (await RunCommand.ExecuteAsync(options, Adapters)).State;
+            var secondRun = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, secondRun.Status);
             Assert.All(secondRun.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
-            var eventCountAfterSecondRun = (await new FlowEventLogReader(logPath).ReadAllAsync()).Count;
+            var eventCountAfterSecondRun = (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count;
             Assert.Equal(eventCountAfterFirstRun, eventCountAfterSecondRun);
         }
         finally
@@ -96,12 +96,12 @@ public class RunCommandEndToEndTests
         {
             Directory.CreateDirectory(testRoot);
             var workflowFilePath = Path.Combine(testRoot, "workflow.json");
-            await File.WriteAllTextAsync(workflowFilePath, "{ not valid json");
+            await File.WriteAllTextAsync(workflowFilePath, "{ not valid json", TestContext.Current.CancellationToken);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, Path.Combine(testRoot, "task"));
 
             await Assert.ThrowsAsync<WorkflowDefinitionValidationException>(
-                () => RunCommand.ExecuteAsync(options, Adapters));
+                () => RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -117,10 +117,10 @@ public class RunCommandEndToEndTests
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = Path.Combine(testRoot, "bindings.json");
-            await File.WriteAllTextAsync(bindingsFilePath, "{ not valid json");
+            await File.WriteAllTextAsync(bindingsFilePath, "{ not valid json", TestContext.Current.CancellationToken);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, Path.Combine(testRoot, "task"));
 
-            await Assert.ThrowsAsync<WorkerBindingConfigException>(() => RunCommand.ExecuteAsync(options, Adapters));
+            await Assert.ThrowsAsync<WorkerBindingConfigException>(() => RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -144,10 +144,10 @@ public class RunCommandEndToEndTests
                     "irrelevant",
                     TimeSpan.FromSeconds(30)),
             };
-            await File.WriteAllTextAsync(bindingsFilePath, JsonSerializer.Serialize(config));
+            await File.WriteAllTextAsync(bindingsFilePath, JsonSerializer.Serialize(config), TestContext.Current.CancellationToken);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, Path.Combine(testRoot, "task"));
 
-            await Assert.ThrowsAsync<UnknownWorkerAdapterException>(() => RunCommand.ExecuteAsync(options, Adapters));
+            await Assert.ThrowsAsync<UnknownWorkerAdapterException>(() => RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {
