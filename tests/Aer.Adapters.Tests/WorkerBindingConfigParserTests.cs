@@ -129,10 +129,10 @@ public class WorkerBindingConfigParserTests
     public async Task LoadFromFileAsync_reads_and_parses_a_file()
     {
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(path, ValidJson);
+        await File.WriteAllTextAsync(path, ValidJson, TestContext.Current.CancellationToken);
         try
         {
-            var config = await WorkerBindingConfigParser.LoadFromFileAsync(path);
+            var config = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
             Assert.Single(config);
         }
         finally

@@ -53,8 +53,8 @@ public class WorkerBindingConfigWriterTests
         {
             var config = TwoWorkerConfig();
 
-            await WorkerBindingConfigWriter.SaveToFileAsync(config, path);
-            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path);
+            await WorkerBindingConfigWriter.SaveToFileAsync(config, path, TestContext.Current.CancellationToken);
+            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
 
             Assert.Equal(config.Keys.OrderBy(k => k), parsed.Keys.OrderBy(k => k));
             foreach (var (workerName, entry) in config)
@@ -91,8 +91,8 @@ public class WorkerBindingConfigWriterTests
         var path = Path.Combine(Path.GetTempPath(), $"bindings-writer-empty-{Guid.NewGuid():N}.json");
         try
         {
-            await WorkerBindingConfigWriter.SaveToFileAsync(new Dictionary<string, WorkerBindingConfigEntry>(), path);
-            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path);
+            await WorkerBindingConfigWriter.SaveToFileAsync(new Dictionary<string, WorkerBindingConfigEntry>(), path, TestContext.Current.CancellationToken);
+            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
 
             Assert.Empty(parsed);
         }
@@ -116,7 +116,7 @@ public class WorkerBindingConfigWriterTests
         };
 
         var exception = await Assert.ThrowsAsync<WorkerBindingConfigException>(
-            () => WorkerBindingConfigWriter.SaveToFileAsync(invalid, path));
+            () => WorkerBindingConfigWriter.SaveToFileAsync(invalid, path, TestContext.Current.CancellationToken));
 
         Assert.Contains("Adapter", exception.Message);
         Assert.False(File.Exists(path));
@@ -129,7 +129,7 @@ public class WorkerBindingConfigWriterTests
         var path = Path.Combine(directory, "bindings.json");
         try
         {
-            await WorkerBindingConfigWriter.SaveToFileAsync(TwoWorkerConfig(), path);
+            await WorkerBindingConfigWriter.SaveToFileAsync(TwoWorkerConfig(), path, TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(path));
         }

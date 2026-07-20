@@ -61,12 +61,12 @@ public class LiveCancellationEndToEndTests
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                inFlightExecutions: registry);
+                inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
             var bExecutionId = await GetLatestAcceptedExecutionIdAsync(logPath, B);
 
-            await registry.RequestCancellationAsync(bExecutionId);
+            await registry.RequestCancellationAsync(bExecutionId, TestContext.Current.CancellationToken);
 
             var finalState = await AwaitWithTimeoutAsync(workflowTask);
 
@@ -74,7 +74,7 @@ public class LiveCancellationEndToEndTests
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == C).Status);
             Assert.Equal(StepStatus.Pending, finalState.Steps.Single(s => s.StepId == D).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             // No retry despite B's remaining budget (§10): still exactly one attempt for it.
             Assert.Single(events.OfType<FlowEvent.ExecutionRequestAccepted>(), e => e.Request.StepId == B);
@@ -123,29 +123,29 @@ public class LiveCancellationEndToEndTests
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
                 workflowId, taskDirectory, snapshot, sleepingBindings, artifactsRoot, reader, writer, dispatcher,
-                inFlightExecutions: registry);
+                inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
             var hExecutionId = await GetLatestAcceptedExecutionIdAsync(logPath, H);
 
-            await registry.RequestCancellationAsync(hExecutionId);
+            await registry.RequestCancellationAsync(hExecutionId, TestContext.Current.CancellationToken);
 
             var pausedState = await AwaitWithTimeoutAsync(workflowTask);
             Assert.Equal(StepStatus.Paused, pausedState.Steps.Single().Status);
             Assert.Equal(StepStatus.Cancelled, pausedState.Steps.Single().PausedOutcome);
 
             var (mintedState, revisionExecutionId) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, "human", inputs: [], reader, writer);
+                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Single(mintedState.StepLessExecutions);
             var revisionOutputDirectory = Path.Combine(artifactsRoot, $"execution_{revisionExecutionId}");
-            await File.WriteAllTextAsync(Path.Combine(revisionOutputDirectory, "revision.md"), "revised-result");
+            await File.WriteAllTextAsync(Path.Combine(revisionOutputDirectory, "revision.md"), "revised-result", TestContext.Current.CancellationToken);
 
             await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var retriedState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher,
-                hExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revisionExecutionId);
+                hExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revisionExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             var hAfterRetry = retriedState.Steps.Single();
             Assert.Equal(StepStatus.Paused, hAfterRetry.Status);
@@ -154,12 +154,12 @@ public class LiveCancellationEndToEndTests
 
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher,
-                hAfterRetry.LatestExecutionId!.Value, DecisionType.Resume);
+                hAfterRetry.LatestExecutionId!.Value, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single().Status);
             var resultPath = Path.Combine(artifactsRoot, $"execution_{finalState.Steps.Single().LatestExecutionId}", "out");
-            Assert.Equal("revised-result", (await File.ReadAllTextAsync(resultPath)).Trim());
+            Assert.Equal("revised-result", (await File.ReadAllTextAsync(resultPath, TestContext.Current.CancellationToken)).Trim());
         }
         finally
         {
@@ -188,16 +188,16 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-too-late-success");
 
             var succeededState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             var executionId = succeededState.Steps.Single().LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Succeeded, succeededState.Steps.Single().Status);
-            var eventCountBefore = (await reader.ReadAllAsync()).Count;
+            var eventCountBefore = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             var afterTooLateCancel = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Succeeded, afterTooLateCancel.Steps.Single().Status);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventCountBefore + 1, events.Count);
             Assert.Single(events, e => e is FlowEvent.CancellationRequested cr && cr.ExecutionId == executionId);
             Assert.Single(events, e => e is FlowEvent.ExecutionSucceeded es && es.ExecutionId == executionId);
@@ -230,16 +230,16 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-too-late-failure");
 
             var failedState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             var executionId = failedState.Steps.Single().LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Failed, failedState.Steps.Single().Status);
-            var eventCountBefore = (await reader.ReadAllAsync()).Count;
+            var eventCountBefore = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             var afterTooLateCancel = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Failed, afterTooLateCancel.Steps.Single().Status);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventCountBefore + 1, events.Count);
             Assert.Single(events, e => e is FlowEvent.CancellationRequested cr && cr.ExecutionId == executionId);
             Assert.Single(events, e => e is FlowEvent.ExecutionFailed ef && ef.ExecutionId == executionId);
@@ -274,23 +274,23 @@ public class LiveCancellationEndToEndTests
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                inFlightExecutions: registry);
+                inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
             var executionId = await GetLatestAcceptedExecutionIdAsync(logPath, A);
-            await registry.RequestCancellationAsync(executionId);
+            await registry.RequestCancellationAsync(executionId, TestContext.Current.CancellationToken);
 
             var cancelledState = await AwaitWithTimeoutAsync(workflowTask);
             Assert.Equal(StepStatus.Cancelled, cancelledState.Steps.Single().Status);
-            var eventCountBefore = (await reader.ReadAllAsync()).Count;
+            var eventCountBefore = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             // A second, independent mutation-surface call — the too-late request itself, this time
             // with nothing live left to deliver to at all.
             var afterSecondCancel = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Cancelled, afterSecondCancel.Steps.Single().Status);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventCountBefore + 1, events.Count);
             Assert.Equal(2, events.Count(e => e is FlowEvent.CancellationRequested cr && cr.ExecutionId == executionId));
             Assert.Single(events, e => e is FlowEvent.ExecutionCancelled ec && ec.ExecutionId == executionId);

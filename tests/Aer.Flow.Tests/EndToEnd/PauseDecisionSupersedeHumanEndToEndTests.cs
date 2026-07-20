@@ -50,20 +50,20 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             var workflowId = new WorkflowId("wf-approval-gate");
 
             var pausedState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             // First pump ends WorkflowPaused with B never dispatched, Flow idle, no process alive.
             Assert.Equal(WorkflowStatus.Paused, pausedState.Status);
             Assert.Equal(StepStatus.Paused, pausedState.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Pending, pausedState.Steps.Single(s => s.StepId == B).Status);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.DoesNotContain(events, e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId == B);
 
             var pausedExecutionId = pausedState.Steps.Single(s => s.StepId == A).LatestExecutionId!.Value;
 
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                pausedExecutionId, DecisionType.Resume);
+                pausedExecutionId, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == A).Status);
@@ -101,13 +101,13 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             var workflowId = new WorkflowId("wf-reject");
 
             var pausedState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedState.Steps.Single(s => s.StepId == A).LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Succeeded, pausedState.Steps.Single(s => s.StepId == A).PausedOutcome);
 
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                pausedExecutionId, DecisionType.Reject);
+                pausedExecutionId, DecisionType.Reject, cancellationToken: TestContext.Current.CancellationToken);
 
             // A's ExecutionSucceeded stands in the log, yet it projects terminally failed — the
             // approval-gate "no" (§17.2).
@@ -115,7 +115,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             Assert.Equal(StepStatus.Rejected, finalState.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Pending, finalState.Steps.Single(s => s.StepId == B).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == pausedExecutionId);
             Assert.DoesNotContain(events, e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId == B);
         }
@@ -153,11 +153,11 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             var workflowId = new WorkflowId("wf-retry-with-revision");
 
             var pausedState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             // Exactly two real attempts (RetryPolicy.MaxAttempts: 2), both failing with no
             // supplement, then pause — the M9 Phase 1 settled-round rule against real processes.
-            var flakyExecutionIds = GetAcceptedExecutionIds(await reader.ReadAllAsync(), Flaky);
+            var flakyExecutionIds = GetAcceptedExecutionIds(await reader.ReadAllAsync(TestContext.Current.CancellationToken), Flaky);
             Assert.Equal(2, flakyExecutionIds.Count);
             var pausedExecutionId = pausedState.Steps.Single(s => s.StepId == Flaky).LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Failed, pausedState.Steps.Single(s => s.StepId == Flaky).PausedOutcome);
@@ -165,17 +165,17 @@ public class PauseDecisionSupersedeHumanEndToEndTests
 
             // A supplementary human execution supplies a revision file — the test is the human.
             var (mintedState, revisionExecutionId) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
             var revisionOutputDirectory = Path.Combine(artifactsRoot, $"execution_{revisionExecutionId}");
-            await File.WriteAllTextAsync(Path.Combine(revisionOutputDirectory, "revision.md"), "revised-result");
+            await File.WriteAllTextAsync(Path.Combine(revisionOutputDirectory, "revision.md"), "revised-result", TestContext.Current.CancellationToken);
             Assert.Single(mintedState.StepLessExecutions);
 
             // A settling pump finalizes the supplementary execution (NonProcessCompletionDetector);
             // nothing else is ready, so this call is otherwise a no-op for the paused DAG.
             var settledState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Empty(settledState.StepLessExecutions);
-            var succeededExecutionIds = (await reader.ReadAllAsync())
+            var succeededExecutionIds = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>()
                 .Select(e => e.ExecutionId)
                 .ToHashSet();
@@ -184,7 +184,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             // RetryWithRevision names it; the worker reads the supplementary input path and succeeds.
             var retriedState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                pausedExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revisionExecutionId);
+                pausedExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revisionExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             var flakyAfterRetry = retriedState.Steps.Single(s => s.StepId == Flaky);
             Assert.Equal(StepStatus.Paused, flakyAfterRetry.Status);
@@ -196,7 +196,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             // second Resume is needed before downstream, which only cares about Succeeded, can run.
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                flakyAfterRetry.LatestExecutionId!.Value, DecisionType.Resume);
+                flakyAfterRetry.LatestExecutionId!.Value, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == Flaky).Status);
@@ -241,7 +241,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             var workflowId = new WorkflowId("wf-architect-critic");
 
             var firstPauseState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Paused, firstPauseState.Status);
             var architectExecutionId1 = firstPauseState.Steps.Single(s => s.StepId == Architect).LatestExecutionId!.Value;
@@ -254,7 +254,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             // naming Architect (its declared SupersedeTargets entry) as the target.
             var secondPauseState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                criticExecutionId1, DecisionType.Supersede, targetStepId: Architect, supplementaryExecutionId: criticExecutionId1);
+                criticExecutionId1, DecisionType.Supersede, targetStepId: Architect, supplementaryExecutionId: criticExecutionId1, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Paused, secondPauseState.Status);
             var architectExecutionId2 = secondPauseState.Steps.Single(s => s.StepId == Architect).LatestExecutionId!.Value;
@@ -272,18 +272,18 @@ public class PauseDecisionSupersedeHumanEndToEndTests
                 artifactsRoot, secondPauseState.Steps.Single(s => s.StepId == Critic), "feedback", "original-plan-feedback-feedback");
 
             // Critic's second success records the second Architect execution in UpstreamExecutionIds.
-            var criticAccepted2 = (await reader.ReadAllAsync())
+            var criticAccepted2 = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Single(e => e.Request.ExecutionId == criticExecutionId2);
             Assert.Equal(architectExecutionId2, criticAccepted2.Request.UpstreamExecutionIds[Architect]);
 
             // A1's artifact directory is untouched on disk (§10, §16).
             Assert.True(Directory.Exists(architectOutputDirectory1));
-            Assert.Equal("original-plan", (await File.ReadAllTextAsync(Path.Combine(architectOutputDirectory1, "plan"))).Trim());
+            Assert.Equal("original-plan", (await File.ReadAllTextAsync(Path.Combine(architectOutputDirectory1, "plan"), TestContext.Current.CancellationToken)).Trim());
 
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                criticExecutionId2, DecisionType.Resume);
+                criticExecutionId2, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == Architect).Status);
@@ -322,7 +322,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             var workflowId = new WorkflowId("wf-human-mid-dag");
 
             var firstState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             // H was admitted but no Core process was ever asked for it (§17.3) — CoreDispatcher
             // would otherwise have spawned a real process for the "human" worker, which has no
@@ -336,17 +336,17 @@ public class PauseDecisionSupersedeHumanEndToEndTests
 
             // The test is the human: it drops the contractually required output, across a separate
             // mutation-interface invocation.
-            await File.WriteAllTextAsync(Path.Combine(hOutputDirectory, "revision"), "the-revision");
+            await File.WriteAllTextAsync(Path.Combine(hOutputDirectory, "revision"), "the-revision", TestContext.Current.CancellationToken);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == H).Status);
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single(s => s.StepId == C).Status);
             await AssertOutputExistsAsync(artifactsRoot, finalState.Steps.Single(s => s.StepId == C), "final", "the-revision");
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == hExecutionId);
         }
         finally
@@ -380,34 +380,34 @@ public class PauseDecisionSupersedeHumanEndToEndTests
             var workflowId = new WorkflowId("wf-invalid-decisions");
 
             var pausedState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             var architectExecutionId = pausedState.Steps.Single(s => s.StepId == Architect).LatestExecutionId!.Value;
             var criticExecutionId = pausedState.Steps.Single(s => s.StepId == Critic).LatestExecutionId!.Value;
-            var eventCountBeforeInvalidDecisions = (await reader.ReadAllAsync()).Count;
+            var eventCountBeforeInvalidDecisions = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             // Supersede naming a step outside its declared SupersedeTargets ([architect]).
             await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                criticExecutionId, DecisionType.Supersede, targetStepId: Critic, supplementaryExecutionId: criticExecutionId));
+                criticExecutionId, DecisionType.Supersede, targetStepId: Critic, supplementaryExecutionId: criticExecutionId, cancellationToken: TestContext.Current.CancellationToken));
 
             // Supersede without a SupplementaryExecutionId.
             await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                criticExecutionId, DecisionType.Supersede, targetStepId: Architect));
+                criticExecutionId, DecisionType.Supersede, targetStepId: Architect, cancellationToken: TestContext.Current.CancellationToken));
 
             // A decision against a non-paused execution (Architect already succeeded and was
             // never paused itself).
             await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                architectExecutionId, DecisionType.Resume));
+                architectExecutionId, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken));
 
-            var eventCountAfterInvalidDecisions = (await reader.ReadAllAsync()).Count;
+            var eventCountAfterInvalidDecisions = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
             Assert.Equal(eventCountBeforeInvalidDecisions, eventCountAfterInvalidDecisions);
 
             // The paused workflow is still perfectly resolvable by a valid decision afterward.
             var finalState = await MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
-                criticExecutionId, DecisionType.Resume);
+                criticExecutionId, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
         }
         finally

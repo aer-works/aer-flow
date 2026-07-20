@@ -49,7 +49,7 @@ public class MutationInterfaceHumanWorkerTests
             var workflowId = new WorkflowId("wf");
 
             var firstRunTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var firstState = await firstRunTask;
@@ -65,11 +65,11 @@ public class MutationInterfaceHumanWorkerTests
             Assert.True(Directory.Exists(hOutputDirectory));
 
             // The test *is* the human: it drops the contractually required output.
-            await File.WriteAllTextAsync(Path.Combine(hOutputDirectory, "revision.md"), "revised plan");
+            await File.WriteAllTextAsync(Path.Combine(hOutputDirectory, "revision.md"), "revised plan", TestContext.Current.CancellationToken);
 
             var cResult = stub.EnqueueResult(C);
             var secondRunTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(C, await ReadNextDispatchAsync(stub));
             cResult.SetResult(Succeeded);
             var secondState = await secondRunTask;
@@ -78,7 +78,7 @@ public class MutationInterfaceHumanWorkerTests
             Assert.Equal(StepStatus.Succeeded, secondState.Steps.Single(s => s.StepId == H).Status);
             Assert.Equal(StepStatus.Succeeded, secondState.Steps.Single(s => s.StepId == C).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == hExecutionId);
         }
         finally
@@ -108,24 +108,24 @@ public class MutationInterfaceHumanWorkerTests
             var stub = new StubCoreDispatcher();
 
             var firstState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             var hExecutionId = firstState.Steps.Single().LatestExecutionId!.Value;
             var outputDirectory = Path.Combine(artifactsRoot, $"execution_{hExecutionId}");
-            await File.WriteAllTextAsync(Path.Combine(outputDirectory, "verdict.json"), """{"status":"needs_revision"}""");
+            await File.WriteAllTextAsync(Path.Combine(outputDirectory, "verdict.json"), """{"status":"needs_revision"}""", TestContext.Current.CancellationToken);
 
             var secondState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             // Never Failed — an unsatisfied contract means still pending; there is no exit signal
             // to classify against (§17.3).
             Assert.Equal(StepStatus.Running, secondState.Steps.Single().Status);
             Assert.Equal(hExecutionId, secondState.Steps.Single().LatestExecutionId);
 
-            await File.WriteAllTextAsync(Path.Combine(outputDirectory, "verdict.json"), """{"status":"approved"}""");
+            await File.WriteAllTextAsync(Path.Combine(outputDirectory, "verdict.json"), """{"status":"approved"}""", TestContext.Current.CancellationToken);
 
             var thirdState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(StepStatus.Succeeded, thirdState.Steps.Single().Status);
         }
         finally
@@ -151,14 +151,14 @@ public class MutationInterfaceHumanWorkerTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var pausedState = await pausedTask;
             Assert.Equal(StepStatus.Paused, pausedState.Steps.Single().Status);
 
             var (mintedState, revisionExecutionId) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
 
             // A's own projection is untouched by minting a step-less execution.
             Assert.Equal(StepStatus.Paused, mintedState.Steps.Single().Status);
@@ -170,7 +170,7 @@ public class MutationInterfaceHumanWorkerTests
             var outputDirectory = Path.Combine(artifactsRoot, $"execution_{revisionExecutionId}");
             Assert.True(Directory.Exists(outputDirectory));
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var accepted = events.OfType<FlowEvent.ExecutionRequestAccepted>().Single(e => e.Request.ExecutionId == revisionExecutionId);
             Assert.Null(accepted.Request.StepId);
         }
@@ -197,31 +197,31 @@ public class MutationInterfaceHumanWorkerTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             attempt1.SetResult(Failed);
             var pausedState = await pausedTask;
             var pausedExecutionId = pausedState.Steps.Single().LatestExecutionId!.Value;
 
             var (_, revision1) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
             var (state2, revision2) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEqual(revision1, revision2);
             Assert.Equal(2, state2.StepLessExecutions.Count);
 
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"execution_{revision1}", "revision.md"), "first revision");
-            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"execution_{revision2}", "revision.md"), "second revision");
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"execution_{revision1}", "revision.md"), "first revision", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(artifactsRoot, $"execution_{revision2}", "revision.md"), "second revision", TestContext.Current.CancellationToken);
 
             var settledState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             // Both settle into two immutable artifacts; A itself is untouched throughout.
             Assert.Empty(settledState.StepLessExecutions);
             Assert.Equal(StepStatus.Paused, settledState.Steps.Single().Status);
 
-            var succeededExecutionIds = (await reader.ReadAllAsync())
+            var succeededExecutionIds = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>()
                 .Select(e => e.ExecutionId)
                 .ToHashSet();
@@ -232,12 +232,12 @@ public class MutationInterfaceHumanWorkerTests
             var attempt2 = stub.EnqueueResult(A);
             var resumedTask = MutationInterface.RecordDecisionAsync(
                 workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                pausedExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revision2);
+                pausedExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revision2, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             attempt2.SetResult(Succeeded);
             await resumedTask;
 
-            var secondAttempt = (await reader.ReadAllAsync())
+            var secondAttempt = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Where(e => e.Request.StepId == A)
                 .ElementAt(1);
@@ -265,12 +265,12 @@ public class MutationInterfaceHumanWorkerTests
             var workflowId = new WorkflowId("wf");
 
             await Assert.ThrowsAsync<UnresolvedWorkerException>(() => MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, new Dictionary<string, WorkerBinding>(), artifactsRoot, "human", inputs: [], reader, writer));
+                workflowId, taskDirectory, snapshot, new Dictionary<string, WorkerBinding>(), artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken));
 
             // A process-bound role name is just as invalid — a supplementary execution is
             // non-process by definition (§17.3).
             await Assert.ThrowsAsync<UnresolvedWorkerException>(() => MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, MakeBindings(), artifactsRoot, "stub-worker", inputs: [], reader, writer));
+                workflowId, taskDirectory, snapshot, MakeBindings(), artifactsRoot, "stub-worker", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {

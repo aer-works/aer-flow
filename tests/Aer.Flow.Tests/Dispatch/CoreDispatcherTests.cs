@@ -30,7 +30,7 @@ public class CoreDispatcherTests
             await using var writer = new FlowEventLogWriter(logPath);
             var dispatcher = new CoreDispatcher(writer);
 
-            var result = await dispatcher.DispatchAsync(request, target);
+            var result = await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
             Assert.Equal(CoreExitReason.Natural, result.Reason);
@@ -56,10 +56,10 @@ public class CoreDispatcherTests
 
             await using (var writer = new FlowEventLogWriter(logPath))
             {
-                await new CoreDispatcher(writer).DispatchAsync(request, target);
+                await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
             }
 
-            var entries = (await File.ReadAllLinesAsync(logPath))
+            var entries = (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken))
                 .Select(line => JsonSerializer.Deserialize<LogEntry>(line))
                 .Cast<LogEntry.CoreLogEntry>()
                 .Select(e => e.Event)
@@ -93,7 +93,7 @@ public class CoreDispatcherTests
                 : new CoreDispatchTarget("sh", ["-c", "exit 7"]);
 
             await using var writer = new FlowEventLogWriter(logPath);
-            var result = await new CoreDispatcher(writer).DispatchAsync(request, target);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
 
             Assert.Equal(7, result.ExitCode);
             Assert.Equal(CoreExitReason.Natural, result.Reason);
@@ -118,7 +118,7 @@ public class CoreDispatcherTests
                 : new CoreDispatchTarget("sh", ["-c", "exit 0"]);
 
             await using var writer = new FlowEventLogWriter(logPath);
-            var result = await new CoreDispatcher(writer).DispatchAsync(request, target);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
         }

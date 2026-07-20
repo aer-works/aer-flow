@@ -27,22 +27,22 @@ public class SupplyCommandEndToEndTests
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
-            await RunCommand.ExecuteAsync(runOptions, Adapters);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var sourceFilePath = Path.Combine(testRoot, "revision.txt");
-            await File.WriteAllTextAsync(sourceFilePath, "the-revision");
+            await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
             var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
 
-            var result = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters);
+            var result = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
 
             Assert.Empty(result.Command.State.StepLessExecutions);
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == result.ExecutionId);
 
             var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
             var outputPath = Path.Combine(artifactsRoot, $"execution_{result.ExecutionId}", "revision");
-            Assert.Equal("the-revision", (await File.ReadAllTextAsync(outputPath)).Trim());
+            Assert.Equal("the-revision", (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
         }
         finally
         {
@@ -60,15 +60,15 @@ public class SupplyCommandEndToEndTests
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
-            await RunCommand.ExecuteAsync(runOptions, Adapters);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var missingSourcePath = Path.Combine(testRoot, "does-not-exist.txt");
             var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", missingSourcePath, bindingsFilePath);
 
-            await Assert.ThrowsAsync<FileNotFoundException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters));
+            await Assert.ThrowsAsync<FileNotFoundException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
 
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
-            Assert.DoesNotContain(await reader.ReadAllAsync(), e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId is null);
+            Assert.DoesNotContain(await reader.ReadAllAsync(TestContext.Current.CancellationToken), e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId is null);
         }
         finally
         {
@@ -86,10 +86,10 @@ public class SupplyCommandEndToEndTests
             Directory.CreateDirectory(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
             var sourceFilePath = Path.Combine(testRoot, "revision.txt");
-            await File.WriteAllTextAsync(sourceFilePath, "the-revision");
+            await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
             var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
 
-            await Assert.ThrowsAsync<SnapshotLoadException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters));
+            await Assert.ThrowsAsync<SnapshotLoadException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
         }
         finally
         {

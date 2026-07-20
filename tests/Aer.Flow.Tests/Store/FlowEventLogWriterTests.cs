@@ -15,8 +15,8 @@ public class FlowEventLogWriterTests
         using var buffer = new MemoryStream();
         await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
 
-        await writer.AppendAsync(MakeEvent("exec-1"));
-        await writer.AppendAsync(MakeEvent("exec-2"));
+        await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+        await writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken);
 
         var text = Encoding.UTF8.GetString(buffer.ToArray());
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -35,12 +35,12 @@ public class FlowEventLogWriterTests
         {
             await using (var writer = new FlowEventLogWriter(path))
             {
-                await writer.AppendAsync(MakeEvent("exec-1"));
-                await writer.AppendAsync(MakeEvent("exec-2"));
-                await writer.AppendAsync(MakeEvent("exec-3"));
+                await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(MakeEvent("exec-3"), TestContext.Current.CancellationToken);
             }
 
-            var lines = await File.ReadAllLinesAsync(path);
+            var lines = await File.ReadAllLinesAsync(path, TestContext.Current.CancellationToken);
             var ids = lines.Select(l => DeserializeExecutionSucceeded(l).ExecutionId.Value).ToArray();
 
             Assert.Equal(new[] { "exec-1", "exec-2", "exec-3" }, ids);
@@ -60,7 +60,7 @@ public class FlowEventLogWriterTests
             await using var stream = new FlushTrackingFileStream(path);
             await using var writer = new FlowEventLogWriter(stream, leaveOpen: true);
 
-            await writer.AppendAsync(MakeEvent("exec-1"));
+            await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
 
             Assert.True(stream.FlushedToDisk);
         }
@@ -79,8 +79,8 @@ public class FlowEventLogWriterTests
         await using var faulting = new TornWriteStream(buffer, callsBeforeFault: 1, truncateToBytes: 5);
         await using var writer = new FlowEventLogWriter(faulting, leaveOpen: true);
 
-        await writer.AppendAsync(MakeEvent("exec-1"));
-        await Assert.ThrowsAsync<IOException>(() => writer.AppendAsync(MakeEvent("exec-2")));
+        await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<IOException>(() => writer.AppendAsync(MakeEvent("exec-2"), TestContext.Current.CancellationToken));
 
         var text = Encoding.UTF8.GetString(buffer.ToArray());
         var lastNewline = text.LastIndexOf('\n');
@@ -119,7 +119,7 @@ public class FlowEventLogWriterTests
         using var buffer = new MemoryStream();
         await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync((FlowEvent)null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync((FlowEvent)null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class FlowEventLogWriterTests
         using var buffer = new MemoryStream();
         await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync((CoreEvent)null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => writer.AppendAsync((CoreEvent)null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -137,8 +137,8 @@ public class FlowEventLogWriterTests
         using var buffer = new MemoryStream();
         await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
 
-        await writer.AppendAsync(MakeEvent("exec-1"));
-        await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 123));
+        await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+        await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 123), TestContext.Current.CancellationToken);
 
         var lines = Encoding.UTF8.GetString(buffer.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
 

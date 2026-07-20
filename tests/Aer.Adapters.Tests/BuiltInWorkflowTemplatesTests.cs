@@ -74,7 +74,7 @@ public class BuiltInWorkflowTemplatesTests
         var tempDir = Path.Combine(Path.GetTempPath(), "aer_template_test_" + Guid.NewGuid().ToString("N"));
         try
         {
-            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "gemini", tempDir);
+            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "gemini", tempDir, cancellationToken: TestContext.Current.CancellationToken);
 
             var workflowPath = Path.Combine(tempDir, "workflow.json");
             var bindingsPath = Path.Combine(tempDir, "bindings.json");
@@ -86,8 +86,8 @@ public class BuiltInWorkflowTemplatesTests
             Assert.True(File.Exists(metaWorkflow));
             Assert.True(File.Exists(metaBindings));
 
-            var loadedDef = await WorkflowDefinitionParser.LoadFromFileAsync(workflowPath);
-            var loadedBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsPath);
+            var loadedDef = await WorkflowDefinitionParser.LoadFromFileAsync(workflowPath, TestContext.Current.CancellationToken);
+            var loadedBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsPath, TestContext.Current.CancellationToken);
 
             Assert.Equal("review-run-template", loadedDef.WorkflowTemplateId.Value);
             Assert.Equal(2, loadedBindings.Count);

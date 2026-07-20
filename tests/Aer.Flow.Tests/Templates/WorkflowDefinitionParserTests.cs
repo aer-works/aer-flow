@@ -50,10 +50,10 @@ public class WorkflowDefinitionParserTests
     public async Task LoadFromFileAsync_reads_and_parses_a_template_file()
     {
         var path = Path.Combine(Path.GetTempPath(), $"template-{Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(ThreeStepLinearDefinition()));
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(ThreeStepLinearDefinition()), TestContext.Current.CancellationToken);
         try
         {
-            var parsed = await WorkflowDefinitionParser.LoadFromFileAsync(path);
+            var parsed = await WorkflowDefinitionParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
 
             Assert.Equal(3, parsed.Steps.Count);
         }

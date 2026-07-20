@@ -48,8 +48,8 @@ public class WorkflowDefinitionWriterTests
         {
             var definition = ThreeStepLinearDefinition();
 
-            await WorkflowDefinitionWriter.SaveToFileAsync(definition, path);
-            var parsed = await WorkflowDefinitionParser.LoadFromFileAsync(path);
+            await WorkflowDefinitionWriter.SaveToFileAsync(definition, path, TestContext.Current.CancellationToken);
+            var parsed = await WorkflowDefinitionParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
 
             Assert.Equal(definition.WorkflowTemplateId, parsed.WorkflowTemplateId);
             Assert.Equal(definition.WorkflowTemplateVersion, parsed.WorkflowTemplateVersion);
@@ -81,8 +81,8 @@ public class WorkflowDefinitionWriterTests
         {
             var definition = new WorkflowDefinition(new WorkflowTemplateId("brand-new"), WorkflowTemplateVersion: 1, Steps: []);
 
-            await WorkflowDefinitionWriter.SaveToFileAsync(definition, path);
-            var parsed = await WorkflowDefinitionParser.LoadFromFileAsync(path);
+            await WorkflowDefinitionWriter.SaveToFileAsync(definition, path, TestContext.Current.CancellationToken);
+            var parsed = await WorkflowDefinitionParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
 
             Assert.Equal("brand-new", parsed.WorkflowTemplateId.Value);
             Assert.Equal(1, parsed.WorkflowTemplateVersion);
@@ -108,7 +108,7 @@ public class WorkflowDefinitionWriterTests
             ]);
 
         var exception = await Assert.ThrowsAsync<WorkflowDefinitionValidationException>(
-            () => WorkflowDefinitionWriter.SaveToFileAsync(invalid, path));
+            () => WorkflowDefinitionWriter.SaveToFileAsync(invalid, path, TestContext.Current.CancellationToken));
 
         Assert.Contains(exception.Errors, error => error.Contains("Duplicate StepId"));
         Assert.False(File.Exists(path));
@@ -122,7 +122,7 @@ public class WorkflowDefinitionWriterTests
         try
         {
             await WorkflowDefinitionWriter.SaveToFileAsync(
-                ThreeStepLinearDefinition(), path);
+                ThreeStepLinearDefinition(), path, TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(path));
         }

@@ -54,14 +54,14 @@ public class MutationInterfaceLiveCancellationTests
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                inFlightExecutions: registry);
+                inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             var firstRound = new[] { await ReadNextDispatchAsync(stub), await ReadNextDispatchAsync(stub) };
             Assert.Equal(new HashSet<StepId> { B, C }, new HashSet<StepId>(firstRound));
 
             var bExecutionId = await GetExecutionIdAsync(reader, B);
 
-            await registry.RequestCancellationAsync(bExecutionId);
+            await registry.RequestCancellationAsync(bExecutionId, TestContext.Current.CancellationToken);
             cResult.SetResult(Succeeded);
 
             var finalState = await AwaitWithTimeoutAsync(workflowTask);
@@ -72,7 +72,7 @@ public class MutationInterfaceLiveCancellationTests
 
             // No retry despite B's remaining budget (§10): Cancelled is never retried, so exactly one
             // ExecutionRequestAccepted for B exists, and it's still the projected latest.
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events, e => e is FlowEvent.ExecutionRequestAccepted era && era.Request.StepId == B);
             Assert.Equal(bExecutionId, finalState.Steps.Single(s => s.StepId == B).LatestExecutionId);
 
@@ -123,7 +123,7 @@ public class MutationInterfaceLiveCancellationTests
 
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Cancelled, step.Status));
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(2, events.Count(e => e is FlowEvent.CancellationRequested));
             Assert.Equal(2, events.Count(e => e is FlowEvent.ExecutionCancelled));
 
@@ -160,12 +160,12 @@ public class MutationInterfaceLiveCancellationTests
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
-                inFlightExecutions: registry);
+                inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await ReadNextDispatchAsync(stub);
             var hExecutionId = await GetExecutionIdAsync(reader, H);
 
-            await registry.RequestCancellationAsync(hExecutionId);
+            await registry.RequestCancellationAsync(hExecutionId, TestContext.Current.CancellationToken);
 
             var finalState = await AwaitWithTimeoutAsync(workflowTask);
 
@@ -191,11 +191,11 @@ public class MutationInterfaceLiveCancellationTests
             var reader = new FlowEventLogReader(logPath);
             var registry = new InFlightExecutionRegistry();
 
-            var eventsBefore = await reader.ReadAllAsync();
+            var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
-            await registry.RequestCancellationAsync(new ExecutionId("never-dispatched"));
+            await registry.RequestCancellationAsync(new ExecutionId("never-dispatched"), TestContext.Current.CancellationToken);
 
-            var eventsAfter = await reader.ReadAllAsync();
+            var eventsAfter = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventsBefore.Count, eventsAfter.Count);
         }
         finally

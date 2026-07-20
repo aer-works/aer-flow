@@ -58,14 +58,14 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-1"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-1"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
             var publisherExecutionId = finalState.Steps.Single(s => s.StepId == Publisher).LatestExecutionId!.Value;
             var summaryPath = Path.Combine(artifactsRoot, $"execution_{publisherExecutionId}", "summary");
             Assert.True(File.Exists(summaryPath));
-            Assert.Equal("architect", (await File.ReadAllTextAsync(summaryPath)).Trim());
+            Assert.Equal("architect", (await File.ReadAllTextAsync(summaryPath, TestContext.Current.CancellationToken)).Trim());
         }
         finally
         {
@@ -109,14 +109,14 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-3"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-3"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
             Assert.Equal(0, finalState.Steps.Single(s => s.StepId == Architect).ConsecutiveFailureCount);
 
             // §10's history shape: two distinct ExecutionIds for Architect, the first failed and
             // the second succeeded — neither event mutated or removed.
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var architectAttempts = events
                 .OfType<FlowEvent.ExecutionRequestAccepted>()
                 .Where(e => e.Request.StepId == Architect)
@@ -161,7 +161,7 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-2"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher);
+                new WorkflowId("wf-2"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepState = Assert.Single(finalState.Steps);
             Assert.Equal(StepStatus.Failed, stepState.Status);

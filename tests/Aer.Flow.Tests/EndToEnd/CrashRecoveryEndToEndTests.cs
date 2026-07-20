@@ -57,7 +57,7 @@ public class CrashRecoveryEndToEndTests
 
             // The same attempt, not a retry: still exactly one ExecutionRequestAccepted for it.
             var reader = new FlowEventLogReader(logPath);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events.OfType<FlowEvent.ExecutionRequestAccepted>());
 
             await AssertResultFileExistsAsync(artifactsRoot, originalExecutionId);
@@ -82,7 +82,7 @@ public class CrashRecoveryEndToEndTests
                 // Tells the still-running host's own background watcher to request cancellation
                 // in-process (the only real delivery point for a live execution, M10 Phase 2) —
                 // never forwarded to Core, since the paused dispatcher never lets a real one start.
-                await File.WriteAllTextAsync(cancelSignal, "go");
+                await File.WriteAllTextAsync(cancelSignal, "go", TestContext.Current.CancellationToken);
                 await WaitForLogConditionAsync(logPath, s => s.FlowEvents.OfType<FlowEvent.CancellationRequested>().Any());
 
                 await KillAndWaitAsync(host);
@@ -105,9 +105,9 @@ public class CrashRecoveryEndToEndTests
 
             // The cancel won outright: never dispatched, so still exactly one ExecutionRequestAccepted.
             var reader = new FlowEventLogReader(logPath);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events.OfType<FlowEvent.ExecutionRequestAccepted>());
-            Assert.Empty(await reader.ReadAllCoreEventsAsync());
+            Assert.Empty(await reader.ReadAllCoreEventsAsync(TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -148,7 +148,7 @@ public class CrashRecoveryEndToEndTests
             Assert.Equal(originalExecutionId, stepState.LatestExecutionId);
 
             var reader = new FlowEventLogReader(logPath);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events.OfType<FlowEvent.ExecutionRequestAccepted>());
             Assert.Single(events, e => e is FlowEvent.ExecutionSucceeded es && es.ExecutionId == originalExecutionId);
 
@@ -176,7 +176,7 @@ public class CrashRecoveryEndToEndTests
                 // it is genuinely running right now, not that it has already exited.
                 await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
 
-                var started = (await new FlowEventLogReader(logPath).ReadAllCoreEventsAsync())
+                var started = (await new FlowEventLogReader(logPath).ReadAllCoreEventsAsync(TestContext.Current.CancellationToken))
                     .OfType<CoreEvent.ExecutionStarted>().Single();
                 orphanedChildPid = checked((int)started.Pid);
 
@@ -203,7 +203,7 @@ public class CrashRecoveryEndToEndTests
             Assert.NotEqual(orphanExecutionId, stepState.LatestExecutionId);
 
             var reader = new FlowEventLogReader(logPath);
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(2, events.OfType<FlowEvent.ExecutionRequestAccepted>().Count());
             var abandoned = Assert.Single(events.OfType<FlowEvent.ExecutionFailed>());
             Assert.Equal(orphanExecutionId, abandoned.ExecutionId);

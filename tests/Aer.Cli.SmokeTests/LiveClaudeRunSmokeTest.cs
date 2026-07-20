@@ -36,7 +36,7 @@ public class LiveClaudeRunSmokeTest
         {
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default)).State;
+            var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(2, finalState.Steps.Count);

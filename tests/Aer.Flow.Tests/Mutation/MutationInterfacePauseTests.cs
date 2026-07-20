@@ -43,7 +43,7 @@ public class MutationInterfacePauseTests
             var bindings = MakeBindings();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
@@ -54,7 +54,7 @@ public class MutationInterfacePauseTests
             Assert.Equal(StepStatus.Paused, finalState.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Pending, finalState.Steps.Single(s => s.StepId == B).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.WorkflowPaused paused && paused.StepId == A);
             Assert.DoesNotContain(events, e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId == B);
         }
@@ -81,7 +81,7 @@ public class MutationInterfacePauseTests
             var bindings = MakeBindings();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             attempt1.SetResult(Failed);
@@ -95,7 +95,7 @@ public class MutationInterfacePauseTests
 
             Assert.Equal(StepStatus.Paused, Assert.Single(finalState.Steps).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Single(events.OfType<FlowEvent.WorkflowPaused>());
             Assert.Equal(2, events.OfType<FlowEvent.ExecutionRequestAccepted>().Count());
         }
@@ -121,7 +121,7 @@ public class MutationInterfacePauseTests
             var bindings = MakeBindings();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
@@ -131,7 +131,7 @@ public class MutationInterfacePauseTests
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, Assert.Single(finalState.Steps).Status);
 
-            var events = await reader.ReadAllAsync();
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.DoesNotContain(events, e => e is FlowEvent.WorkflowPaused);
         }
         finally
@@ -156,19 +156,19 @@ public class MutationInterfacePauseTests
             var bindings = MakeBindings();
 
             var firstRunTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             await firstRunTask;
 
-            var eventsAfterFirstRun = await reader.ReadAllAsync();
+            var eventsAfterFirstRun = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             // Nothing enqueued on the stub for this second call: if the pump dispatched anything at
             // all, StubCoreDispatcher would throw.
             var secondRunState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub);
+                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
-            var eventsAfterSecondRun = await reader.ReadAllAsync();
+            var eventsAfterSecondRun = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Equal(eventsAfterFirstRun.Count, eventsAfterSecondRun.Count);
             Assert.Equal(WorkflowStatus.Paused, secondRunState.Status);
         }
