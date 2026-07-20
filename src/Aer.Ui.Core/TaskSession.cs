@@ -57,6 +57,7 @@ public sealed class TaskSession
     private readonly Action _mutationStarted;
     private readonly Action _mutationFailed;
     private readonly Func<string, CancellationToken, Task> _reopenTaskAsync;
+    private readonly Action<TaskProjection, string>? _onProjectionUpdated;
     private readonly string? _daemonUrl;
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
@@ -111,6 +112,7 @@ public sealed class TaskSession
         Action mutationStarted,
         Action mutationFailed,
         Func<string, CancellationToken, Task> reopenTaskAsync,
+        Action<TaskProjection, string>? onProjectionUpdated = null,
         string? daemonUrl = null)
     {
         _configurationStore = configurationStore;
@@ -120,6 +122,7 @@ public sealed class TaskSession
         _mutationStarted = mutationStarted;
         _mutationFailed = mutationFailed;
         _reopenTaskAsync = reopenTaskAsync;
+        _onProjectionUpdated = onProjectionUpdated;
         _daemonUrl = daemonUrl;
     }
 
@@ -421,6 +424,12 @@ public sealed class TaskSession
         }
     }
 
+    private static readonly JsonSerializerOptions DefaultJsonOptions = new()
+    {
+        Converters = { new JsonStringEnumConverter() },
+        PropertyNameCaseInsensitive = true
+    };
+
     private async Task ReceiveWebSocketDataAsync(ClientWebSocket webSocket, CancellationToken cancellationToken)
     {
         var buffer = new byte[1024 * 1024];
@@ -428,30 +437,43 @@ public sealed class TaskSession
         {
             while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(true);
-                if (result.MessageType == WebSocketMessageType.Close)
+                using var ms = new MemoryStream();
+                WebSocketReceiveResult result;
+                do
                 {
-                    break;
-                }
+                    result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(true);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        return;
+                    }
+                    ms.Write(buffer, 0, result.Count);
+                } while (!result.EndOfMessage);
 
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
-                    var json = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    var projection = JsonSerializer.Deserialize<TaskProjection>(json, new JsonSerializerOptions
-                    {
-                        Converters = { new JsonStringEnumConverter() },
-                        PropertyNameCaseInsensitive = true
-                    });
+                    ms.Position = 0;
+                    var projection = await JsonSerializer.DeserializeAsync<TaskProjection>(ms, DefaultJsonOptions, cancellationToken).ConfigureAwait(true);
 
                     if (projection != null && CurrentTaskDirectoryPath != null)
                     {
                         if (_syncContext != null)
                         {
-                            _syncContext.Post(_ => UpdateProjection(projection), null);
+                            _syncContext.Post(_ =>
+                            {
+                                UpdateProjection(projection);
+                                if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                                {
+                                    _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                                }
+                            }, null);
                         }
                         else
                         {
                             UpdateProjection(projection);
+                            if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                            {
+                                _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                            }
                         }
                     }
                 }
@@ -489,7 +511,7 @@ public sealed class TaskSession
                 var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/open", new OpenTaskRequest(taskDirectoryPath), cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
-                    var projection = await response.Content.ReadFromJsonAsync<TaskProjection>(cancellationToken: cancellationToken).ConfigureAwait(true);
+                    var projection = await response.Content.ReadFromJsonAsync<TaskProjection>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
                     if (projection != null)
                     {
                         UpdateProjection(projection);
@@ -591,6 +613,7 @@ public sealed class TaskSession
                         await _configurationStore.RecordWorkflowTemplateFilePathAsync(workflowTemplateFilePath, cancellationToken).ConfigureAwait(true);
                     }
                     await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
+                    await RecordTaskPathMetadataAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
                     await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
@@ -642,6 +665,7 @@ public sealed class TaskSession
             }
 
             await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
+            await RecordTaskPathMetadataAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
         }
         catch (AerFlowException ex)
         {
@@ -660,6 +684,27 @@ public sealed class TaskSession
 
         await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
+    }
+
+    private static async Task RecordTaskPathMetadataAsync(string taskDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var aerDir = Path.Combine(taskDirectoryPath, ".aer");
+            Directory.CreateDirectory(aerDir);
+            if (!string.IsNullOrWhiteSpace(workflowTemplateFilePath))
+            {
+                await File.WriteAllTextAsync(Path.Combine(aerDir, "workflow-path"), workflowTemplateFilePath, cancellationToken).ConfigureAwait(false);
+            }
+            if (!string.IsNullOrWhiteSpace(bindingsFilePath))
+            {
+                await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Best effort
+        }
     }
 
     /// <summary>
@@ -888,7 +933,7 @@ public sealed class TaskSession
             var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/version", cancellationToken).ConfigureAwait(true);
             if (!response.IsSuccessStatusCode) return null;
 
-            var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
             if (meta == null) return null;
 
             var port = new Uri(_activeDaemonUrl).Port;
@@ -909,7 +954,7 @@ public sealed class TaskSession
             var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/pairing/code", cancellationToken).ConfigureAwait(true);
             if (!response.IsSuccessStatusCode) return null;
 
-            return await response.Content.ReadFromJsonAsync<PairingCode>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            return await response.Content.ReadFromJsonAsync<PairingCode>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
         }
         catch
         {
@@ -930,7 +975,7 @@ public sealed class TaskSession
             var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/pairing/clients", cancellationToken).ConfigureAwait(true);
             if (!response.IsSuccessStatusCode) return null;
 
-            return await response.Content.ReadFromJsonAsync<IReadOnlyList<PairedClientInfo>>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            return await response.Content.ReadFromJsonAsync<IReadOnlyList<PairedClientInfo>>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
         }
         catch
         {
@@ -970,7 +1015,7 @@ public sealed class TaskSession
             var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/remote/sidecar-status", cancellationToken).ConfigureAwait(true);
             if (!response.IsSuccessStatusCode) return null;
 
-            return await response.Content.ReadFromJsonAsync<SidecarStatus>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            return await response.Content.ReadFromJsonAsync<SidecarStatus>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
         }
         catch
         {

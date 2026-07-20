@@ -182,6 +182,7 @@ public partial class MainWindow : Window
             mutationStarted: _liveRefreshTimer.Start,
             mutationFailed: _liveRefreshTimer.Stop,
             reopenTaskAsync: (taskDirectoryPath, cancellationToken) => OpenAsync(taskDirectoryPath, cancellationToken),
+            onProjectionUpdated: (projection, taskDirectoryPath) => RenderProjection(projection, taskDirectoryPath),
             daemonUrl: daemonUrl);
 
         // M16 Phase 4 (issue #153): adapter names are offered from the registry this window was
@@ -452,11 +453,15 @@ public partial class MainWindow : Window
 
         if (File.Exists(taskDirectoryPath) && !Directory.Exists(taskDirectoryPath))
         {
+            WorkflowTemplatePathBox.Text = taskDirectoryPath;
             _session.SetCurrentTaskDirectory(null);
             await LoadTemplateAsync(taskDirectoryPath, cancellationToken);
             _liveRefreshTimer.Stop();
             return;
         }
+
+        BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
+        WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
 
         _session.SetCurrentTaskDirectory(taskDirectoryPath);
 
@@ -654,6 +659,32 @@ public partial class MainWindow : Window
             ClearProjectionPanels();
             ViewModel.IsTaskFinished = false;
             return;
+        }
+
+        RenderProjection(projection, taskDirectoryPath);
+    }
+
+    /// <summary>
+    /// Renders a loaded <see cref="TaskProjection"/> across all view panels without re-querying the session.
+    /// </summary>
+    public void RenderProjection(TaskProjection projection, string taskDirectoryPath)
+    {
+        TaskDirectoryPathBox.Text = taskDirectoryPath;
+
+        var workflowPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "workflow-path");
+        if (File.Exists(workflowPathFile))
+        {
+            try { WorkflowTemplatePathBox.Text = File.ReadAllText(workflowPathFile).Trim(); } catch { }
+        }
+        else if (projection.Snapshot.WorkflowTemplateId.Value is { } id && !string.IsNullOrEmpty(id))
+        {
+            WorkflowTemplatePathBox.Text = id;
+        }
+
+        var bindingsPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path");
+        if (File.Exists(bindingsPathFile))
+        {
+            try { BindingsFilePathBox.Text = File.ReadAllText(bindingsPathFile).Trim(); } catch { }
         }
 
         ViewModel.IsTaskFinished = projection.State.Status == WorkflowStatus.Terminal;
