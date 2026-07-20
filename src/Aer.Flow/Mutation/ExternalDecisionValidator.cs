@@ -79,6 +79,28 @@ public static class ExternalDecisionValidator
                 }
 
                 var targetState = state.Steps.Single(step => step.StepId == target);
+
+                // M23 Phase 2 (#271): a prior Supersede already named this target and its
+                // consequence (the re-dispatch StateProjector derives from WorkflowResumed) has not
+                // landed yet — StepState.IsPendingSupersedeTarget stays true, and the target's
+                // Status still reads the stale pre-Supersede Succeeded (StateProjector only updates
+                // it once a fresh ExecutionRequestAccepted is recorded), so the Status check below
+                // alone would not catch this. A second Supersede admitted here would silently clobber
+                // the first's StepState.PendingSupplementaryExecutionId — StateProjector's
+                // pendingSupplementaryExecutionIdByStepId is a plain last-write-wins assignment keyed
+                // by StepId — losing the first decision's supplement entirely. Rejecting here instead
+                // is a chain, not a hygiene nicety: this is the exact race a crash between recording
+                // WorkflowResumed and the pump's re-dispatch reopens, since the concurrency guard
+                // alone cannot rule it out across a restart. A second Supersede against the *same*
+                // target is legal once this cycle's consequence has actually settled (Status back to
+                // Succeeded, IsPendingSupersedeTarget false) — the repeated-supersede chain M24's chat
+                // primitive depends on.
+                if (targetState.IsPendingSupersedeTarget)
+                {
+                    throw new InvalidExternalDecisionException(
+                        $"Supersede target '{target}' already has a pending Supersede consequence that has not been dispatched yet.");
+                }
+
                 if (targetState.Status != StepStatus.Succeeded)
                 {
                     throw new InvalidExternalDecisionException($"Supersede target '{target}' has not succeeded.");
