@@ -10,44 +10,44 @@ The behavioral spec (`spec/aer-flow-behavioral-spec-v1.0.md`) is authoritative f
 
 What subsystems exist, derived from the spec. Not chronological — this is architecture, not a build order.
 
-| # | Subsystem | Spec reference |
-|---|---|---|
-| 1 | **Log Manager** | Atomic append to `flow.jsonl`; fsync write-before-dispatch ordering | §5, §7 |
-| 2 | **State Projector** | `Project(EventStore, Snapshot) → FlowState`; causal linking by `ExecutionId` | §12, §13 |
-| 3 | **Template Parser** | Load and validate `WorkflowDefinition` from file | §11.1 |
-| 4 | **Snapshot Binder** | Freeze template into immutable `WorkflowDefinitionSnapshot` at task creation | §11.2 |
-| 5 | **Dependency Resolver** | §11.3 readiness check: condition 1 (dependency succeeded) + condition 2 (staleness via `UpstreamExecutionIds`) | §11.3 |
-| 6 | **Artifact Manager** | Pre-allocate `artifacts/execution_{N}/`; assign immutable input/output paths before dispatch | §16 |
-| 7 | **Core Dispatcher** | Emit `ExecutionRequest` to aer-core M5 binding; receive `AerEvent` callbacks | §3, §12 |
-| 8 | **Outcome Classifier** | Map Core exit reason + output existence to `ExecutionSucceeded/Failed/Cancelled` | §8 |
-| 9 | **Contract Validator** | Assert all `ProducedOutputs` exist on disk before classifying as succeeded | §8 |
-| 10 | **Retry Engine** | On `ExecutionFailed`, generate new `ExecutionRequest` with new `ExecutionId` per `RetryPolicy` | §10 |
-| 11 | **Mutation Interface** | Single entry point for all external state changes; no other mutation path exists | §14 |
-| 12 | **Concurrency Guard** | At most one writer per task namespace; file lock (not sentinel file) | §15 |
-| 13 | **Pause Engine** | `PausePoint` handling; emit `WorkflowPaused`; idle until decision arrives | §17.1 |
-| 14 | **External Decision Handler** | `ExternalDecisionRecorded`; `Resume/Reject/RetryWithRevision/Supersede` | §17.2 |
-| 15 | **Supersede + Invalidation Cascade** | New execution for superseded step; staleness propagates forward via §11.3 condition 2 automatically | §17.5 |
-| 16 | **Human Worker Support** | Non-process `ExecutionRequest`; completion detected by file existence, not Core exit | §17.3 |
+| #   | Subsystem                            | Spec reference                                                                                                 |
+| --- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| 1   | **Log Manager**                      | Atomic append to `flow.jsonl`; fsync write-before-dispatch ordering                                            | §5, §7   |
+| 2   | **State Projector**                  | `Project(EventStore, Snapshot) → FlowState`; causal linking by `ExecutionId`                                   | §12, §13 |
+| 3   | **Template Parser**                  | Load and validate `WorkflowDefinition` from file                                                               | §11.1    |
+| 4   | **Snapshot Binder**                  | Freeze template into immutable `WorkflowDefinitionSnapshot` at task creation                                   | §11.2    |
+| 5   | **Dependency Resolver**              | §11.3 readiness check: condition 1 (dependency succeeded) + condition 2 (staleness via `UpstreamExecutionIds`) | §11.3    |
+| 6   | **Artifact Manager**                 | Pre-allocate `artifacts/execution_{N}/`; assign immutable input/output paths before dispatch                   | §16      |
+| 7   | **Core Dispatcher**                  | Emit `ExecutionRequest` to aer-core M5 binding; receive `AerEvent` callbacks                                   | §3, §12  |
+| 8   | **Outcome Classifier**               | Map Core exit reason + output existence to `ExecutionSucceeded/Failed/Cancelled`                               | §8       |
+| 9   | **Contract Validator**               | Assert all `ProducedOutputs` exist on disk before classifying as succeeded                                     | §8       |
+| 10  | **Retry Engine**                     | On `ExecutionFailed`, generate new `ExecutionRequest` with new `ExecutionId` per `RetryPolicy`                 | §10      |
+| 11  | **Mutation Interface**               | Single entry point for all external state changes; no other mutation path exists                               | §14      |
+| 12  | **Concurrency Guard**                | At most one writer per task namespace; file lock (not sentinel file)                                           | §15      |
+| 13  | **Pause Engine**                     | `PausePoint` handling; emit `WorkflowPaused`; idle until decision arrives                                      | §17.1    |
+| 14  | **External Decision Handler**        | `ExternalDecisionRecorded`; `Resume/Reject/RetryWithRevision/Supersede`                                        | §17.2    |
+| 15  | **Supersede + Invalidation Cascade** | New execution for superseded step; staleness propagates forward via §11.3 condition 2 automatically            | §17.5    |
+| 16  | **Human Worker Support**             | Non-process `ExecutionRequest`; completion detected by file existence, not Core exit                           | §17.3    |
 
 **Product layer** — subsystems beyond the v1.0 engine, from §21 (the CLI is the pump), the adapter spike (#21), and the UI spec. These are what turn the engine library into a runnable product; introduced M11 onward.
 
-| # | Subsystem | Reference |
-|---|---|---|
-| 17 | **Worker Adapter** | Canonical worker-invocation protocol; per-vendor CLI isolation (Claude, then Gemini/`agy`) behind `IWorkerAdapter` → `CoreDispatchTarget` | CLAUDE.md rule #2; §3, §4; #21 |
-| 18 | **CLI Pump** | `aer run`: load workflow + bindings, drive project → resolve → dispatch → await to a terminal state | §21 |
-| 19 | **CLI Mutation Commands** | `aer decide` / `aer cancel` against a running or paused task | §14, §21; UI spec §7 |
-| 20 | **Distribution** | `aer` as an installable `dotnet tool`; native-lib bundling | AER Overview §6 |
-| 21 | **UI Projection** | Read model + views: deterministic reconstruction from bound snapshots, event stores, and artifact directories; DAG/timeline/lineage rendering | UI spec §1, §3, §10–§12 |
-| 22 | **UI Control Surface** | The §7 user actions (approve/reject/retry-with-revision/send-back/cancel/start) mapped onto Flow's closed `DecisionType` set, exclusively via the mutation interface | UI spec §6, §7 |
-| 23 | **UI Authoring** | Template/DAG/worker-binding editing with structural validation (cycles, `SupersedeTargets` ancestry); never touches a bound snapshot | UI spec §5, §8, §9 |
-| 24 | **Dialogue Worker** | The first Case 2 encapsulated multi-model worker: a bounded, multi-turn Claude ↔ Gemini exchange inside one `ExecutionRequest`, recorded as a durable transcript artifact; vendor CLIs invoked inside the worker boundary, subscriptions-only like the adapters | Flow spec §18.2; UI spec §10 |
-| 25 | **Conversation View** | Render a dialogue execution's durable transcript as a conversation-style projection | UI spec §10 |
-| 26 | **Daemon Network API** | Task read model + mutation interface exposed over REST/WebSocket (`Aer.Daemon`); loopback by default, `--remote` binds beyond it; pairing protocol mints long-lived paired-client tokens | M20 decisions of record |
-| 27 | **Permission Scope Model** | Vendor-neutral structured worker permission grants (categories: `ReadFiles`/`WriteFiles`/`RunShellCommands` with a pattern allowlist/`NetworkAccess`) replacing the opaque `PermissionScope` string, translated per-vendor inside each adapter's `Resolve` (Adapter Isolation) | CLAUDE.md rule #2 |
-| 28 | **Mobile Remote Client** | `Aer.Mobile` (Flutter/Android): pairing, a WebSocket-driven decision inbox, Approve/Reject/Cancel over the existing daemon REST API | — |
-| 29 | **Zero-Config Tailscale Transport** | Embedded `tsnet` (a Go sidecar the daemon supervises) on desktop, `flutter_tsnet` on mobile — no separate Tailscale app install required by the end user, BYO free Tailscale account | — |
-| 30 | **Workflow Template Library** | Built-in, pre-authored `WorkflowDefinition`+bindings pairs (Solo run, Review run) a user picks from instead of hand-authoring; daemon-side materialization so a client with no filesystem access (a phone) can start a task | — |
-| 31 | **Artifact-Referenced Supply** | Decide-by-artifact-reference (execution id + filename, resolved server-side via the Artifact Manager) as an alternative to `aer supply`'s raw local `SourceFilePath`, so a client with no filesystem access can send an already-produced artifact back as Supersede revision content | §17.2, §17.5; §16 |
+| #   | Subsystem                           | Reference                                                                                                                                                                                                                                                                            |
+| --- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 17  | **Worker Adapter**                  | Canonical worker-invocation protocol; per-vendor CLI isolation (Claude, then Gemini/`agy`) behind `IWorkerAdapter` → `CoreDispatchTarget`                                                                                                                                            | CLAUDE.md rule #2; §3, §4; #21 |
+| 18  | **CLI Pump**                        | `aer run`: load workflow + bindings, drive project → resolve → dispatch → await to a terminal state                                                                                                                                                                                  | §21                            |
+| 19  | **CLI Mutation Commands**           | `aer decide` / `aer cancel` against a running or paused task                                                                                                                                                                                                                         | §14, §21; UI spec §7           |
+| 20  | **Distribution**                    | `aer` as an installable `dotnet tool`; native-lib bundling                                                                                                                                                                                                                           | AER Overview §6                |
+| 21  | **UI Projection**                   | Read model + views: deterministic reconstruction from bound snapshots, event stores, and artifact directories; DAG/timeline/lineage rendering                                                                                                                                        | UI spec §1, §3, §10–§12        |
+| 22  | **UI Control Surface**              | The §7 user actions (approve/reject/retry-with-revision/send-back/cancel/start) mapped onto Flow's closed `DecisionType` set, exclusively via the mutation interface                                                                                                                 | UI spec §6, §7                 |
+| 23  | **UI Authoring**                    | Template/DAG/worker-binding editing with structural validation (cycles, `SupersedeTargets` ancestry); never touches a bound snapshot                                                                                                                                                 | UI spec §5, §8, §9             |
+| 24  | **Dialogue Worker**                 | The first Case 2 encapsulated multi-model worker: a bounded, multi-turn Claude ↔ Gemini exchange inside one `ExecutionRequest`, recorded as a durable transcript artifact; vendor CLIs invoked inside the worker boundary, subscriptions-only like the adapters                      | Flow spec §18.2; UI spec §10   |
+| 25  | **Conversation View**               | Render a dialogue execution's durable transcript as a conversation-style projection                                                                                                                                                                                                  | UI spec §10                    |
+| 26  | **Daemon Network API**              | Task read model + mutation interface exposed over REST/WebSocket (`Aer.Daemon`); loopback by default, `--remote` binds beyond it; pairing protocol mints long-lived paired-client tokens                                                                                             | M20 decisions of record        |
+| 27  | **Permission Scope Model**          | Vendor-neutral structured worker permission grants (categories: `ReadFiles`/`WriteFiles`/`RunShellCommands` with a pattern allowlist/`NetworkAccess`) replacing the opaque `PermissionScope` string, translated per-vendor inside each adapter's `Resolve` (Adapter Isolation)       | CLAUDE.md rule #2              |
+| 28  | **Mobile Remote Client**            | `Aer.Mobile` (Flutter/Android): pairing, a WebSocket-driven decision inbox, Approve/Reject/Cancel over the existing daemon REST API                                                                                                                                                  | —                              |
+| 29  | **Zero-Config Tailscale Transport** | Embedded `tsnet` (a Go sidecar the daemon supervises) on desktop, `flutter_tsnet` on mobile — no separate Tailscale app install required by the end user, BYO free Tailscale account                                                                                                 | —                              |
+| 30  | **Workflow Template Library**       | Built-in, pre-authored `WorkflowDefinition`+bindings pairs (Solo run, Review run) a user picks from instead of hand-authoring; daemon-side materialization so a client with no filesystem access (a phone) can start a task                                                          | —                              |
+| 31  | **Artifact-Referenced Supply**      | Decide-by-artifact-reference (execution id + filename, resolved server-side via the Artifact Manager) as an alternative to `aer supply`'s raw local `SourceFilePath`, so a client with no filesystem access can send an already-produced artifact back as Supersede revision content | §17.2, §17.5; §16              |
 
 ---
 
@@ -55,27 +55,26 @@ What subsystems exist, derived from the spec. Not chronological — this is arch
 
 Which milestone introduces which capabilities.
 
-| Milestone | Capabilities introduced | Blocked by |
-|---|---|---|
-| **M7: Foundation** | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12 | aer-core M5 |
-| **M8: Reactive Scheduler** | 10 (Retry Engine); full fan-out/fan-in DAG testing; manifest cache if scale demands | M7 |
-| **M9: External Decisions** | 13, 14, 15, 16 (all pause/decision/supersede/human machinery) | M8 |
-| **M10: Cancellation & Edge Cases** | §9 cancellation flow; crash recovery hardening (§7 full robustness) | M9 |
-| **M11: First Real Run** | 17 (Worker Adapter — Claude only), 18 (CLI Pump) | M10; live aer-core M5 |
-| **M12: Full Control Surface** | 17 (Gemini/`agy` adapter), 19 (`decide`/`cancel`); canonical protocol generalized across vendors | M11 |
-| **M13: Distribution** | 20 | M11 |
-| **M14: UI Projection** | 21 | M11 |
-| **M15: UI Control Surface** | 22 | M14; M12 (`aer decide`/`cancel`/`supply` — the mutation-interface callers it wraps) |
-| **M16: UI Authoring** | 23 | M14 |
-| **M17: Dialogue Worker** | 24 (first Case 2 worker); plus the real-use walkthrough doc | M12 (both vendor CLIs proven live) |
-| **M18: Conversation View** | 25 | M17 (a transcript to project); M14 |
-| **M19: Product UX** | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18 |
-| **M20: Daemonization & Remote Control** | 26 (Daemon Network API) | M19 |
-| **M21: Zero-Config Remote Control & Permission Scopes** | 27 (Permission Scope Model), 28 (Mobile Remote Client), 29 (Zero-Config Tailscale Transport) | M20 |
-| **M22: Workflow Template Library** | 30 (Workflow Template Library), 31 (Artifact-Referenced Supply) | M21 |
-| **M23: Generic Dialogue & Project Packaging** | 32 (Generic Dialogue configuration schema & loops), 33 (Unified Project Package model with profile segregation) | M22 |
-| **M24: UI Visual Overhaul** | 34 (Curve-based Bezier DAG rendering, brand icons), 35 (Rich markdown output previewer), 36 (Keyboard-first triage modal) | M23 |
-
+| Milestone                                               | Capabilities introduced                                                                                                                            | Blocked by                                                                          |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **M7: Foundation**                                      | 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12                                                                                                                  | aer-core M5                                                                         |
+| **M8: Reactive Scheduler**                              | 10 (Retry Engine); full fan-out/fan-in DAG testing; manifest cache if scale demands                                                                | M7                                                                                  |
+| **M9: External Decisions**                              | 13, 14, 15, 16 (all pause/decision/supersede/human machinery)                                                                                      | M8                                                                                  |
+| **M10: Cancellation & Edge Cases**                      | §9 cancellation flow; crash recovery hardening (§7 full robustness)                                                                                | M9                                                                                  |
+| **M11: First Real Run**                                 | 17 (Worker Adapter — Claude only), 18 (CLI Pump)                                                                                                   | M10; live aer-core M5                                                               |
+| **M12: Full Control Surface**                           | 17 (Gemini/`agy` adapter), 19 (`decide`/`cancel`); canonical protocol generalized across vendors                                                   | M11                                                                                 |
+| **M13: Distribution**                                   | 20                                                                                                                                                 | M11                                                                                 |
+| **M14: UI Projection**                                  | 21                                                                                                                                                 | M11                                                                                 |
+| **M15: UI Control Surface**                             | 22                                                                                                                                                 | M14; M12 (`aer decide`/`cancel`/`supply` — the mutation-interface callers it wraps) |
+| **M16: UI Authoring**                                   | 23                                                                                                                                                 | M14                                                                                 |
+| **M17: Dialogue Worker**                                | 24 (first Case 2 worker); plus the real-use walkthrough doc                                                                                        | M12 (both vendor CLIs proven live)                                                  |
+| **M18: Conversation View**                              | 25                                                                                                                                                 | M17 (a transcript to project); M14                                                  |
+| **M19: Product UX**                                     | — product-UX overhaul: task-first IA + decision inbox, plain language, guided authoring (no hand-edited config files), then the visual design pass | M18                                                                                 |
+| **M20: Daemonization & Remote Control**                 | 26 (Daemon Network API)                                                                                                                            | M19                                                                                 |
+| **M21: Zero-Config Remote Control & Permission Scopes** | 27 (Permission Scope Model), 28 (Mobile Remote Client), 29 (Zero-Config Tailscale Transport)                                                       | M20                                                                                 |
+| **M22: Workflow Template Library**                      | 30 (Workflow Template Library), 31 (Artifact-Referenced Supply)                                                                                    | M21                                                                                 |
+| **M23: Generic Dialogue & Project Packaging**           | 32 (Generic Dialogue configuration schema & loops), 33 (Unified Project Package model with profile segregation)                                    | M22                                                                                 |
+| **M24: UI Visual Overhaul**                             | 34 (Curve-based Bezier DAG rendering, brand icons), 35 (Rich markdown output previewer), 36 (Keyboard-first triage modal)                          | M23                                                                                 |
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
@@ -83,368 +82,21 @@ M14–M16 are that UI track, splitting the roadmap's original single "UI" row th
 
 M17–M19 are the post-UI-track sequence, planned at M16's completion by re-checking the original project goal against what had shipped. Half of that goal exists and is proven live: vendor-to-vendor task hand-off on subscriptions (M12's recorded mixed-vendor gate). The other half — letting the two models actually talk to each other — does not: today §17.5's supersede loop makes the *human* the relay for every round of the exchange. **M17** builds the first Case 2 worker (the dialogue worker — the concrete thing the conversation view has been waiting on), opening with the real-use walkthrough the project is also missing. **M18** renders M17's durable transcript as UI spec §10's conversation view — load-on-refresh first; live Observation-Tier turn streaming stays unassigned until a concrete need names it. **M19** was originally scoped as a visual/UX design pass alone ("no new capability"), sequenced last so it styles the UI's final shape. At M18's completion the owner raised the bar: a user should not have to be an AI expert to use the product, and should never have to hand-edit a config file — with CyboFlow's human-first structure (a central view organized by what needs the human next: permission, decision, or action) the named inspiration. M19 is therefore redefined as a product-UX milestone; the original design pass survives as its next-to-last phase, still styling the final shape. M19's phase-by-phase plan lived here through its six phases; see this file's git history for the full text and `docs/decisions-of-record.md` for what it left behind.
 
-**M20** shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`, a
-loopback-only REST/WebSocket host API with token auth, and — ahead of any actual remote client
-existing — a pairing protocol (`--remote` binds beyond loopback; transient codes mint long-lived
-paired-client tokens) so the trust boundary exists before a client needs to cross it. Deliberately
-out of scope for M20, carried forward for whichever milestone builds the actual remote client:
-- **TLS for `--remote` mode.** Currently plaintext HTTP even off-loopback — fine while nothing
-  turns `--remote` on from the UI, not fine once a real client does.
-- **Paired-token expiry and revocation.** `PairedClientsStore` can add a client; nothing removes
-  one short of hand-editing `~/.aer/paired_clients.json`.
-- Pairing-code brute-force resistance (CSPRNG + a 5-attempt lockout) shipped in M20 itself — not
-  deferred, since it was cheap and closes a real hole in the scaffold as committed.
+M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`, a loopback-only REST/WebSocket host API with token auth, and — ahead of any actual remote client existing — a pairing protocol (`--remote` binds beyond loopback; transient codes mint long-lived paired-client tokens) so the trust boundary exists before a client needs to cross it. M20's deferred token management (paired-token revocation and 60-second pairing code expiration) was fully resolved and closed by M21 Phase 6.
+
+**M21** shipped zero-config remote control and structured permission scopes: vendor-neutral `PermissionGrant` models translated inside each adapter (`ReadFiles`, `WriteFiles`, `RunShellCommands`, `NetworkAccess`), `Aer.Mobile` (Flutter/Android) with QR-code pairing and live task streaming over WebSockets, zero-config Tailscale transport (`tsnet` sidecar on desktop, embedded `tsnet` via Go CGO / `tcp.dial` in `Aer.Mobile`), and M20's deferred token management (interactive revocation, 60s pairing code countdown).
 
 ---
 
 ## Current Milestone
 
-**M21: Zero-Config Remote Control & Permission Scopes** — progress:
+**M22: Workflow Template Library** — progress:
 
-- [x] Phase 1 — Permission-Scope Model
-- [x] Phase 2 — `Aer.Mobile`: Flutter Client, Proven Over LAN
-- [x] Phase 3 — Desktop Pairing UX
-- [x] Phase 4 — Cross-Network Proof via Tailscale (Manual Install)
-- [ ] Phase 5 — Zero-Config Tailscale Embedding (Time-Boxed Spike)
-- [ ] Phase 6 — Close M20's Deferred Hardening
-- [x] Phase 7 — `Aer.Mobile`: tsnet Toolchain + Tailnet Join
-- [ ] Phase 8 — `Aer.Mobile`: WS-over-tsnet Transport
-
----
-
-## M21: Zero-Config Remote Control & Permission Scopes — Phase Plan
-
-**Goal:** Prove that AER Flow can be driven remotely from a phone with zero required infrastructure
-(each user's own free Tailscale account, no separate app installs, no App Store), and give workers a
-structured, vendor-neutral permission model instead of hand-typed adapter flag strings. This folds in
-the owner's original candidate-M20 goal — drive AER from a phone the way Claude Code's app
-remote-controls a desktop session — now that M20 has actually shipped the daemon/network-API side of
-it; both of that note's gating questions (reopening the no-daemon spec stance, the new client-auth
-trust boundary) are resolved by M20's decisions of record.
-
-Sequencing principle: zero-config Tailscale embedding (`tsnet`/`flutter_tsnet`) is real, unproven
-engineering risk — no .NET `tsnet` binding exists anywhere, and `flutter_tsnet` is pre-1.0. What
-actually proves "this works" is a phone talking to the daemon end-to-end (pair → auth → WebSocket
-projection → REST decision), which is provable now over plain Tailscale (manual install) or LAN.
-Phases 1–4 build and prove the mobile client first; Phase 5 treats zero-config embedding as a
-time-boxed refinement on top, not a blocker. Phase 6 closes M20's two explicitly-deferred hardening
-items now that a real remote client exists to harden against.
-
-### Phase 1: Permission-Scope Model
-- **Goal**: Replace the opaque `PermissionScope` string (`WorkerInvocation.cs`,
-  `WorkerBindingConfigEntry.cs`) with a structured, vendor-neutral model — categories (`ReadFiles`,
-  `WriteFiles`, `RunShellCommands` with a pattern allowlist, `NetworkAccess`) — surfaced as a builder
-  UI in `Aer.Ui`'s bindings editor, translated per-vendor inside `ClaudeWorkerAdapter.Resolve`/
-  `GeminiWorkerAdapter.Resolve` (today: `--allowedTools <string>` for Claude, `--mode <string>` for
-  Gemini/`agy`, both forwarding the raw string verbatim). Keeps the raw-string field as an "Advanced"
-  escape hatch so existing bindings files round-trip unchanged. Where a category has no clean
-  per-vendor equivalent, surfaces the gap explicitly rather than silently downgrading — verify `agy`'s
-  actual permission vocabulary against its real CLI help before finalizing the translation table, not
-  yet confirmed to have clean parity with Claude's `--allowedTools`. Independent of every other phase.
-- **Verification**: round-trip test — build a scope in the UI, save a binding, resolve through both
-  adapters, assert expected flags; existing hand-written `PermissionScope` strings still load and
-  resolve identically.
-
-### Phase 2: `Aer.Mobile` — Flutter Client, Proven Over LAN
-- **Goal**: New `src/Aer.Mobile/` Flutter/Android app: pairing screen (host + code entry — QR
-  scan deferred to Phase 3, nothing to scan against until the desktop side generates one),
-  a WebSocket-driven decision inbox mirroring `Aer.Ui`'s `TaskProjection` consumption, and
-  Approve/Reject via the existing REST endpoints (`/api/pairing/pair`, `/api/tasks/recent`,
-  `/api/tasks/open`, `/api/tasks/decide`, `/api/tasks/cancel`). Sideload-only (`flutter run` over
-  USB or `flutter build apk --debug` + `adb install`), no Play Store. Adds `pixi run
-  mobile-analyze`/`mobile-test`/`mobile-build`/`mobile-run` tasks and a Flutter CI job.
-  RetryWithRevision/Supersede aren't offered from the phone — both need a way to move file content
-  onto the daemon host that this phase doesn't build; deferred past Phase 2.
-  Two "zero backend changes" corrections found while building the client, both scoped and made
-  as part of this phase rather than blocking it:
-  - `TaskProjection` never carries file bytes, only paths on the daemon host — a phone has no
-    filesystem access to read them. Added `GET /api/tasks/artifact?directoryPath&executionId&fileName`
-    (read-only, same auth, `fileName` validated against the execution's own recorded `OutputFiles`)
-    so the decision inbox can show what it's approving.
-  - `TaskProjection` never carries a directory path either, and `/api/tasks/decide`/`/api/tasks/cancel`
-    require one — a client that only observes the WS stream (never having called `/api/tasks/open`
-    itself) had no way to learn it. Added `DirectoryPath` as a sibling property on the WS payload
-    (not a `TaskProjection` field — additive only, the desktop client already ignores unmapped
-    JSON members).
-  - Also found and fixed, unrelated to either of the above: `app.UseWebSockets()` was registered
-    *after* the auth middleware, so `context.WebSockets.IsWebSocketRequest` was always `false` at
-    auth-check time and every WS connection's query-string token was silently rejected with 401 —
-    masked since M20 by a bare `catch {}` around the desktop client's own WS connect call. This
-    means the desktop's own remote-mode live WS updates likely never worked either; fixed as part
-    of unblocking Aer.Mobile's decision inbox, which depends on the same path.
-  - The WS-auth fix proved the connect-time snapshot push works, but left the other half of the
-    inbox's core assumption unverified: that `/api/tasks/decide`/`/api/tasks/cancel` actually
-    trigger a *second* broadcast, not just a 200. Confirmed by reading (`TaskSession.DecideAsync`/
-    `CancelExecutionAsync`'s in-process fallback both reach the daemon's `reopenTaskAsync` closure,
-    which calls `BroadcastStateAsync`) and locked in with a new end-to-end test
-    (`Reject_TriggersASecondWebSocketBroadcast_SoAPhoneSeesTheDecisionLand`) that opens a real
-    paused task, connects a WS client, posts a Reject, and asserts a second `Terminal` snapshot
-    arrives on the same socket.
-  - Two Android manifest gaps found (neither catchable by `flutter analyze`/`flutter test`, only by
-    a real device — the exact step this phase's own verification defers): the default `flutter
-    create` template declares no `INTERNET` permission at all (added to the main manifest); and
-    Android blocks cleartext HTTP/WS by default for API 28+, which the daemon's plain `http`/`ws`
-    (TLS deferred to Phase 6) would hit on first request (`android:usesCleartextTraffic="true"`
-    added, scoped to the debug manifest only, matching this phase's debug/sideload-only build, so a
-    future release build doesn't silently inherit it).
-  Adds this milestone's own release-please package (component `mobile`, release-type `dart`,
-  standalone — not joined to either `linked-versions` group, since it version-bumps independently
-  off `pubspec.yaml`) now that `pubspec.yaml` exists — deliberately not added by the release-please
-  linked-versions migration (#225) ahead of this phase, since a package path that doesn't exist yet
-  would break the next release-please run.
-  Two more gaps found only by the real-device pass (see Verification below), neither catchable by
-  any automated check:
-  - `DecideCommand.ExecuteAsync` always loads a worker-bindings file, regardless of decision type
-    (even Reject/Cancel, which never invoke a worker) — a freshly-started daemon with no prior
-    `/api/tasks/run` call in-process has no bindings file configured, so Approve/Reject from the
-    phone failed *silently* (200 OK, no broadcast, error only visible in the daemon's own console).
-    Pre-existing `DecideCommand` behavior, not introduced by this phase, but Phase 2 is the first
-    path that can reach it without a desktop-side Run already having set it. Documented here as a
-    known rough edge for a real deployment (daemon started standalone, phone-only session); not
-    fixed in this phase — the workaround is starting the daemon via a desktop Run first, same as
-    today's only real usage pattern.
-  - The paused-step card disappearing the instant a decision resolves (correct — it drops off
-    `pausedSteps`) gave zero confirmation that Approve/Reject actually worked. Added a snackbar
-    ("Approved `<step>`" / "Rejected `<step>`") in `inbox_screen.dart`.
-  - App label fixed from the Flutter-default `aer_mobile` to `AER Flow`, matching `Aer.Ui`'s window
-    title (`MainWindow.axaml`'s `Title="AER Flow"`) — both the Android manifest `android:label` and
-    the `MaterialApp` title.
-  - "Cancel run" gave a false-positive "Run cancelled" snackbar even when nothing was actually
-    running: both `MutationInterface.RequestCancellationAsync` and `TaskSession.RequestHostStop()`
-    only affect an execution genuinely in flight — a Paused task's execution already *Succeeded*
-    (that's why it's paused), so cancelling it is a documented too-late no-op (`MutationInterface.cs`
-    §9 step 4), same as desktop's own ungated Stop button. There's no domain gap here: ending a
-    paused step is what Reject already does. Fixed by only showing "Cancel run" in the app-bar menu
-    when `projection.status == 'Running'` (mirrors how desktop already gates its per-execution
-    `CanCancel`), so the snackbar is truthful again with no wording change needed. Verified against
-    a genuine live execution (a real `claude` dispatch, not a synthetic fixture): with the task
-    `Running`, the phone's Cancel run correctly appeared, and tapping it drove the step's status
-    from `Running` to `Cancelled` and the workflow to `Terminal` server-side — confirming the
-    whole-run cancel path actually terminates a live worker process end-to-end from the phone, not
-    just the client-side gating.
-- **Status**: Phase 2 is done. App, backend additions, and both test suites (`pixi run test`,
-  `pixi run mobile-test`) pass (635/635 .NET, 4/4 Flutter). Verified on real hardware — see below.
-- **Verification**: done, on real hardware, 2026-07-18 — a Pixel 10 Pro on the same home Wi-Fi as
-  this desktop, daemon started standalone with `--remote --port 5000`. Paired via manually-read
-  6-digit code; a paused step appeared in the phone's inbox over WS with no prior phone action other
-  than pairing; the artifact preview (`review.md`) loaded via `GET /api/tasks/artifact`; Approve
-  resolved the step, the daemon projection reached `Terminal`, and the phone's card cleared via the
-  second WS broadcast. This machine had no Android SDK/`adb` going in — set up via the command-line
-  tools only (no full Android Studio): `cmdline-tools` + `platform-tools` + `platforms;android-36` +
-  `build-tools;28.0.3`, `flutter config --android-sdk`/`--jdk-dir` pointed at an existing OpenJDK 21
-  install. Reject, the multi-paused-step case, and Cancel were all subsequently exercised on the
-  same device against hand-crafted paused-task fixtures: Reject resolved its step to `Rejected`
-  correctly; two independent `PausePoint`s on sibling steps rendered as two cards, each resolvable
-  without affecting the other; Cancel surfaced the no-op finding above, fixed by gating the menu
-  item to `Running`-only.
-
-### Phase 3: Desktop Pairing UX
-- **Goal**: `Aer.Ui` has no screen for initiating pairing today even though `/api/pairing/code`
-  already exists (curl-only). Add an "Enable Remote Access" view: pairing code, a QR code encoding
-  `{host, code}`, a `--remote` toggle, and a plain-language warning that `--remote` is unencrypted LAN
-  traffic until Phase 6.
-- **Key finding before implementation**: `--remote` is baked into Kestrel's bind call at daemon
-  startup (`Program.cs:91-103`) — there is no live rebind. `Aer.Ui` also always auto-spawns the
-  daemon loopback-only (`TaskSession.EnsureDaemonConnectedAsync` never passed `--remote`). So the
-  toggle can't just flip a setting: it shuts the daemon down (`/api/daemon/shutdown`) and respawns
-  it with/without `--remote`, reusing the exact shutdown-then-respawn move the version-skew path
-  already made in that same method. Refused outright while a task is in flight (the existing
-  `HasRunningTasks` signal), since bouncing the daemon mid-run would orphan it.
-- **What shipped**: `/api/version` now also reports `IsRemote` (the daemon's own `isRemote` local,
-  closed over by the endpoint). `TaskSession` gained `GetRemoteAccessStatusAsync`,
-  `GetPairingCodeAsync`, and `SetRemoteEnabledAsync` (the guarded shutdown-and-respawn above); the
-  daemon-spawn logic was extracted into a shared `SpawnDaemonProcessAsync(extraArgs, ...)` helper so
-  both the cold-start path and the toggle share one "launch it, poll `/api/version` until it
-  answers" implementation. A new `LanAddress.TryGetPrimary()` (no such helper existed anywhere in
-  the codebase) picks a LAN-reachable IPv4 address, preferring RFC 1918 private ranges. `Aer.Ui.Core`
-  gained a `RemoteViewModel` (QRCoder's `PngByteQRCode` — pure C#, no `System.Drawing`, keeping
-  `Aer.Ui.Core`'s no-Avalonia constraint) and a fourth `ShellSection.Remote` nav destination;
-  `Aer.Ui` gained the `RemoteView` skin, a `ByteArrayToBitmapConverter` (the one place QR bytes
-  become a renderable `Bitmap`), and an `Icon.Remote` nav glyph.
-  **QR payload decision of record**: a plain `aer://pair?host=<host>&code=<code>` URI, not JSON —
-  simpler to encode/parse on both ends and unambiguous if scanned outside the app.
-  `Aer.Mobile` gained a `QrScanScreen` (`mobile_scanner`, actively maintained — `qr_code_scanner` is
-  deprecated) wired into `pairing_screen.dart`'s new "Scan QR code" button, parsing that URI and
-  falling back to the existing manual host/code fields on anything that doesn't parse — a garbled
-  scan never dead-ends. `android.permission.CAMERA` (+ an optional `android.hardware.camera`
-  feature) added to the main manifest, the same "not in Flutter's bare template" gap Phase 2 hit
-  for `INTERNET`.
-- **Status**: Phase 3 is done. `pixi run test` (636/636 .NET, up from 635 — a new
-  `GetVersion_ReportsIsRemote_FalseForALoopbackOnlyDaemon` integration test), `pixi run
-  mobile-analyze`/`mobile-test` (4/4), `pixi run fmt-check`, `pixi run lint`, and `pixi run
-  mobile-build` all clean. Verified on real hardware — see below.
-- **Verification**: done, on real hardware, 2026-07-19 — scanning the desktop's QR from
-  `Aer.Mobile`'s pairing screen and completing pairing with no manual IP/code typing. First attempt
-  surfaced three real-device-only bugs, fixed in a follow-up commit before the retest passed: the
-  pairing-code countdown never ticked (a stale "Expires in 60s" stayed on screen instead of
-  refreshing the code past expiry); `LanAddress.TryGetPrimary()` was picking this machine's WSL
-  Hyper-V vEthernet adapter over its real Wi-Fi adapter (same virtual-adapter ambiguity documented in
-  `LanAddress.cs`'s own remarks), which scanned fine but then hung on connect — fixed by filtering
-  adapters by name/description; and the `--remote` toggle reliably failed to restart the daemon.
-  With those fixed, the QR scan completed pairing end to end with no manual host/code entry on
-  either side.
-
-### Phase 4: Cross-Network Proof via Tailscale (Manual Install)
-- **Goal**: Prove the "from anywhere" property using Phases 2–3 unchanged — standalone Tailscale
-  apps on both ends (BYO free account), different networks, same pair/approve flow as Phase 2's LAN
-  test. Zero new code; de-risks Phase 5 by confirming the daemon API has no LAN-only assumption.
-- **Key finding**: the pairing QR always encodes the desktop's LAN IP — `LanAddress.TryGetPrimary()`
-  deliberately filters out Tailscale's virtual adapter (same logic that filters WSL/VMware/etc.), so
-  cross-network pairing needs manual host entry (the desktop's tailnet IP) instead of a QR scan.
-  See `docs/runbooks/tailscale-cross-network-proof.md` for the full runbook.
-- **Status**: done. Zero new code confirmed sufficient — the daemon's remote API had no LAN-only
-  assumption.
-- **Verification**: done, 2026-07-19 — desktop Tailscale 1.98.9 (Windows), phone a Pixel 10 Pro on
-  Tailscale for Android, cellular data (no shared LAN). Manual host entry (tailnet IP + code)
-  paired on the first attempt; a paused step pushed live to the phone's inbox over the WS
-  connection; a Reject decision from the phone resolved it and the daemon's own projection
-  confirmed `Terminal`. Full details, including an unrelated transient `claude` CLI flake hit while
-  building the test workflow, in `docs/runbooks/tailscale-cross-network-proof.md`.
-
-### Phase 5: Zero-Config Tailscale Embedding (Time-Boxed Spike)
-- **Goal**: Remove the manual Tailscale app install from Phase 4, desktop half only this pass (see
-  "Not yet done" below for mobile). No .NET `tsnet` binding exists (Go-only), so this is a separate
-  Go process, `src/Aer.Sidecar` (`aer-sidecar`), not a P/Invoke/cgo binding into `Aer.Daemon` itself.
-- **Key architecture correction** (found while implementing, corrects the original plan text above):
-  `tsnet` runs a userspace (gVisor) network stack that exists only *inside* the process that embeds
-  it — there is no OS-level network interface for a sibling process to bind to. That rules out "bind
-  Kestrel to the Tailscale-assigned interface address" (Phase 6's original plan, below) once the
-  interface is `tsnet`-embedded rather than a real adapter from a separately-installed app. Instead:
-  Kestrel stays loopback-reachable forever, and the sidecar — which does get a real tailnet IP via
-  `srv.Listen()` — TCP-splices every accepted connection byte-for-byte (`io.Copy`, both directions)
-  to Kestrel's loopback port. Protocol-agnostic by construction, so HTTP and the WebSocket upgrade
-  both pass through with zero HTTP awareness in the Go process.
-- **What's built and proven locally**: `Aer.Daemon` spawns `aer-sidecar` as a child process whenever
-  `--remote` is set (additive — see Phase 6 below for why the existing LAN bind is untouched),
-  passing it the real Kestrel port once Kestrel has actually bound it. The sidecar binds its own
-  loopback-only status listener first and writes the assigned port to a file
-  (`~/.aer/sidecar-status.port`) — the same port-file discovery convention `Aer.Daemon` already uses
-  for itself (`daemon.port`) — so `Aer.Daemon` can find and proxy it via `GET
-  /api/remote/sidecar-status` (owner-token-gated, like the paired-clients endpoints) without polling
-  or caching staleness. `Aer.Daemon` kills the sidecar on `ApplicationStopping` (Windows doesn't reap
-  child processes on parent exit). Verified locally: `go vet` clean, `gofmt`-clean, a unit test
-  (`main_test.go`) proving the splice is transparent in both directions, and a live local smoke run —
-  daemon spawned in `--remote` mode really did spawn the sidecar, discover its status port, and
-  `/api/remote/sidecar-status` surfaced the real tailnet interactive-login URL end to end; shutting
-  the daemon down really did kill the sidecar too (confirmed via process list, not just the exit
-  code).
-- **Not yet done / not provable in an agent session**: actual tsnet enrollment (clicking through the
-  login URL) and a cross-network proof of real HTTP/WebSocket traffic over the resulting tailnet
-  address — completing interactive OAuth has no headless path, same permanently-human-gated shape as
-  Phase 4's cross-network proof and `CLAUDE.md`'s "Live-vendor smoke tests" convention. Not marking
-  this phase's checkbox done on anything short of that actual recorded run. Mobile-side embedding
-  (`flutter_tsnet` vs. the newer `tailscale` Dart package) is untouched — still an open go/no-go
-  checkpoint, deferred to a follow-up issue rather than blocking this desktop-only pass. Bundling
-  `aer-sidecar.exe` for non-developer end users (so `--remote` doesn't require a local Go toolchain)
-  is also an explicit named follow-up, not part of this spike's success bar.
-- **Verification**: fresh phone + fresh desktop, neither with Tailscale pre-installed, complete
-  pairing with no manual Tailscale steps. **Unproven** — pending the live cross-network run above.
-
-### Phase 6: Close M20's Deferred Hardening
-- **Goal**: M20 explicitly deferred TLS and paired-token revocation "for whichever milestone builds
-  the actual remote client" — this is that milestone.
-- **Paired-token revocation — done**: a "Paired Devices" list in Phase 3's view (`RemoteView.axaml`)
-  with a Remove button, `PairedClientsStore.RemoveClient`, and owner-only
-  `GET`/`DELETE /api/pairing/clients{/id}` endpoints (gated to the local loopback token specifically
-  — a paired mobile client can't enumerate or revoke siblings). Covered by
-  `DaemonIntegrationTests`: revoking causes the next request on that token to 401, revoking an
-  unknown id 404s, and a paired client's own token can't call either endpoint.
-- **Exposure hardening — deliberately deferred, not done**: the original plan (bind `--remote` to the
-  Tailscale-assigned interface address instead of `IPAddress.Any`) doesn't apply once the interface
-  is `tsnet`-embedded rather than a real adapter (see Phase 5's architecture correction) — the
-  equivalent hardening is now "Kestrel never listens on anything but loopback; the sidecar carries
-  all remote reachability instead." That rebind is **not** made in this PR: Phase 5's `tsnet` path
-  is unproven live (above), and flipping Kestrel to loopback-only before that proof lands would
-  delete the one remote-access path that's actually shipped and working (Phases 1–4, plain-LAN
-  `--remote`) in favor of one that hasn't been exercised end to end. `Program.cs`'s `isRemote` branch
-  is therefore unchanged (`options.Listen(IPAddress.Any, activePort)`); `--remote` stays LAN-plaintext
-  exactly as Phases 1–4 left it, same "known limitation until proven" framing M20 originally used.
-  The sidecar runs alongside it (additive, not a replacement) once `--remote` is set, so it's
-  already in position to carry tailnet traffic the moment the phase above gets its live proof — at
-  which point flipping the bind and dropping (or demoting to an unlisted escape hatch) the LAN path
-  is the remaining, now-small follow-up change.
-- **Verification**: paired-token revocation → 401 is verified (automated test, passing). Tailnet-only
-  reachability (the other half of this phase's original verification bar) is **not yet verified** —
-  it depends on Phase 5's live proof landing first.
-
-### Phase 7: `Aer.Mobile` — tsnet Toolchain + Tailnet Join
-- **Goal**: split out of issue #245 (originally scoped as one "embed tsnet in Aer.Mobile" issue) —
-  prove the two hard blockers before writing any transport code: the Android build actually produces
-  an APK with the `tailscale` package's Go/NDK native step, and a phone can join the tailnet at all.
-  Sequenced ahead of Phase 8's WebSocket work specifically because both were unproven risk.
-- **Auth model decision of record (revised from the original plan, after real-device testing):** the
-  first candidate design (a Tailscale OAuth client minting a fresh auth key per pairing) was rejected
-  as too much one-time admin-console setup. The second design — the phone's own `tsnet` node calling
-  `up()` with no auth key on first run, mirroring the desktop sidecar's keyless interactive
-  enrollment — turned out **not to be reachable through the `tailscale` Dart package's public API**:
-  its worker (`lib/src/worker/entrypoint.dart`) hard-throws `TailscaleUpException` whenever `authKey`
-  is empty and no local state exists yet, rather than returning `needsLogin`. Confirmed live on a
-  real device before any further design work, not just read from source.
-  <br>**Final design**: a reusable Tailscale auth key, generated once by the desktop owner in the
-  Tailscale admin console and pasted into `Aer.Ui`'s Remote Access screen (`RemoteViewModel`'s
-  `TailscaleAuthKey`, persisted via `LocalUiConfigurationStore`). It rides along as a `tskey` query
-  param in the same pairing QR the phone already scans (`RemoteViewModel.GeneratePairingCodeAsync`)
-  — never sent over the network, only rendered into the on-screen QR image — so scanning the QR
-  remains the phone's *entire* setup step, same as before. This is materially less setup than the
-  rejected OAuth design (one pasted key vs. an ACL tag + OAuth client + secret-at-rest + Tailscale
-  API code), and each Aer install is single-tenant against its own owner's own tailnet — a new user
-  self-generates their own key in their own admin console, never something requested from anyone
-  else. Manual host+code entry (the QR-scan fallback) can't carry a key, so tailnet-only pairing
-  requires the QR scan; `PairingScreen` surfaces a clear error rather than the raw Tailscale
-  exception if a tailnet host is entered by hand with no scanned key.
-  <br>**Key lifecycle, for operators**: the auth key's own expiry (settable up to 90 days when
-  generating it) only bounds how long that key can enroll *new* phones — already-enrolled phones are
-  unaffected once it expires; the desktop owner just pastes a fresh key for the next new phone. A
-  *separate*, per-device Tailscale setting ("key expiry", commonly ~180 days by default, disableable
-  per device in the admin console) governs whether an already-enrolled phone eventually needs to
-  re-authenticate — unrelated to anything this phase built.
-- **Built**: the `tailscale` package (0.5.0) added to `Aer.Mobile`; a `TailnetGateway` wrapper
-  (`lib/daemon/tailnet_gateway.dart`) around `Tailscale.instance`'s `init`/`up`/`http.client`/
-  `onStateChange`, plus `resolveNeedsLogin` (see below); the pairing screen detects a tailnet-only
-  host (Tailscale's CGNAT range, 100.64.0.0/10 — the same range the desktop's `SidecarTailnetHost`
-  always uses) and joins the tailnet with the QR-scanned key before pairing. Both the connectivity
-  proof (`GET /api/version`) and the pairing call itself route through `Tailscale.instance.http.client`
-  — a real corrected finding versus the original issue text, which assumed only later REST calls
-  would need tsnet-routing: a 100.x address has no route through the phone's regular OS network
-  stack at all (`tsnet` is userspace-only), so pairing itself has to go over it too. `CredentialsStore`
-  gained a `tsnetRouted` flag so a relaunch knows to bring the node back up before reconnecting.
-  Added the `android.intent.action.VIEW`/`https` `<queries>` manifest entry `url_launcher` needs on
-  Android 11+ package visibility. On the desktop side: `LocalUiConfigurationStore`/`TaskSession`
-  gained the `TailscaleAuthKey` load/save round trip, and `RemoteView.axaml` gained the key
-  entry field, all gated to the local owner (the key never crosses the daemon's HTTP surface).
-- **Real-device finding: `up()` can resolve on a transient `needsLogin` snapshot even with a valid
-  auth key.** With a valid key, registration can succeed server-side (the phone shows up in the
-  Tailscale admin console immediately) while the client still reports `needsLogin` for several
-  seconds afterward, with `authUrl` never populating at all because no interactive step is actually
-  needed — confirmed live, reproducibly, on cellular. `TailnetGateway.resolveNeedsLogin` polls
-  `status()` and resolves as soon as *either* `authUrl` appears *or* the node reaches `running` on
-  its own, rather than only waiting on the former and timing out.
-- **Known local-Windows-only build quirk**: the `tailscale` package's native-asset build hook needs
-  `GOCACHE`/`%LocalAppData%` in the environment it sees; a Windows-only Gradle/`flutter test`
-  invocation path strips those before invoking it, and building the package's Windows-host native
-  stub (only needed for `flutter test`, not the Android build) separately needs a C compiler (MinGW
-  gcc) not installed on this dev machine. Confirmed Windows-host-specific and not a CI concern via a
-  fully green CI run: `mobile` job (`ubuntu-latest`) passes `flutter test` and `flutter build apk`
-  cleanly once given a Go 1.26+ toolchain (`actions/setup-go@v5`, this job's own prior gap).
-- **Verification — done, real device:** built a debug APK, installed on a physical Pixel 10 Pro over
-  `adb`, and completed a real pairing over the tailnet — including one run with the phone off Wi-Fi
-  entirely (cellular only), proving the cross-network case, not just same-LAN. The phone joined the
-  tailnet non-interactively via the QR-embedded key, appeared in the Tailscale admin console, and a
-  real `/api/version` response (and the pairing call itself) round-tripped over tsnet end to end.
-
-### Phase 8: `Aer.Mobile` — WS-over-tsnet Transport
-- **Goal**: real-time `watch()` behavior over the tsnet transport Phase 7 proved out, matching what
-  LAN-paired mode already gets from `web_socket_channel`. The `tailscale` package has no WebSocket
-  support, so this needs a hand-rolled RFC 6455 client (handshake + text-frame framing) built
-  directly on the package's raw `tcp.dial`.
-- **Not started.** `DaemonClient` will branch on the `tsnetRouted` flag Phase 7 added to
-  `CredentialsStore` and pick this transport only then — every REST call (`recentTasks`, `decide`,
-  `cancelRun`, `openTask`, `fetchArtifact`) and `watch()` gets a tsnet-routed variant; LAN-paired
-  mode's existing `http`/`web_socket_channel` calls stay untouched.
-- **Verification (planned)**: unit coverage for the WS frame encode/decode logic (no live network
-  needed), plus a real run over the WS transport specifically — the tailnet join and cross-network
-  path itself (phone on cellular, desktop on Wi-Fi) is already proven in Phase 7; this phase's own
-  live check only needs to confirm the new WS framing round-trips correctly on top of it.
+- [ ] Phase 1 — Built-In Template Catalog
+- [ ] Phase 2 — Daemon Template Endpoints
+- [ ] Phase 3 — Desktop Template Picker
+- [ ] Phase 4 — Mobile Template Picker
+- [ ] Phase 5 — Mobile Send-Back
 
 ---
 
@@ -592,6 +244,8 @@ closed GitHub milestones; their decisions of record — the constraints and prec
 still leans on — in `docs/decisions-of-record.md`; and the full phase plans — goals, boundaries,
 and the open questions each phase resolved — in this file's git history and the linked issues.
 
+**M21: Zero-Config Remote Control & Permission Scopes** — shipped structured vendor-neutral permission scope models (`PermissionGrant` for file and command access), `Aer.Mobile` (Flutter remote client) with QR code pairing and live task streaming over WebSockets, zero-config embedded Tailscale transport (`aer-sidecar` Go node on desktop, embedded `tsnet` via CGO and RFC 6455 `ws_codec.dart`/`ws_client.dart` over `tcp.dial` on mobile), and closed M20's deferred token management (60s pairing code countdown and interactive paired client revocation).
+
 **M20: Daemonization & Remote Control** — extracted the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Exposed task read models, mutation interfaces, and WebSocket real-time updates over a loopback and remote-accessible API. Added single-instance mutex enforcement, constant-time authentication token validation, and process lifecycle supervision. Hardened tool invocation security by replacing command shell spawners (`cmd.exe /c` / `sh -c`) with shell-less direct binary execution and C#-side environment variable expansion. Designed and implemented the client-pairing gateway protocol allowing secure LAN/Wi-Fi remote clients to connect and authenticate against the daemon.
 
 **M19: Product UX** — the product-UX overhaul the owner scoped at M18's completion: a
@@ -705,4 +359,4 @@ These are gaps in `aer-flow-behavioral-spec-v1.0.md` discovered during planning.
   For a single-developer product, (2) is the smaller commitment for the same user-facing outcome
   unless generic device-to-device networking beyond Aer's own use is actually wanted. Revisit this
   only if/when real multi-user demand shows up — not a preemptive build.
-- **Whether MVVM spreads beyond the decision surface** — M15 Phase 2 (#138) deliberately scoped `CommunityToolkit.Mvvm` to the paused-step Approve/Reject buttons, the first *interactive, stateful* control surface (enabled state tied jointly to projected state and an in-flight mutation). The DAG/history/lineage/diff rendering stayed code-behind on purpose: it's one-directional (projection → controls, nothing to bind against), so a ViewModel there would be ceremony with no payoff. Phase 3 (Retry-with-revision, Send-back) and Phase 4 (Cancel) add more of the same interactive shape, so expect the ViewModel layer to grow phase over phase rather than needing a deliberate decision to introduce it again. Revisit whether the read-only surfaces are worth converting too only if M16 (Authoring) needs two-way binding there — not preemptively.
+- ~~**Whether MVVM spreads beyond the decision surface**~~ — resolved in M19 Phase 2 (#187): `Aer.Ui.Core` completed the full MVVM migration across all surfaces (Home, Task, Author, Remote) using `CommunityToolkit.Mvvm` ViewModels with compiled bindings, leaving `MainWindow` code-behind as a pure presentation shell.

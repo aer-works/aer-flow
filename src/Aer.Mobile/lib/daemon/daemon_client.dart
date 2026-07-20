@@ -1,9 +1,12 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:tailscale/tailscale.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'models.dart';
+import 'tailnet_gateway.dart';
+import 'ws_client.dart';
 
 class DaemonException implements Exception {
   final String message;
@@ -13,14 +16,25 @@ class DaemonException implements Exception {
   String toString() => message;
 }
 
+typedef TsnetDialFn = Future<TailscaleConnection> Function(String host, int port);
+
 /// REST + WebSocket client for Aer.Daemon's remote API (src/Aer.Daemon/Program.cs). `host` is an
 /// authority string like `192.168.1.23:5050` — no scheme, matching how the pairing screen collects
 /// it (the user types/scans host+port, not a full URL).
 class DaemonClient {
   final String host;
   final String token;
+  final bool tsnetRouted;
+  final http.Client? httpClient;
+  final TsnetDialFn? tsnetDialFn;
 
-  DaemonClient({required this.host, required this.token});
+  DaemonClient({
+    required this.host,
+    required this.token,
+    this.tsnetRouted = false,
+    this.httpClient,
+    this.tsnetDialFn,
+  });
 
   /// The only unauthenticated endpoint besides GET /api/version. Returns the raw paired-client
   /// token — shown/stored exactly once, same as the desktop UI's own pairing flow.
@@ -76,10 +90,26 @@ class DaemonClient {
 
   Map<String, String> get _authHeader => {'Authorization': 'Bearer $token'};
 
+  Future<http.Response> _get(Uri url) {
+    if (httpClient != null) return httpClient!.get(url, headers: _authHeader);
+    if (tsnetRouted) return TailnetGateway().client.get(url, headers: _authHeader);
+    return http.get(url, headers: _authHeader);
+  }
+
+  Future<http.Response> _post(Uri url, {Object? body, Map<String, String>? headers}) {
+    final mergedHeaders = {..._authHeader, ...?headers};
+    if (httpClient != null) return httpClient!.post(url, headers: mergedHeaders, body: body);
+    if (tsnetRouted) return TailnetGateway().client.post(url, headers: mergedHeaders, body: body);
+    return http.post(url, headers: mergedHeaders, body: body);
+  }
+
   /// A full TaskProjection snapshot on connect (if a task is currently open server-side) and again
   /// on every state change thereafter — never a diff. See TaskProjection's doc comment for why the
   /// snapshot alone doesn't tell this client which directory it's for.
   Stream<TaskProjection> watch() {
+    if (tsnetRouted) {
+      return _watchOverTsnet();
+    }
     final channel = WebSocketChannel.connect(
       Uri.parse('ws://$host/api/ws?token=$token'),
     );
@@ -90,11 +120,32 @@ class DaemonClient {
     );
   }
 
-  Future<List<String>> recentTasks() async {
-    final response = await http.get(
-      Uri.http(host, '/api/tasks/recent'),
-      headers: _authHeader,
+  Stream<TaskProjection> _watchOverTsnet() async* {
+    final parts = host.split(':');
+    final targetHost = parts[0];
+    final targetPort = parts.length > 1 ? int.parse(parts[1]) : 5050;
+
+    final dial = tsnetDialFn ?? ((h, p) => Tailscale.instance.tcp.dial(h, p));
+    final connection = await dial(targetHost, targetPort);
+    final wsChannel = await TsnetWsChannel.connect(
+      socket: TailscaleWsSocket(connection),
+      host: host,
+      path: '/api/ws?token=$token',
     );
+
+    try {
+      yield* wsChannel.stream.map(
+        (raw) => TaskProjection.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        ),
+      );
+    } finally {
+      await wsChannel.close();
+    }
+  }
+
+  Future<List<String>> recentTasks() async {
+    final response = await _get(Uri.http(host, '/api/tasks/recent'));
     _throwIfFailed(response);
     return (jsonDecode(response.body) as List<dynamic>)
         .map((d) => d.toString())
@@ -105,9 +156,9 @@ class DaemonClient {
   /// TaskProjection's doc comment. Only call this from an explicit user action (the recent-tasks
   /// picker), never automatically, so the phone doesn't silently steal the desktop's view.
   Future<void> openTask(String directoryPath) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.http(host, '/api/tasks/open'),
-      headers: {..._authHeader, 'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'directoryPath': directoryPath}),
     );
     _throwIfFailed(response);
@@ -126,7 +177,7 @@ class DaemonClient {
       'executionId': executionId,
       'fileName': fileName,
     });
-    final response = await http.get(uri, headers: _authHeader);
+    final response = await _get(uri);
     if (response.statusCode == 404) return null;
     _throwIfFailed(response);
     final body = caseInsensitive(
@@ -143,9 +194,9 @@ class DaemonClient {
     required String executionId,
     required String decisionType,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.http(host, '/api/tasks/decide'),
-      headers: {..._authHeader, 'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'directoryPath': directoryPath,
         'stepId': stepId,
@@ -161,9 +212,9 @@ class DaemonClient {
     required String directoryPath,
     String? executionId,
   }) async {
-    final response = await http.post(
+    final response = await _post(
       Uri.http(host, '/api/tasks/cancel'),
-      headers: {..._authHeader, 'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'directoryPath': directoryPath,
         'executionId': executionId,

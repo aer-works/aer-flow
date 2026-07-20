@@ -9,6 +9,15 @@ first. Each entry cites the phase that decided it; the full phase plans — goal
 the open questions each phase resolved — live in the plan file's git history and the linked
 issues.
 
+## M21: Zero-Config Remote Control & Permission Scopes
+
+- **Permission grants are structured and vendor-neutral (Phase 1)** — `PermissionGrant` replaces opaque adapter flag strings (`ReadFiles`, `WriteFiles`, `RunShellCommands` with wildcard glob matching, `NetworkAccess`). Each adapter translates grants into vendor-native flags inside `Resolve()` (Adapter Isolation rule).
+- **Mobile remote client is pure WebSocket + REST (Phase 2)** — `Aer.Mobile` (Flutter) pairs via QR code, listens to the daemon's WebSocket stream, and issues decisions (`Approve`, `Reject`, `Cancel`) over the daemon REST API.
+- **Remote client artifact fetching and directory discovery (Phase 2)** — `GET /api/tasks/artifact` provides safe read-only access to step outputs for remote clients with no local filesystem access. WebSocket payloads carry `DirectoryPath` as a top-level property so clients listening to WS broadcasts can issue decision requests without prior host-side path knowledge.
+- **Desktop pairing UX and single-scan auth (Phases 3, 7)** — `RemoteView` in `Aer.Ui` generates 60s transient pairing codes and renders the QR code containing connection info (`host`, `token`, `tsnetRouted`, `tskey`). Scanning the QR code embeds the Tailscale auth key (`tskey`) so pairing and tailnet joining happen in a single step with zero extra setup.
+- **Zero-config Tailscale TCP splicing architecture (Phases 5, 7, 8)** — Desktop spawns `aer-sidecar.exe` (Go `tsnet`) when `--remote` is enabled, joining the tailnet as `aer-sidecar` and TCP-splicing incoming traffic directly to Kestrel loopback (`127.0.0.1`). Kestrel stays loopback-bound and protocol-agnostic. Mobile embeds `tsnet` via Go CGO (`tailscale` package), joining as `aer-mobile`. REST requests use `TailnetGateway().client` and WebSocket streams dial over `TailscaleWsSocket` (`tcp.dial`) with a pure Dart RFC 6455 codec (`ws_codec.dart`, `ws_client.dart`), requiring zero standalone Tailscale app installations on either device.
+- **Client token management and revocation (Phase 6)** — M20's deferred token management is fully closed: pairing codes expire in 60s with auto-refresh and 5-attempt lockout, and paired devices can be revoked interactively from `RemoteView` via `DELETE /api/pairing/clients/{id}`.
+
 ## M19: Product UX
 
 - **The reference set is the owner's, adopted verbatim (2026-07-17)** — Linear (inbox), GitLab
