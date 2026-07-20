@@ -14,7 +14,7 @@ public class AerProfileStoreTests
     {
         var path = TempPath();
 
-        var profiles = await AerProfileStore.LoadAsync(path);
+        var profiles = await AerProfileStore.LoadAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Empty(profiles);
     }
@@ -31,8 +31,8 @@ public class AerProfileStoreTests
                 ["other"] = "/home/user/dev/other",
             };
 
-            await AerProfileStore.SaveAsync(original, path);
-            var loaded = await AerProfileStore.LoadAsync(path);
+            await AerProfileStore.SaveAsync(original, path, TestContext.Current.CancellationToken);
+            var loaded = await AerProfileStore.LoadAsync(path, TestContext.Current.CancellationToken);
 
             Assert.Equal(original, loaded);
         }
@@ -49,7 +49,8 @@ public class AerProfileStoreTests
         var path = Path.Combine(directory, "profiles.json");
         try
         {
-            await AerProfileStore.SaveAsync(new Dictionary<string, string> { ["p"] = "/x" }, path);
+            await AerProfileStore.SaveAsync(
+                new Dictionary<string, string> { ["p"] = "/x" }, path, TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(path));
         }
@@ -65,9 +66,10 @@ public class AerProfileStoreTests
         var path = TempPath();
         try
         {
-            await File.WriteAllTextAsync(path, "{ not valid json");
+            await File.WriteAllTextAsync(path, "{ not valid json", TestContext.Current.CancellationToken);
 
-            var ex = await Assert.ThrowsAsync<ProfileStoreException>(() => AerProfileStore.LoadAsync(path));
+            var ex = await Assert.ThrowsAsync<ProfileStoreException>(
+                () => AerProfileStore.LoadAsync(path, TestContext.Current.CancellationToken));
             Assert.Contains(path, ex.Message);
         }
         finally

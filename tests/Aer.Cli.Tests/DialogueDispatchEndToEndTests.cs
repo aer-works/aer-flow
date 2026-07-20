@@ -129,7 +129,8 @@ public class DialogueDispatchEndToEndTests
             // First run, from where the pair was originally authored.
             var firstTaskDirectory = Path.Combine(testRoot, "task-original");
             var firstState = (await RunCommand.ExecuteAsync(
-                new RunOptions(workflowFilePath, originalBindingsFilePath, firstTaskDirectory), WorkerAdapterRegistry.Default)).State;
+                new RunOptions(workflowFilePath, originalBindingsFilePath, firstTaskDirectory), WorkerAdapterRegistry.Default,
+                cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, firstState.Status);
             Assert.Equal(StepStatus.Succeeded, Assert.Single(firstState.Steps).Status);
 
@@ -141,7 +142,8 @@ public class DialogueDispatchEndToEndTests
             var copiedBindingsFilePath = Path.Combine(copiedDirectory, "bindings.json");
             var secondTaskDirectory = Path.Combine(testRoot, "task-copied");
             var secondState = (await RunCommand.ExecuteAsync(
-                new RunOptions(workflowFilePath, copiedBindingsFilePath, secondTaskDirectory), WorkerAdapterRegistry.Default)).State;
+                new RunOptions(workflowFilePath, copiedBindingsFilePath, secondTaskDirectory), WorkerAdapterRegistry.Default,
+                cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, secondState.Status);
             Assert.Equal(StepStatus.Succeeded, Assert.Single(secondState.Steps).Status);

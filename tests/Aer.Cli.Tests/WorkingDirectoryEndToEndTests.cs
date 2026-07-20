@@ -32,16 +32,19 @@ public class WorkingDirectoryEndToEndTests
         try
         {
             Directory.CreateDirectory(projectDirectory);
-            await File.WriteAllTextAsync(Path.Combine(projectDirectory, "notes.txt"), "from-the-real-project-folder");
+            await File.WriteAllTextAsync(
+                Path.Combine(projectDirectory, "notes.txt"), "from-the-real-project-folder", TestContext.Current.CancellationToken);
 
             await RunAgainstConfiguredDirectoryAsync(testRoot, taskDirectory, projectDirectory);
 
             var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
-            var executionId = (await reader.ReadAllAsync())
+            var executionId = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>().Single().ExecutionId;
             var outputPath = Path.Combine(artifactsRoot, $"execution_{executionId}", "output");
-            Assert.Equal("from-the-real-project-folder", (await File.ReadAllTextAsync(outputPath)).Trim());
+            Assert.Equal(
+                "from-the-real-project-folder",
+                (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
         }
         finally
         {
@@ -60,7 +63,8 @@ public class WorkingDirectoryEndToEndTests
         try
         {
             Directory.CreateDirectory(projectDirectory);
-            await File.WriteAllTextAsync(Path.Combine(projectDirectory, "notes.txt"), "from-the-real-git-repo");
+            await File.WriteAllTextAsync(
+                Path.Combine(projectDirectory, "notes.txt"), "from-the-real-git-repo", TestContext.Current.CancellationToken);
             await RunGitAsync(projectDirectory, "init");
             await RunGitAsync(projectDirectory, "add", "notes.txt");
             await RunGitAsync(projectDirectory, "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "seed");
@@ -69,10 +73,11 @@ public class WorkingDirectoryEndToEndTests
 
             var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
-            var executionId = (await reader.ReadAllAsync())
+            var executionId = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>().Single().ExecutionId;
             var outputPath = Path.Combine(artifactsRoot, $"execution_{executionId}", "output");
-            Assert.Equal("from-the-real-git-repo", (await File.ReadAllTextAsync(outputPath)).Trim());
+            Assert.Equal(
+                "from-the-real-git-repo", (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
         }
         finally
         {

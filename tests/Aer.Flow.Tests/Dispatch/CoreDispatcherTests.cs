@@ -151,10 +151,11 @@ public class CoreDispatcherTests
             var target = PrintCwdToOutputFile(configuredWorkingDirectory);
 
             await using var writer = new FlowEventLogWriter(logPath);
-            var result = await new CoreDispatcher(writer).DispatchAsync(request, target);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
-            var printedCwd = (await File.ReadAllTextAsync(Path.Combine(outputDirectory, "hello.txt"))).Trim();
+            var printedCwd = (await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken)).Trim();
             var expected = NormalizeRealPath(configuredWorkingDirectory);
             var actual = NormalizeRealPath(printedCwd);
             Assert.Equal(expected, actual, ignoreCase: OperatingSystem.IsWindows());
