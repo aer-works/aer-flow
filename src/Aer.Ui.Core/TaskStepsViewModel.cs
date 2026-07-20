@@ -99,32 +99,27 @@ public sealed partial class StepItemViewModel : ObservableObject
     public IReadOnlyList<ConversationRefViewModel> Conversations { get; }
     public IReadOnlyList<string> DecisionLines { get; }
 
-    public string VendorDisplay
+    /// <summary>
+    /// Normalized to exactly the vendors <c>VendorCliPresence</c> probes for (<c>claude</c>,
+    /// <c>gemini</c>), or <see langword="null"/> for anything else — the presentation layer's
+    /// <c>VendorIconGeometryConverter</c>/<c>VendorIconBrushConverter</c> map this to a glyph and
+    /// brush by name (design-language.md's "named resource, not a raw value in a view" rule; a
+    /// prior pass hardcoded geometry/hex strings here instead, which also meant it invented icon
+    /// branches for adapters — "shell", "stub", "codex", "openai" — nothing in this codebase
+    /// registers).
+    /// </summary>
+    public string? VendorKey
     {
         get
         {
             var target = (Adapter ?? Worker).ToLowerInvariant();
             if (target.Contains("claude")) return "claude";
             if (target.Contains("gemini")) return "gemini";
-            if (target.Contains("shell") || target.Contains("stub")) return "shell";
-            if (target.Contains("codex") || target.Contains("openai")) return "codex";
-            return Adapter != null ? $"{Worker} ({Adapter})" : Worker;
+            return null;
         }
     }
 
-    public string VendorIconGeometry => (Adapter ?? Worker).ToLowerInvariant() switch
-    {
-        var s when s.Contains("gemini") => "M 12 2 C 12 7.5 7.5 12 2 12 C 7.5 12 12 16.5 12 22 C 12 16.5 16.5 12 22 12 C 16.5 12 12 7.5 12 2 Z",
-        var s when s.Contains("claude") => "M 12 2 L 13.5 8.5 L 20 6 L 15.5 11 L 22 14 L 15 15 L 17 22 L 12 17 L 7 22 L 9 15 L 2 14 L 8.5 11 L 4 6 L 10.5 8.5 Z",
-        _ => "M 4 5 L 11 12 L 4 19 M 13 19 L 20 19"
-    };
-
-    public string VendorBrushColor => (Adapter ?? Worker).ToLowerInvariant() switch
-    {
-        var s when s.Contains("gemini") => "#4285F4",
-        var s when s.Contains("claude") => "#D97706",
-        _ => "#10B981"
-    };
+    public string VendorDisplay => VendorKey ?? (Adapter != null ? $"{Worker} ({Adapter})" : Worker);
 
     /// <summary>Non-null exactly while this step waits at its review gate — the inline decision actions (§17 via M15's <see cref="PausedStepViewModel"/>, unchanged semantics, plain words on the buttons).</summary>
     public PausedStepViewModel? PausedStep { get; }

@@ -627,7 +627,12 @@ namespace Aer.Daemon
                 var folderName = string.IsNullOrWhiteSpace(request.TaskName)
                     ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}"
                     : request.TaskName.Trim();
-                var taskDirectoryPath = Path.Combine(baseTasksDir, folderName);
+                var taskDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, folderName));
+                var normalizedBaseTasksDir = Path.GetFullPath(baseTasksDir);
+                if (!taskDirectoryPath.StartsWith(normalizedBaseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                {
+                    return Results.BadRequest("TaskName must be a simple folder name, not a path.");
+                }
 
                 try
                 {
@@ -731,9 +736,22 @@ namespace Aer.Daemon
                 var revisionFilePath = request.RevisionFilePath;
                 if (string.IsNullOrEmpty(revisionFilePath) && request.ArtifactReference != null)
                 {
+                    var referenceOutcome = await session.LoadAsync(request.DirectoryPath);
+                    if (referenceOutcome.Projection is not { } referenceProjection)
+                    {
+                        return Results.BadRequest(referenceOutcome.ErrorMessage);
+                    }
+
+                    var referencedExecution = referenceProjection.Lineage.Executions.FirstOrDefault(
+                        e => e.ExecutionId.Value == request.ArtifactReference.ExecutionId);
+                    if (referencedExecution is null || !referencedExecution.OutputFiles.Contains(request.ArtifactReference.FileName))
+                    {
+                        return Results.BadRequest("ArtifactReference does not name a known output file for that execution.");
+                    }
+
                     var outputDir = ArtifactManager.ResolveOutputDirectory(
                         Path.Combine(request.DirectoryPath, "artifacts"),
-                        new ExecutionId(request.ArtifactReference.ExecutionId));
+                        referencedExecution.ExecutionId);
                     var candidatePath = Path.Combine(outputDir, request.ArtifactReference.FileName);
                     if (File.Exists(candidatePath))
                     {

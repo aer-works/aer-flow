@@ -555,16 +555,63 @@ extension _FirstOrNull<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
+/// M22 review follow-up (issue #250): a real vendor glyph instead of a stock Material icon standing
+/// in for it. Same silhouette and brand-color pairing as desktop's `Icon.Vendor.Claude`/`.Gemini` in
+/// `Theme/Icons.axaml` (6-point sunburst vs. 4-point sparkle — a distinct point count so the two
+/// read apart without color alone), so the two clients agree on what a vendor "looks like". Only
+/// recognizes the vendors `VendorCliPresence` actually probes for (`claude`, `gemini`); anything
+/// else falls back to a plain neutral dot rather than inventing icon branches for adapter names
+/// ("shell", "stub", "codex", "openai") this codebase never registers.
 Widget _buildVendorIcon(String? adapter, {double size = 18.0}) {
   final name = (adapter ?? '').toLowerCase();
   if (name.contains('claude')) {
-    return Icon(Icons.psychology, size: size, color: Colors.deepOrangeAccent);
+    return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.claude));
   }
   if (name.contains('gemini')) {
-    return Icon(Icons.auto_awesome, size: size, color: Colors.indigoAccent);
+    return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.gemini));
   }
-  if (name.contains('shell') || name.contains('stub')) {
-    return Icon(Icons.terminal, size: size, color: Colors.grey);
+  return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.generic));
+}
+
+enum _VendorGlyph { claude, gemini, generic }
+
+class _VendorGlyphPainter extends CustomPainter {
+  const _VendorGlyphPainter(this.glyph);
+
+  final _VendorGlyph glyph;
+
+  static const _claudeColor = Color(0xFFD97757);
+  static const _geminiColor = Color(0xFF4285F4);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (glyph == _VendorGlyph.generic) {
+      final paint = Paint()..color = Colors.grey;
+      canvas.drawCircle(size.center(Offset.zero), size.shortestSide * 0.28, paint);
+      return;
+    }
+
+    // Points authored on Aer.Ui's 16x16 icon grid, then scaled to this glyph's actual size —
+    // identical coordinates to Icon.Vendor.Claude/.Gemini in Theme/Icons.axaml.
+    final points = glyph == _VendorGlyph.claude
+        ? const [
+            Offset(8, 2), Offset(9.2, 5.9), Offset(13.2, 5), Offset(10.4, 8),
+            Offset(13.2, 11), Offset(9.2, 10.1), Offset(8, 14), Offset(6.8, 10.1),
+            Offset(2.8, 11), Offset(5.6, 8), Offset(2.8, 5), Offset(6.8, 5.9),
+          ]
+        : const [
+            Offset(8, 1.5), Offset(9.4, 6.6), Offset(14.5, 8), Offset(9.4, 9.4),
+            Offset(8, 14.5), Offset(6.6, 9.4), Offset(1.5, 8), Offset(6.6, 6.6),
+          ];
+
+    final scale = size.shortestSide / 16.0;
+    final path = Path()..addPolygon(points.map((p) => p * scale).toList(), true);
+    final paint = Paint()
+      ..color = glyph == _VendorGlyph.claude ? _claudeColor : _geminiColor
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, paint);
   }
-  return Icon(Icons.smart_toy, size: size, color: Colors.purpleAccent);
+
+  @override
+  bool shouldRepaint(covariant _VendorGlyphPainter oldDelegate) => oldDelegate.glyph != glyph;
 }

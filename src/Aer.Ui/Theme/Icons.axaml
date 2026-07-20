@@ -45,4 +45,12 @@
   <!-- A broadcast/signal glyph — Remote nav destination (M21 Phase 3, #234): a dot with two arcs, the standard "wireless" pictogram. -->
   <StreamGeometry x:Key="Icon.Remote">M 8,12.5 A 0.6,0.6 0 1 1 7.99,12.5 M 5.3,10 A 4,4 0 0 1 10.7,10 M 3,7.7 A 7.5,7.5 0 0 1 13,7.7</StreamGeometry>
 
+  <!-- M22 template-picker vendor icons (issue #250 review follow-up): closed, fillable shapes (same
+       16x16 grid as the set above), each a distinct point-count silhouette so the two read apart
+       even without color. Claude: a 6-point sunburst. Gemini: a 4-point sparkle/diamond — fewer,
+       fatter points than Claude's, deliberately, so shape alone (not just brand color) tells them
+       apart. Neither reproduces the real vendor mark; both are original abstractions. -->
+  <StreamGeometry x:Key="Icon.Vendor.Claude">M 8,2 L 9.2,5.9 L 13.2,5 L 10.4,8 L 13.2,11 L 9.2,10.1 L 8,14 L 6.8,10.1 L 2.8,11 L 5.6,8 L 2.8,5 L 6.8,5.9 Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Vendor.Gemini">M 8,1.5 L 9.4,6.6 L 14.5,8 L 9.4,9.4 L 8,14.5 L 6.6,9.4 L 1.5,8 L 6.6,6.6 Z</StreamGeometry>
+
 </ResourceDictionary>

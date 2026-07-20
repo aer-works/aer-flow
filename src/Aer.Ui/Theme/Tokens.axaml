@@ -136,4 +136,9 @@
   <x:Double x:Key="Motion.Base">200</x:Double>
   <x:Double x:Key="Motion.Slow">320</x:Double>
 
+  <!-- Vendor identity (M22 template picker): brand marks, not a semantic status, so — like Space/Type
+       above — one constant mapping outside ThemeDictionaries rather than a light/dark pair. -->
+  <SolidColorBrush x:Key="Vendor.Claude">#D97757</SolidColorBrush>
+  <SolidColorBrush x:Key="Vendor.Gemini">#4285F4</SolidColorBrush>
+
 </ResourceDictionary>

@@ -94,15 +94,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool isMutationInFlight;
 
     /// <summary>
-    /// Owner feedback: "does Run make sense on a finished task? or is it a re-run?" — it's neither:
-    /// <c>MutationInterface.StartWorkflowAsync</c>'s pump finds nothing ready and nothing in flight
-    /// for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> task and returns the
-    /// same state unchanged, a safe but silent no-op. Rather than leave that ambiguous, Run is
-    /// disabled once the open task has actually finished — set by <c>MainWindow.LoadAsync</c> from
-    /// the loaded projection's <c>State.Status</c>, alongside every other read-only render there.
+    /// Owner feedback: "does Run make sense on a finished task? or is it a re-run?" — it's a re-run,
+    /// but not in place: <c>MutationInterface.StartWorkflowAsync</c>'s pump finds nothing ready and
+    /// nothing in flight for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> task's
+    /// own directory and returns the same state unchanged, a safe but silent no-op, so resuming the
+    /// same directory was never an option. <c>MainWindow</c>'s Run click handler checks this flag and,
+    /// when true, clones the open task's recorded workflow/bindings files into a fresh sibling
+    /// <c>task-{timestamp}</c> directory (the same naming the "Save &amp; Run" and template flows
+    /// already use) instead of resuming in place — the finished task's own directory and history are
+    /// left untouched. Set by <c>MainWindow.RenderProjection</c> from the loaded projection's
+    /// <c>State.Status</c>, alongside every other read-only render there.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanRun))]
     [NotifyPropertyChangedFor(nameof(RunButtonToolTipText))]
     private bool isTaskFinished;
 
@@ -110,7 +113,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string RunButtonToolTipText => IsMutationInFlight
         ? "Execution is currently in flight."
-        : "Start a fresh task from a workflow file, or resume/re-run the task open above.";
+        : IsTaskFinished
+            ? "This task has finished — Run starts a fresh task cloned from it."
+            : "Start a fresh task from a workflow file, or resume the task open above.";
 
     /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
     [ObservableProperty]
