@@ -152,8 +152,11 @@ public class ConversationRoundTripTests
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
             StopSentinel: null,
-            Initiator: EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for.", fails: false),
-            Responder: EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against.", responderFails));
+            Participants:
+            [
+                EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for.", fails: false),
+                EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against.", responderFails),
+            ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
         await File.WriteAllTextAsync(dialogueConfigPath, JsonSerializer.Serialize(dialogueConfig));

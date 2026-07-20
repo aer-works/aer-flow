@@ -123,10 +123,11 @@ public class GuidedAuthoringTests
             Assert.Equal("Open with your position.", config.SeedPrompt);
             Assert.Equal(2, config.TurnBudget);
             Assert.Equal("verdict.md", config.FinalOutputName);
-            Assert.Equal("claude", config.Initiator.Command);
-            Assert.Equal("agy", config.Responder.Command);
-            Assert.Contains(DialogueParticipant.PromptPlaceholder, config.Initiator.Args);
-            Assert.Contains(DialogueParticipant.PromptPlaceholder, config.Responder.Args);
+            Assert.Equal(2, config.Participants.Count);
+            Assert.Equal("claude", config.Participants[0].Command);
+            Assert.Equal("agy", config.Participants[1].Command);
+            Assert.Contains(DialogueParticipant.PromptPlaceholder, config.Participants[0].Args);
+            Assert.Contains(DialogueParticipant.PromptPlaceholder, config.Participants[1].Args);
         }
         finally
         {

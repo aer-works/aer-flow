@@ -101,7 +101,7 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 **M23: Generic Dialogue & Project Packaging** — progress:
 
-- [ ] Phase 1 — Generalize the Dialogue Worker
+- [x] Phase 1 — Generalize the Dialogue Worker
 - [ ] Phase 2 — Supersede-Chain Hardening
 - [ ] Phase 3 — Project-Directory-Bound Tasks & Portable Bindings
 

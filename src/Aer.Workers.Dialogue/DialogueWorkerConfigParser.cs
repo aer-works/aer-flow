@@ -45,8 +45,16 @@ public static class DialogueWorkerConfigParser
             throw new DialogueWorkerConfigException("Dialogue-worker config is missing 'FinalOutputName'.");
         }
 
-        ValidateParticipant(config.Initiator, nameof(config.Initiator));
-        ValidateParticipant(config.Responder, nameof(config.Responder));
+        if (config.Participants is null || config.Participants.Count < 2)
+        {
+            throw new DialogueWorkerConfigException(
+                "Dialogue-worker config's 'Participants' must have at least two entries — a dialogue with one side is not an exchange.");
+        }
+
+        for (var i = 0; i < config.Participants.Count; i++)
+        {
+            ValidateParticipant(config.Participants[i], $"{nameof(config.Participants)}[{i}]");
+        }
 
         return config;
     }
