@@ -12,6 +12,28 @@ public partial class HomeView : UserControl
 {
     public HomeView() => InitializeComponent();
 
+    /// <summary>The empty state's action to launch the template picker window (M22 Phase 3).</summary>
+    private async void OnStartTemplateClick(object? sender, RoutedEventArgs e)
+    {
+        var topLevel = TopLevel.GetTopLevel(this) as MainWindow;
+        var picker = new TemplatePickerWindow();
+        if (topLevel != null)
+        {
+            await picker.ShowDialog(topLevel);
+        }
+
+        if (picker.MaterializedTaskDirectoryPath is { } taskPath)
+        {
+            TaskDirectoryPathBox.Text = taskPath;
+            if (topLevel != null)
+            {
+                var workflowPath = System.IO.Path.Combine(taskPath, "workflow.json");
+                var bindingsPath = System.IO.Path.Combine(taskPath, "bindings.json");
+                await topLevel.RunAsync(taskPath, workflowPath, bindingsPath);
+            }
+        }
+    }
+
     /// <summary>The empty state's one action (Phase 5, #190): straight to the guided New Workflow flow.</summary>
     private void OnCreateWorkflowClick(object? sender, RoutedEventArgs e)
     {

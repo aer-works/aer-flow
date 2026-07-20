@@ -461,4 +461,109 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task GetTemplates_ReturnsCatalogAndVendorPresence()
+    {
+        var response = await _client.GetAsync($"{BaseUrl}/api/templates", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var hasTemplates = body.TryGetProperty("templates", out var templates) || body.TryGetProperty("Templates", out templates);
+        Assert.True(hasTemplates);
+        Assert.Equal(2, templates.GetArrayLength());
+
+        var hasVendors = body.TryGetProperty("availableVendors", out var vendors) || body.TryGetProperty("AvailableVendors", out vendors);
+        Assert.True(hasVendors);
+        Assert.True(vendors.GetArrayLength() > 0);
+    }
+
+    [Fact]
+    public async Task RunTemplate_MaterializesAndStartsTaskWithoutCallerSuppliedPaths()
+    {
+        var request = new RunTemplateRequest(
+            TemplateId: "solo-run",
+            PrimaryAdapter: "claude",
+            TaskName: "test-template-task-" + Guid.NewGuid().ToString("N"));
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var hasProp = body.TryGetProperty("taskDirectoryPath", out var dirProp) || body.TryGetProperty("TaskDirectoryPath", out dirProp);
+        Assert.True(hasProp);
+        var dirPath = dirProp.GetString();
+        Assert.NotNull(dirPath);
+        Assert.True(Directory.Exists(dirPath));
+        Assert.True(File.Exists(Path.Combine(dirPath, "workflow.json")));
+        Assert.True(File.Exists(Path.Combine(dirPath, "bindings.json")));
+    }
+
+    [Theory]
+    [InlineData("../../escaped-task")]
+    [InlineData("..\\..\\escaped-task")]
+    public async Task RunTemplate_WithPathTraversalTaskName_ReturnsBadRequest(string maliciousTaskName)
+    {
+        // Review follow-up (issue #250): TaskName used to be Path.Combine'd into the daemon-owned
+        // tasks root with no containment check -- a crafted name could escape ~/.aer/tasks entirely
+        // and make the daemon create/write files anywhere it can reach. This is exactly the
+        // filesystem access the milestone's own design says a caller with only TemplateId/TaskName
+        // (no real paths) should never get.
+        if (maliciousTaskName.Contains('\\') && !OperatingSystem.IsWindows())
+        {
+            // '\' is not a path separator outside Windows, so this input never traverses out of the
+            // tasks root there -- it's just a literal (contained) folder name, and OK is correct.
+            return;
+        }
+
+        var request = new RunTemplateRequest(TemplateId: "solo-run", PrimaryAdapter: "claude", TaskName: maliciousTaskName);
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DecideWithArtifactReference_FileNameNotInExecutionsOutputs_ReturnsBadRequest()
+    {
+        // Same path-traversal guard as GetArtifact_WithFileNameNotInExecutionsOutputs_ReturnsNotFound
+        // above, but for /api/tasks/decide's ArtifactReference resolution (M22 Phase 5) -- it used to
+        // Path.Combine the caller-supplied FileName straight into the resolved output directory with
+        // no check that it names a real output of that execution, letting a remote client (the exact
+        // audience Phase 5 exists to serve without host filesystem access) pull an arbitrary host file
+        // in as "reviewer feedback".
+        const string executionId = "exec-artifact-ref-1";
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{executionId}");
+        Directory.CreateDirectory(outputDirectory);
+        await File.WriteAllTextAsync(Path.Combine(outputDirectory, "out"), "the real output", TestContext.Current.CancellationToken);
+
+        var decideResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/decide",
+            new DecideTaskRequest(
+                taskDirectory, WorkerStep.Value, executionId, DecisionType.Reject,
+                ArtifactReference: new ArtifactReference(executionId, "../../../secrets.txt")),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, decideResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DecideWithArtifactReference_WithKnownExecutionAndFile_IsAccepted()
+    {
+        const string executionId = "exec-artifact-ref-2";
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{executionId}");
+        Directory.CreateDirectory(outputDirectory);
+        await File.WriteAllTextAsync(Path.Combine(outputDirectory, "out"), "the real output", TestContext.Current.CancellationToken);
+
+        var decideResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/decide",
+            new DecideTaskRequest(
+                taskDirectory, WorkerStep.Value, executionId, DecisionType.Reject,
+                ArtifactReference: new ArtifactReference(executionId, "out")),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(decideResponse.IsSuccessStatusCode);
+    }
 }

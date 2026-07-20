@@ -9,6 +9,14 @@ first. Each entry cites the phase that decided it; the full phase plans — goal
 the open questions each phase resolved — live in the plan file's git history and the linked
 issues.
 
+## M22: Workflow Template Library
+
+- **Pre-authored built-in template catalog (Phase 1)** — `BuiltInWorkflowTemplates` in `Aer.Adapters` exposes built-in template shapes (`solo-run`, `review-run`) with pre-authored, engine-valid `WorkflowDefinition` definitions and `WorkerBindingConfigEntry` dictionaries, materializing against whichever vendor CLIs (`claude`, `gemini`) are probed on system PATH via `VendorCliPresence`.
+- **Daemon template materialization & execution endpoints (Phase 2)** — `GET /api/templates` lists available built-in templates and installed vendor CLIs. `POST /api/templates/run` materializes template files (`workflow.json`, `bindings.json`) into a daemon-managed directory (`~/.aer/tasks/task-{timestamp}`) and dispatches execution via `TaskSession.RunAsync` with zero caller-supplied path arguments, allowing clients with no host filesystem access to initiate tasks.
+- **Desktop template picker (Phase 3)** — `TemplatePickerWindow` in `Aer.Ui` provides a visual dialog for picking built-in templates, selecting available vendor CLIs, specifying optional task names or initial prompts, and launching execution directly into the desktop Task view.
+- **Mobile template picker (Phase 4)** — `DaemonClient` gains `listTemplates()` and `runTemplate(...)`. `Aer.Mobile` (`inbox_screen.dart`) surfaces a "Start from template" dialog in empty and active inbox states, giving the mobile app its first capability to start a new task from scratch over REST and observe live updates over WebSockets.
+- **Artifact-referenced supply & mobile send-back (Phase 5)** — `POST /api/tasks/decide` accepts an optional `ArtifactReference` (`{ executionId, fileName }`). The daemon resolves the artifact path server-side using `ArtifactManager.ResolveOutputDirectory`, eliminating the need for remote clients to have host filesystem access. `Aer.Mobile` surfaces a "Send back to `<target>`" button on paused review steps, triggering Supersede with artifact-referenced feedback.
+
 ## M21: Zero-Config Remote Control & Permission Scopes
 
 - **Permission grants are structured and vendor-neutral (Phase 1)** — `PermissionGrant` replaces opaque adapter flag strings (`ReadFiles`, `WriteFiles`, `RunShellCommands` with wildcard glob matching, `NetworkAccess`). Each adapter translates grants into vendor-native flags inside `Resolve()` (Adapter Isolation rule).

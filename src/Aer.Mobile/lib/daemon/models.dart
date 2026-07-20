@@ -84,6 +84,7 @@ class TaskProjection {
   final List<StepDefinition> stepDefinitions;
   final List<WorkflowStepState> steps;
   final List<ExecutionArtifacts> executions;
+  final Map<String, String> workerAdapters;
 
   TaskProjection({
     required this.directoryPath,
@@ -92,6 +93,7 @@ class TaskProjection {
     required this.stepDefinitions,
     required this.steps,
     required this.executions,
+    required this.workerAdapters,
   });
 
   List<WorkflowStepState> get pausedSteps => steps.where((s) => s.isPaused).toList();
@@ -109,6 +111,13 @@ class TaskProjection {
     final state = caseInsensitive(j['state'] as Map<String, dynamic>);
     final lineage = j['lineage'] == null ? <String, dynamic>{} : caseInsensitive(j['lineage'] as Map<String, dynamic>);
 
+    final workerAdapters = <String, String>{};
+    if (j['workeradapters'] is Map<String, dynamic>) {
+      (j['workeradapters'] as Map<String, dynamic>).forEach((k, v) {
+        if (v != null) workerAdapters[k] = v.toString();
+      });
+    }
+
     return TaskProjection(
       directoryPath: j['directorypath']?.toString(),
       workflowTemplateId: snapshot['workflowtemplateid'].toString(),
@@ -119,6 +128,7 @@ class TaskProjection {
       executions: ((lineage['executions'] as List<dynamic>?) ?? [])
           .map((e) => ExecutionArtifacts.fromJson(e as Map<String, dynamic>))
           .toList(),
+      workerAdapters: workerAdapters,
     );
   }
 }

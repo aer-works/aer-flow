@@ -74,7 +74,8 @@ public sealed partial class StepItemViewModel : ObservableObject
         IReadOnlyList<ConversationRefViewModel> conversations,
         IReadOnlyList<string> decisionLines,
         PausedStepViewModel? pausedStep,
-        Action<StepItemViewModel> select)
+        Action<StepItemViewModel> select,
+        string? adapter = null)
     {
         StepId = stepId;
         Worker = worker;
@@ -85,16 +86,40 @@ public sealed partial class StepItemViewModel : ObservableObject
         DecisionLines = decisionLines;
         PausedStep = pausedStep;
         _select = select;
+        Adapter = adapter;
     }
 
     public string StepId { get; }
     public string Worker { get; }
+    public string? Adapter { get; }
     public StepStatus Status { get; }
     public string PlainStatusText => PlainLanguage.ForStep(Status);
     public IReadOnlyList<string> AttemptLines { get; }
     public IReadOnlyList<ArtifactFileViewModel> OutputFiles { get; }
     public IReadOnlyList<ConversationRefViewModel> Conversations { get; }
     public IReadOnlyList<string> DecisionLines { get; }
+
+    /// <summary>
+    /// Normalized to exactly the vendors <c>VendorCliPresence</c> probes for (<c>claude</c>,
+    /// <c>gemini</c>), or <see langword="null"/> for anything else — the presentation layer's
+    /// <c>VendorIconGeometryConverter</c>/<c>VendorIconBrushConverter</c> map this to a glyph and
+    /// brush by name (design-language.md's "named resource, not a raw value in a view" rule; a
+    /// prior pass hardcoded geometry/hex strings here instead, which also meant it invented icon
+    /// branches for adapters — "shell", "stub", "codex", "openai" — nothing in this codebase
+    /// registers).
+    /// </summary>
+    public string? VendorKey
+    {
+        get
+        {
+            var target = (Adapter ?? Worker).ToLowerInvariant();
+            if (target.Contains("claude")) return "claude";
+            if (target.Contains("gemini")) return "gemini";
+            return null;
+        }
+    }
+
+    public string VendorDisplay => VendorKey ?? (Adapter != null ? $"{Worker} ({Adapter})" : Worker);
 
     /// <summary>Non-null exactly while this step waits at its review gate — the inline decision actions (§17 via M15's <see cref="PausedStepViewModel"/>, unchanged semantics, plain words on the buttons).</summary>
     public PausedStepViewModel? PausedStep { get; }
@@ -168,7 +193,8 @@ public static class StepItemProjector
         IReadOnlyList<PausedStepViewModel> pausedSteps,
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
-        Action<StepItemViewModel> select)
+        Action<StepItemViewModel> select,
+        IReadOnlyDictionary<string, string>? workerAdapters = null)
     {
         var artifactsRootPath = Path.Combine(taskDirectoryPath, "artifacts");
         var pausedByStepId = pausedSteps.ToDictionary(paused => paused.StepId);
@@ -237,6 +263,8 @@ public static class StepItemProjector
                 .ToList();
 
             var stepDefinition = projection.Snapshot.Steps.First(step => step.StepId == stepState.StepId);
+            var adapter = workerAdapters?.GetValueOrDefault(stepDefinition.Worker);
+
             items.Add(new StepItemViewModel(
                 stepState.StepId.Value,
                 stepDefinition.Worker,
@@ -246,7 +274,8 @@ public static class StepItemProjector
                 conversations,
                 decisionLines,
                 pausedByStepId.GetValueOrDefault(stepState.StepId),
-                select));
+                select,
+                adapter));
         }
 
         return items;

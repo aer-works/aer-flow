@@ -42,17 +42,28 @@
       </StackPanel>
 
       <StackPanel Spacing="{DynamicResource Space.3}">
-      <TextBlock Classes="heading" Text="Tasks" />
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+        <TextBlock Classes="heading" Text="Tasks" VerticalAlignment="Center" />
+        <Button x:Name="HeaderStartTemplateButton" Classes="accent" Margin="16,0,0,0" Click="OnStartTemplateClick" VerticalAlignment="Center">
+          <AccessText Text="_Start from template" />
+        </Button>
+      </StackPanel>
       <!-- The empty state says what to do next (Phase 5): first run, no history yet. -->
       <Border Classes="card" IsVisible="{Binding Home.HasNoTasks}">
         <StackPanel Spacing="{DynamicResource Space.2}">
           <TextBlock Classes="body-strong" Text="No tasks yet." />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
-                     Text="Create a workflow and run it — or open an existing task folder below." />
-          <Button x:Name="CreateWorkflowButton" Classes="accent"
-                  HorizontalAlignment="Left" Click="OnCreateWorkflowClick">
-            <AccessText Text="_Create a workflow" />
-          </Button>
+                     Text="Start from a pre-authored template — or create a custom workflow below." />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Button x:Name="StartTemplateButton" Classes="accent"
+                    HorizontalAlignment="Left" Click="OnStartTemplateClick">
+              <AccessText Text="_Start from template" />
+            </Button>
+            <Button x:Name="CreateWorkflowButton"
+                    HorizontalAlignment="Left" Click="OnCreateWorkflowClick">
+              <AccessText Text="_Create custom workflow" />
+            </Button>
+          </StackPanel>
         </StackPanel>
       </Border>
       <ItemsControl x:Name="TaskCardsList" ItemsSource="{Binding Home.TaskCards}">
