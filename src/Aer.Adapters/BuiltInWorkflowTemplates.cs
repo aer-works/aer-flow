@@ -254,7 +254,9 @@ public static class BuiltInWorkflowTemplates
         if (File.Exists(workflowFilePath))
         {
             throw new TaskDirectoryAlreadyExistsException(
-                $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+                TaskLifecycle.IsArchived(taskDirectoryPath)
+                    ? $"A task already exists at '{taskDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
+                    : $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
         }
 
         Directory.CreateDirectory(taskDirectoryPath);
