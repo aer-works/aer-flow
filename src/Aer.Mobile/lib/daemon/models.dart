@@ -231,3 +231,48 @@ class SessionProgressEvent {
     );
   }
 }
+
+/// One vendor-discovered skill/command/agent/mode/plugin (M24 Phase 2 follow-up chat capability
+/// picker) — the mobile counterpart of Aer.Ui.Core's ChatCapabilityItemViewModel. Only "command"/
+/// "skill"/"agent" kinds are invokable; Gemini's "mode"/"plugin" kinds are informational only (see
+/// ChatCapabilityItemViewModel's own remarks for why).
+class ChatCapabilityItem {
+  final String name;
+  final String kind;
+  final String description;
+  final bool isRecentlyUsed;
+
+  ChatCapabilityItem({required this.name, required this.kind, required this.description, required this.isRecentlyUsed});
+
+  bool get isInvokable => kind == 'command' || kind == 'skill' || kind == 'agent';
+}
+
+/// GET /api/sessions/{id}/commands's shape: WorkerCapabilities's own fields plus the additive
+/// RecentlyUsed sibling (same idiom as TaskProjection's DirectoryPath/WorkerAdapters siblings).
+class SessionCommandsResult {
+  final String vendor;
+  final List<ChatCapabilityItem> items;
+  final List<String> models;
+
+  SessionCommandsResult({required this.vendor, required this.items, required this.models});
+
+  factory SessionCommandsResult.fromJson(Map<String, dynamic> json) {
+    final j = caseInsensitive(json);
+    final recentlyUsed = ((j['recentlyused'] as List<dynamic>?) ?? []).map((n) => n.toString()).toSet();
+    final rawItems = (j['items'] as List<dynamic>?) ?? [];
+    return SessionCommandsResult(
+      vendor: j['vendor']?.toString() ?? '',
+      items: rawItems.map((raw) {
+        final item = caseInsensitive(raw as Map<String, dynamic>);
+        final name = item['name']?.toString() ?? '';
+        return ChatCapabilityItem(
+          name: name,
+          kind: item['kind']?.toString() ?? '',
+          description: item['description']?.toString() ?? '',
+          isRecentlyUsed: recentlyUsed.contains(name),
+        );
+      }).toList(),
+      models: ((j['models'] as List<dynamic>?) ?? []).map((m) => m.toString()).toList(),
+    );
+  }
+}

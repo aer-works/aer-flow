@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using Aer.Adapters;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -6,6 +7,19 @@ namespace Aer.Ui.Core;
 
 /// <summary>One rendered row in <see cref="ChatViewModel.Messages"/> — a human turn or an assistant response, never both (M24 Phase 1 desktop chat UI, issue #262).</summary>
 public sealed record ChatMessageViewModel(string SenderLabel, string Text, DateTimeOffset Timestamp, bool IsFromUser);
+
+/// <summary>
+/// One row in the chat capability picker (M24 Phase 2 follow-up). Only <c>"command"</c>/<c>"skill"</c>/<c>"agent"</c>
+/// kinds are <see cref="IsInvokable"/> — things a user can actually pick and send/insert. Gemini's
+/// <c>"mode"</c>/<c>"plugin"</c> kinds are informational only (a mode is a permission-scope label,
+/// not a chat message; a plugin is something already imported into the vendor CLI, not an action) —
+/// the picker renders them in a separate, non-selectable section rather than presenting all kinds as
+/// equally actionable.
+/// </summary>
+public sealed record ChatCapabilityItemViewModel(string Name, string Kind, string Description, bool IsRecentlyUsed)
+{
+    public bool IsInvokable => Kind is "command" or "skill" or "agent";
+}
 
 /// <summary>
 /// The dedicated Chat view's state (M24 Phase 1 desktop wiring, issue #262) — a chat/codebase
@@ -27,6 +41,15 @@ public sealed record ChatMessageViewModel(string SenderLabel, string Text, DateT
 public sealed partial class ChatViewModel : ObservableObject
 {
     public ObservableCollection<ChatMessageViewModel> Messages { get; } = [];
+
+    /// <summary>Invokable skills/commands/agents (M24 Phase 2 follow-up chat capability picker) — recently-used first, per <see cref="LoadCommands"/>.</summary>
+    public ObservableCollection<ChatCapabilityItemViewModel> InvokableCommands { get; } = [];
+
+    /// <summary>Informational-only entries (Gemini's modes/plugins) — shown, never selectable.</summary>
+    public ObservableCollection<ChatCapabilityItemViewModel> InfoCommands { get; } = [];
+
+    [ObservableProperty]
+    private bool isCommandMenuOpen;
 
     [ObservableProperty]
     private string inputText = string.Empty;
@@ -111,6 +134,30 @@ public sealed partial class ChatViewModel : ObservableObject
         LiveProgressText += progressEvent.Text;
     }
 
+    /// <summary>
+    /// Populates <see cref="InvokableCommands"/>/<see cref="InfoCommands"/> from a fresh
+    /// <c>GET /api/sessions/{id}/commands</c> result (M24 Phase 2 follow-up) — recently-used items
+    /// first within each list, matching this vendor's own item order otherwise.
+    /// </summary>
+    public void LoadCommands(TaskSession.SessionCommandsResult result)
+    {
+        InvokableCommands.Clear();
+        InfoCommands.Clear();
+
+        var recentRank = result.RecentlyUsed
+            .Select((name, index) => (name, index))
+            .ToDictionary(t => t.name, t => t.index, StringComparer.Ordinal);
+
+        var ordered = result.Items
+            .Select(item => new ChatCapabilityItemViewModel(item.Name, item.Kind, item.Description, recentRank.ContainsKey(item.Name)))
+            .OrderBy(item => recentRank.TryGetValue(item.Name, out var rank) ? rank : int.MaxValue);
+
+        foreach (var item in ordered)
+        {
+            (item.IsInvokable ? InvokableCommands : InfoCommands).Add(item);
+        }
+    }
+
     public void Clear()
     {
         SessionId = null;
@@ -122,5 +169,8 @@ public sealed partial class ChatViewModel : ObservableObject
         IsSending = false;
         _pendingUserMessage = null;
         Messages.Clear();
+        InvokableCommands.Clear();
+        InfoCommands.Clear();
+        IsCommandMenuOpen = false;
     }
 }

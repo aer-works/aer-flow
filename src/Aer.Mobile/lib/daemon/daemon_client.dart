@@ -324,6 +324,35 @@ class DaemonClient {
     _throwIfFailed(response);
   }
 
+  /// Discovered skills/commands/agents/models for a session's current vendor, plus recently-used
+  /// ordering (M24 Phase 2 follow-up chat capability picker).
+  Future<SessionCommandsResult> getSessionCommands(String sessionId) async {
+    final response = await _get(Uri.http(host, '/api/sessions/$sessionId/commands'));
+    _throwIfFailed(response);
+    return SessionCommandsResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Records a picked command as this vendor's most-recently-used.
+  Future<void> recordCommandUsed(String sessionId, String name) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/$sessionId/commands/record'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name}),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Session-level mode (M24 Phase 2 follow-up): one of "auto", "default", "plan" — applies to
+  /// whichever vendor is currently active, taking effect on the next turn.
+  Future<void> setSessionMode(String sessionId, String mode) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/$sessionId/mode'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'mode': mode}),
+    );
+    _throwIfFailed(response);
+  }
+
   /// Fetches known projects registry from daemon (M24 Phase 3).
   Future<List<Map<String, dynamic>>> listKnownProjects() async {
     final response = await _get(Uri.http(host, '/api/projects'));

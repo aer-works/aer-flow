@@ -66,6 +66,9 @@ public sealed class TaskSession
     /// <summary><see cref="LoadOutcome"/>'s counterpart for <see cref="StartInteractiveSessionAsync"/> (M24 Phase 1 desktop wiring, issue #262).</summary>
     public sealed record SessionStartOutcome(SessionMetadata? Metadata, string? ErrorMessage);
 
+    /// <summary><c>GET /api/sessions/{id}/commands</c>'s shape (M24 Phase 2 follow-up) — <see cref="WorkerCapabilities"/>'s own fields plus the additive <see cref="RecentlyUsed"/> sibling.</summary>
+    public sealed record SessionCommandsResult(string Vendor, IReadOnlyList<WorkerCapabilityItem> Items, IReadOnlyList<string> Models, IReadOnlyList<string> RecentlyUsed);
+
     private readonly LocalUiConfigurationStore _configurationStore;
     private readonly IReadOnlyDictionary<string, IWorkerAdapter> _adapters;
     private readonly Func<string?> _bindingsFilePathProvider;
@@ -923,6 +926,79 @@ public sealed class TaskSession
         try
         {
             var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/sessions/send", request, cancellationToken).ConfigureAwait(true);
+            if (response.IsSuccessStatusCode)
+            {
+                return new MutationOutcome(null);
+            }
+
+            var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
+            return new MutationOutcome(err);
+        }
+        catch (Exception ex)
+        {
+            return new MutationOutcome(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Discovered skills/commands/agents/models for a session's current vendor, plus this vendor's
+    /// most-recently-used entries (M24 Phase 2 follow-up chat capability picker). No in-process
+    /// fallback, same reasoning as <see cref="SendSessionMessageAsync"/> -- this is purely a daemon
+    /// read.
+    /// </summary>
+    public async Task<(SessionCommandsResult? Result, string? ErrorMessage)> GetSessionCommandsAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return (null, "Discovering commands requires the daemon, and none is reachable.");
+        }
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/sessions/{sessionId}/commands", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (null, await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true));
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<SessionCommandsResult>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            return (result, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    /// <summary>Best-effort: a picked command failing to record as "recently used" shouldn't block or error the chat UI.</summary>
+    public async Task RecordCommandUsedAsync(string sessionId, string commandName, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/sessions/{sessionId}/commands/record", new { Name = commandName }, cancellationToken).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Recency is a convenience, not a correctness requirement -- see LocalUiConfigurationStore's own remarks.
+        }
+    }
+
+    /// <summary>Session-level mode (M24 Phase 2 follow-up): "auto", "default", or "plan", applying to whichever vendor is currently active.</summary>
+    public async Task<MutationOutcome> SetSessionModeAsync(string sessionId, string mode, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return new MutationOutcome("Setting session mode requires the daemon, and none is reachable.");
+        }
+
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/sessions/{sessionId}/mode", new { Mode = mode }, cancellationToken).ConfigureAwait(true);
             if (response.IsSuccessStatusCode)
             {
                 return new MutationOutcome(null);

@@ -1088,7 +1088,7 @@ namespace Aer.Daemon
             });
 
             // M24 Phase 2 (#263): Capabilities discovery & Session compact endpoints
-            app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters, LocalUiConfigurationStore configStore) =>
             {
                 var resolved = await ResolveSessionAsync(sessionId);
                 if (resolved == null)
@@ -1103,7 +1103,79 @@ namespace Aer.Daemon
                 }
 
                 var capabilities = await adapter.DiscoverCapabilitiesAsync(metadata.WorkingDirectory);
-                return Results.Ok(capabilities);
+                var recentlyUsed = await configStore.LoadRecentCommandsAsync(metadata.CurrentAdapter);
+
+                // RecentlyUsed is an additive sibling property, same idiom as the WS payload's
+                // SessionId/DirectoryPath (PR #276) -- existing callers deserializing straight into
+                // WorkerCapabilities are unaffected (unmapped JSON members are ignored by default).
+                return Results.Ok(new
+                {
+                    capabilities.Vendor,
+                    capabilities.Items,
+                    capabilities.Models,
+                    RecentlyUsed = recentlyUsed,
+                });
+            });
+
+            app.MapPost("/api/sessions/{sessionId}/commands/record", async (string sessionId, [FromBody] RecordCommandUsedRequest request, LocalUiConfigurationStore configStore) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Name))
+                {
+                    return Results.BadRequest("Name is required.");
+                }
+
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                await configStore.RecordCommandUsedAsync(resolved.Value.Metadata.CurrentAdapter, request.Name.Trim());
+                return Results.Ok();
+            });
+
+            // Session-level mode (M24 Phase 2 follow-up): PermissionGrant already persists across
+            // turns via bindings.json (ExecuteSessionTurnAsync reads the existing entry's grant each
+            // turn), but nothing let a user change it mid-session -- it was fixed at whatever
+            // /api/sessions/start set. This updates bindings.json directly so the *next* turn (any
+            // vendor) picks up the new grant, translated per-vendor by that adapter's own existing
+            // PermissionGrant translation.
+            app.MapPost("/api/sessions/{sessionId}/mode", async (string sessionId, [FromBody] SetSessionModeRequest request) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                var directoryPath = resolved.Value.DirectoryPath;
+                var grant = request.Mode?.Trim().ToLowerInvariant() switch
+                {
+                    "auto" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
+                    "plan" => new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+                    "default" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+                    _ => (PermissionGrant?)null,
+                };
+
+                if (grant == null)
+                {
+                    return Results.BadRequest("Mode must be one of: auto, default, plan.");
+                }
+
+                var bindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+                var existingBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFilePath).ConfigureAwait(true);
+                if (!existingBindings.TryGetValue(InteractiveSessionMaterializer.DefaultWorkerName, out var existingEntry))
+                {
+                    return Results.NotFound();
+                }
+
+                var updatedBindings = new Dictionary<string, WorkerBindingConfigEntry>(existingBindings)
+                {
+                    [InteractiveSessionMaterializer.DefaultWorkerName] = existingEntry with { PermissionGrant = grant }
+                };
+                await WorkerBindingConfigWriter.SaveToFileAsync(updatedBindings, bindingsFilePath).ConfigureAwait(true);
+
+                return Results.Ok();
             });
 
             app.MapGet("/api/adapters/capabilities", async (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
@@ -1452,4 +1524,17 @@ namespace Aer.Daemon
     }
 
     public record RegisterProjectRequest(string Path, string? FriendlyName = null);
+
+    /// <summary>M24 Phase 2 follow-up: records a picked skill/command/agent as this vendor's most-recently-used, via <see cref="LocalUiConfigurationStore.RecordCommandUsedAsync"/>.</summary>
+    public record RecordCommandUsedRequest(string Name);
+
+    /// <summary>
+    /// Session-level mode (M24 Phase 2 follow-up, per discussion with the owner): a vendor-neutral
+    /// permission mode settable mid-session, applying to whichever vendor is currently active --
+    /// distinct from <see cref="StartSessionRequest.PermissionGrant"/>, which only ever applies at
+    /// session creation. <paramref name="Mode"/> is one of "auto" (maximally permissive -- Claude's
+    /// full <c>Read,Edit,Write,Bash,WebFetch,WebSearch</c> grant, Gemini's <c>accept-edits</c>),
+    /// "default" (this session's original grant), or "plan" (read-only -- <see cref="PermissionGrant.WriteFiles"/>/<see cref="PermissionGrant.RunShellCommands"/> both off).
+    /// </summary>
+    public record SetSessionModeRequest(string Mode);
 }
