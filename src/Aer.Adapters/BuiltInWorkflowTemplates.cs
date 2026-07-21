@@ -250,10 +250,16 @@ public static class BuiltInWorkflowTemplates
         string? secondaryCustomPrompt = null,
         CancellationToken cancellationToken = default)
     {
+        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+        if (File.Exists(workflowFilePath))
+        {
+            throw new TaskDirectoryAlreadyExistsException(
+                $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+        }
+
         Directory.CreateDirectory(taskDirectoryPath);
         var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt, taskDirectoryPath);
 
-        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
         var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
 
         await WorkflowDefinitionWriter.SaveToFileAsync(definition, workflowFilePath, cancellationToken).ConfigureAwait(false);

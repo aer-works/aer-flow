@@ -111,7 +111,7 @@ public partial class TemplatePickerWindow : Window
                     var outcome = await _owner.StartInteractiveSessionAsync(request).ConfigureAwait(true);
                     if (outcome.Metadata is null)
                     {
-                        Close(false);
+                        ShowError(outcome.ErrorMessage ?? "Failed to start the session.");
                         return;
                     }
 
@@ -143,9 +143,22 @@ public partial class TemplatePickerWindow : Window
             MaterializedTaskDirectoryPath = taskDirectoryPath;
             Close(true);
         }
-        catch
+        catch (Exception ex)
         {
-            Close(false);
+            ShowError(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Surfaces a failed Start attempt in-window instead of silently closing (the prior behavior --
+    /// closing on any failure with no message at all -- was especially misleading once task/session
+    /// name collisions started failing closed instead of silently overwriting the earlier task, see
+    /// <c>TaskDirectoryAlreadyExistsException</c>). Leaves the window open so the user can pick a
+    /// different name and retry without re-entering everything else.
+    /// </summary>
+    private void ShowError(string message)
+    {
+        ErrorText.Text = message;
+        ErrorText.IsVisible = true;
     }
 }

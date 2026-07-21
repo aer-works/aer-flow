@@ -139,4 +139,29 @@ public class BuiltInWorkflowTemplatesTests
             }
         }
     }
+
+    [Fact]
+    public async Task MaterializeToDirectoryAsync_RejectsASecondTaskAtTheSameDirectoryInsteadOfOverwriting()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_template_collision_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("solo-run", "claude", null, tempDir, "First prompt", cancellationToken: TestContext.Current.CancellationToken);
+
+            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+                BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "gemini", tempDir, "Second prompt", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Contains(tempDir, ex.Message);
+
+            // The rejected second attempt must not have clobbered the first task's definition.
+            var loadedDef = await WorkflowDefinitionParser.LoadFromFileAsync(Path.Combine(tempDir, "workflow.json"), TestContext.Current.CancellationToken);
+            Assert.Equal("solo-run-template", loadedDef.WorkflowTemplateId.Value);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
 }

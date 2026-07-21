@@ -711,6 +711,25 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StartSession_WithATaskNameAlreadyInUse_ReturnsBadRequestAndDoesNotClobberTheFirstSession()
+    {
+        var taskName = "collision-test-" + Guid.NewGuid().ToString("N");
+        var (firstSessionId, _) = await StartASessionAsync(taskName);
+
+        var secondRequest = new StartSessionRequest(Adapter: "claude", TaskName: taskName);
+        var secondResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", secondRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, secondResponse.StatusCode);
+
+        // The rejected second attempt must not have clobbered the first session -- it must still be
+        // reachable by its original id with its original SessionId intact.
+        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{firstSessionId}", TestContext.Current.CancellationToken);
+        Assert.True(getResponse.IsSuccessStatusCode);
+        var metadata = await getResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(metadata);
+        Assert.Equal(firstSessionId, metadata.SessionId);
+    }
+
+    [Fact]
     public async Task RegisterProject_ThenListProjects_IncludesItAndCanBeCleanedUp()
     {
         var marker = "aer_daemon_test_project_" + Guid.NewGuid().ToString("N");

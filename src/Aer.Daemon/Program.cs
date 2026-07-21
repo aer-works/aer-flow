@@ -938,15 +938,23 @@ namespace Aer.Daemon
                     effectiveGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
                 }
 
-                var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
-                    sessionId,
-                    taskDirectoryPath,
-                    adapter,
-                    request.Model,
-                    request.WorkingDirectory,
-                    request.InitialMessage,
-                    request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
-                    effectiveGrant).ConfigureAwait(true);
+                SessionMetadata metadata;
+                try
+                {
+                    metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                        sessionId,
+                        taskDirectoryPath,
+                        adapter,
+                        request.Model,
+                        request.WorkingDirectory,
+                        request.InitialMessage,
+                        request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
+                        effectiveGrant).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(ex.Message);
+                }
 
                 var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
 

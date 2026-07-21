@@ -150,11 +150,17 @@ public static class InteractiveSessionMaterializer
         PermissionGrant? grant = null,
         CancellationToken cancellationToken = default)
     {
+        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+        if (File.Exists(workflowFilePath))
+        {
+            throw new TaskDirectoryAlreadyExistsException(
+                $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+        }
+
         Directory.CreateDirectory(taskDirectoryPath);
         var (definition, bindings, metadata) = Materialize(
             sessionId, taskDirectoryPath, adapter, model, workingDirectory, initialMessage, safetyCeiling, grant);
 
-        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
         var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
         var metadataFilePath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
 

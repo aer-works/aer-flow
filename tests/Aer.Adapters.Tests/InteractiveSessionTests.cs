@@ -151,6 +151,35 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
+    public async Task MaterializeToDirectoryAsync_RejectsASecondSessionAtTheSameDirectoryInsteadOfOverwriting()
+    {
+        var testPath = Path.Combine(Path.GetTempPath(), "test-aer-session-collision-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var first = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                "sess-first", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken);
+
+            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+                InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                    "sess-second", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Contains(testPath, ex.Message);
+
+            // The rejected second attempt must not have clobbered the first session's metadata.
+            var metadataPath = Path.Combine(testPath, ".aer", "session.json");
+            var stillThere = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, TestContext.Current.CancellationToken);
+            Assert.NotNull(stillThere);
+            Assert.Equal(first.SessionId, stillThere.SessionId);
+        }
+        finally
+        {
+            if (Directory.Exists(testPath))
+            {
+                Directory.Delete(testPath, true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task KnownProjectsStore_AddsAndRetrievesProject()
     {
         var testPath = Path.Combine(Path.GetTempPath(), "test-aer-project-" + Guid.NewGuid().ToString("N"));
