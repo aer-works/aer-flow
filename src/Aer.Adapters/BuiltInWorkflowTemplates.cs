@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
+using Aer.Workers.Dialogue;
 
 namespace Aer.Adapters;
 
@@ -59,7 +61,8 @@ public static class BuiltInWorkflowTemplates
         string primaryAdapter,
         string? secondaryAdapter = null,
         string? customPrompt = null,
-        string? secondaryCustomPrompt = null)
+        string? secondaryCustomPrompt = null,
+        string? taskDirectoryPath = null)
     {
         var normalizedPrimary = string.IsNullOrWhiteSpace(primaryAdapter) ? "claude" : primaryAdapter.Trim().ToLowerInvariant();
         var normalizedSecondary = string.IsNullOrWhiteSpace(secondaryAdapter) ? normalizedPrimary : secondaryAdapter.Trim().ToLowerInvariant();
@@ -77,52 +80,63 @@ public static class BuiltInWorkflowTemplates
 
         if (string.Equals(templateId, TwoVendorDialogue.Id, StringComparison.OrdinalIgnoreCase))
         {
-            var defaultGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+            // M23 Phase 1's real N-party dialogue worker (Aer.Workers.Dialogue), not a hand-rolled
+            // draft/review DAG: a two-vendor dialogue is a single bounded exchange the worker itself
+            // round-robins through DialogueWorkerConfig.Participants, so this is one step, one
+            // binding, dispatched through the "dialogue" adapter -- exactly the shape
+            // NewWorkflowViewModel's guided authoring already produces (Aer.Ui.Core/NewWorkflowViewModel.cs).
+            const string finalOutputName = "transcript.md";
+
+            var dialogueConfig = new DialogueWorkerConfig(
+                SeedPrompt: string.IsNullOrWhiteSpace(customPrompt) ? "Discuss the topic thoroughly, considering multiple angles." : customPrompt,
+                TurnBudget: 6,
+                FinalOutputName: finalOutputName,
+                StopSentinel: null,
+                Participants:
+                [
+                    DialogueParticipantPresets.For(
+                        normalizedPrimary,
+                        "initiator",
+                        string.IsNullOrWhiteSpace(customPrompt) ? "You are the initiator of this dialogue. Open with your position and respond to the other side's points." : customPrompt,
+                        model: null),
+                    DialogueParticipantPresets.For(
+                        normalizedSecondary,
+                        "responder",
+                        string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "You are the responder in this dialogue. Engage constructively with the initiator's points." : secondaryCustomPrompt,
+                        model: null),
+                ]);
+
+            var sidecarDirectory = string.IsNullOrWhiteSpace(taskDirectoryPath) ? Path.GetTempPath() : taskDirectoryPath;
+            Directory.CreateDirectory(sidecarDirectory);
+            var sidecarPath = Path.Combine(sidecarDirectory, "dialogue-config.json");
+            File.WriteAllText(sidecarPath, JsonSerializer.Serialize(dialogueConfig, new JsonSerializerOptions { WriteIndented = true }));
+
             var definition = new WorkflowDefinition(
                 WorkflowTemplateId: new WorkflowTemplateId("two-vendor-dialogue-template"),
                 WorkflowTemplateVersion: 1,
                 Steps:
                 [
                     new WorkflowStepDefinition(
-                        StepId: new StepId("draft"),
-                        Worker: "draft-worker",
+                        StepId: new StepId("dialogue"),
+                        Worker: "dialogue-worker",
                         Inputs: [],
-                        Outputs: ["draft.md"],
+                        Outputs: [finalOutputName],
                         DependsOn: [],
                         RetryPolicy: new RetryPolicy(3),
-                        PausePoint: null),
-                    new WorkflowStepDefinition(
-                        StepId: new StepId("review"),
-                        Worker: "review-worker",
-                        Inputs: ["draft.md"],
-                        Outputs: ["review.md"],
-                        DependsOn: [new StepId("draft")],
-                        RetryPolicy: new RetryPolicy(3),
-                        PausePoint: new PausePoint([new StepId("draft")]))
+                        PausePoint: null)
                 ]);
 
             var bindings = new Dictionary<string, WorkerBindingConfigEntry>
             {
-                ["draft-worker"] = new WorkerBindingConfigEntry(
-                    Adapter: normalizedPrimary,
+                ["dialogue-worker"] = new WorkerBindingConfigEntry(
+                    Adapter: "dialogue",
                     Contract: new WorkerContract(
-                        WorkerName: "draft-worker",
+                        WorkerName: "dialogue-worker",
                         RequiredInputs: [],
-                        ProducedOutputs: [new ProducedOutput("draft.md")],
+                        ProducedOutputs: [new ProducedOutput(finalOutputName)],
                         OptionalMetadata: []),
-                    PromptTemplate: string.IsNullOrWhiteSpace(customPrompt) ? "Draft a comprehensive response to the topic and write to draft.md." : customPrompt,
-                    Timeout: TimeSpan.FromMinutes(10),
-                    PermissionGrant: defaultGrant),
-                ["review-worker"] = new WorkerBindingConfigEntry(
-                    Adapter: normalizedSecondary,
-                    Contract: new WorkerContract(
-                        WorkerName: "review-worker",
-                        RequiredInputs: ["draft.md"],
-                        ProducedOutputs: [new ProducedOutput("review.md")],
-                        OptionalMetadata: []),
-                    PromptTemplate: string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "Review the draft in draft.md, provide constructive critique and improvements, and write to review.md." : secondaryCustomPrompt,
-                    Timeout: TimeSpan.FromMinutes(10),
-                    PermissionGrant: defaultGrant)
+                    PromptTemplate: sidecarPath,
+                    Timeout: TimeSpan.FromMinutes(20))
             };
 
             return (definition, bindings);
@@ -218,7 +232,9 @@ public static class BuiltInWorkflowTemplates
             return (definition, bindings);
         }
 
-        throw new ArgumentException($"Unknown template ID '{templateId}'. Valid template IDs are 'solo-run' and 'review-run'.", nameof(templateId));
+        throw new ArgumentException(
+            $"Unknown template ID '{templateId}'. Valid template IDs are: {string.Join(", ", Catalog.Select(t => t.Id))}.",
+            nameof(templateId));
     }
 
     /// <summary>
@@ -235,7 +251,7 @@ public static class BuiltInWorkflowTemplates
         CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(taskDirectoryPath);
-        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt);
+        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt, taskDirectoryPath);
 
         var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
         var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");

@@ -1,4 +1,5 @@
 using Aer.Flow.Templates;
+using Aer.Workers.Dialogue;
 
 namespace Aer.Adapters.Tests;
 
@@ -69,6 +70,41 @@ public class BuiltInWorkflowTemplatesTests
 
         Assert.Equal("Write a roast", bindings["draft-worker"].PromptTemplate);
         Assert.Equal("Write your own roast back", bindings["review-worker"].PromptTemplate);
+    }
+
+    [Fact]
+    public void Materialize_TwoVendorDialogue_BindsRealDialogueWorkerNotHandRolledDraftReview()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_dialogue_template_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var (definition, bindings) = BuiltInWorkflowTemplates.Materialize(
+                "two-vendor-dialogue", "claude", "gemini", "Debate the topic", "Push back on the initiator", tempDir);
+
+            Assert.Equal("two-vendor-dialogue-template", definition.WorkflowTemplateId.Value);
+            Assert.Single(definition.Steps);
+            Assert.Equal("dialogue", definition.Steps[0].StepId.Value);
+            Assert.Null(definition.Steps[0].PausePoint);
+
+            Assert.Single(bindings);
+            var entry = bindings["dialogue-worker"];
+            Assert.Equal("dialogue", entry.Adapter);
+            Assert.True(File.Exists(entry.PromptTemplate));
+
+            var config = DialogueWorkerConfigParser.Parse(File.ReadAllText(entry.PromptTemplate));
+            Assert.Equal("Debate the topic", config.SeedPrompt);
+            Assert.Equal(2, config.Participants.Count);
+            Assert.Equal("claude", config.Participants[0].Vendor);
+            Assert.Equal("gemini", config.Participants[1].Vendor);
+            Assert.Equal("Push back on the initiator", config.Participants[1].Preamble);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
     }
 
     [Fact]

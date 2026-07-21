@@ -121,7 +121,7 @@ public sealed class InteractiveSessionTests
     public async Task ClaudeWorkerAdapter_DiscoverCapabilities_ReturnsModelAliasesAndCompactCommand()
     {
         var claudeAdapter = new ClaudeWorkerAdapter();
-        var claudeCaps = await claudeAdapter.DiscoverCapabilitiesAsync();
+        var claudeCaps = await claudeAdapter.DiscoverCapabilitiesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("claude", claudeCaps.Vendor);
         // Claude Code has no "list models" subcommand — `--model` only documents alias examples in
@@ -139,7 +139,7 @@ public sealed class InteractiveSessionTests
         // model/agent/plugin list it didn't actually observe from `agy models`/`agy agent`/
         // `agy plugin list`.
         var geminiAdapter = new GeminiWorkerAdapter();
-        var geminiCaps = await geminiAdapter.DiscoverCapabilitiesAsync();
+        var geminiCaps = await geminiAdapter.DiscoverCapabilitiesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("gemini", geminiCaps.Vendor);
         Assert.Contains(geminiCaps.Items, item => item.Name == "/compact");
