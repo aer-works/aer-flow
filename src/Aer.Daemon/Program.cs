@@ -860,6 +860,18 @@ namespace Aer.Daemon
                     ? request.DirectoryPath
                     : Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
 
+                if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
+                {
+                    await KnownProjectsStore.AddOrUpdateProjectAsync(request.WorkingDirectory).ConfigureAwait(true);
+                }
+
+                var effectiveGrant = request.PermissionGrant;
+                if (effectiveGrant == null && !string.IsNullOrWhiteSpace(request.WorkingDirectory))
+                {
+                    // Conservative default for codebase sessions (M24 Phase 3)
+                    effectiveGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+                }
+
                 var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                     sessionId,
                     taskDirectoryPath,
@@ -868,7 +880,7 @@ namespace Aer.Daemon
                     request.WorkingDirectory,
                     request.InitialMessage,
                     request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
-                    request.PermissionGrant).ConfigureAwait(true);
+                    effectiveGrant).ConfigureAwait(true);
 
                 var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
 
@@ -982,6 +994,87 @@ namespace Aer.Daemon
                 }
 
                 return Results.Ok(list.OrderByDescending(s => s.UpdatedAt));
+            });
+
+            // M24 Phase 2 (#263): Capabilities discovery & Session compact endpoints
+            app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                var candidate = Path.Combine(baseSessionsDir, $"session-{sessionId}");
+                var metadataPath = Path.Combine(candidate, ".aer", "session.json");
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
+                if (metadata == null)
+                {
+                    return Results.NotFound();
+                }
+
+                if (!adapters.TryGetValue(metadata.CurrentAdapter, out var adapter))
+                {
+                    adapter = adapters["claude"];
+                }
+
+                var capabilities = adapter.DiscoverCapabilities(metadata.WorkingDirectory);
+                return Results.Ok(capabilities);
+            });
+
+            app.MapGet("/api/adapters/capabilities", (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                var name = string.IsNullOrWhiteSpace(adapter) ? "claude" : adapter.Trim().ToLowerInvariant();
+                if (!adapters.TryGetValue(name, out var workerAdapter))
+                {
+                    workerAdapter = adapters["claude"];
+                }
+
+                var capabilities = workerAdapter.DiscoverCapabilities(workingDirectory);
+                return Results.Ok(capabilities);
+            });
+
+            app.MapPost("/api/sessions/{sessionId}/compact", async (string sessionId, TaskSession session, BindingsPathHolder pathHolder) =>
+            {
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                var directoryPath = Path.Combine(baseSessionsDir, $"session-{sessionId}");
+                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
+                if (metadata == null)
+                {
+                    return Results.NotFound();
+                }
+
+                pathHolder.BindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var compactMsg = "/compact Please provide a concise summary of our conversation so far, including all key requirements, code changes, decisions, and current progress.";
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error executing session compact turn: {ex}");
+                    }
+                });
+
+                return Results.Ok(new { SessionId = metadata.SessionId, Message = "Compacting session context in background." });
+            });
+
+            // M24 Phase 3 (#264): Known Projects Registry endpoints
+            app.MapGet("/api/projects", async () =>
+            {
+                var projects = await KnownProjectsStore.LoadProjectsAsync();
+                return Results.Ok(projects);
+            });
+
+            app.MapPost("/api/projects", async ([FromBody] RegisterProjectRequest request) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Path))
+                {
+                    return Results.BadRequest("Path is required.");
+                }
+
+                await KnownProjectsStore.AddOrUpdateProjectAsync(request.Path, request.FriendlyName);
+                var projects = await KnownProjectsStore.LoadProjectsAsync();
+                return Results.Ok(projects);
             });
 
             // Write active port to discovery file on startup
@@ -1183,4 +1276,6 @@ namespace Aer.Daemon
         public string Code { get; set; } = string.Empty;
         public string ClientName { get; set; } = string.Empty;
     }
+
+    public record RegisterProjectRequest(string Path, string? FriendlyName = null);
 }

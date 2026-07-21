@@ -102,9 +102,9 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 **M24: Interactive Sessions & Unified Task Creation** — progress:
 
 - [x] Phase 1 — Interactive Sessions (Chat)
-- [ ] Phase 2 — Worker Capability Discovery & In-Session Compact
-- [ ] Phase 3 — Codebase Sessions & Known Projects
-- [ ] Phase 4 — Unified Task Creation (Desktop + Mobile)
+- [x] Phase 2 — Worker Capability Discovery & In-Session Compact
+- [x] Phase 3 — Codebase Sessions & Known Projects
+- [x] Phase 4 — Unified Task Creation (Desktop + Mobile)
 
 ---
 

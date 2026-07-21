@@ -8,7 +8,10 @@ public class BuiltInWorkflowTemplatesTests
     public void Catalog_ContainsSoloAndReviewRunTemplates()
     {
         var catalog = BuiltInWorkflowTemplates.Catalog;
-        Assert.Equal(2, catalog.Count);
+        Assert.Equal(5, catalog.Count);
+        Assert.Contains(catalog, t => t.Id == "chat-session");
+        Assert.Contains(catalog, t => t.Id == "codebase-session");
+        Assert.Contains(catalog, t => t.Id == "two-vendor-dialogue");
         Assert.Contains(catalog, t => t.Id == "solo-run");
         Assert.Contains(catalog, t => t.Id == "review-run");
     }

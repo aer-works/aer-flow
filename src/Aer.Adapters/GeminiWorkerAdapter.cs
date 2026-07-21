@@ -143,4 +143,18 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     }
 
     private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
+
+    public WorkerCapabilities DiscoverCapabilities(string? workingDirectory = null)
+    {
+        var items = new List<WorkerCapabilityItem>
+        {
+            new("/compact", "command", "Summarize and compact session history"),
+            new("default", "mode", "Default non-interactive mode"),
+            new("accept-edits", "mode", "Auto-accept file editing permissions"),
+            new("plan", "mode", "Read-only planning mode")
+        };
+
+        var models = new List<string> { "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp" };
+        return new WorkerCapabilities("gemini", items, models);
+    }
 }

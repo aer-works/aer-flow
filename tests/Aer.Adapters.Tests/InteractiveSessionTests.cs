@@ -116,4 +116,42 @@ public sealed class InteractiveSessionTests
         Assert.Contains("Now continue with the following user request:", summary);
         Assert.Contains("What is 4+4?", summary);
     }
+
+    [Fact]
+    public void ClaudeAndGeminiWorkerAdapters_DiscoverCapabilities_ReturnsNonEmptyItemsAndModels()
+    {
+        var claudeAdapter = new ClaudeWorkerAdapter();
+        var claudeCaps = claudeAdapter.DiscoverCapabilities();
+
+        Assert.Equal("claude", claudeCaps.Vendor);
+        Assert.Contains("claude-3-5-sonnet", claudeCaps.Models);
+        Assert.Contains(claudeCaps.Items, item => item.Name == "/compact");
+
+        var geminiAdapter = new GeminiWorkerAdapter();
+        var geminiCaps = geminiAdapter.DiscoverCapabilities();
+
+        Assert.Equal("gemini", geminiCaps.Vendor);
+        Assert.Contains("gemini-1.5-pro", geminiCaps.Models);
+        Assert.Contains(geminiCaps.Items, item => item.Name == "/compact");
+    }
+
+    [Fact]
+    public async Task KnownProjectsStore_AddsAndRetrievesProject()
+    {
+        var testPath = Path.Combine(Path.GetTempPath(), "test-aer-project-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testPath);
+        try
+        {
+            await KnownProjectsStore.AddOrUpdateProjectAsync(testPath, "Test Project", TestContext.Current.CancellationToken);
+            var projects = await KnownProjectsStore.LoadProjectsAsync(TestContext.Current.CancellationToken);
+            Assert.Contains(projects, p => p.FriendlyName == "Test Project" && string.Equals(p.Path, Path.GetFullPath(testPath), StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            if (Directory.Exists(testPath))
+            {
+                Directory.Delete(testPath, true);
+            }
+        }
+    }
 }

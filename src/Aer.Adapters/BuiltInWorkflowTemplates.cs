@@ -19,19 +19,37 @@ public sealed record BuiltInTemplateInfo(
 /// </summary>
 public static class BuiltInWorkflowTemplates
 {
+    public static readonly BuiltInTemplateInfo ChatSession = new(
+        Id: "chat-session",
+        Title: "Chat (Interactive Session)",
+        Description: "Interactive 1-on-1 session with an AI worker (Claude or Gemini) with live turn streaming and session resumption.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo CodebaseSession = new(
+        Id: "codebase-session",
+        Title: "Codebase Session",
+        Description: "Interactive AI agent session bound to a project directory with conservative file/command permissions.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo TwoVendorDialogue = new(
+        Id: "two-vendor-dialogue",
+        Title: "Two-Vendor Dialogue",
+        Description: "Multi-vendor dialogue exchange between Claude and Gemini with turn-by-turn context synthesis.",
+        RequiresSecondaryVendor: true);
+
     public static readonly BuiltInTemplateInfo SoloRun = new(
         Id: "solo-run",
-        Title: "Solo Run",
+        Title: "Solo Run (Advanced)",
         Description: "Single-step execution using an installed AI worker (Claude or Gemini).",
         RequiresSecondaryVendor: false);
 
     public static readonly BuiltInTemplateInfo ReviewRun = new(
         Id: "review-run",
-        Title: "Review Run",
+        Title: "Review Run (Advanced)",
         Description: "Two-step workflow where one AI worker drafts content and another AI worker reviews it with human sign-off.",
         RequiresSecondaryVendor: true);
 
-    public static IReadOnlyList<BuiltInTemplateInfo> Catalog { get; } = [SoloRun, ReviewRun];
+    public static IReadOnlyList<BuiltInTemplateInfo> Catalog { get; } = [ChatSession, CodebaseSession, TwoVendorDialogue, SoloRun, ReviewRun];
 
     /// <summary>
     /// Materializes a built-in template's <see cref="WorkflowDefinition"/> and worker bindings.
@@ -45,6 +63,70 @@ public static class BuiltInWorkflowTemplates
     {
         var normalizedPrimary = string.IsNullOrWhiteSpace(primaryAdapter) ? "claude" : primaryAdapter.Trim().ToLowerInvariant();
         var normalizedSecondary = string.IsNullOrWhiteSpace(secondaryAdapter) ? normalizedPrimary : secondaryAdapter.Trim().ToLowerInvariant();
+
+        if (string.Equals(templateId, ChatSession.Id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(templateId, CodebaseSession.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            var (def, bindings, _) = InteractiveSessionMaterializer.Materialize(
+                sessionId: Guid.NewGuid().ToString("N")[..12],
+                taskDirectoryPath: string.Empty,
+                adapter: normalizedPrimary,
+                initialMessage: customPrompt);
+            return (def, bindings);
+        }
+
+        if (string.Equals(templateId, TwoVendorDialogue.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            var defaultGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+            var definition = new WorkflowDefinition(
+                WorkflowTemplateId: new WorkflowTemplateId("two-vendor-dialogue-template"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(
+                        StepId: new StepId("draft"),
+                        Worker: "draft-worker",
+                        Inputs: [],
+                        Outputs: ["draft.md"],
+                        DependsOn: [],
+                        RetryPolicy: new RetryPolicy(3),
+                        PausePoint: null),
+                    new WorkflowStepDefinition(
+                        StepId: new StepId("review"),
+                        Worker: "review-worker",
+                        Inputs: ["draft.md"],
+                        Outputs: ["review.md"],
+                        DependsOn: [new StepId("draft")],
+                        RetryPolicy: new RetryPolicy(3),
+                        PausePoint: new PausePoint([new StepId("draft")]))
+                ]);
+
+            var bindings = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                ["draft-worker"] = new WorkerBindingConfigEntry(
+                    Adapter: normalizedPrimary,
+                    Contract: new WorkerContract(
+                        WorkerName: "draft-worker",
+                        RequiredInputs: [],
+                        ProducedOutputs: [new ProducedOutput("draft.md")],
+                        OptionalMetadata: []),
+                    PromptTemplate: string.IsNullOrWhiteSpace(customPrompt) ? "Draft a comprehensive response to the topic and write to draft.md." : customPrompt,
+                    Timeout: TimeSpan.FromMinutes(10),
+                    PermissionGrant: defaultGrant),
+                ["review-worker"] = new WorkerBindingConfigEntry(
+                    Adapter: normalizedSecondary,
+                    Contract: new WorkerContract(
+                        WorkerName: "review-worker",
+                        RequiredInputs: ["draft.md"],
+                        ProducedOutputs: [new ProducedOutput("review.md")],
+                        OptionalMetadata: []),
+                    PromptTemplate: string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "Review the draft in draft.md, provide constructive critique and improvements, and write to review.md." : secondaryCustomPrompt,
+                    Timeout: TimeSpan.FromMinutes(10),
+                    PermissionGrant: defaultGrant)
+            };
+
+            return (definition, bindings);
+        }
 
         if (string.Equals(templateId, SoloRun.Id, StringComparison.OrdinalIgnoreCase))
         {
