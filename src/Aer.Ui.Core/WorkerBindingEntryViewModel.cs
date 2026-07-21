@@ -108,6 +108,17 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
     [ObservableProperty]
     private string model = string.Empty;
 
+    /// <summary>
+    /// Where this worker role's process should run (M23 Phase 3, #272) — a stopgap text field plus
+    /// a folder-browse button (issue TBD, requested directly ahead of M24 Phase 3's fuller Known
+    /// Projects picker) so a rooted absolute path can be set from the app instead of by hand-editing
+    /// the bindings file. A bare profile name (resolved via <c>AerProfileStore</c> at run time) is
+    /// still typeable here too — the browse button only ever writes a rooted path, it never
+    /// interprets or validates a typed profile name.
+    /// </summary>
+    [ObservableProperty]
+    private string workingDirectoryText = string.Empty;
+
     [ObservableProperty]
     private string permissionScope = string.Empty;
 
@@ -251,6 +262,7 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             PromptTemplate = entry.PromptTemplate,
             TimeoutText = entry.Timeout.ToString(),
             Model = entry.Model ?? string.Empty,
+            WorkingDirectoryText = entry.WorkingDirectory ?? string.Empty,
             PermissionScope = entry.PermissionScope ?? string.Empty,
             IsAdvancedPermissionScope = entry.PermissionGrant is null,
             GrantReadFiles = entry.PermissionGrant?.ReadFiles ?? false,
@@ -445,7 +457,8 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             timeout,
             string.IsNullOrWhiteSpace(Model) ? null : Model,
             permissionScope,
-            permissionGrant);
+            permissionGrant,
+            string.IsNullOrWhiteSpace(WorkingDirectoryText) ? null : WorkingDirectoryText);
         error = null;
         return true;
     }

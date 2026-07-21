@@ -541,6 +541,7 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
         && a.Timeout == b.Timeout
         && a.Model == b.Model
         && a.PermissionScope == b.PermissionScope
+        && a.WorkingDirectory == b.WorkingDirectory
         && PermissionGrantEquals(a.PermissionGrant, b.PermissionGrant);
 
     /// <summary>
