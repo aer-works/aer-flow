@@ -12,11 +12,18 @@ namespace Aer.Ui.Tests;
 /// none of this touches a vendor CLI (it's pure C# branching over <see cref="SessionMetadata"/>), so
 /// it was always automatable, just never automated. Runs its own daemon instance on a dedicated port
 /// with <see cref="SessionTurnStubAdapter"/> substituted for both "claude" and "gemini" -- deliberately
-/// NOT sharing <see cref="DaemonIntegrationTests"/>'s fixture/collection, since several of its tests
-/// (capability discovery, "/compact" item presence) assert on the real adapter registry and would
-/// break under a stubbed one.
+/// NOT sharing <see cref="DaemonIntegrationTests"/>'s fixture (a different class, its own
+/// <c>InitializeAsync</c>/adapter registry), since several of its tests (capability discovery,
+/// "/compact" item presence) assert on the real adapter registry and would break under a stubbed
+/// one. It DOES share the same xUnit *collection name*, deliberately: both classes spin up a real
+/// Kestrel daemon per test and both point their (independently-constructed)
+/// <c>LocalUiConfigurationStore</c> at the same real per-user config file with no cross-instance
+/// locking -- letting the two collections run in parallel (xUnit's default across different
+/// collection names) caused intermittent "connection refused" failures and, under full-suite load,
+/// an outright hang. Same collection name forces xUnit to run every test in both classes strictly
+/// sequentially instead.
 /// </summary>
-[Collection("SessionTurnBranchingTests")]
+[Collection("DaemonIntegrationTests")]
 public class SessionTurnBranchingTests : IAsyncLifetime
 {
     private Task? _daemonTask;

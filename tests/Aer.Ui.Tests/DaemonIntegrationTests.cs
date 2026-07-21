@@ -800,6 +800,67 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.Equal("claude", capabilities.Vendor);
     }
 
+    private sealed record SessionCommandsResponse(string Vendor, List<WorkerCapabilityItem> Items, List<string> Models, List<string> RecentlyUsed);
+
+    [Fact]
+    public async Task RecordCommandUsed_ThenGetSessionCommands_SurfacesItAsRecentlyUsed()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var recordResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/{sessionId}/commands/record", new RecordCommandUsedRequest("/compact"), TestContext.Current.CancellationToken);
+        Assert.True(recordResponse.IsSuccessStatusCode);
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var commands = await response.Content.ReadFromJsonAsync<SessionCommandsResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(commands);
+        Assert.Contains("/compact", commands.RecentlyUsed);
+    }
+
+    [Fact]
+    public async Task SetSessionMode_ToAuto_UpdatesTheBoundPermissionGrant()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("auto"), TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(Path.Combine(taskDirectoryPath, "bindings.json"), TestContext.Current.CancellationToken);
+        var entry = bindings[InteractiveSessionMaterializer.DefaultWorkerName];
+        Assert.NotNull(entry.PermissionGrant);
+        Assert.True(entry.PermissionGrant!.ReadFiles);
+        Assert.True(entry.PermissionGrant.WriteFiles);
+        Assert.True(entry.PermissionGrant.RunShellCommands);
+        Assert.True(entry.PermissionGrant.NetworkAccess);
+    }
+
+    [Fact]
+    public async Task SetSessionMode_ToPlan_MakesTheGrantReadOnly()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("plan"), TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(Path.Combine(taskDirectoryPath, "bindings.json"), TestContext.Current.CancellationToken);
+        var entry = bindings[InteractiveSessionMaterializer.DefaultWorkerName];
+        Assert.NotNull(entry.PermissionGrant);
+        Assert.True(entry.PermissionGrant!.ReadFiles);
+        Assert.False(entry.PermissionGrant.WriteFiles);
+        Assert.False(entry.PermissionGrant.RunShellCommands);
+    }
+
+    [Fact]
+    public async Task SetSessionMode_WithAnUnknownMode_ReturnsBadRequest()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("not-a-real-mode"), TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task StartSession_WithATaskNameAlreadyInUse_ReturnsBadRequestAndDoesNotClobberTheFirstSession()
     {
