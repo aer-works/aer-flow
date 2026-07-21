@@ -1,0 +1,51 @@
+<!-- M24 Phase 1 desktop chat UI (issue #262): a dedicated view for interactive chat/codebase
+     sessions instead of the generic Task view's DAG drill-in — a single repeatedly-superseded
+     "chat" step has no dependency graph worth showing, and the real content
+     (SessionMetadata.Turns) lives outside TaskProjection entirely (see ChatViewModel's remarks). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
+             x:Class="Aer.Ui.Views.ChatView"
+             x:DataType="vm:MainWindowViewModel">
+  <DockPanel Margin="24">
+    <TextBlock DockPanel.Dock="Top" Classes="display" Text="{Binding Chat.HeadlineText}" />
+
+    <TextBlock DockPanel.Dock="Top" Classes="secondary" Foreground="{DynamicResource Status.Failed}"
+               TextWrapping="Wrap" Text="{Binding Chat.StatusText}"
+               IsVisible="{Binding Chat.HasStatusText}" />
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="{DynamicResource Space.2}" Margin="0,12,0,0">
+      <!-- The raw in-turn stream — plain text for now (Kind-based rendering, e.g. distinguishing
+           tool calls from prose, is visual polish left for M25). -->
+      <Border Classes="card" IsVisible="{Binding Chat.IsSending}" MaxHeight="140">
+        <ScrollViewer>
+          <TextBlock Classes="mono caption" TextWrapping="Wrap" Text="{Binding Chat.LiveProgressText}" />
+        </ScrollViewer>
+      </Border>
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+        <TextBox x:Name="ChatInputBox" Width="600" AcceptsReturn="True" MaxHeight="80"
+                 Text="{Binding Chat.InputText}" IsEnabled="{Binding !Chat.IsSending}"
+                 PlaceholderText="Message..." />
+        <Button x:Name="ChatSendButton" Classes="accent" Content="Send"
+                IsEnabled="{Binding !Chat.IsSending}" />
+        <ProgressBar IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"
+                     IsVisible="{Binding Chat.IsSending}" />
+      </StackPanel>
+    </StackPanel>
+
+    <ScrollViewer x:Name="ChatMessagesScroll">
+      <ItemsControl x:Name="ChatMessagesList" ItemsSource="{Binding Chat.Messages}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ChatMessageViewModel">
+            <Border Classes="card" Margin="0,0,0,8">
+              <StackPanel Spacing="{DynamicResource Space.1}">
+                <TextBlock Classes="caption body-strong" Text="{Binding SenderLabel}" />
+                <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Text}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

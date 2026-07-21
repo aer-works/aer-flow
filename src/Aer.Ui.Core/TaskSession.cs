@@ -82,6 +82,19 @@ public sealed class TaskSession
     private string? _activeDaemonUrl;
     private ClientWebSocket? _webSocket;
     private CancellationTokenSource? _wsCts;
+    private ClientWebSocket? _progressWebSocket;
+    private CancellationTokenSource? _progressWsCts;
+
+    /// <summary>
+    /// The client-side consumer for <c>/api/ws/progress</c> (M24 Phase 1's live in-turn streaming,
+    /// issue #262) -- previously nothing subscribed to this socket at all, so a session's live
+    /// <c>WorkerProgressEvent</c>s were broadcast into the void. Fires on the same
+    /// <see cref="SynchronizationContext"/> marshaling <see cref="ReceiveWebSocketDataAsync"/>
+    /// already uses for projection pushes. <c>DirectoryPath</c>/<c>StepId</c> are carried alongside
+    /// the event exactly as the daemon broadcasts them, since this session may not have a chat
+    /// directory open at all (a subscriber filters by directory itself).
+    /// </summary>
+    public event Action<string, string, WorkerProgressEvent>? SessionProgressReceived;
 
     /// <summary>
     /// The caller-retained delivery point (M15 Phase 4, issue #140) for whichever Run or Decide pump
@@ -437,6 +450,80 @@ public sealed class TaskSession
         {
             // WS connect failed
         }
+
+        await StartProgressWebSocketListenerAsync(resolvedUrl, token, cancellationToken).ConfigureAwait(true);
+    }
+
+    private sealed record ProgressFrame(string DirectoryPath, string StepId, string Kind, string Text, bool IsPartial);
+
+    /// <summary>The M24 Phase 1 live in-turn streaming socket's client-side counterpart -- see <see cref="SessionProgressReceived"/>. A dedicated connection, not folded into <see cref="StartWebSocketListenerAsync"/>'s own socket, for the exact same reason the daemon keeps the two endpoints separate (<c>Aer.Daemon.Program</c>'s <c>progressWebSockets</c> remarks): this frame shape has no type discriminator, so sharing a socket risks a <see cref="TaskProjection"/> deserialization corrupting on it.</summary>
+    private async Task StartProgressWebSocketListenerAsync(string resolvedUrl, string? token, CancellationToken cancellationToken)
+    {
+        _progressWsCts?.Cancel();
+        _progressWsCts = new CancellationTokenSource();
+        _progressWebSocket = new ClientWebSocket();
+        var wsUrl = resolvedUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/api/ws/progress";
+        if (token != null)
+        {
+            wsUrl += $"?token={token}";
+        }
+        try
+        {
+            await _progressWebSocket.ConnectAsync(new Uri(wsUrl), cancellationToken).ConfigureAwait(true);
+            _ = Task.Run(() => ReceiveProgressWebSocketDataAsync(_progressWebSocket, _progressWsCts.Token), _progressWsCts.Token);
+        }
+        catch
+        {
+            // WS connect failed
+        }
+    }
+
+    private async Task ReceiveProgressWebSocketDataAsync(ClientWebSocket webSocket, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[1024 * 64];
+        try
+        {
+            while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+            {
+                using var ms = new MemoryStream();
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(true);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        return;
+                    }
+                    ms.Write(buffer, 0, result.Count);
+                } while (!result.EndOfMessage);
+
+                if (result.MessageType != WebSocketMessageType.Text)
+                {
+                    continue;
+                }
+
+                ms.Position = 0;
+                var frame = await JsonSerializer.DeserializeAsync<ProgressFrame>(ms, DefaultJsonOptions, cancellationToken).ConfigureAwait(true);
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                var progressEvent = new WorkerProgressEvent(frame.Kind, frame.Text, frame.IsPartial);
+                if (_syncContext != null)
+                {
+                    _syncContext.Post(_ => SessionProgressReceived?.Invoke(frame.DirectoryPath, frame.StepId, progressEvent), null);
+                }
+                else
+                {
+                    SessionProgressReceived?.Invoke(frame.DirectoryPath, frame.StepId, progressEvent);
+                }
+            }
+        }
+        catch
+        {
+            // WS disconnected
+        }
     }
 
     private static readonly JsonSerializerOptions DefaultJsonOptions = new()
@@ -768,6 +855,58 @@ public sealed class TaskSession
         {
             return new SessionStartOutcome(null, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Sends the next turn to an already-started interactive session (M24 Phase 1 desktop chat UI,
+    /// issue #262). Unlike <see cref="StartInteractiveSessionAsync"/> there is no in-process
+    /// fallback here: <c>ExecuteSessionTurnAsync</c> only exists in <c>Aer.Daemon.Program</c>, and
+    /// <c>POST /api/sessions/send</c> itself only confirms the turn was dispatched onto the
+    /// daemon's own background task, not that it completed -- the caller observes completion by
+    /// polling <see cref="LoadSessionMetadataAsync"/> the same way every other live task state in
+    /// this app is observed (<c>MainWindow</c>'s existing 2-second poll).
+    /// </summary>
+    public async Task<MutationOutcome> SendSessionMessageAsync(SendSessionMessageRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return new MutationOutcome("A session turn requires the daemon, and none is reachable.");
+        }
+
+        try
+        {
+            var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/sessions/send", request, cancellationToken).ConfigureAwait(true);
+            if (response.IsSuccessStatusCode)
+            {
+                return new MutationOutcome(null);
+            }
+
+            var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
+            return new MutationOutcome(err);
+        }
+        catch (Exception ex)
+        {
+            return new MutationOutcome(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Reads <paramref name="taskDirectoryPath"/>'s <c>.aer/session.json</c> directly rather than
+    /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>TaskProjection</c>,
+    /// <see cref="SessionMetadata"/> is a directly-readable local artifact with no in-memory
+    /// projection of its own) -- also doubles as the "is this task directory a chat/codebase
+    /// session" check <c>MainWindow.OpenAsync</c> uses to decide whether to route to the Chat view.
+    /// Returns <see langword="null"/> for a directory that isn't an interactive session at all.
+    /// </summary>
+    public async Task<SessionMetadata?> LoadSessionMetadataAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var metadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
+        if (!File.Exists(metadataPath))
+        {
+            return null;
+        }
+
+        return await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, cancellationToken).ConfigureAwait(true);
     }
 
     private static async Task RecordTaskPathMetadataAsync(string taskDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)

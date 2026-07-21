@@ -27,9 +27,21 @@ public partial class HomeView : UserControl
             TaskDirectoryPathBox.Text = taskPath;
             if (topLevel != null)
             {
-                var workflowPath = System.IO.Path.Combine(taskPath, "workflow.json");
-                var bindingsPath = System.IO.Path.Combine(taskPath, "bindings.json");
-                await topLevel.RunAsync(taskPath, workflowPath, bindingsPath);
+                if (File.Exists(Path.Combine(taskPath, ".aer", "session.json")))
+                {
+                    // A chat/codebase session's initial turn is already dispatched (or about to be)
+                    // by the daemon's own fire-and-forget background task -- Open, not Run, so this
+                    // doesn't start a second, competing execution against the same task directory
+                    // (M24 Phase 1 desktop chat UI, issue #262). Open also routes to the dedicated
+                    // Chat view once it detects session.json, which Run never did.
+                    await topLevel.OpenAsync(taskPath);
+                }
+                else
+                {
+                    var workflowPath = System.IO.Path.Combine(taskPath, "workflow.json");
+                    var bindingsPath = System.IO.Path.Combine(taskPath, "bindings.json");
+                    await topLevel.RunAsync(taskPath, workflowPath, bindingsPath);
+                }
             }
         }
     }

@@ -1,3 +1,4 @@
+using Aer.Adapters;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
@@ -113,6 +114,33 @@ public class NavigationShellTests
             Assert.Equal(ShellSection.Task, window.ViewModel.CurrentSection);
             Assert.True(window.ViewModel.IsTaskVisible);
             Assert.False(window.ViewModel.IsHomeVisible);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>M24 Phase 1 desktop chat UI (issue #262): opening a directory that materialized an interactive session (.aer/session.json present) routes to the dedicated Chat view instead of the generic Task view — see <c>MainWindow.OpenAsync</c>'s remarks.</summary>
+    [AvaloniaFact]
+    public async Task OpenAsync_routes_an_interactive_session_directory_to_the_chat_section()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-chat-{Guid.NewGuid():N}");
+        try
+        {
+            var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                sessionId: "sess-nav-test",
+                taskDirectoryPath: taskDirectory,
+                adapter: "claude",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
+            Assert.True(window.ViewModel.IsChatVisible);
+            Assert.False(window.ViewModel.IsTaskVisible);
+            Assert.Equal(metadata.SessionId, window.ViewModel.Chat.SessionId);
         }
         finally
         {

@@ -45,6 +45,9 @@
   <!-- A broadcast/signal glyph — Remote nav destination (M21 Phase 3, #234): a dot with two arcs, the standard "wireless" pictogram. -->
   <StreamGeometry x:Key="Icon.Remote">M 8,12.5 A 0.6,0.6 0 1 1 7.99,12.5 M 5.3,10 A 4,4 0 0 1 10.7,10 M 3,7.7 A 7.5,7.5 0 0 1 13,7.7</StreamGeometry>
 
+  <!-- A speech bubble with a tail — Chat nav destination (M24 Phase 1, #262). -->
+  <StreamGeometry x:Key="Icon.Chat">M 3,4 L 13,4 L 13,10 L 6.5,10 L 4,13 L 4,10 L 3,10 Z</StreamGeometry>
+
   <!-- M22 template-picker vendor icons (issue #250 review follow-up): closed, fillable shapes (same
        16x16 grid as the set above), each a distinct point-count silhouette so the two read apart
        even without color. Claude: a 6-point sunburst. Gemini: a 4-point sparkle/diamond — fewer,

@@ -123,6 +123,16 @@
             <AccessText Text="Re_mote" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+        <!-- M24 Phase 1 (#262): the fifth nav destination — a chat/codebase session opened from Home. -->
+        <Button x:Name="NavChatButton" Classes="nav" Classes.selected="{Binding IsChatVisible}"
+                HorizontalAlignment="Stretch">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Chat}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="C_hat" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </Border>
     <Panel>
@@ -130,6 +140,7 @@
       <views:TaskView x:Name="TaskViewControl" IsVisible="{Binding IsTaskVisible}" />
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
       <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
+      <views:ChatView x:Name="ChatViewControl" IsVisible="{Binding IsChatVisible}" />
     </Panel>
   </DockPanel>
 </Window>
