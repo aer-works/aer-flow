@@ -881,6 +881,79 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetFleet_ReturnsOkAndIncludesAStartedSessionByDefault()
+    {
+        var (_, taskDirectoryPath) = await StartASessionAsync();
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var items = await response.Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(items);
+        Assert.Contains(items, i => i.TaskDirectoryPath == taskDirectoryPath);
+    }
+
+    [Fact]
+    public async Task ArchiveUnarchiveAndDelete_RoundTripThroughTheFleetAndLifecycleEndpoints()
+    {
+        var taskName = "fleet-lifecycle-" + Guid.NewGuid().ToString("N");
+        var (_, taskDirectoryPath) = await StartASessionAsync(taskName);
+
+        // Archiving hides it from the default fleet list but keeps it reachable with includeArchived.
+        var archiveResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/archive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+        Assert.True(archiveResponse.IsSuccessStatusCode);
+
+        var defaultList = await (await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(defaultList!, i => i.TaskDirectoryPath == taskDirectoryPath);
+
+        var withArchived = await (await _client.GetAsync($"{BaseUrl}/api/tasks?includeArchived=true", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        var archivedItem = Assert.Single(withArchived!, i => i.TaskDirectoryPath == taskDirectoryPath);
+        Assert.True(archivedItem.IsArchived);
+
+        // Archiving alone must not free the name for reuse -- workflow.json/session.json is still on disk.
+        var collisionResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, collisionResponse.StatusCode);
+
+        // Unarchiving reinstates it in the default list.
+        var unarchiveResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/unarchive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+        Assert.True(unarchiveResponse.IsSuccessStatusCode);
+
+        var reinstatedList = await (await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(reinstatedList!, i => i.TaskDirectoryPath == taskDirectoryPath && !i.IsArchived);
+
+        // Only a real delete frees the directory and the name (M24 Phase 5 regression, #278).
+        var deleteResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+        Assert.True(deleteResponse.IsSuccessStatusCode);
+        Assert.False(Directory.Exists(taskDirectoryPath));
+
+        var recentsAfterDelete = await (await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<IReadOnlyList<string>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(taskDirectoryPath, recentsAfterDelete!);
+
+        var freshCollisionResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
+        Assert.True(freshCollisionResponse.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteTask_ForANonexistentDirectory_ReturnsNotFound()
+    {
+        var missingDirectory = Path.Combine(_tempTaskDirectory!, "never-created-" + Guid.NewGuid().ToString("N"));
+
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task RegisterProject_ThenListProjects_IncludesItAndCanBeCleanedUp()
     {
         var marker = "aer_daemon_test_project_" + Guid.NewGuid().ToString("N");

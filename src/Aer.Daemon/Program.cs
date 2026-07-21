@@ -893,6 +893,92 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
+            // M24 Phase 5 (#278): the fleet list — every known task/session directory's lightweight
+            // status, scanning both ~/.aer/tasks (DAG workflow runs) and ~/.aer/sessions
+            // (interactive chat/codebase sessions), the same two roots /api/templates/run and
+            // /api/sessions already materialize into. Archived items are filtered out by default
+            // (the everyday view); includeArchived=true surfaces them for the management screen.
+            // A directory that fails to load (corrupt snapshot/log) is skipped rather than failing
+            // the whole list, since one bad item shouldn't hide every other task/session.
+            app.MapGet("/api/tasks", async (bool? includeArchived) =>
+            {
+                var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+
+                var directories = new List<string>();
+                if (Directory.Exists(baseTasksDir))
+                {
+                    directories.AddRange(Directory.GetDirectories(baseTasksDir));
+                }
+                if (Directory.Exists(baseSessionsDir))
+                {
+                    directories.AddRange(Directory.GetDirectories(baseSessionsDir));
+                }
+
+                var items = new List<TaskFleetItem>();
+                foreach (var directory in directories)
+                {
+                    try
+                    {
+                        var item = await TaskProjectionLoader.LoadFleetStatusAsync(directory).ConfigureAwait(true);
+                        if (item.IsArchived && includeArchived != true)
+                        {
+                            continue;
+                        }
+                        items.Add(item);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error loading fleet status for '{directory}': {ex}");
+                    }
+                }
+
+                return Results.Ok(items);
+            });
+
+            app.MapPost("/api/tasks/archive", async ([FromBody] TaskDirectoryRequest request) =>
+            {
+                if (string.IsNullOrEmpty(request.DirectoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath is required.");
+                }
+
+                await TaskLifecycle.ArchiveAsync(request.DirectoryPath).ConfigureAwait(true);
+                return Results.Ok();
+            });
+
+            app.MapPost("/api/tasks/unarchive", async ([FromBody] TaskDirectoryRequest request) =>
+            {
+                if (string.IsNullOrEmpty(request.DirectoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath is required.");
+                }
+
+                await TaskLifecycle.UnarchiveAsync(request.DirectoryPath).ConfigureAwait(true);
+                return Results.Ok();
+            });
+
+            // A real delete frees the directory's name for reuse (TaskDirectoryAlreadyExistsException's
+            // collision guard checks File.Exists on workflow.json, which archiving alone never
+            // clears — see TaskLifecycle's remarks) and also strips the stale recent so a later
+            // /api/tasks/recent-driven open doesn't 404 on a directory that no longer exists.
+            app.MapPost("/api/tasks/delete", async ([FromBody] TaskDirectoryRequest request, LocalUiConfigurationStore configStore) =>
+            {
+                if (string.IsNullOrEmpty(request.DirectoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath is required.");
+                }
+
+                if (!Directory.Exists(request.DirectoryPath))
+                {
+                    return Results.NotFound();
+                }
+
+                Directory.Delete(request.DirectoryPath, recursive: true);
+                await configStore.RemoveRecentTaskDirectoryAsync(request.DirectoryPath).ConfigureAwait(true);
+                return Results.Ok();
+            });
+
             // M21 Phase 2 (#232): a client with no access to the daemon host's filesystem
             // (Aer.Mobile) otherwise has no way to see what it's approving — TaskProjection only
             // ever carries file *paths*, never bytes (HomeViewModel's desktop-side inbox preview
