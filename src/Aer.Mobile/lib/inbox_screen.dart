@@ -191,6 +191,8 @@ class _InboxScreenState extends State<InboxScreen> {
         secondaryVendor = availableVendorNames.length > 1 ? availableVendorNames[1] : primaryVendor;
       }
 
+      if (!mounted) return;
+
       await showDialog<void>(
         context: context,
         builder: (context) => StatefulBuilder(

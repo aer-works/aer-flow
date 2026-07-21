@@ -1,8 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Aer.Ui.Views.TemplatePickerWindow"
-        Title="Start from Template"
-        Width="540" Height="700"
+        Title="Start Task or Interactive Session"
+        Width="580" Height="740"
         WindowStartupLocation="CenterOwner"
         CanResize="False">
   <Window.Resources>
@@ -19,42 +19,52 @@
     </DataTemplate>
   </Window.Resources>
   <Border Padding="24">
-    <StackPanel Spacing="16">
-      <TextBlock Classes="heading" Text="Start from a Workflow Template" FontSize="18" FontWeight="Bold" />
-      <TextBlock Classes="secondary" Text="Select a pre-authored template shape and choose vendor CLI options." TextWrapping="Wrap" />
+    <ScrollViewer>
+      <StackPanel Spacing="16">
+        <TextBlock Classes="heading" Text="Start Task or Interactive Session" FontSize="18" FontWeight="Bold" />
+        <TextBlock Classes="secondary" Text="Select a task type or advanced template shape." TextWrapping="Wrap" />
 
-      <StackPanel Spacing="8">
-        <TextBlock Classes="body-strong" Text="Workflow Template:" />
-        <RadioButton x:Name="SoloRunRadio" Content="Solo Run — Single-step execution (Claude or Gemini)" IsChecked="True" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
-        <RadioButton x:Name="ReviewRunRadio" Content="Review Run — Two-step Draft → Human Review" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
-      </StackPanel>
+        <StackPanel Spacing="8">
+          <TextBlock Classes="body-strong" Text="Task / Session Type:" />
+          <RadioButton x:Name="ChatSessionRadio" Content="Chat — Interactive 1-on-1 Session (Claude or Gemini)" IsChecked="True" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
+          <RadioButton x:Name="CodebaseSessionRadio" Content="Codebase Session — AI Agent bound to a Project Directory" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
+          <RadioButton x:Name="TwoVendorDialogueRadio" Content="Two-Vendor Dialogue — Draft &amp; Review exchange (Claude + Gemini)" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
+          <RadioButton x:Name="SoloRunRadio" Content="Solo Run (Advanced) — Single-step execution" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
+          <RadioButton x:Name="ReviewRunRadio" Content="Review Run (Advanced) — Two-step Draft → Human Review" GroupName="TemplateGroup" IsCheckedChanged="OnTemplateChanged" />
+        </StackPanel>
 
-      <StackPanel Spacing="8">
-        <TextBlock Classes="body-strong" Text="Task Name (Optional):" />
-        <TextBox x:Name="TaskNameBox" PlaceholderText="e.g. my-first-solo-run" />
-      </StackPanel>
+        <StackPanel x:Name="ProjectDirectoryPanel" Spacing="8" IsVisible="False">
+          <TextBlock Classes="body-strong" Text="Project Directory Path:" />
+          <TextBox x:Name="ProjectDirectoryBox" PlaceholderText="e.g. C:\Users\pbree\source\repos\my-project" />
+        </StackPanel>
 
-      <StackPanel Spacing="8">
-        <TextBlock Classes="body-strong" Text="Custom Initial Prompt (Optional):" />
-        <TextBox x:Name="CustomPromptBox" PlaceholderText="e.g. Write a summary of AI agent architecture" AcceptsReturn="True" Height="60" />
-      </StackPanel>
+        <StackPanel Spacing="8">
+          <TextBlock Classes="body-strong" Text="Task / Session Name (Optional):" />
+          <TextBox x:Name="TaskNameBox" PlaceholderText="e.g. my-session" />
+        </StackPanel>
 
-      <StackPanel Spacing="8">
-        <TextBlock Classes="body-strong" Text="Primary Worker CLI Vendor:" />
-        <ComboBox x:Name="PrimaryVendorCombo" HorizontalAlignment="Stretch" ItemTemplate="{StaticResource VendorComboItemTemplate}" />
-      </StackPanel>
+        <StackPanel Spacing="8">
+          <TextBlock Classes="body-strong" Text="Initial Message / Prompt (Optional):" />
+          <TextBox x:Name="CustomPromptBox" PlaceholderText="e.g. Write a summary of AI agent architecture" AcceptsReturn="True" Height="60" />
+        </StackPanel>
 
-      <StackPanel x:Name="SecondaryVendorPanel" Spacing="8" IsVisible="False">
-        <TextBlock Classes="body-strong" Text="Reviewer Worker CLI Vendor:" />
-        <ComboBox x:Name="SecondaryVendorCombo" HorizontalAlignment="Stretch" ItemTemplate="{StaticResource VendorComboItemTemplate}" />
-        <TextBlock Classes="body-strong" Text="Reviewer's Instructions (Optional):" />
-        <TextBox x:Name="SecondaryCustomPromptBox" PlaceholderText="e.g. Write your own roast back, don't critique the draft as a document" AcceptsReturn="True" Height="60" />
-      </StackPanel>
+        <StackPanel Spacing="8">
+          <TextBlock Classes="body-strong" Text="Primary AI Worker Vendor:" />
+          <ComboBox x:Name="PrimaryVendorCombo" HorizontalAlignment="Stretch" ItemTemplate="{StaticResource VendorComboItemTemplate}" />
+        </StackPanel>
 
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12" Margin="0,12,0,0">
-        <Button Content="Cancel" Click="OnCancelClick" />
-        <Button Classes="accent" Content="Start Task" Click="OnStartClick" />
+        <StackPanel x:Name="SecondaryVendorPanel" Spacing="8" IsVisible="False">
+          <TextBlock Classes="body-strong" Text="Secondary AI Worker Vendor:" />
+          <ComboBox x:Name="SecondaryVendorCombo" HorizontalAlignment="Stretch" ItemTemplate="{StaticResource VendorComboItemTemplate}" />
+          <TextBlock Classes="body-strong" Text="Secondary Worker Instructions (Optional):" />
+          <TextBox x:Name="SecondaryCustomPromptBox" PlaceholderText="e.g. Write your own response back" AcceptsReturn="True" Height="60" />
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12" Margin="0,12,0,0">
+          <Button Content="Cancel" Click="OnCancelClick" />
+          <Button Classes="accent" Content="Start" Click="OnStartClick" />
+        </StackPanel>
       </StackPanel>
-    </StackPanel>
+    </ScrollViewer>
   </Border>
 </Window>
