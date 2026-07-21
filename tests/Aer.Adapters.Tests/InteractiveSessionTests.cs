@@ -118,21 +118,33 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
-    public void ClaudeAndGeminiWorkerAdapters_DiscoverCapabilities_ReturnsNonEmptyItemsAndModels()
+    public async Task ClaudeWorkerAdapter_DiscoverCapabilities_ReturnsModelAliasesAndCompactCommand()
     {
         var claudeAdapter = new ClaudeWorkerAdapter();
-        var claudeCaps = claudeAdapter.DiscoverCapabilities();
+        var claudeCaps = await claudeAdapter.DiscoverCapabilitiesAsync();
 
         Assert.Equal("claude", claudeCaps.Vendor);
-        Assert.Contains("claude-3-5-sonnet", claudeCaps.Models);
+        // Claude Code has no "list models" subcommand — `--model` only documents alias examples in
+        // --help, so this is a deliberately hardcoded, CLI-independent list (unlike Gemini below).
+        Assert.Contains("sonnet", claudeCaps.Models);
         Assert.Contains(claudeCaps.Items, item => item.Name == "/compact");
+    }
 
+    [Fact]
+    public async Task GeminiWorkerAdapter_DiscoverCapabilities_DoesNotFabricateDataWhenAgyUnavailable()
+    {
+        // agy is a real vendor CLI coincidentally present on some hosts (never assumed present in
+        // CI — see CLAUDE.md's live-vendor-smoke-test rule). This only asserts the parts that don't
+        // depend on the CLI being installed: it must never throw, and it must never report a
+        // model/agent/plugin list it didn't actually observe from `agy models`/`agy agent`/
+        // `agy plugin list`.
         var geminiAdapter = new GeminiWorkerAdapter();
-        var geminiCaps = geminiAdapter.DiscoverCapabilities();
+        var geminiCaps = await geminiAdapter.DiscoverCapabilitiesAsync();
 
         Assert.Equal("gemini", geminiCaps.Vendor);
-        Assert.Contains("gemini-1.5-pro", geminiCaps.Models);
         Assert.Contains(geminiCaps.Items, item => item.Name == "/compact");
+        Assert.Contains(geminiCaps.Items, item => item.Name == "accept-edits" && item.Kind == "mode");
+        Assert.DoesNotContain(geminiCaps.Models, m => string.IsNullOrWhiteSpace(m));
     }
 
     [Fact]

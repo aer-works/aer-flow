@@ -1013,11 +1013,11 @@ namespace Aer.Daemon
                     adapter = adapters["claude"];
                 }
 
-                var capabilities = adapter.DiscoverCapabilities(metadata.WorkingDirectory);
+                var capabilities = await adapter.DiscoverCapabilitiesAsync(metadata.WorkingDirectory);
                 return Results.Ok(capabilities);
             });
 
-            app.MapGet("/api/adapters/capabilities", (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            app.MapGet("/api/adapters/capabilities", async (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
                 var name = string.IsNullOrWhiteSpace(adapter) ? "claude" : adapter.Trim().ToLowerInvariant();
                 if (!adapters.TryGetValue(name, out var workerAdapter))
@@ -1025,7 +1025,7 @@ namespace Aer.Daemon
                     workerAdapter = adapters["claude"];
                 }
 
-                var capabilities = workerAdapter.DiscoverCapabilities(workingDirectory);
+                var capabilities = await workerAdapter.DiscoverCapabilitiesAsync(workingDirectory);
                 return Results.Ok(capabilities);
             });
 

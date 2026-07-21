@@ -164,7 +164,16 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
     private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
 
-    public WorkerCapabilities DiscoverCapabilities(string? workingDirectory = null)
+    /// <summary>
+    /// Claude Code has no machine-readable "list models" subcommand — <c>--model</c> only documents
+    /// its accepted values as help-text examples (<c>claude --help</c>: "Provide an alias for the
+    /// latest model (e.g. 'sonnet', 'opus') or a model's full name"). Aliases are the stable
+    /// interface here: each always resolves to that tier's current model, so this list doesn't need
+    /// updating every model generation the way a hardcoded full model ID would.
+    /// </summary>
+    private static readonly IReadOnlyList<string> ModelAliases = ["sonnet", "opus", "haiku"];
+
+    public Task<WorkerCapabilities> DiscoverCapabilitiesAsync(string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
         var items = new List<WorkerCapabilityItem>();
         var searchDirs = new List<string>();
@@ -224,8 +233,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         items.Add(new WorkerCapabilityItem("/compact", "command", "Summarize and compact session history"));
         items.Add(new WorkerCapabilityItem("/clear", "command", "Clear session context"));
 
-        var models = new List<string> { "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus" };
         var uniqueItems = items.GroupBy(i => i.Name).Select(g => g.First()).ToList();
-        return new WorkerCapabilities("claude", uniqueItems, models);
+        return Task.FromResult(new WorkerCapabilities("claude", uniqueItems, ModelAliases));
     }
 }
