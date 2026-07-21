@@ -62,6 +62,23 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
+    /// Strips <paramref name="taskDirectoryPath"/> from the recents list (M24 Phase 5, #278) — used
+    /// by a real delete so a stale recent doesn't 404 on the next open. A no-op if the path isn't
+    /// present, matching this store's own "rebuildable convenience, not authoritative" stance.
+    /// </summary>
+    public async Task RemoveRecentTaskDirectoryAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        var fullPath = Path.GetFullPath(taskDirectoryPath);
+
+        var updated = configuration.RecentTaskDirectories
+            .Where(path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal))
+            .ToList();
+
+        await SaveConfigurationAsync(configuration with { RecentTaskDirectories = updated }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// The bindings file (M15 Phase 1, issue #137): never persisted in a task directory (M14 Phase
     /// 2's decision of record), so a Run action asks the user for it every time — this is only the
     /// remembered default that pre-fills the ask, exactly the same non-authoritative convenience the
