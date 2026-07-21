@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.17.0...adapters-v0.18.0) (2026-07-21)
+
+
+### Features
+
+* **flow,adapters:** M23 Phase 3 — Project-Directory-Bound Tasks & Portable Bindings ([#275](https://github.com/aer-works/aer-flow/issues/275)) ([2743172](https://github.com/aer-works/aer-flow/commit/274317233a1f7c419f746c1868bec80b19944e8c))
+
 ## [0.17.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.16.0...adapters-v0.17.0) (2026-07-20)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0](https://github.com/aer-works/aer-flow/compare/ui-core-v0.17.0...ui-core-v0.18.0) (2026-07-21)
+
+
+### Features
+
+* **dialogue:** M23 Phase 1 — generalize the dialogue worker to N-party ([#273](https://github.com/aer-works/aer-flow/issues/273)) ([0a44f58](https://github.com/aer-works/aer-flow/commit/0a44f58062f9eda622452852e0e1ed29217b75b1))
+* **flow,adapters:** M23 Phase 3 — Project-Directory-Bound Tasks & Portable Bindings ([#275](https://github.com/aer-works/aer-flow/issues/275)) ([2743172](https://github.com/aer-works/aer-flow/commit/274317233a1f7c419f746c1868bec80b19944e8c))
+
 ## [0.17.0](https://github.com/aer-works/aer-flow/compare/ui-core-v0.16.0...ui-core-v0.17.0) (2026-07-20)
 
 
