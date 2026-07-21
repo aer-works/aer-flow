@@ -1134,7 +1134,7 @@ namespace Aer.Daemon
                     try
                     {
                         var compactMsg = "/compact Please provide a concise summary of our conversation so far, including all key requirements, code changes, decisions, and current progress.";
-                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync, forceHandoff: true).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -1241,12 +1241,17 @@ namespace Aer.Daemon
             bool isInitial,
             Func<TaskProjection, string?, Task> broadcastStateAsync,
             IReadOnlyDictionary<string, IWorkerAdapter> adapters,
-            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync)
+            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync,
+            bool forceHandoff = false)
         {
             var targetAdapter = string.IsNullOrWhiteSpace(requestAdapter) ? metadata.CurrentAdapter : requestAdapter.Trim().ToLowerInvariant();
             bool isVendorChange = !string.Equals(targetAdapter, metadata.CurrentAdapter, StringComparison.OrdinalIgnoreCase);
             bool isCeilingReached = metadata.TurnCount >= metadata.SafetyCeiling;
-            bool handoff = isVendorChange || isCeilingReached;
+            // Compact (POST /api/sessions/{id}/compact) forces this branch even for a same-vendor,
+            // under-ceiling turn -- it must actually synthesize a summary and start a fresh native
+            // session, not just forward "/compact" as an ordinary resumed message to the vendor's own
+            // (unverified, vendor-owned) slash-command handling. See issue #263's original rationale.
+            bool handoff = isVendorChange || isCeilingReached || forceHandoff;
 
             string promptTemplate;
             bool resumeSession;
