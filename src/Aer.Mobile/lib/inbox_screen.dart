@@ -25,6 +25,15 @@ class _InboxScreenState extends State<InboxScreen> {
   String? _connectionError;
   final _pendingStepIds = <String>{};
 
+  /// Which task directory *this phone* is currently viewing — set only by this phone's own
+  /// actions (recent-task pick, starting a task/session), never by another client's. Aer.Daemon's
+  /// own "current task" is a separate, process-wide notion the daemon uses only to decide what a
+  /// brand-new WS connection sees before this phone has opened anything of its own; `_connect`'s
+  /// listener adopts that once, then filters every later push against this field so a different
+  /// client opening a different task can't silently change what this phone shows (pre-M24 defect,
+  /// fixed alongside issue #262's chat work — see TaskProjection's doc comment in models.dart).
+  String? _openDirectoryPath;
+
   @override
   void initState() {
     super.initState();
@@ -52,7 +61,11 @@ class _InboxScreenState extends State<InboxScreen> {
     setState(() => _connectionError = null);
     _subscription = _client!.watch().listen(
       (projection) {
-        if (mounted) setState(() => _projection = projection);
+        if (!mounted) return;
+        _openDirectoryPath ??= projection.directoryPath;
+        if (projection.directoryPath == _openDirectoryPath) {
+          setState(() => _projection = projection);
+        }
       },
       onError: (Object error) {
         if (mounted) setState(() => _connectionError = 'Disconnected — $error');
@@ -94,6 +107,7 @@ class _InboxScreenState extends State<InboxScreen> {
       );
       if (selected != null) {
         await client.openTask(selected);
+        if (mounted) setState(() => _openDirectoryPath = selected);
       }
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -325,6 +339,10 @@ class _InboxScreenState extends State<InboxScreen> {
                         initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
                         taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
                       );
+                      final startedDirectoryPath = caseInsensitive(meta)['taskdirectorypath']?.toString();
+                      if (startedDirectoryPath != null && mounted) {
+                        setState(() => _openDirectoryPath = startedDirectoryPath);
+                      }
                       messenger.showSnackBar(
                         SnackBar(content: Text('Started session ${meta["sessionId"] ?? meta["SessionId"]}')),
                       );
@@ -339,6 +357,9 @@ class _InboxScreenState extends State<InboxScreen> {
                             ? secondaryCustomPromptController.text.trim()
                             : null,
                       );
+                      if (dirPath.isNotEmpty && mounted) {
+                        setState(() => _openDirectoryPath = dirPath);
+                      }
                       messenger.showSnackBar(
                         SnackBar(content: Text('Started task ($dirPath)')),
                       );

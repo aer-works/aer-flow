@@ -71,12 +71,16 @@ class ExecutionArtifacts {
   }
 }
 
-/// The full projection Aer.Daemon holds for whichever task directory is currently open —
-/// there is only ever one "current" task server-side (TaskSession.CurrentTaskDirectoryPath),
-/// shared by every connected WS client. directoryPath comes from the DirectoryPath sibling
-/// property Aer.Daemon adds to the WS payload (M21 Phase 2, #232) — it is not part of
-/// TaskProjection itself, since /api/tasks/decide and /api/tasks/cancel need it and a
-/// WS-only client (this app) has no other way to learn it.
+/// A projection Aer.Daemon pushes for one task directory. Aer.Daemon still has only one
+/// "current" task server-side (TaskSession.CurrentTaskDirectoryPath) and broadcasts every
+/// change to every connected WS client regardless of which directory it's for — but this app
+/// filters incoming pushes against InboxScreen's own `_openDirectoryPath` before applying one
+/// (fixed alongside issue #262's chat work; see `_connect`'s listener), so a different client
+/// opening a different task no longer silently changes what this phone shows. directoryPath
+/// comes from the DirectoryPath sibling property Aer.Daemon adds to the WS payload (M21 Phase 2,
+/// #232) — it is not part of TaskProjection itself, since /api/tasks/decide and /api/tasks/cancel
+/// need it and a WS-only client (this app) has no other way to learn it, and it's also this
+/// filter's join key.
 class TaskProjection {
   final String? directoryPath;
   final String workflowTemplateId;

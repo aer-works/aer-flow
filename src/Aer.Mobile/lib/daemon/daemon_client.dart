@@ -152,9 +152,11 @@ class DaemonClient {
         .toList();
   }
 
-  /// Reassigns which task is "current" for every connected client, desktop included — see
-  /// TaskProjection's doc comment. Only call this from an explicit user action (the recent-tasks
-  /// picker), never automatically, so the phone doesn't silently steal the desktop's view.
+  /// Reassigns Aer.Daemon's own notion of "current" task, which still broadcasts to every
+  /// connected client — see TaskProjection's doc comment. Callers must also update their own
+  /// local `_openDirectoryPath` (or equivalent) after this succeeds, or their own filter will
+  /// discard the resulting push. Only call this from an explicit user action (the recent-tasks
+  /// picker), never automatically.
   Future<void> openTask(String directoryPath) async {
     final response = await _post(
       Uri.http(host, '/api/tasks/open'),

@@ -115,7 +115,18 @@ public sealed class TaskSession
 
     public MainWindowViewModel ViewModel { get; }
 
+    /// <summary>
+    /// Which task directory *this client instance* is currently viewing — set only by this
+    /// session's own actions (<see cref="SetCurrentTaskDirectory"/>, <see cref="RunAsync"/>,
+    /// <see cref="StartInteractiveSessionAsync"/>), never by another client's. Aer.Daemon's own
+    /// "current task" is a separate, process-wide notion the daemon uses only to decide what a
+    /// brand-new WS connection sees before this client has opened anything of its own — see
+    /// <see cref="ShouldApplyProjectionPush"/>, which is what actually keeps two clients pointed
+    /// at different directories from corrupting each other's view (pre-M24 defect, filed as part
+    /// of issue #262's chat work).
+    /// </summary>
     public string? CurrentTaskDirectoryPath { get; private set; }
+
     public bool LastLoadSucceeded { get; private set; }
     public WorkflowStatus? LastWorkflowStatus { get; private set; }
     public WorkflowDefinitionSnapshot? LastSnapshot { get; private set; }
@@ -456,6 +467,21 @@ public sealed class TaskSession
 
     private sealed record ProgressFrame(string DirectoryPath, string StepId, string Kind, string Text, bool IsPartial);
 
+    /// <summary>
+    /// Mirrors <see cref="TaskProjection"/>'s shape plus the <c>DirectoryPath</c> sibling property
+    /// Aer.Daemon bolts onto every <c>/api/ws</c> frame (M21 Phase 2, #232). Deserializing straight
+    /// into <see cref="TaskProjection"/>, as <see cref="ReceiveWebSocketDataAsync"/> did before,
+    /// silently drops that sibling — leaving no way to tell whether an incoming push is even for the
+    /// directory this client has open, so every push got applied unconditionally regardless of which
+    /// client's action produced it. This wrapper exists solely so the receive loop can filter.
+    /// </summary>
+    private sealed record ProjectionFrame(
+        string? DirectoryPath,
+        WorkflowDefinitionSnapshot Snapshot,
+        FlowState State,
+        ExecutionHistory History,
+        ArtifactLineage Lineage);
+
     /// <summary>The M24 Phase 1 live in-turn streaming socket's client-side counterpart -- see <see cref="SessionProgressReceived"/>. A dedicated connection, not folded into <see cref="StartWebSocketListenerAsync"/>'s own socket, for the exact same reason the daemon keeps the two endpoints separate (<c>Aer.Daemon.Program</c>'s <c>progressWebSockets</c> remarks): this frame shape has no type discriminator, so sharing a socket risks a <see cref="TaskProjection"/> deserialization corrupting on it.</summary>
     private async Task StartProgressWebSocketListenerAsync(string resolvedUrl, string? token, CancellationToken cancellationToken)
     {
@@ -532,6 +558,23 @@ public sealed class TaskSession
         PropertyNameCaseInsensitive = true
     };
 
+    /// <summary>
+    /// Decides whether an incoming projection push for <paramref name="incomingDirectoryPath"/>
+    /// should be applied to this client's state, seeding <see cref="CurrentTaskDirectoryPath"/>
+    /// from the first push a fresh client ever sees (typically whatever Aer.Daemon last had
+    /// open) and rejecting every later push for a different directory. Before this (issue #262
+    /// follow-up), every push was applied unconditionally, so one client opening a different
+    /// task silently corrupted every other connected client's view with that task's data,
+    /// mislabeled under whatever directory the victim client had open. Extracted from
+    /// <see cref="ReceiveWebSocketDataAsync"/> so this decision is unit-testable without a live
+    /// daemon connection.
+    /// </summary>
+    internal bool ShouldApplyProjectionPush(string? incomingDirectoryPath)
+    {
+        CurrentTaskDirectoryPath ??= incomingDirectoryPath;
+        return incomingDirectoryPath == CurrentTaskDirectoryPath;
+    }
+
     private async Task ReceiveWebSocketDataAsync(ClientWebSocket webSocket, CancellationToken cancellationToken)
     {
         var buffer = new byte[1024 * 1024];
@@ -554,27 +597,31 @@ public sealed class TaskSession
                 if (result.MessageType == WebSocketMessageType.Text)
                 {
                     ms.Position = 0;
-                    var projection = await JsonSerializer.DeserializeAsync<TaskProjection>(ms, DefaultJsonOptions, cancellationToken).ConfigureAwait(true);
+                    var frame = await JsonSerializer.DeserializeAsync<ProjectionFrame>(ms, DefaultJsonOptions, cancellationToken).ConfigureAwait(true);
 
-                    if (projection != null && CurrentTaskDirectoryPath != null)
+                    if (frame != null)
                     {
-                        if (_syncContext != null)
+                        if (ShouldApplyProjectionPush(frame.DirectoryPath))
                         {
-                            _syncContext.Post(_ =>
+                            var projection = new TaskProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
+                            if (_syncContext != null)
+                            {
+                                _syncContext.Post(_ =>
+                                {
+                                    UpdateProjection(projection);
+                                    if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                                    {
+                                        _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                                    }
+                                }, null);
+                            }
+                            else
                             {
                                 UpdateProjection(projection);
                                 if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
                                 {
                                     _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
                                 }
-                            }, null);
-                        }
-                        else
-                        {
-                            UpdateProjection(projection);
-                            if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
-                            {
-                                _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
                             }
                         }
                     }
