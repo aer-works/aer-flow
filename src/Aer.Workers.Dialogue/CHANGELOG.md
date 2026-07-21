@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/aer-works/aer-flow/compare/dialogue-worker-v0.17.0...dialogue-worker-v0.18.0) (2026-07-21)
+
+
+### Features
+
+* **dialogue:** M23 Phase 1 — generalize the dialogue worker to N-party ([#273](https://github.com/aer-works/aer-flow/issues/273)) ([0a44f58](https://github.com/aer-works/aer-flow/commit/0a44f58062f9eda622452852e0e1ed29217b75b1))
+
 ## [0.17.0](https://github.com/aer-works/aer-flow/compare/dialogue-worker-v0.16.0...dialogue-worker-v0.17.0) (2026-07-20)
 
 
