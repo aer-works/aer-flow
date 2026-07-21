@@ -32,7 +32,7 @@ namespace Aer.Daemon
 
         public static WebApplication? App { get; set; }
 
-        public static async Task RunDaemonAsync(string[] args)
+        public static async Task RunDaemonAsync(string[] args, IReadOnlyDictionary<string, IWorkerAdapter>? adapters = null)
         {
             var noMutex = args.Contains("--no-mutex");
             Mutex? mutex = null;
@@ -121,7 +121,7 @@ namespace Aer.Daemon
 
             // Register singletons
             builder.Services.AddSingleton(LocalUiConfigurationStore.CreateDefault());
-            builder.Services.AddSingleton<IReadOnlyDictionary<string, IWorkerAdapter>>(WorkerAdapterRegistry.Default);
+            builder.Services.AddSingleton(adapters ?? WorkerAdapterRegistry.Default);
             builder.Services.AddSingleton<MainWindowViewModel>();
             builder.Services.AddSingleton<PairedClientsStore>();
 
