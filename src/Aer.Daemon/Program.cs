@@ -997,11 +997,10 @@ namespace Aer.Daemon
                 string? directoryPath = request.DirectoryPath;
                 if (string.IsNullOrEmpty(directoryPath) && !string.IsNullOrEmpty(request.SessionId))
                 {
-                    var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
-                    var candidate = Path.Combine(baseSessionsDir, $"session-{request.SessionId}");
-                    if (Directory.Exists(candidate))
+                    var resolvedBySessionId = await ResolveSessionAsync(request.SessionId);
+                    if (resolvedBySessionId != null)
                     {
-                        directoryPath = candidate;
+                        directoryPath = resolvedBySessionId.Value.DirectoryPath;
                     }
                 }
 
@@ -1036,15 +1035,12 @@ namespace Aer.Daemon
 
             app.MapGet("/api/sessions/{sessionId}", async (string sessionId) =>
             {
-                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
-                var candidate = Path.Combine(baseSessionsDir, $"session-{sessionId}");
-                var metadataPath = Path.Combine(candidate, ".aer", "session.json");
-                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
-                if (metadata == null)
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
                 {
                     return Results.NotFound();
                 }
-                return Results.Ok(metadata);
+                return Results.Ok(resolved.Value.Metadata);
             });
 
             app.MapGet("/api/sessions", async () =>
@@ -1072,15 +1068,13 @@ namespace Aer.Daemon
             // M24 Phase 2 (#263): Capabilities discovery & Session compact endpoints
             app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
-                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
-                var candidate = Path.Combine(baseSessionsDir, $"session-{sessionId}");
-                var metadataPath = Path.Combine(candidate, ".aer", "session.json");
-                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
-                if (metadata == null)
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
                 {
                     return Results.NotFound();
                 }
 
+                var metadata = resolved.Value.Metadata;
                 if (!adapters.TryGetValue(metadata.CurrentAdapter, out var adapter))
                 {
                     adapter = adapters["claude"];
@@ -1104,15 +1098,13 @@ namespace Aer.Daemon
 
             app.MapPost("/api/sessions/{sessionId}/compact", async (string sessionId, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
-                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
-                var directoryPath = Path.Combine(baseSessionsDir, $"session-{sessionId}");
-                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
-                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
-                if (metadata == null)
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
                 {
                     return Results.NotFound();
                 }
 
+                var (directoryPath, metadata) = resolved.Value;
                 pathHolder.BindingsFilePath = Path.Combine(directoryPath, "bindings.json");
 
                 _ = Task.Run(async () =>
@@ -1183,6 +1175,38 @@ namespace Aer.Daemon
 
             await app.RunAsync();
             mutex?.Dispose();
+        }
+
+        // Session folders are only named "session-{sessionId}" when StartSessionRequest.TaskName is
+        // omitted (the fallback name at MapPost "/api/sessions/start" above) -- a caller-supplied
+        // TaskName (e.g. a human-readable title) produces a differently-named folder, so any lookup
+        // by sessionId alone must not assume the fallback convention holds. Mirrors the scan
+        // MapGet "/api/sessions" (list) already does per-directory, keyed by the persisted
+        // SessionMetadata.SessionId instead of the folder name.
+        private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
+        {
+            var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+            if (!Directory.Exists(baseSessionsDir))
+            {
+                return null;
+            }
+
+            foreach (var dir in Directory.GetDirectories(baseSessionsDir))
+            {
+                var metadataPath = Path.Combine(dir, ".aer", "session.json");
+                if (!File.Exists(metadataPath))
+                {
+                    continue;
+                }
+
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
+                if (metadata != null && metadata.SessionId == sessionId)
+                {
+                    return (dir, metadata);
+                }
+            }
+
+            return null;
         }
 
         private static async Task ExecuteSessionTurnAsync(
