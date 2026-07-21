@@ -46,11 +46,17 @@ public static class RunCommand
     /// signal a specific in-flight execution this same call dispatched, without a second
     /// mutation-surface call racing §15's guard.
     /// </param>
+    /// <param name="onWorkerStdoutLine">
+    /// M24 Phase 1's live in-turn streaming — forwarded verbatim to <see cref="WorkerBindingResolver.Resolve"/>.
+    /// Null for the real <c>aer run</c> CLI entry point; only <c>Aer.Daemon</c>'s in-process session-turn
+    /// path supplies one (see <c>Program.ExecuteSessionTurnAsync</c>).
+    /// </param>
     public static async Task<CommandResult> ExecuteAsync(
         RunOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         InFlightExecutionRegistry? inFlightExecutions = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string, string>? onWorkerStdoutLine = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(adapters);
@@ -69,7 +75,7 @@ public static class RunCommand
             .ConfigureAwait(false);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
+            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
 

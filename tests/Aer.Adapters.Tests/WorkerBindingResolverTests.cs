@@ -105,6 +105,64 @@ public class WorkerBindingResolverTests
         Assert.Empty(bindings);
     }
 
+    // M24 Phase 1 (#262): the live in-turn streaming seam.
+
+    [Fact]
+    public void OnWorkerStdoutLine_null_leaves_the_resolved_target_with_no_OnStdoutLine_callback()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry("echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5)),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters);
+
+        var binding = (WorkerBinding.Process)bindings["architect"];
+        Assert.Null(binding.Target.OnStdoutLine);
+    }
+
+    [Fact]
+    public void OnWorkerStdoutLine_when_supplied_is_wrapped_onto_the_target_with_the_workers_own_name()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry("echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5)),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+        var received = new List<(string WorkerName, string Line)>();
+
+        var bindings = WorkerBindingResolver.Resolve(
+            config, adapters, onWorkerStdoutLine: (workerName, line) => received.Add((workerName, line)));
+
+        var binding = (WorkerBinding.Process)bindings["architect"];
+        Assert.NotNull(binding.Target.OnStdoutLine);
+        binding.Target.OnStdoutLine!("a raw stdout line");
+        Assert.Equal(("architect", "a raw stdout line"), Assert.Single(received));
+    }
+
+    [Fact]
+    public void OnWorkerStdoutLine_reports_each_entrys_own_worker_name_independently()
+    {
+        var criticContract = new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry("echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5)),
+            ["critic"] = new WorkerBindingConfigEntry("echo", criticContract, "Review the plan.", TimeSpan.FromMinutes(2)),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+        var received = new List<(string WorkerName, string Line)>();
+
+        var bindings = WorkerBindingResolver.Resolve(
+            config, adapters, onWorkerStdoutLine: (workerName, line) => received.Add((workerName, line)));
+
+        ((WorkerBinding.Process)bindings["architect"]).Target.OnStdoutLine!("line from architect");
+        ((WorkerBinding.Process)bindings["critic"]).Target.OnStdoutLine!("line from critic");
+
+        Assert.Contains(("architect", "line from architect"), received);
+        Assert.Contains(("critic", "line from critic"), received);
+    }
+
     // M23 Phase 3 (#272): WorkingDirectory profile resolution and the dialogue PromptTemplate
     // portability fix.
 

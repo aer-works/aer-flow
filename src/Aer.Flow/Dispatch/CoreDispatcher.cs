@@ -18,7 +18,11 @@ namespace Aer.Flow.Dispatch;
 /// <c>IWorkerAdapter</c> forwards <c>WorkerInvocation.WorkingDirectory</c> here unchanged, so a
 /// worker can operate on an arbitrary existing project the way it would run raw in a terminal.
 /// </param>
-public sealed record CoreDispatchTarget(string Program, IReadOnlyList<string> Args, string? WorkingDirectory = null);
+public sealed record CoreDispatchTarget(
+    string Program,
+    IReadOnlyList<string> Args,
+    string? WorkingDirectory = null,
+    Action<string>? OnStdoutLine = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -84,6 +88,11 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             task.WithCwd(workingDirectory);
         }
 
+        if (target.OnStdoutLine is not null)
+        {
+            task.WithCaptureOutput(true);
+        }
+
         foreach (var environmentVariable in request.Environment)
         {
             // PassThrough variable *values* are resolved by whatever wires a concrete worker
@@ -98,6 +107,8 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         var exitCode = 0;
         var reason = CoreExitReason.Natural;
         var pendingLogWrites = new List<Task>();
+        var stdoutBuffer = new System.Text.StringBuilder();
+        var stdoutLock = new object();
 
         task.EventRaised += (_, e) =>
         {
@@ -112,6 +123,27 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                     // applies to its own append.
                     pendingLogWrites.Add(coreEventLogWriter.AppendAsync(
                         new CoreEvent.ExecutionStarted(request.ExecutionId, e.Pid), CancellationToken.None));
+                    break;
+
+                case AerTaskEventKind.StdoutChunk:
+                    if (target.OnStdoutLine is not null && e.Data is { Length: > 0 })
+                    {
+                        var text = System.Text.Encoding.UTF8.GetString(e.Data);
+                        lock (stdoutLock)
+                        {
+                            stdoutBuffer.Append(text);
+                            var content = stdoutBuffer.ToString();
+                            int newlineIndex;
+                            while ((newlineIndex = content.IndexOf('\n')) >= 0)
+                            {
+                                var line = content[..newlineIndex].TrimEnd('\r');
+                                target.OnStdoutLine(line);
+                                content = content[(newlineIndex + 1)..];
+                            }
+                            stdoutBuffer.Clear();
+                            stdoutBuffer.Append(content);
+                        }
+                    }
                     break;
 
                 case AerTaskEventKind.Exited:
@@ -140,6 +172,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         }
 
         await Task.WhenAll(pendingLogWrites).ConfigureAwait(false);
+
+        lock (stdoutLock)
+        {
+            if (target.OnStdoutLine is not null && stdoutBuffer.Length > 0)
+            {
+                target.OnStdoutLine(stdoutBuffer.ToString());
+                stdoutBuffer.Clear();
+            }
+        }
 
         return new CoreDispatchResult(exitCode, reason);
     }

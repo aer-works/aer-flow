@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'chat_screen.dart';
 import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
@@ -24,6 +25,15 @@ class _InboxScreenState extends State<InboxScreen> {
   TaskProjection? _projection;
   String? _connectionError;
   final _pendingStepIds = <String>{};
+
+  /// Which task directory *this phone* is currently viewing — set only by this phone's own
+  /// actions (recent-task pick, starting a task/session), never by another client's. Aer.Daemon's
+  /// own "current task" is a separate, process-wide notion the daemon uses only to decide what a
+  /// brand-new WS connection sees before this phone has opened anything of its own; `_connect`'s
+  /// listener adopts that once, then filters every later push against this field so a different
+  /// client opening a different task can't silently change what this phone shows (pre-M24 defect,
+  /// fixed alongside issue #262's chat work — see TaskProjection's doc comment in models.dart).
+  String? _openDirectoryPath;
 
   @override
   void initState() {
@@ -52,7 +62,11 @@ class _InboxScreenState extends State<InboxScreen> {
     setState(() => _connectionError = null);
     _subscription = _client!.watch().listen(
       (projection) {
-        if (mounted) setState(() => _projection = projection);
+        if (!mounted) return;
+        _openDirectoryPath ??= projection.directoryPath;
+        if (projection.directoryPath == _openDirectoryPath) {
+          setState(() => _projection = projection);
+        }
       },
       onError: (Object error) {
         if (mounted) setState(() => _connectionError = 'Disconnected — $error');
@@ -94,6 +108,7 @@ class _InboxScreenState extends State<InboxScreen> {
       );
       if (selected != null) {
         await client.openTask(selected);
+        if (mounted) setState(() => _openDirectoryPath = selected);
       }
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -165,9 +180,19 @@ class _InboxScreenState extends State<InboxScreen> {
       final templates = (data['templates'] as List<dynamic>?) ?? [];
       final vendors = (data['availableVendors'] as List<dynamic>?) ?? [];
 
-      String selectedTemplateId = 'solo-run';
+      String selectedTemplateId = 'chat-session';
       String primaryVendor = 'claude';
       String secondaryVendor = 'gemini';
+      String? selectedProjectPath;
+      List<Map<String, dynamic>> knownProjects = [];
+
+      try {
+        knownProjects = await client.listKnownProjects();
+        if (knownProjects.isNotEmpty) {
+          selectedProjectPath = knownProjects.first['Path']?.toString() ?? knownProjects.first['path']?.toString();
+        }
+      } catch (_) {}
+
       final taskNameController = TextEditingController();
       final customPromptController = TextEditingController();
       final secondaryCustomPromptController = TextEditingController();
@@ -181,17 +206,19 @@ class _InboxScreenState extends State<InboxScreen> {
         secondaryVendor = availableVendorNames.length > 1 ? availableVendorNames[1] : primaryVendor;
       }
 
+      if (!mounted) return;
+
       await showDialog<void>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Start from Template'),
+            title: const Text('Start Task or Interactive Session'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Workflow Template:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Select Task Type:', style: TextStyle(fontWeight: FontWeight.bold)),
                   ...templates.map((t) {
                     final map = caseInsensitive(t as Map<String, dynamic>);
                     final id = map['id'].toString();
@@ -209,18 +236,43 @@ class _InboxScreenState extends State<InboxScreen> {
                       },
                     );
                   }),
+                  if (selectedTemplateId == 'codebase-session') ...[
+                    const SizedBox(height: 12),
+                    const Text('Select Known Project Directory:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    if (knownProjects.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('No known projects registered on host yet.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      )
+                    else
+                      DropdownButton<String>(
+                        value: selectedProjectPath,
+                        isExpanded: true,
+                        items: knownProjects.map((p) {
+                          final name = p['FriendlyName']?.toString() ?? p['friendlyName']?.toString() ?? 'Project';
+                          final path = p['Path']?.toString() ?? p['path']?.toString() ?? '';
+                          return DropdownMenuItem<String>(
+                            value: path,
+                            child: Text('$name ($path)', overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedProjectPath = val);
+                        },
+                      ),
+                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: taskNameController,
-                    decoration: const InputDecoration(labelText: 'Task Name (Optional)', hintText: 'e.g. my-new-task'),
+                    decoration: const InputDecoration(labelText: 'Task / Session Name (Optional)', hintText: 'e.g. my-chat-session'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: customPromptController,
-                    decoration: const InputDecoration(labelText: 'Custom Prompt (Optional)', hintText: 'Initial instructions for the worker'),
+                    decoration: const InputDecoration(labelText: 'Initial Message / Prompt (Optional)', hintText: 'Opening instructions or question'),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Worker CLI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('AI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
                   DropdownButton<String>(
                     value: primaryVendor,
                     isExpanded: true,
@@ -240,9 +292,9 @@ class _InboxScreenState extends State<InboxScreen> {
                       if (val != null) setDialogState(() => primaryVendor = val);
                     },
                   ),
-                  if (selectedTemplateId == 'review-run') ...[
+                  if (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') ...[
                     const SizedBox(height: 8),
-                    const Text('Reviewer Worker CLI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Secondary AI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
                     DropdownButton<String>(
                       value: secondaryVendor,
                       isExpanded: true,
@@ -266,8 +318,8 @@ class _InboxScreenState extends State<InboxScreen> {
                     TextField(
                       controller: secondaryCustomPromptController,
                       decoration: const InputDecoration(
-                        labelText: "Reviewer's Instructions (Optional)",
-                        hintText: "e.g. Write your own roast back, don't critique the draft as a document",
+                        labelText: "Secondary Vendor Instructions (Optional)",
+                        hintText: "Instructions for the secondary worker",
                       ),
                     ),
                   ],
@@ -279,26 +331,54 @@ class _InboxScreenState extends State<InboxScreen> {
               FilledButton(
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
+                  final screenNavigator = Navigator.of(context);
                   Navigator.pop(context);
                   try {
-                    final dirPath = await client.runTemplate(
-                      templateId: selectedTemplateId,
-                      primaryAdapter: primaryVendor,
-                      secondaryAdapter: selectedTemplateId == 'review-run' ? secondaryVendor : null,
-                      taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
-                      customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
-                      secondaryCustomPrompt: selectedTemplateId == 'review-run' && secondaryCustomPromptController.text.trim().isNotEmpty
-                          ? secondaryCustomPromptController.text.trim()
-                          : null,
-                    );
-                    messenger.showSnackBar(
-                      SnackBar(content: Text('Started template $selectedTemplateId ($dirPath)')),
-                    );
+                    if (selectedTemplateId == 'chat-session' || selectedTemplateId == 'codebase-session') {
+                      final meta = await client.startSession(
+                        adapter: primaryVendor,
+                        workingDirectory: selectedTemplateId == 'codebase-session' ? selectedProjectPath : null,
+                        initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
+                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                      );
+                      final metaCi = caseInsensitive(meta);
+                      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+                      final startedSessionId = metaCi['sessionid']?.toString();
+                      if (startedDirectoryPath != null && mounted) {
+                        setState(() => _openDirectoryPath = startedDirectoryPath);
+                      }
+                      // This phone started the session itself, so (unlike a passively-seeded WS
+                      // push) it's safe to jump straight into the chat screen.
+                      if (startedDirectoryPath != null && startedSessionId != null && mounted) {
+                        screenNavigator.push(MaterialPageRoute(
+                          builder: (_) => ChatScreen(client: client, sessionId: startedSessionId, directoryPath: startedDirectoryPath),
+                        ));
+                      } else {
+                        messenger.showSnackBar(SnackBar(content: Text('Started session $startedSessionId')));
+                      }
+                    } else {
+                      final dirPath = await client.runTemplate(
+                        templateId: selectedTemplateId,
+                        primaryAdapter: primaryVendor,
+                        secondaryAdapter: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') ? secondaryVendor : null,
+                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                        customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
+                        secondaryCustomPrompt: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') && secondaryCustomPromptController.text.trim().isNotEmpty
+                            ? secondaryCustomPromptController.text.trim()
+                            : null,
+                      );
+                      if (dirPath.isNotEmpty && mounted) {
+                        setState(() => _openDirectoryPath = dirPath);
+                      }
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Started task ($dirPath)')),
+                      );
+                    }
                   } on DaemonException catch (e) {
                     messenger.showSnackBar(SnackBar(content: Text(e.message)));
                   }
                 },
-                child: const Text('Start Task'),
+                child: const Text('Start'),
               ),
             ],
           ),
@@ -401,6 +481,39 @@ class _InboxScreenState extends State<InboxScreen> {
               ),
               const SizedBox(height: 12),
               OutlinedButton(onPressed: _pickRecentTask, child: const Text('Browse recent tasks')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // An interactive session drives its own step decisions internally (Aer.Daemon's
+    // ExecuteSessionTurnAsync supersedes its own "chat" step after every turn) — there's nothing
+    // for the approve/reject cards below to show here, so this renders a tappable card into
+    // ChatScreen instead. Navigating only happens on this explicit tap, never automatically off
+    // the push that populated `projection` itself — see `_connect`'s and `_openDirectoryPath`'s
+    // doc comments for why a passively-seeded push must never navigate on its own.
+    if (projection.sessionId != null && projection.directoryPath != null) {
+      final client = _client!;
+      final sessionId = projection.sessionId!;
+      final directoryPath = projection.directoryPath!;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 48),
+              const SizedBox(height: 16),
+              Text('Interactive session — ${projection.status.toLowerCase()}', textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open chat'),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ChatScreen(client: client, sessionId: sessionId, directoryPath: directoryPath),
+                )),
+              ),
             ],
           ),
         ),

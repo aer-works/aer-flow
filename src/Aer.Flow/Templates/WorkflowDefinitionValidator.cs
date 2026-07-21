@@ -14,8 +14,10 @@ public static class WorkflowDefinitionValidator
     /// unique <see cref="StepId"/>s; every <c>DependsOn</c> entry resolving to a declared
     /// <see cref="StepId"/>; an acyclic <c>DependsOn</c> graph; a <c>RetryPolicy</c> with
     /// <c>MaxAttempts &gt;= 1</c> on every step (§10); and, for every declared <c>PausePoint</c>,
-    /// <c>SupersedeTargets</c> entries that are all transitive ancestors of the declaring step
-    /// (§17.1).
+    /// <c>SupersedeTargets</c> entries that are each either a transitive ancestor of the declaring
+    /// step or the declaring step itself (§17.1) — the latter is the repeated-supersede-self chain
+    /// M24's chat primitive depends on; <see cref="Mutation.ExternalDecisionValidator"/> already
+    /// admits it at the decision level, this was the one gate that had not been updated to match.
     /// </summary>
     public static void Validate(WorkflowDefinition definition)
     {
@@ -109,10 +111,10 @@ public static class WorkflowDefinitionValidator
             var ancestors = ancestorsByStep[step.StepId];
             foreach (var target in step.PausePoint.SupersedeTargets)
             {
-                if (!ancestors.Contains(target))
+                if (target != step.StepId && !ancestors.Contains(target))
                 {
                     errors.Add(
-                        $"Step '{step.StepId}' declares SupersedeTarget '{target}', which is not a transitive ancestor of '{step.StepId}'.");
+                        $"Step '{step.StepId}' declares SupersedeTarget '{target}', which is not a transitive ancestor of '{step.StepId}' and is not the step itself.");
                 }
             }
         }

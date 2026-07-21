@@ -39,11 +39,17 @@ public static class DecideCommand
     /// <see cref="RunCommand.ExecuteAsync"/>'s own remarks; forwarded, unchanged, to
     /// <see cref="MutationInterface.RecordDecisionAsync"/>.
     /// </param>
+    /// <param name="onWorkerStdoutLine">
+    /// M24 Phase 1's live in-turn streaming — forwarded verbatim to <see cref="WorkerBindingResolver.Resolve"/>.
+    /// Null for the real <c>aer decide</c> CLI entry point; only <c>Aer.Daemon</c>'s in-process
+    /// session-turn path supplies one (see <c>Program.ExecuteSessionTurnAsync</c>).
+    /// </param>
     public static async Task<CommandResult> ExecuteAsync(
         DecideOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         InFlightExecutionRegistry? inFlightExecutions = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string, string>? onWorkerStdoutLine = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(adapters);
@@ -65,7 +71,7 @@ public static class DecideCommand
             .ConfigureAwait(false);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
+            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
         var referencedExecutionId = new ExecutionId(options.ExecutionId);

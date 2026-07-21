@@ -471,7 +471,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var hasTemplates = body.TryGetProperty("templates", out var templates) || body.TryGetProperty("Templates", out templates);
         Assert.True(hasTemplates);
-        Assert.Equal(2, templates.GetArrayLength());
+        Assert.Equal(5, templates.GetArrayLength());
 
         var hasVendors = body.TryGetProperty("availableVendors", out var vendors) || body.TryGetProperty("AvailableVendors", out vendors);
         Assert.True(hasVendors);
@@ -565,5 +565,311 @@ public class DaemonIntegrationTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
 
         Assert.True(decideResponse.IsSuccessStatusCode);
+    }
+
+    // M24 Phase 1 (#262): Interactive Sessions endpoint coverage. These deliberately never send an
+    // InitialMessage/Message that would reach ExecuteSessionTurnAsync's real vendor dispatch --
+    // that path shells out to whatever CLI the resolved adapter names, which isn't something a
+    // default (non-smoke) test run can assume is installed or authenticated on the host (see
+    // CLAUDE.md's live-vendor-smoke-tests section). Everything below only exercises
+    // materialization, persistence, and request validation, which never touch a vendor process.
+    private async Task<(string SessionId, string TaskDirectoryPath)> StartASessionAsync(string? taskName = null)
+    {
+        var request = new StartSessionRequest(
+            Adapter: "claude",
+            TaskName: taskName ?? "test-session-" + Guid.NewGuid().ToString("N"));
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(metadata);
+        return (metadata.SessionId, metadata.TaskDirectoryPath);
+    }
+
+    [Fact]
+    public async Task StartSession_WithNoInitialMessage_MaterializesAndReturnsDirectoryPath()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+
+        Assert.NotEmpty(sessionId);
+        Assert.True(Directory.Exists(taskDirectoryPath));
+        Assert.True(File.Exists(Path.Combine(taskDirectoryPath, "workflow.json")));
+        Assert.True(File.Exists(Path.Combine(taskDirectoryPath, "bindings.json")));
+        Assert.True(File.Exists(Path.Combine(taskDirectoryPath, ".aer", "session.json")));
+    }
+
+    [Fact]
+    public async Task StartSession_ThenGetById_ReturnsTheSamePersistedSession()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+
+        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
+        Assert.True(getResponse.IsSuccessStatusCode);
+
+        var metadata = await getResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(metadata);
+        Assert.Equal(sessionId, metadata.SessionId);
+        Assert.Equal(taskDirectoryPath, metadata.TaskDirectoryPath);
+    }
+
+    [Fact]
+    public async Task GetById_ForAnUnknownSessionId_ReturnsNotFound()
+    {
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/does-not-exist-{Guid.NewGuid():N}", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListSessions_IncludesAJustStartedSession()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var sessions = await response.Content.ReadFromJsonAsync<List<SessionMetadata>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(sessions);
+        Assert.Contains(sessions, s => s.SessionId == sessionId);
+    }
+
+    [Fact]
+    public async Task WebSocketSnapshot_IncludesSessionId_ForASessionDirectory()
+    {
+        // Aer.Mobile's chat UI (issue #262 follow-up): a phone whose _openDirectoryPath was seeded
+        // from another client's push (never having called /api/sessions/start itself) has no other
+        // way to learn this directory is an interactive session, or which SessionId to fetch turns
+        // for, without this sibling -- see SendStateAsync's remarks in Program.cs.
+        //
+        // Deliberately not using StartASessionAsync/POST /api/sessions/start here: a session
+        // materialized with no initial message never actually runs (Aer.Daemon's
+        // ExecuteSessionTurnAsync only fires when InitialMessage is set), so it has no snapshot.json
+        // yet -- TaskProjectionLoader.LoadAsync throws InvalidTaskDirectoryException for it, and
+        // /api/ws's on-connect push silently never fires (LastLoadSucceeded stays false). That's a
+        // pre-existing daemon quirk, not something to route around by invoking a real vendor CLI in
+        // a test (this suite never does that -- see the other CreateXxxDirectoryAsync helpers,
+        // which all hand-write snapshot.json/flow.jsonl directly). This helper does the same, plus a
+        // hand-written .aer/session.json, standing in for what a session's first real completed turn
+        // would leave behind.
+        const string sessionId = "test-session-ws-1";
+        var taskDirectory = await CreateSessionTaskDirectoryAsync(sessionId, TestContext.Current.CancellationToken);
+
+        var openResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+        Assert.True(openResponse.IsSuccessStatusCode);
+
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
+        var buffer = new byte[1024 * 64];
+        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
+        var payload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)).RootElement;
+
+        Assert.Equal(taskDirectory, payload.GetProperty("DirectoryPath").GetString());
+        Assert.Equal(sessionId, payload.GetProperty("SessionId").GetString());
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<string> CreateSessionTaskDirectoryAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        var taskDirectory = await CreateTaskDirectoryWithArtifactAsync("exec-session-1", "response.md", "Hi there.", cancellationToken);
+
+        var metadata = new SessionMetadata(
+            sessionId,
+            taskDirectory,
+            CurrentAdapter: "claude",
+            CurrentVendorSessionId: null,
+            Model: null,
+            WorkingDirectory: null,
+            TurnCount: 1,
+            SafetyCeiling: InteractiveSessionMaterializer.DefaultSafetyCeiling,
+            MinimalOverhead: false,
+            CreatedAt: DateTimeOffset.UtcNow,
+            UpdatedAt: DateTimeOffset.UtcNow,
+            Turns: [new SessionTurn(0, "claude", "hello", "hi there", DateTimeOffset.UtcNow, false, false)]);
+        await InteractiveSessionMaterializer.SaveMetadataAsync(metadata, Path.Combine(taskDirectory, ".aer", "session.json"), cancellationToken);
+
+        return taskDirectory;
+    }
+
+    [Fact]
+    public async Task WebSocketSnapshot_OmitsSessionId_ForAnOrdinaryTaskDirectory()
+    {
+        // A plain (non-session) task directory has no .aer/session.json -- confirms the new sibling
+        // is additive and doesn't leak a stale/wrong SessionId onto unrelated task pushes.
+        var taskDirectory = await CreateTaskDirectoryWithArtifactAsync(
+            "exec-plain-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
+        var openResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+        Assert.True(openResponse.IsSuccessStatusCode);
+
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
+        var buffer = new byte[1024 * 64];
+        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
+        var payload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)).RootElement;
+
+        Assert.Equal(taskDirectory, payload.GetProperty("DirectoryPath").GetString());
+        Assert.False(payload.TryGetProperty("SessionId", out _));
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task SendSessionMessage_WithEmptyMessage_ReturnsBadRequest()
+    {
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(DirectoryPath: _tempTaskDirectory, Message: ""),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SendSessionMessage_WithNeitherDirectoryPathNorSessionId_ReturnsBadRequest()
+    {
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(Message: "hello"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SendSessionMessage_ForADirectoryThatIsNotASessionDirectory_ReturnsBadRequest()
+    {
+        // A real, existing directory (satisfies Directory.Exists) that was never materialized by
+        // InteractiveSessionMaterializer -- no .aer/session.json, so metadata load must fail closed.
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(DirectoryPath: _tempTaskDirectory, Message: "hello"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("gemini")]
+    public async Task GetAdapterCapabilities_ReturnsOkWithTheRequestedVendor(string adapter)
+    {
+        // Neither adapter's DiscoverCapabilitiesAsync shells out in a way that throws when its CLI
+        // is missing or unauthenticated -- Claude's is filesystem-only, Gemini's degrades each
+        // subcommand to null on Win32Exception/InvalidOperationException (GeminiWorkerAdapter.cs) --
+        // so this is safe to assert on regardless of what's installed on the host.
+        var response = await _client.GetAsync($"{BaseUrl}/api/adapters/capabilities?adapter={adapter}", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var capabilities = await response.Content.ReadFromJsonAsync<WorkerCapabilities>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(capabilities);
+        Assert.Equal(adapter, capabilities.Vendor);
+        Assert.Contains(capabilities.Items, i => i.Name == "/compact");
+    }
+
+    [Fact]
+    public async Task GetAdapterCapabilities_WithUnknownAdapterName_FallsBackToClaude()
+    {
+        var response = await _client.GetAsync($"{BaseUrl}/api/adapters/capabilities?adapter=not-a-real-vendor", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var capabilities = await response.Content.ReadFromJsonAsync<WorkerCapabilities>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(capabilities);
+        Assert.Equal("claude", capabilities.Vendor);
+    }
+
+    [Fact]
+    public async Task GetSessionCommands_ForAStartedSession_ReturnsCapabilities()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var capabilities = await response.Content.ReadFromJsonAsync<WorkerCapabilities>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(capabilities);
+        Assert.Equal("claude", capabilities.Vendor);
+    }
+
+    [Fact]
+    public async Task StartSession_WithATaskNameAlreadyInUse_ReturnsBadRequestAndDoesNotClobberTheFirstSession()
+    {
+        var taskName = "collision-test-" + Guid.NewGuid().ToString("N");
+        var (firstSessionId, _) = await StartASessionAsync(taskName);
+
+        var secondRequest = new StartSessionRequest(Adapter: "claude", TaskName: taskName);
+        var secondResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", secondRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, secondResponse.StatusCode);
+
+        // The rejected second attempt must not have clobbered the first session -- it must still be
+        // reachable by its original id with its original SessionId intact.
+        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{firstSessionId}", TestContext.Current.CancellationToken);
+        Assert.True(getResponse.IsSuccessStatusCode);
+        var metadata = await getResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(metadata);
+        Assert.Equal(firstSessionId, metadata.SessionId);
+    }
+
+    [Fact]
+    public async Task RegisterProject_ThenListProjects_IncludesItAndCanBeCleanedUp()
+    {
+        var marker = "aer_daemon_test_project_" + Guid.NewGuid().ToString("N");
+        var projectDirectory = Path.Combine(Path.GetTempPath(), marker);
+
+        try
+        {
+            var postResponse = await _client.PostAsJsonAsync(
+                $"{BaseUrl}/api/projects", new RegisterProjectRequest(projectDirectory, marker), TestContext.Current.CancellationToken);
+            Assert.True(postResponse.IsSuccessStatusCode);
+
+            var getResponse = await _client.GetAsync($"{BaseUrl}/api/projects", TestContext.Current.CancellationToken);
+            Assert.True(getResponse.IsSuccessStatusCode);
+
+            var projects = await getResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+            var matched = projects.EnumerateArray().Any(p =>
+                (p.TryGetProperty("friendlyName", out var f) || p.TryGetProperty("FriendlyName", out f)) && f.GetString() == marker);
+            Assert.True(matched);
+        }
+        finally
+        {
+            // KnownProjectsStore persists to the real per-user ~/.aer/projects.json -- this test
+            // must not leave its synthetic entry behind on whatever machine runs it.
+            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+            var projectsFile = Path.Combine(aerDir, "projects.json");
+            if (File.Exists(projectsFile))
+            {
+                var json = await File.ReadAllTextAsync(projectsFile, TestContext.Current.CancellationToken);
+                var remaining = JsonSerializer.Deserialize<List<JsonElement>>(json)!
+                    .Where(p => !((p.TryGetProperty("friendlyName", out var f) || p.TryGetProperty("FriendlyName", out f)) && f.GetString() == marker))
+                    .ToList();
+                await File.WriteAllTextAsync(
+                    projectsFile,
+                    JsonSerializer.Serialize(remaining, new JsonSerializerOptions { WriteIndented = true }),
+                    TestContext.Current.CancellationToken);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ProgressWebSocket_AcceptsAConnectionWithoutRequiringAnOpenTask()
+    {
+        // Deliberately kept separate from /api/ws (M24 Phase 1) -- a client subscribing to live
+        // in-turn progress has no TaskSession dependency, unlike the projection socket.
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws/progress?token={token}"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(WebSocketState.Open, socket.State);
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
     }
 }

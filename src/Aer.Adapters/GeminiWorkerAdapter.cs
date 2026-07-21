@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
@@ -69,6 +70,18 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             "--add-dir", artifactsRoot,
         ];
 
+        if (invocation.SessionId is not null && invocation.ResumeSession)
+        {
+            args.Add("--conversation");
+            args.Add(invocation.SessionId);
+        }
+
+        if (invocation.LogFilePath is not null)
+        {
+            args.Add("--log-file");
+            args.Add(invocation.LogFilePath);
+        }
+
         if (invocation.Model is not null)
         {
             args.Add("--model");
@@ -131,4 +144,107 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     }
 
     private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
+
+    private static readonly TimeSpan DiscoverySubcommandTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Shells out to <c>agy models</c>, <c>agy agent</c>, and <c>agy plugin list</c> — the real
+    /// subcommands the installed CLI exposes (confirmed against <c>agy --help</c>'s "Available
+    /// subcommands" list) — rather than reporting a hardcoded, driftable model/agent list. Best
+    /// effort: a subcommand that errors, times out, or isn't installed contributes nothing rather
+    /// than fabricated data.
+    /// </summary>
+    public async Task<WorkerCapabilities> DiscoverCapabilitiesAsync(string? workingDirectory = null, CancellationToken cancellationToken = default)
+    {
+        var modelsOutput = RunAgySubcommandAsync(["models"], workingDirectory, cancellationToken);
+        var agentsOutput = RunAgySubcommandAsync(["agent"], workingDirectory, cancellationToken);
+        var pluginsOutput = RunAgySubcommandAsync(["plugin", "list"], workingDirectory, cancellationToken);
+        await Task.WhenAll(modelsOutput, agentsOutput, pluginsOutput).ConfigureAwait(false);
+
+        var items = new List<WorkerCapabilityItem>
+        {
+            new("/compact", "command", "Summarize and compact session history"),
+            new("default", "mode", "Default non-interactive mode"),
+            new("accept-edits", "mode", "Auto-accept file editing permissions"),
+            new("plan", "mode", "Read-only planning mode"),
+        };
+        items.AddRange(ParseAgentLines(agentsOutput.Result));
+        items.AddRange(ParsePluginLines(pluginsOutput.Result));
+
+        return new WorkerCapabilities("gemini", items, ParseModelLines(modelsOutput.Result));
+    }
+
+    private static IReadOnlyList<string> ParseModelLines(string? stdout) =>
+        NonEmptyTrimmedLines(stdout).ToList();
+
+    private static IEnumerable<WorkerCapabilityItem> ParseAgentLines(string? stdout) =>
+        NonEmptyTrimmedLines(stdout)
+            .Where(line => !line.EndsWith(':')) // skip the "Available agents:" header
+            .Select(name => new WorkerCapabilityItem(name, "agent", $"agy agent: {name}"));
+
+    private static IEnumerable<WorkerCapabilityItem> ParsePluginLines(string? stdout) =>
+        NonEmptyTrimmedLines(stdout)
+            .Where(line => !line.StartsWith("No imported plugins", StringComparison.OrdinalIgnoreCase))
+            .Select(name => new WorkerCapabilityItem(name, "plugin", $"agy plugin: {name}"));
+
+    private static IEnumerable<string> NonEmptyTrimmedLines(string? stdout) =>
+        string.IsNullOrWhiteSpace(stdout)
+            ? []
+            : stdout.Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0);
+
+    private static async Task<string?> RunAgySubcommandAsync(IReadOnlyList<string> args, string? workingDirectory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo("agy")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var arg in args)
+            {
+                startInfo.ArgumentList.Add(arg);
+            }
+            if (!string.IsNullOrWhiteSpace(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                startInfo.WorkingDirectory = workingDirectory;
+            }
+
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                return null;
+            }
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(DiscoverySubcommandTimeout);
+
+            try
+            {
+                var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+                return await stdoutTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Best effort: process may have already exited between the cancel and the kill.
+                }
+                return null;
+            }
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            // agy isn't installed/on PATH, or couldn't be started — discovery degrades to nothing
+            // for this subcommand rather than fabricating a result.
+            return null;
+        }
+    }
 }

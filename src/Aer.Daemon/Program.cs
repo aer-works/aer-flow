@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
@@ -131,6 +132,46 @@ namespace Aer.Daemon
             // Active WebSocket connections
             var webSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
 
+            // M24 Phase 1's live in-turn streaming: a deliberately separate socket/bag from
+            // `webSockets` above, not an overload of the existing `/api/ws` protocol. That endpoint's
+            // frames are bare TaskProjection JSON with a couple of sibling properties bolted on
+            // (DirectoryPath, WorkerAdapters) — every existing client deserializes each incoming
+            // frame straight into TaskProjection with no type discriminator at all. Sending a
+            // differently-shaped progress frame down that same socket risks corrupting an existing
+            // client's projection state on a frame it doesn't recognize; a dedicated endpoint carries
+            // zero compatibility risk for clients that never opt into it.
+            var progressWebSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
+
+            async Task BroadcastSessionProgressAsync(string directoryPath, string stepId, WorkerProgressEvent progressEvent)
+            {
+                var activeSockets = progressWebSockets.Where(s => s.State == WebSocketState.Open).ToList();
+                if (activeSockets.Count == 0)
+                {
+                    return;
+                }
+
+                var payload = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    DirectoryPath = directoryPath,
+                    StepId = stepId,
+                    progressEvent.Kind,
+                    progressEvent.Text,
+                    progressEvent.IsPartial,
+                });
+
+                foreach (var socket in activeSockets)
+                {
+                    try
+                    {
+                        await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // Ignore single socket failures — same tolerance as BroadcastStateAsync below.
+                    }
+                }
+            }
+
             // Helper method for sending state to a single socket. DirectoryPath (M21 Phase 2, #232)
             // is added as a sibling property rather than a TaskProjection field: the desktop client
             // deserializes this same payload straight into TaskProjection and silently ignores
@@ -151,6 +192,27 @@ namespace Aer.Daemon
 
                 if (!string.IsNullOrEmpty(directoryPath))
                 {
+                    // M24 mobile chat UI follow-up (issue #262): lets a client that only observes
+                    // this push (never having called /api/sessions/start itself — e.g. a phone
+                    // whose _openDirectoryPath was seeded from another client's push, or picked
+                    // from /api/tasks/recent) learn this directory is an interactive session and
+                    // which SessionId to fetch turns for, without a GET /api/sessions list-scan on
+                    // every push. Same additive-sibling pattern as DirectoryPath/WorkerAdapters
+                    // above; still not part of TaskProjection itself.
+                    var sessionMetadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                    if (File.Exists(sessionMetadataPath))
+                    {
+                        try
+                        {
+                            var sessionMetadata = await InteractiveSessionMaterializer.LoadMetadataAsync(sessionMetadataPath).ConfigureAwait(true);
+                            if (sessionMetadata != null)
+                            {
+                                node["SessionId"] = sessionMetadata.SessionId;
+                            }
+                        }
+                        catch { }
+                    }
+
                     var bindingsPath = Path.Combine(directoryPath, "bindings.json");
                     if (!File.Exists(bindingsPath))
                     {
@@ -447,6 +509,38 @@ namespace Aer.Daemon
                             // connection, since the receive loop itself never observed shutdown at
                             // all. context.RequestAborted is signaled promptly on app shutdown as well
                             // as client disconnect, so this now unblocks immediately either way.
+                            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), context.RequestAborted);
+                            if (result.MessageType == WebSocketMessageType.Close)
+                            {
+                                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore socket disconnect errors
+                    }
+                }
+                else
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                }
+            });
+
+            // M24 Phase 1's live in-turn streaming WebSocket endpoint — see progressWebSockets'
+            // remarks above for why this is separate from /api/ws rather than sharing it.
+            app.Map("/api/ws/progress", async (HttpContext context) =>
+            {
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    progressWebSockets.Add(webSocket);
+
+                    var buffer = new byte[1024 * 4];
+                    try
+                    {
+                        while (webSocket.State == WebSocketState.Open)
+                        {
                             var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), context.RequestAborted);
                             if (result.MessageType == WebSocketMessageType.Close)
                             {
@@ -846,6 +940,230 @@ namespace Aer.Daemon
                 }
             });
 
+            // M24 Phase 1 (#262): Interactive Sessions (Chat) endpoints
+            app.MapPost("/api/sessions/start", async ([FromBody] StartSessionRequest request, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                var adapter = string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant();
+                var sessionId = Guid.NewGuid().ToString("N")[..12];
+                var taskDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.TaskName, request.DirectoryPath);
+
+                if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
+                {
+                    await KnownProjectsStore.AddOrUpdateProjectAsync(request.WorkingDirectory).ConfigureAwait(true);
+                }
+
+                var effectiveGrant = request.PermissionGrant;
+                if (effectiveGrant == null && !string.IsNullOrWhiteSpace(request.WorkingDirectory))
+                {
+                    // Conservative default for codebase sessions (M24 Phase 3)
+                    effectiveGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+                }
+
+                SessionMetadata metadata;
+                try
+                {
+                    metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                        sessionId,
+                        taskDirectoryPath,
+                        adapter,
+                        request.Model,
+                        request.WorkingDirectory,
+                        request.InitialMessage,
+                        request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
+                        effectiveGrant).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    return Results.BadRequest(ex.Message);
+                }
+
+                var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
+
+                pathHolder.BindingsFilePath = bindingsFilePath;
+                session.SetCurrentTaskDirectory(taskDirectoryPath);
+                await session.RecordOpenedAsync(taskDirectoryPath).ConfigureAwait(true);
+
+                if (!string.IsNullOrWhiteSpace(request.InitialMessage))
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Error running initial session turn: {ex}");
+                        }
+                    });
+                }
+                else
+                {
+                    var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
+                    if (outcome.Projection != null)
+                    {
+                        await BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                    }
+                }
+
+                return Results.Ok(metadata);
+            });
+
+            app.MapPost("/api/sessions/send", async ([FromBody] SendSessionMessageRequest request, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Message))
+                {
+                    return Results.BadRequest("Message is required.");
+                }
+
+                string? directoryPath = request.DirectoryPath;
+                if (string.IsNullOrEmpty(directoryPath) && !string.IsNullOrEmpty(request.SessionId))
+                {
+                    var resolvedBySessionId = await ResolveSessionAsync(request.SessionId);
+                    if (resolvedBySessionId != null)
+                    {
+                        directoryPath = resolvedBySessionId.Value.DirectoryPath;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(directoryPath) || !Directory.Exists(directoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath or valid SessionId is required.");
+                }
+
+                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
+                if (metadata == null)
+                {
+                    return Results.BadRequest("Not a valid interactive session directory.");
+                }
+
+                pathHolder.BindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, request.Message, request.Adapter, request.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error executing session message turn: {ex}");
+                    }
+                });
+
+                return Results.Ok(new { SessionId = metadata.SessionId, TaskDirectoryPath = directoryPath });
+            });
+
+            app.MapGet("/api/sessions/{sessionId}", async (string sessionId) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+                return Results.Ok(resolved.Value.Metadata);
+            });
+
+            app.MapGet("/api/sessions", async () =>
+            {
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                if (!Directory.Exists(baseSessionsDir))
+                {
+                    return Results.Ok(Array.Empty<SessionMetadata>());
+                }
+
+                var list = new List<SessionMetadata>();
+                foreach (var dir in Directory.GetDirectories(baseSessionsDir))
+                {
+                    var metadataPath = Path.Combine(dir, ".aer", "session.json");
+                    if (File.Exists(metadataPath))
+                    {
+                        var meta = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
+                        if (meta != null) list.Add(meta);
+                    }
+                }
+
+                return Results.Ok(list.OrderByDescending(s => s.UpdatedAt));
+            });
+
+            // M24 Phase 2 (#263): Capabilities discovery & Session compact endpoints
+            app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                var metadata = resolved.Value.Metadata;
+                if (!adapters.TryGetValue(metadata.CurrentAdapter, out var adapter))
+                {
+                    adapter = adapters["claude"];
+                }
+
+                var capabilities = await adapter.DiscoverCapabilitiesAsync(metadata.WorkingDirectory);
+                return Results.Ok(capabilities);
+            });
+
+            app.MapGet("/api/adapters/capabilities", async (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                var name = string.IsNullOrWhiteSpace(adapter) ? "claude" : adapter.Trim().ToLowerInvariant();
+                if (!adapters.TryGetValue(name, out var workerAdapter))
+                {
+                    workerAdapter = adapters["claude"];
+                }
+
+                var capabilities = await workerAdapter.DiscoverCapabilitiesAsync(workingDirectory);
+                return Results.Ok(capabilities);
+            });
+
+            app.MapPost("/api/sessions/{sessionId}/compact", async (string sessionId, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                var (directoryPath, metadata) = resolved.Value;
+                pathHolder.BindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var compactMsg = "/compact Please provide a concise summary of our conversation so far, including all key requirements, code changes, decisions, and current progress.";
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error executing session compact turn: {ex}");
+                    }
+                });
+
+                return Results.Ok(new { SessionId = metadata.SessionId, Message = "Compacting session context in background." });
+            });
+
+            // M24 Phase 3 (#264): Known Projects Registry endpoints
+            app.MapGet("/api/projects", async () =>
+            {
+                var projects = await KnownProjectsStore.LoadProjectsAsync();
+                return Results.Ok(projects);
+            });
+
+            app.MapPost("/api/projects", async ([FromBody] RegisterProjectRequest request) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Path))
+                {
+                    return Results.BadRequest("Path is required.");
+                }
+
+                await KnownProjectsStore.AddOrUpdateProjectAsync(request.Path, request.FriendlyName);
+                var projects = await KnownProjectsStore.LoadProjectsAsync();
+                return Results.Ok(projects);
+            });
+
             // Write active port to discovery file on startup
             app.Lifetime.ApplicationStarted.Register(() =>
             {
@@ -880,6 +1198,246 @@ namespace Aer.Daemon
             await app.RunAsync();
             mutex?.Dispose();
         }
+
+        // Session folders are only named "session-{sessionId}" when StartSessionRequest.TaskName is
+        // omitted (the fallback name at MapPost "/api/sessions/start" above) -- a caller-supplied
+        // TaskName (e.g. a human-readable title) produces a differently-named folder, so any lookup
+        // by sessionId alone must not assume the fallback convention holds. Mirrors the scan
+        // MapGet "/api/sessions" (list) already does per-directory, keyed by the persisted
+        // SessionMetadata.SessionId instead of the folder name.
+        private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
+        {
+            var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+            if (!Directory.Exists(baseSessionsDir))
+            {
+                return null;
+            }
+
+            foreach (var dir in Directory.GetDirectories(baseSessionsDir))
+            {
+                var metadataPath = Path.Combine(dir, ".aer", "session.json");
+                if (!File.Exists(metadataPath))
+                {
+                    continue;
+                }
+
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
+                if (metadata != null && metadata.SessionId == sessionId)
+                {
+                    return (dir, metadata);
+                }
+            }
+
+            return null;
+        }
+
+        private static async Task ExecuteSessionTurnAsync(
+            TaskSession session,
+            string directoryPath,
+            SessionMetadata metadata,
+            string userMessage,
+            string? requestAdapter,
+            string? requestModel,
+            bool isInitial,
+            Func<TaskProjection, string?, Task> broadcastStateAsync,
+            IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync)
+        {
+            var targetAdapter = string.IsNullOrWhiteSpace(requestAdapter) ? metadata.CurrentAdapter : requestAdapter.Trim().ToLowerInvariant();
+            bool isVendorChange = !string.Equals(targetAdapter, metadata.CurrentAdapter, StringComparison.OrdinalIgnoreCase);
+            bool isCeilingReached = metadata.TurnCount >= metadata.SafetyCeiling;
+            bool handoff = isVendorChange || isCeilingReached;
+
+            string promptTemplate;
+            bool resumeSession;
+            string? vendorSessionId;
+
+            if (handoff)
+            {
+                promptTemplate = InteractiveSessionMaterializer.SynthesizeContextSummary(metadata.Turns, userMessage);
+                resumeSession = false;
+                vendorSessionId = string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null;
+            }
+            else
+            {
+                promptTemplate = userMessage;
+                resumeSession = !isInitial;
+                vendorSessionId = metadata.CurrentVendorSessionId ?? (string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null);
+            }
+
+            var logFilePath = string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(directoryPath, ".aer", "agy-log.txt")
+                : null;
+
+            var bindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+            var existingBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFilePath).ConfigureAwait(false);
+
+            WorkerBindingConfigEntry? existingEntry = existingBindings.TryGetValue(InteractiveSessionMaterializer.DefaultWorkerName, out var e) ? e : null;
+
+            var contract = existingEntry?.Contract ?? new WorkerContract(
+                WorkerName: InteractiveSessionMaterializer.DefaultWorkerName,
+                RequiredInputs: [],
+                ProducedOutputs: [new ProducedOutput(InteractiveSessionMaterializer.DefaultOutputFileName)],
+                OptionalMetadata: []);
+
+            var grant = existingEntry?.PermissionGrant ?? new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+
+            var updatedEntry = new WorkerBindingConfigEntry(
+                Adapter: targetAdapter,
+                Contract: contract,
+                PromptTemplate: promptTemplate,
+                Timeout: TimeSpan.FromMinutes(10),
+                Model: requestModel ?? metadata.Model,
+                PermissionGrant: grant,
+                WorkingDirectory: metadata.WorkingDirectory,
+                SessionId: vendorSessionId,
+                ResumeSession: resumeSession,
+                MinimalOverhead: metadata.MinimalOverhead,
+                StreamJson: string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase),
+                LogFilePath: logFilePath);
+
+            var newBindings = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                [InteractiveSessionMaterializer.DefaultWorkerName] = updatedEntry
+            };
+
+            await WorkerBindingConfigWriter.SaveToFileAsync(newBindings, bindingsFilePath).ConfigureAwait(false);
+
+            var workflowFilePath = Path.Combine(directoryPath, "workflow.json");
+
+            // M24 Phase 1's live in-turn streaming: only worth the stdout-capture cost (Aer.Flow's
+            // CoreDispatcher only captures stdout at all when a target's OnStdoutLine is non-null)
+            // when this turn actually requested a structured streaming format. The raw-line callback
+            // below runs synchronously on aer-core's native callback thread, under CoreDispatcher's
+            // own lock (see CoreDispatcher.cs's StdoutChunk handling) -- it must never block or do
+            // real work, so it only enqueues onto a bounded channel and returns immediately. A
+            // separate pump task drains that channel, does the (adapter-owned, possibly
+            // vendor-specific) parse via TryParseProgressEvent, and awaits the WebSocket broadcast in
+            // order, entirely off that native thread.
+            Action<string, string>? onWorkerStdoutLine = null;
+            Channel<string>? progressLines = null;
+            Task? progressPumpTask = null;
+
+            if (updatedEntry.StreamJson && adapters.TryGetValue(targetAdapter, out var streamingAdapter))
+            {
+                var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
+                {
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = true,
+                    SingleWriter = false,
+                });
+                progressLines = channel;
+                onWorkerStdoutLine = (_, line) => channel.Writer.TryWrite(line);
+
+                progressPumpTask = Task.Run(async () =>
+                {
+                    await foreach (var line in channel.Reader.ReadAllAsync().ConfigureAwait(false))
+                    {
+                        if (streamingAdapter.TryParseProgressEvent(line, out var progressEvent) && progressEvent is not null)
+                        {
+                            await broadcastSessionProgressAsync(directoryPath, InteractiveSessionMaterializer.DefaultStepId, progressEvent).ConfigureAwait(false);
+                        }
+                    }
+                });
+            }
+
+            try
+            {
+                if (isInitial)
+                {
+                    await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                }
+                else
+                {
+                    var currentOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
+                    if (currentOutcome.Projection is { } proj)
+                    {
+                        var execution = proj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
+                        var executionIdStr = execution?.ExecutionId.Value ?? Guid.NewGuid().ToString();
+                        await session.DecideAsync(
+                            directoryPath,
+                            new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                            new ExecutionId(executionIdStr),
+                            DecisionType.Supersede,
+                            new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                            revisionFilePath: null,
+                            supplementaryWorker: null,
+                            supplementaryOutputName: null,
+                            onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                    }
+                }
+            }
+            finally
+            {
+                if (progressLines is not null)
+                {
+                    progressLines.Writer.Complete();
+                    await progressPumpTask!.ConfigureAwait(false);
+                }
+            }
+
+            // Capture Gemini conversation ID if turn 1 for Gemini
+            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && vendorSessionId == null && logFilePath != null && File.Exists(logFilePath))
+            {
+                try
+                {
+                    var logText = await File.ReadAllTextAsync(logFilePath).ConfigureAwait(false);
+                    var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([^\s\r\n]+)");
+                    if (match.Success)
+                    {
+                        vendorSessionId = match.Groups[1].Value;
+                    }
+                }
+                catch { }
+            }
+
+            // Read assistant response
+            string? assistantResponse = null;
+            var finalOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
+            if (finalOutcome.Projection is { } finalProj)
+            {
+                var latestExecution = finalProj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
+                if (latestExecution != null)
+                {
+                    var outputDir = ArtifactManager.ResolveOutputDirectory(Path.Combine(directoryPath, "artifacts"), latestExecution.ExecutionId);
+                    var responseFile = Path.Combine(outputDir, InteractiveSessionMaterializer.DefaultOutputFileName);
+                    if (File.Exists(responseFile))
+                    {
+                        assistantResponse = await File.ReadAllTextAsync(responseFile).ConfigureAwait(false);
+                    }
+                }
+                await broadcastStateAsync(finalProj, directoryPath).ConfigureAwait(false);
+            }
+
+            var newTurnIndex = metadata.TurnCount + 1;
+            var turn = new SessionTurn(
+                TurnIndex: newTurnIndex,
+                Vendor: targetAdapter,
+                HumanMessage: userMessage,
+                AssistantResponse: assistantResponse,
+                ExecutedAt: DateTimeOffset.UtcNow,
+                NativeSessionResumed: resumeSession,
+                VendorHandoffSynthesized: handoff);
+
+            var updatedTurns = new List<SessionTurn>(metadata.Turns) { turn };
+            var updatedTurnCount = isCeilingReached ? 1 : newTurnIndex;
+
+            var updatedMetadata = metadata with
+            {
+                CurrentAdapter = targetAdapter,
+                CurrentVendorSessionId = vendorSessionId,
+                Model = requestModel ?? metadata.Model,
+                TurnCount = updatedTurnCount,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Turns = updatedTurns
+            };
+
+            await InteractiveSessionMaterializer.SaveMetadataAsync(updatedMetadata, Path.Combine(directoryPath, ".aer", "session.json")).ConfigureAwait(false);
+        }
     }
 
     public class PairRequest
@@ -887,4 +1445,6 @@ namespace Aer.Daemon
         public string Code { get; set; } = string.Empty;
         public string ClientName { get; set; } = string.Empty;
     }
+
+    public record RegisterProjectRequest(string Path, string? FriendlyName = null);
 }

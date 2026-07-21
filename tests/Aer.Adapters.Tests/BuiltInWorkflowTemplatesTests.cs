@@ -1,4 +1,5 @@
 using Aer.Flow.Templates;
+using Aer.Workers.Dialogue;
 
 namespace Aer.Adapters.Tests;
 
@@ -8,7 +9,10 @@ public class BuiltInWorkflowTemplatesTests
     public void Catalog_ContainsSoloAndReviewRunTemplates()
     {
         var catalog = BuiltInWorkflowTemplates.Catalog;
-        Assert.Equal(2, catalog.Count);
+        Assert.Equal(5, catalog.Count);
+        Assert.Contains(catalog, t => t.Id == "chat-session");
+        Assert.Contains(catalog, t => t.Id == "codebase-session");
+        Assert.Contains(catalog, t => t.Id == "two-vendor-dialogue");
         Assert.Contains(catalog, t => t.Id == "solo-run");
         Assert.Contains(catalog, t => t.Id == "review-run");
     }
@@ -69,6 +73,41 @@ public class BuiltInWorkflowTemplatesTests
     }
 
     [Fact]
+    public void Materialize_TwoVendorDialogue_BindsRealDialogueWorkerNotHandRolledDraftReview()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_dialogue_template_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var (definition, bindings) = BuiltInWorkflowTemplates.Materialize(
+                "two-vendor-dialogue", "claude", "gemini", "Debate the topic", "Push back on the initiator", tempDir);
+
+            Assert.Equal("two-vendor-dialogue-template", definition.WorkflowTemplateId.Value);
+            Assert.Single(definition.Steps);
+            Assert.Equal("dialogue", definition.Steps[0].StepId.Value);
+            Assert.Null(definition.Steps[0].PausePoint);
+
+            Assert.Single(bindings);
+            var entry = bindings["dialogue-worker"];
+            Assert.Equal("dialogue", entry.Adapter);
+            Assert.True(File.Exists(entry.PromptTemplate));
+
+            var config = DialogueWorkerConfigParser.Parse(File.ReadAllText(entry.PromptTemplate));
+            Assert.Equal("Debate the topic", config.SeedPrompt);
+            Assert.Equal(2, config.Participants.Count);
+            Assert.Equal("claude", config.Participants[0].Vendor);
+            Assert.Equal("gemini", config.Participants[1].Vendor);
+            Assert.Equal("Push back on the initiator", config.Participants[1].Preamble);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task MaterializeToDirectoryAsync_PersistsValidFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "aer_template_test_" + Guid.NewGuid().ToString("N"));
@@ -91,6 +130,31 @@ public class BuiltInWorkflowTemplatesTests
 
             Assert.Equal("review-run-template", loadedDef.WorkflowTemplateId.Value);
             Assert.Equal(2, loadedBindings.Count);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task MaterializeToDirectoryAsync_RejectsASecondTaskAtTheSameDirectoryInsteadOfOverwriting()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_template_collision_test_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("solo-run", "claude", null, tempDir, "First prompt", cancellationToken: TestContext.Current.CancellationToken);
+
+            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+                BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "gemini", tempDir, "Second prompt", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Contains(tempDir, ex.Message);
+
+            // The rejected second attempt must not have clobbered the first task's definition.
+            var loadedDef = await WorkflowDefinitionParser.LoadFromFileAsync(Path.Combine(tempDir, "workflow.json"), TestContext.Current.CancellationToken);
+            Assert.Equal("solo-run-template", loadedDef.WorkflowTemplateId.Value);
         }
         finally
         {

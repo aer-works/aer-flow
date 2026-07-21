@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
+using Aer.Workers.Dialogue;
 
 namespace Aer.Adapters;
 
@@ -19,19 +21,37 @@ public sealed record BuiltInTemplateInfo(
 /// </summary>
 public static class BuiltInWorkflowTemplates
 {
+    public static readonly BuiltInTemplateInfo ChatSession = new(
+        Id: "chat-session",
+        Title: "Chat (Interactive Session)",
+        Description: "Interactive 1-on-1 session with an AI worker (Claude or Gemini) with live turn streaming and session resumption.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo CodebaseSession = new(
+        Id: "codebase-session",
+        Title: "Codebase Session",
+        Description: "Interactive AI agent session bound to a project directory with conservative file/command permissions.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo TwoVendorDialogue = new(
+        Id: "two-vendor-dialogue",
+        Title: "Two-Vendor Dialogue",
+        Description: "Multi-vendor dialogue exchange between Claude and Gemini with turn-by-turn context synthesis.",
+        RequiresSecondaryVendor: true);
+
     public static readonly BuiltInTemplateInfo SoloRun = new(
         Id: "solo-run",
-        Title: "Solo Run",
+        Title: "Solo Run (Advanced)",
         Description: "Single-step execution using an installed AI worker (Claude or Gemini).",
         RequiresSecondaryVendor: false);
 
     public static readonly BuiltInTemplateInfo ReviewRun = new(
         Id: "review-run",
-        Title: "Review Run",
+        Title: "Review Run (Advanced)",
         Description: "Two-step workflow where one AI worker drafts content and another AI worker reviews it with human sign-off.",
         RequiresSecondaryVendor: true);
 
-    public static IReadOnlyList<BuiltInTemplateInfo> Catalog { get; } = [SoloRun, ReviewRun];
+    public static IReadOnlyList<BuiltInTemplateInfo> Catalog { get; } = [ChatSession, CodebaseSession, TwoVendorDialogue, SoloRun, ReviewRun];
 
     /// <summary>
     /// Materializes a built-in template's <see cref="WorkflowDefinition"/> and worker bindings.
@@ -41,10 +61,86 @@ public static class BuiltInWorkflowTemplates
         string primaryAdapter,
         string? secondaryAdapter = null,
         string? customPrompt = null,
-        string? secondaryCustomPrompt = null)
+        string? secondaryCustomPrompt = null,
+        string? taskDirectoryPath = null)
     {
         var normalizedPrimary = string.IsNullOrWhiteSpace(primaryAdapter) ? "claude" : primaryAdapter.Trim().ToLowerInvariant();
         var normalizedSecondary = string.IsNullOrWhiteSpace(secondaryAdapter) ? normalizedPrimary : secondaryAdapter.Trim().ToLowerInvariant();
+
+        if (string.Equals(templateId, ChatSession.Id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(templateId, CodebaseSession.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            var (def, bindings, _) = InteractiveSessionMaterializer.Materialize(
+                sessionId: Guid.NewGuid().ToString("N")[..12],
+                taskDirectoryPath: string.Empty,
+                adapter: normalizedPrimary,
+                initialMessage: customPrompt);
+            return (def, bindings);
+        }
+
+        if (string.Equals(templateId, TwoVendorDialogue.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            // M23 Phase 1's real N-party dialogue worker (Aer.Workers.Dialogue), not a hand-rolled
+            // draft/review DAG: a two-vendor dialogue is a single bounded exchange the worker itself
+            // round-robins through DialogueWorkerConfig.Participants, so this is one step, one
+            // binding, dispatched through the "dialogue" adapter -- exactly the shape
+            // NewWorkflowViewModel's guided authoring already produces (Aer.Ui.Core/NewWorkflowViewModel.cs).
+            const string finalOutputName = "transcript.md";
+
+            var dialogueConfig = new DialogueWorkerConfig(
+                SeedPrompt: string.IsNullOrWhiteSpace(customPrompt) ? "Discuss the topic thoroughly, considering multiple angles." : customPrompt,
+                TurnBudget: 6,
+                FinalOutputName: finalOutputName,
+                StopSentinel: null,
+                Participants:
+                [
+                    DialogueParticipantPresets.For(
+                        normalizedPrimary,
+                        "initiator",
+                        string.IsNullOrWhiteSpace(customPrompt) ? "You are the initiator of this dialogue. Open with your position and respond to the other side's points." : customPrompt,
+                        model: null),
+                    DialogueParticipantPresets.For(
+                        normalizedSecondary,
+                        "responder",
+                        string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "You are the responder in this dialogue. Engage constructively with the initiator's points." : secondaryCustomPrompt,
+                        model: null),
+                ]);
+
+            var sidecarDirectory = string.IsNullOrWhiteSpace(taskDirectoryPath) ? Path.GetTempPath() : taskDirectoryPath;
+            Directory.CreateDirectory(sidecarDirectory);
+            var sidecarPath = Path.Combine(sidecarDirectory, "dialogue-config.json");
+            File.WriteAllText(sidecarPath, JsonSerializer.Serialize(dialogueConfig, new JsonSerializerOptions { WriteIndented = true }));
+
+            var definition = new WorkflowDefinition(
+                WorkflowTemplateId: new WorkflowTemplateId("two-vendor-dialogue-template"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(
+                        StepId: new StepId("dialogue"),
+                        Worker: "dialogue-worker",
+                        Inputs: [],
+                        Outputs: [finalOutputName],
+                        DependsOn: [],
+                        RetryPolicy: new RetryPolicy(3),
+                        PausePoint: null)
+                ]);
+
+            var bindings = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                ["dialogue-worker"] = new WorkerBindingConfigEntry(
+                    Adapter: "dialogue",
+                    Contract: new WorkerContract(
+                        WorkerName: "dialogue-worker",
+                        RequiredInputs: [],
+                        ProducedOutputs: [new ProducedOutput(finalOutputName)],
+                        OptionalMetadata: []),
+                    PromptTemplate: sidecarPath,
+                    Timeout: TimeSpan.FromMinutes(20))
+            };
+
+            return (definition, bindings);
+        }
 
         if (string.Equals(templateId, SoloRun.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -136,7 +232,9 @@ public static class BuiltInWorkflowTemplates
             return (definition, bindings);
         }
 
-        throw new ArgumentException($"Unknown template ID '{templateId}'. Valid template IDs are 'solo-run' and 'review-run'.", nameof(templateId));
+        throw new ArgumentException(
+            $"Unknown template ID '{templateId}'. Valid template IDs are: {string.Join(", ", Catalog.Select(t => t.Id))}.",
+            nameof(templateId));
     }
 
     /// <summary>
@@ -152,10 +250,16 @@ public static class BuiltInWorkflowTemplates
         string? secondaryCustomPrompt = null,
         CancellationToken cancellationToken = default)
     {
-        Directory.CreateDirectory(taskDirectoryPath);
-        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt);
-
         var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+        if (File.Exists(workflowFilePath))
+        {
+            throw new TaskDirectoryAlreadyExistsException(
+                $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+        }
+
+        Directory.CreateDirectory(taskDirectoryPath);
+        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt, taskDirectoryPath);
+
         var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
 
         await WorkflowDefinitionWriter.SaveToFileAsync(definition, workflowFilePath, cancellationToken).ConfigureAwait(false);

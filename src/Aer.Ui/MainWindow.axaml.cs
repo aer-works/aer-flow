@@ -127,15 +127,19 @@ public partial class MainWindow : Window
     internal Button RemoteForgetSidecarButton => RemoteViewControl.RemoteForgetSidecarButton;
     internal Button SaveTailscaleAuthKeyButton => RemoteViewControl.SaveTailscaleAuthKeyButton;
 
+    internal TextBox ChatInputBox => ChatViewControl.ChatInputBox;
+    internal Button ChatSendButton => ChatViewControl.ChatSendButton;
+
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
     /// now live in the views' name scopes, so the window's own scope no longer resolves them — this
-    /// searches Home, Task, then Author, preserving every test's by-name lookup unchanged.
+    /// searches Home, Task, Author, then Chat, preserving every test's by-name lookup unchanged.
     /// </summary>
     internal T? FindViewControl<T>(string name) where T : Control
         => HomeViewControl.FindControl<T>(name)
            ?? TaskViewControl.FindControl<T>(name)
-           ?? AuthorViewControl.FindControl<T>(name);
+           ?? AuthorViewControl.FindControl<T>(name)
+           ?? ChatViewControl.FindControl<T>(name);
 
     private static readonly bool IsUnderTest = AppDomain.CurrentDomain.GetAssemblies()
         .Any(a => a.FullName != null && (a.FullName.Contains("xunit") || a.FullName.Contains("Test") || a.FullName.Contains("test")));
@@ -222,6 +226,18 @@ public partial class MainWindow : Window
         NavTaskButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
         NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
+        NavChatButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Chat;
+        ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
+        // M24 Phase 1's live in-turn streaming (issue #262): the daemon broadcasts every session's
+        // progress on the same /api/ws/progress socket, so this filters to whichever session
+        // directory is actually open in the Chat view right now.
+        _session.SessionProgressReceived += (directoryPath, _, progressEvent) =>
+        {
+            if (ViewModel.Chat.TaskDirectoryPath == directoryPath)
+            {
+                ViewModel.Chat.AppendProgress(progressEvent);
+            }
+        };
         RemoteToggleButton.Click += (_, _) => _ = ViewModel.Remote.ToggleRemoteAsync(_session);
         RemoteRefreshCodeButton.Click += (_, _) => _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
         // M21 Phase 5 (#242): the one-time interactive Tailscale sign-in the tsnet sidecar needs on
@@ -446,12 +462,10 @@ public partial class MainWindow : Window
     public async Task OpenAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
         TaskDirectoryPathBox.Text = taskDirectoryPath;
-        // Opening a task is the one navigation the shell performs itself: whatever this open
-        // renders (a projection or its honest error message) renders in the Task view.
-        ViewModel.CurrentSection = ShellSection.Task;
 
         if (File.Exists(taskDirectoryPath) && !Directory.Exists(taskDirectoryPath))
         {
+            ViewModel.CurrentSection = ShellSection.Task;
             WorkflowTemplatePathBox.Text = taskDirectoryPath;
             _session.SetCurrentTaskDirectory(null);
             await LoadTemplateAsync(taskDirectoryPath, cancellationToken);
@@ -465,6 +479,21 @@ public partial class MainWindow : Window
         _session.SetCurrentTaskDirectory(taskDirectoryPath);
 
         await LoadAsync(taskDirectoryPath, cancellationToken);
+
+        // M24 Phase 1 (issue #262): a directory that materialized an interactive session
+        // (.aer/session.json present) routes to the dedicated Chat view instead of the generic
+        // Task view opened above — see TaskSession.LoadSessionMetadataAsync's remarks.
+        var sessionMetadata = await _session.LoadSessionMetadataAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        if (sessionMetadata != null)
+        {
+            ViewModel.Chat.LoadFromMetadata(sessionMetadata, taskDirectoryPath);
+            ViewModel.CurrentSection = ShellSection.Chat;
+        }
+        else
+        {
+            ViewModel.Chat.Clear();
+            ViewModel.CurrentSection = ShellSection.Task;
+        }
 
         if (_session.LastLoadSucceeded)
         {
@@ -506,6 +535,41 @@ public partial class MainWindow : Window
         BindingsFilePathBox.Text = bindingsFilePath;
 
         await _session.RunAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken);
+    }
+
+    /// <summary>
+    /// The Template Picker's chat/codebase session creation (M24 Phase 1 desktop wiring, issue #262)
+    /// — <see cref="TaskSession.StartInteractiveSessionAsync"/> exposed the same way <see cref="RunAsync"/>
+    /// exposes the run mutation, so a modal window with no session reference of its own can still go
+    /// through the daemon-first path instead of materializing directly in-process.
+    /// </summary>
+    public Task<TaskSession.SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
+        => _session.StartInteractiveSessionAsync(request, cancellationToken);
+
+    /// <summary>
+    /// The Chat view's Send button (M24 Phase 1, issue #262): dispatches the next turn via
+    /// <see cref="TaskSession.SendSessionMessageAsync"/> and marks it in flight
+    /// (<see cref="ChatViewModel.BeginSend"/>) — completion is observed by the same live-refresh
+    /// poll <see cref="RefreshAsync"/> already drives, not by awaiting this call any further.
+    /// </summary>
+    private async Task SendChatMessageAsync()
+    {
+        var chat = ViewModel.Chat;
+        var message = chat.InputText.Trim();
+        if (message.Length == 0 || chat.TaskDirectoryPath is not { } taskDirectoryPath)
+        {
+            return;
+        }
+
+        chat.BeginSend(message, chat.Messages.Count(m => m.IsFromUser));
+
+        var outcome = await _session.SendSessionMessageAsync(
+            new SendSessionMessageRequest(DirectoryPath: taskDirectoryPath, Message: message)).ConfigureAwait(true);
+
+        if (outcome.ErrorMessage is { } error)
+        {
+            chat.FailSend(error);
+        }
     }
 
     /// <summary>
@@ -650,6 +714,19 @@ public partial class MainWindow : Window
         }
 
         await LoadAsync(currentTaskDirectoryPath, cancellationToken);
+
+        // M24 Phase 1 (issue #262): the chat step is paused indefinitely between turns, never
+        // Terminal, so ShouldLiveRefresh (and therefore this tick) keeps running the whole time a
+        // session is open — exactly the completion signal ChatViewModel.LoadFromMetadata relies on
+        // instead of a second polling loop or a push from POST /api/sessions/send.
+        if (ViewModel.IsChatVisible)
+        {
+            var sessionMetadata = await _session.LoadSessionMetadataAsync(currentTaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            if (sessionMetadata != null)
+            {
+                ViewModel.Chat.LoadFromMetadata(sessionMetadata, currentTaskDirectoryPath);
+            }
+        }
 
         // While the poller is observing an open task, a visible Home stays live too — the cards
         // and inbox ride the same tick rather than owning a second timer (HomeViewModel's
