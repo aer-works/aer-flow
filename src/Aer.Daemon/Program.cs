@@ -846,6 +846,144 @@ namespace Aer.Daemon
                 }
             });
 
+            // M24 Phase 1 (#262): Interactive Sessions (Chat) endpoints
+            app.MapPost("/api/sessions/start", async ([FromBody] StartSessionRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            {
+                var adapter = string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant();
+                var sessionId = Guid.NewGuid().ToString("N")[..12];
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                var folderName = string.IsNullOrWhiteSpace(request.TaskName)
+                    ? $"session-{sessionId}"
+                    : request.TaskName.Trim();
+
+                var taskDirectoryPath = request.DirectoryPath != null && Path.IsPathRooted(request.DirectoryPath)
+                    ? request.DirectoryPath
+                    : Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
+
+                var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                    sessionId,
+                    taskDirectoryPath,
+                    adapter,
+                    request.Model,
+                    request.WorkingDirectory,
+                    request.InitialMessage,
+                    request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
+                    request.PermissionGrant).ConfigureAwait(true);
+
+                var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
+
+                pathHolder.BindingsFilePath = bindingsFilePath;
+                session.SetCurrentTaskDirectory(taskDirectoryPath);
+                await session.RecordOpenedAsync(taskDirectoryPath).ConfigureAwait(true);
+
+                if (!string.IsNullOrWhiteSpace(request.InitialMessage))
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, BroadcastStateAsync).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.Error.WriteLine($"Error running initial session turn: {ex}");
+                        }
+                    });
+                }
+                else
+                {
+                    var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
+                    if (outcome.Projection != null)
+                    {
+                        await BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                    }
+                }
+
+                return Results.Ok(metadata);
+            });
+
+            app.MapPost("/api/sessions/send", async ([FromBody] SendSessionMessageRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Message))
+                {
+                    return Results.BadRequest("Message is required.");
+                }
+
+                string? directoryPath = request.DirectoryPath;
+                if (string.IsNullOrEmpty(directoryPath) && !string.IsNullOrEmpty(request.SessionId))
+                {
+                    var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                    var candidate = Path.Combine(baseSessionsDir, $"session-{request.SessionId}");
+                    if (Directory.Exists(candidate))
+                    {
+                        directoryPath = candidate;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(directoryPath) || !Directory.Exists(directoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath or valid SessionId is required.");
+                }
+
+                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
+                if (metadata == null)
+                {
+                    return Results.BadRequest("Not a valid interactive session directory.");
+                }
+
+                pathHolder.BindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, request.Message, request.Adapter, request.Model, isInitial: false, BroadcastStateAsync).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error executing session message turn: {ex}");
+                    }
+                });
+
+                return Results.Ok(new { SessionId = metadata.SessionId, TaskDirectoryPath = directoryPath });
+            });
+
+            app.MapGet("/api/sessions/{sessionId}", async (string sessionId) =>
+            {
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                var candidate = Path.Combine(baseSessionsDir, $"session-{sessionId}");
+                var metadataPath = Path.Combine(candidate, ".aer", "session.json");
+                var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
+                if (metadata == null)
+                {
+                    return Results.NotFound();
+                }
+                return Results.Ok(metadata);
+            });
+
+            app.MapGet("/api/sessions", async () =>
+            {
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                if (!Directory.Exists(baseSessionsDir))
+                {
+                    return Results.Ok(Array.Empty<SessionMetadata>());
+                }
+
+                var list = new List<SessionMetadata>();
+                foreach (var dir in Directory.GetDirectories(baseSessionsDir))
+                {
+                    var metadataPath = Path.Combine(dir, ".aer", "session.json");
+                    if (File.Exists(metadataPath))
+                    {
+                        var meta = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
+                        if (meta != null) list.Add(meta);
+                    }
+                }
+
+                return Results.Ok(list.OrderByDescending(s => s.UpdatedAt));
+            });
+
             // Write active port to discovery file on startup
             app.Lifetime.ApplicationStarted.Register(() =>
             {
@@ -879,6 +1017,164 @@ namespace Aer.Daemon
 
             await app.RunAsync();
             mutex?.Dispose();
+        }
+
+        private static async Task ExecuteSessionTurnAsync(
+            TaskSession session,
+            string directoryPath,
+            SessionMetadata metadata,
+            string userMessage,
+            string? requestAdapter,
+            string? requestModel,
+            bool isInitial,
+            Func<TaskProjection, string?, Task> broadcastStateAsync)
+        {
+            var targetAdapter = string.IsNullOrWhiteSpace(requestAdapter) ? metadata.CurrentAdapter : requestAdapter.Trim().ToLowerInvariant();
+            bool isVendorChange = !string.Equals(targetAdapter, metadata.CurrentAdapter, StringComparison.OrdinalIgnoreCase);
+            bool isCeilingReached = metadata.TurnCount >= metadata.SafetyCeiling;
+            bool handoff = isVendorChange || isCeilingReached;
+
+            string promptTemplate;
+            bool resumeSession;
+            string? vendorSessionId;
+
+            if (handoff)
+            {
+                promptTemplate = InteractiveSessionMaterializer.SynthesizeContextSummary(metadata.Turns, userMessage);
+                resumeSession = false;
+                vendorSessionId = string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null;
+            }
+            else
+            {
+                promptTemplate = userMessage;
+                resumeSession = !isInitial;
+                vendorSessionId = metadata.CurrentVendorSessionId ?? (string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null);
+            }
+
+            var logFilePath = string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(directoryPath, ".aer", "agy-log.txt")
+                : null;
+
+            var bindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+            var existingBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFilePath).ConfigureAwait(false);
+
+            WorkerBindingConfigEntry? existingEntry = existingBindings.TryGetValue(InteractiveSessionMaterializer.DefaultWorkerName, out var e) ? e : null;
+
+            var contract = existingEntry?.Contract ?? new WorkerContract(
+                WorkerName: InteractiveSessionMaterializer.DefaultWorkerName,
+                RequiredInputs: [],
+                ProducedOutputs: [new ProducedOutput(InteractiveSessionMaterializer.DefaultOutputFileName)],
+                OptionalMetadata: []);
+
+            var grant = existingEntry?.PermissionGrant ?? new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+
+            var updatedEntry = new WorkerBindingConfigEntry(
+                Adapter: targetAdapter,
+                Contract: contract,
+                PromptTemplate: promptTemplate,
+                Timeout: TimeSpan.FromMinutes(10),
+                Model: requestModel ?? metadata.Model,
+                PermissionGrant: grant,
+                WorkingDirectory: metadata.WorkingDirectory,
+                SessionId: vendorSessionId,
+                ResumeSession: resumeSession,
+                MinimalOverhead: metadata.MinimalOverhead,
+                StreamJson: string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase),
+                LogFilePath: logFilePath);
+
+            var newBindings = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                [InteractiveSessionMaterializer.DefaultWorkerName] = updatedEntry
+            };
+
+            await WorkerBindingConfigWriter.SaveToFileAsync(newBindings, bindingsFilePath).ConfigureAwait(false);
+
+            var workflowFilePath = Path.Combine(directoryPath, "workflow.json");
+
+            if (isInitial)
+            {
+                await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(false);
+            }
+            else
+            {
+                var currentOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
+                if (currentOutcome.Projection is { } proj)
+                {
+                    var execution = proj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
+                    var executionIdStr = execution?.ExecutionId.Value ?? Guid.NewGuid().ToString();
+                    await session.DecideAsync(
+                        directoryPath,
+                        new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                        new ExecutionId(executionIdStr),
+                        DecisionType.Supersede,
+                        new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                        revisionFilePath: null,
+                        supplementaryWorker: null,
+                        supplementaryOutputName: null).ConfigureAwait(false);
+                }
+                else
+                {
+                    await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(false);
+                }
+            }
+
+            // Capture Gemini conversation ID if turn 1 for Gemini
+            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && vendorSessionId == null && logFilePath != null && File.Exists(logFilePath))
+            {
+                try
+                {
+                    var logText = await File.ReadAllTextAsync(logFilePath).ConfigureAwait(false);
+                    var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([^\s\r\n]+)");
+                    if (match.Success)
+                    {
+                        vendorSessionId = match.Groups[1].Value;
+                    }
+                }
+                catch { }
+            }
+
+            // Read assistant response
+            string? assistantResponse = null;
+            var finalOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
+            if (finalOutcome.Projection is { } finalProj)
+            {
+                var latestExecution = finalProj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
+                if (latestExecution != null)
+                {
+                    var outputDir = ArtifactManager.ResolveOutputDirectory(Path.Combine(directoryPath, "artifacts"), latestExecution.ExecutionId);
+                    var responseFile = Path.Combine(outputDir, InteractiveSessionMaterializer.DefaultOutputFileName);
+                    if (File.Exists(responseFile))
+                    {
+                        assistantResponse = await File.ReadAllTextAsync(responseFile).ConfigureAwait(false);
+                    }
+                }
+                await broadcastStateAsync(finalProj, directoryPath).ConfigureAwait(false);
+            }
+
+            var newTurnIndex = metadata.TurnCount + 1;
+            var turn = new SessionTurn(
+                TurnIndex: newTurnIndex,
+                Vendor: targetAdapter,
+                HumanMessage: userMessage,
+                AssistantResponse: assistantResponse,
+                ExecutedAt: DateTimeOffset.UtcNow,
+                NativeSessionResumed: resumeSession,
+                VendorHandoffSynthesized: handoff);
+
+            var updatedTurns = new List<SessionTurn>(metadata.Turns) { turn };
+            var updatedTurnCount = isCeilingReached ? 1 : newTurnIndex;
+
+            var updatedMetadata = metadata with
+            {
+                CurrentAdapter = targetAdapter,
+                CurrentVendorSessionId = vendorSessionId,
+                Model = requestModel ?? metadata.Model,
+                TurnCount = updatedTurnCount,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                Turns = updatedTurns
+            };
+
+            await InteractiveSessionMaterializer.SaveMetadataAsync(updatedMetadata, Path.Combine(directoryPath, ".aer", "session.json")).ConfigureAwait(false);
         }
     }
 

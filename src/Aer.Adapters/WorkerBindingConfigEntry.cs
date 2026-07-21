@@ -37,4 +37,9 @@ public sealed record WorkerBindingConfigEntry(
     string? Model = null,
     string? PermissionScope = null,
     PermissionGrant? PermissionGrant = null,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    string? SessionId = null,
+    bool ResumeSession = false,
+    bool MinimalOverhead = false,
+    bool StreamJson = false,
+    string? LogFilePath = null);

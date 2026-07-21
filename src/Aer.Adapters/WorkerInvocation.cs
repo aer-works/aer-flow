@@ -62,10 +62,32 @@ namespace Aer.Adapters;
 /// directory — the fix for the sidecar-path portability bug a bindings file copied to a new machine
 /// (or a different directory on the same one) otherwise hits.
 /// </param>
+/// <param name="SessionId">
+/// The native vendor session identifier or session Guid for interactive sessions (M24 Phase 1).
+/// </param>
+/// <param name="ResumeSession">
+/// <see langword="true"/> to resume an existing native session (Claude <c>--resume</c>, Gemini <c>--conversation</c>);
+/// <see langword="false"/> to initialize a new native session (Claude <c>--session-id</c>).
+/// </param>
+/// <param name="MinimalOverhead">
+/// <see langword="true"/> to enable minimal-overhead dispatch (e.g. Claude <c>--bare</c>).
+/// </param>
+/// <param name="StreamJson">
+/// <see langword="true"/> to emit real-time stream-json output for live in-turn progress streaming (Claude <c>--output-format stream-json</c>).
+/// </param>
+/// <param name="LogFilePath">
+/// The path to a log file where the vendor CLI writes side-channel logs (e.g. Gemini <c>--log-file</c> for capturing conversation id).
+/// </param>
 public sealed record WorkerInvocation(
     string PromptTemplate,
     string? Model = null,
     string? PermissionScope = null,
     PermissionGrant? PermissionGrant = null,
     string? WorkingDirectory = null,
-    string? BindingsFileDirectory = null);
+    string? BindingsFileDirectory = null,
+    string? SessionId = null,
+    bool ResumeSession = false,
+    bool MinimalOverhead = false,
+    bool StreamJson = false,
+    string? LogFilePath = null);
+

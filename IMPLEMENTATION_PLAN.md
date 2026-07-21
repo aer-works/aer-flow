@@ -99,11 +99,12 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 ## Current Milestone
 
-**M23: Generic Dialogue & Project Packaging** — progress:
+**M24: Interactive Sessions & Unified Task Creation** — progress:
 
-- [x] Phase 1 — Generalize the Dialogue Worker
-- [x] Phase 2 — Supersede-Chain Hardening
-- [x] Phase 3 — Project-Directory-Bound Tasks & Portable Bindings
+- [x] Phase 1 — Interactive Sessions (Chat)
+- [ ] Phase 2 — Worker Capability Discovery & In-Session Compact
+- [ ] Phase 3 — Codebase Sessions & Known Projects
+- [ ] Phase 4 — Unified Task Creation (Desktop + Mobile)
 
 ---
 

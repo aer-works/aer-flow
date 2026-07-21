@@ -56,7 +56,8 @@ public static class WorkerBindingResolver
             var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
             var invocation = new WorkerInvocation(
                 entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant,
-                workingDirectory, bindingsFileDirectory);
+                workingDirectory, bindingsFileDirectory, entry.SessionId, entry.ResumeSession,
+                entry.MinimalOverhead, entry.StreamJson, entry.LogFilePath);
             var target = adapter.Resolve(invocation, entry.Contract);
 
             bindings[workerName] = new WorkerBinding.Process(entry.Contract, target, entry.Timeout);

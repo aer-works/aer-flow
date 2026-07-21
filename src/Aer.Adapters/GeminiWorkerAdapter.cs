@@ -69,6 +69,18 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             "--add-dir", artifactsRoot,
         ];
 
+        if (invocation.SessionId is not null && invocation.ResumeSession)
+        {
+            args.Add("--conversation");
+            args.Add(invocation.SessionId);
+        }
+
+        if (invocation.LogFilePath is not null)
+        {
+            args.Add("--log-file");
+            args.Add(invocation.LogFilePath);
+        }
+
         if (invocation.Model is not null)
         {
             args.Add("--model");

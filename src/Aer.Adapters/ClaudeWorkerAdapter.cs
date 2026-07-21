@@ -72,8 +72,38 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         [
             "-p", prompt,
             "--allowedTools", permissionScope,
-            "--output-format", "text",
         ];
+
+        if (invocation.StreamJson)
+        {
+            args.Add("--output-format");
+            args.Add("stream-json");
+            args.Add("--include-partial-messages");
+        }
+        else
+        {
+            args.Add("--output-format");
+            args.Add("text");
+        }
+
+        if (invocation.MinimalOverhead)
+        {
+            args.Add("--bare");
+        }
+
+        if (invocation.SessionId is not null)
+        {
+            if (invocation.ResumeSession)
+            {
+                args.Add("--resume");
+                args.Add(invocation.SessionId);
+            }
+            else
+            {
+                args.Add("--session-id");
+                args.Add(invocation.SessionId);
+            }
+        }
 
         if (invocation.Model is not null)
         {
