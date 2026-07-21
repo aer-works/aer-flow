@@ -29,6 +29,16 @@ public static class WorkerBindingResolver
     /// Only <see cref="DialogueWorkerAdapter"/> uses it (to resolve its config sidecar's path
     /// portably); every other adapter ignores it.
     /// </param>
+    /// <param name="onWorkerStdoutLine">
+    /// M24 Phase 1's live in-turn streaming seam: when supplied, every resolved
+    /// <see cref="CoreDispatchTarget"/> gets this wrapped as its <see cref="CoreDispatchTarget.OnStdoutLine"/>,
+    /// called with the worker's name and each raw stdout line as its dispatch runs live. Null (the
+    /// default) for every caller that has no live consumer for that — <c>aer run</c>/<c>aer decide</c>
+    /// from the CLI, any non-interactive workflow — since capturing output at all has a real cost
+    /// (<see cref="Aer.Flow.Dispatch.CoreDispatcher"/> only turns on stdout capture when
+    /// <c>OnStdoutLine</c> is non-null). What this callback actually does with a line — parse it,
+    /// broadcast it — is entirely the caller's concern; this seam only ever forwards raw text.
+    /// </param>
     /// <exception cref="UnknownWorkerAdapterException">
     /// An entry names an <see cref="WorkerBindingConfigEntry.Adapter"/> not present in <paramref name="adapters"/>.
     /// </exception>
@@ -40,7 +50,8 @@ public static class WorkerBindingResolver
         IReadOnlyDictionary<string, WorkerBindingConfigEntry> config,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         IReadOnlyDictionary<string, string>? profiles = null,
-        string? bindingsFileDirectory = null)
+        string? bindingsFileDirectory = null,
+        Action<string, string>? onWorkerStdoutLine = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(adapters);
@@ -59,6 +70,12 @@ public static class WorkerBindingResolver
                 workingDirectory, bindingsFileDirectory, entry.SessionId, entry.ResumeSession,
                 entry.MinimalOverhead, entry.StreamJson, entry.LogFilePath);
             var target = adapter.Resolve(invocation, entry.Contract);
+
+            if (onWorkerStdoutLine is not null)
+            {
+                var capturedWorkerName = workerName;
+                target = target with { OnStdoutLine = line => onWorkerStdoutLine(capturedWorkerName, line) };
+            }
 
             bindings[workerName] = new WorkerBinding.Process(entry.Contract, target, entry.Timeout);
         }

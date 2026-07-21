@@ -32,6 +32,9 @@ public sealed class InteractiveSessionTests
         Assert.Contains("--bare", target1.Args);
         Assert.Contains("stream-json", target1.Args);
         Assert.Contains("--include-partial-messages", target1.Args);
+        // --print + --output-format=stream-json refuses to run at all without --verbose (confirmed
+        // against the installed claude CLI) -- regression coverage for that failure mode.
+        Assert.Contains("--verbose", target1.Args);
         Assert.DoesNotContain("--resume", target1.Args);
 
         // Turn 2: resume session -> --resume <uuid>

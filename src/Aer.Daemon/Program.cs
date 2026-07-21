@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
@@ -130,6 +131,46 @@ namespace Aer.Daemon
 
             // Active WebSocket connections
             var webSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
+
+            // M24 Phase 1's live in-turn streaming: a deliberately separate socket/bag from
+            // `webSockets` above, not an overload of the existing `/api/ws` protocol. That endpoint's
+            // frames are bare TaskProjection JSON with a couple of sibling properties bolted on
+            // (DirectoryPath, WorkerAdapters) — every existing client deserializes each incoming
+            // frame straight into TaskProjection with no type discriminator at all. Sending a
+            // differently-shaped progress frame down that same socket risks corrupting an existing
+            // client's projection state on a frame it doesn't recognize; a dedicated endpoint carries
+            // zero compatibility risk for clients that never opt into it.
+            var progressWebSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
+
+            async Task BroadcastSessionProgressAsync(string directoryPath, string stepId, WorkerProgressEvent progressEvent)
+            {
+                var activeSockets = progressWebSockets.Where(s => s.State == WebSocketState.Open).ToList();
+                if (activeSockets.Count == 0)
+                {
+                    return;
+                }
+
+                var payload = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    DirectoryPath = directoryPath,
+                    StepId = stepId,
+                    progressEvent.Kind,
+                    progressEvent.Text,
+                    progressEvent.IsPartial,
+                });
+
+                foreach (var socket in activeSockets)
+                {
+                    try
+                    {
+                        await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // Ignore single socket failures — same tolerance as BroadcastStateAsync below.
+                    }
+                }
+            }
 
             // Helper method for sending state to a single socket. DirectoryPath (M21 Phase 2, #232)
             // is added as a sibling property rather than a TaskProjection field: the desktop client
@@ -447,6 +488,38 @@ namespace Aer.Daemon
                             // connection, since the receive loop itself never observed shutdown at
                             // all. context.RequestAborted is signaled promptly on app shutdown as well
                             // as client disconnect, so this now unblocks immediately either way.
+                            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), context.RequestAborted);
+                            if (result.MessageType == WebSocketMessageType.Close)
+                            {
+                                await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore socket disconnect errors
+                    }
+                }
+                else
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                }
+            });
+
+            // M24 Phase 1's live in-turn streaming WebSocket endpoint — see progressWebSockets'
+            // remarks above for why this is separate from /api/ws rather than sharing it.
+            app.Map("/api/ws/progress", async (HttpContext context) =>
+            {
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    progressWebSockets.Add(webSocket);
+
+                    var buffer = new byte[1024 * 4];
+                    try
+                    {
+                        while (webSocket.State == WebSocketState.Open)
+                        {
                             var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), context.RequestAborted);
                             if (result.MessageType == WebSocketMessageType.Close)
                             {
@@ -847,7 +920,7 @@ namespace Aer.Daemon
             });
 
             // M24 Phase 1 (#262): Interactive Sessions (Chat) endpoints
-            app.MapPost("/api/sessions/start", async ([FromBody] StartSessionRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/sessions/start", async ([FromBody] StartSessionRequest request, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
                 var adapter = string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant();
                 var sessionId = Guid.NewGuid().ToString("N")[..12];
@@ -894,7 +967,7 @@ namespace Aer.Daemon
                     {
                         try
                         {
-                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, BroadcastStateAsync).ConfigureAwait(false);
+                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -914,7 +987,7 @@ namespace Aer.Daemon
                 return Results.Ok(metadata);
             });
 
-            app.MapPost("/api/sessions/send", async ([FromBody] SendSessionMessageRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/sessions/send", async ([FromBody] SendSessionMessageRequest request, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
                 if (string.IsNullOrWhiteSpace(request.Message))
                 {
@@ -950,7 +1023,7 @@ namespace Aer.Daemon
                 {
                     try
                     {
-                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, request.Message, request.Adapter, request.Model, isInitial: false, BroadcastStateAsync).ConfigureAwait(false);
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, request.Message, request.Adapter, request.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -1029,7 +1102,7 @@ namespace Aer.Daemon
                 return Results.Ok(capabilities);
             });
 
-            app.MapPost("/api/sessions/{sessionId}/compact", async (string sessionId, TaskSession session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/sessions/{sessionId}/compact", async (string sessionId, TaskSession session, BindingsPathHolder pathHolder, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
                 var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
                 var directoryPath = Path.Combine(baseSessionsDir, $"session-{sessionId}");
@@ -1047,7 +1120,7 @@ namespace Aer.Daemon
                     try
                     {
                         var compactMsg = "/compact Please provide a concise summary of our conversation so far, including all key requirements, code changes, decisions, and current progress.";
-                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync).ConfigureAwait(false);
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -1120,7 +1193,9 @@ namespace Aer.Daemon
             string? requestAdapter,
             string? requestModel,
             bool isInitial,
-            Func<TaskProjection, string?, Task> broadcastStateAsync)
+            Func<TaskProjection, string?, Task> broadcastStateAsync,
+            IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync)
         {
             var targetAdapter = string.IsNullOrWhiteSpace(requestAdapter) ? metadata.CurrentAdapter : requestAdapter.Trim().ToLowerInvariant();
             bool isVendorChange = !string.Equals(targetAdapter, metadata.CurrentAdapter, StringComparison.OrdinalIgnoreCase);
@@ -1184,30 +1259,78 @@ namespace Aer.Daemon
 
             var workflowFilePath = Path.Combine(directoryPath, "workflow.json");
 
-            if (isInitial)
+            // M24 Phase 1's live in-turn streaming: only worth the stdout-capture cost (Aer.Flow's
+            // CoreDispatcher only captures stdout at all when a target's OnStdoutLine is non-null)
+            // when this turn actually requested a structured streaming format. The raw-line callback
+            // below runs synchronously on aer-core's native callback thread, under CoreDispatcher's
+            // own lock (see CoreDispatcher.cs's StdoutChunk handling) -- it must never block or do
+            // real work, so it only enqueues onto a bounded channel and returns immediately. A
+            // separate pump task drains that channel, does the (adapter-owned, possibly
+            // vendor-specific) parse via TryParseProgressEvent, and awaits the WebSocket broadcast in
+            // order, entirely off that native thread.
+            Action<string, string>? onWorkerStdoutLine = null;
+            Channel<string>? progressLines = null;
+            Task? progressPumpTask = null;
+
+            if (updatedEntry.StreamJson && adapters.TryGetValue(targetAdapter, out var streamingAdapter))
             {
-                await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(false);
-            }
-            else
-            {
-                var currentOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
-                if (currentOutcome.Projection is { } proj)
+                var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
                 {
-                    var execution = proj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
-                    var executionIdStr = execution?.ExecutionId.Value ?? Guid.NewGuid().ToString();
-                    await session.DecideAsync(
-                        directoryPath,
-                        new StepId(InteractiveSessionMaterializer.DefaultStepId),
-                        new ExecutionId(executionIdStr),
-                        DecisionType.Supersede,
-                        new StepId(InteractiveSessionMaterializer.DefaultStepId),
-                        revisionFilePath: null,
-                        supplementaryWorker: null,
-                        supplementaryOutputName: null).ConfigureAwait(false);
+                    FullMode = BoundedChannelFullMode.DropOldest,
+                    SingleReader = true,
+                    SingleWriter = false,
+                });
+                progressLines = channel;
+                onWorkerStdoutLine = (_, line) => channel.Writer.TryWrite(line);
+
+                progressPumpTask = Task.Run(async () =>
+                {
+                    await foreach (var line in channel.Reader.ReadAllAsync().ConfigureAwait(false))
+                    {
+                        if (streamingAdapter.TryParseProgressEvent(line, out var progressEvent) && progressEvent is not null)
+                        {
+                            await broadcastSessionProgressAsync(directoryPath, InteractiveSessionMaterializer.DefaultStepId, progressEvent).ConfigureAwait(false);
+                        }
+                    }
+                });
+            }
+
+            try
+            {
+                if (isInitial)
+                {
+                    await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
                 }
                 else
                 {
-                    await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(false);
+                    var currentOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
+                    if (currentOutcome.Projection is { } proj)
+                    {
+                        var execution = proj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
+                        var executionIdStr = execution?.ExecutionId.Value ?? Guid.NewGuid().ToString();
+                        await session.DecideAsync(
+                            directoryPath,
+                            new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                            new ExecutionId(executionIdStr),
+                            DecisionType.Supersede,
+                            new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                            revisionFilePath: null,
+                            supplementaryWorker: null,
+                            supplementaryOutputName: null,
+                            onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                    }
+                }
+            }
+            finally
+            {
+                if (progressLines is not null)
+                {
+                    progressLines.Writer.Complete();
+                    await progressPumpTask!.ConfigureAwait(false);
                 }
             }
 

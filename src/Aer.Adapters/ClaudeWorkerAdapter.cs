@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 
@@ -76,9 +77,15 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         if (invocation.StreamJson)
         {
+            // --print + --output-format=stream-json refuses to run without --verbose (confirmed
+            // against the installed claude CLI directly: "Error: When using --print,
+            // --output-format=stream-json requires --verbose") -- without this flag every
+            // streaming session turn would fail at the CLI invocation itself, before producing any
+            // output at all.
             args.Add("--output-format");
             args.Add("stream-json");
             args.Add("--include-partial-messages");
+            args.Add("--verbose");
         }
         else
         {
@@ -235,5 +242,122 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         var uniqueItems = items.GroupBy(i => i.Name).Select(g => g.First()).ToList();
         return Task.FromResult(new WorkerCapabilities("claude", uniqueItems, ModelAliases));
+    }
+
+    /// <summary>
+    /// Parses one line of <c>claude --output-format stream-json --include-partial-messages</c>'s
+    /// newline-delimited JSON (M24 Phase 1's live in-turn streaming). The <c>system</c>/<c>assistant</c>
+    /// envelopes below are confirmed against a real, live invocation of the installed CLI (a
+    /// same-shape <c>{"type":"assistant","message":{"content":[{"type":"text",...}]}}</c> line came
+    /// back even from an unauthenticated run's error response) — those branches are load-bearing.
+    /// The <c>stream_event</c>/<c>content_block_delta</c> branch mirrors the publicly documented
+    /// Anthropic Messages streaming event shape Claude Code wraps for <c>--include-partial-messages</c>'
+    /// token-level deltas, but no authenticated session was available to observe one directly; if the
+    /// real shape differs, this simply never matches and contributes no partial deltas — full
+    /// per-message text (the confirmed branch above) still arrives once each block completes, so
+    /// streaming degrades to coarser granularity rather than silently breaking.
+    /// </summary>
+    public bool TryParseProgressEvent(string rawLine, out WorkerProgressEvent? progressEvent)
+    {
+        progressEvent = null;
+        if (string.IsNullOrWhiteSpace(rawLine))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawLine);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("type", out var typeProp))
+            {
+                return false;
+            }
+
+            return typeProp.GetString() switch
+            {
+                "system" => TryParseSystemEvent(root, out progressEvent),
+                "assistant" => TryParseAssistantEvent(root, out progressEvent),
+                "stream_event" => TryParseStreamEvent(root, out progressEvent),
+                _ => false,
+            };
+        }
+        catch (JsonException)
+        {
+            // A line split across a stdout chunk boundary, or a non-JSON line this format never
+            // produces -- not a progress event, not an error.
+            return false;
+        }
+    }
+
+    private static bool TryParseSystemEvent(JsonElement root, out WorkerProgressEvent? progressEvent)
+    {
+        progressEvent = null;
+        if (!root.TryGetProperty("subtype", out var subtypeProp))
+        {
+            return false;
+        }
+
+        switch (subtypeProp.GetString())
+        {
+            case "init":
+                progressEvent = new WorkerProgressEvent("status", "Session started");
+                return true;
+            case "status" when root.TryGetProperty("status", out var statusProp) && statusProp.GetString() is { Length: > 0 } status:
+                progressEvent = new WorkerProgressEvent("status", status);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryParseAssistantEvent(JsonElement root, out WorkerProgressEvent? progressEvent)
+    {
+        progressEvent = null;
+        if (!root.TryGetProperty("message", out var messageProp) ||
+            !messageProp.TryGetProperty("content", out var contentProp) ||
+            contentProp.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var block in contentProp.EnumerateArray())
+        {
+            if (!block.TryGetProperty("type", out var blockTypeProp))
+            {
+                continue;
+            }
+
+            switch (blockTypeProp.GetString())
+            {
+                case "text" when block.TryGetProperty("text", out var textProp) && textProp.GetString() is { Length: > 0 } text:
+                    progressEvent = new WorkerProgressEvent("text", text);
+                    return true;
+                case "tool_use" when block.TryGetProperty("name", out var nameProp) && nameProp.GetString() is { Length: > 0 } toolName:
+                    progressEvent = new WorkerProgressEvent("tool", toolName);
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryParseStreamEvent(JsonElement root, out WorkerProgressEvent? progressEvent)
+    {
+        progressEvent = null;
+        if (root.TryGetProperty("event", out var eventProp) &&
+            eventProp.TryGetProperty("type", out var eventTypeProp) &&
+            eventTypeProp.GetString() == "content_block_delta" &&
+            eventProp.TryGetProperty("delta", out var deltaProp) &&
+            deltaProp.TryGetProperty("type", out var deltaTypeProp) &&
+            deltaTypeProp.GetString() == "text_delta" &&
+            deltaProp.TryGetProperty("text", out var deltaTextProp) &&
+            deltaTextProp.GetString() is { Length: > 0 } deltaText)
+        {
+            progressEvent = new WorkerProgressEvent("text", deltaText, IsPartial: true);
+            return true;
+        }
+
+        return false;
     }
 }

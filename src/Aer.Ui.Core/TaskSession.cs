@@ -600,8 +600,16 @@ public sealed class TaskSession
     /// <summary>
     /// The Run mutation: dispatches the Run command to the daemon or executes in-process as fallback.
     /// </summary>
+    /// <param name="onWorkerStdoutLine">
+    /// M24 Phase 1's live in-turn streaming — forwarded to <see cref="RunCommand.ExecuteAsync"/>'s
+    /// own same-named parameter, and therefore only takes effect on the in-process fallback path
+    /// below (a delegate can't cross the HTTP call to a real remote daemon). <c>Aer.Daemon</c>'s own
+    /// <see cref="TaskSession"/> singleton always takes that fallback path (it has no daemon of its
+    /// own to delegate to), which is exactly the case that needs this.
+    /// </param>
     public async Task<MutationOutcome> RunAsync(
-        string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default)
+        string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default,
+        Action<string, string>? onWorkerStdoutLine = null)
     {
         CurrentTaskDirectoryPath = taskDirectoryPath;
 
@@ -665,7 +673,7 @@ public sealed class TaskSession
         try
         {
             var pumpTask = Task.Run(
-                () => RunCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token), hostStopSource.Token);
+                () => RunCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token, onWorkerStdoutLine), hostStopSource.Token);
             CurrentPumpTask = pumpTask;
             await pumpTask.ConfigureAwait(true);
 
@@ -722,6 +730,10 @@ public sealed class TaskSession
     /// <summary>
     /// The paused-step decision mutation: dispatches the Decide command to the daemon or executes in-process.
     /// </summary>
+    /// <param name="onWorkerStdoutLine">
+    /// M24 Phase 1's live in-turn streaming — see <see cref="RunAsync"/>'s remarks on the same
+    /// parameter; identical in-process-fallback-only behavior applies here.
+    /// </param>
     public async Task<MutationOutcome> DecideAsync(
         string taskDirectoryPath,
         StepId stepId,
@@ -731,7 +743,8 @@ public sealed class TaskSession
         string? revisionFilePath,
         string? supplementaryWorker,
         string? supplementaryOutputName,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<string, string>? onWorkerStdoutLine = null)
     {
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
@@ -815,7 +828,7 @@ public sealed class TaskSession
                 _bindingsFilePathProvider() ?? string.Empty);
 
             var pumpTask = Task.Run(
-                () => DecideCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token), hostStopSource.Token);
+                () => DecideCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token, onWorkerStdoutLine), hostStopSource.Token);
             CurrentPumpTask = pumpTask;
             await pumpTask.ConfigureAwait(true);
 
