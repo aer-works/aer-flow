@@ -165,9 +165,19 @@ class _InboxScreenState extends State<InboxScreen> {
       final templates = (data['templates'] as List<dynamic>?) ?? [];
       final vendors = (data['availableVendors'] as List<dynamic>?) ?? [];
 
-      String selectedTemplateId = 'solo-run';
+      String selectedTemplateId = 'chat-session';
       String primaryVendor = 'claude';
       String secondaryVendor = 'gemini';
+      String? selectedProjectPath;
+      List<Map<String, dynamic>> knownProjects = [];
+
+      try {
+        knownProjects = await client.listKnownProjects();
+        if (knownProjects.isNotEmpty) {
+          selectedProjectPath = knownProjects.first['Path']?.toString() ?? knownProjects.first['path']?.toString();
+        }
+      } catch (_) {}
+
       final taskNameController = TextEditingController();
       final customPromptController = TextEditingController();
       final secondaryCustomPromptController = TextEditingController();
@@ -185,13 +195,13 @@ class _InboxScreenState extends State<InboxScreen> {
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Start from Template'),
+            title: const Text('Start Task or Interactive Session'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Workflow Template:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Select Task Type:', style: TextStyle(fontWeight: FontWeight.bold)),
                   ...templates.map((t) {
                     final map = caseInsensitive(t as Map<String, dynamic>);
                     final id = map['id'].toString();
@@ -209,18 +219,43 @@ class _InboxScreenState extends State<InboxScreen> {
                       },
                     );
                   }),
+                  if (selectedTemplateId == 'codebase-session') ...[
+                    const SizedBox(height: 12),
+                    const Text('Select Known Project Directory:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    if (knownProjects.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text('No known projects registered on host yet.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      )
+                    else
+                      DropdownButton<String>(
+                        value: selectedProjectPath,
+                        isExpanded: true,
+                        items: knownProjects.map((p) {
+                          final name = p['FriendlyName']?.toString() ?? p['friendlyName']?.toString() ?? 'Project';
+                          final path = p['Path']?.toString() ?? p['path']?.toString() ?? '';
+                          return DropdownMenuItem<String>(
+                            value: path,
+                            child: Text('$name ($path)', overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setDialogState(() => selectedProjectPath = val);
+                        },
+                      ),
+                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: taskNameController,
-                    decoration: const InputDecoration(labelText: 'Task Name (Optional)', hintText: 'e.g. my-new-task'),
+                    decoration: const InputDecoration(labelText: 'Task / Session Name (Optional)', hintText: 'e.g. my-chat-session'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: customPromptController,
-                    decoration: const InputDecoration(labelText: 'Custom Prompt (Optional)', hintText: 'Initial instructions for the worker'),
+                    decoration: const InputDecoration(labelText: 'Initial Message / Prompt (Optional)', hintText: 'Opening instructions or question'),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Worker CLI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('AI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
                   DropdownButton<String>(
                     value: primaryVendor,
                     isExpanded: true,
@@ -240,9 +275,9 @@ class _InboxScreenState extends State<InboxScreen> {
                       if (val != null) setDialogState(() => primaryVendor = val);
                     },
                   ),
-                  if (selectedTemplateId == 'review-run') ...[
+                  if (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') ...[
                     const SizedBox(height: 8),
-                    const Text('Reviewer Worker CLI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Secondary AI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
                     DropdownButton<String>(
                       value: secondaryVendor,
                       isExpanded: true,
@@ -266,8 +301,8 @@ class _InboxScreenState extends State<InboxScreen> {
                     TextField(
                       controller: secondaryCustomPromptController,
                       decoration: const InputDecoration(
-                        labelText: "Reviewer's Instructions (Optional)",
-                        hintText: "e.g. Write your own roast back, don't critique the draft as a document",
+                        labelText: "Secondary Vendor Instructions (Optional)",
+                        hintText: "Instructions for the secondary worker",
                       ),
                     ),
                   ],
@@ -281,24 +316,36 @@ class _InboxScreenState extends State<InboxScreen> {
                   final messenger = ScaffoldMessenger.of(context);
                   Navigator.pop(context);
                   try {
-                    final dirPath = await client.runTemplate(
-                      templateId: selectedTemplateId,
-                      primaryAdapter: primaryVendor,
-                      secondaryAdapter: selectedTemplateId == 'review-run' ? secondaryVendor : null,
-                      taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
-                      customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
-                      secondaryCustomPrompt: selectedTemplateId == 'review-run' && secondaryCustomPromptController.text.trim().isNotEmpty
-                          ? secondaryCustomPromptController.text.trim()
-                          : null,
-                    );
-                    messenger.showSnackBar(
-                      SnackBar(content: Text('Started template $selectedTemplateId ($dirPath)')),
-                    );
+                    if (selectedTemplateId == 'chat-session' || selectedTemplateId == 'codebase-session') {
+                      final meta = await client.startSession(
+                        adapter: primaryVendor,
+                        workingDirectory: selectedTemplateId == 'codebase-session' ? selectedProjectPath : null,
+                        initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
+                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                      );
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Started session ${meta["sessionId"] ?? meta["SessionId"]}')),
+                      );
+                    } else {
+                      final dirPath = await client.runTemplate(
+                        templateId: selectedTemplateId,
+                        primaryAdapter: primaryVendor,
+                        secondaryAdapter: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') ? secondaryVendor : null,
+                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                        customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
+                        secondaryCustomPrompt: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') && secondaryCustomPromptController.text.trim().isNotEmpty
+                            ? secondaryCustomPromptController.text.trim()
+                            : null,
+                      );
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Started task ($dirPath)')),
+                      );
+                    }
                   } on DaemonException catch (e) {
                     messenger.showSnackBar(SnackBar(content: Text(e.message)));
                   }
                 },
-                child: const Text('Start Task'),
+                child: const Text('Start'),
               ),
             ],
           ),

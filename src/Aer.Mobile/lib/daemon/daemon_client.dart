@@ -214,9 +214,67 @@ class DaemonClient {
         'secondaryCustomPrompt': secondaryCustomPrompt,
       }),
     );
-    _throwIfFailed(response);
     final body = caseInsensitive(jsonDecode(response.body) as Map<String, dynamic>);
     return (body['taskdirectorypath'] ?? body['taskDirectoryPath'])?.toString() ?? '';
+  }
+
+  /// Starts an interactive session on the daemon (M24).
+  Future<Map<String, dynamic>> startSession({
+    String? adapter,
+    String? model,
+    String? workingDirectory,
+    String? initialMessage,
+    String? taskName,
+  }) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/start'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'adapter': adapter,
+        'model': model,
+        'workingDirectory': workingDirectory,
+        'initialMessage': initialMessage,
+        'taskName': taskName,
+      }),
+    );
+    _throwIfFailed(response);
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Sends a typed message to an active interactive session (M24).
+  Future<void> sendSessionMessage({
+    required String sessionId,
+    required String message,
+    String? adapter,
+    String? model,
+  }) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/send'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'sessionId': sessionId,
+        'message': message,
+        'adapter': adapter,
+        'model': model,
+      }),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Compacts an interactive session history (M24 Phase 2).
+  Future<void> compactSession(String sessionId) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/$sessionId/compact'),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Fetches known projects registry from daemon (M24 Phase 3).
+  Future<List<Map<String, dynamic>>> listKnownProjects() async {
+    final response = await _get(Uri.http(host, '/api/projects'));
+    _throwIfFailed(response);
+    final list = jsonDecode(response.body) as List<dynamic>;
+    return list.map((item) => item as Map<String, dynamic>).toList();
   }
 
   /// decisionType is one of "Resume" | "Reject" | "Supersede" | "RetryWithRevision".
