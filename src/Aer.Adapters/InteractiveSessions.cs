@@ -120,6 +120,25 @@ public static class InteractiveSessionMaterializer
         return (definition, bindings, metadata);
     }
 
+    /// <summary>
+    /// Computes a session's directory path the same way for every caller -- the daemon's
+    /// POST /api/sessions/start handler and the desktop's in-process fallback both need this, and
+    /// disagreeing between them is exactly the bug that made a session creatable but unreachable by
+    /// id (fixed in Aer.Daemon.Program's session lookups). A caller-supplied <paramref name="taskName"/>
+    /// produces a differently-named folder than the "session-{id}" fallback used when it is omitted.
+    /// </summary>
+    public static string ResolveTaskDirectoryPath(string sessionId, string? taskName, string? directoryPathOverride)
+    {
+        if (directoryPathOverride != null && Path.IsPathRooted(directoryPathOverride))
+        {
+            return directoryPathOverride;
+        }
+
+        var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+        var folderName = string.IsNullOrWhiteSpace(taskName) ? $"session-{sessionId}" : taskName.Trim();
+        return Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
+    }
+
     public static async Task<SessionMetadata> MaterializeToDirectoryAsync(
         string sessionId,
         string taskDirectoryPath,

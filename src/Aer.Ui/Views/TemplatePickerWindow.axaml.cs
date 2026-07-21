@@ -10,12 +10,28 @@ namespace Aer.Ui.Views;
 
 public partial class TemplatePickerWindow : Window
 {
+    private readonly MainWindow? _owner;
+
     public string? MaterializedTaskDirectoryPath { get; private set; }
 
-    public TemplatePickerWindow()
+    /// <summary>
+    /// <paramref name="owner"/> routes chat/codebase session creation through
+    /// <see cref="MainWindow.StartInteractiveSessionAsync"/> (M24 Phase 1 desktop wiring, issue #262)
+    /// instead of materializing directly in-process -- null only in the pre-existing edge case where
+    /// <see cref="HomeView.OnStartTemplateClick"/> could not resolve a <see cref="MainWindow"/> owner,
+    /// in which case those two template kinds fall back to the direct materialization this window
+    /// always used before.
+    /// </summary>
+    public TemplatePickerWindow(MainWindow? owner)
     {
+        _owner = owner;
         InitializeComponent();
         PopulateVendors();
+    }
+
+    /// <summary>Parameterless overload Avalonia's XAML resource loader requires (AVLN3001) -- design-time/preview tooling only; real callers use <see cref="TemplatePickerWindow(MainWindow?)"/>.</summary>
+    public TemplatePickerWindow() : this(null)
+    {
     }
 
     private void PopulateVendors()
@@ -84,14 +100,34 @@ public partial class TemplatePickerWindow : Window
                     ? ProjectDirectoryBox.Text.Trim()
                     : null;
 
-                var sessionId = Guid.NewGuid().ToString("N")[..12];
-                await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
-                    sessionId: sessionId,
-                    taskDirectoryPath: taskDirectoryPath,
-                    adapter: primaryVendor,
-                    model: null,
-                    workingDirectory: workDir,
-                    initialMessage: customPrompt).ConfigureAwait(true);
+                if (_owner != null)
+                {
+                    var request = new StartSessionRequest(
+                        Adapter: primaryVendor,
+                        TaskName: taskName,
+                        WorkingDirectory: workDir,
+                        InitialMessage: customPrompt);
+
+                    var outcome = await _owner.StartInteractiveSessionAsync(request).ConfigureAwait(true);
+                    if (outcome.Metadata is null)
+                    {
+                        Close(false);
+                        return;
+                    }
+
+                    taskDirectoryPath = outcome.Metadata.TaskDirectoryPath;
+                }
+                else
+                {
+                    var sessionId = Guid.NewGuid().ToString("N")[..12];
+                    await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                        sessionId: sessionId,
+                        taskDirectoryPath: taskDirectoryPath,
+                        adapter: primaryVendor,
+                        model: null,
+                        workingDirectory: workDir,
+                        initialMessage: customPrompt).ConfigureAwait(true);
+                }
             }
             else
             {

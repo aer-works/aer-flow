@@ -16,7 +16,7 @@ public partial class HomeView : UserControl
     private async void OnStartTemplateClick(object? sender, RoutedEventArgs e)
     {
         var topLevel = TopLevel.GetTopLevel(this) as MainWindow;
-        var picker = new TemplatePickerWindow();
+        var picker = new TemplatePickerWindow(topLevel);
         if (topLevel != null)
         {
             await picker.ShowDialog(topLevel);

@@ -924,14 +924,7 @@ namespace Aer.Daemon
             {
                 var adapter = string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant();
                 var sessionId = Guid.NewGuid().ToString("N")[..12];
-                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
-                var folderName = string.IsNullOrWhiteSpace(request.TaskName)
-                    ? $"session-{sessionId}"
-                    : request.TaskName.Trim();
-
-                var taskDirectoryPath = request.DirectoryPath != null && Path.IsPathRooted(request.DirectoryPath)
-                    ? request.DirectoryPath
-                    : Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
+                var taskDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.TaskName, request.DirectoryPath);
 
                 if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
                 {

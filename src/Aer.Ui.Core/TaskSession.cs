@@ -63,6 +63,9 @@ public sealed class TaskSession
     /// <summary>Null on success; the in-window message otherwise (the M14 Phase 1 precedent: a GUI has no stderr/exit-code convention to fail into).</summary>
     public sealed record MutationOutcome(string? ErrorMessage);
 
+    /// <summary><see cref="LoadOutcome"/>'s counterpart for <see cref="StartInteractiveSessionAsync"/> (M24 Phase 1 desktop wiring, issue #262).</summary>
+    public sealed record SessionStartOutcome(SessionMetadata? Metadata, string? ErrorMessage);
+
     private readonly LocalUiConfigurationStore _configurationStore;
     private readonly IReadOnlyDictionary<string, IWorkerAdapter> _adapters;
     private readonly Func<string?> _bindingsFilePathProvider;
@@ -704,6 +707,67 @@ public sealed class TaskSession
 
         await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
+    }
+
+    /// <summary>
+    /// Starts an interactive chat/codebase session (M24 Phase 1, issue #262) the same daemon-first,
+    /// in-process-fallback way as <see cref="RunAsync"/>. Unlike RunAsync's fallback, there is no
+    /// Aer.Cli equivalent for dispatching a session's initial turn -- that logic
+    /// (<c>ExecuteSessionTurnAsync</c>) lives only in <c>Aer.Daemon.Program</c> -- so without a
+    /// reachable daemon, <see cref="StartSessionRequest.InitialMessage"/> materializes the session
+    /// but is not auto-answered; the caller can send it afterward once a daemon is available.
+    /// </summary>
+    public async Task<SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
+    {
+        if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            try
+            {
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/sessions/start", request, cancellationToken).ConfigureAwait(true);
+                if (response.IsSuccessStatusCode)
+                {
+                    var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: cancellationToken).ConfigureAwait(true);
+                    return new SessionStartOutcome(metadata, null);
+                }
+
+                var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
+                return new SessionStartOutcome(null, err);
+            }
+            catch (Exception ex)
+            {
+                return new SessionStartOutcome(null, ex.Message);
+            }
+        }
+
+        // In-process fallback: materialize locally, same directory-naming rule the daemon endpoint
+        // uses (InteractiveSessionMaterializer.ResolveTaskDirectoryPath), so a session created
+        // without a daemon lands wherever a later-started daemon's /api/sessions endpoints would
+        // also look for it.
+        try
+        {
+            var sessionId = Guid.NewGuid().ToString("N")[..12];
+            var taskDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.TaskName, request.DirectoryPath);
+
+            var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                sessionId,
+                taskDirectoryPath,
+                string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant(),
+                request.Model,
+                request.WorkingDirectory,
+                request.InitialMessage,
+                request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
+                request.PermissionGrant,
+                cancellationToken).ConfigureAwait(true);
+
+            SetCurrentTaskDirectory(taskDirectoryPath);
+            await RecordOpenedAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+
+            return new SessionStartOutcome(metadata, null);
+        }
+        catch (Exception ex)
+        {
+            return new SessionStartOutcome(null, ex.Message);
+        }
     }
 
     private static async Task RecordTaskPathMetadataAsync(string taskDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)

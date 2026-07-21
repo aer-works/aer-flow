@@ -509,6 +509,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// The Template Picker's chat/codebase session creation (M24 Phase 1 desktop wiring, issue #262)
+    /// — <see cref="TaskSession.StartInteractiveSessionAsync"/> exposed the same way <see cref="RunAsync"/>
+    /// exposes the run mutation, so a modal window with no session reference of its own can still go
+    /// through the daemon-first path instead of materializing directly in-process.
+    /// </summary>
+    public Task<TaskSession.SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
+        => _session.StartInteractiveSessionAsync(request, cancellationToken);
+
+    /// <summary>
     /// The Run button's click handler (review follow-up, issue #250): on a task that hasn't
     /// finished, this is exactly the old unconditional resume-in-place call. On a finished task —
     /// <see cref="MainWindowViewModel.IsTaskFinished"/> — resuming the same directory is a proven
