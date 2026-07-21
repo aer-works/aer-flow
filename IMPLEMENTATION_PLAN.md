@@ -95,6 +95,8 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 **M22** shipped the built-in workflow template library: pre-authored Solo Run and Review Run templates materialized against installed vendor CLIs via `BuiltInWorkflowTemplates`, daemon template catalog and execution REST endpoints (`GET /api/templates`, `POST /api/templates/run`), desktop `TemplatePickerWindow`, mobile Flutter template picker screen, and artifact-referenced supply allowing remote mobile send-back (Supersede) without host filesystem access.
 
+**M23** shipped a generalized N-party Dialogue Worker (condition-stoppable, safety-ceiling-enforced regardless of configured `TurnBudget`, authored via the Template Editor instead of wizard-only), an explicit test-backed ruling that an already-superseded step's target may legally be named in a second Supersede (M24's chat primitive's load-bearing prerequisite), and project-directory-bound tasks (`AerTask.WithCwd` wired end-to-end through the adapters so a worker can operate on a real project directory) with portable bindings across machines (`WorkerBindingConfigEntry.PromptTemplate` absolute-path fix, per-machine profile mapping).
+
 ---
 
 ## Current Milestone
@@ -106,26 +108,6 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 - [x] Phase 3 — Codebase Sessions & Known Projects
 - [x] Phase 4 — Unified Task Creation (Desktop + Mobile)
 - [ ] Phase 5 — Task & Session Lifecycle Management
-
----
-
-## M23: Generic Dialogue & Project Packaging — Phase Plan
-
-**Goal:** Generalize the Dialogue Worker beyond a fixed two-party exchange, and let a task's worker invocation point at a real project directory — the actual founding gap behind capability 33 (below) — instead of only AER's own scratch artifacts folder, while keeping the resulting bindings portable across machines.
-
-This plan replaces an earlier draft (see git history) whose Phase 1 premise didn't match the code — `DialogueWorkerConfig` was already a fully data-driven record, not a hardcoded C# worker — and whose Phases 3/4 (Visual Diff Viewer, Multi-Agent Teamwork Preview) mapped to no capability this milestone was ever assigned. Revised in issue #252.
-
-### Phase 1: Generalize the Dialogue Worker (Capability 32)
-- **Goal**: Replace the fixed two-party Initiator/Responder shape with an N-party, condition-stoppable loop, safe by default (a hard ceiling always enforced regardless of configured `TurnBudget`), and a first-class Template Editor step type instead of wizard-only authoring.
-- **Verification**: Unit tests on the generalized turn loop (N=2 regression, N=3+ round-robin, `StopSentinel` early exit, ceiling enforcement); a Template Editor round trip with no hand-edited JSON. Acceptance: one real multi-turn correspondence run end-to-end.
-
-### Phase 2: Supersede-Chain Hardening
-- **Goal**: Resolve, with an explicit test-backed decision, whether an already-superseded step's target can legally be named in a second Supersede — currently neither forbidden nor tested. This is the load-bearing prerequisite for M24's chat primitive (repeatedly superseding one step), not just hygiene.
-- **Verification**: New chained-supersede tests pass; no regressions in the existing supersede end-to-end tests. Folds in issue #159 (xunit v3 migration) as groundwork here, since this phase is otherwise the most test-writing-heavy phase left before M24's own much heavier verification load (a ~50-100-turn stress test) lands on the same test projects.
-
-### Phase 3: Project-Directory-Bound Tasks & Portable Bindings (Capability 33)
-- **Goal**: Let a task's worker invocation set a real working directory — wiring `AerTask.WithCwd` (already a working native primitive, currently uncalled) through `WorkerInvocation` → the adapters → `CoreDispatchTarget` → `CoreDispatcher.DispatchAsync` — so Claude/Gemini can operate on an arbitrary existing project the way they do run raw in a terminal. No git-repo requirement; completion stays process-exit, same as today. Bundles the existing `WorkerBindingConfigEntry.PromptTemplate` absolute-path portability bug (breaks a dialogue step's bindings the moment a task moves to another machine) and a per-machine profile mapping (`%USERPROFILE%\.aer\profiles.json`) into the same phase.
-- **Verification**: An integration test asserting a spawned worker's actual cwd matches a configured `WorkingDirectory`; a manual run pointing a task at a real directory (tried against both a git repo and a plain folder) confirming file access works; a `bindings.json` + dialogue sidecar copied to a different simulated profile root still resolves and runs.
 
 ---
 
@@ -227,6 +209,8 @@ Completed milestones keep only a one-paragraph summary here. Their phase checkli
 closed GitHub milestones; their decisions of record — the constraints and precedents later work
 still leans on — in `docs/decisions-of-record.md`; and the full phase plans — goals, boundaries,
 and the open questions each phase resolved — in this file's git history and the linked issues.
+
+**M23: Generic Dialogue & Project Packaging** — generalized the Dialogue Worker from a fixed two-party exchange to an N-party, condition-stoppable loop (safe by default regardless of configured `TurnBudget`), authored as a first-class Template Editor step type instead of wizard-only; resolved, with test coverage, that an already-superseded step's target may legally be named in a second Supersede — the load-bearing prerequisite for M24's repeatedly-superseded chat primitive; and let a task's worker invocation point at a real project directory (`AerTask.WithCwd` wired through `WorkerInvocation` → the adapters → `CoreDispatchTarget` → `CoreDispatcher.DispatchAsync`), bundling a `WorkerBindingConfigEntry.PromptTemplate` absolute-path portability fix and a per-machine profile mapping so the resulting bindings survive a move to another machine.
 
 **M22: Workflow Template Library** — shipped a built-in template catalog (`solo-run` and `review-run`) materialized against PATH-probed vendor CLIs (`claude`, `gemini`), daemon template endpoints (`GET /api/templates`, `POST /api/templates/run`), desktop (`TemplatePickerWindow`) and mobile (`inbox_screen.dart`) template picker UIs allowing zero-path task creation, and artifact-referenced supply enabling remote mobile send-back (Supersede) with no host filesystem access.
 
