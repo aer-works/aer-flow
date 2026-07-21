@@ -80,9 +80,12 @@ class ExecutionArtifacts {
 /// comes from the DirectoryPath sibling property Aer.Daemon adds to the WS payload (M21 Phase 2,
 /// #232) — it is not part of TaskProjection itself, since /api/tasks/decide and /api/tasks/cancel
 /// need it and a WS-only client (this app) has no other way to learn it, and it's also this
-/// filter's join key.
+/// filter's join key. sessionId is the same kind of sibling, added for the mobile chat UI so a
+/// push that isn't self-started (seeded from another client, or picked from recent tasks) still
+/// tells this phone it's looking at an interactive session and which id to fetch turns for.
 class TaskProjection {
   final String? directoryPath;
+  final String? sessionId;
   final String workflowTemplateId;
   final String status;
   final List<StepDefinition> stepDefinitions;
@@ -92,6 +95,7 @@ class TaskProjection {
 
   TaskProjection({
     required this.directoryPath,
+    required this.sessionId,
     required this.workflowTemplateId,
     required this.status,
     required this.stepDefinitions,
@@ -124,6 +128,7 @@ class TaskProjection {
 
     return TaskProjection(
       directoryPath: j['directorypath']?.toString(),
+      sessionId: j['sessionid']?.toString(),
       workflowTemplateId: snapshot['workflowtemplateid'].toString(),
       status: state['status'].toString(),
       stepDefinitions:
@@ -133,6 +138,96 @@ class TaskProjection {
           .map((e) => ExecutionArtifacts.fromJson(e as Map<String, dynamic>))
           .toList(),
       workerAdapters: workerAdapters,
+    );
+  }
+}
+
+/// One turn of an interactive session, from SessionMetadata.Turns (Aer.Adapters/InteractiveSessions.cs).
+class SessionTurn {
+  final int turnIndex;
+  final String vendor;
+  final String humanMessage;
+  final String? assistantResponse;
+  final DateTime executedAt;
+
+  SessionTurn({
+    required this.turnIndex,
+    required this.vendor,
+    required this.humanMessage,
+    required this.assistantResponse,
+    required this.executedAt,
+  });
+
+  factory SessionTurn.fromJson(Map<String, dynamic> json) {
+    final j = caseInsensitive(json);
+    return SessionTurn(
+      turnIndex: (j['turnindex'] as num?)?.toInt() ?? 0,
+      vendor: j['vendor']?.toString() ?? '',
+      humanMessage: j['humanmessage']?.toString() ?? '',
+      assistantResponse: j['assistantresponse']?.toString(),
+      executedAt: DateTime.tryParse(j['executedat']?.toString() ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+/// An interactive session's full state, from GET /api/sessions/{sessionId} (Aer.Daemon/Program.cs)
+/// — REST-only, camelCase; unlike TaskProjection this is never pushed over /api/ws, so there is no
+/// PascalCase/camelCase ambiguity to normalize, but this still reads through [caseInsensitive] for
+/// consistency with every other model here.
+class SessionMetadata {
+  final String sessionId;
+  final String taskDirectoryPath;
+  final String currentAdapter;
+  final int turnCount;
+  final List<SessionTurn> turns;
+
+  SessionMetadata({
+    required this.sessionId,
+    required this.taskDirectoryPath,
+    required this.currentAdapter,
+    required this.turnCount,
+    required this.turns,
+  });
+
+  factory SessionMetadata.fromJson(Map<String, dynamic> json) {
+    final j = caseInsensitive(json);
+    return SessionMetadata(
+      sessionId: j['sessionid'].toString(),
+      taskDirectoryPath: j['taskdirectorypath'].toString(),
+      currentAdapter: j['currentadapter']?.toString() ?? '',
+      turnCount: (j['turncount'] as num?)?.toInt() ?? 0,
+      turns: ((j['turns'] as List<dynamic>?) ?? []).map((t) => SessionTurn.fromJson(t as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+/// One live-streaming event from /api/ws/progress (M24 Phase 1, issue #262) — see TaskSession.cs's
+/// ProgressFrame doc comment on desktop for why this is a dedicated socket/frame shape rather than
+/// an overload of the /api/ws protocol. Broadcast to every connected progress socket regardless of
+/// directory, same as TaskProjection pushes — callers must filter on directoryPath themselves.
+class SessionProgressEvent {
+  final String? directoryPath;
+  final String? stepId;
+  final String kind;
+  final String text;
+  final bool isPartial;
+
+  SessionProgressEvent({
+    required this.directoryPath,
+    required this.stepId,
+    required this.kind,
+    required this.text,
+    required this.isPartial,
+  });
+
+  factory SessionProgressEvent.fromJson(Map<String, dynamic> json) {
+    final j = caseInsensitive(json);
+    return SessionProgressEvent(
+      directoryPath: j['directorypath']?.toString(),
+      stepId: j['stepid']?.toString(),
+      kind: j['kind']?.toString() ?? '',
+      text: j['text']?.toString() ?? '',
+      isPartial: j['ispartial'] == true,
     );
   }
 }

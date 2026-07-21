@@ -192,6 +192,27 @@ namespace Aer.Daemon
 
                 if (!string.IsNullOrEmpty(directoryPath))
                 {
+                    // M24 mobile chat UI follow-up (issue #262): lets a client that only observes
+                    // this push (never having called /api/sessions/start itself — e.g. a phone
+                    // whose _openDirectoryPath was seeded from another client's push, or picked
+                    // from /api/tasks/recent) learn this directory is an interactive session and
+                    // which SessionId to fetch turns for, without a GET /api/sessions list-scan on
+                    // every push. Same additive-sibling pattern as DirectoryPath/WorkerAdapters
+                    // above; still not part of TaskProjection itself.
+                    var sessionMetadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                    if (File.Exists(sessionMetadataPath))
+                    {
+                        try
+                        {
+                            var sessionMetadata = await InteractiveSessionMaterializer.LoadMetadataAsync(sessionMetadataPath).ConfigureAwait(true);
+                            if (sessionMetadata != null)
+                            {
+                                node["SessionId"] = sessionMetadata.SessionId;
+                            }
+                        }
+                        catch { }
+                    }
+
                     var bindingsPath = Path.Combine(directoryPath, "bindings.json");
                     if (!File.Exists(bindingsPath))
                     {

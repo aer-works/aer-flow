@@ -634,6 +634,96 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task WebSocketSnapshot_IncludesSessionId_ForASessionDirectory()
+    {
+        // Aer.Mobile's chat UI (issue #262 follow-up): a phone whose _openDirectoryPath was seeded
+        // from another client's push (never having called /api/sessions/start itself) has no other
+        // way to learn this directory is an interactive session, or which SessionId to fetch turns
+        // for, without this sibling -- see SendStateAsync's remarks in Program.cs.
+        //
+        // Deliberately not using StartASessionAsync/POST /api/sessions/start here: a session
+        // materialized with no initial message never actually runs (Aer.Daemon's
+        // ExecuteSessionTurnAsync only fires when InitialMessage is set), so it has no snapshot.json
+        // yet -- TaskProjectionLoader.LoadAsync throws InvalidTaskDirectoryException for it, and
+        // /api/ws's on-connect push silently never fires (LastLoadSucceeded stays false). That's a
+        // pre-existing daemon quirk, not something to route around by invoking a real vendor CLI in
+        // a test (this suite never does that -- see the other CreateXxxDirectoryAsync helpers,
+        // which all hand-write snapshot.json/flow.jsonl directly). This helper does the same, plus a
+        // hand-written .aer/session.json, standing in for what a session's first real completed turn
+        // would leave behind.
+        const string sessionId = "test-session-ws-1";
+        var taskDirectory = await CreateSessionTaskDirectoryAsync(sessionId, TestContext.Current.CancellationToken);
+
+        var openResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+        Assert.True(openResponse.IsSuccessStatusCode);
+
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
+        var buffer = new byte[1024 * 64];
+        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
+        var payload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)).RootElement;
+
+        Assert.Equal(taskDirectory, payload.GetProperty("DirectoryPath").GetString());
+        Assert.Equal(sessionId, payload.GetProperty("SessionId").GetString());
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<string> CreateSessionTaskDirectoryAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        var taskDirectory = await CreateTaskDirectoryWithArtifactAsync("exec-session-1", "response.md", "Hi there.", cancellationToken);
+
+        var metadata = new SessionMetadata(
+            sessionId,
+            taskDirectory,
+            CurrentAdapter: "claude",
+            CurrentVendorSessionId: null,
+            Model: null,
+            WorkingDirectory: null,
+            TurnCount: 1,
+            SafetyCeiling: InteractiveSessionMaterializer.DefaultSafetyCeiling,
+            MinimalOverhead: false,
+            CreatedAt: DateTimeOffset.UtcNow,
+            UpdatedAt: DateTimeOffset.UtcNow,
+            Turns: [new SessionTurn(0, "claude", "hello", "hi there", DateTimeOffset.UtcNow, false, false)]);
+        await InteractiveSessionMaterializer.SaveMetadataAsync(metadata, Path.Combine(taskDirectory, ".aer", "session.json"), cancellationToken);
+
+        return taskDirectory;
+    }
+
+    [Fact]
+    public async Task WebSocketSnapshot_OmitsSessionId_ForAnOrdinaryTaskDirectory()
+    {
+        // A plain (non-session) task directory has no .aer/session.json -- confirms the new sibling
+        // is additive and doesn't leak a stale/wrong SessionId onto unrelated task pushes.
+        var taskDirectory = await CreateTaskDirectoryWithArtifactAsync(
+            "exec-plain-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
+        var openResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+        Assert.True(openResponse.IsSuccessStatusCode);
+
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
+        var buffer = new byte[1024 * 64];
+        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
+        var payload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)).RootElement;
+
+        Assert.Equal(taskDirectory, payload.GetProperty("DirectoryPath").GetString());
+        Assert.False(payload.TryGetProperty("SessionId", out _));
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task SendSessionMessage_WithEmptyMessage_ReturnsBadRequest()
     {
         var response = await _client.PostAsJsonAsync(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'chat_screen.dart';
 import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
@@ -330,6 +331,7 @@ class _InboxScreenState extends State<InboxScreen> {
               FilledButton(
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
+                  final screenNavigator = Navigator.of(context);
                   Navigator.pop(context);
                   try {
                     if (selectedTemplateId == 'chat-session' || selectedTemplateId == 'codebase-session') {
@@ -339,13 +341,21 @@ class _InboxScreenState extends State<InboxScreen> {
                         initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
                         taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
                       );
-                      final startedDirectoryPath = caseInsensitive(meta)['taskdirectorypath']?.toString();
+                      final metaCi = caseInsensitive(meta);
+                      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+                      final startedSessionId = metaCi['sessionid']?.toString();
                       if (startedDirectoryPath != null && mounted) {
                         setState(() => _openDirectoryPath = startedDirectoryPath);
                       }
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('Started session ${meta["sessionId"] ?? meta["SessionId"]}')),
-                      );
+                      // This phone started the session itself, so (unlike a passively-seeded WS
+                      // push) it's safe to jump straight into the chat screen.
+                      if (startedDirectoryPath != null && startedSessionId != null && mounted) {
+                        screenNavigator.push(MaterialPageRoute(
+                          builder: (_) => ChatScreen(client: client, sessionId: startedSessionId, directoryPath: startedDirectoryPath),
+                        ));
+                      } else {
+                        messenger.showSnackBar(SnackBar(content: Text('Started session $startedSessionId')));
+                      }
                     } else {
                       final dirPath = await client.runTemplate(
                         templateId: selectedTemplateId,
@@ -471,6 +481,39 @@ class _InboxScreenState extends State<InboxScreen> {
               ),
               const SizedBox(height: 12),
               OutlinedButton(onPressed: _pickRecentTask, child: const Text('Browse recent tasks')),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // An interactive session drives its own step decisions internally (Aer.Daemon's
+    // ExecuteSessionTurnAsync supersedes its own "chat" step after every turn) — there's nothing
+    // for the approve/reject cards below to show here, so this renders a tappable card into
+    // ChatScreen instead. Navigating only happens on this explicit tap, never automatically off
+    // the push that populated `projection` itself — see `_connect`'s and `_openDirectoryPath`'s
+    // doc comments for why a passively-seeded push must never navigate on its own.
+    if (projection.sessionId != null && projection.directoryPath != null) {
+      final client = _client!;
+      final sessionId = projection.sessionId!;
+      final directoryPath = projection.directoryPath!;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 48),
+              const SizedBox(height: 16),
+              Text('Interactive session — ${projection.status.toLowerCase()}', textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open chat'),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ChatScreen(client: client, sessionId: sessionId, directoryPath: directoryPath),
+                )),
+              ),
             ],
           ),
         ),

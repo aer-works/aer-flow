@@ -144,6 +144,48 @@ class DaemonClient {
     }
   }
 
+  /// A session's live in-turn streaming (M24 Phase 1, issue #262) — a dedicated socket/frame shape
+  /// from `watch()`, broadcast to every connected progress socket regardless of directory. Callers
+  /// (ChatScreen) must filter on `SessionProgressEvent.directoryPath` themselves, same as desktop's
+  /// MainWindow.axaml.cs does for its own subscription.
+  Stream<SessionProgressEvent> watchProgress() {
+    if (tsnetRouted) {
+      return _watchProgressOverTsnet();
+    }
+    final channel = WebSocketChannel.connect(
+      Uri.parse('ws://$host/api/ws/progress?token=$token'),
+    );
+    return channel.stream.map(
+      (raw) => SessionProgressEvent.fromJson(
+        jsonDecode(raw as String) as Map<String, dynamic>,
+      ),
+    );
+  }
+
+  Stream<SessionProgressEvent> _watchProgressOverTsnet() async* {
+    final parts = host.split(':');
+    final targetHost = parts[0];
+    final targetPort = parts.length > 1 ? int.parse(parts[1]) : 5050;
+
+    final dial = tsnetDialFn ?? ((h, p) => Tailscale.instance.tcp.dial(h, p));
+    final connection = await dial(targetHost, targetPort);
+    final wsChannel = await TsnetWsChannel.connect(
+      socket: TailscaleWsSocket(connection),
+      host: host,
+      path: '/api/ws/progress?token=$token',
+    );
+
+    try {
+      yield* wsChannel.stream.map(
+        (raw) => SessionProgressEvent.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        ),
+      );
+    } finally {
+      await wsChannel.close();
+    }
+  }
+
   Future<List<String>> recentTasks() async {
     final response = await _get(Uri.http(host, '/api/tasks/recent'));
     _throwIfFailed(response);
@@ -261,6 +303,17 @@ class DaemonClient {
       }),
     );
     _throwIfFailed(response);
+  }
+
+  /// Fetches an interactive session's full state, including turn history — the mobile chat
+  /// screen's counterpart of desktop's ChatViewModel.LoadFromMetadata, which reads
+  /// `.aer/session.json` straight off disk. This app has no filesystem access to the daemon host,
+  /// so it re-fetches this after every filtered WS push for the session's directory instead of
+  /// polling on a timer.
+  Future<SessionMetadata> getSession(String sessionId) async {
+    final response = await _get(Uri.http(host, '/api/sessions/$sessionId'));
+    _throwIfFailed(response);
+    return SessionMetadata.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   /// Compacts an interactive session history (M24 Phase 2).
