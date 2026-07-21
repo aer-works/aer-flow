@@ -1,8 +1,25 @@
+using Aer.Adapters;
+using Aer.Flow.Domain;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
 
 namespace Aer.Ui.Core;
+
+/// <summary>
+/// One task/session directory's lightweight status (M24 Phase 5, #278's fleet list) — friendly
+/// name, a template id or "interactive session" label, a plain status line, paused-step count, and
+/// archived state. Deliberately not a <see cref="TaskProjection"/>: a fleet list showing every
+/// known task/session at once can't afford <see cref="TaskProjectionLoader.LoadAsync"/>'s full
+/// per-execution history/artifact-lineage projection cost for every item.
+/// </summary>
+public sealed record TaskFleetItem(
+    string TaskDirectoryPath,
+    string FriendlyName,
+    string TypeLabel,
+    string StatusText,
+    int PausedStepCount,
+    bool IsArchived);
 
 /// <summary>
 /// The seam this phase exists to prove (issue #118): opens a real task directory using exactly
@@ -53,5 +70,47 @@ public static class TaskProjectionLoader
         var lineage = ArtifactLineageProjector.Project(events, snapshot, artifactsRootPath);
 
         return new TaskProjection(snapshot, state, history, lineage);
+    }
+
+    /// <summary>
+    /// The fleet list's per-item load (M24 Phase 5, #278): skips <see cref="ExecutionHistoryProjector"/>
+    /// and <see cref="ArtifactLineageProjector"/> entirely (the latter does real per-execution
+    /// artifact-directory <see cref="File"/> I/O — the actual expensive part) and reads only
+    /// <see cref="StateProjector.Project"/>'s status/paused-step count. The <see cref="FlowEventLogReader"/>
+    /// read itself still happens — that's unavoidable for a correct status — this only skips the
+    /// two additional, more expensive re-folds of the same event list.
+    /// </summary>
+    public static async Task<TaskFleetItem> LoadFleetStatusAsync(
+        string taskDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(taskDirectoryPath);
+
+        var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(taskDirectoryPath));
+        var isArchived = TaskLifecycle.IsArchived(taskDirectoryPath);
+        var isSession = File.Exists(Path.Combine(taskDirectoryPath, ".aer", "session.json"));
+
+        var snapshotPath = Path.Combine(taskDirectoryPath, SnapshotFileName);
+        if (!File.Exists(snapshotPath))
+        {
+            // A materialized interactive session with no initial message never actually runs (a
+            // known quirk, not an error -- see DaemonIntegrationTests' WebSocketSnapshot_* remarks).
+            // A DAG task directory with no snapshot yet shouldn't exist by construction, but is
+            // represented the same defensive way rather than thrown on.
+            return new TaskFleetItem(
+                taskDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow",
+                isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived);
+        }
+
+        var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
+        var typeLabel = isSession ? "interactive session" : snapshot.WorkflowTemplateId.Value;
+
+        var logPath = Path.Combine(taskDirectoryPath, LogFileName);
+        var reader = new FlowEventLogReader(logPath);
+        var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+
+        var state = StateProjector.Project(events, snapshot);
+        var pausedStepCount = state.Steps.Count(s => s.Status == StepStatus.Paused);
+
+        return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived);
     }
 }
