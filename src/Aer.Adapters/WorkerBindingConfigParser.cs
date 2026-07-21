@@ -54,6 +54,12 @@ public static class WorkerBindingConfigParser
             {
                 throw new WorkerBindingConfigException($"Worker-binding config entry for '{workerName}' is missing 'PromptTemplate'.");
             }
+
+            if (entry.WorkingDirectory is not null && string.IsNullOrWhiteSpace(entry.WorkingDirectory))
+            {
+                throw new WorkerBindingConfigException(
+                    $"Worker-binding config entry for '{workerName}' has a blank 'WorkingDirectory' — omit the field entirely instead.");
+            }
         }
 
         return entries;

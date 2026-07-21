@@ -104,4 +104,115 @@ public class WorkerBindingResolverTests
 
         Assert.Empty(bindings);
     }
+
+    // M23 Phase 3 (#272): WorkingDirectory profile resolution and the dialogue PromptTemplate
+    // portability fix.
+
+    [Fact]
+    public void A_rooted_WorkingDirectory_passes_through_unchanged_with_no_profiles_needed()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5), WorkingDirectory: "/home/user/my-project"),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters);
+
+        var binding = (WorkerBinding.Process)bindings["architect"];
+        Assert.Equal("/home/user/my-project", binding.Target.WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_profile_named_WorkingDirectory_resolves_via_the_supplied_profile_map()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5), WorkingDirectory: "myproject"),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+        var profiles = new Dictionary<string, string> { ["myproject"] = "/real/machine/path" };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters, profiles);
+
+        var binding = (WorkerBinding.Process)bindings["architect"];
+        Assert.Equal("/real/machine/path", binding.Target.WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_profile_named_WorkingDirectory_with_no_matching_profile_throws()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5), WorkingDirectory: "myproject"),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+
+        var ex = Assert.Throws<UnknownWorkingDirectoryProfileException>(() =>
+            WorkerBindingResolver.Resolve(config, adapters, profiles: null));
+        Assert.Equal("architect", ex.WorkerName);
+        Assert.Equal("myproject", ex.ProfileName);
+    }
+
+    [Fact]
+    public void A_profile_named_WorkingDirectory_absent_from_a_non_empty_profile_map_still_throws()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5), WorkingDirectory: "myproject"),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+        var profiles = new Dictionary<string, string> { ["some-other-project"] = "/real/path" };
+
+        Assert.Throws<UnknownWorkingDirectoryProfileException>(() => WorkerBindingResolver.Resolve(config, adapters, profiles));
+    }
+
+    [Fact]
+    public void No_WorkingDirectory_at_all_resolves_to_null_regardless_of_profiles()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry("echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5)),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters, profiles: new Dictionary<string, string>());
+
+        var binding = (WorkerBinding.Process)bindings["architect"];
+        Assert.Null(binding.Target.WorkingDirectory);
+    }
+
+    /// <summary>
+    /// The portability fix proven through a real adapter, not just the echo fake: a relative
+    /// dialogue-sidecar PromptTemplate resolves against the supplied bindingsFileDirectory, the same
+    /// end-to-end path <c>DialogueWorkerAdapterTests</c> proves at the adapter level alone.
+    /// </summary>
+    [Fact]
+    public void BindingsFileDirectory_is_forwarded_so_a_relative_dialogue_PromptTemplate_resolves_portably()
+    {
+        var debateContract = new WorkerContract("debate", [], [new ProducedOutput("verdict.md")], []);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["debate"] = new WorkerBindingConfigEntry(
+                "dialogue", debateContract, "dialogue-debate.json", TimeSpan.FromMinutes(5)),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["dialogue"] = new DialogueWorkerAdapter() };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters, bindingsFileDirectory: "/configs");
+
+        var binding = (WorkerBinding.Process)bindings["debate"];
+        var expected = Path.GetFullPath(Path.Combine("/configs", "dialogue-debate.json"));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(expected, binding.Target.Args[4]);
+        }
+        else
+        {
+            Assert.Contains($"\"{expected}\"", binding.Target.Args[1]);
+        }
+    }
 }

@@ -70,7 +70,9 @@ public static class SupplyCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
-        var workerBindings = new Dictionary<string, WorkerBinding>(WorkerBindingResolver.Resolve(bindingConfig, adapters));
+        var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
+        var workerBindings = new Dictionary<string, WorkerBinding>(WorkerBindingResolver.Resolve(
+            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath)));
 
         var contract = new WorkerContract(options.Worker, RequiredInputs: [], [new ProducedOutput(options.OutputName)], OptionalMetadata: []);
         workerBindings[options.Worker] = new WorkerBinding.NonProcess(contract);

@@ -13,12 +13,34 @@ namespace Aer.Adapters;
 /// </summary>
 public static class WorkerBindingResolver
 {
+    /// <param name="config">The parsed worker-binding config to resolve.</param>
+    /// <param name="adapters">The registered adapters each entry's <see cref="WorkerBindingConfigEntry.Adapter"/> looks up through.</param>
+    /// <param name="profiles">
+    /// The local per-machine profile mapping (M23 Phase 3, #272; see <see cref="AerProfileStore"/>),
+    /// consulted only for an entry whose <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> is a
+    /// non-rooted profile name rather than a literal path. Null (the default) behaves exactly like an
+    /// empty map — every entry naming a profile then throws <see cref="UnknownWorkingDirectoryProfileException"/>,
+    /// while an entry with no <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> at all, or a
+    /// rooted one, is entirely unaffected.
+    /// </param>
+    /// <param name="bindingsFileDirectory">
+    /// The directory <paramref name="config"/> was loaded from, if known (M23 Phase 3, #272) —
+    /// forwarded verbatim into every resolved <see cref="WorkerInvocation.BindingsFileDirectory"/>.
+    /// Only <see cref="DialogueWorkerAdapter"/> uses it (to resolve its config sidecar's path
+    /// portably); every other adapter ignores it.
+    /// </param>
     /// <exception cref="UnknownWorkerAdapterException">
     /// An entry names an <see cref="WorkerBindingConfigEntry.Adapter"/> not present in <paramref name="adapters"/>.
     /// </exception>
+    /// <exception cref="UnknownWorkingDirectoryProfileException">
+    /// An entry's <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> names a profile with no
+    /// entry in <paramref name="profiles"/>.
+    /// </exception>
     public static IReadOnlyDictionary<string, WorkerBinding> Resolve(
         IReadOnlyDictionary<string, WorkerBindingConfigEntry> config,
-        IReadOnlyDictionary<string, IWorkerAdapter> adapters)
+        IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+        IReadOnlyDictionary<string, string>? profiles = null,
+        string? bindingsFileDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(adapters);
@@ -31,12 +53,42 @@ public static class WorkerBindingResolver
                 throw new UnknownWorkerAdapterException(entry.Adapter);
             }
 
-            var invocation = new WorkerInvocation(entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant);
+            var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
+            var invocation = new WorkerInvocation(
+                entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant,
+                workingDirectory, bindingsFileDirectory);
             var target = adapter.Resolve(invocation, entry.Contract);
 
             bindings[workerName] = new WorkerBinding.Process(entry.Contract, target, entry.Timeout);
         }
 
         return bindings;
+    }
+
+    /// <summary>
+    /// A rooted path passes through unchanged; a non-rooted one is a profile name, looked up in
+    /// <paramref name="profiles"/> — the "portable bindings via per-machine profile mapping"
+    /// mechanism (M23 Phase 3, #272). Null stays null: most entries never set a
+    /// <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> at all.
+    /// </summary>
+    private static string? ResolveWorkingDirectory(
+        string workerName, string? workingDirectory, IReadOnlyDictionary<string, string>? profiles)
+    {
+        if (workingDirectory is null)
+        {
+            return null;
+        }
+
+        if (Path.IsPathRooted(workingDirectory))
+        {
+            return workingDirectory;
+        }
+
+        if (profiles is null || !profiles.TryGetValue(workingDirectory, out var resolved))
+        {
+            throw new UnknownWorkingDirectoryProfileException(workerName, workingDirectory);
+        }
+
+        return resolved;
     }
 }

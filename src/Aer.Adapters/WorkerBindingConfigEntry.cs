@@ -20,6 +20,15 @@ namespace Aer.Adapters;
 /// <param name="Model">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/>.</param>
 /// <param name="PermissionScope">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/>.</param>
 /// <param name="PermissionGrant">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/> — see its docs for precedence over <paramref name="PermissionScope"/>.</param>
+/// <param name="WorkingDirectory">
+/// Where this worker role's process should run (M23 Phase 3, #272) — a rooted absolute path (used
+/// directly, but not portable to a machine where that path doesn't exist) or a bare name, looked up
+/// in the local per-machine profile mapping (<see cref="AerProfileStore"/>) by
+/// <see cref="WorkerBindingResolver.Resolve"/> — the same key resolves to a different real directory
+/// on every machine that has its own copy of that mapping, keeping this bindings file itself
+/// portable even though the project directory it points at is not. Null keeps the prior default (no
+/// explicit cwd).
+/// </param>
 public sealed record WorkerBindingConfigEntry(
     string Adapter,
     WorkerContract Contract,
@@ -27,4 +36,5 @@ public sealed record WorkerBindingConfigEntry(
     TimeSpan Timeout,
     string? Model = null,
     string? PermissionScope = null,
-    PermissionGrant? PermissionGrant = null);
+    PermissionGrant? PermissionGrant = null,
+    string? WorkingDirectory = null);

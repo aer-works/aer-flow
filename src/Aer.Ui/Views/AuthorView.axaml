@@ -259,6 +259,17 @@
                   <TextBlock Text="Optional metadata:" VerticalAlignment="Center" />
                   <TextBox Text="{Binding OptionalMetadataText}" Width="200" PlaceholderText="(comma-separated)" />
                 </StackPanel>
+                <!-- M23 Phase 3 (#272) stopgap: a real project directory this worker runs in,
+                     requested to test the phase's own WorkingDirectory wiring from the app instead
+                     of hand-editing bindings.json, ahead of M24 Phase 3's fuller Known Projects
+                     picker. A bare name (not a path) is a per-machine profile reference, resolved at
+                     run time — the Browse button only ever writes a real, rooted path. -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Working directory:" VerticalAlignment="Center" />
+                  <TextBox Text="{Binding WorkingDirectoryText}" Width="260"
+                           PlaceholderText="(optional — a real path, or a profile name)" />
+                  <Button Content="Browse..." Click="OnBrowseWorkingDirectoryClick" />
+                </StackPanel>
                 <!-- M21 Phase 1 (permission-scope model): the builder is the default, primary path
                      (Blank rows start here) — four grant categories plus a shell-command pattern
                      allowlist, translated per-vendor by ClaudeWorkerAdapter/GeminiWorkerAdapter.

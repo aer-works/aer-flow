@@ -16,6 +16,6 @@ namespace Aer.Cli.Tests.TestSupport;
 internal sealed class ShellCommandWorkerAdapter : IWorkerAdapter
 {
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract) => OperatingSystem.IsWindows()
-        ? new CoreDispatchTarget("cmd", ["/c", invocation.PromptTemplate])
-        : new CoreDispatchTarget("sh", ["-c", invocation.PromptTemplate]);
+        ? new CoreDispatchTarget("cmd", ["/c", invocation.PromptTemplate], invocation.WorkingDirectory)
+        : new CoreDispatchTarget("sh", ["-c", invocation.PromptTemplate], invocation.WorkingDirectory);
 }

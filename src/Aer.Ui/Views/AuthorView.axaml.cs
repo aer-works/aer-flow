@@ -30,4 +30,25 @@ public partial class AuthorView : UserControl
             viewModel.NewWorkflow.WorkspaceOverridePath = localPath;
         }
     }
+
+    /// <summary>The per-row WorkingDirectory folder picker (M23 Phase 3 stopgap, #272): reads the clicked button's own row DataContext, since this lives inside an <c>ItemsControl.ItemTemplate</c> rather than the page-level ViewModel.</summary>
+    private async void OnBrowseWorkingDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control control || control.DataContext is not WorkerBindingEntryViewModel entry ||
+            TopLevel.GetTopLevel(this)?.StorageProvider is not { CanPickFolder: true } storageProvider)
+        {
+            return;
+        }
+
+        var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose the working directory for this worker",
+            AllowMultiple = false,
+        });
+
+        if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } localPath)
+        {
+            entry.WorkingDirectoryText = localPath;
+        }
+    }
 }

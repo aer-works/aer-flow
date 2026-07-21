@@ -27,6 +27,24 @@ public class ClaudeWorkerAdapterTests
         Assert.Equal("text", target.Args[5]);
     }
 
+    /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged.</summary>
+    [Fact]
+    public void A_configured_WorkingDirectory_is_forwarded_into_the_resolved_target()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", WorkingDirectory: "/home/user/my-project"), ArchitectContract);
+
+        Assert.Equal("/home/user/my-project", target.WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_null_WorkingDirectory_leaves_the_resolved_target_with_no_explicit_cwd()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.Null(target.WorkingDirectory);
+    }
+
     [Fact]
     public void An_explicit_permission_scope_overrides_the_default()
     {

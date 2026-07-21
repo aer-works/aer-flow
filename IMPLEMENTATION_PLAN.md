@@ -103,7 +103,7 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 - [x] Phase 1 — Generalize the Dialogue Worker
 - [x] Phase 2 — Supersede-Chain Hardening
-- [ ] Phase 3 — Project-Directory-Bound Tasks & Portable Bindings
+- [x] Phase 3 — Project-Directory-Bound Tasks & Portable Bindings
 
 ---
 

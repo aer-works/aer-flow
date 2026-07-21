@@ -171,6 +171,41 @@ public class MainWindowBindingsEditorTests
     }
 
     [AvaloniaFact]
+    public async Task Setting_the_working_directory_field_then_saving_round_trips_it_and_marks_dirty()
+    {
+        // M23 Phase 3 stopgap (#272): the Template Editor's "Working directory" text field + Browse
+        // button, added so WorkingDirectory can be authored through the app instead of hand-edited
+        // JSON. This proves the ViewModel-level round trip (the Browse button itself just writes into
+        // this same WorkingDirectoryText property, per OnBrowseWorkingDirectoryClick).
+        var path = CopyFixtureToTemp("two-worker-bindings.json");
+        try
+        {
+            var window = NewWindow();
+            await window.OpenBindingsInEditorAsync(path, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.BindingsEditor.Entries.Single(e => e.WorkerName == "architect");
+            Assert.Equal(string.Empty, architect.WorkingDirectoryText);
+
+            architect.WorkingDirectoryText = "/home/user/dev/myproject";
+            Assert.True(window.ViewModel.BindingsEditor.IsDirty);
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
+            Assert.Equal("/home/user/dev/myproject", parsed["architect"].WorkingDirectory);
+            Assert.False(window.ViewModel.BindingsEditor.IsDirty);
+
+            await window.OpenBindingsInEditorAsync(path, TestContext.Current.CancellationToken);
+            var reopened = window.ViewModel.BindingsEditor.Entries.Single(e => e.WorkerName == "architect");
+            Assert.Equal("/home/user/dev/myproject", reopened.WorkingDirectoryText);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Removing_an_entry_then_saving_drops_it_from_the_file()
     {
         var path = CopyFixtureToTemp("two-worker-bindings.json");

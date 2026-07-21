@@ -29,6 +29,16 @@ public class GeminiWorkerAdapterTests
         Assert.Equal(artifactsRootVar, target.Args[5]);
     }
 
+    /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged.</summary>
+    [Fact]
+    public void A_configured_WorkingDirectory_is_forwarded_into_the_resolved_target()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", WorkingDirectory: "/home/user/my-project"), ArchitectContract);
+
+        Assert.Equal("/home/user/my-project", target.WorkingDirectory);
+    }
+
     [Fact]
     public void An_explicit_permission_scope_overrides_the_default()
     {

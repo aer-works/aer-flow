@@ -128,6 +128,64 @@ public class CoreDispatcherTests
         }
     }
 
+    /// <summary>
+    /// M23 Phase 3's own named verification bullet (#272): "an integration test asserting a spawned
+    /// worker's actual cwd matches a configured WorkingDirectory" — through the real wiring
+    /// (<see cref="CoreDispatchTarget.WorkingDirectory"/> → <see cref="CoreDispatcher.DispatchAsync"/>
+    /// → the aer-core <c>AerTask.WithCwd</c> primitive), not the native primitive in isolation
+    /// (already proven by <c>aer-core</c>'s own <c>EnvironmentAndWorkingDirectoryTests</c>).
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_spawns_the_worker_with_its_actual_cwd_set_to_the_configured_WorkingDirectory()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var configuredWorkingDirectory = Path.Combine(Path.GetTempPath(), $"cwd-target-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            Directory.CreateDirectory(configuredWorkingDirectory);
+
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var environment = ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot);
+            var request = MakeRequest(environment);
+            var target = PrintCwdToOutputFile(configuredWorkingDirectory);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var printedCwd = (await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken)).Trim();
+            var expected = NormalizeRealPath(configuredWorkingDirectory);
+            var actual = NormalizeRealPath(printedCwd);
+            Assert.Equal(expected, actual, ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            Directory.Delete(artifactsRoot, recursive: true);
+            Directory.Delete(configuredWorkingDirectory, recursive: true);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
+    /// macOS resolves <c>/tmp</c>/<c>/var</c> (and therefore the default <see cref="Path.GetTempPath"/>
+    /// root this test's directories live under) through a <c>/private</c> symlink at the OS level —
+    /// a spawned shell's <c>pwd</c> reports the fully-resolved path even though the configured cwd
+    /// was the pre-resolution one <see cref="Directory.CreateDirectory(string)"/> itself accepted.
+    /// <see cref="Path.GetFullPath(string)"/> never resolves symlinks, so without this, "the same
+    /// directory" fails a naive string comparison purely on this one OS. Only strips the prefix that
+    /// specific symlink introduces — not a general realpath resolution — so this stays exact
+    /// everywhere else.
+    /// </summary>
+    private static string NormalizeRealPath(string path)
+    {
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        return OperatingSystem.IsMacOS() && normalized.StartsWith("/private/", StringComparison.Ordinal)
+            ? normalized["/private".Length..]
+            : normalized;
+    }
+
     private static ExecutionRequest MakeRequest(IReadOnlyList<EnvironmentVariable> environment) => new(
         ExecutionId,
         new WorkflowId("wf-1"),
@@ -142,4 +200,8 @@ public class CoreDispatcherTests
     private static CoreDispatchTarget EchoHelloToOutputFile() => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget("cmd", ["/c", "echo hello > %AER_OUTPUT_DIR%\\hello.txt"])
         : new CoreDispatchTarget("sh", ["-c", "echo hello > \"$AER_OUTPUT_DIR/hello.txt\""]);
+
+    private static CoreDispatchTarget PrintCwdToOutputFile(string workingDirectory) => OperatingSystem.IsWindows()
+        ? new CoreDispatchTarget("cmd", ["/c", "cd > %AER_OUTPUT_DIR%\\hello.txt"], workingDirectory)
+        : new CoreDispatchTarget("sh", ["-c", "pwd > \"$AER_OUTPUT_DIR/hello.txt\""], workingDirectory);
 }
