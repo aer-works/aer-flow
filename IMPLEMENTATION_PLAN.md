@@ -80,7 +80,7 @@ Which milestone introduces which capabilities.
 | **M21: Zero-Config Remote Control & Permission Scopes** | 27 (Permission Scope Model), 28 (Mobile Remote Client), 29 (Zero-Config Tailscale Transport)                                                       | M20                                                                                 |
 | **M22: Workflow Template Library**                      | 30 (Workflow Template Library), 31 (Artifact-Referenced Supply)                                                                                    | M21                                                                                 |
 | **M23: Generic Dialogue & Project Packaging**           | 32 (Generic Dialogue configuration schema & loops), 33 (Unified Project Package model with profile segregation)                                    | M22                                                                                 |
-| **M24: Interactive Sessions & Unified Task Creation**   | 34 (Interactive Sessions/Chat), 35 (Worker Capability Discovery & Compact), 36 (Codebase Sessions & Known Projects), 37 (Unified Task Creation)    | M23                                                                                 |
+| **M24: Interactive Sessions & Unified Task Creation**   | 34 (Interactive Sessions/Chat), 35 (Worker Capability Discovery & Compact), 36 (Codebase Sessions & Known Projects), 37 (Unified Task Creation), 42 (Task & Session Lifecycle Management)    | M23                                                                                 |
 | **M25: Final Polish**                                   | 38 (Curve-based Bezier DAG rendering, brand icons, status-change motion & skeleton loading), 39 (Rich markdown output previewer), 40 (Keyboard-first triage modal), 41 (Mobile Visual & UX Parity) | M24                                                                                 |
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
@@ -105,6 +105,7 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 - [x] Phase 2 — Worker Capability Discovery & In-Session Compact
 - [x] Phase 3 — Codebase Sessions & Known Projects
 - [x] Phase 4 — Unified Task Creation (Desktop + Mobile)
+- [ ] Phase 5 — Task & Session Lifecycle Management
 
 ---
 
@@ -150,6 +151,10 @@ This plan replaces an earlier draft (see git history) whose Phase 1 premise didn
 ### Phase 4: Unified Task Creation (Desktop + Mobile) (Capability 37)
 - **Goal**: Replace the 2-canned-template picker with Chat, Codebase Session, and Two-Vendor Dialogue as the default, zero-authoring front door on both `Aer.Ui` and `Aer.Mobile` (extending `inbox_screen.dart`'s existing imperative-navigation pattern), each asking only for what it needs (vendor(s), optional directory, optional opening message). Extends M18's Conversation View to render a repeatedly-superseded single step's execution history, reusing the existing WebSocket push. The existing Solo Run / Review Run templates and full DAG authoring remain available under an explicit "Advanced" path — nothing removed, just no longer the front door.
 - **Verification**: starting and running a full chat, a codebase session, and a two-vendor dialogue from mobile with zero file-path input anywhere in the flow; the same from desktop.
+
+### Phase 5: Task & Session Lifecycle Management (Capability 42)
+- **Goal**: Give the user real lifecycle control over every task/session (chat, codebase session, dialogue, solo/review run) instead of the current one-way "materialize and accumulate forever." A task/session created since Phase 4 replaced hand-authoring as the front door has no way to be archived, unarchived, or deleted from either app — `~/.aer/tasks`/`~/.aer/sessions` only ever grows, and reclaiming a name already in use (rejected rather than silently clobbered as of issue #277) means finding and deleting the folder on disk by hand. Archive/unarchive is a directory-native marker (e.g. a `.aer/archived` sentinel) rather than a schema field, so it applies uniformly to DAG tasks and interactive sessions without every task type needing a metadata record; archived items drop out of the default list but stay on disk and fully loadable until unarchived. Delete is real, permanent directory removal, gated behind an explicit confirmation in the UI given it can't be undone. Ships on both `Aer.Ui` and `Aer.Mobile`, matching Phase 4's own desktop+mobile bar.
+- **Verification**: archiving a task/session removes it from the default list view (desktop and mobile) but it is still directly loadable and reappears once unarchived; deleting removes the directory and it no longer appears in any listing; a regression test confirms a new task/session can reuse a name freed by deleting the earlier one; no change to how an unarchived, non-deleted task/session behaves today.
 
 ---
 
