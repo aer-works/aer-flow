@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.0](https://github.com/aer-works/aer-flow/compare/flow-v0.17.0...flow-v0.18.0) (2026-07-21)
+
+
+### Features
+
+* **flow,adapters:** M23 Phase 3 — Project-Directory-Bound Tasks & Portable Bindings ([#275](https://github.com/aer-works/aer-flow/issues/275)) ([2743172](https://github.com/aer-works/aer-flow/commit/274317233a1f7c419f746c1868bec80b19944e8c))
+* **flow:** M23 Phase 2 — Supersede-Chain Hardening ([#274](https://github.com/aer-works/aer-flow/issues/274)) ([d054b5c](https://github.com/aer-works/aer-flow/commit/d054b5ca1b1f833ae05a8980b29f60cf238ab206))
+
 ## [0.17.0](https://github.com/aer-works/aer-flow/compare/flow-v0.16.0...flow-v0.17.0) (2026-07-20)
 
 

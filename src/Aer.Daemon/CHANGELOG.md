@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.17.0...daemon-v0.18.0) (2026-07-21)
+
+
+### Miscellaneous
+
+* **daemon:** Synchronize desktop versions
+
 ## [0.17.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.16.0...daemon-v0.17.0) (2026-07-20)
 
 
