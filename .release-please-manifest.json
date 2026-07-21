@@ -6,5 +6,5 @@
   "src/Aer.Ui.Core": "0.18.0",
   "src/Aer.Ui": "0.18.0",
   "src/Aer.Daemon": "0.18.0",
-  "src/Aer.Mobile": "1.1.0"
+  "src/Aer.Mobile": "0.1.0"
 }
