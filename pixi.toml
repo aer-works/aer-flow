@@ -78,6 +78,12 @@ smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter Full
 # running this.
 smoke-dialogue = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveDialogueSmokeTest", depends-on = ["build-core"] }
 
+# M24 Phase 1/2 (#262/#263) completion gate, added retroactively: a ~50-turn interactive-session
+# stress run plus a compact round trip, driven directly against Aer.Daemon's real HTTP surface
+# (sessions have no `aer` CLI command) with the real, authenticated `claude` CLI. Same CI exclusion
+# as smoke-claude above. See docs/runbooks/live-session-smoke.md before running this.
+smoke-session = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveSessionSmokeTest", depends-on = ["build-core"] }
+
 # M13 Phase 4 (#110), the milestone's completion gate: unlike smoke-claude/smoke-mixed-vendor
 # above, this needs no live vendor auth, so it runs unattended in default CI rather than a gated
 # runbook. Packs `aer`, installs it as a real global tool from that local nupkg, runs it against a
