@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Aer.Adapters;
 
 namespace Aer.Daemon;
 
@@ -36,8 +37,7 @@ public class PairedClientsStore
 
     public PairedClientsStore()
     {
-        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
-        _filePath = Path.Combine(aerDir, "paired_clients.json");
+        _filePath = Path.Combine(AerPaths.Root, "paired_clients.json");
     }
 
     public PairedClientsStore(string filePath)

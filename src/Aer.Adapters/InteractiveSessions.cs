@@ -181,7 +181,7 @@ public static class InteractiveSessionMaterializer
             return directoryPathOverride;
         }
 
-        var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+        var baseSessionsDir = AerPaths.Sessions;
         var folderName = string.IsNullOrWhiteSpace(taskName) ? $"session-{sessionId}" : taskName.Trim();
         return Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
     }
