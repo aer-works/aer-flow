@@ -23,11 +23,22 @@ a deliberate manual tool. Issue #313 builds automated journeys on top of them.
 | `Click-Type.ps1 -Handle 0x… -X -Y -Text <s>` | Click a field and type into it |
 | `Scroll-Capture.ps1 -X -Y -Notches <n> -OutPath <png>` | Scroll (negative = down), then capture |
 
-Three things that are not obvious and cost real time to discover:
+Four things that are not obvious and cost real time to discover:
 
-- **Avalonia modal dialogs are separate HWNDs** and never appear in `Process.MainWindowTitle`. A
-  dialog can be open and fully invisible to `Get-Process`. Use `List-Windows.ps1`, then
-  `Capture-Handle.ps1`.
+- **The first click on a background window is swallowed.** Windows delivers it as an activation and
+  the control never sees it. These scripts call `SetForegroundWindow`, but Windows *refuses* that
+  call from a process that is not already foreground — it fails silently and returns. So the first
+  `-ClickX/-ClickY` after the app loses focus does nothing, and **the app looks broken when it is
+  not**: during the M25 evaluation this manufactured three false product defects in a row, including
+  a `Start new chat` button that was fine. **Click twice**, or verify with a control whose response
+  is visible (a dropdown opening) before trusting that a click landed.
+- **`Click-Type.ps1` is worse, and lies.** `SendKeys` targets whatever window actually holds focus,
+  so when activation fails the text lands somewhere else entirely — while the script still prints
+  `OK typed N chars`. Screenshot the field afterwards; never trust the return value. For anything
+  load-bearing, drive the daemon's HTTP API instead and keep the UI for what you can *see*.
+- **Avalonia modal dialogs and popups are separate HWNDs** and never appear in
+  `Process.MainWindowTitle` — this includes `ComboBox` dropdowns, not just dialogs. One can be open
+  and fully invisible to `Get-Process`. Use `List-Windows.ps1`, then `Capture-Handle.ps1`.
 - Capture uses `PrintWindow` with `PW_RENDERFULLCONTENT` (`0x2`), which asks the compositor to
   re-render the window into a bitmap rather than copying screen pixels — so it works when the window
   is occluded, on a second monitor, or off-screen. Geometry comes from
