@@ -324,6 +324,35 @@ class DaemonClient {
     _throwIfFailed(response);
   }
 
+  /// Discovered skills/commands/agents/models for a session's current vendor, plus recently-used
+  /// ordering (M24 Phase 2 follow-up chat capability picker).
+  Future<SessionCommandsResult> getSessionCommands(String sessionId) async {
+    final response = await _get(Uri.http(host, '/api/sessions/$sessionId/commands'));
+    _throwIfFailed(response);
+    return SessionCommandsResult.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Records a picked command as this vendor's most-recently-used.
+  Future<void> recordCommandUsed(String sessionId, String name) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/$sessionId/commands/record'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name}),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Session-level mode (M24 Phase 2 follow-up): one of "auto", "default", "plan" — applies to
+  /// whichever vendor is currently active, taking effect on the next turn.
+  Future<void> setSessionMode(String sessionId, String mode) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/$sessionId/mode'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'mode': mode}),
+    );
+    _throwIfFailed(response);
+  }
+
   /// Fetches known projects registry from daemon (M24 Phase 3).
   Future<List<Map<String, dynamic>>> listKnownProjects() async {
     final response = await _get(Uri.http(host, '/api/projects'));
@@ -360,6 +389,47 @@ class DaemonClient {
       Uri.http(host, '/api/tasks/decide'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(payload),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Every known task/session directory's lightweight status (M24 Phase 5, #278) — archived items
+  /// are filtered out by default, matching desktop's own TasksViewModel.
+  Future<List<TaskFleetItem>> listTasks({bool includeArchived = false}) async {
+    final uri = Uri.http(host, '/api/tasks', {'includeArchived': includeArchived.toString()});
+    final response = await _get(uri);
+    _throwIfFailed(response);
+    final list = jsonDecode(response.body) as List<dynamic>;
+    return list.map((item) => TaskFleetItem.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  /// Hides a task/session directory from the default fleet list — the name stays reserved until a
+  /// real [deleteTask].
+  Future<void> archiveTask(String directoryPath) async {
+    final response = await _post(
+      Uri.http(host, '/api/tasks/archive'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'directoryPath': directoryPath}),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Reinstates a task/session directory into the default fleet list.
+  Future<void> unarchiveTask(String directoryPath) async {
+    final response = await _post(
+      Uri.http(host, '/api/tasks/unarchive'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'directoryPath': directoryPath}),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Really deletes a task/session directory — the only action that frees its name for reuse.
+  Future<void> deleteTask(String directoryPath) async {
+    final response = await _post(
+      Uri.http(host, '/api/tasks/delete'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'directoryPath': directoryPath}),
     );
     _throwIfFailed(response);
   }

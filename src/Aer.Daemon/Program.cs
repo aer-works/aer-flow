@@ -32,7 +32,7 @@ namespace Aer.Daemon
 
         public static WebApplication? App { get; set; }
 
-        public static async Task RunDaemonAsync(string[] args)
+        public static async Task RunDaemonAsync(string[] args, IReadOnlyDictionary<string, IWorkerAdapter>? adapters = null)
         {
             var noMutex = args.Contains("--no-mutex");
             Mutex? mutex = null;
@@ -121,7 +121,7 @@ namespace Aer.Daemon
 
             // Register singletons
             builder.Services.AddSingleton(LocalUiConfigurationStore.CreateDefault());
-            builder.Services.AddSingleton<IReadOnlyDictionary<string, IWorkerAdapter>>(WorkerAdapterRegistry.Default);
+            builder.Services.AddSingleton(adapters ?? WorkerAdapterRegistry.Default);
             builder.Services.AddSingleton<MainWindowViewModel>();
             builder.Services.AddSingleton<PairedClientsStore>();
 
@@ -893,6 +893,104 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
+            // M24 Phase 5 (#278): the fleet list — every known task/session directory's lightweight
+            // status, scanning both ~/.aer/tasks (DAG workflow runs) and ~/.aer/sessions
+            // (interactive chat/codebase sessions), the same two roots /api/templates/run and
+            // /api/sessions already materialize into. Archived items are filtered out by default
+            // (the everyday view); includeArchived=true surfaces them for the management screen.
+            // A directory that fails to load (corrupt snapshot/log) is skipped rather than failing
+            // the whole list, since one bad item shouldn't hide every other task/session.
+            app.MapGet("/api/tasks", async (bool? includeArchived) =>
+            {
+                var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
+                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+
+                var directories = new List<string>();
+                if (Directory.Exists(baseTasksDir))
+                {
+                    directories.AddRange(Directory.GetDirectories(baseTasksDir));
+                }
+                if (Directory.Exists(baseSessionsDir))
+                {
+                    directories.AddRange(Directory.GetDirectories(baseSessionsDir));
+                }
+
+                var items = new List<TaskFleetItem>();
+                foreach (var directory in directories)
+                {
+                    try
+                    {
+                        var item = await TaskProjectionLoader.LoadFleetStatusAsync(directory).ConfigureAwait(true);
+                        if (item.IsArchived && includeArchived != true)
+                        {
+                            continue;
+                        }
+                        items.Add(item);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Error loading fleet status for '{directory}': {ex}");
+                    }
+                }
+
+                return Results.Ok(items);
+            });
+
+            app.MapPost("/api/tasks/archive", async ([FromBody] TaskDirectoryRequest request) =>
+            {
+                if (string.IsNullOrEmpty(request.DirectoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath is required.");
+                }
+                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                {
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                }
+
+                await TaskLifecycle.ArchiveAsync(resolvedPath).ConfigureAwait(true);
+                return Results.Ok();
+            });
+
+            app.MapPost("/api/tasks/unarchive", async ([FromBody] TaskDirectoryRequest request) =>
+            {
+                if (string.IsNullOrEmpty(request.DirectoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath is required.");
+                }
+                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                {
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                }
+
+                await TaskLifecycle.UnarchiveAsync(resolvedPath).ConfigureAwait(true);
+                return Results.Ok();
+            });
+
+            // A real delete frees the directory's name for reuse (TaskDirectoryAlreadyExistsException's
+            // collision guard checks File.Exists on workflow.json, which archiving alone never
+            // clears — see TaskLifecycle's remarks) and also strips the stale recent so a later
+            // /api/tasks/recent-driven open doesn't 404 on a directory that no longer exists.
+            app.MapPost("/api/tasks/delete", async ([FromBody] TaskDirectoryRequest request, LocalUiConfigurationStore configStore) =>
+            {
+                if (string.IsNullOrEmpty(request.DirectoryPath))
+                {
+                    return Results.BadRequest("DirectoryPath is required.");
+                }
+                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                {
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                }
+
+                if (!Directory.Exists(resolvedPath))
+                {
+                    return Results.NotFound();
+                }
+
+                Directory.Delete(resolvedPath, recursive: true);
+                await configStore.RemoveRecentTaskDirectoryAsync(resolvedPath).ConfigureAwait(true);
+                return Results.Ok();
+            });
+
             // M21 Phase 2 (#232): a client with no access to the daemon host's filesystem
             // (Aer.Mobile) otherwise has no way to see what it's approving — TaskProjection only
             // ever carries file *paths*, never bytes (HomeViewModel's desktop-side inbox preview
@@ -1088,7 +1186,7 @@ namespace Aer.Daemon
             });
 
             // M24 Phase 2 (#263): Capabilities discovery & Session compact endpoints
-            app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
+            app.MapGet("/api/sessions/{sessionId}/commands", async (string sessionId, IReadOnlyDictionary<string, IWorkerAdapter> adapters, LocalUiConfigurationStore configStore) =>
             {
                 var resolved = await ResolveSessionAsync(sessionId);
                 if (resolved == null)
@@ -1103,7 +1201,79 @@ namespace Aer.Daemon
                 }
 
                 var capabilities = await adapter.DiscoverCapabilitiesAsync(metadata.WorkingDirectory);
-                return Results.Ok(capabilities);
+                var recentlyUsed = await configStore.LoadRecentCommandsAsync(metadata.CurrentAdapter);
+
+                // RecentlyUsed is an additive sibling property, same idiom as the WS payload's
+                // SessionId/DirectoryPath (PR #276) -- existing callers deserializing straight into
+                // WorkerCapabilities are unaffected (unmapped JSON members are ignored by default).
+                return Results.Ok(new
+                {
+                    capabilities.Vendor,
+                    capabilities.Items,
+                    capabilities.Models,
+                    RecentlyUsed = recentlyUsed,
+                });
+            });
+
+            app.MapPost("/api/sessions/{sessionId}/commands/record", async (string sessionId, [FromBody] RecordCommandUsedRequest request, LocalUiConfigurationStore configStore) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Name))
+                {
+                    return Results.BadRequest("Name is required.");
+                }
+
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                await configStore.RecordCommandUsedAsync(resolved.Value.Metadata.CurrentAdapter, request.Name.Trim());
+                return Results.Ok();
+            });
+
+            // Session-level mode (M24 Phase 2 follow-up): PermissionGrant already persists across
+            // turns via bindings.json (ExecuteSessionTurnAsync reads the existing entry's grant each
+            // turn), but nothing let a user change it mid-session -- it was fixed at whatever
+            // /api/sessions/start set. This updates bindings.json directly so the *next* turn (any
+            // vendor) picks up the new grant, translated per-vendor by that adapter's own existing
+            // PermissionGrant translation.
+            app.MapPost("/api/sessions/{sessionId}/mode", async (string sessionId, [FromBody] SetSessionModeRequest request) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                var directoryPath = resolved.Value.DirectoryPath;
+                var grant = request.Mode?.Trim().ToLowerInvariant() switch
+                {
+                    "auto" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
+                    "plan" => new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+                    "default" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+                    _ => (PermissionGrant?)null,
+                };
+
+                if (grant == null)
+                {
+                    return Results.BadRequest("Mode must be one of: auto, default, plan.");
+                }
+
+                var bindingsFilePath = Path.Combine(directoryPath, "bindings.json");
+                var existingBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFilePath).ConfigureAwait(true);
+                if (!existingBindings.TryGetValue(InteractiveSessionMaterializer.DefaultWorkerName, out var existingEntry))
+                {
+                    return Results.NotFound();
+                }
+
+                var updatedBindings = new Dictionary<string, WorkerBindingConfigEntry>(existingBindings)
+                {
+                    [InteractiveSessionMaterializer.DefaultWorkerName] = existingEntry with { PermissionGrant = grant }
+                };
+                await WorkerBindingConfigWriter.SaveToFileAsync(updatedBindings, bindingsFilePath).ConfigureAwait(true);
+
+                return Results.Ok();
             });
 
             app.MapGet("/api/adapters/capabilities", async (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
@@ -1134,7 +1304,7 @@ namespace Aer.Daemon
                     try
                     {
                         var compactMsg = "/compact Please provide a concise summary of our conversation so far, including all key requirements, code changes, decisions, and current progress.";
-                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync, forceHandoff: true).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -1205,6 +1375,25 @@ namespace Aer.Daemon
         // by sessionId alone must not assume the fallback convention holds. Mirrors the scan
         // MapGet "/api/sessions" (list) already does per-directory, keyed by the persisted
         // SessionMetadata.SessionId instead of the folder name.
+        // Review follow-up (issue #250's containment fix, applied here too): DirectoryPath is a
+        // caller-supplied path reaching real filesystem mutation (archive/unarchive marker writes,
+        // and delete's recursive Directory.Delete) via remote-reachable endpoints (mobile's
+        // DaemonClient.deleteTask() included) -- an unchecked path here is a strictly worse version
+        // of #250's RunTemplate TaskName traversal, since delete needs no traversal trick at all,
+        // just any absolute path. Every fleet item this API surfaces is itself a direct child of
+        // one of these two roots (Directory.GetDirectories in the /api/tasks handler above), so
+        // requiring the resolved path be contained within one of them costs nothing legitimate.
+        private static bool TryResolveManagedTaskDirectory(string directoryPath, out string resolvedPath)
+        {
+            resolvedPath = Path.GetFullPath(directoryPath);
+
+            var baseTasksDir = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks"));
+            var baseSessionsDir = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions"));
+
+            return resolvedPath.StartsWith(baseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                || resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        }
+
         private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
         {
             var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
@@ -1241,12 +1430,17 @@ namespace Aer.Daemon
             bool isInitial,
             Func<TaskProjection, string?, Task> broadcastStateAsync,
             IReadOnlyDictionary<string, IWorkerAdapter> adapters,
-            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync)
+            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync,
+            bool forceHandoff = false)
         {
             var targetAdapter = string.IsNullOrWhiteSpace(requestAdapter) ? metadata.CurrentAdapter : requestAdapter.Trim().ToLowerInvariant();
             bool isVendorChange = !string.Equals(targetAdapter, metadata.CurrentAdapter, StringComparison.OrdinalIgnoreCase);
             bool isCeilingReached = metadata.TurnCount >= metadata.SafetyCeiling;
-            bool handoff = isVendorChange || isCeilingReached;
+            // Compact (POST /api/sessions/{id}/compact) forces this branch even for a same-vendor,
+            // under-ceiling turn -- it must actually synthesize a summary and start a fresh native
+            // session, not just forward "/compact" as an ordinary resumed message to the vendor's own
+            // (unverified, vendor-owned) slash-command handling. See issue #263's original rationale.
+            bool handoff = isVendorChange || isCeilingReached || forceHandoff;
 
             string promptTemplate;
             bool resumeSession;
@@ -1447,4 +1641,17 @@ namespace Aer.Daemon
     }
 
     public record RegisterProjectRequest(string Path, string? FriendlyName = null);
+
+    /// <summary>M24 Phase 2 follow-up: records a picked skill/command/agent as this vendor's most-recently-used, via <see cref="LocalUiConfigurationStore.RecordCommandUsedAsync"/>.</summary>
+    public record RecordCommandUsedRequest(string Name);
+
+    /// <summary>
+    /// Session-level mode (M24 Phase 2 follow-up, per discussion with the owner): a vendor-neutral
+    /// permission mode settable mid-session, applying to whichever vendor is currently active --
+    /// distinct from <see cref="StartSessionRequest.PermissionGrant"/>, which only ever applies at
+    /// session creation. <paramref name="Mode"/> is one of "auto" (maximally permissive -- Claude's
+    /// full <c>Read,Edit,Write,Bash,WebFetch,WebSearch</c> grant, Gemini's <c>accept-edits</c>),
+    /// "default" (this session's original grant), or "plan" (read-only -- <see cref="PermissionGrant.WriteFiles"/>/<see cref="PermissionGrant.RunShellCommands"/> both off).
+    /// </summary>
+    public record SetSessionModeRequest(string Mode);
 }

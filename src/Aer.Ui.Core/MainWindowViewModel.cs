@@ -29,6 +29,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
     [NotifyPropertyChangedFor(nameof(IsRemoteVisible))]
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
+    [NotifyPropertyChangedFor(nameof(IsTasksVisible))]
     private ShellSection currentSection = ShellSection.Home;
 
     public bool IsHomeVisible => CurrentSection == ShellSection.Home;
@@ -36,12 +37,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
     public bool IsRemoteVisible => CurrentSection == ShellSection.Remote;
     public bool IsChatVisible => CurrentSection == ShellSection.Chat;
+    public bool IsTasksVisible => CurrentSection == ShellSection.Tasks;
 
     /// <summary>The Enable Remote Access view's state (M21 Phase 3, issue #234) — see <see cref="RemoteViewModel"/>.</summary>
     public RemoteViewModel Remote { get; } = new();
 
     /// <summary>An open chat/codebase session's state (M24 Phase 1 desktop wiring, issue #262) — see <see cref="ChatViewModel"/>.</summary>
     public ChatViewModel Chat { get; } = new();
+
+    /// <summary>The fleet management view's state (M24 Phase 5, #278) — see <see cref="TasksViewModel"/>.</summary>
+    public TasksViewModel Tasks { get; } = new();
 
     /// <summary>
     /// The template editor's state (M16 Phase 1, issue #150) — the authoring surface, deliberately

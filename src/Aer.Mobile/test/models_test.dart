@@ -98,4 +98,36 @@ void main() {
     expect(projection.pausedSteps, isEmpty);
     expect(projection.executions, isEmpty);
   });
+
+  // M24 Phase 5 (#278): GET /api/tasks's fleet-list shape -- camelCase from the daemon's REST
+  // JSON options, same caseInsensitive normalization as TaskProjection above.
+  test('TaskFleetItem.fromJson parses a fleet entry', () {
+    final item = TaskFleetItem.fromJson({
+      'taskDirectoryPath': 'C:/Users/pbree/.aer/tasks/foo',
+      'friendlyName': 'foo',
+      'typeLabel': 'solo-run-template',
+      'statusText': 'Running',
+      'pausedStepCount': 2,
+      'isArchived': false,
+    });
+
+    expect(item.taskDirectoryPath, 'C:/Users/pbree/.aer/tasks/foo');
+    expect(item.friendlyName, 'foo');
+    expect(item.typeLabel, 'solo-run-template');
+    expect(item.statusText, 'Running');
+    expect(item.pausedStepCount, 2);
+    expect(item.isArchived, isFalse);
+  });
+
+  test('TaskFleetItem.fromJson defaults isArchived to false when omitted', () {
+    final item = TaskFleetItem.fromJson({
+      'taskDirectoryPath': 'C:/Users/pbree/.aer/sessions/bar',
+      'friendlyName': 'bar',
+      'typeLabel': 'interactive session',
+      'statusText': 'Not yet run',
+      'pausedStepCount': 0,
+    });
+
+    expect(item.isArchived, isFalse);
+  });
 }

@@ -59,6 +59,8 @@ class _ChatScreenState extends State<ChatScreen> {
   int _turnsCountAtSendTime = 0;
   String _liveProgressText = '';
 
+  bool _isLoadingCommands = false;
+
   @override
   void initState() {
     super.initState();
@@ -163,6 +165,98 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Chat capability picker (M24 Phase 2 follow-up): fetches this session's discovered skills/
+  /// commands/agents (recently-used first) plus session-level mode buttons, in a bottom sheet
+  /// matching InboxScreen's own `_pickRecentTask` idiom.
+  Future<void> _openCommandsSheet() async {
+    if (_isLoadingCommands) return;
+    setState(() => _isLoadingCommands = true);
+    SessionCommandsResult? commands;
+    try {
+      commands = await widget.client.getSessionCommands(widget.sessionId);
+    } on DaemonException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingCommands = false);
+    }
+    if (commands == null || !mounted) return;
+
+    final invokable = commands.items.where((i) => i.isInvokable).toList()
+      ..sort((a, b) => (b.isRecentlyUsed ? 1 : 0).compareTo(a.isRecentlyUsed ? 1 : 0));
+    final info = commands.items.where((i) => !i.isInvokable).toList();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Mode', style: Theme.of(sheetContext).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ('auto', 'Auto'),
+                  ('default', 'Default'),
+                  ('plan', 'Plan (read-only)'),
+                ].map((mode) => OutlinedButton(
+                      onPressed: () async {
+                        Navigator.of(sheetContext).pop();
+                        try {
+                          await widget.client.setSessionMode(widget.sessionId, mode.$1);
+                        } on DaemonException catch (e) {
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                      },
+                      child: Text(mode.$2),
+                    )).toList(),
+              ),
+              const Divider(height: 24),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final item in invokable)
+                      ListTile(
+                        title: Text(item.name),
+                        subtitle: Text(item.description),
+                        trailing: item.isRecentlyUsed ? const Text('recent') : null,
+                        onTap: () {
+                          Navigator.of(sheetContext).pop();
+                          setState(() {
+                            _inputController.text =
+                                _inputController.text.isEmpty ? item.name : '${_inputController.text} ${item.name}';
+                          });
+                          // Best-effort: a picked command failing to record as "recently used"
+                          // shouldn't surface an error to the user.
+                          unawaited(widget.client.recordCommandUsed(widget.sessionId, item.name));
+                        },
+                      ),
+                    if (info.isNotEmpty) ...[
+                      const Divider(),
+                      for (final item in info)
+                        ListTile(
+                          dense: true,
+                          title: Text(item.name, style: Theme.of(sheetContext).textTheme.bodySmall),
+                          subtitle: Text(item.description, style: Theme.of(sheetContext).textTheme.bodySmall),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   List<_ChatMessage> _buildMessages(SessionMetadata metadata) {
     final messages = <_ChatMessage>[];
     for (final turn in metadata.turns) {
@@ -185,7 +279,18 @@ class _ChatScreenState extends State<ChatScreen> {
         : '${metadata.currentAdapter} — turn ${metadata.turnCount}';
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          IconButton(
+            icon: _isLoadingCommands
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.tune),
+            tooltip: 'Commands & mode',
+            onPressed: _isLoadingCommands ? null : _openCommandsSheet,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(child: _buildBody(context, metadata)),

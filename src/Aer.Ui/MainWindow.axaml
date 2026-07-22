@@ -133,6 +133,17 @@
             <AccessText Text="C_hat" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
+        <!-- M24 Phase 5 (#278): the sixth nav destination — every known task/session directory,
+             archive/unarchive/delete, distinct from Home's capped 10-item recents cards. -->
+        <Button x:Name="NavTasksButton" Classes="nav" Classes.selected="{Binding IsTasksVisible}"
+                HorizontalAlignment="Stretch">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Fleet}"
+                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
+            <AccessText Text="Task_s" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
       </StackPanel>
     </Border>
     <Panel>
@@ -141,6 +152,7 @@
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
       <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
       <views:ChatView x:Name="ChatViewControl" IsVisible="{Binding IsChatVisible}" />
+      <views:TasksView x:Name="TasksViewControl" IsVisible="{Binding IsTasksVisible}" />
     </Panel>
   </DockPanel>
 </Window>

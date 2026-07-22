@@ -1,3 +1,4 @@
+using Aer.Adapters;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
@@ -92,6 +93,82 @@ public class TaskProjectionLoaderTests
             Assert.Equal("plan", criticInput.InputName);
             Assert.Equal(Architect, criticInput.ProducerStepId);
             Assert.Equal(executionByStepId[Architect].ExecutionId, criticInput.ProducerExecutionId);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_ReportsStatusAndArchivedStateWithoutRequiringLineageProjection()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-{Guid.NewGuid():N}");
+        try
+        {
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
+            var snapshot = SnapshotBinder.Bind(definition);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["architect"] = new WorkerBinding.Process(
+                    new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                    ShellWorkerCommands.WriteFile("plan", "the-plan"),
+                    TimeSpan.FromSeconds(30)),
+                ["critic"] = new WorkerBinding.Process(
+                    new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
+                    ShellWorkerCommands.CopyFirstInputTo("review"),
+                    TimeSpan.FromSeconds(30)),
+                ["publisher"] = new WorkerBinding.Process(
+                    new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
+                    ShellWorkerCommands.CopyFirstInputTo("summary"),
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                var reader = new FlowEventLogReader(logPath);
+                var dispatcher = new CoreDispatcher(writer);
+                await MutationInterface.StartWorkflowAsync(
+                    new WorkflowId("wf-ui-fleet"), taskDirectory, snapshot, bindings,
+                    Path.Combine(taskDirectory, "artifacts"), reader, writer, dispatcher,
+                    cancellationToken: TestContext.Current.CancellationToken);
+            }
+
+            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFileName(taskDirectory), fleetItem.FriendlyName);
+            Assert.Equal(snapshot.WorkflowTemplateId.Value, fleetItem.TypeLabel);
+            Assert.Equal(WorkflowStatus.Terminal.ToString(), fleetItem.StatusText);
+            Assert.Equal(0, fleetItem.PausedStepCount);
+            Assert.False(fleetItem.IsArchived);
+
+            await TaskLifecycle.ArchiveAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var archivedItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            Assert.True(archivedItem.IsArchived);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_ForASessionNeverRun_ReportsNotYetRunInsteadOfThrowing()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-session-{Guid.NewGuid():N}");
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                "sess-fleet", taskDirectory, "claude", cancellationToken: TestContext.Current.CancellationToken);
+
+            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal("interactive session", fleetItem.TypeLabel);
+            Assert.Equal("Not yet run", fleetItem.StatusText);
+            Assert.Equal(0, fleetItem.PausedStepCount);
+            Assert.False(fleetItem.IsArchived);
         }
         finally
         {

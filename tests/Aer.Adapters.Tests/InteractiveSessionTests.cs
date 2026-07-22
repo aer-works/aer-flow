@@ -180,6 +180,43 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
+    public async Task Archiving_MarksTheDirectoryButStillBlocksNameReuse_OnlyDeleteFreesTheName()
+    {
+        var testPath = Path.Combine(Path.GetTempPath(), "test-aer-session-archive-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                "sess-archived", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.False(TaskLifecycle.IsArchived(testPath));
+            await TaskLifecycle.ArchiveAsync(testPath, TestContext.Current.CancellationToken);
+            Assert.True(TaskLifecycle.IsArchived(testPath));
+
+            // Archiving alone does not free the name -- workflow.json is still on disk.
+            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+                InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                    "sess-second", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Contains("archived", ex.Message, StringComparison.OrdinalIgnoreCase);
+
+            await TaskLifecycle.UnarchiveAsync(testPath);
+            Assert.False(TaskLifecycle.IsArchived(testPath));
+
+            // Only a real delete frees the name for reuse (M24 Phase 5 regression, #278).
+            Directory.Delete(testPath, recursive: true);
+            var recreated = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                "sess-third", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotNull(recreated);
+        }
+        finally
+        {
+            if (Directory.Exists(testPath))
+            {
+                Directory.Delete(testPath, true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task KnownProjectsStore_AddsAndRetrievesProject()
     {
         var testPath = Path.Combine(Path.GetTempPath(), "test-aer-project-" + Guid.NewGuid().ToString("N"));

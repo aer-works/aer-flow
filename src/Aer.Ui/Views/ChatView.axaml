@@ -22,12 +22,51 @@
           <TextBlock Classes="mono caption" TextWrapping="Wrap" Text="{Binding Chat.LiveProgressText}" />
         </ScrollViewer>
       </Border>
+      <!-- Chat capability picker (M24 Phase 2 follow-up): recently-used skills/commands/agents
+           first, an informational-only section for modes/plugins that aren't chat-invokable, plus
+           session-level mode buttons applying to whichever vendor is currently active. -->
+      <Border Classes="card" IsVisible="{Binding Chat.IsCommandMenuOpen}" MaxHeight="220">
+        <ScrollViewer>
+          <StackPanel Spacing="{DynamicResource Space.2}">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.1}">
+              <TextBlock Classes="caption body-strong" Text="Mode" VerticalAlignment="Center" />
+              <Button x:Name="ChatModeAutoButton" Content="Auto" />
+              <Button x:Name="ChatModeDefaultButton" Content="Default" />
+              <Button x:Name="ChatModePlanButton" Content="Plan (read-only)" />
+            </StackPanel>
+            <ItemsControl x:Name="ChatCommandsList" ItemsSource="{Binding Chat.InvokableCommands}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChatCapabilityItemViewModel">
+                  <Button Classes="ghost" HorizontalContentAlignment="Left" HorizontalAlignment="Stretch">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.1}">
+                      <TextBlock Classes="body-strong" Text="{Binding Name}" />
+                      <TextBlock Classes="caption secondary" Text="{Binding Description}" />
+                      <TextBlock Classes="caption" Text="recent" IsVisible="{Binding IsRecentlyUsed}" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <ItemsControl ItemsSource="{Binding Chat.InfoCommands}" IsVisible="{Binding Chat.InfoCommands.Count}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChatCapabilityItemViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.1}">
+                    <TextBlock Classes="caption secondary" Text="{Binding Name}" />
+                    <TextBlock Classes="caption secondary" Text="{Binding Description}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
         <TextBox x:Name="ChatInputBox" Width="600" AcceptsReturn="True" MaxHeight="80"
                  Text="{Binding Chat.InputText}" IsEnabled="{Binding !Chat.IsSending}"
                  PlaceholderText="Message..." />
         <Button x:Name="ChatSendButton" Classes="accent" Content="Send"
                 IsEnabled="{Binding !Chat.IsSending}" />
+        <Button x:Name="ChatCommandsButton" Content="Commands" />
         <ProgressBar IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"
                      IsVisible="{Binding Chat.IsSending}" />
       </StackPanel>

@@ -1,0 +1,72 @@
+<!-- M24 Phase 5 (#278): every known task/session directory at once, with archive/unarchive/delete —
+     distinct from Home's capped 10-item recents cards, which have no archive-awareness at all. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
+             x:Class="Aer.Ui.Views.TasksView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="{DynamicResource Space.8}" MaxWidth="760" HorizontalAlignment="Left">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="{DynamicResource Space.3}">
+        <TextBlock Classes="display" Text="Tasks" VerticalAlignment="Center" />
+        <CheckBox x:Name="TasksIncludeArchivedCheckBox" Content="Show archived"
+                  IsChecked="{Binding Tasks.IncludeArchived}" VerticalAlignment="Center" />
+        <Button x:Name="TasksRefreshButton" VerticalAlignment="Center">
+          <AccessText Text="Re_fresh" />
+        </Button>
+      </StackPanel>
+
+      <TextBlock Classes="secondary" Foreground="{DynamicResource Status.Failed}"
+                 TextWrapping="Wrap" Text="{Binding Tasks.ErrorText}"
+                 IsVisible="{Binding Tasks.HasErrorText}" />
+
+      <Border Classes="card" IsVisible="{Binding Tasks.HasNoItems}">
+        <TextBlock Classes="secondary" Text="No tasks or sessions yet." />
+      </Border>
+
+      <ItemsControl x:Name="TasksList" ItemsSource="{Binding Tasks.Items}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:TaskFleetItemViewModel">
+            <Border Classes="card" Margin="0,0,0,8">
+              <StackPanel Spacing="{DynamicResource Space.2}">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                  <TextBlock Classes="body-strong" Text="{Binding FriendlyName}" />
+                  <TextBlock Classes="caption secondary" Text="{Binding TypeLabel}" VerticalAlignment="Center" />
+                  <TextBlock Classes="caption secondary" Text="archived" VerticalAlignment="Center"
+                             IsVisible="{Binding IsArchived}" />
+                </StackPanel>
+                <TextBlock Classes="secondary" Text="{Binding StatusText}" />
+                <TextBlock Classes="caption" Text="{Binding PausedStepCount, StringFormat='{}{0} step(s) awaiting a decision'}"
+                           IsVisible="{Binding HasPausedSteps}" />
+                <TextBlock Classes="caption" Text="{Binding TaskDirectoryPath}" />
+                <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
+                           TextWrapping="Wrap" Text="{Binding RowErrorText}"
+                           IsVisible="{Binding HasRowErrorText}" />
+
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                  <Button Content="Archive" Command="{Binding ArchiveCommand}"
+                          IsVisible="{Binding !IsArchived}" />
+                  <Button Content="Unarchive" Command="{Binding UnarchiveCommand}"
+                          IsVisible="{Binding IsArchived}" />
+
+                  <!-- Inline two-step delete confirm — no modal-dialog precedent exists anywhere in
+                       this codebase's Avalonia views (TemplatePickerWindow's in-window ErrorText is
+                       the closest thing), so this follows that same in-place idiom rather than
+                       introducing new dialog infrastructure. -->
+                  <Button Content="Delete" Command="{Binding RequestDeleteCommand}"
+                          IsVisible="{Binding !IsConfirmingDelete}" />
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
+                              IsVisible="{Binding IsConfirmingDelete}">
+                    <TextBlock Text="Really delete? This can't be undone." VerticalAlignment="Center" />
+                    <Button Classes="accent" Content="Yes, delete" Command="{Binding ConfirmDeleteCommand}" />
+                    <Button Content="Cancel" Command="{Binding CancelDeleteCommand}" />
+                  </StackPanel>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

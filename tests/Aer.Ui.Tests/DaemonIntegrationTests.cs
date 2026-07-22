@@ -800,6 +800,67 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.Equal("claude", capabilities.Vendor);
     }
 
+    private sealed record SessionCommandsResponse(string Vendor, List<WorkerCapabilityItem> Items, List<string> Models, List<string> RecentlyUsed);
+
+    [Fact]
+    public async Task RecordCommandUsed_ThenGetSessionCommands_SurfacesItAsRecentlyUsed()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var recordResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/{sessionId}/commands/record", new RecordCommandUsedRequest("/compact"), TestContext.Current.CancellationToken);
+        Assert.True(recordResponse.IsSuccessStatusCode);
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var commands = await response.Content.ReadFromJsonAsync<SessionCommandsResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(commands);
+        Assert.Contains("/compact", commands.RecentlyUsed);
+    }
+
+    [Fact]
+    public async Task SetSessionMode_ToAuto_UpdatesTheBoundPermissionGrant()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("auto"), TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(Path.Combine(taskDirectoryPath, "bindings.json"), TestContext.Current.CancellationToken);
+        var entry = bindings[InteractiveSessionMaterializer.DefaultWorkerName];
+        Assert.NotNull(entry.PermissionGrant);
+        Assert.True(entry.PermissionGrant!.ReadFiles);
+        Assert.True(entry.PermissionGrant.WriteFiles);
+        Assert.True(entry.PermissionGrant.RunShellCommands);
+        Assert.True(entry.PermissionGrant.NetworkAccess);
+    }
+
+    [Fact]
+    public async Task SetSessionMode_ToPlan_MakesTheGrantReadOnly()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("plan"), TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(Path.Combine(taskDirectoryPath, "bindings.json"), TestContext.Current.CancellationToken);
+        var entry = bindings[InteractiveSessionMaterializer.DefaultWorkerName];
+        Assert.NotNull(entry.PermissionGrant);
+        Assert.True(entry.PermissionGrant!.ReadFiles);
+        Assert.False(entry.PermissionGrant.WriteFiles);
+        Assert.False(entry.PermissionGrant.RunShellCommands);
+    }
+
+    [Fact]
+    public async Task SetSessionMode_WithAnUnknownMode_ReturnsBadRequest()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("not-a-real-mode"), TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task StartSession_WithATaskNameAlreadyInUse_ReturnsBadRequestAndDoesNotClobberTheFirstSession()
     {
@@ -817,6 +878,103 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var metadata = await getResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(metadata);
         Assert.Equal(firstSessionId, metadata.SessionId);
+    }
+
+    [Fact]
+    public async Task GetFleet_ReturnsOkAndIncludesAStartedSessionByDefault()
+    {
+        var (_, taskDirectoryPath) = await StartASessionAsync();
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var items = await response.Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(items);
+        Assert.Contains(items, i => i.TaskDirectoryPath == taskDirectoryPath);
+    }
+
+    [Fact]
+    public async Task ArchiveUnarchiveAndDelete_RoundTripThroughTheFleetAndLifecycleEndpoints()
+    {
+        var taskName = "fleet-lifecycle-" + Guid.NewGuid().ToString("N");
+        var (_, taskDirectoryPath) = await StartASessionAsync(taskName);
+
+        // Archiving hides it from the default fleet list but keeps it reachable with includeArchived.
+        var archiveResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/archive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+        Assert.True(archiveResponse.IsSuccessStatusCode);
+
+        var defaultList = await (await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(defaultList!, i => i.TaskDirectoryPath == taskDirectoryPath);
+
+        var withArchived = await (await _client.GetAsync($"{BaseUrl}/api/tasks?includeArchived=true", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        var archivedItem = Assert.Single(withArchived!, i => i.TaskDirectoryPath == taskDirectoryPath);
+        Assert.True(archivedItem.IsArchived);
+
+        // Archiving alone must not free the name for reuse -- workflow.json/session.json is still on disk.
+        var collisionResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, collisionResponse.StatusCode);
+
+        // Unarchiving reinstates it in the default list.
+        var unarchiveResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/unarchive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+        Assert.True(unarchiveResponse.IsSuccessStatusCode);
+
+        var reinstatedList = await (await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(reinstatedList!, i => i.TaskDirectoryPath == taskDirectoryPath && !i.IsArchived);
+
+        // Only a real delete frees the directory and the name (M24 Phase 5 regression, #278).
+        var deleteResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+        Assert.True(deleteResponse.IsSuccessStatusCode);
+        Assert.False(Directory.Exists(taskDirectoryPath));
+
+        var recentsAfterDelete = await (await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<IReadOnlyList<string>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(taskDirectoryPath, recentsAfterDelete!);
+
+        var freshCollisionResponse = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
+        Assert.True(freshCollisionResponse.IsSuccessStatusCode);
+    }
+
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("unarchive")]
+    [InlineData("delete")]
+    public async Task TaskLifecycleEndpoints_WithADirectoryPathOutsideTasksOrSessionsRoots_ReturnBadRequest(string action)
+    {
+        // Same containment guard #250 added for RunTemplate's TaskName, applied here (review
+        // follow-up): these endpoints are remote-reachable (mobile's DaemonClient included) and
+        // delete does a real recursive Directory.Delete -- an uncontained DirectoryPath is strictly
+        // worse than #250's traversal, since it needs no traversal trick, just any absolute path
+        // outside ~/.aer/tasks and ~/.aer/sessions.
+        var outsidePath = Path.Combine(_tempTaskDirectory!, "outside-managed-roots-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outsidePath);
+
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/{action}", new TaskDirectoryRequest(outsidePath), TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True(Directory.Exists(outsidePath));
+    }
+
+    [Fact]
+    public async Task DeleteTask_ForANonexistentDirectory_ReturnsNotFound()
+    {
+        // Must be under the managed ~/.aer/sessions root -- otherwise the containment guard now
+        // rejects it as BadRequest before this handler's own NotFound check ever runs.
+        var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+        var missingDirectory = Path.Combine(baseSessionsDir, "never-created-" + Guid.NewGuid().ToString("N"));
+
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

@@ -162,4 +162,53 @@ public class LocalUiConfigurationStoreTests
             }
         }
     }
+
+    [Fact]
+    public async Task Removing_a_recorded_directory_drops_it_from_the_next_load()
+    {
+        var configFilePath = NewConfigFilePath();
+        var store = new LocalUiConfigurationStore(configFilePath);
+        var keep = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        var remove = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(keep);
+        Directory.CreateDirectory(remove);
+        try
+        {
+            await store.RecordOpenedAsync(keep, TestContext.Current.CancellationToken);
+            await store.RecordOpenedAsync(remove, TestContext.Current.CancellationToken);
+
+            await store.RemoveRecentTaskDirectoryAsync(remove, TestContext.Current.CancellationToken);
+
+            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFullPath(keep), Assert.Single(recents));
+        }
+        finally
+        {
+            Directory.Delete(keep, recursive: true);
+            Directory.Delete(remove, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Removing_a_directory_that_was_never_recorded_is_a_no_op()
+    {
+        var configFilePath = NewConfigFilePath();
+        var store = new LocalUiConfigurationStore(configFilePath);
+        var recorded = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(recorded);
+        try
+        {
+            await store.RecordOpenedAsync(recorded, TestContext.Current.CancellationToken);
+
+            await store.RemoveRecentTaskDirectoryAsync(
+                Path.Combine(Path.GetTempPath(), $"never-recorded-{Guid.NewGuid():N}"), TestContext.Current.CancellationToken);
+
+            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFullPath(recorded), Assert.Single(recents));
+        }
+        finally
+        {
+            Directory.Delete(recorded, recursive: true);
+        }
+    }
 }

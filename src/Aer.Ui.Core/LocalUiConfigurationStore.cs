@@ -19,6 +19,7 @@ namespace Aer.Ui.Core;
 public sealed class LocalUiConfigurationStore(string configFilePath)
 {
     private const int MaxRecentTaskDirectories = 10;
+    private const int MaxRecentCommandsPerVendor = 5;
 
     /// <summary>
     /// The production location: a per-user config directory, never a path a test could collide
@@ -61,6 +62,23 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
+    /// Strips <paramref name="taskDirectoryPath"/> from the recents list (M24 Phase 5, #278) — used
+    /// by a real delete so a stale recent doesn't 404 on the next open. A no-op if the path isn't
+    /// present, matching this store's own "rebuildable convenience, not authoritative" stance.
+    /// </summary>
+    public async Task RemoveRecentTaskDirectoryAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        var fullPath = Path.GetFullPath(taskDirectoryPath);
+
+        var updated = configuration.RecentTaskDirectories
+            .Where(path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal))
+            .ToList();
+
+        await SaveConfigurationAsync(configuration with { RecentTaskDirectories = updated }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// The bindings file (M15 Phase 1, issue #137): never persisted in a task directory (M14 Phase
     /// 2's decision of record), so a Run action asks the user for it every time — this is only the
     /// remembered default that pre-fills the ask, exactly the same non-authoritative convenience the
@@ -90,6 +108,41 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
+    /// Recently-used skills/commands/agents per vendor (M24 Phase 2 follow-up, chat capability
+    /// picker): the daemon is already this store's home (shared by desktop and mobile, since both
+    /// talk to the same daemon process), so recency lives here rather than duplicated per-client
+    /// local storage. Capped per vendor at <see cref="MaxRecentCommandsPerVendor"/> — a bounded
+    /// convenience, not a full history, same idiom as <see cref="RecordOpenedAsync"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> LoadRecentCommandsAsync(string vendor, CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        var recentCommands = configuration.RecentCommands;
+        return recentCommands != null && recentCommands.TryGetValue(vendor, out var commands) ? commands : [];
+    }
+
+    public async Task RecordCommandUsedAsync(string vendor, string commandName, CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        var recentCommands = configuration.RecentCommands ?? new Dictionary<string, List<string>>();
+        var existing = recentCommands.TryGetValue(vendor, out var commands) ? commands : [];
+
+        var updated = new List<string> { commandName };
+        updated.AddRange(existing.Where(name => !string.Equals(name, commandName, StringComparison.Ordinal)));
+        if (updated.Count > MaxRecentCommandsPerVendor)
+        {
+            updated.RemoveRange(MaxRecentCommandsPerVendor, updated.Count - MaxRecentCommandsPerVendor);
+        }
+
+        var updatedRecentCommands = new Dictionary<string, List<string>>(recentCommands)
+        {
+            [vendor] = updated
+        };
+
+        await SaveConfigurationAsync(configuration with { RecentCommands = updatedRecentCommands }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// A reusable Tailscale auth key (M21 Phase 7 follow-up, #246): once the tsnet sidecar is ready,
     /// the pairing QR embeds this so a phone's own embedded tsnet node can join the tailnet
     /// non-interactively — the `tailscale` Dart package requires a real auth key for a device's
@@ -115,7 +168,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     {
         if (!File.Exists(configFilePath))
         {
-            return new StoredConfiguration([], null, null, null);
+            return new StoredConfiguration([], null, null, null, new Dictionary<string, List<string>>());
         }
 
         for (var i = 0; i < 5; i++)
@@ -125,7 +178,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
                 await using var stream = new FileStream(configFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 var configuration = await JsonSerializer.DeserializeAsync<StoredConfiguration>(stream, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                return configuration ?? new StoredConfiguration([], null, null, null);
+                return configuration ?? new StoredConfiguration([], null, null, null, new Dictionary<string, List<string>>());
             }
             catch (IOException) when (i < 4)
             {
@@ -135,10 +188,10 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
             {
                 // Local UI Configuration is a rebuildable convenience, never authoritative (§3.1) — a
                 // corrupt file is treated as empty, not a startup failure.
-                return new StoredConfiguration([], null, null, null);
+                return new StoredConfiguration([], null, null, null, new Dictionary<string, List<string>>());
             }
         }
-        return new StoredConfiguration([], null, null, null);
+        return new StoredConfiguration([], null, null, null, new Dictionary<string, List<string>>());
     }
 
     private async Task SaveConfigurationAsync(StoredConfiguration configuration, CancellationToken cancellationToken)
@@ -185,5 +238,6 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
         List<string> RecentTaskDirectories,
         string? LastBindingsFilePath,
         string? LastWorkflowTemplateFilePath,
-        string? TailscaleAuthKey);
+        string? TailscaleAuthKey,
+        Dictionary<string, List<string>>? RecentCommands);
 }

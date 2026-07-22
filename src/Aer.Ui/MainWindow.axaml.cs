@@ -129,6 +129,10 @@ public partial class MainWindow : Window
 
     internal TextBox ChatInputBox => ChatViewControl.ChatInputBox;
     internal Button ChatSendButton => ChatViewControl.ChatSendButton;
+    internal Button ChatCommandsButton => ChatViewControl.ChatCommandsButton;
+    internal Button ChatModeAutoButton => ChatViewControl.ChatModeAutoButton;
+    internal Button ChatModeDefaultButton => ChatViewControl.ChatModeDefaultButton;
+    internal Button ChatModePlanButton => ChatViewControl.ChatModePlanButton;
 
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
@@ -227,7 +231,18 @@ public partial class MainWindow : Window
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
         NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
         NavChatButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Chat;
+        NavTasksButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Tasks;
+        TasksViewControl.TasksRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
+        TasksViewControl.TasksIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
+        ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
+        ChatModeAutoButton.Click += (_, _) => _ = SetChatModeAsync("auto");
+        ChatModeDefaultButton.Click += (_, _) => _ = SetChatModeAsync("default");
+        ChatModePlanButton.Click += (_, _) => _ = SetChatModeAsync("plan");
+        // Per-item command-picker selection (M24 Phase 2 follow-up): the same "sender's DataContext
+        // is the bound item" idiom TaskView/AuthorView already use for per-item buttons, wired via
+        // event bubbling since ChatCommandsList's buttons come from a DataTemplate, not named XAML.
+        ChatViewControl.ChatCommandsList.AddHandler(Button.ClickEvent, OnChatCommandItemClick);
         // M24 Phase 1's live in-turn streaming (issue #262): the daemon broadcasts every session's
         // progress on the same /api/ws/progress socket, so this filters to whichever session
         // directory is actually open in the Chat view right now.
@@ -282,6 +297,14 @@ public partial class MainWindow : Window
             else
             {
                 _pairingCountdownTimer.Stop();
+            }
+
+            // M24 Phase 5 (#278): the fleet list rebuilds on every activation, same reasoning as
+            // Home's own rebuild-on-activation — archive/unarchive/delete elsewhere (or from
+            // another client) shouldn't require leaving and re-entering this view to see reflected.
+            if (section == ShellSection.Tasks)
+            {
+                _ = ViewModel.Tasks.RefreshAsync(_session);
             }
         };
         _pairingCountdownTimer.Tick += (_, _) =>
@@ -569,6 +592,67 @@ public partial class MainWindow : Window
         if (outcome.ErrorMessage is { } error)
         {
             chat.FailSend(error);
+        }
+    }
+
+    /// <summary>
+    /// The Chat view's Commands button (M24 Phase 2 follow-up): fetches this session's discovered
+    /// skills/commands/agents (plus recently-used ordering) on open, closes without a fetch on
+    /// toggle-off.
+    /// </summary>
+    private async Task ToggleChatCommandsAsync()
+    {
+        var chat = ViewModel.Chat;
+        if (chat.IsCommandMenuOpen)
+        {
+            chat.IsCommandMenuOpen = false;
+            return;
+        }
+
+        if (chat.SessionId is not { } sessionId)
+        {
+            return;
+        }
+
+        var (result, error) = await _session.GetSessionCommandsAsync(sessionId).ConfigureAwait(true);
+        if (result is { } commands)
+        {
+            chat.LoadCommands(commands);
+            chat.IsCommandMenuOpen = true;
+        }
+        else if (error is { } err)
+        {
+            chat.StatusText = err;
+        }
+    }
+
+    /// <summary>An invokable command/skill/agent picked from the Commands menu: inserted into the message box (not sent automatically — the user still reviews/edits before Send) and recorded as recently-used.</summary>
+    private void OnChatCommandItemClick(object? sender, RoutedEventArgs e)
+    {
+        var chat = ViewModel.Chat;
+        if (e.Source is not Control { DataContext: ChatCapabilityItemViewModel item } || chat.SessionId is not { } sessionId)
+        {
+            return;
+        }
+
+        chat.InputText = string.IsNullOrEmpty(chat.InputText) ? item.Name : $"{chat.InputText} {item.Name}";
+        chat.IsCommandMenuOpen = false;
+        _ = _session.RecordCommandUsedAsync(sessionId, item.Name);
+    }
+
+    /// <summary>Session-level mode (M24 Phase 2 follow-up): applies to whichever vendor is currently active, taking effect on the next turn.</summary>
+    private async Task SetChatModeAsync(string mode)
+    {
+        var chat = ViewModel.Chat;
+        if (chat.SessionId is not { } sessionId)
+        {
+            return;
+        }
+
+        var outcome = await _session.SetSessionModeAsync(sessionId, mode).ConfigureAwait(true);
+        if (outcome.ErrorMessage is { } error)
+        {
+            chat.StatusText = error;
         }
     }
 

@@ -206,6 +206,22 @@ public class NavigationShellTests
         }
     }
 
+    /// <summary>M24 Phase 5 (#278): the sixth nav destination — a fleet management view distinct from Home's capped recents cards.</summary>
+    [AvaloniaFact]
+    public async Task NavigatingToTasks_showsTheTasksSectionAndHidesEverythingElse()
+    {
+        var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+        await window.InitializeAsync(TestContext.Current.CancellationToken);
+
+        window.ViewModel.CurrentSection = ShellSection.Tasks;
+
+        Assert.True(window.ViewModel.IsTasksVisible);
+        Assert.False(window.ViewModel.IsHomeVisible);
+        Assert.False(window.ViewModel.IsTaskVisible);
+        Assert.False(window.ViewModel.IsChatVisible);
+        Assert.False(window.ViewModel.IsRemoteVisible);
+    }
+
     [AvaloniaFact]
     public async Task A_recent_that_no_longer_loads_renders_as_an_unavailable_card_not_an_error()
     {
