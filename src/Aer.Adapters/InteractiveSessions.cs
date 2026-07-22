@@ -11,7 +11,8 @@ public sealed record SessionTurn(
     string? AssistantResponse,
     DateTimeOffset ExecutedAt,
     bool NativeSessionResumed,
-    bool VendorHandoffSynthesized);
+    bool VendorHandoffSynthesized,
+    string? ErrorMessage = null);
 
 public sealed record SessionMetadata(
     string SessionId,
@@ -25,7 +26,14 @@ public sealed record SessionMetadata(
     bool MinimalOverhead,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    List<SessionTurn> Turns);
+    List<SessionTurn> Turns,
+    // False until a turn actually completes against CurrentVendorSessionId (M24 Phase 5.1, #285):
+    // the id is minted client-side at materialization/handoff time, before the vendor CLI has ever
+    // heard of it, so its mere presence can't tell a caller whether `--resume` is safe yet. Absent
+    // in session.json files written before this field existed -- System.Text.Json defaults it to
+    // false on load, which is the safe direction (worst case: one redundant `--session-id` retry
+    // instead of a guaranteed-failing `--resume`).
+    bool VendorSessionEstablished = false);
 
 public sealed record StartSessionRequest(
     string? Adapter = null,
@@ -51,6 +59,21 @@ public static class InteractiveSessionMaterializer
     public const string DefaultWorkerName = "chat-worker";
     public const string DefaultOutputFileName = "response.md";
 
+    // M24 Phase 5.2 (#285): a downstream anchor step exists purely to give a repeated-turn
+    // `Supersede` (spec §17.5) a legal target. `Supersede`'s target must be a distinct transitive
+    // ancestor (§17.1) -- a single "chat" step targeting itself is spec-illegal three ways (self-
+    // target, no ancestor, no supplementary artifact possible) and was silently no-oping every turn
+    // after the first (see #285's investigation notes). "chat" itself now declares no PausePoint at
+    // all, so a successful turn flows straight through to the anchor without stopping -- Anchor's own
+    // PausePoint (targeting "chat") is what actually pauses the workflow, ready for the next turn's
+    // Supersede. This also means "chat" has no pause-driven retry path of its own: a first-ever turn
+    // that fails outright leaves the workflow terminally failed with nothing to Decide against, which
+    // is why Aer.Daemon's turn-execution code detects "anchor has never succeeded" and re-materializes
+    // Flow's own state fresh for that one narrow case, rather than issuing a decision.
+    public const string AnchorStepId = "turn-anchor";
+    public const string AnchorWorkerName = "turn-anchor-worker";
+    public const string AnchorOutputFileName = "turn.marker";
+
     public static (WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings, SessionMetadata Metadata) Materialize(
         string sessionId,
         string taskDirectoryPath,
@@ -66,7 +89,7 @@ public static class InteractiveSessionMaterializer
 
         var definition = new WorkflowDefinition(
             WorkflowTemplateId: new WorkflowTemplateId("interactive-session-template"),
-            WorkflowTemplateVersion: 1,
+            WorkflowTemplateVersion: 2,
             Steps:
             [
                 new WorkflowStepDefinition(
@@ -75,6 +98,13 @@ public static class InteractiveSessionMaterializer
                     Inputs: [],
                     Outputs: [DefaultOutputFileName],
                     DependsOn: [],
+                    RetryPolicy: new RetryPolicy(1)),
+                new WorkflowStepDefinition(
+                    StepId: new StepId(AnchorStepId),
+                    Worker: AnchorWorkerName,
+                    Inputs: [DefaultOutputFileName],
+                    Outputs: [AnchorOutputFileName],
+                    DependsOn: [new StepId(DefaultStepId)],
                     RetryPolicy: new RetryPolicy(1),
                     PausePoint: new PausePoint([new StepId(DefaultStepId)]))
             ]);
@@ -100,7 +130,17 @@ public static class InteractiveSessionMaterializer
                 Timeout: TimeSpan.FromMinutes(10),
                 PermissionGrant: defaultGrant,
                 Model: model,
-                WorkingDirectory: workingDirectory)
+                WorkingDirectory: workingDirectory),
+            [AnchorWorkerName] = new WorkerBindingConfigEntry(
+                Adapter: NoOpWorkerAdapter.AdapterName,
+                Contract: new WorkerContract(
+                    WorkerName: AnchorWorkerName,
+                    RequiredInputs: [DefaultOutputFileName],
+                    ProducedOutputs: [new ProducedOutput(AnchorOutputFileName)],
+                    OptionalMetadata: []),
+                PromptTemplate: "(no-op bookkeeping step; ignored)",
+                Timeout: TimeSpan.FromSeconds(30),
+                PermissionGrant: new PermissionGrant(ReadFiles: false, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false))
         };
 
         var metadata = new SessionMetadata(

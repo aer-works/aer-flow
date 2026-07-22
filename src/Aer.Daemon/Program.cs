@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -1455,7 +1456,15 @@ namespace Aer.Daemon
             else
             {
                 promptTemplate = userMessage;
-                resumeSession = !isInitial;
+                // #285: CurrentVendorSessionId is minted client-side at materialization time, before
+                // the vendor CLI has ever heard of it -- it's non-null from turn zero, so "isInitial"
+                // was standing in for "has the vendor actually established this id" and is wrong
+                // whenever a session starts with no InitialMessage (the normal chat-page flow): the
+                // very first /api/sessions/send call had isInitial=false and went straight to
+                // `--resume <unestablished-guid>`, which claude rejects outright ("No conversation
+                // found"), permanently wedging every later turn on the same dead id. Gate on whether a
+                // turn has actually succeeded against this id instead.
+                resumeSession = !isInitial && metadata.VendorSessionEstablished;
                 vendorSessionId = metadata.CurrentVendorSessionId ?? (string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null);
             }
 
@@ -1490,7 +1499,17 @@ namespace Aer.Daemon
                 StreamJson: string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase),
                 LogFilePath: logFilePath);
 
-            var newBindings = new Dictionary<string, WorkerBindingConfigEntry>
+            // #285: must start from the existing bindings, not a fresh dictionary containing only
+            // "chat-worker" -- a full replacement here silently dropped the anchor step's own
+            // binding entry (written once at materialization, never touched by any per-turn
+            // rewrite) after the very first turn, leaving "turn-anchor-worker" unresolvable and the
+            // anchor step's dispatch throwing UnresolvedWorkerException deep inside the pump. That
+            // exception was itself silently swallowed (TaskSession.RunAsync's in-process fallback
+            // catches AerFlowException into an unchecked MutationOutcome, and neither call site
+            // below checked it) -- chat would still succeed before the pump ever reached the
+            // now-unresolvable anchor, so the turn looked like it worked right up until the anchor
+            // never dispatched and never paused, wedging every later turn's Supersede target.
+            var newBindings = new Dictionary<string, WorkerBindingConfigEntry>(existingBindings)
             {
                 [InteractiveSessionMaterializer.DefaultWorkerName] = updatedEntry
             };
@@ -1511,6 +1530,11 @@ namespace Aer.Daemon
             Action<string, string>? onWorkerStdoutLine = null;
             Channel<string>? progressLines = null;
             Task? progressPumpTask = null;
+            // #285: a failed execution's stderr never reaches this process (aer-core's P/Invoke
+            // boundary doesn't surface it), but a failed `claude --output-format stream-json` call
+            // still prints its error as the final stdout line (`{"type":"result",...,"errors":[...]}`)
+            // before exiting non-zero -- captured here so a failure stops looking like silence.
+            var rawStdoutCapture = new StringBuilder();
 
             if (updatedEntry.StreamJson && adapters.TryGetValue(targetAdapter, out var streamingAdapter))
             {
@@ -1521,7 +1545,11 @@ namespace Aer.Daemon
                     SingleWriter = false,
                 });
                 progressLines = channel;
-                onWorkerStdoutLine = (_, line) => channel.Writer.TryWrite(line);
+                onWorkerStdoutLine = (_, line) =>
+                {
+                    channel.Writer.TryWrite(line);
+                    rawStdoutCapture.AppendLine(line);
+                };
 
                 progressPumpTask = Task.Run(async () =>
                 {
@@ -1539,29 +1567,103 @@ namespace Aer.Daemon
             {
                 if (isInitial)
                 {
-                    await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                    var runOutcome = await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                    if (runOutcome.ErrorMessage is { } runError)
+                    {
+                        // #285: RunAsync's in-process fallback catches AerFlowException into an
+                        // unchecked MutationOutcome -- an unresolvable binding or similar dispatch
+                        // failure would otherwise vanish silently here exactly as it did before this
+                        // check existed, leaving whatever the pump had already dispatched (e.g. a
+                        // successful "chat" execution reached before the pump hit the failure) looking
+                        // like a complete, healthy turn.
+                        throw new InvalidOperationException($"Chat turn run failed: {runError}");
+                    }
                 }
                 else
                 {
+                    // #285: "chat" superseding itself is spec-illegal (§17.1 -- a Supersede target
+                    // must be a distinct transitive ancestor; a single self-referencing step has
+                    // none), which is why every turn after the first silently no-opped -- the
+                    // validator's rejection was swallowed by DecideAsync's in-process fallback, and
+                    // ExecuteSessionTurnAsync fell through to re-read the *previous* turn's stale
+                    // response.md as if it were a fresh answer. InteractiveSessionMaterializer now
+                    // builds a two-step DAG: "chat" itself declares no PausePoint (so a successful
+                    // turn flows straight through, uninterrupted), and a downstream "turn-anchor" step
+                    // (DependsOn: [chat]) declares the PausePoint with SupersedeTargets: [chat] --
+                    // exactly the shape spec §17.5's own Architect/Critic example uses. Anchor sitting
+                    // Paused is what makes a Supersede against "chat" legal; its own successful rerun
+                    // (triggered automatically by §11.3 condition 2 once chat's new execution
+                    // succeeds) lands it paused again, ready for the next turn.
                     var currentOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
-                    if (currentOutcome.Projection is { } proj)
+                    var anchorState = currentOutcome.Projection?.State.Steps
+                        .SingleOrDefault(s => s.StepId.Value == InteractiveSessionMaterializer.AnchorStepId);
+
+                    if (anchorState is { Status: StepStatus.Paused, LatestExecutionId: { } anchorExecutionId })
                     {
-                        var execution = proj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
-                        var executionIdStr = execution?.ExecutionId.Value ?? Guid.NewGuid().ToString();
-                        await session.DecideAsync(
+                        // Ordinary continuation (including handoff turns, which just carry a
+                        // different promptTemplate/vendorSessionId computed above): supply this
+                        // turn's message as the mandatory supplementary human-tier artifact (§17.3)
+                        // and Supersede "chat" via anchor's currently-paused execution.
+                        var messageFilePath = Path.Combine(directoryPath, ".aer", "pending-turn-message.txt");
+                        Directory.CreateDirectory(Path.GetDirectoryName(messageFilePath)!);
+                        await File.WriteAllTextAsync(messageFilePath, userMessage).ConfigureAwait(false);
+
+                        var decideOutcome = await session.DecideAsync(
                             directoryPath,
-                            new StepId(InteractiveSessionMaterializer.DefaultStepId),
-                            new ExecutionId(executionIdStr),
+                            new StepId(InteractiveSessionMaterializer.AnchorStepId),
+                            anchorExecutionId,
                             DecisionType.Supersede,
-                            new StepId(InteractiveSessionMaterializer.DefaultStepId),
-                            revisionFilePath: null,
-                            supplementaryWorker: null,
-                            supplementaryOutputName: null,
+                            targetStepId: new StepId(InteractiveSessionMaterializer.DefaultStepId),
+                            revisionFilePath: messageFilePath,
+                            supplementaryWorker: "human",
+                            supplementaryOutputName: "message.txt",
                             onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+
+                        if (decideOutcome.ErrorMessage is { } decideError)
+                        {
+                            throw new InvalidOperationException($"Chat turn decision (Supersede) was rejected: {decideError}");
+                        }
                     }
                     else
                     {
-                        await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                        // The anchor has never succeeded yet: either this is the very first turn of
+                        // a session started with no InitialMessage (isInitial=false, TurnCount=0), or
+                        // that first turn already failed outright. "chat" has no PausePoint of its
+                        // own, so a failed first attempt leaves the whole workflow terminally failed
+                        // with nothing for Decide to act on. Nothing of value exists yet in that case
+                        // (at most one failed chat execution, no anchor success) -- a retry just
+                        // re-materializes Flow's own state fresh and runs again. SessionMetadata's own
+                        // Turns list (the actual product-facing transcript) is untouched; only Flow's
+                        // internal snapshot/log/artifacts for this task directory get replaced.
+                        var snapshotPath = Path.Combine(directoryPath, "snapshot.json");
+                        var flowLogPath = Path.Combine(directoryPath, "flow.jsonl");
+                        var artifactsPath = Path.Combine(directoryPath, "artifacts");
+                        if (File.Exists(snapshotPath))
+                        {
+                            File.Delete(snapshotPath);
+                        }
+
+                        if (File.Exists(flowLogPath))
+                        {
+                            File.Delete(flowLogPath);
+                        }
+
+                        if (Directory.Exists(artifactsPath))
+                        {
+                            Directory.Delete(artifactsPath, recursive: true);
+                        }
+
+                        var runOutcome = await session.RunAsync(directoryPath, workflowFilePath, bindingsFilePath, onWorkerStdoutLine: onWorkerStdoutLine).ConfigureAwait(false);
+                        if (runOutcome.ErrorMessage is { } runError)
+                        {
+                            // #285: RunAsync's in-process fallback catches AerFlowException into an
+                            // unchecked MutationOutcome -- an unresolvable binding or similar dispatch
+                            // failure would otherwise vanish silently here exactly as it did before
+                            // this check existed, leaving whatever the pump had already dispatched
+                            // (e.g. a successful "chat" execution reached before the pump hit the
+                            // failure) looking like a complete, healthy turn.
+                            throw new InvalidOperationException($"Chat turn run failed: {runError}");
+                        }
                     }
                 }
             }
@@ -1607,6 +1709,9 @@ namespace Aer.Daemon
                 await broadcastStateAsync(finalProj, directoryPath).ConfigureAwait(false);
             }
 
+            var establishedThisTurn = assistantResponse != null;
+            var errorMessage = establishedThisTurn ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
+
             var newTurnIndex = metadata.TurnCount + 1;
             var turn = new SessionTurn(
                 TurnIndex: newTurnIndex,
@@ -1615,7 +1720,8 @@ namespace Aer.Daemon
                 AssistantResponse: assistantResponse,
                 ExecutedAt: DateTimeOffset.UtcNow,
                 NativeSessionResumed: resumeSession,
-                VendorHandoffSynthesized: handoff);
+                VendorHandoffSynthesized: handoff,
+                ErrorMessage: errorMessage);
 
             var updatedTurns = new List<SessionTurn>(metadata.Turns) { turn };
             var updatedTurnCount = isCeilingReached ? 1 : newTurnIndex;
@@ -1627,10 +1733,67 @@ namespace Aer.Daemon
                 Model = requestModel ?? metadata.Model,
                 TurnCount = updatedTurnCount,
                 UpdatedAt = DateTimeOffset.UtcNow,
-                Turns = updatedTurns
+                Turns = updatedTurns,
+                // #285: a handoff mints a brand-new vendorSessionId, so prior establishment doesn't
+                // carry over -- only this turn's own outcome counts for it. Otherwise, once
+                // established stays established even if a later turn fails for an unrelated reason
+                // (rate limit, transient network blip) -- the id itself is still real and resumable.
+                VendorSessionEstablished = handoff ? establishedThisTurn : (metadata.VendorSessionEstablished || establishedThisTurn)
             };
 
             await InteractiveSessionMaterializer.SaveMetadataAsync(updatedMetadata, Path.Combine(directoryPath, ".aer", "session.json")).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Best-effort extraction of a human-readable failure reason from a failed
+        /// <c>claude --output-format stream-json</c> turn's captured stdout (#285). A failed turn's
+        /// final line is a <c>{"type":"result","is_error":true,"errors":[...]}</c> object (confirmed
+        /// live: <c>--resume</c> of an unestablished session id prints exactly
+        /// <c>"No conversation found with session ID: &lt;guid&gt;"</c> this way, on stdout, not
+        /// stderr) -- scanned from the end since it's always the last line the CLI writes before
+        /// exiting. Falls back to the raw last non-empty line, then a generic message, so a caller
+        /// never has to null-check this to render *something*.
+        /// </summary>
+        internal static string TryExtractVendorErrorMessage(string rawStdout)
+        {
+            var lines = rawStdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            for (var i = lines.Length - 1; i >= 0; i--)
+            {
+                var line = lines[i];
+                if (line.Length == 0 || line[0] != '{')
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var node = JsonNode.Parse(line);
+                    if (node?["type"]?.GetValue<string>() != "result")
+                    {
+                        continue;
+                    }
+
+                    if (node["errors"] is JsonArray errors && errors.Count > 0)
+                    {
+                        return string.Join("; ", errors.Select(e => e?.ToString()).Where(s => !string.IsNullOrWhiteSpace(s)));
+                    }
+
+                    if (node["is_error"]?.GetValue<bool>() == true && node["result"] is { } resultText)
+                    {
+                        return resultText.ToString();
+                    }
+                }
+                catch (JsonException)
+                {
+                    // Not a JSON result line -- keep scanning backward.
+                }
+            }
+
+            var lastLine = lines.Length > 0 ? lines[^1] : null;
+            return string.IsNullOrWhiteSpace(lastLine)
+                ? "The vendor process exited without producing a response."
+                : lastLine;
         }
     }
 

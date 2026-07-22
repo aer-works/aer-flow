@@ -80,7 +80,7 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
-    public void Materialize_CreatesValidSingleStepDefinitionAndMetadata()
+    public void Materialize_CreatesValidTwoStepDefinitionAndMetadata()
     {
         var (def, bindings, meta) = InteractiveSessionMaterializer.Materialize(
             sessionId: "sess-abc",
@@ -88,15 +88,25 @@ public sealed class InteractiveSessionTests
             adapter: "claude",
             initialMessage: "Opening prompt");
 
+        // #285: "chat" itself declares no PausePoint (a successful turn must flow straight through
+        // to the anchor, uninterrupted); the downstream "turn-anchor" step declares the PausePoint,
+        // targeting "chat" -- a legal, distinct-ancestor Supersede target per spec §17.1, unlike the
+        // old single self-referencing step.
         Assert.Equal("interactive-session-template", def.WorkflowTemplateId.Value);
-        Assert.Single(def.Steps);
-        Assert.Equal("chat", def.Steps[0].StepId.Value);
-        Assert.NotNull(def.Steps[0].PausePoint);
+        Assert.Equal(2, def.Steps.Count);
+        var chatStep = Assert.Single(def.Steps, s => s.StepId.Value == "chat");
+        Assert.Null(chatStep.PausePoint);
+        var anchorStep = Assert.Single(def.Steps, s => s.StepId.Value == InteractiveSessionMaterializer.AnchorStepId);
+        Assert.Contains(new StepId("chat"), anchorStep.DependsOn);
+        Assert.NotNull(anchorStep.PausePoint);
+        Assert.Contains(new StepId("chat"), anchorStep.PausePoint!.SupersedeTargets);
 
-        Assert.Single(bindings);
+        Assert.Equal(2, bindings.Count);
         Assert.True(bindings.ContainsKey("chat-worker"));
         Assert.Equal("claude", bindings["chat-worker"].Adapter);
         Assert.Equal("Opening prompt", bindings["chat-worker"].PromptTemplate);
+        Assert.True(bindings.ContainsKey(InteractiveSessionMaterializer.AnchorWorkerName));
+        Assert.Equal(NoOpWorkerAdapter.AdapterName, bindings[InteractiveSessionMaterializer.AnchorWorkerName].Adapter);
 
         Assert.Equal("sess-abc", meta.SessionId);
         Assert.Equal("claude", meta.CurrentAdapter);

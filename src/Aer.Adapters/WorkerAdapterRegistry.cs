@@ -8,7 +8,8 @@ namespace Aer.Adapters;
 /// <c>claude</c> binary directly; <c>"gemini"</c> invokes the <c>agy</c> binary; <c>"dialogue"</c>
 /// invokes <c>Aer.Workers.Dialogue</c>, itself a two-vendor Case 2 worker, not a vendor CLI at all
 /// (M17 Phase 4, #167) — the registry key names the capability you're dispatching to, not what you
-/// type to reach it).
+/// type to reach it). A fourth, <see cref="NoOpWorkerAdapter.AdapterName"/>, was added for M24 Phase
+/// 5.2 (#285) — not a vendor at all, but the same registration seam serves it identically.
 /// </summary>
 public static class WorkerAdapterRegistry
 {
@@ -17,5 +18,6 @@ public static class WorkerAdapterRegistry
         ["claude"] = new ClaudeWorkerAdapter(),
         ["gemini"] = new GeminiWorkerAdapter(),
         ["dialogue"] = new DialogueWorkerAdapter(),
+        [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
     };
 }
