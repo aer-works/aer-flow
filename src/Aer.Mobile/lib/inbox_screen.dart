@@ -7,6 +7,7 @@ import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
 import 'pairing_screen.dart';
+import 'tasks_screen.dart';
 
 /// The phone's decision inbox — mirrors whatever task Aer.Daemon currently has open (typically
 /// opened by the desktop first) and lets the user Approve/Reject a paused step or Cancel the run.
@@ -113,6 +114,15 @@ class _InboxScreenState extends State<InboxScreen> {
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+
+  /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentTask]'s bare
+  /// recents sheet, which stays the quick-reopen path; this is the real archive/unarchive/delete
+  /// surface.
+  Future<void> _manageTasks() async {
+    final client = _client;
+    if (client == null) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TasksScreen(client: client)));
   }
 
   Future<void> _decide(WorkflowStepState step, String decisionType) async {
@@ -434,11 +444,13 @@ class _InboxScreenState extends State<InboxScreen> {
               if (value == 'forget') _forgetPairing();
               if (value == 'cancel') _cancelRun();
               if (value == 'template') _showTemplatePicker();
+              if (value == 'tasks') _manageTasks();
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'template', child: Text('Start from template')),
               if (projection != null && projection.status == 'Running')
                 const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
+              const PopupMenuItem(value: 'tasks', child: Text('Manage tasks')),
               const PopupMenuItem(value: 'forget', child: Text('Forget pairing')),
             ],
           ),

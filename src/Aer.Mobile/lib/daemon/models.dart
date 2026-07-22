@@ -247,6 +247,38 @@ class ChatCapabilityItem {
   bool get isInvokable => kind == 'command' || kind == 'skill' || kind == 'agent';
 }
 
+/// One task/session directory's lightweight fleet-list entry (M24 Phase 5, #278) — the mobile
+/// counterpart of Aer.Ui.Core's TaskFleetItem, as returned by GET /api/tasks.
+class TaskFleetItem {
+  final String taskDirectoryPath;
+  final String friendlyName;
+  final String typeLabel;
+  final String statusText;
+  final int pausedStepCount;
+  final bool isArchived;
+
+  TaskFleetItem({
+    required this.taskDirectoryPath,
+    required this.friendlyName,
+    required this.typeLabel,
+    required this.statusText,
+    required this.pausedStepCount,
+    required this.isArchived,
+  });
+
+  factory TaskFleetItem.fromJson(Map<String, dynamic> json) {
+    final j = caseInsensitive(json);
+    return TaskFleetItem(
+      taskDirectoryPath: j['taskdirectorypath']?.toString() ?? '',
+      friendlyName: j['friendlyname']?.toString() ?? '',
+      typeLabel: j['typelabel']?.toString() ?? '',
+      statusText: j['statustext']?.toString() ?? '',
+      pausedStepCount: (j['pausedstepcount'] as num?)?.toInt() ?? 0,
+      isArchived: j['isarchived'] == true,
+    );
+  }
+}
+
 /// GET /api/sessions/{id}/commands's shape: WorkerCapabilities's own fields plus the additive
 /// RecentlyUsed sibling (same idiom as TaskProjection's DirectoryPath/WorkerAdapters siblings).
 class SessionCommandsResult {

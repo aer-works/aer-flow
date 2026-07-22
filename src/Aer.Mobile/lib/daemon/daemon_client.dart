@@ -393,6 +393,47 @@ class DaemonClient {
     _throwIfFailed(response);
   }
 
+  /// Every known task/session directory's lightweight status (M24 Phase 5, #278) — archived items
+  /// are filtered out by default, matching desktop's own TasksViewModel.
+  Future<List<TaskFleetItem>> listTasks({bool includeArchived = false}) async {
+    final uri = Uri.http(host, '/api/tasks', {'includeArchived': includeArchived.toString()});
+    final response = await _get(uri);
+    _throwIfFailed(response);
+    final list = jsonDecode(response.body) as List<dynamic>;
+    return list.map((item) => TaskFleetItem.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  /// Hides a task/session directory from the default fleet list — the name stays reserved until a
+  /// real [deleteTask].
+  Future<void> archiveTask(String directoryPath) async {
+    final response = await _post(
+      Uri.http(host, '/api/tasks/archive'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'directoryPath': directoryPath}),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Reinstates a task/session directory into the default fleet list.
+  Future<void> unarchiveTask(String directoryPath) async {
+    final response = await _post(
+      Uri.http(host, '/api/tasks/unarchive'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'directoryPath': directoryPath}),
+    );
+    _throwIfFailed(response);
+  }
+
+  /// Really deletes a task/session directory — the only action that frees its name for reuse.
+  Future<void> deleteTask(String directoryPath) async {
+    final response = await _post(
+      Uri.http(host, '/api/tasks/delete'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'directoryPath': directoryPath}),
+    );
+    _throwIfFailed(response);
+  }
+
   /// executionId null cancels the whole run; non-null cancels just that execution.
   Future<void> cancelRun({
     required String directoryPath,
