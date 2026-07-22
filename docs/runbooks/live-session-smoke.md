@@ -55,7 +55,8 @@ of `pixi run build`/`test`/`lint`.
 Unlike `smoke-claude`/`smoke-mixed-vendor`/`smoke-dialogue`, this test doesn't call
 `RunCommand.ExecuteAsync` — interactive sessions have no `aer` CLI command at all, so it starts a
 real `Aer.Daemon` instance (`DaemonHost.RunDaemonAsync`, real `WorkerAdapterRegistry.Default`, not a
-stub) on port `5099` and drives it exactly the way `Aer.Ui`/`Aer.Mobile` would: `POST
+stub) on a dynamically OS-assigned port (issue #296 — avoids colliding with another concurrent test
+run) and drives it exactly the way `Aer.Ui`/`Aer.Mobile` would: `POST
 /api/sessions/start`, 49 more `POST /api/sessions/send` calls, then `POST
 /api/sessions/{id}/compact`.
 

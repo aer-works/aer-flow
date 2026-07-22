@@ -10,8 +10,9 @@ namespace Aer.Ui.Tests;
 /// Retroactive M24 Phase 1/2 test-gap-fill (#262/#263): covers <c>ExecuteSessionTurnAsync</c>'s
 /// vendor-handoff/safety-ceiling branching logic and the compact endpoint's real handoff behavior --
 /// none of this touches a vendor CLI (it's pure C# branching over <see cref="SessionMetadata"/>), so
-/// it was always automatable, just never automated. Runs its own daemon instance on a dedicated port
-/// with <see cref="SessionTurnStubAdapter"/> substituted for both "claude" and "gemini" -- deliberately
+/// it was always automatable, just never automated. Runs its own daemon instance on a dynamically
+/// OS-assigned port (issue #296) with <see cref="SessionTurnStubAdapter"/> substituted for both
+/// "claude" and "gemini" -- deliberately
 /// NOT sharing <see cref="DaemonIntegrationTests"/>'s fixture (a different class, its own
 /// <c>InitializeAsync</c>/adapter registry), since several of its tests (capability discovery,
 /// "/compact" item presence) assert on the real adapter registry and would break under a stubbed
@@ -27,7 +28,7 @@ namespace Aer.Ui.Tests;
 public class SessionTurnBranchingTests : IAsyncLifetime
 {
     private Task? _daemonTask;
-    private const string BaseUrl = "http://localhost:5051";
+    private string _baseUrl = "";
     private readonly HttpClient _client = new();
 
     public async ValueTask InitializeAsync()
@@ -39,13 +40,15 @@ public class SessionTurnBranchingTests : IAsyncLifetime
             [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         };
 
-        _daemonTask = DaemonHost.RunDaemonAsync(new[] { "--port", "5051", "--no-mutex" }, stubAdapters);
+        // Start Daemon on a dynamically OS-assigned port (issue #296) — a hardcoded port collides
+        // whenever two test runs happen to overlap.
+        (_daemonTask, _baseUrl) = await DaemonTestHost.StartAsync(stubAdapters);
 
         for (int i = 0; i < 30; i++)
         {
             try
             {
-                var response = await _client.GetAsync($"{BaseUrl}/api/version", TestContext.Current.CancellationToken);
+                var response = await _client.GetAsync($"{_baseUrl}/api/version", TestContext.Current.CancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     break;
@@ -89,7 +92,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
             InitialMessage: initialMessage,
             SafetyCeiling: safetyCeiling);
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
@@ -102,7 +105,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         SessionMetadata? metadata = null;
         for (var i = 0; i < 100; i++)
         {
-            var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
+            var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
             if (response.IsSuccessStatusCode)
             {
                 metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
@@ -127,7 +130,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         Assert.False(started.Turns[0].VendorHandoffSynthesized);
 
         var sendRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "switch to gemini", Adapter: "gemini");
-        var sendResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
+        var sendResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
         Assert.True(sendResponse.IsSuccessStatusCode);
 
         var afterHandoff = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
@@ -146,7 +149,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         Assert.Equal(1, started.TurnCount);
 
         var secondRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "second turn");
-        var secondResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", secondRequest, TestContext.Current.CancellationToken);
+        var secondResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send", secondRequest, TestContext.Current.CancellationToken);
         Assert.True(secondResponse.IsSuccessStatusCode);
         var afterSecond = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
         Assert.Equal(2, afterSecond.TurnCount);
@@ -155,7 +158,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         // metadata.TurnCount (2) >= SafetyCeiling (2) on this third turn -- crosses the ceiling.
         var thirdVendorSessionId = afterSecond.CurrentVendorSessionId;
         var thirdRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "third turn crosses ceiling");
-        var thirdResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", thirdRequest, TestContext.Current.CancellationToken);
+        var thirdResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send", thirdRequest, TestContext.Current.CancellationToken);
         Assert.True(thirdResponse.IsSuccessStatusCode);
         var afterThird = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 3);
 
@@ -176,7 +179,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         var vendorSessionIdBeforeCompact = started.CurrentVendorSessionId;
         Assert.NotNull(vendorSessionIdBeforeCompact);
 
-        var compactResponse = await _client.PostAsync($"{BaseUrl}/api/sessions/{started.SessionId}/compact", null, TestContext.Current.CancellationToken);
+        var compactResponse = await _client.PostAsync($"{_baseUrl}/api/sessions/{started.SessionId}/compact", null, TestContext.Current.CancellationToken);
         Assert.True(compactResponse.IsSuccessStatusCode);
 
         var afterCompact = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
@@ -200,7 +203,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
             TaskName: "stub-session-" + Guid.NewGuid().ToString("N"),
             SafetyCeiling: safetyCeiling);
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
@@ -218,7 +221,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         var started = await StartStubSessionWithNoInitialMessageAsync();
 
         var sendRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "hello");
-        var sendResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
+        var sendResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
         Assert.True(sendResponse.IsSuccessStatusCode);
 
         var afterFirst = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
@@ -231,11 +234,11 @@ public class SessionTurnBranchingTests : IAsyncLifetime
     public async Task SecondMessage_AfterAnEstablishedFirstTurn_ActuallyResumes()
     {
         var started = await StartStubSessionWithNoInitialMessageAsync();
-        await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: "hello"), TestContext.Current.CancellationToken);
         await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
 
-        var secondResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        var secondResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: "second message"), TestContext.Current.CancellationToken);
         Assert.True(secondResponse.IsSuccessStatusCode);
 
@@ -265,12 +268,12 @@ public class SessionTurnBranchingTests : IAsyncLifetime
     public async Task MidConversationFailure_RecoversOnRetry()
     {
         var started = await StartStubSessionWithNoInitialMessageAsync();
-        await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: "turn one"), TestContext.Current.CancellationToken);
         var afterFirst = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
         Assert.NotNull(afterFirst.Turns[0].AssistantResponse);
 
-        var failingSend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        var failingSend = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: SessionTurnStubAdapter.FailureSentinel),
             TestContext.Current.CancellationToken);
         Assert.True(failingSend.IsSuccessStatusCode);
@@ -278,7 +281,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         Assert.Null(afterSecond.Turns[1].AssistantResponse);
         Assert.NotNull(afterSecond.Turns[1].ErrorMessage);
 
-        var thirdSend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        var thirdSend = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: "turn three"), TestContext.Current.CancellationToken);
         Assert.True(thirdSend.IsSuccessStatusCode);
         var afterThird = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 3);
@@ -294,7 +297,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
     {
         var started = await StartStubSessionWithNoInitialMessageAsync();
 
-        var failingSend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        var failingSend = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: SessionTurnStubAdapter.FailureSentinel),
             TestContext.Current.CancellationToken);
         Assert.True(failingSend.IsSuccessStatusCode);
@@ -307,7 +310,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         // The regression this guards against: pre-fix, this second attempt would still carry
         // NativeSessionResumed=true (isInitial was already false on the very first turn), so it
         // would `--resume` the same never-established id and fail identically forever.
-        var retrySend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+        var retrySend = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(SessionId: started.SessionId, Message: "try again"),
             TestContext.Current.CancellationToken);
         Assert.True(retrySend.IsSuccessStatusCode);
@@ -327,7 +330,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         for (var i = 2; i <= turnCount; i++)
         {
             var request = new SendSessionMessageRequest(SessionId: started.SessionId, Message: $"turn {i}");
-            var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", request, TestContext.Current.CancellationToken);
+            var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send", request, TestContext.Current.CancellationToken);
             Assert.True(response.IsSuccessStatusCode);
             await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: i);
         }

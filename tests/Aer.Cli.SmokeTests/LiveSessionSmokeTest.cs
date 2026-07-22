@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Aer.Adapters;
+using Aer.Cli.SmokeTests.TestSupport;
 using Aer.Daemon;
 
 namespace Aer.Cli.SmokeTests;
@@ -22,35 +23,16 @@ namespace Aer.Cli.SmokeTests;
 /// </summary>
 public class LiveSessionSmokeTest
 {
-    private const int Port = 5099;
-    private static readonly string BaseUrl = $"http://localhost:{Port}";
-
     [Fact]
     public async Task Fifty_sequential_turns_hold_and_compact_produces_a_real_vendor_summary_from_a_fresh_session()
     {
-        var daemonTask = DaemonHost.RunDaemonAsync([
-            "--port", Port.ToString(), "--no-mutex"
-        ]);
+        // Start Daemon on a dynamically OS-assigned port (issue #296) — a hardcoded port collides
+        // whenever two test runs happen to overlap.
+        var (daemonTask, baseUrl) = await DaemonTestHost.StartAsync();
 
         using var client = new HttpClient();
         try
         {
-            for (var i = 0; i < 50; i++)
-            {
-                try
-                {
-                    var response = await client.GetAsync($"{BaseUrl}/api/version", TestContext.Current.CancellationToken);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        break;
-                    }
-                }
-                catch
-                {
-                    await Task.Delay(100, TestContext.Current.CancellationToken);
-                }
-            }
-
             var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
             var token = (await File.ReadAllTextAsync(Path.Combine(aerDir, "daemon.token"), TestContext.Current.CancellationToken)).Trim();
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
@@ -61,12 +43,12 @@ public class LiveSessionSmokeTest
                 InitialMessage: "Reply with a single short sentence acknowledging this is turn 1 of a smoke test. Do not ask questions.",
                 SafetyCeiling: 200);
 
-            var startResponse = await client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", startRequest, TestContext.Current.CancellationToken);
+            var startResponse = await client.PostAsJsonAsync($"{baseUrl}/api/sessions/start", startRequest, TestContext.Current.CancellationToken);
             Assert.True(startResponse.IsSuccessStatusCode);
             var started = await startResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
             Assert.NotNull(started);
 
-            var afterTurn1 = await PollUntilTurnCountAsync(client, started.SessionId, expectedTurnCount: 1);
+            var afterTurn1 = await PollUntilTurnCountAsync(client, baseUrl, started.SessionId, expectedTurnCount: 1);
             Assert.False(string.IsNullOrWhiteSpace(afterTurn1.Turns[0].AssistantResponse));
 
             const int totalTurns = 50;
@@ -76,20 +58,20 @@ public class LiveSessionSmokeTest
                 var sendRequest = new SendSessionMessageRequest(
                     SessionId: started.SessionId,
                     Message: $"Reply with a single short sentence acknowledging this is turn {i}. Do not ask questions.");
-                var sendResponse = await client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
+                var sendResponse = await client.PostAsJsonAsync($"{baseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
                 Assert.True(sendResponse.IsSuccessStatusCode);
-                await PollUntilTurnCountAsync(client, started.SessionId, expectedTurnCount: i);
+                await PollUntilTurnCountAsync(client, baseUrl, started.SessionId, expectedTurnCount: i);
             }
             stopwatch.Stop();
             Console.WriteLine($"{totalTurns} sequential real-Claude turns completed in {stopwatch.Elapsed}.");
 
-            var beforeCompact = await GetSessionAsync(client, started.SessionId);
+            var beforeCompact = await GetSessionAsync(client, baseUrl, started.SessionId);
             var vendorSessionIdBeforeCompact = beforeCompact.CurrentVendorSessionId;
 
-            var compactResponse = await client.PostAsync($"{BaseUrl}/api/sessions/{started.SessionId}/compact", null, TestContext.Current.CancellationToken);
+            var compactResponse = await client.PostAsync($"{baseUrl}/api/sessions/{started.SessionId}/compact", null, TestContext.Current.CancellationToken);
             Assert.True(compactResponse.IsSuccessStatusCode);
 
-            var afterCompact = await PollUntilTurnCountAsync(client, started.SessionId, expectedTurnCount: totalTurns + 1);
+            var afterCompact = await PollUntilTurnCountAsync(client, baseUrl, started.SessionId, expectedTurnCount: totalTurns + 1);
             var compactTurn = afterCompact.Turns[^1];
             Assert.True(compactTurn.VendorHandoffSynthesized);
             Assert.NotEqual(vendorSessionIdBeforeCompact, afterCompact.CurrentVendorSessionId);
@@ -112,20 +94,20 @@ public class LiveSessionSmokeTest
         }
     }
 
-    private static async Task<SessionMetadata> GetSessionAsync(HttpClient client, string sessionId)
+    private static async Task<SessionMetadata> GetSessionAsync(HttpClient client, string baseUrl, string sessionId)
     {
-        var response = await client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
+        var response = await client.GetAsync($"{baseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
         var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(metadata);
         return metadata;
     }
 
-    private static async Task<SessionMetadata> PollUntilTurnCountAsync(HttpClient client, string sessionId, int expectedTurnCount)
+    private static async Task<SessionMetadata> PollUntilTurnCountAsync(HttpClient client, string baseUrl, string sessionId, int expectedTurnCount)
     {
         for (var i = 0; i < 600; i++)
         {
-            var metadata = await GetSessionAsync(client, sessionId);
+            var metadata = await GetSessionAsync(client, baseUrl, sessionId);
             if (metadata.Turns.Count >= expectedTurnCount)
             {
                 return metadata;

@@ -9,6 +9,7 @@ using Aer.Flow.Mutation;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
 using Aer.Ui.Core;
+using Aer.Ui.Tests.TestSupport;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -18,21 +19,26 @@ namespace Aer.Ui.Tests;
 public class DaemonIntegrationTests : IAsyncLifetime
 {
     private Task? _daemonTask;
-    private const string BaseUrl = "http://localhost:5050";
+    private string _baseUrl = "";
     private readonly HttpClient _client = new();
     private string? _tempTaskDirectory;
 
+    /// <summary>The daemon's dynamically-assigned base URL (issue #296), reused for the WebSocket
+    /// endpoints below rather than the old hardcoded "ws://localhost:5050".</summary>
+    private string WsBaseUrl => "ws" + _baseUrl["http".Length..];
+
     public async ValueTask InitializeAsync()
     {
-        // Start Daemon on port 5050
-        _daemonTask = DaemonHost.RunDaemonAsync(new[] { "--port", "5050", "--no-mutex" });
+        // Start Daemon on a dynamically OS-assigned port (issue #296) — a hardcoded port collides
+        // whenever two test runs happen to overlap.
+        (_daemonTask, _baseUrl) = await DaemonTestHost.StartAsync();
 
         // Wait for daemon to spin up
         for (int i = 0; i < 30; i++)
         {
             try
             {
-                var response = await _client.GetAsync($"{BaseUrl}/api/version", TestContext.Current.CancellationToken);
+                var response = await _client.GetAsync($"{_baseUrl}/api/version", TestContext.Current.CancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     break;
@@ -93,7 +99,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetVersion_ReportsIsRemote_FalseForALoopbackOnlyDaemon()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/version", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/version", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
         var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(meta);
@@ -103,7 +109,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetRecentTasks_ReturnsOk()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
         var recent = await response.Content.ReadFromJsonAsync<IReadOnlyList<string>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(recent);
@@ -112,7 +118,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task OpenTask_WithMissingDirectory_ReturnsBadRequest()
     {
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(""), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/tasks/open", new OpenTaskRequest(""), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -120,7 +126,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task OpenTask_WithInvalidDirectory_ReturnsBadRequest()
     {
         var invalidDir = Path.Combine(_tempTaskDirectory!, "non_existent_folder_abc_123");
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/tasks/open", new OpenTaskRequest(invalidDir), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/tasks/open", new OpenTaskRequest(invalidDir), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -128,7 +134,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task Pairing_Flow_Succeeds_And_Enables_Auth()
     {
         // 1. Get pairing code (authenticated via loopback token)
-        var codeResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
+        var codeResponse = await _client.GetAsync($"{_baseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
         Assert.True(codeResponse.IsSuccessStatusCode);
         var codeData = await codeResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var code = codeData.GetProperty("code").GetString();
@@ -137,7 +143,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // 2. Pair remote client (public POST, no auth headers on request client)
         using var remoteClient = new HttpClient();
         var pairRequest = new { Code = code, ClientName = "Test Mobile App" };
-        var pairResponse = await remoteClient.PostAsJsonAsync($"{BaseUrl}/api/pairing/pair", pairRequest, TestContext.Current.CancellationToken);
+        var pairResponse = await remoteClient.PostAsJsonAsync($"{_baseUrl}/api/pairing/pair", pairRequest, TestContext.Current.CancellationToken);
         Assert.True(pairResponse.IsSuccessStatusCode);
         var pairData = await pairResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var pairedToken = pairData.GetProperty("token").GetString();
@@ -145,7 +151,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         // 3. Make a request using the newly paired token (should be authorized)
         remoteClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", pairedToken);
-        var recentTasksResponse = await remoteClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        var recentTasksResponse = await remoteClient.GetAsync($"{_baseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.OK, recentTasksResponse.StatusCode);
     }
 
@@ -154,7 +160,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         using var remoteClient = new HttpClient();
         var pairRequest = new { Code = "999999", ClientName = "Test Mobile App" };
-        var pairResponse = await remoteClient.PostAsJsonAsync($"{BaseUrl}/api/pairing/pair", pairRequest, TestContext.Current.CancellationToken);
+        var pairResponse = await remoteClient.PostAsJsonAsync($"{_baseUrl}/api/pairing/pair", pairRequest, TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, pairResponse.StatusCode);
     }
 
@@ -164,7 +170,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // A real code is active, but every guess below is deliberately wrong — proving the
         // pairing endpoint can't be brute-forced across its 60s validity window: after enough
         // wrong guesses, even the correct code is rejected until a fresh one is generated.
-        var codeResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
+        var codeResponse = await _client.GetAsync($"{_baseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
         var codeData = await codeResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var code = codeData.GetProperty("code").GetString();
         var wrongCode = code == "000000" ? "111111" : "000000";
@@ -173,13 +179,13 @@ public class DaemonIntegrationTests : IAsyncLifetime
         for (var attempt = 0; attempt < 5; attempt++)
         {
             var wrongResponse = await remoteClient.PostAsJsonAsync(
-                $"{BaseUrl}/api/pairing/pair", new { Code = wrongCode, ClientName = "Attacker" }, TestContext.Current.CancellationToken);
+                $"{_baseUrl}/api/pairing/pair", new { Code = wrongCode, ClientName = "Attacker" }, TestContext.Current.CancellationToken);
             Assert.Equal(System.Net.HttpStatusCode.BadRequest, wrongResponse.StatusCode);
         }
 
         // Attempts are now exhausted — even the real code must be rejected.
         var finalResponse = await remoteClient.PostAsJsonAsync(
-            $"{BaseUrl}/api/pairing/pair", new { Code = code, ClientName = "Test Mobile App" }, TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/pairing/pair", new { Code = code, ClientName = "Test Mobile App" }, TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, finalResponse.StatusCode);
     }
 
@@ -187,7 +193,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task Request_Without_Token_Is_Rejected_With_401()
     {
         using var remoteClient = new HttpClient();
-        var response = await remoteClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        var response = await remoteClient.GetAsync($"{_baseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -195,17 +201,17 @@ public class DaemonIntegrationTests : IAsyncLifetime
     // revocation path M20 deferred until "whichever milestone builds the actual remote client".
     private async Task<(string ClientId, string Token)> PairANewClientAsync(string name)
     {
-        var codeResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
+        var codeResponse = await _client.GetAsync($"{_baseUrl}/api/pairing/code", TestContext.Current.CancellationToken);
         var codeData = await codeResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var code = codeData.GetProperty("code").GetString();
 
         using var remoteClient = new HttpClient();
         var pairResponse = await remoteClient.PostAsJsonAsync(
-            $"{BaseUrl}/api/pairing/pair", new { Code = code, ClientName = name }, TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/pairing/pair", new { Code = code, ClientName = name }, TestContext.Current.CancellationToken);
         var pairData = await pairResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var token = pairData.GetProperty("token").GetString()!;
 
-        var clientsResponse = await _client.GetAsync($"{BaseUrl}/api/pairing/clients", TestContext.Current.CancellationToken);
+        var clientsResponse = await _client.GetAsync($"{_baseUrl}/api/pairing/clients", TestContext.Current.CancellationToken);
         var clients = await clientsResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var clientId = clients.EnumerateArray().Last(c => c.GetProperty("name").GetString() == name).GetProperty("clientId").GetString()!;
 
@@ -219,20 +225,20 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         using var pairedClient = new HttpClient();
         pairedClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-        var beforeRevoke = await pairedClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        var beforeRevoke = await pairedClient.GetAsync($"{_baseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.OK, beforeRevoke.StatusCode);
 
-        var deleteResponse = await _client.DeleteAsync($"{BaseUrl}/api/pairing/clients/{clientId}", TestContext.Current.CancellationToken);
+        var deleteResponse = await _client.DeleteAsync($"{_baseUrl}/api/pairing/clients/{clientId}", TestContext.Current.CancellationToken);
         Assert.True(deleteResponse.IsSuccessStatusCode);
 
-        var afterRevoke = await pairedClient.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
+        var afterRevoke = await pairedClient.GetAsync($"{_baseUrl}/api/tasks/recent", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, afterRevoke.StatusCode);
     }
 
     [Fact]
     public async Task RevokeUnknownClientId_ReturnsNotFound()
     {
-        var response = await _client.DeleteAsync($"{BaseUrl}/api/pairing/clients/does-not-exist", TestContext.Current.CancellationToken);
+        var response = await _client.DeleteAsync($"{_baseUrl}/api/pairing/clients/does-not-exist", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -243,10 +249,10 @@ public class DaemonIntegrationTests : IAsyncLifetime
         using var pairedClient = new HttpClient();
         pairedClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-        var listResponse = await pairedClient.GetAsync($"{BaseUrl}/api/pairing/clients", TestContext.Current.CancellationToken);
+        var listResponse = await pairedClient.GetAsync($"{_baseUrl}/api/pairing/clients", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.Forbidden, listResponse.StatusCode);
 
-        var deleteResponse = await pairedClient.DeleteAsync($"{BaseUrl}/api/pairing/clients/does-not-exist", TestContext.Current.CancellationToken);
+        var deleteResponse = await pairedClient.DeleteAsync($"{_baseUrl}/api/pairing/clients/does-not-exist", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.Forbidden, deleteResponse.StatusCode);
     }
 
@@ -296,7 +302,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
             "exec-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
 
         var response = await _client.GetAsync(
-            $"{BaseUrl}/api/tasks/artifact?directoryPath={Uri.EscapeDataString(taskDirectory)}&executionId=exec-1&fileName=result.txt",
+            $"{_baseUrl}/api/tasks/artifact?directoryPath={Uri.EscapeDataString(taskDirectory)}&executionId=exec-1&fileName=result.txt",
             TestContext.Current.CancellationToken);
 
         Assert.True(response.IsSuccessStatusCode);
@@ -314,7 +320,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // Neither a real output of exec-1 nor a real path — this is the path-traversal guard:
         // fileName must appear in the execution's own recorded OutputFiles, nothing else.
         var response = await _client.GetAsync(
-            $"{BaseUrl}/api/tasks/artifact?directoryPath={Uri.EscapeDataString(taskDirectory)}&executionId=exec-1&fileName=..%2f..%2fsecrets.txt",
+            $"{_baseUrl}/api/tasks/artifact?directoryPath={Uri.EscapeDataString(taskDirectory)}&executionId=exec-1&fileName=..%2f..%2fsecrets.txt",
             TestContext.Current.CancellationToken);
 
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
@@ -324,7 +330,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task GetArtifact_WithMissingQueryParameters_ReturnsBadRequest()
     {
         var response = await _client.GetAsync(
-            $"{BaseUrl}/api/tasks/artifact?directoryPath=&executionId=&fileName=",
+            $"{_baseUrl}/api/tasks/artifact?directoryPath=&executionId=&fileName=",
             TestContext.Current.CancellationToken);
 
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
@@ -396,7 +402,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var taskDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
 
         var openResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         // DecideCommand always loads a bindings file, regardless of decision type (Aer.Cli's
@@ -411,7 +417,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
         using var socket = new ClientWebSocket();
-        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
 
         var buffer = new byte[1024 * 64];
         var first = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), TestContext.Current.CancellationToken);
@@ -419,7 +425,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.Equal("Paused", firstPayload.GetProperty("State").GetProperty("Status").GetString());
 
         var decideResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/decide",
+            $"{_baseUrl}/api/tasks/decide",
             new DecideTaskRequest(taskDirectory, WorkerStep.Value, executionId, DecisionType.Reject),
             TestContext.Current.CancellationToken);
         Assert.True(decideResponse.IsSuccessStatusCode);
@@ -444,13 +450,13 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var taskDirectory = await CreateTaskDirectoryWithArtifactAsync(
             "exec-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
         var openResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
 
         using var socket = new ClientWebSocket();
-        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
 
         var buffer = new byte[1024 * 64];
         var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), TestContext.Current.CancellationToken);
@@ -465,7 +471,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetTemplates_ReturnsCatalogAndVendorPresence()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/templates", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/templates", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
@@ -486,7 +492,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
             PrimaryAdapter: "claude",
             TaskName: "test-template-task-" + Guid.NewGuid().ToString("N"));
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
@@ -518,7 +524,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var request = new RunTemplateRequest(TemplateId: "solo-run", PrimaryAdapter: "claude", TaskName: maliciousTaskName);
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/templates/run", request, TestContext.Current.CancellationToken);
 
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -539,7 +545,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(outputDirectory, "out"), "the real output", TestContext.Current.CancellationToken);
 
         var decideResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/decide",
+            $"{_baseUrl}/api/tasks/decide",
             new DecideTaskRequest(
                 taskDirectory, WorkerStep.Value, executionId, DecisionType.Reject,
                 ArtifactReference: new ArtifactReference(executionId, "../../../secrets.txt")),
@@ -558,7 +564,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(outputDirectory, "out"), "the real output", TestContext.Current.CancellationToken);
 
         var decideResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/decide",
+            $"{_baseUrl}/api/tasks/decide",
             new DecideTaskRequest(
                 taskDirectory, WorkerStep.Value, executionId, DecisionType.Reject,
                 ArtifactReference: new ArtifactReference(executionId, "out")),
@@ -579,7 +585,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
             Adapter: "claude",
             TaskName: taskName ?? "test-session-" + Guid.NewGuid().ToString("N"));
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
@@ -604,7 +610,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, taskDirectoryPath) = await StartASessionAsync();
 
-        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
+        var getResponse = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
         Assert.True(getResponse.IsSuccessStatusCode);
 
         var metadata = await getResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
@@ -616,7 +622,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetById_ForAnUnknownSessionId_ReturnsNotFound()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/does-not-exist-{Guid.NewGuid():N}", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions/does-not-exist-{Guid.NewGuid():N}", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -625,7 +631,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, _) = await StartASessionAsync();
 
-        var response = await _client.GetAsync($"{BaseUrl}/api/sessions", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var sessions = await response.Content.ReadFromJsonAsync<List<SessionMetadata>>(cancellationToken: TestContext.Current.CancellationToken);
@@ -655,12 +661,12 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var taskDirectory = await CreateSessionTaskDirectoryAsync(sessionId, TestContext.Current.CancellationToken);
 
         var openResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
         using var socket = new ClientWebSocket();
-        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
@@ -704,12 +710,12 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var taskDirectory = await CreateTaskDirectoryWithArtifactAsync(
             "exec-plain-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
         var openResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
         using var socket = new ClientWebSocket();
-        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws?token={token}"), TestContext.Current.CancellationToken);
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
@@ -727,7 +733,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task SendSessionMessage_WithEmptyMessage_ReturnsBadRequest()
     {
         var response = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/sessions/send",
+            $"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(DirectoryPath: _tempTaskDirectory, Message: ""),
             TestContext.Current.CancellationToken);
 
@@ -738,7 +744,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task SendSessionMessage_WithNeitherDirectoryPathNorSessionId_ReturnsBadRequest()
     {
         var response = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/sessions/send",
+            $"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(Message: "hello"),
             TestContext.Current.CancellationToken);
 
@@ -751,7 +757,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // A real, existing directory (satisfies Directory.Exists) that was never materialized by
         // InteractiveSessionMaterializer -- no .aer/session.json, so metadata load must fail closed.
         var response = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/sessions/send",
+            $"{_baseUrl}/api/sessions/send",
             new SendSessionMessageRequest(DirectoryPath: _tempTaskDirectory, Message: "hello"),
             TestContext.Current.CancellationToken);
 
@@ -767,7 +773,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // is missing or unauthenticated -- Claude's is filesystem-only, Gemini's degrades each
         // subcommand to null on Win32Exception/InvalidOperationException (GeminiWorkerAdapter.cs) --
         // so this is safe to assert on regardless of what's installed on the host.
-        var response = await _client.GetAsync($"{BaseUrl}/api/adapters/capabilities?adapter={adapter}", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/adapters/capabilities?adapter={adapter}", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var capabilities = await response.Content.ReadFromJsonAsync<WorkerCapabilities>(cancellationToken: TestContext.Current.CancellationToken);
@@ -779,7 +785,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetAdapterCapabilities_WithUnknownAdapterName_FallsBackToClaude()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/adapters/capabilities?adapter=not-a-real-vendor", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/adapters/capabilities?adapter=not-a-real-vendor", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var capabilities = await response.Content.ReadFromJsonAsync<WorkerCapabilities>(cancellationToken: TestContext.Current.CancellationToken);
@@ -792,7 +798,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, _) = await StartASessionAsync();
 
-        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var capabilities = await response.Content.ReadFromJsonAsync<WorkerCapabilities>(cancellationToken: TestContext.Current.CancellationToken);
@@ -808,10 +814,10 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var (sessionId, _) = await StartASessionAsync();
 
         var recordResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/sessions/{sessionId}/commands/record", new RecordCommandUsedRequest("/compact"), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/sessions/{sessionId}/commands/record", new RecordCommandUsedRequest("/compact"), TestContext.Current.CancellationToken);
         Assert.True(recordResponse.IsSuccessStatusCode);
 
-        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}/commands", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var commands = await response.Content.ReadFromJsonAsync<SessionCommandsResponse>(cancellationToken: TestContext.Current.CancellationToken);
@@ -824,7 +830,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, taskDirectoryPath) = await StartASessionAsync();
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("auto"), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("auto"), TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(Path.Combine(taskDirectoryPath, "bindings.json"), TestContext.Current.CancellationToken);
@@ -841,7 +847,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, taskDirectoryPath) = await StartASessionAsync();
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("plan"), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("plan"), TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(Path.Combine(taskDirectoryPath, "bindings.json"), TestContext.Current.CancellationToken);
@@ -857,7 +863,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, _) = await StartASessionAsync();
 
-        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("not-a-real-mode"), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest("not-a-real-mode"), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -952,12 +958,12 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var (firstSessionId, _) = await StartASessionAsync(taskName);
 
         var secondRequest = new StartSessionRequest(Adapter: "claude", TaskName: taskName);
-        var secondResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", secondRequest, TestContext.Current.CancellationToken);
+        var secondResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", secondRequest, TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, secondResponse.StatusCode);
 
         // The rejected second attempt must not have clobbered the first session -- it must still be
         // reachable by its original id with its original SessionId intact.
-        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{firstSessionId}", TestContext.Current.CancellationToken);
+        var getResponse = await _client.GetAsync($"{_baseUrl}/api/sessions/{firstSessionId}", TestContext.Current.CancellationToken);
         Assert.True(getResponse.IsSuccessStatusCode);
         var metadata = await getResponse.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(metadata);
@@ -969,7 +975,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (_, taskDirectoryPath) = await StartASessionAsync();
 
-        var response = await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/tasks", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var items = await response.Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
@@ -985,44 +991,44 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         // Archiving hides it from the default fleet list but keeps it reachable with includeArchived.
         var archiveResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/archive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/archive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
         Assert.True(archiveResponse.IsSuccessStatusCode);
 
-        var defaultList = await (await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken))
+        var defaultList = await (await _client.GetAsync($"{_baseUrl}/api/tasks", TestContext.Current.CancellationToken))
             .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.DoesNotContain(defaultList!, i => i.TaskDirectoryPath == taskDirectoryPath);
 
-        var withArchived = await (await _client.GetAsync($"{BaseUrl}/api/tasks?includeArchived=true", TestContext.Current.CancellationToken))
+        var withArchived = await (await _client.GetAsync($"{_baseUrl}/api/tasks?includeArchived=true", TestContext.Current.CancellationToken))
             .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
         var archivedItem = Assert.Single(withArchived!, i => i.TaskDirectoryPath == taskDirectoryPath);
         Assert.True(archivedItem.IsArchived);
 
         // Archiving alone must not free the name for reuse -- workflow.json/session.json is still on disk.
         var collisionResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, collisionResponse.StatusCode);
 
         // Unarchiving reinstates it in the default list.
         var unarchiveResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/unarchive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/unarchive", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
         Assert.True(unarchiveResponse.IsSuccessStatusCode);
 
-        var reinstatedList = await (await _client.GetAsync($"{BaseUrl}/api/tasks", TestContext.Current.CancellationToken))
+        var reinstatedList = await (await _client.GetAsync($"{_baseUrl}/api/tasks", TestContext.Current.CancellationToken))
             .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(reinstatedList!, i => i.TaskDirectoryPath == taskDirectoryPath && !i.IsArchived);
 
         // Only a real delete frees the directory and the name (M24 Phase 5 regression, #278).
         var deleteResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/delete", new TaskDirectoryRequest(taskDirectoryPath), TestContext.Current.CancellationToken);
         Assert.True(deleteResponse.IsSuccessStatusCode);
         Assert.False(Directory.Exists(taskDirectoryPath));
 
-        var recentsAfterDelete = await (await _client.GetAsync($"{BaseUrl}/api/tasks/recent", TestContext.Current.CancellationToken))
+        var recentsAfterDelete = await (await _client.GetAsync($"{_baseUrl}/api/tasks/recent", TestContext.Current.CancellationToken))
             .Content.ReadFromJsonAsync<IReadOnlyList<string>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.DoesNotContain(taskDirectoryPath, recentsAfterDelete!);
 
         var freshCollisionResponse = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/sessions/start", new StartSessionRequest(Adapter: "claude", TaskName: taskName), TestContext.Current.CancellationToken);
         Assert.True(freshCollisionResponse.IsSuccessStatusCode);
     }
 
@@ -1041,7 +1047,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Directory.CreateDirectory(outsidePath);
 
         var response = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/{action}", new TaskDirectoryRequest(outsidePath), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/{action}", new TaskDirectoryRequest(outsidePath), TestContext.Current.CancellationToken);
 
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
         Assert.True(Directory.Exists(outsidePath));
@@ -1056,7 +1062,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var missingDirectory = Path.Combine(baseSessionsDir, "never-created-" + Guid.NewGuid().ToString("N"));
 
         var response = await _client.PostAsJsonAsync(
-            $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/tasks/delete", new TaskDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);
 
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -1070,10 +1076,10 @@ public class DaemonIntegrationTests : IAsyncLifetime
         try
         {
             var postResponse = await _client.PostAsJsonAsync(
-                $"{BaseUrl}/api/projects", new RegisterProjectRequest(projectDirectory, marker), TestContext.Current.CancellationToken);
+                $"{_baseUrl}/api/projects", new RegisterProjectRequest(projectDirectory, marker), TestContext.Current.CancellationToken);
             Assert.True(postResponse.IsSuccessStatusCode);
 
-            var getResponse = await _client.GetAsync($"{BaseUrl}/api/projects", TestContext.Current.CancellationToken);
+            var getResponse = await _client.GetAsync($"{_baseUrl}/api/projects", TestContext.Current.CancellationToken);
             Assert.True(getResponse.IsSuccessStatusCode);
 
             var projects = await getResponse.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
@@ -1108,7 +1114,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // in-turn progress has no TaskSession dependency, unlike the projection socket.
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
         using var socket = new ClientWebSocket();
-        await socket.ConnectAsync(new Uri($"ws://localhost:5050/api/ws/progress?token={token}"), TestContext.Current.CancellationToken);
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws/progress?token={token}"), TestContext.Current.CancellationToken);
 
         Assert.Equal(WebSocketState.Open, socket.State);
 
