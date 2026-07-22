@@ -8,3 +8,9 @@ pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
 *.go text eol=lf
 src/Aer.Sidecar/go.mod text eol=lf
 src/Aer.Sidecar/go.sum text eol=lf
+
+# Shell scripts and patch files must stay LF on every platform. A CRLF shell script fails on
+# Linux with `bash: \r: command not found` on its first line, and `git apply` rejects a CRLF
+# patch against LF sources -- both would break CI's Linux jobs while passing on Windows.
+*.sh text eol=lf
+*.patch -text
