@@ -46,7 +46,10 @@ lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core", "lint-si
 # Aer.Mobile is sideload-only for this milestone (no Play Store signing/release config exists).
 mobile-analyze = { cmd = "flutter analyze", cwd = "src/Aer.Mobile" }
 mobile-test = { cmd = "flutter test", cwd = "src/Aer.Mobile" }
-mobile-build = { cmd = "flutter build apk --debug", cwd = "src/Aer.Mobile" }
+# Wrapped rather than a plain `flutter build apk`: Flutter's native-asset hook runner strips the
+# environment before invoking Go, so the build cache can't be located and the tailscale native
+# asset fails to compile. scripts/mobile-build.sh restores it via a PATH shim (see #303).
+mobile-build = { cmd = "bash scripts/mobile-build.sh" }
 mobile-run = { cmd = "flutter run --debug", cwd = "src/Aer.Mobile" }
 mobile-install = { cmd = "flutter install --debug", cwd = "src/Aer.Mobile" }
 
