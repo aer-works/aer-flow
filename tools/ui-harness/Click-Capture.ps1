@@ -20,6 +20,9 @@ public class Clk {
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT val, int size);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
@@ -38,6 +41,19 @@ $null = [Clk]::DwmGetWindowAttribute($h, 9, [ref]$r, 16)
 
 [Clk]::SetForegroundWindow($h) | Out-Null
 Start-Sleep -Milliseconds 350
+
+# See Capture-Handle.ps1: a synthesized click goes to whichever window is topmost at that pixel,
+# and SetForegroundWindow is refused from a non-foreground process. Refuse rather than click a
+# window we did not target -- a capture of the intended window will still look plausible.
+$probe = New-Object Clk+POINT
+$probe.X = $r.Left + $X; $probe.Y = $r.Top + $Y
+$rootAtPoint = [Clk]::GetAncestor([Clk]::WindowFromPoint($probe), 2)   # GA_ROOT
+if ($rootAtPoint -ne $h) {
+    $sb = New-Object System.Text.StringBuilder 256
+    [void][Clk]::GetWindowText($rootAtPoint, $sb, 256)
+    Write-Output "REFUSED: ($X,$Y) belongs to 0x$($rootAtPoint.ToString('X')) '$($sb.ToString())', not the AER Flow window. Bring it to the front and retry; no click was sent."
+    exit 2
+}
 
 $saved = New-Object Clk+POINT
 [Clk]::GetCursorPos([ref]$saved) | Out-Null

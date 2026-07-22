@@ -20,6 +20,9 @@ public class CT {
     [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT v, int s);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
@@ -33,6 +36,20 @@ if ([CT]::DwmGetWindowAttribute($h, 9, [ref]$r, 16) -ne 0) { [void][CT]::GetWind
 
 [void][CT]::SetForegroundWindow($h)
 Start-Sleep -Milliseconds 300
+
+# This script is the most dangerous of the three: the click can land in another application (see
+# Capture-Handle.ps1), and SendKeys then types into whatever holds real focus -- so text can be
+# entered into an unrelated window while this still reports success. Refuse unless the target
+# genuinely owns the pixel.
+$probe = New-Object CT+POINT
+$probe.X = $r.Left + $X; $probe.Y = $r.Top + $Y
+$rootAtPoint = [CT]::GetAncestor([CT]::WindowFromPoint($probe), 2)   # GA_ROOT
+if ($rootAtPoint -ne $h) {
+    $sb = New-Object System.Text.StringBuilder 256
+    [void][CT]::GetWindowText($rootAtPoint, $sb, 256)
+    Write-Output "REFUSED: ($X,$Y) belongs to 0x$($rootAtPoint.ToString('X')) '$($sb.ToString())', not $Handle. Nothing was clicked and nothing was typed."
+    exit 2
+}
 
 $saved = New-Object CT+POINT
 [void][CT]::GetCursorPos([ref]$saved)
