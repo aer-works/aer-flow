@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.18.0...adapters-v0.19.0) (2026-07-22)
+
+
+### Features
+
+* **daemon,adapters,ui:** Milestone 24 — Interactive Sessions & Unified Task Creation ([#276](https://github.com/aer-works/aer-flow/issues/276)) ([f7ab4fa](https://github.com/aer-works/aer-flow/commit/f7ab4fad253e730735631d158d92f97b2fc22d03))
+* **flow,adapters,ui:** Durably capture and surface the resolved prompt for ordinary workflow steps ([#297](https://github.com/aer-works/aer-flow/issues/297)) ([b91b3a1](https://github.com/aer-works/aer-flow/commit/b91b3a1242893df4a20cfdc3cc69044c2eea53e8))
+
+
+### Bug Fixes
+
+* **adapters,daemon:** Give chat continuation a legal Supersede target ([#291](https://github.com/aer-works/aer-flow/issues/291)) ([fb13594](https://github.com/aer-works/aer-flow/commit/fb13594513233dcd0813f504d06b6ae8ce0f474f))
+* **adapters:** Grant Claude Code access to the artifacts root via --add-dir ([#299](https://github.com/aer-works/aer-flow/issues/299)) ([79c0f68](https://github.com/aer-works/aer-flow/commit/79c0f68d2495a44264514c64421500a627cb9d67))
+
 ## [0.18.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.17.0...adapters-v0.18.0) (2026-07-21)
 
 
