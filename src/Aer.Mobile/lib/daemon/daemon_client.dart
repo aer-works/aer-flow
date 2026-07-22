@@ -324,6 +324,17 @@ class DaemonClient {
     _throwIfFailed(response);
   }
 
+  /// Clears a session's visible transcript and forces the next turn to start a genuinely fresh
+  /// native session (#286) — unlike [compactSession] this never talks to the vendor and completes
+  /// synchronously, returning the updated (empty-turns) metadata directly.
+  Future<SessionMetadata> clearSession(String sessionId) async {
+    final response = await _post(
+      Uri.http(host, '/api/sessions/$sessionId/clear'),
+    );
+    _throwIfFailed(response);
+    return SessionMetadata.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   /// Discovered skills/commands/agents/models for a session's current vendor, plus recently-used
   /// ordering (M24 Phase 2 follow-up chat capability picker).
   Future<SessionCommandsResult> getSessionCommands(String sessionId) async {
@@ -351,6 +362,15 @@ class DaemonClient {
       body: jsonEncode({'mode': mode}),
     );
     _throwIfFailed(response);
+  }
+
+  /// The currently active session mode (#286), reverse-mapped server-side from the persisted
+  /// PermissionGrant — "auto", "default", "plan", or "custom".
+  Future<String> getSessionMode(String sessionId) async {
+    final response = await _get(Uri.http(host, '/api/sessions/$sessionId/mode'));
+    _throwIfFailed(response);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['mode'] as String;
   }
 
   /// Fetches known projects registry from daemon (M24 Phase 3).

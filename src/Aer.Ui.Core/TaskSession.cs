@@ -1016,6 +1016,94 @@ public sealed class TaskSession
         }
     }
 
+    /// <summary>The currently active session mode (#286), reverse-mapped server-side from the persisted PermissionGrant — "auto", "default", "plan", or "custom".</summary>
+    public async Task<(string? Mode, string? ErrorMessage)> GetSessionModeAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return (null, "Reading session mode requires the daemon, and none is reachable.");
+        }
+
+        try
+        {
+            var response = await _httpClient.GetAsync($"{_activeDaemonUrl}/api/sessions/{sessionId}/mode", cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (null, await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true));
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<SessionModeResult>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            return (result?.Mode, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Compacts a session's history (#286): wires the chat command picker's "/compact" item to the
+    /// real dedicated action instead of inserting literal text and hoping the vendor's own
+    /// (unverified) slash-command handling does something with it. Fire-and-forget on the daemon
+    /// side, same as <see cref="SendSessionMessageAsync"/> — completion is observed via the existing
+    /// metadata poll, not this call's response.
+    /// </summary>
+    public async Task<MutationOutcome> CompactSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return new MutationOutcome("Compacting a session requires the daemon, and none is reachable.");
+        }
+
+        try
+        {
+            var response = await _httpClient.PostAsync($"{_activeDaemonUrl}/api/sessions/{sessionId}/compact", null, cancellationToken).ConfigureAwait(true);
+            if (response.IsSuccessStatusCode)
+            {
+                return new MutationOutcome(null);
+            }
+
+            var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
+            return new MutationOutcome(err);
+        }
+        catch (Exception ex)
+        {
+            return new MutationOutcome(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Clears a session's visible transcript and forces the next turn to start a genuinely fresh
+    /// native session (#286) — unlike <see cref="CompactSessionAsync"/> this never talks to the
+    /// vendor and completes synchronously, so the caller gets the updated (empty-turns) metadata
+    /// back directly rather than needing to poll for it.
+    /// </summary>
+    public async Task<(SessionMetadata? Result, string? ErrorMessage)> ClearSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
+        {
+            return (null, "Clearing a session requires the daemon, and none is reachable.");
+        }
+
+        try
+        {
+            var response = await _httpClient.PostAsync($"{_activeDaemonUrl}/api/sessions/{sessionId}/clear", null, cancellationToken).ConfigureAwait(true);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (null, await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true));
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: cancellationToken).ConfigureAwait(true);
+            return (result, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    private sealed record SessionModeResult(string? Mode);
+
     /// <summary>
     /// The fleet list (M24 Phase 5, #278): every known task/session directory's lightweight status.
     /// Daemon-only, same reasoning as <see cref="GetSessionCommandsAsync"/> — scanning both
