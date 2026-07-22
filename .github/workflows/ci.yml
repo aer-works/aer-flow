@@ -10,20 +10,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # M13 Phase 3 (#109): macos-latest joins the matrix so pixi.toml's declared osx-arm64
-        # support actually builds somewhere — cross-compiling aer_core to aarch64-apple-darwin from
-        # the ubuntu-latest runner isn't practical without Apple's SDK. rid/lib-name key each OS's
-        # native-lib artifact for the pack job below to gather.
-        include:
-          - os: windows-latest
-            rid: win-x64
-            lib-name: aer_core.dll
-          - os: ubuntu-latest
-            rid: linux-x64
-            lib-name: libaer_core.so
-          - os: macos-latest
-            rid: osx-arm64
-            lib-name: libaer_core.dylib
+        # macos-latest exists so pixi.toml's declared osx-arm64 support actually builds somewhere —
+        # cross-compiling aer_core to aarch64-apple-darwin from the ubuntu-latest runner isn't
+        # practical without Apple's SDK. rid/lib-name key each OS's native-lib artifact for the pack
+        # job below to gather.
+        #
+        # It runs only on pushes to main, never on pull requests. Measured on a real run it takes 3
+        # of the workflow's 19 wall-clock minutes but 30 of its 51 billable ones, because macOS
+        # runners bill at a 10x multiplier — 59% of the cost for 6% of the time. Reserving it for
+        # main keeps PR feedback fast and still catches macOS breakage before it can compound, and
+        # keeps the workflow affordable should this repository ever go private (the Free tier's
+        # 2,000 minutes/month is under one backlog sweep at the unreserved rate). The pack job below
+        # is gated identically because it cannot assemble a multi-RID package without this leg's
+        # artifact.
+        include: >-
+          ${{ github.event_name == 'push'
+              && fromJSON('[{"os":"windows-latest","rid":"win-x64","lib-name":"aer_core.dll"},{"os":"ubuntu-latest","rid":"linux-x64","lib-name":"libaer_core.so"},{"os":"macos-latest","rid":"osx-arm64","lib-name":"libaer_core.dylib"}]')
+              || fromJSON('[{"os":"windows-latest","rid":"win-x64","lib-name":"aer_core.dll"},{"os":"ubuntu-latest","rid":"linux-x64","lib-name":"libaer_core.so"}]') }}
     runs-on: ${{ matrix.os }}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
@@ -134,7 +137,12 @@ jobs:
   # one fat nupkg — the same install command (`dotnet tool install --global aer`) then works
   # regardless of host OS. Runs after `test` so it only packs libraries that already passed lint
   # and test on their own platform.
+  # Pushes to main only, matching the macOS matrix leg above: this job downloads that leg's
+  # native-lib-osx-arm64 artifact, so on a pull request (where macOS does not run) it would fail
+  # at the download step rather than merely pack less. It verifies packaging integrity, not the
+  # correctness of the change under review, so main is the right place for it.
   pack:
+    if: github.event_name == 'push'
     needs: test
     runs-on: ubuntu-latest
     env:
