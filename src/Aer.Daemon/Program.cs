@@ -1277,6 +1277,76 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
+            // #286: the POST above changes the mode but nothing let a client learn what's
+            // currently active -- mode itself lives only in bindings.json's PermissionGrant (there's
+            // no separate "CurrentMode" field), so this reverse-maps the persisted grant back to one
+            // of the three canonical mode names the POST above can produce, or "custom" for a grant
+            // that doesn't match any of them (e.g. one set directly via /api/sessions/start's own
+            // PermissionGrant parameter, bypassing this mode vocabulary entirely).
+            app.MapGet("/api/sessions/{sessionId}/mode", async (string sessionId) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                var bindingsFilePath = Path.Combine(resolved.Value.DirectoryPath, "bindings.json");
+                var existingBindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFilePath).ConfigureAwait(true);
+                if (!existingBindings.TryGetValue(InteractiveSessionMaterializer.DefaultWorkerName, out var existingEntry))
+                {
+                    return Results.NotFound();
+                }
+
+                var mode = existingEntry.PermissionGrant is { } grant
+                    ? grant switch
+                    {
+                        { ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true } => "auto",
+                        { ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false } => "plan",
+                        { ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false } => "default",
+                        _ => "custom",
+                    }
+                    : "custom";
+
+                return Results.Ok(new { Mode = mode });
+            });
+
+            // #286: "clear" (unlike compact) never talks to the vendor -- it's a purely local reset
+            // so the *next* turn starts a genuinely fresh native session, mirroring exactly what
+            // /api/sessions/start's own materialization does for a brand new session (same
+            // fresh-GUID-per-adapter minting, VendorSessionEstablished reset to false so
+            // ExecuteSessionTurnAsync's #285 resume-gating correctly picks `--session-id` over
+            // `--resume` on that next turn instead of trying to resume an id the vendor never
+            // established). Turns are cleared immediately so the UI reflects "cleared" without
+            // waiting on any background work.
+            app.MapPost("/api/sessions/{sessionId}/clear", async (string sessionId) =>
+            {
+                var resolved = await ResolveSessionAsync(sessionId);
+                if (resolved == null)
+                {
+                    return Results.NotFound();
+                }
+
+                var (directoryPath, metadata) = resolved.Value;
+                var freshVendorSessionId = string.Equals(metadata.CurrentAdapter, "claude", StringComparison.OrdinalIgnoreCase)
+                    ? Guid.NewGuid().ToString()
+                    : null;
+
+                var cleared = metadata with
+                {
+                    Turns = [],
+                    TurnCount = 0,
+                    CurrentVendorSessionId = freshVendorSessionId,
+                    VendorSessionEstablished = false,
+                    UpdatedAt = DateTimeOffset.UtcNow,
+                };
+
+                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                await InteractiveSessionMaterializer.SaveMetadataAsync(cleared, metadataPath).ConfigureAwait(true);
+
+                return Results.Ok(cleared);
+            });
+
             app.MapGet("/api/adapters/capabilities", async (string? adapter, string? workingDirectory, IReadOnlyDictionary<string, IWorkerAdapter> adapters) =>
             {
                 var name = string.IsNullOrWhiteSpace(adapter) ? "claude" : adapter.Trim().ToLowerInvariant();

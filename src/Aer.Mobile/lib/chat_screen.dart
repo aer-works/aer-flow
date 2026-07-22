@@ -61,10 +61,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _isLoadingCommands = false;
 
+  /// The active session mode (#286), or null until [_refreshMode] resolves it — shown persistently
+  /// in the AppBar rather than only reflected transiently right after a mode-button tap.
+  String? _currentMode;
+
   @override
   void initState() {
     super.initState();
     _refresh();
+    _refreshMode();
     _projectionSubscription = widget.client.watch().listen((projection) {
       if (!mounted) return;
       if (projection.directoryPath == widget.directoryPath) {
@@ -108,6 +113,16 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToEnd();
     } on DaemonException catch (e) {
       if (mounted) setState(() { _isLoading = false; _loadError = e.message; });
+    }
+  }
+
+  /// Best-effort: a stale/missing mode indicator is cosmetic, not worth surfacing as a chat error.
+  Future<void> _refreshMode() async {
+    try {
+      final mode = await widget.client.getSessionMode(widget.sessionId);
+      if (mounted) setState(() => _currentMode = mode);
+    } on DaemonException {
+      // Leave _currentMode as-is (null on first load, last-known value otherwise).
     }
   }
 
@@ -210,6 +225,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         Navigator.of(sheetContext).pop();
                         try {
                           await widget.client.setSessionMode(widget.sessionId, mode.$1);
+                          await _refreshMode();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mode set to ${mode.$2}.')));
+                          }
                         } on DaemonException catch (e) {
                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
                         }
@@ -229,13 +248,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         trailing: item.isRecentlyUsed ? const Text('recent') : null,
                         onTap: () {
                           Navigator.of(sheetContext).pop();
-                          setState(() {
-                            _inputController.text =
-                                _inputController.text.isEmpty ? item.name : '${_inputController.text} ${item.name}';
-                          });
-                          // Best-effort: a picked command failing to record as "recently used"
-                          // shouldn't surface an error to the user.
-                          unawaited(widget.client.recordCommandUsed(widget.sessionId, item.name));
+                          _handleCommandItemTap(item);
                         },
                       ),
                     if (info.isNotEmpty) ...[
@@ -255,6 +268,47 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  /// A command/skill/agent picked from the Commands sheet (#286). "/compact" and "/clear" are real
+  /// dedicated actions, not text insertion — inserting them as literal text only ever "worked"
+  /// because the resulting message happened to be interpreted by the vendor CLI's own (unverified,
+  /// vendor-owned) slash-command handling, not because AER actually invoked anything. Everything
+  /// else still inserts into the message box for the user to review/edit before Send.
+  Future<void> _handleCommandItemTap(ChatCapabilityItem item) async {
+    unawaited(widget.client.recordCommandUsed(widget.sessionId, item.name));
+
+    switch (item.name) {
+      case '/compact':
+        try {
+          await widget.client.compactSession(widget.sessionId);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compacting session context…')));
+          }
+        } on DaemonException catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        }
+        break;
+
+      case '/clear':
+        try {
+          final cleared = await widget.client.clearSession(widget.sessionId);
+          if (mounted) {
+            setState(() => _metadata = cleared);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session context cleared.')));
+          }
+        } on DaemonException catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        }
+        break;
+
+      default:
+        setState(() {
+          _inputController.text =
+              _inputController.text.isEmpty ? item.name : '${_inputController.text} ${item.name}';
+        });
+        break;
+    }
   }
 
   List<_ChatMessage> _buildMessages(SessionMetadata metadata) {
@@ -281,6 +335,17 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
+        // Persistent mode indicator (#286): mode buttons live in the Commands & mode bottom sheet,
+        // but the currently active mode was previously invisible until you reopened that sheet.
+        bottom: _currentMode == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(20),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('Mode: $_currentMode', style: Theme.of(context).textTheme.bodySmall),
+                ),
+              ),
         actions: [
           IconButton(
             icon: _isLoadingCommands

@@ -104,6 +104,7 @@ public class ChatViewModelTests
         var viewModel = new ChatViewModel();
         viewModel.LoadFromMetadata(MetadataWithTurns(
             new SessionTurn(1, "claude", "Hello", "Hi", DateTimeOffset.UtcNow, false, false)), "/tmp/sess-1");
+        viewModel.CurrentMode = "auto";
 
         viewModel.Clear();
 
@@ -112,5 +113,21 @@ public class ChatViewModelTests
         Assert.Empty(viewModel.Messages);
         Assert.Equal("No session open.", viewModel.HeadlineText);
         Assert.False(viewModel.IsSending);
+        Assert.Null(viewModel.CurrentMode);
+        Assert.False(viewModel.HasCurrentMode);
+    }
+
+    /// <summary>#286: the mode indicator only renders once a mode has actually been resolved from the daemon — a null default must not read as "mode: (blank)".</summary>
+    [Fact]
+    public void HasCurrentMode_ReflectsWhetherAModeHasBeenResolved()
+    {
+        var viewModel = new ChatViewModel();
+        Assert.False(viewModel.HasCurrentMode);
+
+        viewModel.CurrentMode = "plan";
+        Assert.True(viewModel.HasCurrentMode);
+
+        viewModel.CurrentMode = null;
+        Assert.False(viewModel.HasCurrentMode);
     }
 }
