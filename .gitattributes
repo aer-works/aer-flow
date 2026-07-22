@@ -14,3 +14,10 @@ src/Aer.Sidecar/go.sum text eol=lf
 # patch against LF sources -- both would break CI's Linux jobs while passing on Windows.
 *.sh text eol=lf
 *.patch -text
+
+# tools/ui-harness is Windows-only by construction (user32/dwmapi P/Invoke against a running
+# Avalonia window), so CRLF is the native convention here. Pinned explicitly rather than left to
+# core.autocrlf so the checkout is identical regardless of a contributor's git config -- same
+# reasoning as the LF pins above, which were both added after a line-ending difference broke a
+# build that passed locally.
+*.ps1 text eol=crlf
