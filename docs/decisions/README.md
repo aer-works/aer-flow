@@ -51,3 +51,4 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0004](0004-permission-scopes.md) | Permissions scope by project, session and step | accepted |
 | [0005](0005-seam-milestones.md) | Capability milestones alternate with seam milestones | accepted |
 | [0006](0006-visual-direction-quiet.md) | Visual direction is "Quiet" | accepted |
+| [0007](0007-background-work-inline-and-dedicated.md) | Background work: glance inline, expand in place, dedicated surface for depth | accepted |
