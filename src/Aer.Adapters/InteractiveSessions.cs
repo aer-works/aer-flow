@@ -226,6 +226,37 @@ public static class InteractiveSessionMaterializer
         return metadata;
     }
 
+    /// <summary>
+    /// How many times <see cref="SaveMetadataAsync"/> and <see cref="LoadMetadataAsync"/> retry a
+    /// sharing-violation before giving up, and how long they wait between attempts. Small on
+    /// purpose: the contended window is a single file replace, so anything that outlasts a handful
+    /// of these is a real fault rather than contention, and should surface as one.
+    /// </summary>
+    private const int MetadataIoAttempts = 12;
+    private static readonly TimeSpan MetadataIoRetryDelay = TimeSpan.FromMilliseconds(25);
+
+    /// <summary>
+    /// Writes <c>session.json</c> so that a concurrent reader can neither fail the write nor observe
+    /// a half-written file.
+    /// <para>
+    /// Issue #341: this used a plain <c>File.WriteAllTextAsync</c> against the live path while
+    /// <see cref="LoadMetadataAsync"/> used a plain <c>File.ReadAllTextAsync</c>. <c>ReadAllText</c>
+    /// opens with <c>FileShare.Read</c>, which denies writers -- so on Windows any client polling
+    /// <c>GET /api/sessions/{id}</c> while a turn finished made the turn's own metadata write throw
+    /// <c>IOException</c>. That throw happened *after* the Supersede decision had already been
+    /// recorded, so the workflow was healthy and only <c>TurnCount</c> never persisted: the chat
+    /// stalled forever with an intact event log, and the exception died in a fire-and-forget task.
+    /// POSIX permits the concurrent open, which is why this only ever reproduced on Windows.
+    /// </para>
+    /// <para>
+    /// The fix is on the reader: once <see cref="LoadMetadataAsync"/> stops denying write access,
+    /// this ordinary write succeeds. A brief retry stays for the genuinely concurrent case (two
+    /// turns finishing at once), since the writer's own <c>FileShare.Read</c> excludes a second
+    /// writer. Replace-via-temp was tried first and is worse here: Windows'
+    /// <c>MOVEFILE_REPLACE_EXISTING</c> needs delete rights on the target and throws
+    /// <see cref="UnauthorizedAccessException"/> against a live reader, trading one race for another.
+    /// </para>
+    /// </summary>
     public static async Task SaveMetadataAsync(SessionMetadata metadata, string filePath, CancellationToken cancellationToken = default)
     {
         var dir = Path.GetDirectoryName(filePath);
@@ -240,19 +271,71 @@ public static class InteractiveSessionMaterializer
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
         var json = JsonSerializer.Serialize(metadata, options);
-        await File.WriteAllTextAsync(filePath, json, cancellationToken).ConfigureAwait(false);
+
+        await RetryOnSharingViolationAsync(
+            () => File.WriteAllTextAsync(filePath, json, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Reads <c>session.json</c> without denying a concurrent writer -- see
+    /// <see cref="SaveMetadataAsync"/> for why that matters. Opening with
+    /// <c>FileShare.ReadWrite | FileShare.Delete</c> also permits the replace this file's writer
+    /// performs.
+    /// </summary>
     public static async Task<SessionMetadata?> LoadMetadataAsync(string filePath, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(filePath)) return null;
 
-        var json = await File.ReadAllTextAsync(filePath, cancellationToken).ConfigureAwait(false);
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         };
-        return JsonSerializer.Deserialize<SessionMetadata>(json, options);
+
+        SessionMetadata? result = null;
+        await RetryOnSharingViolationAsync(
+            async () =>
+            {
+                using var stream = new FileStream(
+                    filePath, FileMode.Open, FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 4096, useAsync: true);
+                using var reader = new StreamReader(stream);
+                var json = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+
+                // Permitting a concurrent writer is what makes the write above succeed, and the
+                // cost is that this read can land mid-rewrite and see a truncated document. That
+                // state is always transient -- the writer completes -- so a torn parse is retried
+                // rather than surfaced. Deserialize inside the retry so both failures share it.
+                result = JsonSerializer.Deserialize<SessionMetadata>(json, options);
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Retries <paramref name="action"/> through the transient states of a concurrently
+    /// read-and-rewritten file: a sharing violation, a denied replace, or a document parsed
+    /// mid-write. The final attempt rethrows, so a genuine fault (a corrupt file that never settles,
+    /// a real permissions problem) still surfaces rather than being retried into silence -- silence
+    /// is what made #341 cost a day.
+    /// </summary>
+    private static async Task RetryOnSharingViolationAsync(Func<Task> action, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await action().ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (attempt < MetadataIoAttempts
+                                       && ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                await Task.Delay(MetadataIoRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+        }
     }
 
     public static string SynthesizeContextSummary(IReadOnlyList<SessionTurn> turns, string newMessage)
