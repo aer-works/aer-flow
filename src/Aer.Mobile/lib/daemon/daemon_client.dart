@@ -18,6 +18,10 @@ class DaemonException implements Exception {
 
 typedef TsnetDialFn = Future<TailscaleConnection> Function(String host, int port);
 
+/// Brings the embedded tsnet node up if it isn't already, before this client trusts it enough to
+/// dial. Defaults to [TailnetGateway.ensureUp]; overridable for tests.
+typedef TsnetEnsureUpFn = Future<TailscaleStatus> Function();
+
 /// REST + WebSocket client for Aer.Daemon's remote API (src/Aer.Daemon/Program.cs). `host` is an
 /// authority string like `192.168.1.23:5050` — no scheme, matching how the pairing screen collects
 /// it (the user types/scans host+port, not a full URL).
@@ -27,6 +31,7 @@ class DaemonClient {
   final bool tsnetRouted;
   final http.Client? httpClient;
   final TsnetDialFn? tsnetDialFn;
+  final TsnetEnsureUpFn? tsnetEnsureUpFn;
 
   DaemonClient({
     required this.host,
@@ -34,6 +39,7 @@ class DaemonClient {
     this.tsnetRouted = false,
     this.httpClient,
     this.tsnetDialFn,
+    this.tsnetEnsureUpFn,
   });
 
   /// The only unauthenticated endpoint besides GET /api/version. Returns the raw paired-client
@@ -121,6 +127,7 @@ class DaemonClient {
   }
 
   Stream<TaskProjection> _watchOverTsnet() async* {
+    await _ensureTsnetUp();
     final parts = host.split(':');
     final targetHost = parts[0];
     final targetPort = parts.length > 1 ? int.parse(parts[1]) : 5050;
@@ -163,6 +170,7 @@ class DaemonClient {
   }
 
   Stream<SessionProgressEvent> _watchProgressOverTsnet() async* {
+    await _ensureTsnetUp();
     final parts = host.split(':');
     final targetHost = parts[0];
     final targetPort = parts.length > 1 ? int.parse(parts[1]) : 5050;
@@ -183,6 +191,32 @@ class DaemonClient {
       );
     } finally {
       await wsChannel.close();
+    }
+  }
+
+  /// Guards every tsnet dial against the engine not actually being up in *this* process yet
+  /// (issue #287). `Tailscale.instance` is a process-wide singleton that only starts the embedded
+  /// node when [TailnetGateway.ensureUp]/`up()` is called — historically that only ever happened
+  /// once, from the one-time pairing flow (`pairing_screen.dart`). That's fine as long as the same
+  /// process stays alive for the life of the paired credentials, but Android does not guarantee
+  /// that: a screen-timeout-driven background can lead to the OS reclaiming the process, and on
+  /// relaunch this client resumes straight into `watch()` with a brand-new, never-started
+  /// `Tailscale.instance` — `tcp.dial()` then fails immediately with `TailscaleTcpException(tcp):
+  /// tcpDialFd called before Start` (confirmed against the vendored `tailscale` package's Go
+  /// source: `srv` is nil until `Start()` runs, and `NodeState.stopped` — "engine not running but
+  /// persisted credentials exist" — is exactly what a fresh process reports). `ensureUp()` with no
+  /// authKey is a no-op if the node is already running and otherwise restarts it from the
+  /// credentials `Tailscale.init`'s stateDir already has on disk, so calling it here is safe and
+  /// cheap on the common (already-running) path and self-healing on the broken one — including from
+  /// the Reconnect button, which works simply by re-running this same `watch()`/`watchProgress()`
+  /// path rather than retrying a dial against a client it already knows is dead.
+  Future<void> _ensureTsnetUp() async {
+    final ensureUp = tsnetEnsureUpFn ?? TailnetGateway().ensureUp;
+    final status = await ensureUp();
+    if (status.state != NodeState.running) {
+      throw DaemonException(
+        'Tailscale is not connected (${status.state.name}). Re-pair this device if the problem persists.',
+      );
     }
   }
 

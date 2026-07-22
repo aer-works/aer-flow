@@ -20,7 +20,7 @@ class InboxScreen extends StatefulWidget {
   State<InboxScreen> createState() => _InboxScreenState();
 }
 
-class _InboxScreenState extends State<InboxScreen> {
+class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   DaemonClient? _client;
   StreamSubscription<TaskProjection>? _subscription;
   TaskProjection? _projection;
@@ -39,6 +39,7 @@ class _InboxScreenState extends State<InboxScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
   }
 
@@ -80,8 +81,26 @@ class _InboxScreenState extends State<InboxScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _subscription?.cancel();
     super.dispose();
+  }
+
+  /// Proactively recovers a stale connection on app foreground (issue #287) instead of waiting for
+  /// the user to notice a stuck "disconnected" banner. Two distinct failure modes both surface here
+  /// as a resumed lifecycle event: Android reclaiming the whole process while backgrounded (the
+  /// relaunch's fresh `Tailscale.instance` never had `up()` called on it outside the one-time
+  /// pairing flow — see `DaemonClient._ensureTsnetUp`) and, on builds where the process merely
+  /// backgrounds without dying, the OS tearing down the phone's network sockets while this screen's
+  /// widget state (and its now-silently-dead `_subscription`) survives untouched. Re-running
+  /// `_connect()` unconditionally on every resume is a single cheap WS reconnect when the existing
+  /// connection was actually fine, and self-heals both broken cases without the user having to
+  /// notice the banner and tap Reconnect themselves.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _client != null) {
+      _connect();
+    }
   }
 
   Future<void> _forgetPairing() async {
