@@ -942,10 +942,34 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.True(freshCollisionResponse.IsSuccessStatusCode);
     }
 
+    [Theory]
+    [InlineData("archive")]
+    [InlineData("unarchive")]
+    [InlineData("delete")]
+    public async Task TaskLifecycleEndpoints_WithADirectoryPathOutsideTasksOrSessionsRoots_ReturnBadRequest(string action)
+    {
+        // Same containment guard #250 added for RunTemplate's TaskName, applied here (review
+        // follow-up): these endpoints are remote-reachable (mobile's DaemonClient included) and
+        // delete does a real recursive Directory.Delete -- an uncontained DirectoryPath is strictly
+        // worse than #250's traversal, since it needs no traversal trick, just any absolute path
+        // outside ~/.aer/tasks and ~/.aer/sessions.
+        var outsidePath = Path.Combine(_tempTaskDirectory!, "outside-managed-roots-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outsidePath);
+
+        var response = await _client.PostAsJsonAsync(
+            $"{BaseUrl}/api/tasks/{action}", new TaskDirectoryRequest(outsidePath), TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True(Directory.Exists(outsidePath));
+    }
+
     [Fact]
     public async Task DeleteTask_ForANonexistentDirectory_ReturnsNotFound()
     {
-        var missingDirectory = Path.Combine(_tempTaskDirectory!, "never-created-" + Guid.NewGuid().ToString("N"));
+        // Must be under the managed ~/.aer/sessions root -- otherwise the containment guard now
+        // rejects it as BadRequest before this handler's own NotFound check ever runs.
+        var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+        var missingDirectory = Path.Combine(baseSessionsDir, "never-created-" + Guid.NewGuid().ToString("N"));
 
         var response = await _client.PostAsJsonAsync(
             $"{BaseUrl}/api/tasks/delete", new TaskDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);

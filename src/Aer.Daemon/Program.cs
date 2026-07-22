@@ -942,8 +942,12 @@ namespace Aer.Daemon
                 {
                     return Results.BadRequest("DirectoryPath is required.");
                 }
+                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                {
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                }
 
-                await TaskLifecycle.ArchiveAsync(request.DirectoryPath).ConfigureAwait(true);
+                await TaskLifecycle.ArchiveAsync(resolvedPath).ConfigureAwait(true);
                 return Results.Ok();
             });
 
@@ -953,8 +957,12 @@ namespace Aer.Daemon
                 {
                     return Results.BadRequest("DirectoryPath is required.");
                 }
+                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                {
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                }
 
-                await TaskLifecycle.UnarchiveAsync(request.DirectoryPath).ConfigureAwait(true);
+                await TaskLifecycle.UnarchiveAsync(resolvedPath).ConfigureAwait(true);
                 return Results.Ok();
             });
 
@@ -968,14 +976,18 @@ namespace Aer.Daemon
                 {
                     return Results.BadRequest("DirectoryPath is required.");
                 }
+                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                {
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                }
 
-                if (!Directory.Exists(request.DirectoryPath))
+                if (!Directory.Exists(resolvedPath))
                 {
                     return Results.NotFound();
                 }
 
-                Directory.Delete(request.DirectoryPath, recursive: true);
-                await configStore.RemoveRecentTaskDirectoryAsync(request.DirectoryPath).ConfigureAwait(true);
+                Directory.Delete(resolvedPath, recursive: true);
+                await configStore.RemoveRecentTaskDirectoryAsync(resolvedPath).ConfigureAwait(true);
                 return Results.Ok();
             });
 
@@ -1363,6 +1375,25 @@ namespace Aer.Daemon
         // by sessionId alone must not assume the fallback convention holds. Mirrors the scan
         // MapGet "/api/sessions" (list) already does per-directory, keyed by the persisted
         // SessionMetadata.SessionId instead of the folder name.
+        // Review follow-up (issue #250's containment fix, applied here too): DirectoryPath is a
+        // caller-supplied path reaching real filesystem mutation (archive/unarchive marker writes,
+        // and delete's recursive Directory.Delete) via remote-reachable endpoints (mobile's
+        // DaemonClient.deleteTask() included) -- an unchecked path here is a strictly worse version
+        // of #250's RunTemplate TaskName traversal, since delete needs no traversal trick at all,
+        // just any absolute path. Every fleet item this API surfaces is itself a direct child of
+        // one of these two roots (Directory.GetDirectories in the /api/tasks handler above), so
+        // requiring the resolved path be contained within one of them costs nothing legitimate.
+        private static bool TryResolveManagedTaskDirectory(string directoryPath, out string resolvedPath)
+        {
+            resolvedPath = Path.GetFullPath(directoryPath);
+
+            var baseTasksDir = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks"));
+            var baseSessionsDir = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions"));
+
+            return resolvedPath.StartsWith(baseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                || resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        }
+
         private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
         {
             var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
