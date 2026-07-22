@@ -33,7 +33,7 @@ namespace Aer.Daemon
 
         public static WebApplication? App { get; set; }
 
-        public static async Task RunDaemonAsync(string[] args, IReadOnlyDictionary<string, IWorkerAdapter>? adapters = null)
+        public static async Task RunDaemonAsync(string[] args, IReadOnlyDictionary<string, IWorkerAdapter>? adapters = null, Action<WebApplication>? onBuilt = null)
         {
             var noMutex = args.Contains("--no-mutex");
             Mutex? mutex = null;
@@ -106,6 +106,20 @@ namespace Aer.Daemon
                 if (isRemote)
                 {
                     options.Listen(System.Net.IPAddress.Any, activePort);
+                }
+                else if (activePort == 0)
+                {
+                    // ListenLocalhost(0) throws InvalidOperationException ("Dynamic port binding is
+                    // not supported when binding to localhost") -- it binds both the IPv4 and IPv6
+                    // loopback interfaces, and a truly dynamic port can't be guaranteed identical on
+                    // both (each bind(0) gets its own independently OS-assigned ephemeral port), so
+                    // Kestrel refuses outright rather than silently pick one. This path is reachable
+                    // both from an explicit `--port 0` (issue #296's test fixtures, so two daemon
+                    // instances in concurrent test runs never fight over the same fixed port) and
+                    // from the port-collision fallback just above (`activePort = 0` when the
+                    // default/requested fixed port is already taken) -- loopback-only (IPv4) keeps
+                    // that fallback actually usable instead of trading one crash for another.
+                    options.Listen(System.Net.IPAddress.Loopback, 0);
                 }
                 else
                 {
@@ -307,6 +321,7 @@ namespace Aer.Daemon
 
             var app = builder.Build();
             App = app;
+            onBuilt?.Invoke(app);
 
             bool SafeEquals(string a, string b)
             {
