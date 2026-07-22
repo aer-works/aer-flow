@@ -1,3 +1,4 @@
+using Aer.Ui.Tests.TestSupport;
 using System.Text.Json;
 using Aer.Adapters;
 using Aer.Flow.Domain;
@@ -81,7 +82,7 @@ public class GuidedAuthoringTests
         {
             if (Directory.Exists(workspacePath))
             {
-                Directory.Delete(workspacePath, recursive: true);
+                DirectoryCleanup.DeleteRecursively(workspacePath);
             }
         }
     }
@@ -133,7 +134,7 @@ public class GuidedAuthoringTests
         {
             if (Directory.Exists(workspacePath))
             {
-                Directory.Delete(workspacePath, recursive: true);
+                DirectoryCleanup.DeleteRecursively(workspacePath);
             }
         }
     }
@@ -186,7 +187,7 @@ public class GuidedAuthoringTests
         {
             if (Directory.Exists(workspacePath))
             {
-                Directory.Delete(workspacePath, recursive: true);
+                DirectoryCleanup.DeleteRecursively(workspacePath);
             }
         }
     }
@@ -245,7 +246,7 @@ public class GuidedAuthoringTests
         {
             if (Directory.Exists(workspacePath))
             {
-                Directory.Delete(workspacePath, recursive: true);
+                DirectoryCleanup.DeleteRecursively(workspacePath);
             }
         }
     }
@@ -281,7 +282,7 @@ public class GuidedAuthoringTests
         {
             if (Directory.Exists(workspacePath))
             {
-                Directory.Delete(workspacePath, recursive: true);
+                DirectoryCleanup.DeleteRecursively(workspacePath);
             }
         }
     }

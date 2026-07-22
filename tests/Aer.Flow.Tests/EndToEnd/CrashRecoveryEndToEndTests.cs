@@ -64,7 +64,7 @@ public class CrashRecoveryEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -111,7 +111,7 @@ public class CrashRecoveryEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -157,7 +157,7 @@ public class CrashRecoveryEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -225,7 +225,7 @@ public class CrashRecoveryEndToEndTests
                 TryKillOrphanedChild(orphanedChildPid);
             }
 
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 

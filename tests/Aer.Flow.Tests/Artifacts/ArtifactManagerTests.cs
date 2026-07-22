@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 
@@ -33,7 +34,7 @@ public class ArtifactManagerTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 
@@ -51,7 +52,7 @@ public class ArtifactManagerTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 

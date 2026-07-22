@@ -1,3 +1,4 @@
+using Aer.Ui.Tests.TestSupport;
 namespace Aer.Ui.Tests;
 
 /// <summary>
@@ -38,7 +39,7 @@ public class LocalUiConfigurationStoreTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -63,8 +64,8 @@ public class LocalUiConfigurationStoreTests
         }
         finally
         {
-            Directory.Delete(first, recursive: true);
-            Directory.Delete(second, recursive: true);
+            DirectoryCleanup.DeleteRecursively(first);
+            DirectoryCleanup.DeleteRecursively(second);
         }
     }
 
@@ -76,7 +77,7 @@ public class LocalUiConfigurationStoreTests
         var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
         Directory.CreateDirectory(taskDirectory);
         await store.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
-        Directory.Delete(taskDirectory, recursive: true);
+        DirectoryCleanup.DeleteRecursively(taskDirectory);
 
         var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
 
@@ -125,7 +126,7 @@ public class LocalUiConfigurationStoreTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -158,7 +159,7 @@ public class LocalUiConfigurationStoreTests
         {
             foreach (var taskDirectory in taskDirectories)
             {
-                Directory.Delete(taskDirectory, recursive: true);
+                DirectoryCleanup.DeleteRecursively(taskDirectory);
             }
         }
     }
@@ -184,8 +185,8 @@ public class LocalUiConfigurationStoreTests
         }
         finally
         {
-            Directory.Delete(keep, recursive: true);
-            Directory.Delete(remove, recursive: true);
+            DirectoryCleanup.DeleteRecursively(keep);
+            DirectoryCleanup.DeleteRecursively(remove);
         }
     }
 
@@ -208,7 +209,7 @@ public class LocalUiConfigurationStoreTests
         }
         finally
         {
-            Directory.Delete(recorded, recursive: true);
+            DirectoryCleanup.DeleteRecursively(recorded);
         }
     }
 }
