@@ -10,6 +10,13 @@
   <DockPanel Margin="24">
     <TextBlock DockPanel.Dock="Top" Classes="display" Text="{Binding Chat.HeadlineText}" />
 
+    <!-- Persistent mode indicator (#286): mode buttons live in the collapsed Commands panel below,
+         but the currently active mode was previously invisible until you reopened that panel and
+         happened to remember which button you last clicked. -->
+    <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="0,2,0,0"
+               Text="{Binding Chat.CurrentMode, StringFormat='Mode: {0}'}"
+               IsVisible="{Binding Chat.HasCurrentMode}" />
+
     <TextBlock DockPanel.Dock="Top" Classes="secondary" Foreground="{DynamicResource Status.Failed}"
                TextWrapping="Wrap" Text="{Binding Chat.StatusText}"
                IsVisible="{Binding Chat.HasStatusText}" />
