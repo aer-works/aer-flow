@@ -23,7 +23,7 @@ internal static class DaemonTestHost
     private static readonly TimeSpan DefaultBindTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
 
-    public static async Task<(Task DaemonTask, string BaseUrl)> StartAsync(
+    public static async Task<DaemonTestInstance> StartAsync(
         IReadOnlyDictionary<string, IWorkerAdapter>? adapters = null, TimeSpan? bindTimeout = null)
     {
         // Captured via RunDaemonAsync's onBuilt callback rather than read back off the static
@@ -32,11 +32,13 @@ internal static class DaemonTestHost
         // invocation's own "App = app" assignment runs) where DaemonHost.App can still be a
         // *previous* test's already-disposed instance. Polling that stale reference throws
         // ObjectDisposedException instead of just "not ready yet". A dedicated TaskCompletionSource
-        // tied to this specific RunDaemonAsync call sidesteps the race entirely.
+        // tied to this specific RunDaemonAsync call sidesteps the race entirely -- and the captured
+        // app is what the returned handle stops on dispose, so teardown targets exactly this daemon
+        // rather than whatever DaemonHost.App happens to point at by then.
         var appBuilt = new TaskCompletionSource<WebApplication>(TaskCreationOptions.RunContinuationsAsynchronously);
         var daemonTask = DaemonHost.RunDaemonAsync(["--port", "0", "--no-mutex"], adapters, onBuilt: app => appBuilt.TrySetResult(app));
         var baseUrl = await WaitForBoundBaseUrlAsync(daemonTask, appBuilt.Task, bindTimeout ?? DefaultBindTimeout);
-        return (daemonTask, baseUrl);
+        return new DaemonTestInstance(await appBuilt.Task, daemonTask, baseUrl);
     }
 
     private static async Task<string> WaitForBoundBaseUrlAsync(Task daemonTask, Task<WebApplication> appBuiltTask, TimeSpan timeout)
@@ -73,5 +75,52 @@ internal static class DaemonTestHost
 
             await Task.Delay(PollInterval);
         }
+    }
+}
+
+/// <summary>
+/// A running test daemon and its deterministic teardown. Disposing stops <b>this instance's own</b>
+/// captured <see cref="WebApplication"/> — not the process-wide static <see cref="DaemonHost.App"/>,
+/// which <see cref="DaemonTestHost"/> documents can already point at a different (superseded) daemon
+/// by teardown time. Per-run storage isolation is handled at process scope by the <c>AER_HOME</c>
+/// redirect (see <c>tests/Shared/AerHomeRedirect.cs</c>), so this handle owns daemon lifetime only,
+/// not the storage root.
+/// </summary>
+internal sealed class DaemonTestInstance : IAsyncDisposable
+{
+    private readonly WebApplication _app;
+    private int _disposed;
+
+    internal DaemonTestInstance(WebApplication app, Task daemonTask, string baseUrl)
+    {
+        _app = app;
+        DaemonTask = daemonTask;
+        BaseUrl = baseUrl;
+    }
+
+    /// <summary>The daemon's run loop; awaited to completion on dispose.</summary>
+    public Task DaemonTask { get; }
+
+    /// <summary>The dynamically-assigned base URL the daemon actually bound (issue #296).</summary>
+    public string BaseUrl { get; }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await _app.StopAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The app was already torn down (e.g. the daemon faulted and disposed itself); nothing
+            // left to stop, and awaiting DaemonTask below surfaces any real fault.
+        }
+
+        await DaemonTask;
     }
 }

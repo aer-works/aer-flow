@@ -18,7 +18,7 @@ namespace Aer.Ui.Tests;
 [Collection("DaemonIntegrationTests")]
 public class DaemonIntegrationTests : IAsyncLifetime
 {
-    private Task? _daemonTask;
+    private DaemonTestInstance? _daemon;
     private string _baseUrl = "";
     private readonly HttpClient _client = new();
     private string? _tempTaskDirectory;
@@ -31,7 +31,8 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         // Start Daemon on a dynamically OS-assigned port (issue #296) — a hardcoded port collides
         // whenever two test runs happen to overlap.
-        (_daemonTask, _baseUrl) = await DaemonTestHost.StartAsync();
+        _daemon = await DaemonTestHost.StartAsync();
+        _baseUrl = _daemon.BaseUrl;
 
         // Wait for daemon to spin up
         for (int i = 0; i < 30; i++)
@@ -50,8 +51,10 @@ public class DaemonIntegrationTests : IAsyncLifetime
             }
         }
 
-        // Configure client authorization header
-        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+        // Configure client authorization header. The daemon wrote its token under the redirected
+        // AER_HOME root (see tests/Shared/AerHomeRedirect.cs), so read it back through AerPaths --
+        // reading the literal ~/.aer here would look at the real per-user dir the redirect avoids.
+        var aerDir = AerPaths.Root;
         var tokenFile = Path.Combine(aerDir, "daemon.token");
         if (File.Exists(tokenFile))
         {
@@ -66,15 +69,11 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        // Stop Daemon
-        if (DaemonHost.App != null)
+        // Stop this test's own daemon (DaemonTestInstance stops the app it captured, not the shared
+        // static DaemonHost.App, which can point at a superseded instance by now).
+        if (_daemon != null)
         {
-            await DaemonHost.App.StopAsync();
-        }
-
-        if (_daemonTask != null)
-        {
-            await _daemonTask;
+            await _daemon.DisposeAsync();
         }
 
         _client.Dispose();
@@ -1058,8 +1057,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         // Must be under the managed ~/.aer/sessions root -- otherwise the containment guard now
         // rejects it as BadRequest before this handler's own NotFound check ever runs.
-        var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
-        var missingDirectory = Path.Combine(baseSessionsDir, "never-created-" + Guid.NewGuid().ToString("N"));
+        var missingDirectory = Path.Combine(AerPaths.Sessions, "never-created-" + Guid.NewGuid().ToString("N"));
 
         var response = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/tasks/delete", new TaskDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);
@@ -1089,10 +1087,11 @@ public class DaemonIntegrationTests : IAsyncLifetime
         }
         finally
         {
-            // KnownProjectsStore persists to the real per-user ~/.aer/projects.json -- this test
-            // must not leave its synthetic entry behind on whatever machine runs it.
-            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
-            var projectsFile = Path.Combine(aerDir, "projects.json");
+            // KnownProjectsStore persists to projects.json under AerPaths.Root -- the AER_HOME
+            // redirect keeps that in this run's temp root, but still scrub the synthetic entry so the
+            // assertion above can't be corrupted by a sibling test and cleanup stays correct if the
+            // redirect is ever absent.
+            var projectsFile = Path.Combine(AerPaths.Root, "projects.json");
             if (File.Exists(projectsFile))
             {
                 var json = await File.ReadAllTextAsync(projectsFile, TestContext.Current.CancellationToken);
