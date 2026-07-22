@@ -874,7 +874,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, _) = await StartASessionAsync();
 
-        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var mode = await response.Content.ReadFromJsonAsync<SessionModeResponse>(cancellationToken: TestContext.Current.CancellationToken);
@@ -890,10 +890,10 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         var (sessionId, _) = await StartASessionAsync();
 
-        var setResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest(mode), TestContext.Current.CancellationToken);
+        var setResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest(mode), TestContext.Current.CancellationToken);
         Assert.True(setResponse.IsSuccessStatusCode);
 
-        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
+        var getResponse = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
         Assert.True(getResponse.IsSuccessStatusCode);
         var result = await getResponse.Content.ReadFromJsonAsync<SessionModeResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(result);
@@ -903,7 +903,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GetSessionMode_ForANonexistentSession_ReturnsNotFound()
     {
-        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/does-not-exist/mode", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions/does-not-exist/mode", TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -926,7 +926,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         await InteractiveSessionMaterializer.SaveMetadataAsync(withTurns, metadataPath, TestContext.Current.CancellationToken);
         var originalVendorSessionId = withTurns.CurrentVendorSessionId;
 
-        var response = await _client.PostAsync($"{BaseUrl}/api/sessions/{sessionId}/clear", null, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsync($"{_baseUrl}/api/sessions/{sessionId}/clear", null, TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
         var cleared = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
@@ -947,7 +947,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task ClearSession_ForANonexistentSession_ReturnsNotFound()
     {
-        var response = await _client.PostAsync($"{BaseUrl}/api/sessions/does-not-exist/clear", null, TestContext.Current.CancellationToken);
+        var response = await _client.PostAsync($"{_baseUrl}/api/sessions/does-not-exist/clear", null, TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
