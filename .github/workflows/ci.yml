@@ -23,6 +23,15 @@ jobs:
         # 2,000 minutes/month is under one backlog sweep at the unreserved rate). The pack job below
         # is gated identically because it cannot assemble a multi-RID package without this leg's
         # artifact.
+        #
+        # These leg names are duplicated outside this repository. Each one appears verbatim in
+        # main's branch-protection required status checks (Settings -> Branches, or
+        # `gh api repos/aer-works/aer-flow/branches/main/protection/required_status_checks`), so
+        # changing which legs run on pull requests means updating those contexts in the same change.
+        # A required check that no longer runs never reports: it sits at "Expected" forever and
+        # blocks every pull request, including ones whose own checks are entirely green. That is
+        # what happened when the macOS leg moved to main-only while still listed as required, and it
+        # presents as an unexplained CI hang rather than as a misconfiguration.
         include: >-
           ${{ github.event_name == 'push'
               && fromJSON('[{"os":"windows-latest","rid":"win-x64","lib-name":"aer_core.dll"},{"os":"ubuntu-latest","rid":"linux-x64","lib-name":"libaer_core.so"},{"os":"macos-latest","rid":"osx-arm64","lib-name":"libaer_core.dylib"}]')
