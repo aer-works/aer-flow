@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using System.Text.Json;
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
@@ -95,7 +96,7 @@ public class SnapshotBinderTests
         {
             if (Directory.Exists(Path.GetDirectoryName(directory)))
             {
-                Directory.Delete(Path.GetDirectoryName(directory)!, recursive: true);
+                DirectoryCleanup.DeleteRecursively(Path.GetDirectoryName(directory)!);
             }
         }
     }

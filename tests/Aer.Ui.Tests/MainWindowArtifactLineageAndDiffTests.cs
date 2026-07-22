@@ -102,7 +102,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -124,7 +124,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -162,7 +162,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -262,7 +262,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
             File.Delete(templatePath);
         }
     }
@@ -287,7 +287,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
             File.Delete(templatePath);
         }
     }
@@ -322,7 +322,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
             File.Delete(templatePath);
         }
     }

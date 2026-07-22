@@ -1,3 +1,4 @@
+using Aer.Cli.Tests.TestSupport;
 using System.Text.Json;
 using Aer.Adapters;
 using Aer.Flow.Domain;
@@ -55,7 +56,7 @@ public class DialogueDispatchEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -99,7 +100,7 @@ public class DialogueDispatchEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -150,7 +151,7 @@ public class DialogueDispatchEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 

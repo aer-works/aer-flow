@@ -1,3 +1,4 @@
+using Aer.Adapters.Tests.TestSupport;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
@@ -126,7 +127,7 @@ public class StreamJsonProgressPipelineIntegrationTests
         {
             if (Directory.Exists(tempDir))
             {
-                Directory.Delete(tempDir, recursive: true);
+                DirectoryCleanup.DeleteRecursively(tempDir);
             }
         }
     }

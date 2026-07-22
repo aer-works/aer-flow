@@ -1,3 +1,4 @@
+using Aer.Adapters.Tests.TestSupport;
 namespace Aer.Adapters.Tests;
 
 /// <summary>
@@ -56,7 +57,7 @@ public class AerProfileStoreTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 

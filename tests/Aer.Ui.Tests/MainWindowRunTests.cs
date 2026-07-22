@@ -55,7 +55,7 @@ public class MainWindowRunTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -84,7 +84,7 @@ public class MainWindowRunTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -119,7 +119,7 @@ public class MainWindowRunTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -142,7 +142,7 @@ public class MainWindowRunTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 

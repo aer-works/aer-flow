@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using System.Diagnostics;
 using Aer.Flow.Concurrency;
 using Aer.Flow.Dispatch;
@@ -83,7 +84,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -115,7 +116,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -174,7 +175,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -232,7 +233,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -285,7 +286,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -327,7 +328,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -380,7 +381,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 

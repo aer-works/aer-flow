@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using Aer.Flow.Concurrency;
 
 namespace Aer.Flow.Tests.Concurrency;
@@ -18,7 +19,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -34,7 +35,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -51,7 +52,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -74,7 +75,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 }
