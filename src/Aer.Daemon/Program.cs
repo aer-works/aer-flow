@@ -1162,7 +1162,14 @@ namespace Aer.Daemon
                     }
                     catch (Exception ex)
                     {
+                        // #341: this turn runs fire-and-forget behind an already-returned 200, so a
+                        // throw here reached Console.Error and nowhere else -- the client saw success
+                        // and then silence forever, which is exactly how a stalled chat presents.
+                        // Persist it next to the session so the failure survives the daemon and can
+                        // be read after the fact; the console line alone is gone the moment CI's
+                        // process exits, which is why this took a day to characterize.
                         Console.Error.WriteLine($"Error executing session message turn: {ex}");
+                        await AppendTurnErrorAsync(directoryPath, request.Message, ex).ConfigureAwait(false);
                     }
                 });
 
@@ -1504,6 +1511,29 @@ namespace Aer.Daemon
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// #341: appends a background turn failure to <c>.aer/turn-errors.log</c> in the session
+        /// directory. <c>POST /api/sessions/send</c> answers before the turn runs, so nothing it
+        /// returns can carry a later failure, and <c>Console.Error</c> dies with the process --
+        /// leaving a stalled chat with no recoverable evidence anywhere. Best-effort by
+        /// construction: this runs inside a catch, so it must never throw over the top of the
+        /// original error.
+        /// </summary>
+        private static async Task AppendTurnErrorAsync(string directoryPath, string userMessage, Exception error)
+        {
+            try
+            {
+                var aerDir = Path.Combine(directoryPath, ".aer");
+                Directory.CreateDirectory(aerDir);
+                var line = $"{DateTimeOffset.UtcNow:O}\tmessage={userMessage.ReplaceLineEndings(" ")}\t{error}";
+                await File.AppendAllTextAsync(Path.Combine(aerDir, "turn-errors.log"), line + Environment.NewLine).ConfigureAwait(false);
+            }
+            catch (Exception recordError)
+            {
+                Console.Error.WriteLine($"Could not persist session turn error: {recordError}");
+            }
         }
 
         private static async Task ExecuteSessionTurnAsync(
