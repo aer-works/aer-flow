@@ -70,6 +70,13 @@ public sealed partial class ChatViewModel : ObservableObject
 
     public bool HasStatusText => !string.IsNullOrEmpty(StatusText);
 
+    /// <summary>The active session mode ("auto"/"default"/"plan"/"custom"), or null until <see cref="TaskSession.GetSessionModeAsync"/> has resolved it (#286) — persistently shown in the chat header, not just reflected transiently after a click.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCurrentMode))]
+    private string? currentMode;
+
+    public bool HasCurrentMode => !string.IsNullOrEmpty(CurrentMode);
+
     public string? SessionId { get; private set; }
     public string? TaskDirectoryPath { get; private set; }
     public string? CurrentAdapter { get; private set; }
@@ -168,6 +175,7 @@ public sealed partial class ChatViewModel : ObservableObject
         LiveProgressText = string.Empty;
         IsSending = false;
         _pendingUserMessage = null;
+        CurrentMode = null;
         Messages.Clear();
         InvokableCommands.Clear();
         InfoCommands.Clear();

@@ -861,6 +861,90 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    private sealed record SessionModeResponse(string Mode);
+
+    [Fact]
+    public async Task GetSessionMode_ForANewSession_ReturnsDefault()
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var mode = await response.Content.ReadFromJsonAsync<SessionModeResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(mode);
+        Assert.Equal("default", mode.Mode);
+    }
+
+    [Theory]
+    [InlineData("auto")]
+    [InlineData("plan")]
+    [InlineData("default")]
+    public async Task SetSessionMode_ThenGetSessionMode_ReflectsTheChange(string mode)
+    {
+        var (sessionId, _) = await StartASessionAsync();
+
+        var setResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", new SetSessionModeRequest(mode), TestContext.Current.CancellationToken);
+        Assert.True(setResponse.IsSuccessStatusCode);
+
+        var getResponse = await _client.GetAsync($"{BaseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
+        Assert.True(getResponse.IsSuccessStatusCode);
+        var result = await getResponse.Content.ReadFromJsonAsync<SessionModeResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(result);
+        Assert.Equal(mode, result.Mode);
+    }
+
+    [Fact]
+    public async Task GetSessionMode_ForANonexistentSession_ReturnsNotFound()
+    {
+        var response = await _client.GetAsync($"{BaseUrl}/api/sessions/does-not-exist/mode", TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ClearSession_ResetsTurnsAndForcesAFreshUnestablishedVendorSession()
+    {
+        var (sessionId, taskDirectoryPath) = await StartASessionAsync();
+        var metadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
+
+        // Simulate a session that already had real turns and an established native vendor session
+        // -- clear must reset both without ever needing a real vendor call itself.
+        var beforeClear = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, TestContext.Current.CancellationToken);
+        Assert.NotNull(beforeClear);
+        var withTurns = beforeClear with
+        {
+            Turns = [new SessionTurn(1, "claude", "hello", "hi", DateTimeOffset.UtcNow, false, false)],
+            TurnCount = 1,
+            VendorSessionEstablished = true,
+        };
+        await InteractiveSessionMaterializer.SaveMetadataAsync(withTurns, metadataPath, TestContext.Current.CancellationToken);
+        var originalVendorSessionId = withTurns.CurrentVendorSessionId;
+
+        var response = await _client.PostAsync($"{BaseUrl}/api/sessions/{sessionId}/clear", null, TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var cleared = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(cleared);
+        Assert.Empty(cleared.Turns);
+        Assert.Equal(0, cleared.TurnCount);
+        Assert.False(cleared.VendorSessionEstablished);
+        // A fresh, distinct id -- not merely un-established -- so a leftover client-side reference
+        // to the old id can never be mistaken for still-valid after a clear.
+        Assert.NotEqual(originalVendorSessionId, cleared.CurrentVendorSessionId);
+        Assert.NotNull(cleared.CurrentVendorSessionId);
+
+        var onDisk = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, TestContext.Current.CancellationToken);
+        Assert.NotNull(onDisk);
+        Assert.Empty(onDisk.Turns);
+    }
+
+    [Fact]
+    public async Task ClearSession_ForANonexistentSession_ReturnsNotFound()
+    {
+        var response = await _client.PostAsync($"{BaseUrl}/api/sessions/does-not-exist/clear", null, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     [Fact]
     public async Task StartSession_WithATaskNameAlreadyInUse_ReturnsBadRequestAndDoesNotClobberTheFirstSession()
     {
