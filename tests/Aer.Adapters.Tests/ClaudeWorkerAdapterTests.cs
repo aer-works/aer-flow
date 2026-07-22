@@ -151,6 +151,16 @@ public class ClaudeWorkerAdapterTests
         Assert.Contains("Quote this: \"$HOME\" and `whoami` and 100% path %PATH%.", prompt);
     }
 
+    /// <summary>Issue #292: CoreDispatcher's durable prompt.txt capture reads this field, not target.Args -- it must carry the identical text the -p argument does.</summary>
+    [Fact]
+    public void PromptText_carries_the_same_resolved_prompt_as_the_p_argument()
+    {
+        var contract = new WorkerContract("architect", ["goal"], [new ProducedOutput("plan.md")], []);
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
+
+        Assert.Equal(GetPrompt(target), target.PromptText);
+    }
+
     [Fact]
     public void Null_invocation_or_contract_throws()
     {

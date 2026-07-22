@@ -75,7 +75,8 @@ public sealed partial class StepItemViewModel : ObservableObject
         IReadOnlyList<string> decisionLines,
         PausedStepViewModel? pausedStep,
         Action<StepItemViewModel> select,
-        string? adapter = null)
+        string? adapter = null,
+        IReadOnlyList<ArtifactFileViewModel>? promptFiles = null)
     {
         StepId = stepId;
         Worker = worker;
@@ -87,6 +88,7 @@ public sealed partial class StepItemViewModel : ObservableObject
         PausedStep = pausedStep;
         _select = select;
         Adapter = adapter;
+        PromptFiles = promptFiles ?? [];
     }
 
     public string StepId { get; }
@@ -98,6 +100,18 @@ public sealed partial class StepItemViewModel : ObservableObject
     public IReadOnlyList<ArtifactFileViewModel> OutputFiles { get; }
     public IReadOnlyList<ConversationRefViewModel> Conversations { get; }
     public IReadOnlyList<string> DecisionLines { get; }
+
+    /// <summary>
+    /// One entry per attempt whose execution durably captured its resolved prompt (issue #292) —
+    /// <see cref="ArtifactManager.PromptFileName"/> found in that execution's output directory,
+    /// exactly the same discovery-by-artifact-presence pattern <see cref="HasConversations"/>'
+    /// transcript check already uses, never a declared-outputs lookup (an ordinary step's contract
+    /// never names this file). Reuses <see cref="ArtifactFileViewModel"/>/the shared output-file
+    /// preview mechanism rather than a bespoke rendering path — parity with dialogue's transparency,
+    /// not a new surface.
+    /// </summary>
+    public IReadOnlyList<ArtifactFileViewModel> PromptFiles { get; }
+    public bool HasPromptFiles => PromptFiles.Count > 0;
 
     /// <summary>
     /// Normalized to exactly the vendors <c>VendorCliPresence</c> probes for (<c>claude</c>,
@@ -226,14 +240,30 @@ public static class StepItemProjector
             }
 
             var outputFiles = new List<ArtifactFileViewModel>();
+            var promptFiles = new List<ArtifactFileViewModel>();
             var conversations = new List<ConversationRefViewModel>();
             foreach (var execution in executionsByStepId[stepState.StepId])
             {
                 var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, execution.ExecutionId);
+                var shortId = PlainLanguage.ShortId(execution.ExecutionId.ToString());
                 foreach (var fileName in execution.OutputFiles)
                 {
+                    // #292: prompt.txt is durable capture of what the worker was asked, not
+                    // something it produced — surfaced instead via PromptFiles' own collapsed
+                    // affordance, matching dialogue's "Prompt" expander, not mixed into the
+                    // always-visible output chips.
+                    if (string.Equals(fileName, ArtifactManager.PromptFileName, StringComparison.Ordinal))
+                    {
+                        promptFiles.Add(new ArtifactFileViewModel(
+                            $"Prompt ({shortId})",
+                            Path.Combine(outputDirectory, fileName),
+                            previewFileAsync,
+                            select: file => SelectOutputFile(promptFiles, file)));
+                        continue;
+                    }
+
                     outputFiles.Add(new ArtifactFileViewModel(
-                        $"{fileName} ({PlainLanguage.ShortId(execution.ExecutionId.ToString())})",
+                        $"{fileName} ({shortId})",
                         Path.Combine(outputDirectory, fileName),
                         previewFileAsync,
                         select: file => SelectOutputFile(outputFiles, file)));
@@ -242,7 +272,7 @@ public static class StepItemProjector
                 if (TranscriptProjectionLoader.HasTranscript(outputDirectory))
                 {
                     conversations.Add(new ConversationRefViewModel(
-                        $"{stepState.StepId} — {PlainLanguage.ShortId(execution.ExecutionId.ToString())} ({execution.Worker})",
+                        $"{stepState.StepId} — {shortId} ({execution.Worker})",
                         outputDirectory,
                         showConversation));
                 }
@@ -275,7 +305,8 @@ public static class StepItemProjector
                 decisionLines,
                 pausedByStepId.GetValueOrDefault(stepState.StepId),
                 select,
-                adapter));
+                adapter,
+                promptFiles));
         }
 
         return items;

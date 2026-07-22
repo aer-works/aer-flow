@@ -213,4 +213,17 @@ public class DialogueWorkerAdapterTests
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(null!, DebateContract));
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(new WorkerInvocation("/configs/debate.json"), null!));
     }
+
+    /// <summary>
+    /// Issue #292: this adapter deliberately leaves CoreDispatchTarget.PromptText unset -- its own
+    /// worker process already durably records every turn's prompt in transcript.jsonl, so
+    /// CoreDispatcher must not also write a redundant prompt.txt for it.
+    /// </summary>
+    [Fact]
+    public void PromptText_is_not_set_because_the_dialogue_worker_already_records_its_own_transcript()
+    {
+        var target = new DialogueWorkerAdapter().Resolve(new WorkerInvocation("/configs/debate.json"), DebateContract);
+
+        Assert.Null(target.PromptText);
+    }
 }

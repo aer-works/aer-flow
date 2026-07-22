@@ -88,7 +88,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Model);
         }
 
-        return new CoreDispatchTarget("agy", [.. args], invocation.WorkingDirectory);
+        return new CoreDispatchTarget("agy", [.. args], invocation.WorkingDirectory, PromptText: prompt);
     }
 
     /// <summary>
