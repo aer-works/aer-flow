@@ -234,6 +234,11 @@ public partial class MainWindow : Window
         NavTasksButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Tasks;
         TasksViewControl.TasksRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
         TasksViewControl.TasksIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
+        // Bulk select (issue #288): these two need the session the same way the single-row actions'
+        // closures do (TasksViewModel.RefreshAsync wires those per row), but the bulk actions live on
+        // TasksViewModel itself rather than per-row, so they're wired here instead.
+        TasksViewControl.TasksBulkArchiveButton.Click += (_, _) => _ = ViewModel.Tasks.BulkArchiveAsync(_session);
+        TasksViewControl.TasksBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Tasks.ConfirmBulkDeleteAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
         ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
         ChatModeAutoButton.Click += (_, _) => _ = SetChatModeAsync("auto");
