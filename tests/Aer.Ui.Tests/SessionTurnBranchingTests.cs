@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using Aer.Adapters;
 using Aer.Daemon;
@@ -100,11 +101,28 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         return await PollUntilTurnCountAsync(metadata.SessionId, expectedTurnCount: 1);
     }
 
+    /// <summary>How long <see cref="PollUntilTurnCountAsync"/> waits for a session to reach a turn count.</summary>
+    /// <remarks>
+    /// A wall-clock deadline, deliberately not a fixed attempt count. This previously polled 100
+    /// times at 100ms, capping the wait near 10 seconds however loaded the host was, which made
+    /// the 60-turn stress test flaky on CI's Windows leg: it failed having observed 31 of 32 turns,
+    /// so the supersede chain under test was working and only the budget had run out. A deadline
+    /// scales with the machine rather than assuming a fast one, and matches how the rest of the
+    /// suite waits (<c>Task.WhenAny(task, Task.Delay(timeout))</c>, <c>DaemonTestHost</c>'s
+    /// <c>PollInterval</c>). A genuinely stuck session still fails, just on elapsed time.
+    /// </remarks>
+    private static readonly TimeSpan TurnCountTimeout = TimeSpan.FromSeconds(60);
+
+    private static readonly TimeSpan TurnCountPollInterval = TimeSpan.FromMilliseconds(100);
+
     private async Task<SessionMetadata> PollUntilTurnCountAsync(string sessionId, int expectedTurnCount)
     {
         SessionMetadata? metadata = null;
-        for (var i = 0; i < 100; i++)
+        var polls = 0;
+        var started = Stopwatch.StartNew();
+        while (started.Elapsed < TurnCountTimeout)
         {
+            polls++;
             var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}", TestContext.Current.CancellationToken);
             if (response.IsSuccessStatusCode)
             {
@@ -115,10 +133,12 @@ public class SessionTurnBranchingTests : IAsyncLifetime
                 }
             }
 
-            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await Task.Delay(TurnCountPollInterval, TestContext.Current.CancellationToken);
         }
 
-        Assert.Fail($"Session {sessionId} never reached {expectedTurnCount} turn(s); last seen: {metadata?.Turns.Count ?? -1}.");
+        Assert.Fail(
+            $"Session {sessionId} never reached {expectedTurnCount} turn(s) within {TurnCountTimeout.TotalSeconds:0}s " +
+            $"({polls} polls); last seen: {metadata?.Turns.Count ?? -1}.");
         return null!;
     }
 
