@@ -113,4 +113,64 @@ public class ChatViewModelTests
         Assert.Equal("No session open.", viewModel.HeadlineText);
         Assert.False(viewModel.IsSending);
     }
+
+    /// <summary>#290: a fresh ChatViewModel (no session ever loaded) must read as "no session open" so the Chat page's new-chat entry point renders instead of the inert message box.</summary>
+    [Fact]
+    public void IsSessionOpen_IsFalseUntilASessionLoadsAndFalseAgainAfterClear()
+    {
+        var viewModel = new ChatViewModel();
+        Assert.False(viewModel.IsSessionOpen);
+
+        viewModel.LoadFromMetadata(MetadataWithTurns(
+            new SessionTurn(1, "claude", "Hello", "Hi", DateTimeOffset.UtcNow, false, false)), "/tmp/sess-1");
+        Assert.True(viewModel.IsSessionOpen);
+
+        viewModel.Clear();
+        Assert.False(viewModel.IsSessionOpen);
+    }
+
+    /// <summary>#290: IsSessionOpen derives from TaskDirectoryPath, which is a plain-setter property, not an [ObservableProperty] -- this guards against a regression where LoadFromMetadata/Clear forget to raise the change notification a XAML IsVisible binding depends on.</summary>
+    [Fact]
+    public void IsSessionOpen_RaisesPropertyChangedOnLoadAndClear()
+    {
+        var viewModel = new ChatViewModel();
+        var raisedProperties = new List<string?>();
+        viewModel.PropertyChanged += (_, e) => raisedProperties.Add(e.PropertyName);
+
+        viewModel.LoadFromMetadata(MetadataWithTurns(
+            new SessionTurn(1, "claude", "Hello", "Hi", DateTimeOffset.UtcNow, false, false)), "/tmp/sess-1");
+        Assert.Contains(nameof(ChatViewModel.IsSessionOpen), raisedProperties);
+
+        raisedProperties.Clear();
+        viewModel.Clear();
+        Assert.Contains(nameof(ChatViewModel.IsSessionOpen), raisedProperties);
+    }
+
+    [Fact]
+    public void PopulateAvailableAdapters_UsesTheProbeResultWhenAtLeastOneVendorIsAvailable()
+    {
+        var viewModel = new ChatViewModel();
+
+        viewModel.PopulateAvailableAdapters([
+            new VendorCliStatus("claude", "claude", IsAvailable: false),
+            new VendorCliStatus("gemini", "agy", IsAvailable: true),
+        ]);
+
+        Assert.Equal(["gemini"], viewModel.AvailableAdapters);
+        Assert.Equal("gemini", viewModel.NewChatAdapter);
+    }
+
+    /// <summary>Mirrors the desktop template picker's own fallback (TemplatePickerWindow.PopulateVendors) so the two "start a session" entry points never disagree about what's offered when neither vendor CLI is detected on PATH.</summary>
+    [Fact]
+    public void PopulateAvailableAdapters_FallsBackToClaudeAndGeminiWhenNoneAreAvailable()
+    {
+        var viewModel = new ChatViewModel();
+
+        viewModel.PopulateAvailableAdapters([
+            new VendorCliStatus("claude", "claude", IsAvailable: false),
+            new VendorCliStatus("gemini", "agy", IsAvailable: false),
+        ]);
+
+        Assert.Equal(["claude", "gemini"], viewModel.AvailableAdapters);
+    }
 }

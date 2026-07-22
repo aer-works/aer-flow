@@ -60,7 +60,8 @@
           </StackPanel>
         </ScrollViewer>
       </Border>
-      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
+                  IsVisible="{Binding Chat.IsSessionOpen}">
         <TextBox x:Name="ChatInputBox" Width="600" AcceptsReturn="True" MaxHeight="80"
                  Text="{Binding Chat.InputText}" IsEnabled="{Binding !Chat.IsSending}"
                  PlaceholderText="Message..." />
@@ -69,6 +70,26 @@
         <Button x:Name="ChatCommandsButton" Content="Commands" />
         <ProgressBar IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"
                      IsVisible="{Binding Chat.IsSending}" />
+      </StackPanel>
+
+      <!-- "Start new chat" entry point (#290): no dependency on the template picker, which forced
+           picking through five unrelated template kinds (review-run, solo-run, ...) just to start a
+           plain chat. Working directory is optional — omitting it starts a plain chat session, same
+           as the template picker's own "chat session" option with no project directory set. -->
+      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
+                  IsVisible="{Binding !Chat.IsSessionOpen}">
+        <ComboBox x:Name="ChatNewAdapterCombo" Width="140"
+                  ItemsSource="{Binding Chat.AvailableAdapters}"
+                  SelectedItem="{Binding Chat.NewChatAdapter}"
+                  IsEnabled="{Binding !Chat.IsStartingNewChat}" />
+        <TextBox x:Name="ChatNewWorkingDirectoryBox" Width="360"
+                 Text="{Binding Chat.NewChatWorkingDirectory}"
+                 IsEnabled="{Binding !Chat.IsStartingNewChat}"
+                 PlaceholderText="Working directory (optional — plain chat if empty)" />
+        <Button x:Name="ChatStartNewButton" Classes="accent" Content="Start new chat"
+                IsEnabled="{Binding !Chat.IsStartingNewChat}" />
+        <ProgressBar IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"
+                     IsVisible="{Binding Chat.IsStartingNewChat}" />
       </StackPanel>
     </StackPanel>
 
