@@ -53,7 +53,7 @@ public class RunCommandEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -84,7 +84,7 @@ public class RunCommandEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -105,7 +105,7 @@ public class RunCommandEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -124,7 +124,7 @@ public class RunCommandEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 
@@ -151,7 +151,7 @@ public class RunCommandEndToEndTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 

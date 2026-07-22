@@ -1,3 +1,4 @@
+using Aer.Ui.Tests.TestSupport;
 using Aer.Adapters;
 using Aer.Workers.Dialogue;
 using Avalonia.Headless.XUnit;
@@ -110,7 +111,7 @@ public class DialogueTemplateEditorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -144,7 +145,7 @@ public class DialogueTemplateEditorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 }

@@ -1,3 +1,4 @@
+using Aer.Ui.Tests.TestSupport;
 using Aer.Adapters;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
@@ -117,7 +118,7 @@ public class NavigationShellTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -144,7 +145,7 @@ public class NavigationShellTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -175,7 +176,7 @@ public class NavigationShellTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -202,7 +203,7 @@ public class NavigationShellTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -243,7 +244,7 @@ public class NavigationShellTests
         }
         finally
         {
-            Directory.Delete(notATaskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
         }
     }
 }

@@ -170,6 +170,6 @@ public class WorkingDirectoryEndToEndTests
             File.SetAttributes(file, FileAttributes.Normal);
         }
 
-        Directory.Delete(path, recursive: true);
+        DirectoryCleanup.DeleteRecursively(path);
     }
 }

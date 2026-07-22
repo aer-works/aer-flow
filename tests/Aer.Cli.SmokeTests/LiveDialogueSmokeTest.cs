@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Aer.Adapters;
+using Aer.Cli.SmokeTests.TestSupport;
 using Aer.Flow.Domain;
 using Aer.Workers.Dialogue;
 
@@ -62,7 +63,7 @@ public class LiveDialogueSmokeTest
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 

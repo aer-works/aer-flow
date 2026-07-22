@@ -1,3 +1,4 @@
+using Aer.Adapters.Tests.TestSupport;
 using Aer.Adapters;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
@@ -184,7 +185,7 @@ public sealed class InteractiveSessionTests
         {
             if (Directory.Exists(testPath))
             {
-                Directory.Delete(testPath, true);
+                DirectoryCleanup.DeleteRecursively(testPath);
             }
         }
     }
@@ -212,7 +213,7 @@ public sealed class InteractiveSessionTests
             Assert.False(TaskLifecycle.IsArchived(testPath));
 
             // Only a real delete frees the name for reuse (M24 Phase 5 regression, #278).
-            Directory.Delete(testPath, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testPath);
             var recreated = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 "sess-third", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken);
             Assert.NotNull(recreated);
@@ -221,7 +222,7 @@ public sealed class InteractiveSessionTests
         {
             if (Directory.Exists(testPath))
             {
-                Directory.Delete(testPath, true);
+                DirectoryCleanup.DeleteRecursively(testPath);
             }
         }
     }
@@ -241,7 +242,7 @@ public sealed class InteractiveSessionTests
         {
             if (Directory.Exists(testPath))
             {
-                Directory.Delete(testPath, true);
+                DirectoryCleanup.DeleteRecursively(testPath);
             }
         }
     }

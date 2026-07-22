@@ -1,4 +1,5 @@
 using Aer.Adapters;
+using Aer.Cli.SmokeTests.TestSupport;
 using Aer.Flow.Domain;
 
 namespace Aer.Cli.SmokeTests;
@@ -62,7 +63,7 @@ public class LiveMixedVendorPausedRunSmokeTest
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 

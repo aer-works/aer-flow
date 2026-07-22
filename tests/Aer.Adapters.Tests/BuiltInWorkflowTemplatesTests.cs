@@ -1,3 +1,4 @@
+using Aer.Adapters.Tests.TestSupport;
 using Aer.Flow.Templates;
 using Aer.Workers.Dialogue;
 
@@ -102,7 +103,7 @@ public class BuiltInWorkflowTemplatesTests
         {
             if (Directory.Exists(tempDir))
             {
-                Directory.Delete(tempDir, recursive: true);
+                DirectoryCleanup.DeleteRecursively(tempDir);
             }
         }
     }
@@ -135,7 +136,7 @@ public class BuiltInWorkflowTemplatesTests
         {
             if (Directory.Exists(tempDir))
             {
-                Directory.Delete(tempDir, recursive: true);
+                DirectoryCleanup.DeleteRecursively(tempDir);
             }
         }
     }
@@ -160,7 +161,7 @@ public class BuiltInWorkflowTemplatesTests
         {
             if (Directory.Exists(tempDir))
             {
-                Directory.Delete(tempDir, recursive: true);
+                DirectoryCleanup.DeleteRecursively(tempDir);
             }
         }
     }

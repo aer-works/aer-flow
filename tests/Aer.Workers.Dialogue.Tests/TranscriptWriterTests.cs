@@ -1,3 +1,4 @@
+using Aer.Workers.Dialogue.Tests.TestSupport;
 using System.Text;
 using System.Text.Json;
 using Aer.Workers.Dialogue;
@@ -54,7 +55,7 @@ public class TranscriptWriterTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                DirectoryCleanup.DeleteRecursively(root);
             }
         }
     }
