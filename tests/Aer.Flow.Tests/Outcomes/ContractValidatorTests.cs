@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using Aer.Flow.Domain;
 using Aer.Flow.Outcomes;
 
@@ -25,7 +26,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -42,7 +43,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -60,7 +61,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -78,7 +79,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -96,7 +97,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -114,7 +115,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -132,7 +133,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -150,7 +151,7 @@ public class ContractValidatorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 

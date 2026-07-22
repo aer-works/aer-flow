@@ -58,7 +58,7 @@ public class ProcessVendorTurnClientEndToEndTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                DirectoryCleanup.DeleteRecursively(root);
             }
         }
     }
@@ -92,7 +92,7 @@ public class ProcessVendorTurnClientEndToEndTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                DirectoryCleanup.DeleteRecursively(root);
             }
         }
     }
@@ -128,7 +128,7 @@ public class ProcessVendorTurnClientEndToEndTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                DirectoryCleanup.DeleteRecursively(root);
             }
         }
     }
@@ -161,7 +161,7 @@ public class ProcessVendorTurnClientEndToEndTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                DirectoryCleanup.DeleteRecursively(root);
             }
         }
     }

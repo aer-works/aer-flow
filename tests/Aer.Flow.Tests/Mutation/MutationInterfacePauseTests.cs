@@ -60,7 +60,7 @@ public class MutationInterfacePauseTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -101,7 +101,7 @@ public class MutationInterfacePauseTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -136,7 +136,7 @@ public class MutationInterfacePauseTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -174,7 +174,7 @@ public class MutationInterfacePauseTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 

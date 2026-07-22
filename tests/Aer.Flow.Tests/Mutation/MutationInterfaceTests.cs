@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
@@ -69,7 +70,7 @@ public class MutationInterfaceTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -129,7 +130,7 @@ public class MutationInterfaceTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -168,7 +169,7 @@ public class MutationInterfaceTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 }

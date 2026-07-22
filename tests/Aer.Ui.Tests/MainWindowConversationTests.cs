@@ -112,7 +112,7 @@ public class MainWindowConversationTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -148,7 +148,7 @@ public class MainWindowConversationTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -176,7 +176,7 @@ public class MainWindowConversationTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -208,7 +208,7 @@ public class MainWindowConversationTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -227,7 +227,7 @@ public class MainWindowConversationTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 }

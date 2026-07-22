@@ -1,3 +1,4 @@
+using Aer.Ui.Tests.TestSupport;
 using Aer.Flow.Domain;
 
 namespace Aer.Ui.Tests;
@@ -83,7 +84,7 @@ public class ArtifactLineageProjectorTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
         }
     }
 

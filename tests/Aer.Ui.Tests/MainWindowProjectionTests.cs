@@ -1,3 +1,4 @@
+using Aer.Ui.Tests.TestSupport;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
@@ -117,7 +118,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -157,7 +158,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -183,7 +184,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -211,7 +212,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -230,7 +231,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(notATaskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
         }
     }
 
@@ -254,7 +255,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -293,7 +294,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -329,7 +330,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 

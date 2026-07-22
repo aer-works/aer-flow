@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
 
@@ -128,7 +129,7 @@ public class WorkflowDefinitionWriterTests
         }
         finally
         {
-            Directory.Delete(Path.GetDirectoryName(directory)!, recursive: true);
+            DirectoryCleanup.DeleteRecursively(Path.GetDirectoryName(directory)!);
         }
     }
 

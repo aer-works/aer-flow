@@ -150,7 +150,7 @@ public class NonExpertPathGateTests
         }
         finally
         {
-            Directory.Delete(testRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 }

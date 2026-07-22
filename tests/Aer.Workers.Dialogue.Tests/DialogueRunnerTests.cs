@@ -1,3 +1,4 @@
+using Aer.Workers.Dialogue.Tests.TestSupport;
 using System.Text.Json;
 using Aer.Workers.Dialogue;
 
@@ -40,7 +41,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -65,7 +66,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -95,7 +96,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -121,7 +122,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -152,7 +153,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -174,7 +175,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -202,7 +203,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 
@@ -221,7 +222,7 @@ public class DialogueRunnerTests
         }
         finally
         {
-            Directory.Delete(outputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
         }
     }
 

@@ -74,7 +74,7 @@ public class MainWindowTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -96,7 +96,7 @@ public class MainWindowTests
         }
         finally
         {
-            Directory.Delete(notATaskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
         }
     }
 }

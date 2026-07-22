@@ -1,3 +1,4 @@
+using Aer.Adapters.Tests.TestSupport;
 using Aer.Flow.Domain;
 
 namespace Aer.Adapters.Tests;
@@ -137,7 +138,7 @@ public class WorkerBindingConfigWriterTests
         }
         finally
         {
-            Directory.Delete(Path.GetDirectoryName(directory)!, recursive: true);
+            DirectoryCleanup.DeleteRecursively(Path.GetDirectoryName(directory)!);
         }
     }
 

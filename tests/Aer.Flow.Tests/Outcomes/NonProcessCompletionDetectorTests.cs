@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
@@ -45,7 +46,7 @@ public class NonProcessCompletionDetectorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -70,7 +71,7 @@ public class NonProcessCompletionDetectorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -101,7 +102,7 @@ public class NonProcessCompletionDetectorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -128,7 +129,7 @@ public class NonProcessCompletionDetectorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -152,7 +153,7 @@ public class NonProcessCompletionDetectorTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 

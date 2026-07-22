@@ -1,3 +1,4 @@
+using Aer.Flow.Tests.TestSupport;
 using System.Text.Json;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Dispatch;
@@ -38,7 +39,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
             File.Delete(logPath);
         }
     }
@@ -76,7 +77,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
             File.Delete(logPath);
         }
     }
@@ -162,8 +163,8 @@ public class CoreDispatcherTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
-            Directory.Delete(configuredWorkingDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            DirectoryCleanup.DeleteRecursively(configuredWorkingDirectory);
             File.Delete(logPath);
         }
     }
