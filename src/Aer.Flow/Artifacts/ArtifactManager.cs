@@ -12,6 +12,17 @@ namespace Aer.Flow.Artifacts;
 public static class ArtifactManager
 {
     /// <summary>
+    /// The durable filename an ordinary (non-dialogue) step's fully-resolved prompt is written under,
+    /// inside its own execution's output directory (issue #292) — <see cref="Dispatch.CoreDispatcher"/>
+    /// writes it, before the CLI call, whenever <see cref="Dispatch.CoreDispatchTarget.PromptText"/> is
+    /// set; the UI layer's step projector reads it back the same way it reads any other output file,
+    /// since it lands in the identical directory <see cref="AllocateOutputDirectory"/> already
+    /// allocates. Named as a shared constant, not duplicated as a string literal on both sides, since
+    /// both need to agree on it exactly.
+    /// </summary>
+    public const string PromptFileName = "prompt.txt";
+
+    /// <summary>
     /// Creates (if needed) and returns <c>{artifactsRootPath}/execution_{executionId}</c> — the
     /// immutable directory this execution's outputs will be written into (§16). Addressing the
     /// directory by <see cref="ExecutionId"/> rather than a separately tracked sequence number is

@@ -42,6 +42,13 @@ namespace Aer.Adapters;
 /// never a separate one.
 /// </para>
 /// <para>
+/// <b>Leaves <see cref="Aer.Flow.Dispatch.CoreDispatchTarget.PromptText"/> unset (issue #292).</b> That
+/// field exists to durably capture an ordinary step's resolved prompt for UI/audit display, mirroring
+/// what dialogue's own <c>transcript.jsonl</c> already gives every turn's prompt (spec §10.1) — this
+/// adapter's worker process already writes that transcript itself, so a second, adapter-level capture
+/// here would be a redundant (and differently-shaped) duplicate, not a gap.
+/// </para>
+/// <para>
 /// <b>Only <c>AER_OUTPUT_DIR</c> needs shell-expanded env-var interpolation.</b> The config path is
 /// static per-role config (see above), so, unlike <see cref="ClaudeWorkerAdapter"/>/
 /// <see cref="GeminiWorkerAdapter"/>, this adapter needs neither stdin redirection (the dialogue

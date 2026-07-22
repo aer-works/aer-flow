@@ -1,4 +1,5 @@
 using Aer.Core;
+using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 
@@ -18,11 +19,25 @@ namespace Aer.Flow.Dispatch;
 /// <c>IWorkerAdapter</c> forwards <c>WorkerInvocation.WorkingDirectory</c> here unchanged, so a
 /// worker can operate on an arbitrary existing project the way it would run raw in a terminal.
 /// </param>
+/// <param name="PromptText">
+/// The exact instructional text this dispatch's adapter built for the worker (issue #292) — e.g.
+/// <c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c> set this to the identical string they embed
+/// as their <c>-p</c> argument. May still contain unexpanded <c>%AER_INPUT_0%</c>/<c>%AER_OUTPUT_DIR%</c>-
+/// style placeholders (same convention <see cref="Args"/> already uses) — <see cref="CoreDispatcher"/>
+/// expands it the same way before durably writing it to <c>{outputDirectory}/prompt.txt</c>
+/// (<see cref="ArtifactManager.PromptFileName"/>), so this record still carries no execution-specific
+/// resolved path, matching every other field here. <see langword="null"/> means this adapter has
+/// nothing worth capturing this way — <c>DialogueWorkerAdapter</c> leaves this null since its own
+/// worker process already durably records each turn's prompt in <c>transcript.jsonl</c>. Archival
+/// capture only, for UI/audit display (CLAUDE.md Architecture Rule 1) — never read back by Flow to
+/// make a routing decision.
+/// </param>
 public sealed record CoreDispatchTarget(
     string Program,
     IReadOnlyList<string> Args,
     string? WorkingDirectory = null,
-    Action<string>? OnStdoutLine = null);
+    Action<string>? OnStdoutLine = null,
+    string? PromptText = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -78,6 +93,20 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
 
         // Perform expansion on target arguments
         var expandedArgs = target.Args.Select(arg => ExpandVariables(arg, pathVariables)).ToList();
+
+        // Issue #292: durably capture the resolved prompt an ordinary (non-dialogue) step's worker
+        // was actually invoked with — the same UI/audit transparency a dialogue step's transcript.jsonl
+        // already gives its per-turn prompts (CLAUDE.md Architecture Rule 1: archival capture for UI
+        // display, never read back to make a routing decision). Written before AerTask ever spawns
+        // (below), so it is present even if the execution later fails or times out. Null PromptText
+        // (DialogueWorkerAdapter; a future adapter with nothing to capture) is a deliberate no-op, not
+        // a missing-data condition.
+        if (target.PromptText is { } promptText && pathVariables.TryGetValue("AER_OUTPUT_DIR", out var outputDirectory))
+        {
+            var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
+            await File.WriteAllTextAsync(promptFilePath, ExpandVariables(promptText, pathVariables), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
 
         // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a
         // dispatcher for a NonProcess execution, §17.3) — Timeout is therefore always set.

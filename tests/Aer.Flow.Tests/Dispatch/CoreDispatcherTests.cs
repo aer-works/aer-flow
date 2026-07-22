@@ -204,4 +204,96 @@ public class CoreDispatcherTests
     private static CoreDispatchTarget PrintCwdToOutputFile(string workingDirectory) => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget("cmd", ["/c", "cd > %AER_OUTPUT_DIR%\\hello.txt"], workingDirectory)
         : new CoreDispatchTarget("sh", ["-c", "pwd > \"$AER_OUTPUT_DIR/hello.txt\""], workingDirectory);
+
+    // Issue #292: durable capture of an ordinary step's resolved prompt, written into the execution's
+    // own output directory before the worker ever spawns.
+
+    [Fact]
+    public async Task DispatchAsync_writes_the_expanded_PromptText_to_prompt_txt_in_the_output_directory()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var environment = ArtifactManager.BuildEnvironment(["/inputs/goal.md"], outputDirectory, artifactsRoot);
+            var request = MakeRequest(environment);
+            var promptText = OperatingSystem.IsWindows()
+                ? "Use %AER_INPUT_0% and write to %AER_OUTPUT_DIR%."
+                : "Use $AER_INPUT_0 and write to $AER_OUTPUT_DIR.";
+            var target = EchoHelloToOutputFile() with { PromptText = promptText };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
+            Assert.True(File.Exists(promptFilePath));
+            var writtenPrompt = await File.ReadAllTextAsync(promptFilePath, TestContext.Current.CancellationToken);
+            Assert.Equal("Use /inputs/goal.md and write to " + outputDirectory + ".", writtenPrompt);
+        }
+        finally
+        {
+            Directory.Delete(artifactsRoot, recursive: true);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
+    /// Written before the worker spawns (§7-style intent-first ordering), so the prompt stays
+    /// available for audit even when the worker itself exits nonzero -- exactly the "present even if
+    /// the execution later fails" guarantee issue #292 asks for.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_writes_prompt_txt_even_when_the_worker_exits_non_zero()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var environment = ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot);
+            var request = MakeRequest(environment);
+            var target = (OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 7"])
+                : new CoreDispatchTarget("sh", ["-c", "exit 7"])) with
+            { PromptText = "Draft a plan." };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(7, result.ExitCode);
+            var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
+            Assert.True(File.Exists(promptFilePath));
+            Assert.Equal("Draft a plan.", await File.ReadAllTextAsync(promptFilePath, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            Directory.Delete(artifactsRoot, recursive: true);
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_writes_no_prompt_file_when_PromptText_is_null()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var environment = ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot);
+            var request = MakeRequest(environment);
+            var target = EchoHelloToOutputFile();
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.False(File.Exists(Path.Combine(outputDirectory, ArtifactManager.PromptFileName)));
+        }
+        finally
+        {
+            Directory.Delete(artifactsRoot, recursive: true);
+            File.Delete(logPath);
+        }
+    }
 }

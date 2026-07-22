@@ -206,6 +206,64 @@ public class TaskDrillInTests
         Assert.True(condition());
     }
 
+    /// <summary>
+    /// Issue #292: an ordinary step's durably-captured prompt surfaces via its own PromptFiles slice,
+    /// not mixed into OutputFiles' always-visible chips -- reusing the same output-file preview
+    /// mechanism (ArtifactFileViewModel/PreviewCommand) rather than a bespoke rendering path.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_captured_prompt_file_surfaces_as_PromptFiles_and_is_excluded_from_OutputFiles()
+    {
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        await File.WriteAllTextAsync(
+            Path.Combine(outputDirectory, "prompt.txt"), "Review the plan.", TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+
+            // Still just the one real output -- prompt.txt never leaks into the output-files chips.
+            var outputFile = Assert.Single(critic.OutputFiles);
+            Assert.Equal("review.md (c-1)", outputFile.Label);
+
+            var promptFile = Assert.Single(critic.PromptFiles);
+            Assert.Equal("Prompt (c-1)", promptFile.Label);
+            Assert.True(critic.HasPromptFiles);
+
+            await promptFile.PreviewCommand.ExecuteAsync(null);
+
+            Assert.Equal("Review the plan.", window.FindViewControl<TextBox>("ArtifactPreviewBox")!.Text);
+            Assert.True(promptFile.IsSelected);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task A_step_with_no_captured_prompt_reports_no_prompt_files()
+    {
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+
+            Assert.False(critic.HasPromptFiles);
+            Assert.Empty(critic.PromptFiles);
+        }
+        finally
+        {
+            Directory.Delete(taskDirectory, recursive: true);
+        }
+    }
+
     [AvaloniaFact]
     public async Task Selection_follows_step_id_across_refresh_and_the_dag_click_entry_point()
     {

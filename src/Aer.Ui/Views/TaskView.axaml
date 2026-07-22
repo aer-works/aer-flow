@@ -198,6 +198,26 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <!-- #292: an ordinary step's durably-captured resolved prompt — parity with dialogue's
+                     collapsed-by-default "Prompt" expander (MainWindow.axaml.cs's RenderTurn), reusing
+                     the same output-file chip + shared preview box rather than a bespoke surface. Only
+                     present when a prompt was actually captured (adapters with nothing to capture, or
+                     a task predating this feature, simply have none). -->
+                <Expander Header="Prompt" IsExpanded="False" IsVisible="{Binding HasPromptFiles}">
+                  <ItemsControl ItemsSource="{Binding PromptFiles}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ArtifactFileViewModel">
+                        <Button Content="{Binding Label}" Command="{Binding PreviewCommand}"
+                                Classes="chip" Classes.selected="{Binding IsSelected}" Margin="0,0,4,4" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Expander>
                 <TextBox x:Name="ArtifactPreviewBox" IsReadOnly="True" AcceptsReturn="True"
                          TextWrapping="Wrap" Height="140" Classes="mono" />
               </StackPanel>

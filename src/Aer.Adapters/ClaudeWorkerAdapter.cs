@@ -118,7 +118,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Model);
         }
 
-        return new CoreDispatchTarget("claude", [.. args], invocation.WorkingDirectory);
+        return new CoreDispatchTarget("claude", [.. args], invocation.WorkingDirectory, PromptText: prompt);
     }
 
     /// <summary>
