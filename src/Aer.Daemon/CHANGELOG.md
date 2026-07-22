@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.18.0...daemon-v0.19.0) (2026-07-22)
+
+
+### Features
+
+* **daemon,adapters,ui:** Milestone 24 — Interactive Sessions & Unified Task Creation ([#276](https://github.com/aer-works/aer-flow/issues/276)) ([f7ab4fa](https://github.com/aer-works/aer-flow/commit/f7ab4fad253e730735631d158d92f97b2fc22d03))
+
+
+### Bug Fixes
+
+* **adapters,daemon:** Give chat continuation a legal Supersede target ([#291](https://github.com/aer-works/aer-flow/issues/291)) ([fb13594](https://github.com/aer-works/aer-flow/commit/fb13594513233dcd0813f504d06b6ae8ce0f474f))
+* **daemon,ui,mobile:** Wire command picker to real actions and show active mode ([#298](https://github.com/aer-works/aer-flow/issues/298)) ([3ed5d2d](https://github.com/aer-works/aer-flow/commit/3ed5d2d0b4841bb84c5d43c6e7b58bc3ef2398d8))
+
+
+### Tests
+
+* **daemon,ui:** Use OS-assigned dynamic ports for test-fixture daemon instances ([#302](https://github.com/aer-works/aer-flow/issues/302)) ([f41bf43](https://github.com/aer-works/aer-flow/commit/f41bf43dd0f367de40832646d3c2070f68cfc99f))
+
 ## [0.18.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.17.0...daemon-v0.18.0) (2026-07-21)
 
 

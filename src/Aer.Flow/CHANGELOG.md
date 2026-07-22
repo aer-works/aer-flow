@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0](https://github.com/aer-works/aer-flow/compare/flow-v0.18.0...flow-v0.19.0) (2026-07-22)
+
+
+### Features
+
+* **daemon,adapters,ui:** Milestone 24 — Interactive Sessions & Unified Task Creation ([#276](https://github.com/aer-works/aer-flow/issues/276)) ([f7ab4fa](https://github.com/aer-works/aer-flow/commit/f7ab4fad253e730735631d158d92f97b2fc22d03))
+* **flow,adapters,ui:** Durably capture and surface the resolved prompt for ordinary workflow steps ([#297](https://github.com/aer-works/aer-flow/issues/297)) ([b91b3a1](https://github.com/aer-works/aer-flow/commit/b91b3a1242893df4a20cfdc3cc69044c2eea53e8))
+
 ## [0.18.0](https://github.com/aer-works/aer-flow/compare/flow-v0.17.0...flow-v0.18.0) (2026-07-21)
 
 

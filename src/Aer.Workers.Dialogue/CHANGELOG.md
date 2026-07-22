@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/aer-works/aer-flow/compare/dialogue-worker-v0.18.0...dialogue-worker-v0.19.0) (2026-07-22)
+
+
+### Miscellaneous
+
+* **dialogue-worker:** Synchronize core versions
+
 ## [0.18.0](https://github.com/aer-works/aer-flow/compare/dialogue-worker-v0.17.0...dialogue-worker-v0.18.0) (2026-07-21)
 
 
