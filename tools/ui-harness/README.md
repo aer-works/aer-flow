@@ -25,17 +25,27 @@ a deliberate manual tool. Issue #313 builds automated journeys on top of them.
 
 Four things that are not obvious and cost real time to discover:
 
-- **The first click on a background window is swallowed.** Windows delivers it as an activation and
-  the control never sees it. These scripts call `SetForegroundWindow`, but Windows *refuses* that
-  call from a process that is not already foreground — it fails silently and returns. So the first
-  `-ClickX/-ClickY` after the app loses focus does nothing, and **the app looks broken when it is
-  not**: during the M25 evaluation this manufactured three false product defects in a row, including
-  a `Start new chat` button that was fine. **Click twice**, or verify with a control whose response
-  is visible (a dropdown opening) before trusting that a click landed.
-- **`Click-Type.ps1` is worse, and lies.** `SendKeys` targets whatever window actually holds focus,
-  so when activation fails the text lands somewhere else entirely — while the script still prints
-  `OK typed N chars`. Screenshot the field afterwards; never trust the return value. For anything
+- **A click goes to whatever window is on top at that pixel — not to the `-Handle` you passed.**
+  These are real screen events (`SetCursorPos` + `mouse_event`). The scripts call
+  `SetForegroundWindow` first, but Windows *refuses* that call from a process that is not already
+  foreground: it fails silently and returns. So if anything covers the target, **the click lands in
+  that other application**, while `PrintWindow` still renders the target correctly — the screenshot
+  looks exactly like a UI that ignored you. During the M25 evaluation this manufactured three false
+  product defects in a row (including a `Start new chat` button that was fine), and later sent a
+  run of clicks into an unrelated Chrome window.
+
+  Since #356 the scripts check `WindowFromPoint` against the target's root window and **refuse with
+  exit code 2** rather than clicking a stranger. If you see `REFUSED`, bring the window to the
+  front — do not work around it. Earlier advice here said to "click twice"; that was a description
+  of the symptom and it is **wrong**: if another window is on top, the second click misses too.
+- **`Click-Type.ps1` is the most dangerous, and used to lie.** `SendKeys` targets whatever window
+  actually holds focus, so a misdirected click meant text was typed somewhere else entirely while
+  the script printed `OK typed N chars`. It now refuses on the same check, but the underlying
+  hazard remains: **never trust its return value** — screenshot the field afterwards. For anything
   load-bearing, drive the daemon's HTTP API instead and keep the UI for what you can *see*.
+- **`List-Windows.ps1` reports a *logical* rect; captures and clicks are *physical* pixels.** On a
+  150% display it prints `1215x808` for a window whose capture is `1804x1203`. Coordinates read off
+  a capture are the correct ones to pass; coordinates taken from `List-Windows.ps1` land ~1.5x off.
 - **Avalonia modal dialogs and popups are separate HWNDs** and never appear in
   `Process.MainWindowTitle` — this includes `ComboBox` dropdowns, not just dialogs. One can be open
   and fully invisible to `Get-Process`. Use `List-Windows.ps1`, then `Capture-Handle.ps1`.
