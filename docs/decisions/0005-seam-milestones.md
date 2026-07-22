@@ -51,7 +51,12 @@ journey tests that drive the real UI (#313), since every existing completion gat
 `smoke-mixed-vendor`, `smoke-dialogue`, `smoke-session`) drives the engine or the daemon's HTTP
 surface and **none touches a UI**.
 
-**Note the recurrence.** Manual testing on 2026-07-21 found chat, commands, mode and remote broken
-behind an all-green PR. The lesson was recorded as *"API-level tests don't prove UI works"* and
-nothing structural changed, so it recurred at larger scale five weeks later. This record exists to be
-the structural change.
+**Note the recurrence, and how fast it was.** Manual testing on 2026-07-21 found chat, commands,
+mode and remote broken behind an all-green PR. The lesson was recorded as *"API-level tests don't
+prove UI works"* and nothing structural changed. It recurred at larger scale **the following day**.
+
+The one-day gap is the reason this record exists. A lesson that decays over a quarter can be blamed
+on memory; one that fails within twenty-four hours was never a control in the first place — writing
+it down *was* the entire response, and writing things down does not fail builds. That is the
+distinction this decision is meant to enforce: every item it obliges us to (#312, #313) is a
+required artifact or a gate, not a note.
