@@ -231,6 +231,9 @@ public partial class MainWindow : Window
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
         NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
         NavChatButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Chat;
+        NavTasksButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Tasks;
+        TasksViewControl.TasksRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
+        TasksViewControl.TasksIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
         ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
         ChatModeAutoButton.Click += (_, _) => _ = SetChatModeAsync("auto");
@@ -294,6 +297,14 @@ public partial class MainWindow : Window
             else
             {
                 _pairingCountdownTimer.Stop();
+            }
+
+            // M24 Phase 5 (#278): the fleet list rebuilds on every activation, same reasoning as
+            // Home's own rebuild-on-activation — archive/unarchive/delete elsewhere (or from
+            // another client) shouldn't require leaving and re-entering this view to see reflected.
+            if (section == ShellSection.Tasks)
+            {
+                _ = ViewModel.Tasks.RefreshAsync(_session);
             }
         };
         _pairingCountdownTimer.Tick += (_, _) =>

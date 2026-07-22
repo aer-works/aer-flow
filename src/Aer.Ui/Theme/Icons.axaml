@@ -48,6 +48,11 @@
   <!-- A speech bubble with a tail — Chat nav destination (M24 Phase 1, #262). -->
   <StreamGeometry x:Key="Icon.Chat">M 3,4 L 13,4 L 13,10 L 6.5,10 L 4,13 L 4,10 L 3,10 Z</StreamGeometry>
 
+  <!-- A 2x2 grid of squares — Tasks nav destination (M24 Phase 5, #278): the fleet management view,
+       distinct from Icon.Task's single checklist (three list lines) since this represents many
+       task/session directories at once, not one task's steps. -->
+  <StreamGeometry x:Key="Icon.Fleet">M 2.5,2.5 L 6.8,2.5 L 6.8,6.8 L 2.5,6.8 Z M 9.2,2.5 L 13.5,2.5 L 13.5,6.8 L 9.2,6.8 Z M 2.5,9.2 L 6.8,9.2 L 6.8,13.5 L 2.5,13.5 Z M 9.2,9.2 L 13.5,9.2 L 13.5,13.5 L 9.2,13.5 Z</StreamGeometry>
+
   <!-- M22 template-picker vendor icons (issue #250 review follow-up): closed, fillable shapes (same
        16x16 grid as the set above), each a distinct point-count silhouette so the two read apart
        even without color. Claude: a 6-point sunburst. Gemini: a 4-point sparkle/diamond — fewer,
