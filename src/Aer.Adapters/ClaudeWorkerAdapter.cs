@@ -68,11 +68,26 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         var isWindows = OperatingSystem.IsWindows();
         var prompt = BuildPrompt(invocation.PromptTemplate, contract, isWindows);
         var permissionScope = ResolvePermissionScope(invocation);
+        var artifactsRoot = EnvironmentReference("AER_ARTIFACTS_ROOT", isWindows);
 
         List<string> args =
         [
             "-p", prompt,
             "--allowedTools", permissionScope,
+            // #289: Claude Code enforces its own directory-trust sandbox independent of
+            // --allowedTools, and (confirmed empirically against the real, authenticated CLI)
+            // non-deterministically refuses to write outside it when AER_OUTPUT_DIR falls outside
+            // the spawned process's cwd -- which it always does for a plain chat session, since
+            // ExecuteSessionTurnAsync never sets WorkerInvocation.WorkingDirectory unless the
+            // session is attached to a codebase. Reproduced identically via a bare manual `claude`
+            // invocation (not daemon-specific): ~50% of otherwise-identical trials silently failed
+            // to produce their declared output file, each citing "outside the sandboxed worktree" /
+            // "outside the allowed working directories" as its own reason, until this flag was
+            // added -- 0/6 failures with it across the same trial shape. Mirrors the same grant
+            // GeminiWorkerAdapter has carried since spike #21 for the identical reason (agy ignores
+            // the invoking process's cwd entirely); Claude turned out to need it too, just only
+            // sometimes, which is what made the gap easy to miss.
+            "--add-dir", artifactsRoot,
         ];
 
         if (invocation.StreamJson)

@@ -23,8 +23,27 @@ public class ClaudeWorkerAdapterTests
         Assert.Equal("-p", target.Args[0]);
         Assert.Equal("--allowedTools", target.Args[2]);
         Assert.Equal("Write", target.Args[3]);
-        Assert.Equal("--output-format", target.Args[4]);
-        Assert.Equal("text", target.Args[5]);
+        Assert.Equal("--add-dir", target.Args[4]);
+        Assert.Equal("--output-format", target.Args[6]);
+        Assert.Equal("text", target.Args[7]);
+    }
+
+    /// <summary>
+    /// #289: Claude Code's own directory-trust sandbox (separate from --allowedTools) was found,
+    /// via a live run against the real authenticated CLI, to non-deterministically refuse to write
+    /// AER_OUTPUT_DIR when it falls outside the spawned process's cwd -- which it always does for a
+    /// plain chat session with no WorkingDirectory. --add-dir AER_ARTIFACTS_ROOT (the same grant
+    /// GeminiWorkerAdapter already carries for agy, per ArtifactManager.BuildEnvironment's own doc
+    /// comment) eliminated the failure across every trial once added.
+    /// </summary>
+    [Fact]
+    public void The_artifacts_root_is_granted_via_add_dir_so_output_writes_outside_cwd_are_trusted()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.Equal("--add-dir", target.Args[4]);
+        var artifactsRootVar = OperatingSystem.IsWindows() ? "%AER_ARTIFACTS_ROOT%" : "$AER_ARTIFACTS_ROOT";
+        Assert.Equal(artifactsRootVar, target.Args[5]);
     }
 
     /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged.</summary>
@@ -60,8 +79,8 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Model: "claude-opus-4-5"), ArchitectContract);
 
-        Assert.Equal("--model", target.Args[6]);
-        Assert.Equal("claude-opus-4-5", target.Args[7]);
+        Assert.Equal("--model", target.Args[8]);
+        Assert.Equal("claude-opus-4-5", target.Args[9]);
     }
 
     [Fact]

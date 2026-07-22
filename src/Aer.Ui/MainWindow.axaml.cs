@@ -525,6 +525,7 @@ public partial class MainWindow : Window
         {
             ViewModel.Chat.LoadFromMetadata(sessionMetadata, taskDirectoryPath);
             ViewModel.CurrentSection = ShellSection.Chat;
+            await RefreshChatModeAsync(sessionMetadata.SessionId, cancellationToken).ConfigureAwait(true);
         }
         else
         {
@@ -687,8 +688,15 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>An invokable command/skill/agent picked from the Commands menu: inserted into the message box (not sent automatically — the user still reviews/edits before Send) and recorded as recently-used.</summary>
-    private void OnChatCommandItemClick(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// An invokable command/skill/agent picked from the Commands menu (#286). "/compact" and
+    /// "/clear" are real dedicated actions, not text insertion — inserting them as literal text only
+    /// ever "worked" because the resulting message happened to be interpreted by the vendor CLI's
+    /// own (unverified, vendor-owned) slash-command handling, not because AER actually invoked
+    /// anything. Everything else still inserts into the message box for the user to review/edit
+    /// before Send, and gets recorded as recently-used the same way regardless of which path ran.
+    /// </summary>
+    private async void OnChatCommandItemClick(object? sender, RoutedEventArgs e)
     {
         var chat = ViewModel.Chat;
         if (e.Source is not Control { DataContext: ChatCapabilityItemViewModel item } || chat.SessionId is not { } sessionId)
@@ -696,12 +704,36 @@ public partial class MainWindow : Window
             return;
         }
 
-        chat.InputText = string.IsNullOrEmpty(chat.InputText) ? item.Name : $"{chat.InputText} {item.Name}";
         chat.IsCommandMenuOpen = false;
         _ = _session.RecordCommandUsedAsync(sessionId, item.Name);
+
+        switch (item.Name)
+        {
+            case "/compact":
+                var compactOutcome = await _session.CompactSessionAsync(sessionId).ConfigureAwait(true);
+                chat.StatusText = compactOutcome.ErrorMessage ?? "Compacting session context…";
+                break;
+
+            case "/clear":
+                var (cleared, clearError) = await _session.ClearSessionAsync(sessionId).ConfigureAwait(true);
+                if (cleared != null && chat.TaskDirectoryPath is { } taskDirectoryPath)
+                {
+                    chat.LoadFromMetadata(cleared, taskDirectoryPath);
+                    chat.StatusText = "Session context cleared.";
+                }
+                else
+                {
+                    chat.StatusText = clearError ?? "Failed to clear session context.";
+                }
+                break;
+
+            default:
+                chat.InputText = string.IsNullOrEmpty(chat.InputText) ? item.Name : $"{chat.InputText} {item.Name}";
+                break;
+        }
     }
 
-    /// <summary>Session-level mode (M24 Phase 2 follow-up): applies to whichever vendor is currently active, taking effect on the next turn.</summary>
+    /// <summary>Session-level mode (M24 Phase 2 follow-up): applies to whichever vendor is currently active, taking effect on the next turn. Updates the persistent header indicator on success (#286) — re-reads from the daemon rather than assuming the requested mode round-tripped verbatim, since a future non-canonical grant would otherwise desync the indicator from the truth in bindings.json.</summary>
     private async Task SetChatModeAsync(string mode)
     {
         var chat = ViewModel.Chat;
@@ -714,7 +746,18 @@ public partial class MainWindow : Window
         if (outcome.ErrorMessage is { } error)
         {
             chat.StatusText = error;
+            return;
         }
+
+        chat.StatusText = $"Mode set to {mode}.";
+        await RefreshChatModeAsync(sessionId).ConfigureAwait(true);
+    }
+
+    /// <summary>Re-reads the active session mode from the daemon (#286) and reflects it in <see cref="ChatViewModel.CurrentMode"/> — best-effort, since a stale/missing mode indicator is a cosmetic gap, not a failure worth surfacing as a chat error.</summary>
+    private async Task RefreshChatModeAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        var (mode, _) = await _session.GetSessionModeAsync(sessionId, cancellationToken).ConfigureAwait(true);
+        ViewModel.Chat.CurrentMode = mode;
     }
 
     /// <summary>
