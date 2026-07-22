@@ -47,7 +47,16 @@ lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core", "lint-si
 mobile-analyze = { cmd = "flutter analyze", cwd = "src/Aer.Mobile" }
 mobile-test = { cmd = "flutter test", cwd = "src/Aer.Mobile" }
 mobile-build = { cmd = "flutter build apk --debug", cwd = "src/Aer.Mobile" }
-mobile-run = { cmd = "flutter run", cwd = "src/Aer.Mobile" }
+mobile-run = { cmd = "flutter run --debug", cwd = "src/Aer.Mobile" }
+mobile-install = { cmd = "flutter install --debug", cwd = "src/Aer.Mobile" }
+
+# #303: patches the `tailscale` package in the local pub cache so Aer.Mobile survives startup on an
+# x86_64 Android emulator — without it the process is killed by seccomp (SIGSYS on epoll_wait)
+# before Flutter renders anything, making emulator and CI-based mobile testing impossible. Not a
+# dependency of mobile-build: it mutates a shared, machine-global cache, so it stays an explicit
+# opt-in rather than something an ordinary build silently does. Idempotent; run once per machine
+# (and again after `flutter pub cache repair`). Retire once upstream ships the fix.
+mobile-patch = { cmd = "bash scripts/patch-tailscale-dart.sh" }
 
 # M13 Phase 1 (#107): packs Aer.Cli as an installable global dotnet tool (nupkg), embedding the
 # native aer_core library for the current host OS. Not part of `build`/`test`/`lint` — packing
