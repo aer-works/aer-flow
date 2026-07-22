@@ -86,8 +86,42 @@ jobs:
       - name: Lint
         run: pixi run lint
 
+      # Isolation guard (#318). The suite redirects AER_HOME to a throwaway temp root
+      # (tests/Shared/AerHomeRedirect.cs), so a correct run never touches the real ~/.aer. Snapshot
+      # it before and after the run and fail if anything changed: this is what catches a store added
+      # later that bypasses AerPaths and writes to the real per-user dir -- the day it lands, not six
+      # milestones on when a user finds 48 dead projects. Path list only (not mtimes), so a benign
+      # touch of a pre-existing file doesn't false-positive.
+      - name: Snapshot ~/.aer before tests
+        shell: bash
+        run: |
+          if [ -d "$HOME/.aer" ]; then
+            find "$HOME/.aer" -type f | LC_ALL=C sort > "$RUNNER_TEMP/aer-before.txt"
+          else
+            : > "$RUNNER_TEMP/aer-before.txt"
+          fi
+
       - name: Test
         run: pixi run test
+
+      - name: Assert ~/.aer untouched by tests
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f "$RUNNER_TEMP/aer-before.txt" ]; then
+            echo "Pre-test snapshot missing (an earlier step failed before tests ran); nothing to check."
+            exit 0
+          fi
+          if [ -d "$HOME/.aer" ]; then
+            find "$HOME/.aer" -type f | LC_ALL=C sort > "$RUNNER_TEMP/aer-after.txt"
+          else
+            : > "$RUNNER_TEMP/aer-after.txt"
+          fi
+          if ! diff -u "$RUNNER_TEMP/aer-before.txt" "$RUNNER_TEMP/aer-after.txt"; then
+            echo "::error::Tests changed the real ~/.aer. The AER_HOME redirect leaked -- a store is bypassing AerPaths (see tests/Shared/AerHomeRedirect.cs and src/Aer.Adapters/AerPaths.cs)."
+            exit 1
+          fi
+          echo "~/.aer unchanged by the test run."
 
       - name: Shutdown dotnet build server
         run: pixi run dotnet build-server shutdown
