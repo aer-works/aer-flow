@@ -31,13 +31,12 @@ namespace Aer.Adapters;
 public static class AerProfileStore
 {
     /// <summary>
-    /// The production location the phase names: <c>%USERPROFILE%\.aer\profiles.json</c> on Windows,
-    /// <c>$HOME/.aer/profiles.json</c> on Unix — <see cref="Environment.SpecialFolder.UserProfile"/>
-    /// resolves to the platform-appropriate one, so this is a single cross-platform expression rather
-    /// than an OS check. Tests construct against a temp file directly instead of this.
+    /// The production location the phase names: <c>profiles.json</c> under <see cref="AerPaths.Root"/>
+    /// (<c>%USERPROFILE%\.aer</c> on Windows, <c>$HOME/.aer</c> on Unix, or the <c>AER_HOME</c>
+    /// override). A re-resolving property, not a captured value, so it honours the root seam. Tests
+    /// construct against a temp file directly instead of this.
     /// </summary>
-    public static string DefaultPath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "profiles.json");
+    public static string DefaultPath => Path.Combine(AerPaths.Root, "profiles.json");
 
     /// <summary>Loads the profile map from <paramref name="path"/>; a missing file resolves to an empty map.</summary>
     /// <exception cref="ProfileStoreException">The file exists but is not valid JSON, or is not a JSON object of string values.</exception>

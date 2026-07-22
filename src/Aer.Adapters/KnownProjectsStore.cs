@@ -9,8 +9,8 @@ public sealed record KnownProject(
 
 public static class KnownProjectsStore
 {
-    private static readonly string ProjectsFilePath = System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "projects.json");
+    // Re-resolving property, not a static field: a captured value would defeat AER_HOME isolation.
+    private static string ProjectsFilePath => System.IO.Path.Combine(AerPaths.Root, "projects.json");
 
     public static async Task<IReadOnlyList<KnownProject>> LoadProjectsAsync(CancellationToken cancellationToken = default)
     {

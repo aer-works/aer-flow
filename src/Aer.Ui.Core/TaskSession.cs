@@ -196,7 +196,7 @@ public sealed class TaskSession
     {
         if (string.IsNullOrEmpty(_daemonUrl)) return null;
 
-        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+        var aerDir = AerPaths.Root;
         if (!Directory.Exists(aerDir)) return null;
 
         var tokenFile = Path.Combine(aerDir, "daemon.token");
@@ -340,7 +340,7 @@ public sealed class TaskSession
                     // ReadToEnd) so a chatty child can't block on a full stdout/stderr pipe buffer.
                     try
                     {
-                        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+                        var aerDir = AerPaths.Root;
                         Directory.CreateDirectory(aerDir);
                         var logPath = Path.Combine(aerDir, "daemon-spawn.log");
                         File.WriteAllText(logPath, $"--- spawn {DateTime.UtcNow:O} (args: {args}) ---{Environment.NewLine}");
@@ -1690,7 +1690,7 @@ public sealed class TaskSession
     {
         try
         {
-            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+            var aerDir = AerPaths.Root;
             Directory.CreateDirectory(aerDir);
             TryAppendLog(Path.Combine(aerDir, "toggle-diagnostic.log"), $"{DateTime.UtcNow:O} {line}");
         }

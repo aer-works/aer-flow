@@ -84,7 +84,7 @@ public partial class TemplatePickerWindow : Window
         var customPrompt = string.IsNullOrWhiteSpace(CustomPromptBox.Text) ? null : CustomPromptBox.Text.Trim();
         var secondaryCustomPrompt = string.IsNullOrWhiteSpace(SecondaryCustomPromptBox.Text) ? null : SecondaryCustomPromptBox.Text.Trim();
 
-        var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
+        var baseTasksDir = AerPaths.Tasks;
         var taskDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, taskName));
         if (!taskDirectoryPath.StartsWith(Path.GetFullPath(baseTasksDir) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {

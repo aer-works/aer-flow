@@ -50,7 +50,7 @@ namespace Aer.Daemon
             }
 
             // Setup local data directory ~/.aer
-            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
+            var aerDir = AerPaths.Root;
             Directory.CreateDirectory(aerDir);
 
             // Generate token if not exists
@@ -733,7 +733,7 @@ namespace Aer.Daemon
                     return Results.BadRequest("TemplateId is required.");
                 }
 
-                var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
+                var baseTasksDir = AerPaths.Tasks;
                 var folderName = string.IsNullOrWhiteSpace(request.TaskName)
                     ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}"
                     : request.TaskName.Trim();
@@ -918,8 +918,8 @@ namespace Aer.Daemon
             // the whole list, since one bad item shouldn't hide every other task/session.
             app.MapGet("/api/tasks", async (bool? includeArchived) =>
             {
-                var baseTasksDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks");
-                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                var baseTasksDir = AerPaths.Tasks;
+                var baseSessionsDir = AerPaths.Sessions;
 
                 var directories = new List<string>();
                 if (Directory.Exists(baseTasksDir))
@@ -1188,7 +1188,7 @@ namespace Aer.Daemon
 
             app.MapGet("/api/sessions", async () =>
             {
-                var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+                var baseSessionsDir = AerPaths.Sessions;
                 if (!Directory.Exists(baseSessionsDir))
                 {
                     return Results.Ok(Array.Empty<SessionMetadata>());
@@ -1480,8 +1480,8 @@ namespace Aer.Daemon
         {
             resolvedPath = Path.GetFullPath(directoryPath);
 
-            var baseTasksDir = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "tasks"));
-            var baseSessionsDir = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions"));
+            var baseTasksDir = Path.GetFullPath(AerPaths.Tasks);
+            var baseSessionsDir = Path.GetFullPath(AerPaths.Sessions);
 
             return resolvedPath.StartsWith(baseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal)
                 || resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
@@ -1489,7 +1489,7 @@ namespace Aer.Daemon
 
         private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
         {
-            var baseSessionsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer", "sessions");
+            var baseSessionsDir = AerPaths.Sessions;
             if (!Directory.Exists(baseSessionsDir))
             {
                 return null;
