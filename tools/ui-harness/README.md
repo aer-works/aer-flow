@@ -16,6 +16,7 @@ a deliberate manual tool. Issue #313 builds automated journeys on top of them.
 
 | Script | Purpose |
 |---|---|
+| `Bring-Foreground.ps1 -Handle 0x… [-Topmost] [-Release]` | Legally front the target so clicks land; `-Topmost` pins it for a drive, `-Release` clears it |
 | `List-Windows.ps1 -ProcessId <pid>` | Every visible top-level window for a process |
 | `Capture-Window.ps1 -TitleLike <s> -OutPath <png>` | Capture the main window by title match |
 | `Capture-Handle.ps1 -Handle 0x… -OutPath <png> [-ClickX -ClickY]` | Capture any HWND, optionally clicking first |
@@ -35,9 +36,13 @@ Four things that are not obvious and cost real time to discover:
   run of clicks into an unrelated Chrome window.
 
   Since #356 the scripts check `WindowFromPoint` against the target's root window and **refuse with
-  exit code 2** rather than clicking a stranger. If you see `REFUSED`, bring the window to the
-  front — do not work around it. Earlier advice here said to "click twice"; that was a description
-  of the symptom and it is **wrong**: if another window is on top, the second click misses too.
+  exit code 2** rather than clicking a stranger. If you see `REFUSED`, front the window with
+  `Bring-Foreground.ps1 -Handle 0x… -Topmost` and retry — do not work around it. A background
+  session cannot front the app with `SetForegroundWindow` alone (that is what is refused);
+  `Bring-Foreground.ps1` uses `AttachThreadInput` to acquire the right legally, and verifies it
+  worked. `-Topmost` keeps the window up for a multi-step drive; call `-Release` when done. Earlier
+  advice here said to "click twice"; that was a description of the symptom and it is **wrong**: if
+  another window is on top, the second click misses too.
 - **`Click-Type.ps1` is the most dangerous, and used to lie.** `SendKeys` targets whatever window
   actually holds focus, so a misdirected click meant text was typed somewhere else entirely while
   the script printed `OK typed N chars`. It now refuses on the same check, but the underlying
