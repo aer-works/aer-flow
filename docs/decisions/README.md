@@ -50,3 +50,4 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0003](0003-templates-collapse-to-three-shapes.md) | Templates collapse to three shapes | accepted |
 | [0004](0004-permission-scopes.md) | Permissions scope by project, session and step | accepted |
 | [0005](0005-seam-milestones.md) | Capability milestones alternate with seam milestones | accepted |
+| [0006](0006-visual-direction-quiet.md) | Visual direction is "Quiet" | accepted |
