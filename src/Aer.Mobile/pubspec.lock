@@ -425,10 +425,10 @@ packages:
     dependency: "direct main"
     description:
       name: tailscale
-      sha256: "0a82772ae761bd099ec6ec68facbbb36fd3fb001c6d5d7a5ddd9efd7fd0628e6"
+      sha256: "68baf309179fad1dfb6490744031f3f8a08ef19cf388b9eb3c129d8eff5dee50"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.0"
+    version: "0.7.1"
   term_glyph:
     dependency: transitive
     description:

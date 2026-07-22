@@ -45,7 +45,7 @@ dependencies:
   # QR scanning for pairing (M21 Phase 3, issue #234) — actively maintained; qr_code_scanner is
   # deprecated. Needs android.permission.CAMERA, added to the main manifest for this phase.
   mobile_scanner: ^7.3.0
-  tailscale: ^0.5.0
+  tailscale: ^0.7.1
   path_provider: ^2.1.6
   url_launcher: ^6.3.2
 
