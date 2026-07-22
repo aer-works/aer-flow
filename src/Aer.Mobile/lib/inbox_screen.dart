@@ -418,6 +418,98 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// The Chat surface's own direct "start new chat" entry point (#290) — [_showTemplatePicker]
+  /// already covers this (its "chat-session" radio option), but forces picking through four
+  /// unrelated template kinds (codebase-session, two-vendor-dialogue, review-run, solo-run) just to
+  /// start a plain chat. This is the same underlying `startSession` call with only what a chat
+  /// actually needs: an adapter. No dependency on the template picker.
+  Future<void> _startNewChat() async {
+    final client = _client;
+    if (client == null) return;
+
+    var availableVendorNames = <String>[];
+    try {
+      final data = await client.listTemplates();
+      final vendors = (data['availableVendors'] as List<dynamic>?) ?? [];
+      availableVendorNames = vendors
+          .where((v) => (v as Map<String, dynamic>)['isAvailable'] == true)
+          .map((v) => v['adapterName'].toString())
+          .toList();
+    } catch (_) {
+      // Best-effort probe -- the fallback list below still lets the dialog work.
+    }
+    if (availableVendorNames.isEmpty) {
+      availableVendorNames = ['claude', 'gemini'];
+    }
+    var selectedAdapter = availableVendorNames.first;
+
+    if (!mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Start new chat'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('AI Vendor:', style: TextStyle(fontWeight: FontWeight.bold)),
+              DropdownButton<String>(
+                value: selectedAdapter,
+                isExpanded: true,
+                items: availableVendorNames
+                    .map((v) => DropdownMenuItem(
+                          value: v,
+                          child: Row(
+                            children: [
+                              _buildVendorIcon(v, size: 16),
+                              const SizedBox(width: 8),
+                              Text(v),
+                            ],
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) setDialogState(() => selectedAdapter = val);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Start')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final screenNavigator = Navigator.of(context);
+    try {
+      final meta = await client.startSession(adapter: selectedAdapter);
+      final metaCi = caseInsensitive(meta);
+      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+      final startedSessionId = metaCi['sessionid']?.toString();
+      if (startedDirectoryPath != null && mounted) {
+        setState(() => _openDirectoryPath = startedDirectoryPath);
+      }
+      // This phone started the session itself, so (unlike a passively-seeded WS push) it's safe
+      // to jump straight into the chat screen -- same reasoning _showTemplatePicker's own
+      // navigation already relies on.
+      if (startedDirectoryPath != null && startedSessionId != null && mounted) {
+        screenNavigator.push(MaterialPageRoute(
+          builder: (_) => ChatScreen(client: client, sessionId: startedSessionId, directoryPath: startedDirectoryPath),
+        ));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text('Started session $startedSessionId')));
+      }
+    } on DaemonException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Future<void> _cancelRun() async {
     final client = _client;
     final directoryPath = _projection?.directoryPath;
@@ -456,16 +548,19 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: Text(projection == null ? 'Aer' : '$taskTitle — ${projection.status}'),
         actions: [
+          IconButton(icon: const Icon(Icons.chat_bubble_outline), tooltip: 'Start new chat', onPressed: _startNewChat),
           IconButton(icon: const Icon(Icons.add), tooltip: 'Start from template', onPressed: _showTemplatePicker),
           IconButton(icon: const Icon(Icons.folder_open), tooltip: 'Recent tasks', onPressed: _pickRecentTask),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'forget') _forgetPairing();
               if (value == 'cancel') _cancelRun();
+              if (value == 'chat') _startNewChat();
               if (value == 'template') _showTemplatePicker();
               if (value == 'tasks') _manageTasks();
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(value: 'chat', child: Text('Start new chat')),
               const PopupMenuItem(value: 'template', child: Text('Start from template')),
               if (projection != null && projection.status == 'Running')
                 const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
@@ -506,6 +601,12 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
               const Text('No task is open on the host yet.', textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Start new chat'),
+                onPressed: _startNewChat,
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
                 icon: const Icon(Icons.add),
                 label: const Text('Start from template'),
                 onPressed: _showTemplatePicker,

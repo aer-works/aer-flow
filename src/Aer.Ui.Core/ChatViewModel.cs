@@ -81,6 +81,26 @@ public sealed partial class ChatViewModel : ObservableObject
     public string? TaskDirectoryPath { get; private set; }
     public string? CurrentAdapter { get; private set; }
 
+    /// <summary>
+    /// True once a session is open and the ordinary message-send flow applies (#290). Chat page
+    /// entry: no session started -> no dependency on the template picker to change that; the
+    /// message box was previously the *only* Chat page control, silently doing nothing on Send when
+    /// this was false.
+    /// </summary>
+    public bool IsSessionOpen => TaskDirectoryPath != null;
+
+    /// <summary>Adapters offered by the "start new chat" picker (#290) — populated from <see cref="Aer.Adapters.VendorCliPresence.Probe"/>, same source and same all-unavailable fallback ["claude","gemini"] the existing template picker already uses, so the two entry points never disagree about what's offered.</summary>
+    public ObservableCollection<string> AvailableAdapters { get; } = [];
+
+    [ObservableProperty]
+    private string newChatAdapter = "claude";
+
+    [ObservableProperty]
+    private string newChatWorkingDirectory = string.Empty;
+
+    [ObservableProperty]
+    private bool isStartingNewChat;
+
     private int _turnsCountAtSendTime;
     private string? _pendingUserMessage;
 
@@ -91,6 +111,7 @@ public sealed partial class ChatViewModel : ObservableObject
         TaskDirectoryPath = taskDirectoryPath;
         CurrentAdapter = metadata.CurrentAdapter;
         HeadlineText = $"{metadata.CurrentAdapter} — turn {metadata.Turns.Count}";
+        OnPropertyChanged(nameof(IsSessionOpen));
 
         Messages.Clear();
         foreach (var turn in metadata.Turns)
@@ -175,10 +196,35 @@ public sealed partial class ChatViewModel : ObservableObject
         LiveProgressText = string.Empty;
         IsSending = false;
         _pendingUserMessage = null;
+        NewChatWorkingDirectory = string.Empty;
+        IsStartingNewChat = false;
         CurrentMode = null;
         Messages.Clear();
         InvokableCommands.Clear();
         InfoCommands.Clear();
         IsCommandMenuOpen = false;
+        OnPropertyChanged(nameof(IsSessionOpen));
+    }
+
+    /// <summary>Populates <see cref="AvailableAdapters"/> from a live PATH probe (#290) — same source and fallback as the desktop template picker's own vendor combo, so the two entry points never disagree about what's offered. Safe to call repeatedly; caller decides cadence (once at startup is enough since PATH doesn't change mid-session in practice).</summary>
+    public void PopulateAvailableAdapters(IReadOnlyList<VendorCliStatus>? probeResult = null)
+    {
+        var probed = probeResult ?? VendorCliPresence.Probe();
+        var available = probed.Where(p => p.IsAvailable).Select(p => p.AdapterName).ToList();
+        if (available.Count == 0)
+        {
+            available = ["claude", "gemini"];
+        }
+
+        AvailableAdapters.Clear();
+        foreach (var adapter in available)
+        {
+            AvailableAdapters.Add(adapter);
+        }
+
+        if (!AvailableAdapters.Contains(NewChatAdapter))
+        {
+            NewChatAdapter = AvailableAdapters[0];
+        }
     }
 }

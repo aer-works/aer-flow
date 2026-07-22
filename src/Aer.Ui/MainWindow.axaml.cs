@@ -133,6 +133,9 @@ public partial class MainWindow : Window
     internal Button ChatModeAutoButton => ChatViewControl.ChatModeAutoButton;
     internal Button ChatModeDefaultButton => ChatViewControl.ChatModeDefaultButton;
     internal Button ChatModePlanButton => ChatViewControl.ChatModePlanButton;
+    internal ComboBox ChatNewAdapterCombo => ChatViewControl.ChatNewAdapterCombo;
+    internal TextBox ChatNewWorkingDirectoryBox => ChatViewControl.ChatNewWorkingDirectoryBox;
+    internal Button ChatStartNewButton => ChatViewControl.ChatStartNewButton;
 
     /// <summary>
     /// The re-homed counterpart of <c>Window.FindControl</c> for the headless round trips: controls
@@ -200,6 +203,11 @@ public partial class MainWindow : Window
         ViewModel.BindingsEditor.SetAdapterRegistry(adapters);
         ViewModel.NewWorkflow.SetAdapterRegistry(adapters);
 
+        // #290: populated once here (PATH doesn't change mid-session in practice), same source
+        // TemplatePickerWindow's own vendor combo uses, so the Chat page's direct "start new chat"
+        // entry point never disagrees with the template picker about what's offered.
+        ViewModel.Chat.PopulateAvailableAdapters();
+
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
         OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);
         RefreshButton.Click += (_, _) => _ = RefreshAsync();
@@ -240,6 +248,7 @@ public partial class MainWindow : Window
         TasksViewControl.TasksBulkArchiveButton.Click += (_, _) => _ = ViewModel.Tasks.BulkArchiveAsync(_session);
         TasksViewControl.TasksBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Tasks.ConfirmBulkDeleteAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
+        ChatStartNewButton.Click += (_, _) => _ = StartNewChatAsync();
         ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
         ChatModeAutoButton.Click += (_, _) => _ = SetChatModeAsync("auto");
         ChatModeDefaultButton.Click += (_, _) => _ = SetChatModeAsync("default");
@@ -598,6 +607,53 @@ public partial class MainWindow : Window
         if (outcome.ErrorMessage is { } error)
         {
             chat.FailSend(error);
+        }
+    }
+
+    /// <summary>
+    /// The Chat page's own "start new chat" entry point (#290) — mirrors
+    /// <see cref="Views.TemplatePickerWindow"/>'s "chat session" template option (same
+    /// <see cref="StartSessionRequest"/> shape, same <see cref="StartInteractiveSessionAsync"/> call)
+    /// without the picker's four unrelated template kinds. An empty working directory starts a plain
+    /// chat, matching the picker's own behavior with no project directory entered.
+    /// </summary>
+    private async Task StartNewChatAsync()
+    {
+        var chat = ViewModel.Chat;
+        if (chat.IsStartingNewChat)
+        {
+            return;
+        }
+
+        chat.IsStartingNewChat = true;
+        chat.StatusText = string.Empty;
+
+        try
+        {
+            var workingDirectory = string.IsNullOrWhiteSpace(chat.NewChatWorkingDirectory)
+                ? null
+                : chat.NewChatWorkingDirectory.Trim();
+
+            var request = new StartSessionRequest(
+                Adapter: chat.NewChatAdapter,
+                WorkingDirectory: workingDirectory);
+
+            var outcome = await StartInteractiveSessionAsync(request).ConfigureAwait(true);
+            if (outcome.Metadata is not { } metadata)
+            {
+                chat.StatusText = outcome.ErrorMessage ?? "Failed to start the session.";
+                return;
+            }
+
+            _session.SetCurrentTaskDirectory(metadata.TaskDirectoryPath);
+            await _session.RecordOpenedAsync(metadata.TaskDirectoryPath).ConfigureAwait(true);
+            chat.LoadFromMetadata(metadata, metadata.TaskDirectoryPath);
+            await RefreshHomeAsync(CancellationToken.None).ConfigureAwait(true);
+            UpdateLiveRefreshTimer();
+        }
+        finally
+        {
+            chat.IsStartingNewChat = false;
         }
     }
 
