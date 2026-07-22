@@ -20,6 +20,34 @@
                  TextWrapping="Wrap" Text="{Binding Tasks.ErrorText}"
                  IsVisible="{Binding Tasks.HasErrorText}" />
 
+      <!-- Bulk select action bar (issue #288) — checkboxes are always shown on every row rather than
+           gated behind a separate "selection mode" toggle: a per-row checkbox bound to a parent
+           selection-mode flag from inside this ItemsControl's DataTemplate would need an ancestor
+           binding, which fights compiled bindings (x:DataType) here. An always-present bar whose
+           buttons simply disable at zero selection avoids that entirely and is a conventional desktop
+           pattern anyway. Disabled while a refresh or fan-out is in flight (Tasks.IsBusy) so a second
+           bulk action can't be queued mid-mutation. -->
+      <Border Classes="card" IsEnabled="{Binding !Tasks.IsBusy}">
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+          <TextBlock Text="{Binding Tasks.SelectedCount, StringFormat='{}{0} selected'}" VerticalAlignment="Center" />
+          <Button x:Name="TasksSelectAllButton" Content="Select all" Command="{Binding Tasks.SelectAllCommand}" />
+          <Button x:Name="TasksClearSelectionButton" Content="Clear selection" Command="{Binding Tasks.ClearSelectionCommand}" />
+          <Button x:Name="TasksBulkArchiveButton" Content="Archive selected"
+                  IsEnabled="{Binding Tasks.HasSelection}" />
+
+          <!-- Bulk delete's own two-step confirm — "Delete N tasks?" instead of one confirm per item,
+               same in-place idiom as each row's own IsConfirmingDelete. -->
+          <Button Content="Delete selected" Command="{Binding Tasks.RequestBulkDeleteCommand}"
+                  IsVisible="{Binding !Tasks.IsConfirmingBulkDelete}" />
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
+                      IsVisible="{Binding Tasks.IsConfirmingBulkDelete}">
+            <TextBlock Text="{Binding Tasks.BulkDeleteConfirmText}" VerticalAlignment="Center" />
+            <Button x:Name="TasksBulkDeleteConfirmButton" Classes="accent" Content="Yes, delete" />
+            <Button Content="Cancel" Command="{Binding Tasks.CancelBulkDeleteCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
       <Border Classes="card" IsVisible="{Binding Tasks.HasNoItems}">
         <TextBlock Classes="secondary" Text="No tasks or sessions yet." />
       </Border>
@@ -28,38 +56,41 @@
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:TaskFleetItemViewModel">
             <Border Classes="card" Margin="0,0,0,8">
-              <StackPanel Spacing="{DynamicResource Space.2}">
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-                  <TextBlock Classes="body-strong" Text="{Binding FriendlyName}" />
-                  <TextBlock Classes="caption secondary" Text="{Binding TypeLabel}" VerticalAlignment="Center" />
-                  <TextBlock Classes="caption secondary" Text="archived" VerticalAlignment="Center"
-                             IsVisible="{Binding IsArchived}" />
-                </StackPanel>
-                <TextBlock Classes="secondary" Text="{Binding StatusText}" />
-                <TextBlock Classes="caption" Text="{Binding PausedStepCount, StringFormat='{}{0} step(s) awaiting a decision'}"
-                           IsVisible="{Binding HasPausedSteps}" />
-                <TextBlock Classes="caption" Text="{Binding TaskDirectoryPath}" />
-                <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
-                           TextWrapping="Wrap" Text="{Binding RowErrorText}"
-                           IsVisible="{Binding HasRowErrorText}" />
+              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top" Margin="0,2,0,0" />
+                <StackPanel Spacing="{DynamicResource Space.2}">
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                    <TextBlock Classes="body-strong" Text="{Binding FriendlyName}" />
+                    <TextBlock Classes="caption secondary" Text="{Binding TypeLabel}" VerticalAlignment="Center" />
+                    <TextBlock Classes="caption secondary" Text="archived" VerticalAlignment="Center"
+                               IsVisible="{Binding IsArchived}" />
+                  </StackPanel>
+                  <TextBlock Classes="secondary" Text="{Binding StatusText}" />
+                  <TextBlock Classes="caption" Text="{Binding PausedStepCount, StringFormat='{}{0} step(s) awaiting a decision'}"
+                             IsVisible="{Binding HasPausedSteps}" />
+                  <TextBlock Classes="caption" Text="{Binding TaskDirectoryPath}" />
+                  <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
+                             TextWrapping="Wrap" Text="{Binding RowErrorText}"
+                             IsVisible="{Binding HasRowErrorText}" />
 
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-                  <Button Content="Archive" Command="{Binding ArchiveCommand}"
-                          IsVisible="{Binding !IsArchived}" />
-                  <Button Content="Unarchive" Command="{Binding UnarchiveCommand}"
-                          IsVisible="{Binding IsArchived}" />
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                    <Button Content="Archive" Command="{Binding ArchiveCommand}"
+                            IsVisible="{Binding !IsArchived}" />
+                    <Button Content="Unarchive" Command="{Binding UnarchiveCommand}"
+                            IsVisible="{Binding IsArchived}" />
 
-                  <!-- Inline two-step delete confirm — no modal-dialog precedent exists anywhere in
-                       this codebase's Avalonia views (TemplatePickerWindow's in-window ErrorText is
-                       the closest thing), so this follows that same in-place idiom rather than
-                       introducing new dialog infrastructure. -->
-                  <Button Content="Delete" Command="{Binding RequestDeleteCommand}"
-                          IsVisible="{Binding !IsConfirmingDelete}" />
-                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
-                              IsVisible="{Binding IsConfirmingDelete}">
-                    <TextBlock Text="Really delete? This can't be undone." VerticalAlignment="Center" />
-                    <Button Classes="accent" Content="Yes, delete" Command="{Binding ConfirmDeleteCommand}" />
-                    <Button Content="Cancel" Command="{Binding CancelDeleteCommand}" />
+                    <!-- Inline two-step delete confirm — no modal-dialog precedent exists anywhere in
+                         this codebase's Avalonia views (TemplatePickerWindow's in-window ErrorText is
+                         the closest thing), so this follows that same in-place idiom rather than
+                         introducing new dialog infrastructure. -->
+                    <Button Content="Delete" Command="{Binding RequestDeleteCommand}"
+                            IsVisible="{Binding !IsConfirmingDelete}" />
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
+                                IsVisible="{Binding IsConfirmingDelete}">
+                      <TextBlock Text="Really delete? This can't be undone." VerticalAlignment="Center" />
+                      <Button Classes="accent" Content="Yes, delete" Command="{Binding ConfirmDeleteCommand}" />
+                      <Button Content="Cancel" Command="{Binding CancelDeleteCommand}" />
+                    </StackPanel>
                   </StackPanel>
                 </StackPanel>
               </StackPanel>
