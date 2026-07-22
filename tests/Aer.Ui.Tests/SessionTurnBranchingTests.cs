@@ -36,6 +36,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         {
             ["claude"] = new SessionTurnStubAdapter(),
             ["gemini"] = new SessionTurnStubAdapter(),
+            [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         };
 
         _daemonTask = DaemonHost.RunDaemonAsync(new[] { "--port", "5051", "--no-mutex" }, stubAdapters);
@@ -184,6 +185,137 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         Assert.True(compactTurn.VendorHandoffSynthesized);
         Assert.False(compactTurn.NativeSessionResumed);
         Assert.NotEqual(vendorSessionIdBeforeCompact, afterCompact.CurrentVendorSessionId);
+    }
+
+    /// <summary>
+    /// Starts a session with no <c>InitialMessage</c> -- the normal chat-page flow, and the exact
+    /// shape that reproduced #285 live: <c>/api/sessions/start</c> only runs a turn when
+    /// <c>InitialMessage</c> is non-blank, so this session has <c>TurnCount:0</c> and its first real
+    /// turn arrives via <c>/api/sessions/send</c> with <c>isInitial:false</c>.
+    /// </summary>
+    private async Task<SessionMetadata> StartStubSessionWithNoInitialMessageAsync(int? safetyCeiling = null)
+    {
+        var request = new StartSessionRequest(
+            Adapter: "claude",
+            TaskName: "stub-session-" + Guid.NewGuid().ToString("N"),
+            SafetyCeiling: safetyCeiling);
+
+        var response = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(metadata);
+        Assert.Empty(metadata.Turns);
+        return metadata;
+    }
+
+    [Fact]
+    public async Task FirstMessage_OfASessionStartedWithNoInitialMessage_EstablishesInsteadOfResuming()
+    {
+        // The actual #285 bug: isInitial was standing in for "has the vendor established this id
+        // yet", and was wrong here -- the pre-fix code sent this turn as `--resume <unestablished
+        // guid>`, which a real vendor CLI rejects outright, permanently wedging the session.
+        var started = await StartStubSessionWithNoInitialMessageAsync();
+
+        var sendRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "hello");
+        var sendResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
+        Assert.True(sendResponse.IsSuccessStatusCode);
+
+        var afterFirst = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
+        Assert.False(afterFirst.Turns[0].NativeSessionResumed);
+        Assert.True(afterFirst.VendorSessionEstablished);
+        Assert.NotNull(afterFirst.Turns[0].AssistantResponse);
+    }
+
+    [Fact]
+    public async Task SecondMessage_AfterAnEstablishedFirstTurn_ActuallyResumes()
+    {
+        var started = await StartStubSessionWithNoInitialMessageAsync();
+        await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: "hello"), TestContext.Current.CancellationToken);
+        await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
+
+        var secondResponse = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: "second message"), TestContext.Current.CancellationToken);
+        Assert.True(secondResponse.IsSuccessStatusCode);
+
+        var afterSecond = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
+        Assert.True(afterSecond.Turns[1].NativeSessionResumed);
+    }
+
+    /// <summary>
+    /// #285's design hinges on an assumption every other test in this file leaves unexercised: a
+    /// *mid-conversation* Supersede-driven rerun of "chat" can fail (turn N&gt;1, as opposed to the
+    /// very first turn). When it does, the anchor step ends up settled at plain <c>Succeeded</c> (not
+    /// <c>Paused</c>) -- issuing the Supersede decision itself resumes/unpauses anchor immediately,
+    /// and because chat's rerun failed, nothing re-triggers anchor's own pause point again. There is
+    /// no paused execution left for a further Decide to target, so ExecuteSessionTurnAsync's "anchor
+    /// never succeeded" branch (delete snapshot.json/flow.jsonl/artifacts, re-materialize fresh) is
+    /// the only legal way forward, and it runs even though anchor *did* succeed once before.
+    ///
+    /// This is an acceptable recovery path, not a defect: Flow's own internal bookkeeping
+    /// (snapshot/log/artifacts) resets, but the user-visible conversation does not -- continuity is
+    /// carried by <c>VendorSessionEstablished</c> (SessionMetadata, untouched by the wipe) and by
+    /// SessionMetadata's own Turns list, so the vendor CLI is still invoked with <c>--resume</c>
+    /// against the real prior conversation, not a fresh one. This test asserts the thing that
+    /// actually matters -- a mid-conversation failure surfaces its error and a subsequent retry
+    /// recovers and resumes the real vendor session -- not Flow's internal directory bookkeeping.
+    /// </summary>
+    [Fact]
+    public async Task MidConversationFailure_RecoversOnRetry()
+    {
+        var started = await StartStubSessionWithNoInitialMessageAsync();
+        await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: "turn one"), TestContext.Current.CancellationToken);
+        var afterFirst = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
+        Assert.NotNull(afterFirst.Turns[0].AssistantResponse);
+
+        var failingSend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: SessionTurnStubAdapter.FailureSentinel),
+            TestContext.Current.CancellationToken);
+        Assert.True(failingSend.IsSuccessStatusCode);
+        var afterSecond = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
+        Assert.Null(afterSecond.Turns[1].AssistantResponse);
+        Assert.NotNull(afterSecond.Turns[1].ErrorMessage);
+
+        var thirdSend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: "turn three"), TestContext.Current.CancellationToken);
+        Assert.True(thirdSend.IsSuccessStatusCode);
+        var afterThird = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 3);
+        Assert.NotNull(afterThird.Turns[2].AssistantResponse);
+
+        // Resumed, not re-established: the real vendor conversation continues across the
+        // failure/retry even though Flow's own internal bookkeeping reset underneath it.
+        Assert.True(afterThird.Turns[2].NativeSessionResumed);
+    }
+
+    [Fact]
+    public async Task FirstMessage_WhenTheVendorRejectsIt_DoesNotPermanentlyWedgeTheSession()
+    {
+        var started = await StartStubSessionWithNoInitialMessageAsync();
+
+        var failingSend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: SessionTurnStubAdapter.FailureSentinel),
+            TestContext.Current.CancellationToken);
+        Assert.True(failingSend.IsSuccessStatusCode);
+
+        var afterFailure = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 1);
+        Assert.Null(afterFailure.Turns[0].AssistantResponse);
+        Assert.NotNull(afterFailure.Turns[0].ErrorMessage);
+        Assert.False(afterFailure.VendorSessionEstablished);
+
+        // The regression this guards against: pre-fix, this second attempt would still carry
+        // NativeSessionResumed=true (isInitial was already false on the very first turn), so it
+        // would `--resume` the same never-established id and fail identically forever.
+        var retrySend = await _client.PostAsJsonAsync($"{BaseUrl}/api/sessions/send",
+            new SendSessionMessageRequest(SessionId: started.SessionId, Message: "try again"),
+            TestContext.Current.CancellationToken);
+        Assert.True(retrySend.IsSuccessStatusCode);
+
+        var afterRetry = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
+        Assert.False(afterRetry.Turns[1].NativeSessionResumed);
+        Assert.NotNull(afterRetry.Turns[1].AssistantResponse);
+        Assert.True(afterRetry.VendorSessionEstablished);
     }
 
     [Fact]

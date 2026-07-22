@@ -19,11 +19,25 @@ namespace Aer.Ui.Tests.TestSupport;
 /// </summary>
 internal sealed class SessionTurnStubAdapter : IWorkerAdapter
 {
+    /// <summary>
+    /// Sentinel a test's message text can embed to force this turn to fail closed (#285's resume-
+    /// gating regression tests need a deterministic, CI-safe way to simulate "the vendor rejected
+    /// this turn" -- e.g. a real `claude --resume` of an unestablished id -- without a live CLI).
+    /// </summary>
+    public const string FailureSentinel = "STUB_FORCE_FAILURE";
+
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
     {
         var outputName = contract.ProducedOutputs.Count > 0
             ? contract.ProducedOutputs[0].Name
             : InteractiveSessionMaterializer.DefaultOutputFileName;
+
+        if (invocation.PromptTemplate.Contains(FailureSentinel, StringComparison.Ordinal))
+        {
+            return OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 1"])
+                : new CoreDispatchTarget("sh", ["-c", "exit 1"]);
+        }
 
         return OperatingSystem.IsWindows()
             ? new CoreDispatchTarget("cmd", ["/c", $"echo stub-turn-response>%AER_OUTPUT_DIR%\\{outputName}"])
