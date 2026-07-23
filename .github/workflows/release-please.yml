@@ -9,6 +9,15 @@ permissions:
 
 name: release-please
 
+# Two PRs merging to main within seconds otherwise run in parallel and both try to
+# update heads/release-please--branches--main, and the second update is non-fast-forward
+# against the first (release-please fails: "Error updating ref ..."). Serialize per-ref and
+# let a newer push cancel the older run, whose release PR is stale against the newer HEAD
+# anyway. See #430.
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
