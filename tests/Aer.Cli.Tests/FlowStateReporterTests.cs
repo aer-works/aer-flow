@@ -68,4 +68,38 @@ public class FlowStateReporterTests
 
         Assert.Contains("supersede-targets: none", stringWriter.ToString());
     }
+
+    [Fact]
+    public void Report_names_the_pause_kind_so_a_needs_input_turn_is_not_reported_as_a_review()
+    {
+        // #334: a NeedsInput pause reads "awaiting input"; a ReadyForReview pause (the default) reads
+        // "awaiting review" — a terminal user triaging pauses needs the same distinction the clients show.
+        var snapshot = new WorkflowDefinitionSnapshot(
+            new WorkflowDefinitionSnapshotId("snap-1"),
+            new WorkflowTemplateId("wf"),
+            1,
+            [
+                new WorkflowStepDefinition(new StepId("chat"), "chat", [], ["out"], [], new RetryPolicy(1)),
+                new WorkflowStepDefinition(
+                    new StepId("anchor"), "anchor", ["out"], ["marker"], [new StepId("chat")],
+                    new RetryPolicy(1), new PausePoint([new StepId("chat")], PausePointKind.NeedsInput)),
+            ]);
+
+        var state = new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            [
+                new StepState(new StepId("chat"), StepStatus.Succeeded, new ExecutionId("exec-chat"), new Dictionary<StepId, ExecutionId>()),
+                new StepState(
+                    new StepId("anchor"), StepStatus.Paused, new ExecutionId("exec-anchor"), new Dictionary<StepId, ExecutionId>(),
+                    PausedOutcome: StepStatus.Succeeded),
+            ],
+            WorkflowStatus.Paused);
+
+        using var stringWriter = new StringWriter();
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot));
+
+        var output = stringWriter.ToString();
+        Assert.Contains("Paused — awaiting input", output);
+        Assert.DoesNotContain("Paused — awaiting review", output);
+    }
 }

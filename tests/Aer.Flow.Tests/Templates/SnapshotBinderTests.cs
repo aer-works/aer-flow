@@ -102,6 +102,43 @@ public class SnapshotBinderTests
     }
 
     [Fact]
+    public void PausePoint_deserialized_without_a_Kind_defaults_to_ReadyForReview()
+    {
+        // #334 backward-compat: a snapshot persisted before Kind existed has no "Kind" property on
+        // its pause points. STJ materializes the missing constructor value as default(PausePointKind),
+        // so ReadyForReview MUST be the zero value for every replayed pause to keep its original
+        // approval-gate meaning — this test fails loudly if the enum members are ever reordered.
+        var pausePoint = JsonSerializer.Deserialize<PausePoint>("""{"SupersedeTargets":[]}""");
+
+        Assert.NotNull(pausePoint);
+        Assert.Equal(PausePointKind.ReadyForReview, pausePoint.Kind);
+        Assert.Equal(0, (int)PausePointKind.ReadyForReview);
+    }
+
+    [Fact]
+    public void Bind_preserves_a_NeedsInput_pause_kind_through_its_JSON_round_trip()
+    {
+        // Bind serializes then re-parses the definition (freezing it), so this proves the kind
+        // survives the durable-snapshot JSON round trip — the route #334 carries the distinction by,
+        // in place of an event-format change.
+        var definition = new WorkflowDefinition(
+            new WorkflowTemplateId("session-like"),
+            WorkflowTemplateVersion: 1,
+            Steps:
+            [
+                new WorkflowStepDefinition(new StepId("chat"), "w", [], ["out"], [], new RetryPolicy(1)),
+                new WorkflowStepDefinition(
+                    new StepId("anchor"), "w2", ["out"], ["marker"], [new StepId("chat")], new RetryPolicy(1),
+                    PausePoint: new PausePoint([new StepId("chat")], PausePointKind.NeedsInput)),
+            ]);
+
+        var snapshot = SnapshotBinder.Bind(definition);
+
+        var anchor = snapshot.Steps.Single(step => step.StepId.Value == "anchor");
+        Assert.Equal(PausePointKind.NeedsInput, anchor.PausePoint!.Kind);
+    }
+
+    [Fact]
     public async Task Editing_the_source_template_file_after_binding_has_no_effect_on_the_persisted_snapshot()
     {
         var templatePath = Path.Combine(Path.GetTempPath(), $"template-{Guid.NewGuid():N}.json");
