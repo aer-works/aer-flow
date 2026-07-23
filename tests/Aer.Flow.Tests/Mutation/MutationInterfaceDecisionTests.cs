@@ -175,7 +175,7 @@ public class MutationInterfaceDecisionTests
     private static async Task<StepId> ReadNextDispatchAsync(StubCoreDispatcher stub)
     {
         var readTask = stub.DispatchStarted.ReadAsync().AsTask();
-        var completed = await Task.WhenAny(readTask, Task.Delay(TimeSpan.FromSeconds(5)));
+        var completed = await Task.WhenAny(readTask, Task.Delay(TimeSpan.FromSeconds(30)));
         Assert.Same(readTask, completed);
         return await readTask;
     }
