@@ -97,9 +97,15 @@ as a **named role/skill binding, not a hardcoded prompt** (decision
 [0010](decisions/0010-skills-and-advisor.md)) — the one affordance this phase must not foreclose, so the
 advisor participant and skills (M26) slot in without reworking the object model.
 
-**#333** unify the object model on two nouns · **#334** split `PausePoint` · **#335** multi-task
-daemon *(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an append-log
-compaction/archival step for completed subtrees, a real engine addition)* · **#345** one token file
+**#370** architecture-invariant enforcement — build-fails-on-violation checks for Flow-carries-discipline,
+adapter isolation, and the reference direction — lands **first**, a seam gate in
+[0005](decisions/0005-seam-milestones.md)'s rhythm (like #317/#318 in Phase 0), so the churn below cannot
+silently erode the invariants while it moves code. A guard that lands after the refactor it guards is worthless.
+
+**#333** unify the object model on two nouns · **#334** split `PausePoint` · **#390** a worker's
+interactive questions become answerable PausePoints (rides #334, the canonical "needs input" case) ·
+**#335** multi-task daemon *(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an
+append-log compaction/archival step for completed subtrees, a real engine addition)* · **#345** one token file
 for both toolkits · **#336** desktop switcher shell · **#337** mobile list-as-destination · **#319** decision-inbox scope-switching (rides #335 + #337) ·
 **#338** Settings surface · **#339** templates to three shapes · **#340** derived sessions · **#368** scoped
 warmth (0008 Path C) · cross-vendor usage view (**J9**, on the dedicated activity surface #360).
