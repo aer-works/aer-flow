@@ -578,11 +578,12 @@ public class DaemonIntegrationTests : IAsyncLifetime
     // default (non-smoke) test run can assume is installed or authenticated on the host (see
     // CLAUDE.md's live-vendor-smoke-tests section). Everything below only exercises
     // materialization, persistence, and request validation, which never touch a vendor process.
-    private async Task<(string SessionId, string TaskDirectoryPath)> StartASessionAsync(string? taskName = null)
+    private async Task<(string SessionId, string TaskDirectoryPath)> StartASessionAsync(string? taskName = null, string? workingDirectory = null)
     {
         var request = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: taskName ?? "test-session-" + Guid.NewGuid().ToString("N"));
+            TaskName: taskName ?? "test-session-" + Guid.NewGuid().ToString("N"),
+            WorkingDirectory: workingDirectory);
 
         var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
@@ -869,9 +870,11 @@ public class DaemonIntegrationTests : IAsyncLifetime
     private sealed record SessionModeResponse(string Mode);
 
     [Fact]
-    public async Task GetSessionMode_ForANewSession_ReturnsDefault()
+    public async Task GetSessionMode_ForANewCodebaseSession_ReturnsDefault()
     {
-        var (sessionId, _) = await StartASessionAsync();
+        // A session bound to a working directory gets the conservative codebase default
+        // (read + write, no shell/network), which maps to "default" mode.
+        var (sessionId, _) = await StartASessionAsync(workingDirectory: Path.GetTempPath());
 
         var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
@@ -879,6 +882,23 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var mode = await response.Content.ReadFromJsonAsync<SessionModeResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(mode);
         Assert.Equal("default", mode.Mode);
+    }
+
+    [Fact]
+    public async Task GetSessionMode_ForADirectoryLessSession_ReportsCustomNotDefault()
+    {
+        // #321 / decision 0004: a directory-less session fails closed (no filesystem, shell, or
+        // network). That grant is deliberately none of auto/plan/default, so it reports "custom" --
+        // never "default", which was the old fail-open behaviour granting write access rooted where
+        // nobody chose. (A dedicated "plain chat" mode label is a separate follow-up.)
+        var (sessionId, _) = await StartASessionAsync();
+
+        var response = await _client.GetAsync($"{_baseUrl}/api/sessions/{sessionId}/mode", TestContext.Current.CancellationToken);
+        Assert.True(response.IsSuccessStatusCode);
+
+        var mode = await response.Content.ReadFromJsonAsync<SessionModeResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(mode);
+        Assert.Equal("custom", mode.Mode);
     }
 
     [Theory]

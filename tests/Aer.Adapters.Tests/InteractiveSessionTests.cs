@@ -115,6 +115,67 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
+    public void DefaultGrantForWorkingDirectory_NoDirectory_FailsClosed()
+    {
+        // #321 / decision 0004: no working directory means no project ceiling, so the grant floors to
+        // the intersection -- no filesystem, shell, or network. Blank/whitespace count as none.
+        foreach (var dir in new string?[] { null, "", "   " })
+        {
+            var grant = InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory(dir);
+            Assert.False(grant.ReadFiles, $"ReadFiles should be false for [{dir ?? "null"}]");
+            Assert.False(grant.WriteFiles, $"WriteFiles should be false for [{dir ?? "null"}]");
+            Assert.False(grant.RunShellCommands);
+            Assert.False(grant.NetworkAccess);
+        }
+    }
+
+    [Fact]
+    public void DefaultGrantForWorkingDirectory_WithDirectory_IsConservative()
+    {
+        var grant = InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory("/home/user/project");
+        Assert.True(grant.ReadFiles);
+        Assert.True(grant.WriteFiles);
+        Assert.False(grant.RunShellCommands);   // conservative: shell still off by default
+        Assert.False(grant.NetworkAccess);      // conservative: network still off by default
+    }
+
+    [Fact]
+    public void Materialize_WithoutWorkingDirectoryOrGrant_ChatWorkerFailsClosed()
+    {
+        // The wiring, not just the helper: a directory-less session (mobile "Start new chat", desktop
+        // "plain chat if empty") must not materialize a chat worker with write access rooted at the
+        // daemon/app cwd nobody chose (#321).
+        var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
+            sessionId: "sess-nodir",
+            taskDirectoryPath: "/tmp/aer/sessions/session-sess-nodir",
+            adapter: "claude");
+
+        var grant = bindings["chat-worker"].PermissionGrant;
+        Assert.NotNull(grant);
+        Assert.False(grant!.ReadFiles);
+        Assert.False(grant.WriteFiles);
+        Assert.False(grant.RunShellCommands);
+        Assert.False(grant.NetworkAccess);
+    }
+
+    [Fact]
+    public void Materialize_WithWorkingDirectory_ChatWorkerGetsConservativeGrant()
+    {
+        var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
+            sessionId: "sess-dir",
+            taskDirectoryPath: "/tmp/aer/sessions/session-sess-dir",
+            adapter: "claude",
+            workingDirectory: "/home/user/project");
+
+        var grant = bindings["chat-worker"].PermissionGrant;
+        Assert.NotNull(grant);
+        Assert.True(grant!.ReadFiles);
+        Assert.True(grant.WriteFiles);
+        Assert.False(grant.RunShellCommands);
+        Assert.False(grant.NetworkAccess);
+    }
+
+    [Fact]
     public void SynthesizeContextSummary_FormatsHistoryCorrectly()
     {
         List<SessionTurn> turns =
