@@ -20,6 +20,14 @@ namespace Aer.Adapters;
 /// or <see cref="PermissionGrant.NetworkAccess"/> is therefore always refused here rather than
 /// approximated to the nearest mode — see <see cref="TryTranslatePermissionGrant"/>.
 /// </para>
+/// <para>
+/// <b>Why no <c>--disallowedTools</c> mirror (unlike Claude, #331):</b> a shell-<em>withheld</em>
+/// grant maps to a plain <c>--mode</c> here, and <c>agy</c> has no deny-list flag — but it does not
+/// need one. Headless <c>agy</c> <em>auto-denies</em> any tool needing a permission it cannot prompt
+/// for (verified against the live CLI across <c>default</c>/<c>plan</c>/<c>accept-edits</c>; see
+/// <c>docs/runbooks/live-claude-smoke.md</c>'s J6 section). Its default is fail-closed — the opposite
+/// of Claude Code's headless auto-<em>approve</em>, which is exactly what made #331 possible there.
+/// </para>
 /// </summary>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
