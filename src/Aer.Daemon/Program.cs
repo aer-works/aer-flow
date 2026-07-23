@@ -1527,7 +1527,11 @@ namespace Aer.Daemon
                 Timeout: TimeSpan.FromMinutes(10),
                 Model: requestModel ?? metadata.Model,
                 PermissionGrant: grant,
-                WorkingDirectory: metadata.WorkingDirectory,
+                // #407: a directory-less session runs in its own dir under ~/.aer/sessions/, not the
+                // inherited daemon/app cwd. The grant above is still derived from metadata.WorkingDirectory
+                // (null -> fail-closed), so this run-dir fallback hardens where it starts without widening
+                // what it may do.
+                WorkingDirectory: InteractiveSessionMaterializer.ResolveRunDirectory(metadata.WorkingDirectory, metadata.TaskDirectoryPath),
                 SessionId: vendorSessionId,
                 ResumeSession: resumeSession,
                 MinimalOverhead: metadata.MinimalOverhead,

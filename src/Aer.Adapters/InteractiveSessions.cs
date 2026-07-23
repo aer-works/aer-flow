@@ -87,6 +87,20 @@ public static class InteractiveSessionMaterializer
             ? new PermissionGrant(ReadFiles: false, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false)
             : new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
 
+    /// <summary>
+    /// The directory a session's vendor process runs in (its cwd). When the session is attached to a
+    /// codebase that working directory is used; when it is directory-less the process runs in the
+    /// session's own directory (its task dir under <c>~/.aer/sessions/</c>) rather than inheriting the
+    /// daemon/app cwd (#407). Defense in depth alongside <see cref="DefaultGrantForWorkingDirectory"/>:
+    /// a directory-less session is already fail-closed (#321), so it cannot act on any cwd today, but
+    /// starting it in a neutral, session-owned dir means a future tool or vector that reads the cwd
+    /// independent of the file-tool grant still finds nothing nobody chose. The grant is deliberately
+    /// still derived from the (absent) working directory, never from this run directory — running in
+    /// its own dir must never widen what a directory-less session is allowed to do.
+    /// </summary>
+    public static string ResolveRunDirectory(string? workingDirectory, string sessionDirectoryPath) =>
+        string.IsNullOrWhiteSpace(workingDirectory) ? sessionDirectoryPath : workingDirectory;
+
     public static (WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings, SessionMetadata Metadata) Materialize(
         string sessionId,
         string taskDirectoryPath,
