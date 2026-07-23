@@ -28,9 +28,11 @@
 
       <!-- design-language.md: color never carries meaning alone — the plain-language warning is
            the actual signal, this border is just emphasis.
-           IsVisible bound to ShowLanEncryptionWarning (not always-on, as this had no gating at all
-           before): once the sidecar's tsnet path is Ready and pairing has moved onto it, traffic is
-           WireGuard-encrypted end to end, and this warning would be actively wrong, not just stale. -->
+           IsVisible bound to ShowLanEncryptionWarning, true whenever remote access is on (issue
+           #384): Aer.Daemon binds IPAddress.Any under the remote flag regardless of whether
+           pairing is routed over the tailnet, so the plain-LAN listener stays reachable by anyone
+           on the network the whole time remote is enabled. Previously gated on
+           !IsPairingOverTailnet, which hid this warning exactly when a live QR was being offered. -->
       <Border Classes="card" BorderBrush="{DynamicResource Status.NeedsYou}"
               IsVisible="{Binding Remote.ShowLanEncryptionWarning}">
         <TextBlock Classes="secondary" TextWrapping="Wrap"
@@ -55,8 +57,13 @@
         </StackPanel>
 
         <StackPanel Spacing="{DynamicResource Space.2}" IsVisible="{Binding Remote.IsSidecarReadyPhase}">
+          <!-- Doesn't claim "Pair a phone" below is now reachable from any network (issue #384):
+               that section prefers the LAN address whenever this machine has one, so the tailnet
+               address it also enables is Wi-Fi-independent reachability for an already-paired
+               phone, not necessarily the address shown in the QR below. Full reconciliation of
+               this messaging with LAN-vs-tailnet targeting folds into #338. -->
           <TextBlock Classes="secondary" TextWrapping="Wrap"
-                     Text="Ready — see &quot;Pair a phone&quot; below, now reachable from any network." />
+                     Text="Ready — this computer is now reachable over Tailscale from any network a paired phone has data on." />
           <!-- The only prior way to disconnect this node was deleting it from the Tailscale admin
                console and restarting Aer.Ui — found live via direct user feedback. Signs the sidecar
                out and immediately back into the interactive re-enrollment flow. -->
@@ -68,11 +75,16 @@
                    IsVisible="{Binding Remote.IsSidecarUnavailable}" Text="{Binding Remote.SidecarError}" />
       </StackPanel>
 
-      <!-- Single pairing target (Phase 5/6, #242/#243): EffectivePairingHost prefers the sidecar's
-           tailnet address once ready, falling back to LAN otherwise. Found live that showing a
+      <!-- Single pairing target (Phase 5/6, #242/#243): EffectivePairingHost prefers this machine's
+           LAN address whenever it has one, falling back to the sidecar's tailnet address only when
+           it doesn't (issue #384 — a fresh phone can't reach the tailnet without an auth key, and
+           the tailnet address isn't reliably reachable even with one). Found live that showing a
            second, separate Tailscale QR alongside this one was confusing (two QR codes, unclear
-           which to scan), so there is now ever only one. -->
-      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.HasEffectivePairingHost}">
+           which to scan), so there is now ever only one.
+           Gated on IsRemoteEnabled (not merely HasEffectivePairingHost, issue #384): Host is
+           populated by every refresh regardless of the toggle, so the old gate offered to pair a
+           phone on a screen that, in the same breath, said remote access was off. -->
+      <StackPanel Spacing="{DynamicResource Space.3}" IsVisible="{Binding Remote.ShowPairingBlock}">
         <TextBlock Classes="heading" Text="Pair a phone" />
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                    Text="Open Aer.Mobile, scan this code (or type the host and code in by hand), and it's paired." />
@@ -121,7 +133,10 @@
         </StackPanel>
       </StackPanel>
 
-      <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !Remote.HasEffectivePairingHost}"
+      <!-- ShowPairingBlock's empty-state companion (issue #384): both require IsRemoteEnabled and
+           are mutually exclusive on HasEffectivePairingHost, so exactly one of the two ever shows
+           while remote access is on. -->
+      <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding Remote.ShowNoPairingHostMessage}"
                  Text="No network connection found — can't generate a pairing code until this computer is on a network." />
 
       <!-- Phase 6 (#243): PairedClientsStore could add a client but never remove one — this is the
