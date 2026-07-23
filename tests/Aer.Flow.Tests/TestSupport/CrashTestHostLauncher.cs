@@ -12,7 +12,11 @@ namespace Aer.Flow.Tests.TestSupport;
 /// </summary>
 internal static class CrashTestHostLauncher
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
+    // 60s, not a tight bound: this is a failure ceiling, not a fixed wait. A crash test returns the
+    // instant its predicate is met (WaitForLogConditionAsync) or the host exits (WaitForExitAsync),
+    // so a generous ceiling never slows the passing path -- it only stops false timeouts when a
+    // loaded CI runner is slow to spawn/run the crash-host process. See issue #420.
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
 
     /// <summary>
