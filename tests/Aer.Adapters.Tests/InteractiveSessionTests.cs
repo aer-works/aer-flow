@@ -143,6 +143,21 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
+    public void ResolveRunDirectory_DirectoryLess_RunsInItsOwnSessionDir_NotTheInheritedCwd()
+    {
+        // #407: a directory-less session's process must start in its own dir under ~/.aer/sessions/,
+        // never the inherited daemon/app cwd -- defense in depth on top of #321's fail-closed grant.
+        var sessionDir = Path.Combine("home", ".aer", "sessions", "session-s-1");
+        foreach (var workingDirectory in new string?[] { null, "", "   " })
+        {
+            Assert.Equal(sessionDir, InteractiveSessionMaterializer.ResolveRunDirectory(workingDirectory, sessionDir));
+        }
+
+        // Attached to a codebase: that working directory wins, unchanged.
+        Assert.Equal("/work/proj", InteractiveSessionMaterializer.ResolveRunDirectory("/work/proj", sessionDir));
+    }
+
+    [Fact]
     public void Materialize_WithoutWorkingDirectoryOrGrant_ChatWorkerFailsClosed()
     {
         // The wiring, not just the helper: a directory-less session (mobile "Start new chat", desktop
