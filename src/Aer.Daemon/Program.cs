@@ -79,27 +79,50 @@ namespace Aer.Daemon
             // bound the worst case directly: after this, Kestrel force-aborts anything still open.
             builder.Host.ConfigureHostOptions(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
-            // Ensure daemon listens on a fixed localhost port (allow override via --port)
+            var isRemote = args.Contains("--remote");
+
+            // Ensure daemon listens on a fixed port (allow override via --port).
             var portIndex = Array.IndexOf(args, "--port");
             var port = (portIndex >= 0 && portIndex < args.Length - 1) ? int.Parse(args[portIndex + 1]) : 5000;
 
             var activePort = port;
-            if (portIndex < 0 && port != 0)
+            // Probe the port before Kestrel binds it so a busy default port degrades predictably
+            // instead of crashing. Skip when an ephemeral port (0) was explicitly requested (#296's
+            // test fixtures). Probe the exact interface Kestrel will bind -- IPAddress.Any under
+            // --remote, loopback locally: probing loopback while --remote binds Any would pass here
+            // and then let Kestrel crash on the real conflict (#347).
+            if (port != 0 && (isRemote || portIndex < 0))
             {
+                var probeAddress = isRemote ? System.Net.IPAddress.Any : System.Net.IPAddress.Loopback;
                 try
                 {
-                    using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                    using var listener = new System.Net.Sockets.TcpListener(probeAddress, port);
                     listener.Start();
                     listener.Stop();
                 }
                 catch (System.Net.Sockets.SocketException)
                 {
-                    // Port is in use! Fall back to port 0 (dynamic port allocation)
+                    if (isRemote)
+                    {
+                        // A remote daemon's address (host:port) is baked into every paired phone at
+                        // pairing time (#384), so it MUST stay stable across restarts. Falling back to
+                        // an ephemeral port -- the local-dev behavior below -- would leave every paired
+                        // phone dialing a dead port (#347). The single-daemon mutex above already rules
+                        // out a rival Aer.Daemon, so a busy port here is an unrelated process: surface
+                        // it and stop, rather than coming up reachable-but-wrong on a random port.
+                        Console.Error.WriteLine(
+                            $"Aer.Daemon (--remote) cannot bind port {port}: it is already in use by " +
+                            "another process. A remote daemon's address is baked into paired phones, so " +
+                            "it will not fall back to a random port. Free the port, or start with an " +
+                            "explicit stable --port <n> that your phones are paired to.");
+                        Environment.Exit(1);
+                    }
+
+                    // Local dev only: the desktop finds the daemon via ~/.aer/daemon.port, so a
+                    // dynamic fallback is safe. Port is in use -- fall back to 0 (OS-assigned).
                     activePort = 0;
                 }
             }
-
-            var isRemote = args.Contains("--remote");
 
             builder.WebHost.ConfigureKestrel(options =>
             {
