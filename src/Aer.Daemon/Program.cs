@@ -12,6 +12,7 @@ using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
 using Aer.Flow.Artifacts;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Ui.Core;
@@ -822,6 +823,16 @@ namespace Aer.Daemon
                     return Results.BadRequest("DirectoryPath is required.");
                 }
 
+                // #324: a task whose flow.lock is held by another live writer (a running 'aer run'
+                // pump, or this daemon's own background run) is readable but not safe to re-point the
+                // daemon at -- and the projected read succeeds regardless of the lock, so without this
+                // gate the caller would silently latch onto a task another client is actively mutating.
+                // Surface it as a message a UI can show rather than a bare failure.
+                if (ConcurrencyGuard.IsHeld(request.DirectoryPath))
+                {
+                    return Results.BadRequest("This task is being run by another client.");
+                }
+
                 session.SetCurrentTaskDirectory(request.DirectoryPath);
                 await session.RecordOpenedAsync(request.DirectoryPath);
                 var outcome = await session.LoadAsync(request.DirectoryPath);
@@ -835,7 +846,12 @@ namespace Aer.Daemon
                     await BroadcastStateAsync(outcome.Projection, request.DirectoryPath);
                     return Results.Ok(outcome.Projection);
                 }
-                return Results.BadRequest(outcome.ErrorMessage);
+                // #324: LoadAsync can fail without setting a message (its in-process fallback only
+                // fills ErrorMessage from a caught AerFlowException). Never return a bare 400 -- a
+                // client, especially a phone, must always get a sentence it can show the user.
+                return Results.BadRequest(string.IsNullOrEmpty(outcome.ErrorMessage)
+                    ? "Could not open the task. Its saved state could not be read."
+                    : outcome.ErrorMessage);
             });
 
             app.MapPost("/api/tasks/run", async ([FromBody] RunTaskRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
@@ -888,7 +904,10 @@ namespace Aer.Daemon
                     var referenceOutcome = await session.LoadAsync(request.DirectoryPath);
                     if (referenceOutcome.Projection is not { } referenceProjection)
                     {
-                        return Results.BadRequest(referenceOutcome.ErrorMessage);
+                        // #324: same guarantee as /api/tasks/open -- LoadAsync may fail without a message.
+                        return Results.BadRequest(string.IsNullOrEmpty(referenceOutcome.ErrorMessage)
+                            ? "Could not open the task. Its saved state could not be read."
+                            : referenceOutcome.ErrorMessage);
                     }
 
                     var referencedExecution = referenceProjection.Lineage.Executions.FirstOrDefault(
