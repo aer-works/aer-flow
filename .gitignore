@@ -33,6 +33,10 @@ bld/
 # M13 Phase 3 (#109): other-platform native libs gathered here before a multi-RID `pixi run pack`
 /artifacts/
 
+# Claude Code local subagent worktrees (isolation: worktree). Narrowly scoped so shared config
+# under .claude/ (agents/, commands/, settings.json) stays committable without `git add -f`.
+.claude/worktrees/
+
 # M21 Phase 2 (#232): the [Dd]ebug/ .NET build-output pattern above also matches Flutter's real,
 # committed debug-manifest-override source directory -- un-ignore it specifically.
 !src/Aer.Mobile/android/app/src/debug/
