@@ -77,12 +77,16 @@ strands paired phones · **#349** "Forget pairing" leaves the token valid.
 
 *Independent of every IA decision; none of it waits on the rethink.* Before scoping **#335**,
 re-confirm its `ConcurrencyGuard` assumption against **#341** (a send accepted, then the decision
-silently dropped) — the two interact on the core path. Remote is broken in **both** directions (#330
+silently dropped) and **#393** (a re-materialize read-then-delete of `flow.jsonl`/`snapshot.json`
+that sits *outside* Flow's per-task lock — surfaced by the #398 flake investigation) — all three
+interact on the core path. Remote is broken in **both** directions (#330
 desktop→phone, #348 phone's own work), and pairing itself is unreliable (#347) and un-revocable
 (#349) — walked live 2026-07-22.
 
-### Phase 2 — contract gaps the UI can't work around
-**#322** timestamps · **#324** empty 400 body · **#319** inbox scoping.
+### Phase 2 — contract gaps the UI can't work around *(landed)*
+**#322** timestamps · **#324** empty 400 body. *(**#319** inbox scoping moved to Phase 3 — its
+escape-hatch half *was* #324; the remaining scope-switching half is definitionally the multi-task
+daemon **#335** plus the phone switcher **#337**, so it cannot precede them.)*
 
 ### Phase 3 — the rethink proper (the room model)
 The object model unifies on two nouns and a session becomes a **room** — a multi-participant
@@ -96,8 +100,8 @@ advisor participant and skills (M26) slot in without reworking the object model.
 **#333** unify the object model on two nouns · **#334** split `PausePoint` · **#335** multi-task
 daemon *(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an append-log
 compaction/archival step for completed subtrees, a real engine addition)* · **#345** one token file
-for both toolkits · **#336** desktop switcher shell · **#337** mobile list-as-destination · **#338**
-Settings surface · **#339** templates to three shapes · **#340** derived sessions · **#368** scoped
+for both toolkits · **#336** desktop switcher shell · **#337** mobile list-as-destination · **#319** decision-inbox scope-switching (rides #335 + #337) ·
+**#338** Settings surface · **#339** templates to three shapes · **#340** derived sessions · **#368** scoped
 warmth (0008 Path C) · cross-vendor usage view (**J9**, on the dedicated activity surface #360).
 
 ### Phase 4 — presentation and parity
