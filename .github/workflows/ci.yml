@@ -236,7 +236,11 @@ jobs:
   # at the download step rather than merely pack less. It verifies packaging integrity, not the
   # correctness of the change under review, so main is the right place for it.
   pack:
-    if: github.event_name == 'push'
+    # !cancelled() opts this out of the changes-skip propagation on push (#412; the changes job is
+    # PR-only per #410, and its skip otherwise cascades through `test` to here). The explicit
+    # needs.test.result check restores the "only pack a green build" guarantee that the implicit
+    # needs-success gate provided before !cancelled() removed it.
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.test.result == 'success' }}
     needs: test
     runs-on: ubuntu-latest
     env:
