@@ -6,7 +6,47 @@ on:
     branches: [main]
 
 jobs:
+  # Detects which areas a PR touched, so the heavy jobs below can skip when irrelevant (a .NET-only
+  # PR shouldn't wait ~9 min for the Android APK, and a Dart-only PR shouldn't run the .NET legs).
+  # This job ALWAYS runs (never itself skipped), so `needs: changes` is always satisfied and the
+  # heavy jobs' own `if:` alone decides -- avoiding the "skipped dependency silently skips me" trap.
+  # On push to main the filter output is ignored: the heavy jobs' `if:` forces them to run there, so
+  # main is always validated in full. See the `ci` gate job at the bottom for how this stays
+  # compatible with required status checks.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            dotnet:
+              - 'src/**'
+              - '!src/Aer.Mobile/**'
+              - 'tests/**'
+              - 'external/**'
+              - '.gitmodules'
+              - 'AerFlow.slnx'
+              - 'Directory.Build.props'
+              - 'coverage.runsettings'
+              - 'pixi.toml'
+              - 'pixi.lock'
+              - '**/packages.lock.json'
+              - '.github/workflows/**'
+            mobile:
+              - 'src/Aer.Mobile/**'
+              - '.github/workflows/**'
+
   test:
+    needs: changes
+    # PR: run only when .NET-relevant files changed. Push to main: always run (main stays green).
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.dotnet == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,14 +64,14 @@ jobs:
         # is gated identically because it cannot assemble a multi-RID package without this leg's
         # artifact.
         #
-        # These leg names are duplicated outside this repository. Each one appears verbatim in
-        # main's branch-protection required status checks (Settings -> Branches, or
-        # `gh api repos/aer-works/aer-flow/branches/main/protection/required_status_checks`), so
-        # changing which legs run on pull requests means updating those contexts in the same change.
-        # A required check that no longer runs never reports: it sits at "Expected" forever and
-        # blocks every pull request, including ones whose own checks are entirely green. That is
-        # what happened when the macOS leg moved to main-only while still listed as required, and it
-        # presents as an unexplained CI hang rather than as a misconfiguration.
+        # These leg names are NO LONGER branch-protection required contexts on their own -- the
+        # single `ci` gate job at the bottom of this file is (it aggregates these legs + `mobile`).
+        # That indirection is deliberate: the heavy jobs are path-filtered, so a leg that
+        # legitimately skips on a given PR would, if it were still a required context, sit at
+        # "Expected" forever and block the PR -- exactly what happened when the macOS leg moved to
+        # main-only while still listed as required (an unexplained CI hang, not an obvious
+        # misconfiguration). Rule: require only the always-running `ci` gate; never list a
+        # path-filterable leg as a required context.
         include: >-
           ${{ github.event_name == 'push'
               && fromJSON('[{"os":"windows-latest","rid":"win-x64","lib-name":"aer_core.dll"},{"os":"ubuntu-latest","rid":"linux-x64","lib-name":"libaer_core.so"},{"os":"macos-latest","rid":"osx-arm64","lib-name":"libaer_core.dylib"}]')
@@ -143,6 +183,9 @@ jobs:
   # --debug` catches Android toolchain breaks in CI even though the dev machine that wrote this
   # doesn't have the Android SDK installed locally (see docs/runbooks, or #232's own discussion).
   mobile:
+    needs: changes
+    # PR: run only when mobile files changed. Push to main: always run (main stays green).
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.mobile == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -245,3 +288,28 @@ jobs:
       # locally-stubbed claude binary → assert the declared output landed on disk → uninstall.
       - name: Verify installed-tool round trip
         run: pixi run verify-pack
+
+  # The single branch-protection required status check. Aggregates the path-filtered heavy jobs into
+  # one always-reporting context, so filtering can skip a leg on a PR without leaving a required
+  # check stuck at "Expected" forever. Passes when nothing that ran FAILED -- a path-skipped job
+  # counts as fine; only a real failure or cancellation fails the gate. `pack` is deliberately not
+  # aggregated here: it is a main-only, post-merge packaging check, not part of PR mergeability.
+  ci:
+    needs: [changes, test, mobile]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          TEST: ${{ needs.test.result }}
+          MOBILE: ${{ needs.mobile.result }}
+        run: |
+          echo "results: changes=$CHANGES test=$TEST mobile=$MOBILE"
+          for r in "$CHANGES" "$TEST" "$MOBILE"; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::A required CI job reported '$r'."
+              exit 1
+            fi
+          done
+          echo "CI gate passed (skipped or successful jobs are OK)."
