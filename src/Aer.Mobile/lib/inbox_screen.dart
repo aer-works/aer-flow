@@ -397,7 +397,16 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                             : null,
                       );
                       if (dirPath.isNotEmpty && mounted) {
+                        // /api/templates/run already broadcasts once, server-side, before its HTTP
+                        // response returns — i.e. before this filter is set, so that frame is
+                        // reliably missed (issue #348). Unlike chat's startSession, a template has
+                        // no sessionId/ChatScreen to jump into instead; the task's own view is
+                        // InboxScreen's body, driven by `_projection`. Set the filter first, then
+                        // force a second, guaranteed-to-match broadcast via openTask (same call
+                        // _pickRecentTask already relies on) so this screen actually shows the
+                        // task instead of stranding on the empty state.
                         setState(() => _openDirectoryPath = dirPath);
+                        await client.openTask(dirPath);
                       }
                       messenger.showSnackBar(
                         SnackBar(content: Text('Started task ($dirPath)')),
