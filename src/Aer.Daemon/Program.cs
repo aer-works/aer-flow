@@ -168,145 +168,10 @@ namespace Aer.Daemon
             var bindingsPathHolder = new BindingsPathHolder();
             builder.Services.AddSingleton(bindingsPathHolder);
 
-            // Active WebSocket connections
-            var webSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
-
-            // M24 Phase 1's live in-turn streaming: a deliberately separate socket/bag from
-            // `webSockets` above, not an overload of the existing `/api/ws` protocol. That endpoint's
-            // frames are bare TaskProjection JSON with a couple of sibling properties bolted on
-            // (DirectoryPath, WorkerAdapters) — every existing client deserializes each incoming
-            // frame straight into TaskProjection with no type discriminator at all. Sending a
-            // differently-shaped progress frame down that same socket risks corrupting an existing
-            // client's projection state on a frame it doesn't recognize; a dedicated endpoint carries
-            // zero compatibility risk for clients that never opt into it.
-            var progressWebSockets = new System.Collections.Concurrent.ConcurrentBag<WebSocket>();
-
-            async Task BroadcastSessionProgressAsync(string directoryPath, string stepId, WorkerProgressEvent progressEvent)
-            {
-                var activeSockets = progressWebSockets.Where(s => s.State == WebSocketState.Open).ToList();
-                if (activeSockets.Count == 0)
-                {
-                    return;
-                }
-
-                var payload = JsonSerializer.SerializeToUtf8Bytes(new
-                {
-                    DirectoryPath = directoryPath,
-                    StepId = stepId,
-                    progressEvent.Kind,
-                    progressEvent.Text,
-                    progressEvent.IsPartial,
-                });
-
-                foreach (var socket in activeSockets)
-                {
-                    try
-                    {
-                        await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, CancellationToken.None);
-                    }
-                    catch
-                    {
-                        // Ignore single socket failures — same tolerance as BroadcastStateAsync below.
-                    }
-                }
-            }
-
-            // Helper method for sending state to a single socket. DirectoryPath (M21 Phase 2, #232)
-            // is added as a sibling property rather than a TaskProjection field: the desktop client
-            // deserializes this same payload straight into TaskProjection and silently ignores
-            // unmapped members, so this is additive and can't break it. Aer.Mobile needs it because
-            // /api/tasks/decide and /api/tasks/cancel take an explicit directoryPath — with no way
-            // to derive it from the projection itself, a client that only ever observes the WS
-            // stream (never having called /api/tasks/open itself) would have no directory to send
-            // decisions against.
-            async Task SendStateAsync(WebSocket socket, TaskProjection projection, string? directoryPath)
-            {
-                var options = new JsonSerializerOptions
-                {
-                    Converters = { new JsonStringEnumConverter() },
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                };
-                var node = JsonSerializer.SerializeToNode(projection, options)!.AsObject();
-                node["DirectoryPath"] = directoryPath;
-
-                if (!string.IsNullOrEmpty(directoryPath))
-                {
-                    // M24 mobile chat UI follow-up (issue #262): lets a client that only observes
-                    // this push (never having called /api/sessions/start itself — e.g. a phone
-                    // whose _openDirectoryPath was seeded from another client's push, or picked
-                    // from /api/tasks/recent) learn this directory is an interactive session and
-                    // which SessionId to fetch turns for, without a GET /api/sessions list-scan on
-                    // every push. Same additive-sibling pattern as DirectoryPath/WorkerAdapters
-                    // above; still not part of TaskProjection itself.
-                    var sessionMetadataPath = Path.Combine(directoryPath, ".aer", "session.json");
-                    if (File.Exists(sessionMetadataPath))
-                    {
-                        try
-                        {
-                            var sessionMetadata = await InteractiveSessionMaterializer.LoadMetadataAsync(sessionMetadataPath).ConfigureAwait(true);
-                            if (sessionMetadata != null)
-                            {
-                                node["SessionId"] = sessionMetadata.SessionId;
-                            }
-                        }
-                        catch { }
-                    }
-
-                    var bindingsPath = Path.Combine(directoryPath, "bindings.json");
-                    if (!File.Exists(bindingsPath))
-                    {
-                        var metaPath = Path.Combine(directoryPath, ".aer", "bindings-path");
-                        if (File.Exists(metaPath))
-                        {
-                            try { bindingsPath = File.ReadAllText(metaPath).Trim(); } catch { }
-                        }
-                    }
-                    if (File.Exists(bindingsPath))
-                    {
-                        try
-                        {
-                            var json = File.ReadAllText(bindingsPath);
-                            using var doc = JsonDocument.Parse(json);
-                            var adaptersNode = new System.Text.Json.Nodes.JsonObject();
-                            foreach (var prop in doc.RootElement.EnumerateObject())
-                            {
-                                if (prop.Value.TryGetProperty("Adapter", out var adapterProp) || prop.Value.TryGetProperty("adapter", out adapterProp))
-                                {
-                                    if (adapterProp.GetString() is { } adapterStr)
-                                    {
-                                        adaptersNode[prop.Name] = adapterStr;
-                                    }
-                                }
-                            }
-                            node["WorkerAdapters"] = adaptersNode;
-                        }
-                        catch { }
-                    }
-                }
-
-                var bytes = System.Text.Encoding.UTF8.GetBytes(node.ToJsonString(options));
-                if (socket.State == WebSocketState.Open)
-                {
-                    await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-                }
-            }
-
-            // Helper method for broadcasting state to all sockets
-            async Task BroadcastStateAsync(TaskProjection projection, string? directoryPath)
-            {
-                var activeSockets = webSockets.Where(s => s.State == WebSocketState.Open).ToList();
-                foreach (var socket in activeSockets)
-                {
-                    try
-                    {
-                        await SendStateAsync(socket, projection, directoryPath);
-                    }
-                    catch
-                    {
-                        // Ignore single socket failures
-                    }
-                }
-            }
+            // The daemon's live projection/progress fan-out over its connected WebSocket
+            // clients, extracted to its own type (#425) — the daemon-side seam #335 makes
+            // per-task (today it broadcasts every task's projection to every socket).
+            var broadcast = new DaemonBroadcast();
 
             // Register TaskSession
             builder.Services.AddSingleton(sp =>
@@ -325,7 +190,7 @@ namespace Aer.Daemon
                         var outcome = await session.LoadAsync(taskDirectoryPath, cancellationToken);
                         if (outcome.Projection != null)
                         {
-                            await BroadcastStateAsync(outcome.Projection, taskDirectoryPath);
+                            await broadcast.BroadcastStateAsync(outcome.Projection, taskDirectoryPath);
                         }
                     }
                 };
@@ -524,7 +389,7 @@ namespace Aer.Daemon
                 if (context.WebSockets.IsWebSocketRequest)
                 {
                     using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    webSockets.Add(webSocket);
+                    broadcast.AddClient(webSocket);
 
                     // Send current projection immediately if loaded
                     if (session.CurrentTaskDirectoryPath != null && session.LastLoadSucceeded)
@@ -532,7 +397,7 @@ namespace Aer.Daemon
                         var outcome = await session.LoadAsync(session.CurrentTaskDirectoryPath);
                         if (outcome.Projection != null)
                         {
-                            await SendStateAsync(webSocket, outcome.Projection, session.CurrentTaskDirectoryPath);
+                            await broadcast.SendStateAsync(webSocket, outcome.Projection, session.CurrentTaskDirectoryPath);
                         }
                     }
 
@@ -567,14 +432,14 @@ namespace Aer.Daemon
                 }
             });
 
-            // M24 Phase 1's live in-turn streaming WebSocket endpoint — see progressWebSockets'
-            // remarks above for why this is separate from /api/ws rather than sharing it.
+            // M24 Phase 1's live in-turn streaming WebSocket endpoint — see DaemonBroadcast's
+            // remarks for why this is separate from /api/ws rather than sharing it.
             app.Map("/api/ws/progress", async (HttpContext context) =>
             {
                 if (context.WebSockets.IsWebSocketRequest)
                 {
                     using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    progressWebSockets.Add(webSocket);
+                    broadcast.AddProgressClient(webSocket);
 
                     var buffer = new byte[1024 * 4];
                     try
@@ -787,7 +652,7 @@ namespace Aer.Daemon
                     var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
                     if (outcome.Projection != null)
                     {
-                        await BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                        await broadcast.BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
                     }
 
                     _ = Task.Run(async () =>
@@ -843,7 +708,7 @@ namespace Aer.Daemon
                     {
                         pathHolder.BindingsFilePath = bindingsPath;
                     }
-                    await BroadcastStateAsync(outcome.Projection, request.DirectoryPath);
+                    await broadcast.BroadcastStateAsync(outcome.Projection, request.DirectoryPath);
                     return Results.Ok(outcome.Projection);
                 }
                 // #324: LoadAsync can fail without setting a message (its in-process fallback only
@@ -873,7 +738,7 @@ namespace Aer.Daemon
                 var immediateOutcome = await session.LoadAsync(request.DirectoryPath);
                 if (immediateOutcome.Projection != null)
                 {
-                    await BroadcastStateAsync(immediateOutcome.Projection, request.DirectoryPath);
+                    await broadcast.BroadcastStateAsync(immediateOutcome.Projection, request.DirectoryPath);
                 }
 
                 _ = Task.Run(async () =>
@@ -1158,7 +1023,7 @@ namespace Aer.Daemon
                     {
                         try
                         {
-                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, broadcast.BroadcastStateAsync, adapters, broadcast.BroadcastSessionProgressAsync).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -1171,7 +1036,7 @@ namespace Aer.Daemon
                     var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
                     if (outcome.Projection != null)
                     {
-                        await BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                        await broadcast.BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
                     }
                 }
 
@@ -1213,7 +1078,7 @@ namespace Aer.Daemon
                 {
                     try
                     {
-                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, request.Message, request.Adapter, request.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync).ConfigureAwait(false);
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, request.Message, request.Adapter, request.Model, isInitial: false, broadcast.BroadcastStateAsync, adapters, broadcast.BroadcastSessionProgressAsync).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -1452,7 +1317,7 @@ namespace Aer.Daemon
                     try
                     {
                         var compactMsg = "/compact Please provide a concise summary of our conversation so far, including all key requirements, code changes, decisions, and current progress.";
-                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, BroadcastStateAsync, adapters, BroadcastSessionProgressAsync, forceHandoff: true).ConfigureAwait(false);
+                        await ExecuteSessionTurnAsync(session, directoryPath, metadata, compactMsg, metadata.CurrentAdapter, metadata.Model, isInitial: false, broadcast.BroadcastStateAsync, adapters, broadcast.BroadcastSessionProgressAsync, forceHandoff: true).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
