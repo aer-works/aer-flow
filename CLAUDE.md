@@ -9,20 +9,31 @@ AER Flow is the workflow execution engine layer for the AER (Agent Execution Run
 ```
 aer-flow/
 ├── src/
-│   ├── Aer.Flow/           The core execution engine and routing state machine
-│   ├── Aer.Adapters/       Vendor-specific adapters (Claude/Gemini)
-│   ├── Aer.Cli/            Command-line interface
-│   └── Aer.Ui/             Read-only projection UI (Avalonia desktop app; consumes Aer.Flow's read model directly)
-├── tests/                  Unit and integration tests
-├── spec/                   Behavioral specs (source of truth)
+│   ├── Aer.Flow/              The core execution engine and routing state machine
+│   ├── Aer.Adapters/          Vendor adapters (Claude/Gemini) + the built-in template catalog
+│   ├── Aer.Cli/               Command-line interface (aer run/decide/cancel/supply)
+│   ├── Aer.Daemon/            ASP.NET background runner: REST/WebSocket host + client pairing (M20+)
+│   ├── Aer.Ui.Core/           Avalonia-free UI core — MVVM ViewModels shared by the desktop app
+│   ├── Aer.Ui/                Avalonia desktop app (projection, control surface, authoring, chat)
+│   ├── Aer.Workers.Dialogue/  The dialogue worker executable (a Case 2 multi-model worker)
+│   ├── Aer.Mobile/            Flutter/Android remote client (pairing, decision inbox, chat)
+│   └── Aer.Sidecar/           Go tsnet sidecar the daemon supervises for zero-config Tailscale
+├── tests/                     Unit/integration tests + the Aer.Plan.Tests doc gate; journey and
+│                              live-smoke test projects live outside AerFlow.slnx (default CI skips them)
+├── spec/                      Behavioral specs (source of truth) + product journeys
 │   ├── aer-flow-behavioral-spec-v1.0.md
-│   └── aer-flow-ui-behavioral-spec-v1.0.md
+│   ├── aer-flow-ui-behavioral-spec-v1.0.md
+│   ├── journeys.md
+│   └── AER Overview.md
+├── docs/                      plan.md (the living, gated plan), decisions/ (numbered ADRs),
+│                              decisions-of-record.md, runbooks/, walkthroughs/, ux/
 ├── external/
-│   └── aer-core/           git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
+│   └── aer-core/              git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
+├── tools/                     ui-harness — the UI driving harness
 ├── .github/workflows/
-│   ├── ci.yml              lint + fmt + test on win + linux
-│   └── release-please.yml  versioning and changelog
-└── pixi.toml               task runner and toolchain manager
+│   ├── ci.yml                 lint + fmt + test on win/linux/mac, plus the mobile job
+│   └── release-please.yml     versioning and changelog
+└── pixi.toml                  task runner and toolchain manager
 ```
 
 ---
@@ -75,9 +86,8 @@ work around its absence (installing a different auth mode, requesting API keys, 
 adapter, etc.). When implementing a phase gated by one of these tests: build the test, fixtures,
 `pixi run` task, and runbook exactly like the pattern in `docs/runbooks/`, run everything that
 *can* run locally (`build`, `test`, `lint`, `fmt-check`), leave the live smoke task itself un-run if
-its vendor isn't authenticated on this host, and say so plainly in the PR body and the relevant
-`IMPLEMENTATION_PLAN.md` checklist item — don't mark the phase's live-run checkbox done on anything
-short of an actual recorded run.
+its vendor isn't authenticated on this host, and say so plainly in the PR body and the phase's
+tracking issue — don't mark a live-run item done on anything short of an actual recorded run.
 
 ---
 

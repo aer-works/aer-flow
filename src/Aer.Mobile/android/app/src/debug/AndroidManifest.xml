@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- M21 Phase 2 (#232): Aer.Daemon serves plain http/ws; TLS is deferred to Phase 6 (see
-         IMPLEMENTATION_PLAN.md). Android blocks cleartext traffic by default for apps targeting
+         docs/decisions-of-record.md, M21). Android blocks cleartext traffic by default for apps targeting
          API 28+, so the first real request would fail with "Cleartext HTTP traffic ... not
          permitted" without this. Scoped to the debug manifest deliberately, matching this
          milestone's debug/sideload-only build (`mobile-build` runs `flutter build apk` with the

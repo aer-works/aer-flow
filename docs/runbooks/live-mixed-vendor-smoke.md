@@ -88,8 +88,8 @@ exists", not "the file says X" — the same rule `live-claude-smoke.md` document
 ## Recording a green run
 
 M12 is complete once this has been run successfully at least once. Record the date and both CLI
-versions used in the PR that lands this runbook (see `IMPLEMENTATION_PLAN.md`'s M12 decisions of
-record) — this file only documents *how* to run it, not a rolling log of every run.
+versions used in the PR that lands this runbook (see `docs/decisions-of-record.md`, M12) — this
+file only documents *how* to run it, not a rolling log of every run.
 
 **Recorded green run:** 2026-07-13, `claude` CLI 2.1.207 and `agy` CLI 1.1.1 (Windows). Both adapters
 needed the same Windows-only fix first (see `live-claude-smoke.md`'s 2026-07-13 entry for the full

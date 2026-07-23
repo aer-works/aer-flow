@@ -5,6 +5,8 @@ AER Flow is the workflow execution engine layer for the AER (Agent Execution Run
 Built in .NET, it reads structured workflow definitions, dispatches them to Workers (via `aer-core`), and bridges outputs back to the engine.
 
 ## Documentation
+- [The plan](docs/plan.md) - The living, gated plan: the bar, the decisions in force, and the work by phase.
+- [Milestone history & decisions of record](docs/decisions-of-record.md) - What each completed milestone shipped and the durable decisions it left behind.
 - [Agent Instructions](CLAUDE.md) - Architectural rules and development workflows for AI agents.
 - [Behavioral Specs](spec/) - The source of truth for engine routing and adapter behaviors.
 - [Walkthroughs](docs/walkthroughs/) - Guided, end-to-end usage of the shipped stack, starting with your first real workflow.

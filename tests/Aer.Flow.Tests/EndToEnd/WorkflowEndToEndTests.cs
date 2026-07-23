@@ -392,7 +392,7 @@ public class WorkflowEndToEndTests
         // reactive loop re-reads the entire flow.jsonl every scheduling round rather than tailing
         // it. This measures that re-read's cost at a log size already larger than any workflow in
         // this suite reaches, to record whether a manifest cache (§12.1) is warranted yet — see
-        // IMPLEMENTATION_PLAN.md's Phase 4 entry for the measured figure this bound is based on.
+        // docs/decisions-of-record.md (M8, "Manifest cache deferred") for the measured figure this bound is based on.
         var logPath = Path.Combine(Path.GetTempPath(), $"perf-{Guid.NewGuid():N}.jsonl");
         try
         {

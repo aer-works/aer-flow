@@ -101,9 +101,11 @@ progress events · **#326** revoked pairing · **#346** the disconnected screen 
 `CLAUDE.md` · **#282** notifications · **#266** / **#208** motion *(M26)*.
 
 ### Phase 5 — rewrite the spec to the target design
-**#314** assert spec claims in CI *(and promote the journey reconcile + this plan gate into the same
-required check)* · **#315** vocabulary lint. *Gated on Phase 0's journeys landing first — a spec
-written before them specifies screens instead of outcomes.*
+**#367** re-establish a coherent doc base and guard it against re-rot *(the decompose-and-audit this
+plan's own move is part of — a spec rewritten over stale docs re-specifies stale claims)* · **#314**
+assert spec claims in CI *(and promote the journey reconcile + this plan gate into the same required
+check)* · **#315** vocabulary lint. *Gated on Phase 0's journeys landing first — a spec written
+before them specifies screens instead of outcomes.*
 
 ## Why a disciplined spec produced an unusable product
 
@@ -129,4 +131,9 @@ so.
 
 ## Not in scope
 
-Multi-machine / multi-daemon switching — explicitly ruled out. A single daemon is fine.
+- Multi-machine / multi-daemon switching — explicitly ruled out. A single daemon is fine.
+- True zero-signup multi-user remote control (a stranger installs only the Aer app, no third-party
+  identity step) — out of scope. It would mean operating your own coordination/relay infrastructure
+  instead of Tailscale's (security surface, uptime, cost, abuse potential), not a refinement.
+  Revisit only on real multi-user demand; two candidate shapes exist if it ever returns —
+  self-hosted Headscale, or a purpose-built relay proxying only `Aer.Daemon`'s existing REST+WS API.

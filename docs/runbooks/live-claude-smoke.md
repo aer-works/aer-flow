@@ -67,8 +67,8 @@ not "the file says X" — the same rule that keeps `Aer.Flow` from ever parsing 
 ## Recording a green run
 
 M11 is complete once this has been run successfully at least once. Record the date and the
-`claude` CLI version used in the PR that lands this runbook (see `IMPLEMENTATION_PLAN.md`'s M11
-decisions of record) — this file only documents *how* to run it, not a rolling log of every run.
+`claude` CLI version used in the PR that lands this runbook (see `docs/decisions-of-record.md`,
+M11) — this file only documents *how* to run it, not a rolling log of every run.
 
 **Recorded green run:** 2026-07-12, `claude` CLI 2.1.207. First attempt caught a real fixture bug
 this runbook exists to catch: the `reviewer` binding's original `PermissionScope` (`"Write"` only)

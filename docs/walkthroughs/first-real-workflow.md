@@ -10,7 +10,7 @@ model's critique driving another model's revision, with you deciding each round.
 Be aware of what you are in this loop: **the relay**. Every round of the exchange passes through
 your hands (inspect the critique, decide, supply feedback). That is by design at this layer —
 and it is exactly the manual work the M17 dialogue worker exists to absorb; see
-`IMPLEMENTATION_PLAN.md`'s M17 phase plan.
+`docs/decisions-of-record.md` (M17).
 
 Everything in §1–§6 needs live, authenticated vendor CLIs and is therefore a human-run activity
 (see CLAUDE.md's "Live-vendor smoke tests" for why that never changes). §7 runs the identical

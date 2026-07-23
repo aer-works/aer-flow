@@ -74,4 +74,4 @@ Concretely, this means: the layering itself is not over-engineering. A second wo
 - **`aer-flow`** — A single .NET solution containing the Flow engine, worker adapters, and the CLI as separate projects. Lives here because Core/Flow/UI are one team's work and there's no benefit in splitting them before a genuine second consumer exists.
 - **`aer-works/.github`** — Org profile. No code lives here.
 
-For current milestone status and implementation sequencing, see `IMPLEMENTATION_PLAN.md` in each repo.
+For current milestone status and implementation sequencing, see each repo's plan and GitHub milestones — in `aer-flow`, `docs/plan.md` and the milestone board.
