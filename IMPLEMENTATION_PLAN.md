@@ -81,7 +81,7 @@ Which milestone introduces which capabilities.
 | **M22: Workflow Template Library**                      | 30 (Workflow Template Library), 31 (Artifact-Referenced Supply)                                                                                    | M21                                                                                 |
 | **M23: Generic Dialogue & Project Packaging**           | 32 (Generic Dialogue configuration schema & loops), 33 (Unified Project Package model with profile segregation)                                    | M22                                                                                 |
 | **M24: Interactive Sessions & Unified Task Creation**   | 34 (Interactive Sessions/Chat), 35 (Worker Capability Discovery & Compact), 36 (Codebase Sessions & Known Projects), 37 (Unified Task Creation), 42 (Task & Session Lifecycle Management)    | M23                                                                                 |
-| **M25: Final Polish**                                   | 38 (Curve-based Bezier DAG rendering, brand icons, status-change motion & skeleton loading), 39 (Rich markdown output previewer), 40 (Keyboard-first triage modal), 41 (Mobile Visual & UX Parity), 43 (Push & Local Notifications — Desktop & Mobile) | M24                                                                                 |
+| **M25: Re-architecture**                                | ground-up re-architecture — see [`docs/plan.md`](docs/plan.md) for the live phase plan (the original Final-Polish capabilities 38–43 were reprioritized across it and M26)                                                                            | M24                                                                                 |
 
 M7–M10 complete the **v1.0 engine** (the behavioral spec is authoritative for it, and every §5.1 flow event now has a producer). M11 onward turns that engine into a runnable product: the worker adapters and the CLI pump the specs assume (§21, CLAUDE.md rule #2) but no engine milestone built, then distribution and — separately — the v0.7 UI.
 
@@ -150,9 +150,15 @@ M20 shipped the daemon scaffold: the scheduling pump extracted into `Aer.Daemon`
 
 ---
 
-## M25: Final Polish — Phase Plan
+## M25: Re-architecture — the live plan is `docs/plan.md`
 
-**Goal:** Transform the visual layout of AER Flow into a premium product matching reference-caliber tools (Linear, Raycast) — on desktop *and* mobile, as the final milestone. Renumbered from the original "M24: UI Visual Overhaul" during M24/M25 replanning (issue #258) to make room for Interactive Sessions & Unified Task Creation as the new M24.
+**M25 was rescoped from "Final Polish" to a ground-up re-architecture; its living, gated phase plan
+is [`docs/plan.md`](docs/plan.md), not this file.** The original Final-Polish phase plan
+(curved-Bezier DAG canvas, rich-markdown previewer, keyboard-first triage, mobile visual parity,
+push/local notifications — capabilities 38–43) is superseded there, reprioritized across the
+re-architecture phases and M26. What remains below are the deferred *future directions* recorded
+during earlier planning; they are kept here only until the docs reconciliation re-homes each into
+the spec or reference document it belongs in.
 
 **Also carries a real future direction, not yet phased:** full remote-control parity from
 `Aer.Mobile` — DAG/history/lineage viewing, `RetryWithRevision`, and general (non-Review-run)
@@ -186,26 +192,6 @@ capability M23 was ever assigned, and it overlaps this milestone's own capabilit
 output previewer) closely enough that it belongs here instead — a side-by-side file-revision diff
 panel for a step's "Send back" feedback loop, scoped against M25's actual phase list once this
 milestone starts rather than assumed here.
-
-### Phase 1: Curved Bezier DAG Canvas & Motion (Capability 38)
-- **Goal**: Refactor the DAG canvas to render connection paths as smooth Bezier curves. Implement dynamic line highlighting on hover to trace dependency chains. Add brand-specific icons (Claude, Gemini, human) directly to the node templates. Folds in issue #208 (status-change animation and skeleton loading states were never implemented): step-status transitions animate instead of snapping, and pending/loading UI shows skeleton placeholders instead of blank space.
-- **Verification**: Seamless rendering, hover states, and smooth drag-and-drop interactions; a status-change transition (e.g. Running → Paused) visibly animates; a loading view shows a skeleton state rather than a blank pane.
-
-### Phase 2: Rich Markdown Output Previewer (Capability 39)
-- **Goal**: Integrate a markdown engine (e.g., `Markdown.Avalonia`) to render step artifact output previews as rich formatted text, headers, checklists, and tables, replacing the raw TextBox.
-- **Verification**: Standard markdown output files are rendered with high-fidelity typography, colors, and table structures.
-
-### Phase 3: Keyboard-First Triage Mode (Capability 40)
-- **Goal**: Add keyboard-first navigation to the Home triage screen. When a step pauses for review, enable quick keys (`A` to approve, `S` to send back) with highly visible keyboard badges, maximizing non-expert efficiency.
-- **Verification**: Complete task reviews and decisions purely from the keyboard.
-
-### Phase 4: Mobile Visual & UX Parity (Capability 41)
-- **Goal**: A mobile-native design pass for `Aer.Mobile` — not a port of Phases 1-3's desktop-specific Bezier-curve/markdown-renderer work, but the same bar M19 already holds `Aer.Ui` to (token-driven styling, a considered visual identity, no rough-placeholder screens) — covering the new Chat/Codebase-session/Dialogue screens from M24 Phase 4 as well as the existing pairing/inbox screens.
-- **Verification**: scoped in detail once M24 has shipped and those screens exist to design against.
-
-### Phase 5: Push & Local Notifications (Desktop + Mobile) (Capability 43)
-- **Goal**: Close the gap a design review (2026-07-21, comparing AER Flow against Claude Code Remote Control and Codex Mobile) flagged as the largest one between AER Flow today and either comparable product: nothing currently notifies either app when a task/session changes state — the owner has to have the inbox/task view open and watching. `Aer.Daemon` gains a notification-worthy-event classification (task/session paused awaiting decision, run failed, run completed) alongside its existing broadcast points (`BroadcastStateAsync`/`BroadcastSessionProgressAsync`), dispatched to each paired client. `Aer.Mobile` gets background push (e.g. FCM on Android) so a notification arrives even when the app isn't foregrounded; `Aer.Ui` gets a native OS notification (Windows toast or equivalent) triggered off its own already-open WebSocket connection, since desktop is always locally reachable and doesn't need a push relay. Tapping a notification opens directly to the task/session it's about on whichever client received it — never a fleet view or an unrelated screen.
-- **Verification**: backgrounding `Aer.Mobile` and triggering a decision-pause on a task opened from that phone produces a system notification within a few seconds, and tapping it opens directly to that task's decision inbox card; the same for a failed/completed run; desktop shows an equivalent native notification when the app isn't in focus; no notification fires for a task/session this client never opened, respecting the same per-client-viewing boundary PR #276 established — scoped in full implementation detail once M24 has shipped.
 
 ---
 
