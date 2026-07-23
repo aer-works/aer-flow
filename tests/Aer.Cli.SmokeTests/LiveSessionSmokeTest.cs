@@ -28,13 +28,15 @@ public class LiveSessionSmokeTest
     {
         // Start Daemon on a dynamically OS-assigned port (issue #296) — a hardcoded port collides
         // whenever two test runs happen to overlap.
-        var (daemonTask, baseUrl) = await DaemonTestHost.StartAsync();
+        var daemon = await DaemonTestHost.StartAsync();
+        var baseUrl = daemon.BaseUrl;
 
         using var client = new HttpClient();
         try
         {
-            var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
-            var token = (await File.ReadAllTextAsync(Path.Combine(aerDir, "daemon.token"), TestContext.Current.CancellationToken)).Trim();
+            // Read the token from the redirected AER_HOME root the daemon wrote to (see
+            // tests/Shared/AerHomeRedirect.cs), not the real per-user ~/.aer.
+            var token = (await File.ReadAllTextAsync(Path.Combine(AerPaths.Root, "daemon.token"), TestContext.Current.CancellationToken)).Trim();
             client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
             var startRequest = new StartSessionRequest(
@@ -85,12 +87,8 @@ public class LiveSessionSmokeTest
         }
         finally
         {
-            if (DaemonHost.App != null)
-            {
-                await DaemonHost.App.StopAsync(TestContext.Current.CancellationToken);
-            }
-
-            await daemonTask;
+            // Stops this test's own daemon (the captured app), not the shared static DaemonHost.App.
+            await daemon.DisposeAsync();
         }
     }
 

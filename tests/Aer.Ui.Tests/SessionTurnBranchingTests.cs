@@ -28,7 +28,7 @@ namespace Aer.Ui.Tests;
 [Collection("DaemonIntegrationTests")]
 public class SessionTurnBranchingTests : IAsyncLifetime
 {
-    private Task? _daemonTask;
+    private DaemonTestInstance? _daemon;
     private string _baseUrl = "";
     private readonly HttpClient _client = new();
 
@@ -43,7 +43,8 @@ public class SessionTurnBranchingTests : IAsyncLifetime
 
         // Start Daemon on a dynamically OS-assigned port (issue #296) — a hardcoded port collides
         // whenever two test runs happen to overlap.
-        (_daemonTask, _baseUrl) = await DaemonTestHost.StartAsync(stubAdapters);
+        _daemon = await DaemonTestHost.StartAsync(stubAdapters);
+        _baseUrl = _daemon.BaseUrl;
 
         for (int i = 0; i < 30; i++)
         {
@@ -61,8 +62,9 @@ public class SessionTurnBranchingTests : IAsyncLifetime
             }
         }
 
-        var aerDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aer");
-        var tokenFile = Path.Combine(aerDir, "daemon.token");
+        // Read the daemon token from the redirected AER_HOME root (see tests/Shared/AerHomeRedirect.cs),
+        // where this test's daemon actually wrote it -- not the real per-user ~/.aer.
+        var tokenFile = Path.Combine(AerPaths.Root, "daemon.token");
         if (File.Exists(tokenFile))
         {
             var token = (await File.ReadAllTextAsync(tokenFile, TestContext.Current.CancellationToken)).Trim();
@@ -72,14 +74,9 @@ public class SessionTurnBranchingTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (DaemonHost.App != null)
+        if (_daemon != null)
         {
-            await DaemonHost.App.StopAsync();
-        }
-
-        if (_daemonTask != null)
-        {
-            await _daemonTask;
+            await _daemon.DisposeAsync();
         }
 
         _client.Dispose();
