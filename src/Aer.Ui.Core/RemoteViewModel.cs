@@ -38,6 +38,8 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ToggleButtonText))]
     [NotifyPropertyChangedFor(nameof(ShouldPollSidecarStatus))]
     [NotifyPropertyChangedFor(nameof(ShowLanEncryptionWarning))]
+    [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
+    [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private bool isRemoteEnabled;
 
     [ObservableProperty]
@@ -47,12 +49,18 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasHost))]
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
+    [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private string? host;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SidecarTailnetHost))]
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
+    [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
+    [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private int? port;
 
     [ObservableProperty]
@@ -116,7 +124,8 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
-    [NotifyPropertyChangedFor(nameof(ShowLanEncryptionWarning))]
+    [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
+    [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private string? sidecarTailscaleIp;
 
     [ObservableProperty]
@@ -135,25 +144,46 @@ public sealed partial class RemoteViewModel : ObservableObject
     public string ToggleButtonText => IsRemoteEnabled ? "Turn off remote access" : "Turn on remote access";
 
     /// <summary>
-    /// The single host the "Pair a phone" section's QR/code target — the tailnet address once the
-    /// sidecar is ready (Tailscale supersedes LAN, per the M21 Phase 5/6 decision of record), falling
-    /// back to the LAN address otherwise. Found live that showing a second, separate Tailscale QR
-    /// alongside this one was genuinely confusing (two QR codes, unclear which to scan) — there is
-    /// now ever only one pairing target displayed.
+    /// The single host the "Pair a phone" section's QR/code target — the LAN address whenever this
+    /// machine has one, falling back to the tailnet address only when it doesn't (issue #384 / eval
+    /// B-03). Previously preferred the tailnet address whenever the sidecar was Ready, but a fresh
+    /// phone has no route into the tailnet without an auth key, and probed live even a phone that
+    /// *did* have one timed out against the tailnet address while the LAN address answered — the
+    /// address that actually pairs was never offered. Still only one pairing target displayed at a
+    /// time (found live that two separate QR codes was genuinely confusing).
     /// </summary>
-    public string? EffectivePairingHost => SidecarTailnetHost ?? Host;
+    public string? EffectivePairingHost => Host ?? SidecarTailnetHost;
     public bool HasEffectivePairingHost => EffectivePairingHost != null;
-    public bool IsPairingOverTailnet => SidecarTailnetHost != null;
 
     /// <summary>
-    /// The plaintext-LAN warning only applies while traffic can actually still travel over plain
-    /// LAN: once the tsnet sidecar is ready and pairing has moved onto the tailnet, the transport is
-    /// WireGuard-encrypted end to end, and a warning that says otherwise is just wrong, not merely
-    /// stale. Found live: this card had no visibility binding at all before, so it kept saying
-    /// "traffic isn't encrypted yet" even after the sidecar reached Ready and every paired client was
-    /// reached over Tailscale.
+    /// Whether the *displayed* pairing target is the tailnet address — not merely whether the
+    /// sidecar happens to be ready, since <see cref="EffectivePairingHost"/> now prefers LAN whenever
+    /// it's available. Drives the "Via Tailscale"/"Via local network" caption, the auth-key section,
+    /// <see cref="NeedsTailscaleAuthKey"/>, and whether the QR payload embeds <c>tskey</c> — all of
+    /// which must agree with the host actually shown, not with the sidecar's raw ready-state.
     /// </summary>
-    public bool ShowLanEncryptionWarning => IsRemoteEnabled && !IsPairingOverTailnet;
+    public bool IsPairingOverTailnet => SidecarTailnetHost != null && EffectivePairingHost == SidecarTailnetHost;
+
+    /// <summary>
+    /// The plaintext-LAN warning applies whenever remote access is on: <c>Aer.Daemon</c> binds
+    /// <c>IPAddress.Any</c> under <c>--remote</c> regardless of whether pairing happens to be routed
+    /// over the tailnet, so the plain-LAN listener is reachable by anyone on the network the whole
+    /// time remote is enabled. Previously gated on <c>!IsPairingOverTailnet</c>, which hid the
+    /// warning exactly when a live QR was being offered — precisely when it mattered (issue #384).
+    /// </summary>
+    public bool ShowLanEncryptionWarning => IsRemoteEnabled;
+
+    /// <summary>
+    /// Gates the "Pair a phone" section on remote actually being enabled (issue #384), not merely on
+    /// a host being available: <see cref="Host"/> is populated by every <see cref="RefreshAsync"/>
+    /// regardless of <see cref="IsRemoteEnabled"/>, so the old <c>HasEffectivePairingHost</c> gate
+    /// offered to pair a phone on a screen that, in the same breath, said remote access was off and
+    /// nothing but this computer could connect.
+    /// </summary>
+    public bool ShowPairingBlock => IsRemoteEnabled && HasEffectivePairingHost;
+
+    /// <summary>The pairing block's empty-state companion — remote is on but no LAN or tailnet address is available yet (e.g. no network connectivity). Kept mutually exclusive with <see cref="ShowPairingBlock"/> so gating the block on <see cref="IsRemoteEnabled"/> doesn't leave both an empty QR and this message showing at once.</summary>
+    public bool ShowNoPairingHostMessage => IsRemoteEnabled && !HasEffectivePairingHost;
 
     /// <summary>Tailnet pairing needs a key to embed in the QR (see <see cref="TailscaleAuthKey"/>) — without one, the QR would reproduce the exact "no auth key and no existing session state" failure a fresh phone hits.</summary>
     public bool NeedsTailscaleAuthKey => IsPairingOverTailnet && string.IsNullOrWhiteSpace(TailscaleAuthKey);
@@ -277,9 +307,10 @@ public sealed partial class RemoteViewModel : ObservableObject
         SidecarTailscaleIp = status.TailscaleIp;
         SidecarError = status.Error;
 
-        // EffectivePairingHost switches from LAN to tailnet the instant SidecarReady flips -- rebuild
-        // the single pairing QR against the new host right away rather than waiting for the next
-        // unrelated code refresh, so "Pair a phone" doesn't keep showing a stale LAN QR after ready.
+        // EffectivePairingHost only picks up the tailnet address here when there's no LAN address at
+        // all (issue #384: LAN is now preferred whenever available) -- still worth an immediate
+        // rebuild rather than waiting for the next unrelated code refresh, so a LAN-less machine's
+        // "Pair a phone" section doesn't keep showing no QR after the sidecar reaches ready.
         if (justBecameReady && EffectivePairingHost != null)
         {
             await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
