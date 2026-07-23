@@ -104,6 +104,22 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _forgetPairing() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out of this desktop?'),
+        content: const Text(
+          "This clears the pairing on this phone only. The desktop will still list this device "
+          "until it's removed there.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     await CredentialsStore().clear();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PairingScreen()));
@@ -574,7 +590,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
               if (projection != null && projection.status == 'Running')
                 const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
               const PopupMenuItem(value: 'tasks', child: Text('Manage tasks')),
-              const PopupMenuItem(value: 'forget', child: Text('Forget pairing')),
+              const PopupMenuItem(value: 'forget', child: Text('Sign out of this desktop')),
             ],
           ),
         ],
