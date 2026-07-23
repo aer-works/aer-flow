@@ -834,6 +834,12 @@ public sealed class TaskSession
         {
             _mutationFailed();
             ViewModel.RunStatusText = ex.Message;
+
+            // #330: a failed pump used to return here without ever calling _reopenTaskAsync, so
+            // Aer.Daemon's own wiring of that hook (reopenTaskAsync -> BroadcastStateAsync,
+            // Program.cs) never fired for this run at all -- a connected phone watching this
+            // directory saw nothing, permanently, instead of learning the run stopped.
+            await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
             return new MutationOutcome(ex.Message);
         }
         finally

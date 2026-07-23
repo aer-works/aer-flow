@@ -387,6 +387,29 @@ public class DaemonIntegrationTests : IAsyncLifetime
         return path;
     }
 
+    /// <summary>
+    /// Names an adapter no registry entry can resolve -- <see cref="Aer.Adapters.WorkerBindingResolver.Resolve"/>
+    /// throws <see cref="Aer.Adapters.UnknownWorkerAdapterException"/> (an <see cref="Aer.Flow.AerFlowException"/>)
+    /// synchronously, before <c>RunCommand.ExecuteAsync</c> ever reaches <c>MutationInterface.StartWorkflowAsync</c>
+    /// -- a fast, deterministic way to exercise <see cref="TaskSession.RunAsync"/>'s failure path with no live
+    /// vendor CLI involved.
+    /// </summary>
+    private static async Task<string> WriteUnresolvableBindingsAsync(CancellationToken cancellationToken)
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["worker"] = new WorkerBindingConfigEntry(
+                "not-a-registered-adapter", new WorkerContract("worker", ["goal"], [new ProducedOutput("out")], []),
+                "irrelevant, never dispatched", TimeSpan.FromSeconds(30)),
+        };
+
+        var directory = Path.Combine(Path.GetTempPath(), $"aer_daemon_bindings_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config), cancellationToken);
+        return path;
+    }
+
     [Fact]
     public async Task Reject_TriggersASecondWebSocketBroadcast_SoAPhoneSeesTheDecisionLand()
     {
@@ -435,6 +458,105 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var secondPayload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, second.Count)).RootElement;
 
         Assert.Equal("Terminal", secondPayload.GetProperty("State").GetProperty("Status").GetString());
+        Assert.Equal(taskDirectory, secondPayload.GetProperty("DirectoryPath").GetString());
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task RunTask_TriggersTwoWebSocketBroadcasts_ImmediateAndOnCompletion()
+    {
+        // #330: /api/tasks/run is the endpoint the desktop's own TaskSession.RunAsync HTTP branch
+        // posts to (HomeView.OnStartTemplateClick -> MainWindow.RunAsync) once a template has already
+        // been materialized in-process. Unlike its siblings /api/tasks/open and /api/templates/run,
+        // this endpoint used to have zero broadcast-related code at all before dispatching the
+        // background pump -- a paired phone, already watching some other directory, learned nothing
+        // about this one until the whole run eventually finished. No prior /api/tasks/open here
+        // deliberately: the paused-with-nothing-ready task below resumes as an instant no-op, so
+        // RunAsync's own *pre-existing* completion broadcast (reopenTaskAsync, unchanged by this fix)
+        // alone would already deliver exactly one message here -- asserting on two, not just "at least
+        // one", is what actually isolates and proves /api/tasks/run's new pre-broadcast specifically
+        // adds a second, earlier one rather than just riding the completion broadcast that already
+        // existed.
+        const string executionId = "exec-run-1";
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
+        var bindingsFilePath = await WriteRejectableBindingsAsync(TestContext.Current.CancellationToken);
+
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
+
+        var runResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/tasks/run",
+            new RunTaskRequest(taskDirectory, null, bindingsFilePath),
+            TestContext.Current.CancellationToken);
+        Assert.True(runResponse.IsSuccessStatusCode);
+
+        var buffer = new byte[1024 * 64];
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        using (var linked1 = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken))
+        {
+            var first = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked1.Token);
+            var firstPayload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, first.Count)).RootElement;
+            Assert.Equal(taskDirectory, firstPayload.GetProperty("DirectoryPath").GetString());
+            Assert.Equal("Paused", firstPayload.GetProperty("State").GetProperty("Status").GetString());
+        }
+
+        using var linked2 = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
+        var second = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked2.Token);
+        var secondPayload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, second.Count)).RootElement;
+        Assert.Equal(taskDirectory, secondPayload.GetProperty("DirectoryPath").GetString());
+        Assert.Equal("Paused", secondPayload.GetProperty("State").GetProperty("Status").GetString());
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task RunTask_ThatFailsInTheBackground_StillTriggersASecondWebSocketBroadcast()
+    {
+        // #330: TaskSession.RunAsync's in-process fallback (what Aer.Daemon's own singleton session
+        // always uses) used to return straight out of its `catch (AerFlowException ex)` block without
+        // ever calling reopenTaskAsync -- so a run that threw partway through never broadcast at all,
+        // for either a mobile- or desktop-initiated run. A connected phone would see the pre-run
+        // broadcast above and then nothing again, forever, even though the run had already stopped.
+        // The unresolvable-adapter bindings below make RunCommand.ExecuteAsync throw synchronously,
+        // before touching the snapshot -- so this run's own failure broadcast (unlike the pre-broadcast
+        // above) is the ONLY thing distinguishing "the run stopped" from "still running" here.
+        const string executionId = "exec-run-fail-1";
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
+        var bindingsFilePath = await WriteUnresolvableBindingsAsync(TestContext.Current.CancellationToken);
+
+        var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
+        using var socket = new ClientWebSocket();
+        await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
+
+        var runResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/tasks/run",
+            new RunTaskRequest(taskDirectory, null, bindingsFilePath),
+            TestContext.Current.CancellationToken);
+        Assert.True(runResponse.IsSuccessStatusCode);
+
+        var buffer = new byte[1024 * 64];
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // First message: /api/tasks/run's own pre-broadcast (proven above), reflecting the still-Paused
+        // state from before the background run even started.
+        using (var linked1 = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken))
+        {
+            var first = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked1.Token);
+            var firstPayload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, first.Count)).RootElement;
+            Assert.Equal("Paused", firstPayload.GetProperty("State").GetProperty("Status").GetString());
+        }
+
+        // Second message: only possible if RunAsync's catch block now also calls reopenTaskAsync on
+        // failure -- the background Task.Run's own binding-resolution failure never mutates the
+        // snapshot, so this is the same "Paused" state again, but a *second* broadcast that would not
+        // exist at all without this fix.
+        using var linked2 = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
+        var second = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked2.Token);
+        var secondPayload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, second.Count)).RootElement;
+        Assert.Equal("Paused", secondPayload.GetProperty("State").GetProperty("Status").GetString());
         Assert.Equal(taskDirectory, secondPayload.GetProperty("DirectoryPath").GetString());
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
