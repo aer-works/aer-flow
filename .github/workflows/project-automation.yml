@@ -75,9 +75,23 @@ jobs:
       # so re-running item-add here would be a redundant call for every PR
       # merge that closes an issue. Issues only — PRs are deliberately never
       # added to the board.
+      # gh project item-add requests the item's fieldValues in its mutation response,
+      # and resolving a milestone fieldValue needs a permission PROJECT_TOKEN lacks
+      # (fails: "Resource not accessible ... fieldValues.nodes.N.milestone" on any
+      # milestoned issue). Call addProjectV2ItemById directly and select only
+      # item { id } — the same idempotent add, but no fieldValues, so the milestone
+      # is never resolved. See #428.
       - name: Add issue to project
         if: github.event_name == 'issues' && github.event.action != 'closed'
-        run: gh project item-add $PROJECT_NUMBER --owner "$ORG" --url "${{ github.event.issue.html_url }}"
+        run: |
+          gh api graphql -f query='
+            mutation($proj: ID!, $content: ID!) {
+              addProjectV2ItemById(input: { projectId: $proj, contentId: $content }) {
+                item { id }
+              }
+            }' \
+            -F proj="${{ steps.meta.outputs.project_id }}" \
+            -F content="${{ github.event.issue.node_id }}"
 
       - name: Get project item ID for this issue/PR
         id: item
