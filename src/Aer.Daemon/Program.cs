@@ -1104,13 +1104,9 @@ namespace Aer.Daemon
                     await KnownProjectsStore.AddOrUpdateProjectAsync(request.WorkingDirectory).ConfigureAwait(true);
                 }
 
-                var effectiveGrant = request.PermissionGrant;
-                if (effectiveGrant == null && !string.IsNullOrWhiteSpace(request.WorkingDirectory))
-                {
-                    // Conservative default for codebase sessions (M24 Phase 3)
-                    effectiveGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
-                }
-
+                // A null PermissionGrant is resolved to the working-directory-aware default inside
+                // Materialize (fail closed when there's no directory -- #321 / decision 0004), so the
+                // policy lives in one place instead of being re-decided at each call site.
                 SessionMetadata metadata;
                 try
                 {
@@ -1122,7 +1118,7 @@ namespace Aer.Daemon
                         request.WorkingDirectory,
                         request.InitialMessage,
                         request.SafetyCeiling ?? InteractiveSessionMaterializer.DefaultSafetyCeiling,
-                        effectiveGrant).ConfigureAwait(true);
+                        request.PermissionGrant).ConfigureAwait(true);
                 }
                 catch (Exception ex)
                 {
@@ -1636,7 +1632,7 @@ namespace Aer.Daemon
                 ProducedOutputs: [new ProducedOutput(InteractiveSessionMaterializer.DefaultOutputFileName)],
                 OptionalMetadata: []);
 
-            var grant = existingEntry?.PermissionGrant ?? new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+            var grant = existingEntry?.PermissionGrant ?? InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory(metadata.WorkingDirectory);
 
             var updatedEntry = new WorkerBindingConfigEntry(
                 Adapter: targetAdapter,

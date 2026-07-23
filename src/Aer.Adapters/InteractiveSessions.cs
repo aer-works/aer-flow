@@ -74,6 +74,19 @@ public static class InteractiveSessionMaterializer
     public const string AnchorWorkerName = "turn-anchor-worker";
     public const string AnchorOutputFileName = "turn.marker";
 
+    /// <summary>
+    /// The default <see cref="PermissionGrant"/> for an interactive session that supplied no explicit
+    /// grant. A working directory is a project ceiling (decision 0004); with none, the effective grant
+    /// floors to the intersection and MUST fail closed -- no filesystem, shell, or network -- so a
+    /// directory-less "plain chat" cannot inherit the daemon/app cwd with write access nobody scoped
+    /// (#321). With a directory, the conservative codebase default applies (read + write, no shell or
+    /// network). This is the single home for that policy; every materialize path routes through it.
+    /// </summary>
+    public static PermissionGrant DefaultGrantForWorkingDirectory(string? workingDirectory) =>
+        string.IsNullOrWhiteSpace(workingDirectory)
+            ? new PermissionGrant(ReadFiles: false, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false)
+            : new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+
     public static (WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings, SessionMetadata Metadata) Materialize(
         string sessionId,
         string taskDirectoryPath,
@@ -85,7 +98,7 @@ public static class InteractiveSessionMaterializer
         PermissionGrant? grant = null)
     {
         var normalizedAdapter = string.IsNullOrWhiteSpace(adapter) ? "claude" : adapter.Trim().ToLowerInvariant();
-        var defaultGrant = grant ?? new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+        var defaultGrant = grant ?? DefaultGrantForWorkingDirectory(workingDirectory);
 
         var definition = new WorkflowDefinition(
             WorkflowTemplateId: new WorkflowTemplateId("interactive-session-template"),
