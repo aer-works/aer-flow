@@ -45,10 +45,12 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-two-nouns-workflow-and-session.md) | Two nouns: workflow and session | accepted |
+| [0001](0001-two-nouns-workflow-and-session.md) | Two nouns: workflow and session (the session is a room) | accepted |
 | [0002](0002-one-vocabulary.md) | One vocabulary, no translation map | accepted |
 | [0003](0003-templates-collapse-to-three-shapes.md) | Templates collapse to three shapes | accepted |
 | [0004](0004-permission-scopes.md) | Permissions scope by project, session and step | accepted |
 | [0005](0005-seam-milestones.md) | Capability milestones alternate with seam milestones | accepted |
 | [0006](0006-visual-direction-quiet.md) | Visual direction is "Quiet" | accepted |
 | [0007](0007-background-work-inline-and-dedicated.md) | Background work: glance inline, expand in place, dedicated surface for depth | accepted |
+| [0008](0008-runtime-streaming-over-append-log.md) | Runtime: live streaming over a durable append log | accepted |
+| [0009](0009-session-lifecycle-and-retention.md) | Session lifecycle & retention: a tree you count the top of | accepted |
