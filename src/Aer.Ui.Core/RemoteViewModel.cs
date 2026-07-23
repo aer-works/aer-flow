@@ -50,6 +50,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(NeedsTailscaleAuthKey))]
     [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
     [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private string? host;
@@ -59,6 +60,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(NeedsTailscaleAuthKey))]
     [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
     [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private int? port;
@@ -124,6 +126,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(EffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(HasEffectivePairingHost))]
     [NotifyPropertyChangedFor(nameof(IsPairingOverTailnet))]
+    [NotifyPropertyChangedFor(nameof(NeedsTailscaleAuthKey))]
     [NotifyPropertyChangedFor(nameof(ShowPairingBlock))]
     [NotifyPropertyChangedFor(nameof(ShowNoPairingHostMessage))]
     private string? sidecarTailscaleIp;
