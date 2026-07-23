@@ -31,7 +31,7 @@ Phase 3 added QR scanning), with the desktop's **Tailscale** IP, not its LAN IP.
   connectivity with no shared physical network, not just a second Wi-Fi on the same router.
 - The usual repo prerequisites to run the desktop side (`.NET 10` SDK, submodule initialized — see
   the root `README.md`), plus `Aer.Mobile` already built and installed on the phone per
-  `docs/runbooks/` and `IMPLEMENTATION_PLAN.md`'s Phase 2 setup notes.
+  `docs/runbooks/` and the M21 mobile-client setup (`docs/decisions-of-record.md`, M21).
 
 ## Running it
 
@@ -64,14 +64,14 @@ Phase 3 added QR scanning), with the desktop's **Tailscale** IP, not its LAN IP.
   reachability) rather than the auth/projection code itself.
 - **Everything else**: this phase changes no code, so any failure here is either a tailnet
   connectivity problem (out of this repo's control) or a real regression in Phase 2/3's already-proven
-  LAN path — re-run the LAN case from `IMPLEMENTATION_PLAN.md`'s Phase 2 verification notes to
+  LAN path — re-run the Phase 2/3 LAN verification case (which this cross-network case extends) to
   isolate which side broke.
 
 ## Recording a green run
 
 M21 Phase 4 is complete once this has been run successfully at least once. Record the date, the
-device/network setup, and the Tailscale client versions used in `IMPLEMENTATION_PLAN.md`'s Phase 4
-entry — this file only documents *how* to run it, not a rolling log of every run.
+device/network setup, and the Tailscale client versions of that run below — this file documents
+*how* to run it plus the one recorded proof, not a rolling log of every run.
 
 **Recorded green run:** 2026-07-19, desktop Tailscale client 1.98.9 (Windows), phone a Pixel 10
 Pro on Tailscale for Android, cellular data (no shared LAN with the desktop). Manual host entry

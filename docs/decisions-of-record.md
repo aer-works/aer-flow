@@ -1,13 +1,57 @@
-# AER Flow — Decisions of Record
+# AER Flow — Milestone History & Decisions of Record
 
-The durable decisions each completed milestone left behind — the constraints and precedents
-later work still leans on, extracted verbatim from each milestone's phase work as it completed.
-`IMPLEMENTATION_PLAN.md` keeps the roadmap, the current milestone's phase plan, and each
-completed milestone's one-paragraph summary; each milestone's phase checklist lives in its
-closed GitHub milestone; this file keeps the decisions. Newest milestone
-first. Each entry cites the phase that decided it; the full phase plans — goals, boundaries, and
-the open questions each phase resolved — live in the plan file's git history and the linked
-issues.
+This file is the append-only record of the project's completed milestones: a one-paragraph
+**summary** of what each one shipped, and the durable **decisions of record** it left behind —
+the constraints and precedents later work still leans on. Newest milestone first. Decisions are
+extracted verbatim from each milestone's phase work as it completed and are never rewritten to
+change meaning — superseded instead, the same rule the numbered ADRs in
+[`docs/decisions/`](decisions/) follow. Each milestone's phase checklist lives in its closed
+GitHub milestone; the full phase plans live in the linked issues; and the **current** milestone's
+living, gated plan is [`docs/plan.md`](plan.md), not this file.
+
+## Milestone summaries
+
+What each completed milestone shipped, newest first.
+
+**M24: Interactive Sessions & Unified Task Creation** — turned AER into a full replacement for the core Claude Code / Antigravity loop: a daemon-orchestrated **chat primitive** (a one-step workflow `Supersede`d once per human turn, reusing M9's human worker and M23's hardened supersede chains, with each vendor's own native session resumption carrying context and a per-session safety ceiling bounding runaway quota and event-log growth), **live in-turn progress streaming** (Claude's `stream-json` partial messages forwarded over the existing WebSocket; a generic running indicator for `agy`, which surfaces no equivalent), **worker capability discovery and in-session compact**, **codebase sessions** bound to a real project directory plus a Known Projects registry so a phone can pick one without a raw path, **Unified Task Creation** (Chat / Codebase Session / Two-Vendor Dialogue as the zero-authoring front door on desktop and mobile, with dedicated desktop `ChatView` and mobile `ChatScreen`; DAG authoring demoted to an Advanced path, not removed), and **task/session lifecycle management** (archive/unarchive/delete behind a managed-roots containment guard, plus the first fleet-status list of all active work either app has had). Planned in issue #258.
+
+**M23: Generic Dialogue & Project Packaging** — generalized the Dialogue Worker from a fixed two-party exchange to an N-party, condition-stoppable loop (safe by default regardless of configured `TurnBudget`), authored as a first-class Template Editor step type instead of wizard-only; resolved, with test coverage, that an already-superseded step's target may legally be named in a second Supersede — the load-bearing prerequisite for M24's repeatedly-superseded chat primitive; and let a task's worker invocation point at a real project directory (`AerTask.WithCwd` wired through `WorkerInvocation` → the adapters → `CoreDispatchTarget` → `CoreDispatcher.DispatchAsync`), bundling a `WorkerBindingConfigEntry.PromptTemplate` absolute-path portability fix and a per-machine profile mapping so the resulting bindings survive a move to another machine.
+
+**M22: Workflow Template Library** — shipped a built-in template catalog (`solo-run` and `review-run`) materialized against PATH-probed vendor CLIs (`claude`, `gemini`), daemon template endpoints (`GET /api/templates`, `POST /api/templates/run`), desktop (`TemplatePickerWindow`) and mobile (`inbox_screen.dart`) template picker UIs allowing zero-path task creation, and artifact-referenced supply enabling remote mobile send-back (Supersede) with no host filesystem access.
+
+**M21: Zero-Config Remote Control & Permission Scopes** — shipped structured vendor-neutral permission scope models (`PermissionGrant` for file and command access), `Aer.Mobile` (Flutter remote client) with QR code pairing and live task streaming over WebSockets, zero-config embedded Tailscale transport (`aer-sidecar` Go node on desktop, embedded `tsnet` via CGO and RFC 6455 `ws_codec.dart`/`ws_client.dart` over `tcp.dial` on mobile), and closed M20's deferred token management (60s pairing code countdown and interactive paired client revocation).
+
+**M20: Daemonization & Remote Control** — extracted the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Exposed task read models, mutation interfaces, and WebSocket real-time updates over a loopback and remote-accessible API. Added single-instance mutex enforcement, constant-time authentication token validation, and process lifecycle supervision. Hardened tool invocation security by replacing command shell spawners (`cmd.exe /c` / `sh -c`) with shell-less direct binary execution and C#-side environment variable expansion. Designed and implemented the client-pairing gateway protocol allowing secure LAN/Wi-Fi remote clients to connect and authenticate against the daemon.
+
+**M19: Product UX** — the product-UX overhaul the owner scoped at M18's completion: a navigation shell (Home's decision inbox + task cards, Task, Author) built behind a new Avalonia-free `Aer.Ui.Core` seam that completes M15's deferred MVVM migration; the Task view rebuilt needs-you-first with plain-language drill-in tabs and the precise engine record one disclosure away; guided authoring that writes durable workflow/binding files with zero hand-edited config, vendor CLI knowledge owned by its adapters/workers; a token-driven visual design pass (property-level restyling, status as border+tint, one accent per surface, a generated app icon) judged against an owner-adopted reference set (Linear, GitLab, Dagster, Stately.ai, GitButler/Neovide, n8n, Raycast) under a one-product-not-a-collage directive; and a headless completion gate driving the entire non-expert path — author, run, review, send back, finish — through the real UI controls over stub CLIs, in default CI on all three OSes. `docs/walkthroughs/first-real-workflow.md`'s UI section rewritten to match.
+
+**M18: Conversation View** — UI spec §10's conversation view over M17's durable transcript: the tolerant `Aer.Ui` read seam honoring §10.1's reader contract (discovery by `transcript.jsonl` presence alone, producing schema worker-owned per Flow spec §18.2), conversation rows plus per-execution rendering in the main window (file order, prompt on demand, malformed lines marked in place, selection re-rendered on every load so refresh follows a live exchange), gated by `ConversationRoundTripTests`: the real dialogue worker run to terminal over stub CLIs and the view asserted over its artifacts — including a failed exchange's forensic prefix. No live gate: nothing in the milestone touches a vendor CLI.
+
+**M17: Dialogue Worker** — the first Case 2 encapsulated multi-model worker (Flow spec §18.2): `Aer.Workers.Dialogue`, a single executable running a bounded, multi-turn Claude ↔ Gemini (`agy`) exchange — each model's turn threaded into the other's next prompt — writing a durable `transcript.jsonl` plus its declared output, dispatched by Flow like any other worker through a third adapter registry entry (`"dialogue"`), runnable from CLI and UI, with the stub-vendor round trip proven in default CI on all three OSes and the live exchange gated by `pixi run smoke-dialogue` (permanently a human action item, not yet recorded). Opened with the real-use walkthrough the project had been missing (`docs/walkthroughs/first-real-workflow.md`).
+
+**M16: UI Authoring** — the last milestone of the original UI track: template and worker-bindings authoring in `Aer.Ui` — create/edit steps, dependencies, retry policies, metadata, `PausePoint`s/`SupersedeTargets`, and bindings entries, with live structural validation through Flow's own `WorkflowDefinitionValidator`, the stack's first template and bindings writers held to round-trip fidelity through the engine's own parsers/validators, and full authoring round trips (author from blank → save → run to terminal; edit a bound task's template → the diff view shows the divergence while the bound rendering stays byte-identical) proven in default CI on all three OSes.
+
+**M15: UI Control Surface** — the second UI-track milestone: every §7 user action — start/resume a workflow, Approve/Reject, Retry-with-revision, Send-back, and Cancel (targeted and host stop) — exposed in `Aer.Ui` exclusively through Flow's mutation interface, via in-process reuse of the CLI command layer, mapped onto Flow's closed `DecisionType` set, and proven by UI-driven round trips over shell-stub workers on all three CI OSes in default CI.
+
+**M14: UI Projection** — the first UI-track milestone: `Aer.Ui`, an Avalonia desktop app consuming `Aer.Flow`'s read model in-process — task/execution/decision projection with live polling, the DAG view, artifact lineage, the snapshot-vs-template diff, and a golden-projection determinism gate in default CI. Read-only throughout: no mutations (M15), no authoring (M16).
+
+**M13: Distribution** — turned `aer` from a checkout-only build into an installable `dotnet tool`: single-platform packing, version wiring from `release-please`, multi-RID native-lib bundling, and an unattended CI round-trip check proving install → run → uninstall works with no live vendor auth (`pixi run verify-pack`, `scripts/verify-pack-roundtrip.sh`).
+
+**M12: Full Control Surface** — the milestone that made the runnable library drivable: a second vendor (Gemini's `agy`) behind M11's unchanged protocol, and the mutation surface M9/M10 built exposed as `aer decide`/`aer cancel`, proven by a live mixed-vendor paused run decided from the terminal (`docs/runbooks/live-mixed-vendor-smoke.md`).
+
+**M11: First Real Run** — the milestone that made the library runnable: the canonical worker-invocation protocol and adapter seam, the Claude adapter, the `aer run` pump, and a recorded green live two-step run (`docs/runbooks/live-claude-smoke.md`).
+
+**M10: Cancellation & Edge Cases** — on-demand cancellation through the single mutation surface (intent recorded first), and crash-recovery made whole by reading back the Core half of the log.
+
+**M9: External Decisions** — pause points, the four external decisions, the automatic invalidation cascade, human workers.
+
+**M8: Reactive Scheduler** — fan-out/fan-in DAG with retries and concurrent dispatch.
+
+**M7: Foundation** — linear A → B → C end-to-end, happy path only.
+
+## Decisions of record
+
+The durable decisions each milestone left behind, newest first — each entry cites the phase that decided it. Coverage is uneven: M20, M23, and M24 are represented by their summary above only, having shipped without a separate decisions pass into this file; their durable decisions live in their PRs and closed milestones. (Surfaced by the #367 docs audit.)
 
 ## M22: Workflow Template Library
 

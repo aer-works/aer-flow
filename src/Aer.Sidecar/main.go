@@ -6,7 +6,7 @@
 //
 // tsnet runs a userspace (gVisor) network stack that exists only inside this process — there is
 // no OS-level network interface for a sibling process to bind to, which is why Kestrel cannot bind
-// the tailnet address directly (see IMPLEMENTATION_PLAN.md's Phase 5 "Key architecture correction").
+// the tailnet address directly (see docs/decisions-of-record.md, M21: zero-config Tailscale TCP splicing).
 package main
 
 import (

@@ -1,5 +1,11 @@
 # Information Architecture
 
+> **Status (M25):** this records the **M19** IA. The room-model re-architecture revisits it — a
+> single switcher shell replaces the three-view split (#336) and "task" gives way to the two-noun
+> model (decision [0001](../decisions/0001-two-nouns-workflow-and-session.md)). See
+> [`docs/plan.md`](../plan.md) for the current direction; read this as the M19 baseline it is, not
+> the target design.
+
 M19 Phase 1 (#186). The structure Phases 2–4 build: three views under one navigation shell,
 replacing today's single window of stacked sections. Everything the UI does today survives —
 this document says *where each capability lives*, not what it does; behavior and the durable

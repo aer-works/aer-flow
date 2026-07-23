@@ -45,6 +45,58 @@ public class PlanConsistencyTests
             + $"Defined: {string.Join(", ", defined.OrderBy(j => j, StringComparer.Ordinal))}");
     }
 
+    [Fact]
+    public void The_retired_implementation_plan_has_not_come_back()
+    {
+        // IMPLEMENTATION_PLAN.md was decomposed into docs/decisions-of-record.md (milestone history)
+        // and docs/plan.md (the current, gated plan), then deleted (#367). A second competing plan
+        // document is exactly the drift this whole effort exists to kill — fail if one reappears.
+        var path = Path.Combine(RepoRoot(), "IMPLEMENTATION_PLAN.md");
+        Assert.False(
+            File.Exists(path),
+            "IMPLEMENTATION_PLAN.md is back. Its roadmap and milestone summaries belong in "
+            + "docs/decisions-of-record.md, and the current, gated plan is docs/plan.md — there is no "
+            + "second plan document (#367).");
+    }
+
+    [Fact]
+    public void Every_relative_link_in_the_living_docs_resolves_to_a_real_file()
+    {
+        // Link rot is the plainest form of doc rot. The two docs this milestone made canonical must
+        // never point at a file that has moved or been deleted — the failure that dangled every
+        // IMPLEMENTATION_PLAN.md reference the moment it was retired.
+        string[] docs = { Path.Combine("docs", "plan.md"), Path.Combine("docs", "decisions-of-record.md") };
+        var broken = new List<string>();
+        foreach (var doc in docs)
+        {
+            var docDir = Path.GetDirectoryName(Path.Combine(RepoRoot(), doc))!;
+            foreach (Match m in Regex.Matches(Read(doc), @"\]\(([^)]+)\)"))
+            {
+                var target = m.Groups[1].Value.Trim();
+                if (target.StartsWith("http", StringComparison.OrdinalIgnoreCase) || target.StartsWith('#'))
+                {
+                    continue; // external URL or same-page anchor
+                }
+
+                var relativePath = target.Split('#')[0]; // drop any #anchor on a file link
+                if (relativePath.Length == 0)
+                {
+                    continue;
+                }
+
+                var resolved = Path.GetFullPath(Path.Combine(docDir, relativePath));
+                if (!File.Exists(resolved) && !Directory.Exists(resolved))
+                {
+                    broken.Add($"{doc.Replace('\\', '/')} -> {target}");
+                }
+            }
+        }
+
+        Assert.True(
+            broken.Count == 0,
+            "Relative links in the living docs that no longer resolve:\n  " + string.Join("\n  ", broken));
+    }
+
     private static SortedSet<string> DecisionFilesOnDisk()
     {
         var dir = Path.Combine(RepoRoot(), "docs", "decisions");

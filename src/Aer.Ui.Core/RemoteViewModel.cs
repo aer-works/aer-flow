@@ -89,7 +89,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     // yet Ready (MainWindow's existing 1s pairing-countdown timer drives RefreshSidecarStatusAsync
     // too — see ShouldPollSidecarStatus). Not proven live end to end until this session's own
     // manual test (owner completed real tsnet enrollment, confirmed connected in the Tailscale
-    // admin console) — see IMPLEMENTATION_PLAN.md. The four fields below are read only through
+    // admin console) — see docs/decisions-of-record.md, M21. The four fields below are read only through
     // CurrentSidecarPhase/the Is*-phase booleans, never directly in the view: found live that
     // binding each field's own Has* flag independently let more than one of the view's sections
     // render at once during in-between polls (e.g. a just-cleared AuthUrl racing a not-yet-set

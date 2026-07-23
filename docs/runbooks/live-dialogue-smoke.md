@@ -63,7 +63,7 @@ The test passes when:
 The test does not assert on the *content* either vendor wrote (spec §4.1's contract is "the file
 exists", not "the file says X" — the same rule `live-claude-smoke.md`/`live-mixed-vendor-smoke.md`
 document, which applies inside the dialogue worker's own turn loop too, per CLAUDE.md rule #1's
-inversion described in `IMPLEMENTATION_PLAN.md`'s M17 phase plan: the *worker* is allowed to read
+inversion described in `docs/decisions-of-record.md` (M17): the *worker* is allowed to read
 turn text to thread context and detect a stop signal, but this runbook's assertions still never
 depend on what either model actually said).
 
@@ -92,7 +92,7 @@ depend on what either model actually said).
 ## Recording a green run
 
 M17 is complete once this has been run successfully at least once. Record the date and both CLI
-versions used in the PR that lands this runbook (see `IMPLEMENTATION_PLAN.md`'s M17 decisions of
-record) — this file only documents *how* to run it, not a rolling log of every run.
+versions used in the PR that lands this runbook (see `docs/decisions-of-record.md`, M17) — this
+file only documents *how* to run it, not a rolling log of every run.
 
 **Recorded green run:** none yet — this is a human action item per CLAUDE.md's live-vendor rule.
