@@ -1741,15 +1741,32 @@ namespace Aer.Daemon
                     }
                     else
                     {
-                        // The anchor has never succeeded yet: either this is the very first turn of
-                        // a session started with no InitialMessage (isInitial=false, TurnCount=0), or
-                        // that first turn already failed outright. "chat" has no PausePoint of its
-                        // own, so a failed first attempt leaves the whole workflow terminally failed
-                        // with nothing for Decide to act on. Nothing of value exists yet in that case
-                        // (at most one failed chat execution, no anchor success) -- a retry just
-                        // re-materializes Flow's own state fresh and runs again. SessionMetadata's own
-                        // Turns list (the actual product-facing transcript) is untouched; only Flow's
-                        // internal snapshot/log/artifacts for this task directory get replaced.
+                        // #354: reaching here means the anchor is not observably Paused -- but the old
+                        // code treated that as an unconditional "nothing of value exists, delete and
+                        // re-run", a two-way test over a multi-state DAG. Re-materializing wipes this
+                        // task's snapshot.json / flow.jsonl / artifacts, so it is only safe when the
+                        // flow genuinely has no live state to lose or corrupt (see
+                        // IsSessionSafeToReMaterialize): nothing Running (the anchor's own rerun is
+                        // auto-triggered by §11.3 condition 2 once "chat" succeeds, so there is a
+                        // Running window), nothing Paused (a continuation a stale projection can
+                        // momentarily hide), and no already-succeeded "chat" still awaiting its anchor.
+                        // When that holds it is the very first turn of a no-InitialMessage session, a
+                        // first turn that failed outright, or the documented mid-conversation-failure
+                        // recovery -- all cases where only Flow's internal snapshot/log/artifacts are
+                        // replaced while SessionMetadata's own Turns transcript and
+                        // VendorSessionEstablished (which carry real continuity) stay untouched.
+                        // Otherwise a live session's entire event log would be destroyed: refuse and
+                        // surface it rather than betting the wrong way.
+                        if (!IsSessionSafeToReMaterialize(currentOutcome.Projection?.State.Steps, metadata.Turns.Count))
+                        {
+                            throw new InvalidOperationException(
+                                "Chat turn found the session anchor not resolved to a paused state, but " +
+                                "the flow still holds live state (a step is Running or Paused, or a " +
+                                "succeeded \"chat\" step is awaiting its anchor). Refusing to " +
+                                "re-materialize, which would delete this session's live flow log, " +
+                                "snapshot and artifacts (#354). Retry once the current turn has settled.");
+                        }
+
                         var snapshotPath = Path.Combine(directoryPath, "snapshot.json");
                         var flowLogPath = Path.Combine(directoryPath, "flow.jsonl");
                         var artifactsPath = Path.Combine(directoryPath, "artifacts");
@@ -1857,6 +1874,45 @@ namespace Aer.Daemon
             };
 
             await InteractiveSessionMaterializer.SaveMetadataAsync(updatedMetadata, Path.Combine(directoryPath, ".aer", "session.json")).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// #354: decides whether a chat turn that could not resolve its <c>turn-anchor</c> to a Paused
+        /// state may safely re-materialize the session -- delete <c>flow.jsonl</c>/<c>snapshot.json</c>/
+        /// <c>artifacts</c> and re-run from scratch. Only true when the flow has no live state to lose
+        /// or corrupt:
+        /// <list type="bullet">
+        /// <item>no step is <see cref="StepStatus.Running"/> -- the anchor's own rerun (auto-triggered
+        /// by spec §11.3 condition 2 once <c>chat</c> succeeds) may be in flight, and deleting races a
+        /// live write;</item>
+        /// <item>no step is <see cref="StepStatus.Paused"/> -- a paused step is a continuation that
+        /// should be Superseded, not wiped, and a stale projection can momentarily hide a real paused
+        /// anchor;</item>
+        /// <item>the <c>chat</c> step is not <see cref="StepStatus.Succeeded"/> -- a succeeded chat
+        /// whose anchor rerun simply hasn't fired yet is a healthy turn, not a stuck one.</item>
+        /// </list>
+        /// A null/empty projection is "nothing of value" only for a brand-new session (no recorded
+        /// turns); for an established one it means a lagging or failed read, where deleting is data
+        /// loss. This is a decision over a single state snapshot: it makes the delete refuse in the
+        /// unsafe states, but it cannot by itself close the underlying read-then-delete race (that
+        /// needs per-session turn serialisation, tracked separately) -- the guarantee it gives is by
+        /// construction, not by a test that could deterministically reproduce a live Running anchor
+        /// against a synchronous stub.
+        /// </summary>
+        internal static bool IsSessionSafeToReMaterialize(IReadOnlyList<StepState>? steps, int recordedTurnCount)
+        {
+            if (steps is null || steps.Count == 0)
+            {
+                return recordedTurnCount == 0;
+            }
+
+            if (steps.Any(s => s.Status is StepStatus.Running or StepStatus.Paused))
+            {
+                return false;
+            }
+
+            var chatStep = steps.SingleOrDefault(s => s.StepId.Value == InteractiveSessionMaterializer.DefaultStepId);
+            return chatStep?.Status is not StepStatus.Succeeded;
         }
 
         /// <summary>
