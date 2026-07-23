@@ -845,6 +845,21 @@ namespace Aer.Daemon
 
                 pathHolder.BindingsFilePath = request.BindingsFilePath;
 
+                // #330: unlike /api/tasks/open and /api/templates/run, this endpoint -- the one the
+                // desktop's own TaskSession.RunAsync HTTP branch posts to -- never gave already-
+                // connected clients (a paired phone) any immediate sign that a run just started here.
+                // Best-effort and may no-op for a brand-new task (no snapshot.json until the pump
+                // below binds one): the guaranteed broadcast is still the one RunAsync's own
+                // reopenTaskAsync hook fires on completion. This closes the gap for the common case
+                // this projection already exists -- a resumed/re-run task -- immediately instead of
+                // only once the whole pump finishes.
+                session.SetCurrentTaskDirectory(request.DirectoryPath);
+                var immediateOutcome = await session.LoadAsync(request.DirectoryPath);
+                if (immediateOutcome.Projection != null)
+                {
+                    await BroadcastStateAsync(immediateOutcome.Projection, request.DirectoryPath);
+                }
+
                 _ = Task.Run(async () =>
                 {
                     try
