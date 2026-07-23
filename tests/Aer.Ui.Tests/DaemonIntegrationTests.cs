@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Aer.Adapters;
 using Aer.Daemon;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Store;
@@ -127,6 +128,30 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var invalidDir = Path.Combine(_tempTaskDirectory!, "non_existent_folder_abc_123");
         var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/tasks/open", new OpenTaskRequest(invalidDir), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OpenTask_WhileFlowLockHeld_ReturnsBadRequestWithNonEmptyMessage()
+    {
+        // #324: a task whose flow.lock is held by another writer is still readable -- ConcurrencyGuard
+        // locks only flow.lock, never snapshot.json/flow.jsonl -- so /api/tasks/open would happily load
+        // it and hand the caller a projection for a task another client is actively mutating, and on the
+        // paths where LoadAsync produced no message it returned a bare 400 with an empty body the client
+        // could not explain. Holding the lock must now yield a 400 whose body carries a sentence a UI can
+        // show. CreatePausedTaskDirectoryAsync writes the directory's files directly (no ConcurrencyGuard),
+        // so only this explicit Acquire puts flow.lock in the held state under test.
+        const string executionId = "exec-locked-1";
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
+
+        using var guard = ConcurrencyGuard.Acquire(taskDirectory);
+
+        var response = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/tasks/open", new OpenTaskRequest(taskDirectory), TestContext.Current.CancellationToken);
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.False(string.IsNullOrWhiteSpace(body));
+        Assert.Contains("another client", body);
     }
 
     [Fact]

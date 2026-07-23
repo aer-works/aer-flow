@@ -51,6 +51,37 @@ public sealed class ConcurrencyGuard : IDisposable
     }
 
     /// <summary>
+    /// Reports whether another live holder currently owns the lock for
+    /// <paramref name="taskDirectoryPath"/>, without acquiring it and without creating the
+    /// directory or the lock file. A read-only probe: callers that need the lock still go through
+    /// <see cref="Acquire"/>. A missing <c>flow.lock</c> (or a non-existent directory) means no
+    /// holder. A lock file left on disk by a previously-released guard is deliberately <em>not</em>
+    /// treated as a hold — under §15 only the live <see cref="FileShare.None"/> stream carries
+    /// meaning, not the file's existence — so this opens the file to test the OS-held lock rather
+    /// than reading its mere presence.
+    /// </summary>
+    public static bool IsHeld(string taskDirectoryPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+
+        var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
+        if (!File.Exists(lockFilePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var probe = new FileStream(lockFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return false;
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Releases the lock. The lock file itself is deliberately left on disk — under §15's
     /// guarantee, only the OS-held lock carries meaning, not the file's existence — so a
     /// subsequent <see cref="Acquire"/> call for the same task directory succeeds immediately.
