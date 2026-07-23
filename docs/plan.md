@@ -46,6 +46,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0007](decisions/0007-background-work-inline-and-dedicated.md) | Background work surfaces at **three levels**: glance inline, expand in place, dedicated surface for depth (#360). |
 | [0008](decisions/0008-runtime-streaming-over-append-log.md) | Runtime is **live streaming over a durable append log** — worker lifetime is a swappable policy (default cold; scoped warmth is #368). Per-turn cost is intrinsic, so a cross-vendor usage view is the real cost lever (J9). |
 | [0009](decisions/0009-session-lifecycle-and-retention.md) | **Count the top of the tree, not the tree** — children ephemeral by default, worker spawning bounded by a depth/count ceiling that doubles as J6's safety rail. |
+| [0010](decisions/0010-skills-and-advisor.md) | **Worker capabilities are skills** — app-level canonical, realized per-vendor by the adapter (native where possible, prompt-injection floor); native skills pass-through; participant behaviour is a role/skill binding. The advisor is the first one (M26). |
 
 ## The completion bar: journeys
 
@@ -86,7 +87,10 @@ desktop→phone, #348 phone's own work), and pairing itself is unreliable (#347)
 The object model unifies on two nouns and a session becomes a **room** — a multi-participant
 conversation that spawns children into a tree (decisions [0001](decisions/0001-two-nouns-workflow-and-session.md)
 / [0008](decisions/0008-runtime-streaming-over-append-log.md) /
-[0009](decisions/0009-session-lifecycle-and-retention.md)).
+[0009](decisions/0009-session-lifecycle-and-retention.md)). A participant's behaviour must be modelled
+as a **named role/skill binding, not a hardcoded prompt** (decision
+[0010](decisions/0010-skills-and-advisor.md)) — the one affordance this phase must not foreclose, so the
+advisor participant and skills (M26) slot in without reworking the object model.
 
 **#333** unify the object model on two nouns · **#334** split `PausePoint` · **#335** multi-task
 daemon *(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an append-log
