@@ -261,7 +261,8 @@ WorkflowDefinition (Template)
       ├── DependsOn[]      (StepIds)
       ├── RetryPolicy
       └── PausePoint       (optional — see §17)
-           └── SupersedeTargets[]   (StepIds; optional — see §17.1, §17.2)
+           ├── SupersedeTargets[]   (StepIds; optional — see §17.1, §17.2)
+           └── Kind                 (ReadyForReview default | NeedsInput — see §17.1)
 
 ```
 
@@ -414,6 +415,17 @@ A `PausePoint` may optionally declare `SupersedeTargets[]` — the set of earlie
 - A `Supersede` may target **any single member** of `SupersedeTargets`, with no further restriction — including a member that is itself an ancestor of another member on the same list. This needs no additional rule because §17.5's cascade already propagates through such relationships automatically: targeting the more distant ancestor will, once it succeeds, make the nearer one stale in turn through the ordinary readiness check, exactly as it would if they'd been targeted one at a time.
 
 This list lives on the pause point, not on the upstream step, so that everything which can happen at a given pause is visible in one place in the template, and adding a new revision path is a local edit to the pause point rather than a coordinated edit across two distant parts of the template. If `SupersedeTargets` is absent or empty, this pause point supports `Resume`/`Reject`/`RetryWithRevision` only — no `Supersede` target is available, and the template is unambiguous about that simply by the field being empty.
+
+#### PausePoint kind
+
+A `PausePoint` also declares a **kind**, distinguishing the two human acts a pause can demand:
+
+- **`ReadyForReview`** — the step ran to a terminal outcome and its result awaits review/approval before the DAG proceeds. This is the approval gate, and the default: every authored review gate is this kind, as is every pause persisted before the kind existed (see below).
+- **`NeedsInput`** — the step is an interactive turn paused ready for the operator's next message. It is *not* awaiting approval; an ordinary chat turn is this kind, and must not demand a review decision. Only interactive-session steps (§16 / the daemon's session materializer) declare it.
+
+The kind is a **static property of the step that declares the pause point** — invariant per declaration, never a per-execution signal. Flow's execution outcomes carry no "done" versus "needs input" flag (§5.1: `ExecutionSucceeded` is a bare execution id), and Flow must not infer the distinction from conversation content (Architecture Rule 1). Because the kind is fixed by *who declares the pause point*, it is derived from the bound `WorkflowDefinitionSnapshot` (§11.2) at projection time and carried by **no** `FlowEvent`: the snapshot is itself part of the durable, write-once record, so exposing the kind requires no event-format change and no replay migration.
+
+`ReadyForReview` is deliberately the zero-valued kind. A snapshot serialized before this field existed omits it, and it deserializes to `ReadyForReview` — every replayed pause keeps the approval-gate meaning it had when it was written. Clients render and filter the two kinds separately (a chat turn reads as "your turn to reply," a review gate as "waiting for your review"); collapsing them is what made an ordinary chat turn demand an approval decision.
 
 ### 17.2 ExternalDecisionRecorded
 

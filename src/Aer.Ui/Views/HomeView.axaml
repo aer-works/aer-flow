@@ -33,7 +33,7 @@
                 <TextBlock Text="{Binding StatusText}" />
                 <TextBlock Classes="mono" Text="{Binding PreviewText}" TextWrapping="Wrap"
                            IsVisible="{Binding HasPreview}" MaxHeight="180" />
-                <Button Classes="accent" Content="Review" Command="{Binding ReviewCommand}" HorizontalAlignment="Left" />
+                <Button Classes="accent" Content="{Binding ActionLabel}" Command="{Binding ReviewCommand}" HorizontalAlignment="Left" />
               </StackPanel>
             </Border>
           </DataTemplate>

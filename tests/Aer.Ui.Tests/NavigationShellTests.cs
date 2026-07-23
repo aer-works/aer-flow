@@ -84,6 +84,39 @@ public class NavigationShellTests
         return taskDirectory;
     }
 
+    /// <summary>A task paused at a NeedsInput pause point (#334) — the shape an interactive session settles into: "your turn to reply", not an approval gate.</summary>
+    private static async Task<string> CreateNeedsInputTaskDirectoryAsync(string replyContent, CancellationToken cancellationToken)
+    {
+        var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
+            new WorkflowTemplateId("session-like"),
+            WorkflowTemplateVersion: 1,
+            Steps:
+            [
+                new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(3)),
+                new WorkflowStepDefinition(
+                    Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(1),
+                    PausePoint: new PausePoint(SupersedeTargets: [Architect], Kind: PausePointKind.NeedsInput)),
+            ]));
+
+        var architectExecutionId = new ExecutionId("a-1");
+        var criticExecutionId = new ExecutionId("c-1");
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            snapshot,
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
+                new FlowEvent.ExecutionSucceeded(architectExecutionId),
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(criticExecutionId, Critic)),
+                new FlowEvent.ExecutionSucceeded(criticExecutionId),
+                new FlowEvent.WorkflowPaused(criticExecutionId, Critic),
+            ],
+            cancellationToken);
+
+        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        Directory.CreateDirectory(outputDirectory);
+        await File.WriteAllTextAsync(Path.Combine(outputDirectory, "review.md"), replyContent, cancellationToken);
+        return taskDirectory;
+    }
+
     [AvaloniaFact]
     public async Task InitializeAsync_starts_on_the_home_section()
     {
@@ -173,6 +206,37 @@ public class NavigationShellTests
             Assert.True(item.HasPreview);
             Assert.Equal("The plan looks solid overall.", item.PreviewText);
             Assert.Equal("1 step is waiting for your review.", window.ViewModel.Home.InboxSummaryText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task InitializeAsync_surfaces_a_needs_input_pause_as_a_reply_not_a_review()
+    {
+        // #334: the exact bug — a settled chat turn showed "Waiting for your review" and a [Review]
+        // button. A NeedsInput pause must read as "your turn to reply" on every Home surface.
+        var configFilePath = NewConfigFilePath();
+        var taskDirectory = await CreateNeedsInputTaskDirectoryAsync("ok", TestContext.Current.CancellationToken);
+        try
+        {
+            await new LocalUiConfigurationStore(configFilePath)
+                .RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
+            await window.InitializeAsync(TestContext.Current.CancellationToken);
+
+            var card = Assert.Single(window.ViewModel.Home.TaskCards);
+            Assert.Equal(TaskCardStatus.NeedsYou, card.Status);
+            Assert.Equal("Waiting for your reply", card.StatusText);
+
+            var item = Assert.Single(window.ViewModel.Home.InboxItems);
+            Assert.Equal(PausePointKind.NeedsInput, item.Kind);
+            Assert.Equal("Waiting for your reply", item.StatusText);
+            Assert.Equal("Reply", item.ActionLabel);
+            Assert.Equal("1 session is waiting for your reply.", window.ViewModel.Home.InboxSummaryText);
         }
         finally
         {

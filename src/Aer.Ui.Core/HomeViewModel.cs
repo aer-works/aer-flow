@@ -99,12 +99,12 @@ public sealed partial class HomeViewModel : ObservableObject
         }
 
         HasNoTasks = TaskCards.Count == 0;
+        var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
         InboxSummaryText = InboxItems.Count switch
         {
             0 when TaskCards.Count == 0 => "Nothing is waiting on you.",
             0 => $"Nothing is waiting on you — {runningCount} working, {finishedCount} finished.",
-            1 => "1 step is waiting for your review.",
-            var count => $"{count} steps are waiting for your review.",
+            _ => SummaryForPending(needsInputCount, InboxItems.Count - needsInputCount),
         };
     }
 
@@ -139,15 +139,49 @@ public sealed partial class HomeViewModel : ObservableObject
             }
         }
 
+        // #334: needs-input (a chat turn) asks for your reply, not your approval — the "{file} ready"
+        // approval framing is wrong for it. Ready-for-review keeps its exact wording (test-pinned).
+        var kind = PauseKind.ForStep(projection, stepState.StepId);
+        var statusText = kind == PausePointKind.NeedsInput
+            ? "Waiting for your reply"
+            : previewFileName.Length > 0
+                ? $"Waiting for your review — {previewFileName} ready"
+                : "Waiting for your review";
+
         return new InboxItemViewModel(
             taskDirectoryPath,
             TaskCardViewModel.TitleFor(taskDirectoryPath),
             stepState.StepId.Value,
-            previewFileName.Length > 0
-                ? $"Waiting for your review — {previewFileName} ready"
-                : "Waiting for your review",
+            statusText,
             previewText,
+            kind,
             openTaskAsync);
+    }
+
+    // #334: needs-input and ready-for-review are different human acts (#319 filters them apart), so
+    // the one-line summary counts them separately rather than calling every pause a "review". The
+    // review-only phrasing is kept verbatim — NavigationShellTests pins it.
+    private static string SummaryForPending(int needsInputCount, int reviewCount)
+    {
+        var reviewOnly = reviewCount == 1
+            ? "1 step is waiting for your review."
+            : $"{reviewCount} steps are waiting for your review.";
+        if (needsInputCount == 0)
+        {
+            return reviewOnly;
+        }
+
+        var replyOnly = needsInputCount == 1
+            ? "1 session is waiting for your reply."
+            : $"{needsInputCount} sessions are waiting for your reply.";
+        if (reviewCount == 0)
+        {
+            return replyOnly;
+        }
+
+        var replyPart = needsInputCount == 1 ? "1 waiting for your reply" : $"{needsInputCount} waiting for your reply";
+        var reviewPart = reviewCount == 1 ? "1 for your review" : $"{reviewCount} for your review";
+        return $"{replyPart}, {reviewPart}.";
     }
 }
 
@@ -175,7 +209,7 @@ public sealed partial class TaskCardViewModel(
     {
         var (statusText, status) = projection.State.Status switch
         {
-            WorkflowStatus.Paused => ("Waiting for your review", TaskCardStatus.NeedsYou),
+            WorkflowStatus.Paused => (PausedCardStatusText(projection), TaskCardStatus.NeedsYou),
             WorkflowStatus.Running when projection.State.Steps.FirstOrDefault(s => s.Status == StepStatus.Running) is { } runningStep
                 => ($"Working — {runningStep.StepId.Value}", TaskCardStatus.Running),
             WorkflowStatus.Running => ("Working", TaskCardStatus.Running),
@@ -186,6 +220,29 @@ public sealed partial class TaskCardViewModel(
 
         return new TaskCardViewModel(taskDirectoryPath, TitleFor(taskDirectoryPath), statusText, status, openTaskAsync);
     }
+
+    // #334: a paused chat turn is "your turn to reply", not an approval gate. A card whose only
+    // paused steps are NeedsInput says so; any genuine ReadyForReview gate among them keeps the
+    // established approval wording (and its exact string, which NavigationShellTests pins).
+    private static string PausedCardStatusText(TaskProjection projection)
+        => projection.State.Steps.Any(step =>
+               step.Status == StepStatus.Paused &&
+               PauseKind.ForStep(projection, step.StepId) == PausePointKind.ReadyForReview)
+            ? "Waiting for your review"
+            : "Waiting for your reply";
+}
+
+/// <summary>
+/// Resolves a paused step's declared <see cref="PausePointKind"/> from the bound snapshot (#334) —
+/// the single lookup every Home surface shares. Defaults to <see cref="PausePointKind.ReadyForReview"/>
+/// for any step lacking a pause point, so a pause persisted before the kind existed keeps the
+/// approval-gate meaning every pause historically carried.
+/// </summary>
+internal static class PauseKind
+{
+    public static PausePointKind ForStep(TaskProjection projection, StepId stepId)
+        => projection.Snapshot.Steps.FirstOrDefault(step => step.StepId == stepId)?.PausePoint?.Kind
+           ?? PausePointKind.ReadyForReview;
 }
 
 /// <summary>The one status system's card-level states — carried as data so the skin styles them consistently (color + icon + word, never color alone).</summary>
@@ -207,7 +264,8 @@ public enum TaskCardStatus
 /// authority).
 /// </summary>
 public sealed partial class InboxItemViewModel(
-    string taskDirectoryPath, string taskTitle, string stepName, string statusText, string previewText, Func<string, Task> openTaskAsync)
+    string taskDirectoryPath, string taskTitle, string stepName, string statusText, string previewText,
+    PausePointKind kind, Func<string, Task> openTaskAsync)
 {
     public string TaskDirectoryPath { get; } = taskDirectoryPath;
     public string TaskTitle { get; } = taskTitle;
@@ -215,6 +273,12 @@ public sealed partial class InboxItemViewModel(
     public string StatusText { get; } = statusText;
     public string PreviewText { get; } = previewText;
     public bool HasPreview => PreviewText.Length > 0;
+
+    /// <summary>Which human act this pause demands (#334) — carried so #319 can filter the inbox into "Needs input" / "Ready for review" states without re-deriving it.</summary>
+    public PausePointKind Kind { get; } = kind;
+
+    /// <summary>#334: a needs-input turn wants your next message, so the action reads "Reply"; a review gate reads "Review". Both open the task — the label names the act, not a second authority.</summary>
+    public string ActionLabel => Kind == PausePointKind.NeedsInput ? "Reply" : "Review";
 
     [RelayCommand]
     private Task Review() => openTaskAsync(TaskDirectoryPath);

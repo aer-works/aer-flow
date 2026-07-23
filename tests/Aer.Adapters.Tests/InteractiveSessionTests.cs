@@ -101,6 +101,9 @@ public sealed class InteractiveSessionTests
         Assert.Contains(new StepId("chat"), anchorStep.DependsOn);
         Assert.NotNull(anchorStep.PausePoint);
         Assert.Contains(new StepId("chat"), anchorStep.PausePoint!.SupersedeTargets);
+        // #334: a settled chat turn is "awaiting your next message", not an approval gate — the one
+        // declaration site that opts out of the ReadyForReview default.
+        Assert.Equal(PausePointKind.NeedsInput, anchorStep.PausePoint!.Kind);
 
         Assert.Equal(2, bindings.Count);
         Assert.True(bindings.ContainsKey("chat-worker"));

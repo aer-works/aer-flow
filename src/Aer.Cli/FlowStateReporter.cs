@@ -23,13 +23,22 @@ public static class FlowStateReporter
         {
             if (step.Status == StepStatus.Paused)
             {
-                var supersedeTargets = pausePointByStepId[step.StepId]!.SupersedeTargets;
+                var pausePoint = pausePointByStepId[step.StepId]!;
+                var supersedeTargets = pausePoint.SupersedeTargets;
                 var supersedeText = supersedeTargets.Count == 0
                     ? "none"
                     : string.Join(", ", supersedeTargets.Select(target => target.Value));
 
+                // #334: report which human act the pause demands, not just "Paused" — a terminal user
+                // triaging pauses needs the same needs-input/ready-for-review distinction the clients show.
+                var pausedLabel = pausePoint.Kind switch
+                {
+                    PausePointKind.NeedsInput => "Paused — awaiting input",
+                    _ => "Paused — awaiting review",
+                };
+
                 output.WriteLine(
-                    $"  {step.StepId}: Paused (execution={step.LatestExecutionId}, outcome={step.PausedOutcome}, " +
+                    $"  {step.StepId}: {pausedLabel} (execution={step.LatestExecutionId}, outcome={step.PausedOutcome}, " +
                     $"supersede-targets: {supersedeText})");
             }
             else

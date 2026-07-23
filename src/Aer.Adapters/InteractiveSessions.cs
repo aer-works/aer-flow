@@ -119,7 +119,10 @@ public static class InteractiveSessionMaterializer
                     Outputs: [AnchorOutputFileName],
                     DependsOn: [new StepId(DefaultStepId)],
                     RetryPolicy: new RetryPolicy(1),
-                    PausePoint: new PausePoint([new StepId(DefaultStepId)]))
+                    // NeedsInput, not the default ReadyForReview: a settled chat turn is "awaiting your
+                    // next message," never "approve finished work" (#334). This is the one declaration
+                    // site that opts out of the approval-gate default; every authored review gate keeps it.
+                    PausePoint: new PausePoint([new StepId(DefaultStepId)], PausePointKind.NeedsInput))
             ]);
 
         var promptTemplate = string.IsNullOrWhiteSpace(initialMessage)
