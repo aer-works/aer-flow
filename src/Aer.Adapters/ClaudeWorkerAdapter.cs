@@ -11,10 +11,14 @@ namespace Aer.Adapters;
 /// invocation without shell wrappers. Bypasses cmd.exe and sh, eliminating quoting and command injection risks.
 /// Stdin redirection to null is handled natively by the process host.
 /// <para>
-/// <b>M21 Phase 1's <see cref="IPermissionGrantTranslator"/>:</b> Claude Code's <c>--allowedTools</c>
-/// is tool-name-based (<c>Read</c>, <c>Edit</c>, <c>Write</c>, <c>Bash</c>/<c>Bash(pattern)</c>,
-/// <c>WebFetch</c>, <c>WebSearch</c>), which composes every <see cref="PermissionGrant"/> category
-/// exactly — this adapter's translation never refuses.
+/// <b>M21 Phase 1's <see cref="IPermissionGrantTranslator"/>, corrected in #331:</b> Claude Code's
+/// <c>--allowedTools</c> is tool-name-based (<c>Read</c>, <c>Edit</c>, <c>Write</c>,
+/// <c>Bash</c>/<c>Bash(pattern)</c>, <c>WebFetch</c>, <c>WebSearch</c>) but only <em>pre-approves</em>
+/// those tools so they do not prompt — it is not a sandbox and does not remove a withheld tool from
+/// the model's reach. A grant therefore resolves to <em>both</em> lists: <c>--allowedTools</c> for what
+/// it permits (this direction never refuses), and <c>--disallowedTools</c> for what it withholds
+/// (<see cref="BuildDisallowedTools"/>), which is what actually enforces the denial — decision 0004's
+/// "fail closed".
 /// </para>
 /// </summary>
 public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
@@ -90,6 +94,19 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             "--add-dir", artifactsRoot,
         ];
 
+        // #331: --allowedTools only *pre-approves* tools so they don't prompt; it is not a sandbox,
+        // and omitting a tool leaves it in the model's reach (a shell-denied session ran `hostname`
+        // and returned the real value). A withheld category must be *actively* denied. Verified
+        // against the live CLI in a clean spawn env: the same invocation refuses `hostname` with
+        // --disallowedTools Bash and runs it without. --disallowedTools takes precedence over
+        // --allowedTools, so the two compose — allow what's granted, deny what's withheld (0004).
+        var disallowed = BuildDisallowedTools(invocation.PermissionGrant);
+        if (disallowed.Length > 0)
+        {
+            args.Add("--disallowedTools");
+            args.Add(disallowed);
+        }
+
         if (invocation.StreamJson)
         {
             // --print + --output-format=stream-json refuses to run without --verbose (confirmed
@@ -155,6 +172,56 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         }
 
         return invocation.PermissionScope ?? DefaultPermissionScope;
+    }
+
+    /// <summary>
+    /// The deny-list mirror of <see cref="TryTranslatePermissionGrant"/> (#331): every category the
+    /// grant <em>withholds</em> maps to the Claude Code tool(s) that would otherwise reach it, emitted
+    /// as <c>--disallowedTools</c>. This is what makes a withheld checkbox true — <c>--allowedTools</c>
+    /// only auto-approves, it does not remove an unlisted tool from the model's reach. <c>NotebookEdit</c>
+    /// is denied alongside <c>Edit</c>/<c>Write</c> because it is also a file-write path.
+    /// <para>
+    /// <b>Boundary:</b> denial here is by <em>enumeration</em>, not default-deny. It covers the tools a
+    /// grant category names; it does not cover tools outside the grant's four categories (<c>Task</c>,
+    /// MCP server tools, or a tool a future CLI adds). Genuine fail-closed across the whole tool surface
+    /// is the broader change decision 0004 tracks (the project ceiling); this closes the reported,
+    /// category-mapped holes. Returns <see cref="string.Empty"/> when there is no structured grant (the
+    /// raw <see cref="WorkerInvocation.PermissionScope"/> escape hatch carries no category to deny) or
+    /// when nothing is withheld.
+    /// </para>
+    /// </summary>
+    private static string BuildDisallowedTools(PermissionGrant? grant)
+    {
+        if (grant is null)
+        {
+            return string.Empty;
+        }
+
+        List<string> denied = [];
+        if (!grant.ReadFiles)
+        {
+            denied.Add("Read");
+        }
+
+        if (!grant.WriteFiles)
+        {
+            denied.Add("Edit");
+            denied.Add("Write");
+            denied.Add("NotebookEdit");
+        }
+
+        if (!grant.RunShellCommands)
+        {
+            denied.Add("Bash");
+        }
+
+        if (!grant.NetworkAccess)
+        {
+            denied.Add("WebFetch");
+            denied.Add("WebSearch");
+        }
+
+        return string.Join(',', denied);
     }
 
     private static string BuildPrompt(string promptTemplate, WorkerContract contract, bool isWindows)

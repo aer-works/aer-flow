@@ -14,6 +14,20 @@ public class ClaudeWorkerAdapterTests
 
     private static string GetPrompt(CoreDispatchTarget target) => target.Args[1];
 
+    /// <summary>The value token immediately after <paramref name="flag"/> in the flat argv, or null.</summary>
+    private static string? ArgValue(CoreDispatchTarget target, string flag)
+    {
+        for (var i = 0; i < target.Args.Count - 1; i++)
+        {
+            if (target.Args[i] == flag)
+            {
+                return target.Args[i + 1];
+            }
+        }
+
+        return null;
+    }
+
     [Fact]
     public void Resolves_to_direct_claude_execution_without_shell_wrapper()
     {
@@ -216,5 +230,55 @@ public class ClaudeWorkerAdapterTests
         Assert.True(succeeded);
         Assert.Equal("Bash,WebFetch,WebSearch", resolved);
         Assert.Null(gapReason);
+    }
+
+    // #331: --allowedTools only *pre-approves*; a withheld category must be *actively* denied via
+    // --disallowedTools or a subscription worker still reaches the tool (a shell-denied session ran
+    // `hostname`). These assert the enforcing flag is emitted onto the argv — the default-CI guard for
+    // this class of bug, which shape-only translation tests could not catch. That the CLI *honours*
+    // the flag is a live-vendor smoke gate (docs/runbooks/live-claude-smoke.md), not a unit test.
+
+    [Fact]
+    public void A_withheld_shell_grant_actively_denies_Bash_not_merely_omits_it_from_the_allow_list()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.DoesNotContain("Bash", ArgValue(target, "--allowedTools")!); // omitted from the allow-list...
+        Assert.Contains("Bash", ArgValue(target, "--disallowedTools")!);    // ...and actively denied.
+    }
+
+    [Fact]
+    public void The_disallowed_list_is_the_exact_complement_of_the_withheld_categories()
+    {
+        // Read granted; write, shell and network all withheld -> each maps to its denied tool(s),
+        // NotebookEdit included as a second file-write path alongside Edit/Write.
+        var grant = new PermissionGrant(ReadFiles: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Equal("Read", ArgValue(target, "--allowedTools"));
+        Assert.Equal("Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
+    }
+
+    [Fact]
+    public void A_fully_permissive_grant_withholds_nothing_and_emits_no_disallowed_list()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.DoesNotContain("--disallowedTools", target.Args);
+    }
+
+    [Fact]
+    public void A_raw_permission_scope_with_no_structured_grant_emits_no_disallowed_list()
+    {
+        // The Advanced escape hatch carries no categories to deny — a hand-typed scope is taken as-is.
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionScope: "Read,Edit"), ArchitectContract);
+
+        Assert.DoesNotContain("--disallowedTools", target.Args);
     }
 }
