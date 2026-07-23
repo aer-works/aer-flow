@@ -55,3 +55,4 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0008](0008-runtime-streaming-over-append-log.md) | Runtime: live streaming over a durable append log | accepted |
 | [0009](0009-session-lifecycle-and-retention.md) | Session lifecycle & retention: a tree you count the top of | accepted |
 | [0010](0010-skills-and-advisor.md) | Worker capabilities are skills (app-level canonical, per-vendor realization); the advisor is the first one | accepted |
+| [0011](0011-token-based-context-management.md) | Context management is token-based, not turn-based | accepted |

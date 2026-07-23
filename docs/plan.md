@@ -47,6 +47,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0008](decisions/0008-runtime-streaming-over-append-log.md) | Runtime is **live streaming over a durable append log** — worker lifetime is a swappable policy (default cold; scoped warmth is #368). Per-turn cost is intrinsic, so a cross-vendor usage view is the real cost lever (J9). |
 | [0009](decisions/0009-session-lifecycle-and-retention.md) | **Count the top of the tree, not the tree** — children ephemeral by default, worker spawning bounded by a depth/count ceiling that doubles as J6's safety rail. |
 | [0010](decisions/0010-skills-and-advisor.md) | **Worker capabilities are skills** — app-level canonical, realized per-vendor by the adapter (native where possible, prompt-injection floor); native skills pass-through; participant behaviour is a role/skill binding. The advisor is the first one (M26). |
+| [0011](decisions/0011-token-based-context-management.md) | **Context management is token-based** — track vendor-reported token usage and compact/handoff on a configurable, model-aware token threshold; the turn ceiling (`SafetyCeiling`) is a backstop only (M26). |
 
 ## The completion bar: journeys
 
