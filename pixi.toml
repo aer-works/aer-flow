@@ -45,7 +45,9 @@ lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core", "lint-si
 # convention as the .NET SDK and Rust toolchain above. mobile-build produces a debug APK only:
 # Aer.Mobile is sideload-only for this milestone (no Play Store signing/release config exists).
 mobile-analyze = { cmd = "flutter analyze", cwd = "src/Aer.Mobile" }
-mobile-test = { cmd = "flutter test", cwd = "src/Aer.Mobile" }
+# Excludes the `journey` tag: journey tests (#313) are red-specs run separately via
+# `pixi run journey-mobile`, so the default suite stays green (see dart_test.yaml).
+mobile-test = { cmd = "flutter test --exclude-tags journey", cwd = "src/Aer.Mobile" }
 # Wrapped rather than a plain `flutter build apk`: Flutter's native-asset hook runner strips the
 # environment before invoking Go, so the build cache can't be located and the tailscale native
 # asset fails to compile. scripts/mobile-build.sh restores it via a PATH shim (see #303).
@@ -95,6 +97,22 @@ smoke-dialogue = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQua
 # (sessions have no `aer` CLI command) with the real, authenticated `claude` CLI. Same CI exclusion
 # as smoke-claude above. See docs/runbooks/live-session-smoke.md before running this.
 smoke-session = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveSessionSmokeTest", depends-on = ["build-core"] }
+
+# Journey tests (#313): the product-journey harness (spec/journeys.md). Two in-process runners —
+# desktop legs via Avalonia view-mounted headless, phone legs via Flutter widget tests — plus a
+# reconcile gate. Aer.Journeys.Tests is deliberately absent from AerFlow.slnx (same exclusion as
+# smoke-* above) so `pixi run test` stays all-green: journey tests are red-specs — a promise the
+# product does not keep yet fails its journey test on purpose, so journey-desktop / journey-mobile
+# exit non-zero until that capability lands. That red IS the honest status; it is not a broken
+# build. Filter to one journey with `--filter Journey=J6` (desktop). See docs/runbooks/journeys.md.
+journey-desktop = { cmd = "dotnet test tests/Aer.Journeys.Tests", depends-on = ["build-core"] }
+journey-mobile = { cmd = "flutter test --tags journey", cwd = "src/Aer.Mobile" }
+journey-all = { depends-on = ["journey-desktop", "journey-mobile"] }
+# The reconcile gate's structural half: asserts spec/journeys.md and the code-side Journeys registry
+# never drift (same set of journeys, byte-identical status lines). Unlike journey-desktop this is
+# meant to pass — #314 grows it into a required CI gate that also compares declared status against
+# the journey tests' actual pass/fail.
+journey-reconcile = { cmd = "dotnet test tests/Aer.Journeys.Tests --filter Category=Reconcile", depends-on = ["build-core"] }
 
 # M13 Phase 4 (#110), the milestone's completion gate: unlike smoke-claude/smoke-mixed-vendor
 # above, this needs no live vendor auth, so it runs unattended in default CI rather than a gated

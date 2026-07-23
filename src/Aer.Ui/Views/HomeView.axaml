@@ -48,8 +48,10 @@
           <AccessText Text="_Start from template" />
         </Button>
       </StackPanel>
-      <!-- The empty state says what to do next (Phase 5): first run, no history yet. -->
-      <Border Classes="card" IsVisible="{Binding Home.HasNoTasks}">
+      <!-- The empty state says what to do next (Phase 5): first run, no history yet.
+           x:Name is a testability seam for journey J8's desktop leg (#313) — the view-mounted
+           test asserts this card is shown with real actions on an empty first run. -->
+      <Border x:Name="EmptyStateCard" Classes="card" IsVisible="{Binding Home.HasNoTasks}">
         <StackPanel Spacing="{DynamicResource Space.2}">
           <TextBlock Classes="body-strong" Text="No tasks yet." />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
