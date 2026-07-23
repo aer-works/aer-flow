@@ -15,7 +15,8 @@ namespace Aer.Ui.Tests;
 public class TasksViewModelTests
 {
     private static TaskFleetItem NewItem(string path, bool isArchived = false) =>
-        new(path, FriendlyName: path, TypeLabel: "solo-run-template", StatusText: "Idle", PausedStepCount: 0, IsArchived: isArchived);
+        new(path, FriendlyName: path, TypeLabel: "solo-run-template", StatusText: "Idle", PausedStepCount: 0,
+            IsArchived: isArchived, Created: DateTimeOffset.UnixEpoch, Updated: DateTimeOffset.UnixEpoch);
 
     [Fact]
     public void A_freshly_constructed_TasksViewModel_has_no_selection()
