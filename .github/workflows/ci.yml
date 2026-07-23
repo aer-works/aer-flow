@@ -8,12 +8,13 @@ on:
 jobs:
   # Detects which areas a PR touched, so the heavy jobs below can skip when irrelevant (a .NET-only
   # PR shouldn't wait ~9 min for the Android APK, and a Dart-only PR shouldn't run the .NET legs).
-  # This job ALWAYS runs (never itself skipped), so `needs: changes` is always satisfied and the
-  # heavy jobs' own `if:` alone decides -- avoiding the "skipped dependency silently skips me" trap.
-  # On push to main the filter output is ignored: the heavy jobs' `if:` forces them to run there, so
-  # main is always validated in full. See the `ci` gate job at the bottom for how this stays
-  # compatible with required status checks.
+  # pull_request ONLY: paths-filter uses the API there (no checkout needed), but on push it shells
+  # out to `git` and dies without a checkout (#410). On push the heavy jobs ignore this job entirely
+  # -- their `!cancelled()` if: runs them unconditionally, so main is always validated in full. (A
+  # skipped `needs` dependency would normally skip its dependents; those jobs' if: uses a status
+  # function to opt out of that -- see their comments.)
   changes:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,7 +47,9 @@ jobs:
   test:
     needs: changes
     # PR: run only when .NET-relevant files changed. Push to main: always run (main stays green).
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.dotnet == 'true' }}
+    # !cancelled() makes this a status-check expression, so a skipped `changes` (PR-only, #410)
+    # does not skip this job on push.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.dotnet == 'true') }}
     strategy:
       fail-fast: false
       matrix:
@@ -185,7 +188,9 @@ jobs:
   mobile:
     needs: changes
     # PR: run only when mobile files changed. Push to main: always run (main stays green).
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.mobile == 'true' }}
+    # !cancelled() makes this a status-check expression, so a skipped `changes` (PR-only, #410)
+    # does not skip this job on push.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.mobile == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
