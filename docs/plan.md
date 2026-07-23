@@ -73,11 +73,11 @@ real value; every permission surface is decorative until this lands)* · **#321*
 **#330** broadcast desktop-started state · **#348** phone-started work never opens · **#347** a restart
 strands paired phones · **#349** "Forget pairing" leaves the token valid.
 
-*Independent of every IA decision; none of it waits on the rethink. #341 — sends accepted then
-silently dropped, which had blocked every merge — is **fixed**, so this phase no longer gates on it;
-re-confirm #335's `ConcurrencyGuard` assumption against that fix before scoping.* Remote is broken in
-**both** directions (#330 desktop→phone, #348 phone's own work), and pairing itself is unreliable
-(#347) and un-revocable (#349) — walked live 2026-07-22.
+*Independent of every IA decision; none of it waits on the rethink.* Before scoping **#335**,
+re-confirm its `ConcurrencyGuard` assumption against **#341** (a send accepted, then the decision
+silently dropped) — the two interact on the core path. Remote is broken in **both** directions (#330
+desktop→phone, #348 phone's own work), and pairing itself is unreliable (#347) and un-revocable
+(#349) — walked live 2026-07-22.
 
 ### Phase 2 — contract gaps the UI can't work around
 **#322** timestamps · **#324** empty 400 body · **#319** inbox scoping.
