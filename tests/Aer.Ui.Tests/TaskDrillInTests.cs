@@ -241,7 +241,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 
@@ -261,7 +261,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            Directory.Delete(taskDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
 

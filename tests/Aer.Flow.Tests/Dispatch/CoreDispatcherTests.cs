@@ -234,7 +234,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
             File.Delete(logPath);
         }
     }
@@ -269,7 +269,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
             File.Delete(logPath);
         }
     }
@@ -293,7 +293,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            Directory.Delete(artifactsRoot, recursive: true);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
             File.Delete(logPath);
         }
     }

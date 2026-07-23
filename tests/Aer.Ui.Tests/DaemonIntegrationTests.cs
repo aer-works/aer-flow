@@ -81,14 +81,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         if (_tempTaskDirectory != null && Directory.Exists(_tempTaskDirectory))
         {
-            try
-            {
-                Directory.Delete(_tempTaskDirectory, true);
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
+            DirectoryCleanup.DeleteRecursively(_tempTaskDirectory);
         }
     }
 
