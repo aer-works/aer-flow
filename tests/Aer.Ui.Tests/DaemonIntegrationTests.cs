@@ -1125,6 +1125,37 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetFleet_CarriesCreatedAndUpdatedTimestampsAndIsOrderedByRecency()
+    {
+        // Two sessions so the returned list has at least two entries to check ordering across.
+        await StartASessionAsync();
+        await StartASessionAsync();
+
+        var items = await (await _client.GetAsync($"{_baseUrl}/api/tasks", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<List<TaskFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(items);
+        Assert.True(items!.Count >= 2, $"expected at least two fleet entries, got {items.Count}");
+
+        // #322: every entry carries real UTC timestamps, and nothing was updated before it existed.
+        foreach (var item in items)
+        {
+            Assert.NotEqual(default, item.Created);
+            Assert.NotEqual(default, item.Updated);
+            Assert.True(item.Updated >= item.Created,
+                $"{item.FriendlyName}: Updated {item.Updated:o} precedes Created {item.Created:o}");
+        }
+
+        // #322: the list is ordered most-recently-updated first. Asserting the monotonic invariant
+        // (each entry's Updated >= the next's) rather than "the last-started session is index 0"
+        // avoids a wall-clock race when two sessions are created within one timestamp tick.
+        for (var i = 0; i + 1 < items.Count; i++)
+        {
+            Assert.True(items[i].Updated >= items[i + 1].Updated,
+                $"fleet not ordered by recency at index {i}: {items[i].Updated:o} < {items[i + 1].Updated:o}");
+        }
+    }
+
+    [Fact]
     public async Task ArchiveUnarchiveAndDelete_RoundTripThroughTheFleetAndLifecycleEndpoints()
     {
         var taskName = "fleet-lifecycle-" + Guid.NewGuid().ToString("N");

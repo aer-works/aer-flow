@@ -145,6 +145,18 @@ public class TaskProjectionLoaderTests
             Assert.Equal(0, fleetItem.PausedStepCount);
             Assert.False(fleetItem.IsArchived);
 
+            // #322: a DAG task carries no serialized timestamp, so created/updated come from its own
+            // data files -- snapshot.json (written once at creation) and flow.jsonl (append-only).
+            Assert.NotEqual(default, fleetItem.Created);
+            Assert.NotEqual(default, fleetItem.Updated);
+            Assert.True(fleetItem.Updated >= fleetItem.Created);
+            Assert.Equal(
+                new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(taskDirectory, "snapshot.json"))),
+                fleetItem.Created);
+            Assert.Equal(
+                new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(taskDirectory, "flow.jsonl"))),
+                fleetItem.Updated);
+
             await TaskLifecycle.ArchiveAsync(taskDirectory, TestContext.Current.CancellationToken);
             var archivedItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
             Assert.True(archivedItem.IsArchived);
@@ -169,6 +181,14 @@ public class TaskProjectionLoaderTests
             Assert.Equal("Not yet run", fleetItem.StatusText);
             Assert.Equal(0, fleetItem.PausedStepCount);
             Assert.False(fleetItem.IsArchived);
+
+            // #322: a session (even one that never ran, so has no snapshot) takes its created/updated
+            // straight from the durable in-data source, .aer/session.json -- not from filesystem times.
+            var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(
+                Path.Combine(taskDirectory, ".aer", "session.json"), TestContext.Current.CancellationToken);
+            Assert.NotNull(metadata);
+            Assert.Equal(metadata.CreatedAt, fleetItem.Created);
+            Assert.Equal(metadata.UpdatedAt, fleetItem.Updated);
         }
         finally
         {
