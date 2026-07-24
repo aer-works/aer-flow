@@ -20,7 +20,8 @@
 > decision records [0012](../../decisions/0012-what-aer-flow-is.md)–[0018](../../decisions/0018-attention-is-the-primary-signal.md),
 > and this file is kept because the transition is itself part of the record.
 >
-> Rated ⛔ *stale for target* in [`documentation-trust-index.md`](../../documentation-trust-index.md).
+> It is in [`docs/archive/`](../README.md), which is the whole trust signal — the live tree is
+> current, this is not.
 
 This document defines the behavioral contract of AER Flow UI.
 

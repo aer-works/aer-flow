@@ -9,8 +9,10 @@ Built in .NET, it reads structured workflow definitions, dispatches them to Work
 **Start here:** [Decision records](docs/decisions/) — why the product is shaped the way it is.
 [0012](docs/decisions/0012-what-aer-flow-is.md) says what AER Flow *is*; 0013–0018 follow from it.
 
-- [Which docs can I trust?](docs/documentation-trust-index.md) - Every document rated against the
-  current design. Read this before trusting anything older than M25.
+> **If a document is in the live tree, it is current.** Anything superseded lives in
+> [`docs/archive/`](docs/archive/) and is never an authority for current work. There is no
+> "trust this one, but not that one" — a document that cannot be trusted gets fixed or archived.
+
 - [The plan](docs/plan.md) - The living, gated plan: the bar, the decisions in force, and the work by phase.
 - [Milestone history & decisions of record](docs/milestone-history.md) - What each completed milestone shipped and the durable decisions it left behind.
 - [Agent Instructions](CLAUDE.md) - Architectural rules and development workflows for AI agents.

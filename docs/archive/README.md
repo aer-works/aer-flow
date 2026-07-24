@@ -10,7 +10,7 @@ If you are looking for what is true today:
 |---|---|
 | What the product **is** | [`docs/decisions/0012`](../decisions/0012-what-aer-flow-is.md) and the records after it |
 | What each surface **does** | The decision records — the UI spec that used to answer this is archived here, and its replacement is written when the rebuilt UI lands (`#367`) |
-| Which docs to **trust** | [`docs/documentation-trust-index.md`](../documentation-trust-index.md) |
+| Which docs to **trust** | Anything in the live tree. That is the whole rule — if a document cannot be trusted it gets fixed or moved here, never annotated in place |
 | What the **engine** does | [`spec/aer-flow-behavioral-spec-v1.0.md`](../../spec/aer-flow-behavioral-spec-v1.0.md) — *not* archived; the engine was never rebuilt |
 
 ## What is here, and what replaced it
