@@ -26,9 +26,12 @@ No existing tool does this well under the three constraints that actually apply 
 > toll you pay first ([0014](../docs/decisions/0014-shapes-are-a-list-not-a-canvas.md)). Read §2 as
 > what the engine guarantees, and 0012 as what the person meets.
 >
-> The user-facing noun for that unit is **room**
-> ([0013](../docs/decisions/0013-room-is-the-user-facing-noun.md)); `session` now means only the
-> vendor CLI's resumable session.
+> The user-facing noun for that unit **will be room**
+> ([0013](../docs/decisions/0013-room-is-the-user-facing-noun.md)), with `session` narrowing to the
+> vendor CLI's resumable thread. **That rename has not shipped** — the product and this spec still
+> say *task* throughout, and they change together in `#443`. A document that adopted the new word
+> ahead of the code would just be a translation map pointed the other way, which
+> [0002](../docs/decisions/0002-one-vocabulary.md) exists to forbid.
 
 Concretely, that means:
 
