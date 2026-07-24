@@ -426,8 +426,14 @@ public sealed partial class TaskSession
 
                         // Consumer 1 (#336): every frame, whichever directory it is for. The switcher's
                         // list shows every session at once, so a push for a session this client is not
-                        // currently *viewing* is exactly the push its row needs.
-                        RaiseFleetProjectionReceived(frame.DirectoryPath, projection);
+                        // currently *viewing* is exactly the push its row needs. A frame with no
+                        // directory at all cannot be attributed to a row, so it is not offered to the
+                        // list — the detail pane's filter below handles that case on its own terms
+                        // (a null seeds nothing and matches only a client that has opened nothing).
+                        if (frame.DirectoryPath is { } pushedDirectoryPath)
+                        {
+                            RaiseFleetProjectionReceived(pushedDirectoryPath, projection);
+                        }
 
                         // Consumer 2 (unchanged, #262): the detail pane still takes only pushes for the
                         // directory this client is actually viewing.

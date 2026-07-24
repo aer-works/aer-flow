@@ -535,9 +535,16 @@ public partial class MainWindow : Window
     /// Opens the record a switcher row points at (#336). Routing between the chat and workflow panes
     /// is <see cref="OpenAsync"/>'s existing job — it already decides by whether the directory has
     /// session metadata, the same structural fact <see cref="TaskFleetItem.IsSession"/> carries, so
-    /// this deliberately does not re-derive it here. A failure leaves the selection where the user put
-    /// it and surfaces on the row rather than silently reverting, which would look like a dead click.
+    /// this deliberately does not re-derive it here.
     /// </summary>
+    /// <remarks>
+    /// Fire-and-forget, matching every other event-handler entry point in this file. An unloadable
+    /// directory is not an exception — <see cref="LoadAsync"/> renders <c>outcome.ErrorMessage</c>
+    /// into the detail pane's status line, and the selection stays where the user put it. Anything
+    /// that does throw here faults this task unobserved, which is the pre-existing shape of every
+    /// <c>_ = SomethingAsync()</c> in this file rather than something new; a general answer for
+    /// surfacing background-work failures in the UI belongs with #462, not bolted on here.
+    /// </remarks>
     private async Task OpenFromSwitcherAsync(string taskDirectoryPath)
     {
         _isOpeningFromSwitcher = true;
