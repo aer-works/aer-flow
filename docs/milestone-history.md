@@ -1,13 +1,20 @@
-# AER Flow — Milestone History & Decisions of Record
+# AER Flow — Milestone history
 
-This file is the append-only record of the project's completed milestones: a one-paragraph
-**summary** of what each one shipped, and the durable **decisions of record** it left behind —
-the constraints and precedents later work still leans on. Newest milestone first. Decisions are
-extracted verbatim from each milestone's phase work as it completed and are never rewritten to
-change meaning — superseded instead, the same rule the numbered ADRs in
-[`docs/decisions/`](decisions/) follow. Each milestone's phase checklist lives in its closed
-GitHub milestone; the full phase plans live in the linked issues; and the **current** milestone's
-living, gated plan is [`docs/plan.md`](plan.md), not this file.
+**This is provenance, not authority.** It is the append-only record of completed milestones: a
+one-paragraph **summary** of what each shipped, and the reasoning it left behind — read when
+something in the code or a runbook makes you ask *"why is this here?"*. Newest first.
+
+> **It is never the justification for current work.** A rule you must follow today is a numbered
+> record in [`docs/decisions/`](decisions/); what is being built now is [`docs/plan.md`](plan.md).
+> If something in this file is still binding, promote it to a numbered record and cite that instead.
+>
+> *(Renamed from `decisions-of-record.md` — the old name read as a rival to `docs/decisions/`, and
+> nothing said which of the two you were supposed to consult. See
+> [`decisions/README.md`](decisions/README.md) for the full split.)*
+
+Entries are extracted verbatim from each milestone's phase work as it completed and are never
+rewritten to change meaning. Each milestone's phase checklist lives in its closed GitHub milestone;
+the full phase plans live in the linked issues.
 
 ## Milestone summaries
 
@@ -23,11 +30,11 @@ What each completed milestone shipped, newest first.
 
 **M20: Daemonization & Remote Control** — extracted the scheduling pump out of the UI process into a lightweight background runner (daemon) that runs continuously. Exposed task read models, mutation interfaces, and WebSocket real-time updates over a loopback and remote-accessible API. Added single-instance mutex enforcement, constant-time authentication token validation, and process lifecycle supervision. Hardened tool invocation security by replacing command shell spawners (`cmd.exe /c` / `sh -c`) with shell-less direct binary execution and C#-side environment variable expansion. Designed and implemented the client-pairing gateway protocol allowing secure LAN/Wi-Fi remote clients to connect and authenticate against the daemon.
 
-**M19: Product UX** — the product-UX overhaul the owner scoped at M18's completion: a navigation shell (Home's decision inbox + task cards, Task, Author) built behind a new Avalonia-free `Aer.Ui.Core` seam that completes M15's deferred MVVM migration; the Task view rebuilt needs-you-first with plain-language drill-in tabs and the precise engine record one disclosure away; guided authoring that writes durable workflow/binding files with zero hand-edited config, vendor CLI knowledge owned by its adapters/workers; a token-driven visual design pass (property-level restyling, status as border+tint, one accent per surface, a generated app icon) judged against an owner-adopted reference set (Linear, GitLab, Dagster, Stately.ai, GitButler/Neovide, n8n, Raycast) under a one-product-not-a-collage directive; and a headless completion gate driving the entire non-expert path — author, run, review, send back, finish — through the real UI controls over stub CLIs, in default CI on all three OSes. `docs/walkthroughs/first-real-workflow.md`'s UI section rewritten to match.
+**M19: Product UX** — the product-UX overhaul the owner scoped at M18's completion: a navigation shell (Home's decision inbox + task cards, Task, Author) built behind a new Avalonia-free `Aer.Ui.Core` seam that completes M15's deferred MVVM migration; the Task view rebuilt needs-you-first with plain-language drill-in tabs and the precise engine record one disclosure away; guided authoring that writes durable workflow/binding files with zero hand-edited config, vendor CLI knowledge owned by its adapters/workers; a token-driven visual design pass (property-level restyling, status as border+tint, one accent per surface, a generated app icon) judged against an owner-adopted reference set (Linear, GitLab, Dagster, Stately.ai, GitButler/Neovide, n8n, Raycast) under a one-product-not-a-collage directive; and a headless completion gate driving the entire non-expert path — author, run, review, send back, finish — through the real UI controls over stub CLIs, in default CI on all three OSes. `docs/archive/walkthroughs/first-real-workflow.md`'s UI section rewritten to match.
 
 **M18: Conversation View** — UI spec §10's conversation view over M17's durable transcript: the tolerant `Aer.Ui` read seam honoring §10.1's reader contract (discovery by `transcript.jsonl` presence alone, producing schema worker-owned per Flow spec §18.2), conversation rows plus per-execution rendering in the main window (file order, prompt on demand, malformed lines marked in place, selection re-rendered on every load so refresh follows a live exchange), gated by `ConversationRoundTripTests`: the real dialogue worker run to terminal over stub CLIs and the view asserted over its artifacts — including a failed exchange's forensic prefix. No live gate: nothing in the milestone touches a vendor CLI.
 
-**M17: Dialogue Worker** — the first Case 2 encapsulated multi-model worker (Flow spec §18.2): `Aer.Workers.Dialogue`, a single executable running a bounded, multi-turn Claude ↔ Gemini (`agy`) exchange — each model's turn threaded into the other's next prompt — writing a durable `transcript.jsonl` plus its declared output, dispatched by Flow like any other worker through a third adapter registry entry (`"dialogue"`), runnable from CLI and UI, with the stub-vendor round trip proven in default CI on all three OSes and the live exchange gated by `pixi run smoke-dialogue` (permanently a human action item, not yet recorded). Opened with the real-use walkthrough the project had been missing (`docs/walkthroughs/first-real-workflow.md`).
+**M17: Dialogue Worker** — the first Case 2 encapsulated multi-model worker (Flow spec §18.2): `Aer.Workers.Dialogue`, a single executable running a bounded, multi-turn Claude ↔ Gemini (`agy`) exchange — each model's turn threaded into the other's next prompt — writing a durable `transcript.jsonl` plus its declared output, dispatched by Flow like any other worker through a third adapter registry entry (`"dialogue"`), runnable from CLI and UI, with the stub-vendor round trip proven in default CI on all three OSes and the live exchange gated by `pixi run smoke-dialogue` (permanently a human action item, not yet recorded). Opened with the real-use walkthrough the project had been missing (`docs/archive/walkthroughs/first-real-workflow.md`).
 
 **M16: UI Authoring** — the last milestone of the original UI track: template and worker-bindings authoring in `Aer.Ui` — create/edit steps, dependencies, retry policies, metadata, `PausePoint`s/`SupersedeTargets`, and bindings entries, with live structural validation through Flow's own `WorkflowDefinitionValidator`, the stack's first template and bindings writers held to round-trip fidelity through the engine's own parsers/validators, and full authoring round trips (author from blank → save → run to terminal; edit a bound task's template → the diff view shows the divergence while the bound rendering stays byte-identical) proven in default CI on all three OSes.
 
@@ -75,7 +82,7 @@ The durable decisions each milestone left behind, newest first — each entry ci
 - **The reference set is the owner's, adopted verbatim (2026-07-17)** — Linear (inbox), GitLab
   (to-dos), Dagster (Launchpad), Stately.ai (visual↔config sync), GitButler and Neovim/Neovide
   (polished skin over presentation-agnostic core), n8n (DAG rendering), Raycast (chrome/tokens/
-  keyboard gold standard), each mapped to the phase it informs in `docs/ux/design-language.md`.
+  keyboard gold standard), each mapped to the phase it informs in `docs/archive/ux/design-language.md`.
   Changing the set is an owner decision, not an implementation one; Phase 5's human gate is
   judged against it (Phase 1).
 - **One product, not a collage (owner directive, 2026-07-17)** — the references calibrate the
@@ -95,7 +102,7 @@ The durable decisions each milestone left behind, newest first — each entry ci
   mandatory feedback artifact included). Spec terms survive in tooltips/disclosure for §12
   traceability (Phase 1).
 - **The non-expert audit generated zero engine requirements** — all twelve rows
-  (`docs/ux/non-expert-audit.md`) are organization, language, or authoring ergonomics,
+  (`docs/archive/ux/non-expert-audit.md`) are organization, language, or authoring ergonomics,
   confirming the plan's first shaping fact. Two audit findings bind later phases beyond the
   plan's text: Phase 4 owes a **vendor-readiness surface** (read-only presence check, "Claude:
   available / Gemini: not found", never credential handling), and Phase 3's bindings pre-fill
@@ -249,7 +256,7 @@ The durable decisions each milestone left behind, newest first — each entry ci
 ## M17: Dialogue Worker
 
 - **The walkthrough documents verified behavior, not intent** — every command in
-  `docs/walkthroughs/first-real-workflow.md` was executed end to end over stub vendor CLIs
+  `docs/archive/walkthroughs/first-real-workflow.md` was executed end to end over stub vendor CLIs
   (run → pause → supply → supersede cascade → resume → terminal, exit 0) before being written
   down. Two facts the dry run corrected against the code: the default task directory is
   `.aer/<workflow-file-stem>` (the *file* stem, not the template id), and

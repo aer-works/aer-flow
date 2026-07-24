@@ -110,7 +110,7 @@ smoke-session = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQual
 # smoke-* above) so `pixi run test` stays all-green: journey tests are red-specs — a promise the
 # product does not keep yet fails its journey test on purpose, so journey-desktop / journey-mobile
 # exit non-zero until that capability lands. That red IS the honest status; it is not a broken
-# build. Filter to one journey with `--filter Journey=J6` (desktop). See docs/runbooks/journeys.md.
+# build. Filter to one journey with `--filter Journey=J6` (desktop). See docs/runbooks/journey-tests.md.
 journey-desktop = { cmd = "dotnet test tests/Aer.Journeys.Tests", depends-on = ["build-core"] }
 journey-mobile = { cmd = "flutter test --tags journey", cwd = "src/Aer.Mobile" }
 journey-all = { depends-on = ["journey-desktop", "journey-mobile"] }

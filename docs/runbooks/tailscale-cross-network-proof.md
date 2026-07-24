@@ -31,7 +31,7 @@ Phase 3 added QR scanning), with the desktop's **Tailscale** IP, not its LAN IP.
   connectivity with no shared physical network, not just a second Wi-Fi on the same router.
 - The usual repo prerequisites to run the desktop side (`.NET 10` SDK, submodule initialized — see
   the root `README.md`), plus `Aer.Mobile` already built and installed on the phone per
-  `docs/runbooks/` and the M21 mobile-client setup (`docs/decisions-of-record.md`, M21).
+  `docs/runbooks/` and the M21 mobile-client setup (`docs/milestone-history.md`, M21).
 
 ## Running it
 

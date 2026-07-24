@@ -79,7 +79,7 @@ public partial class MainWindow : Window
 
     // ── The re-home facade (M19 Phase 2, #187) ─────────────────────────────────────────────────
     // Every pre-shell control, reachable under its original name: the shell moved the controls
-    // into Home/Task/Author views (their new homes per docs/ux/information-architecture.md), and
+    // into Home/Task/Author views (their new homes per docs/archive/ux/information-architecture.md), and
     // these internal properties are how this window's rendering code and the headless round trips
     // keep addressing them — one migration per surface, no behavioral change. Phases 3–4 retire
     // entries as they rebuild each surface properly.

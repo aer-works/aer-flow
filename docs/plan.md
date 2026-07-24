@@ -37,7 +37,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 
 | # | Decision |
 |---|---|
-| [0001](decisions/0001-two-nouns-workflow-and-session.md) | Two nouns: **workflow** and **session** — "task" is deleted from the product. **A session is a *room*** (amended): a multi-participant conversation that spawns child sessions into a tree. |
+| [0001](decisions/0001-two-nouns-workflow-and-session.md) | Two nouns: **workflow** and **session** — "task" is deleted from the product. **A session is a *room*** (amended): a multi-participant conversation that spawns child sessions into a tree. The user-facing noun is now **room** (amended by 0013); "session" narrows to the vendor's resumable thread. |
 | [0002](decisions/0002-one-vocabulary.md) | One vocabulary — retire the translation map, enforce by lint (#315). |
 | [0003](decisions/0003-templates-collapse-to-three-shapes.md) | Templates collapse to **three shapes with presets**. |
 | [0004](decisions/0004-permission-scopes.md) | Permissions scope by **project ∩ session ∩ step**, failing closed. |
@@ -48,6 +48,13 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0009](decisions/0009-session-lifecycle-and-retention.md) | **Count the top of the tree, not the tree** — children ephemeral by default, worker spawning bounded by a depth/count ceiling that doubles as J6's safety rail. |
 | [0010](decisions/0010-skills-and-advisor.md) | **Worker capabilities are skills** — app-level canonical, realized per-vendor by the adapter (native where possible, prompt-injection floor); native skills pass-through; participant behaviour is a role/skill binding. The advisor is the first one (M26). |
 | [0011](decisions/0011-token-based-context-management.md) | **Context management is token-based** — track vendor-reported token usage and compact/handoff on a configurable, model-aware token threshold; the turn ceiling (`SafetyCeiling`) is a backstop only (M26). |
+| [0012](decisions/0012-what-aer-flow-is.md) | **What AER Flow is** — a drop-in Claude Code replacement that puts more than one model in the room and lets you leave without losing it; multi-model is an escalation, never a tax on the simple case. Retires capability-shaped milestones for anything user-facing (#465–#469 were all missing specs, not wrong code). |
+| [0013](decisions/0013-room-is-the-user-facing-noun.md) | **Room is the user-facing noun**; "session" narrows to the vendor CLI's resumable thread — amends 0001, renames without remodelling. One room, one directory (may hold several repos); disjoint folders deferred (#443). |
+| [0014](decisions/0014-shapes-are-a-list-not-a-canvas.md) | **A shape is an ordered list rendered as a graph**, not a freeform canvas — keyboard- and phone-native, diffs like source; parallel fan-out is the accepted cost. Likely retires the canvas polish in #266. |
+| [0015](decisions/0015-three-kinds-of-needs-you.md) | **A pause asks for one of three things — permission / decision / approval** (*proposed*): decision→`NeedsInput`, approval→`ReadyForReview`, permission genuinely new and gated on #445's mechanism plus an unrun per-vendor probe. |
+| [0016](decisions/0016-memory-is-room-owned.md) | **Memory belongs to the room, not the worker** — shared across vendors, a visible and versioned working document; workers propose additions, the product never infers them (#442). |
+| [0017](decisions/0017-vendor-model-effort-are-three-choices.md) | **Vendor, model and effort are three separate choices** on the worker chip — vendor is the tool (`claude`/`agy`), model is chosen within its subscription, effort is per-run. |
+| [0018](decisions/0018-attention-is-the-primary-signal.md) | **Attention orders the list; notifications never decide** — rooms sort by state (needs-you → working → idle → quiet) then recency, surviving a hundred rooms; a notification informs and links into the room, never carries the verdict (#282). |
 
 ## The completion bar: journeys
 
@@ -62,6 +69,15 @@ every gate it had with no working client — and very nearly did.*
 Ordered by dependency, not visibility. Per-issue state lives on the
 [milestone board](https://github.com/aer-works/aer-flow/milestone/18); this is the structure and the
 reasoning, which change rarely.
+
+**Scope of the re-architecture: the UI layers are rebuilt, the rest stays.** The 2026-07-24 design
+pass (decision [0012](decisions/0012-what-aer-flow-is.md)) confirmed what the five manual-run defects
+already implied — the engine, adapters, daemon and protocol were never what failed; every defect was
+a missing specification surfacing at a UI seam. So the re-architecture **rips out and rebuilds the UI
+layers** (`Aer.Ui`, `Aer.Ui.Core`, `Aer.Mobile`) against the decisions below, and leaves `Aer.Flow`,
+`Aer.Adapters`, `Aer.Daemon` and the wire protocol in place. This is a delivery decision, not a
+product one, which is why it lives here rather than in a numbered record; it bounds what the phases
+below may touch.
 
 ### Phase 0 — make verification possible *(landed)*
 The infrastructure everything after it is unverifiable without: **#328** UI driving harness · **#317**

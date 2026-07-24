@@ -218,7 +218,7 @@ jobs:
 
       # Excludes the `journey` tag: journey tests (#313) are red-specs run on demand via
       # `pixi run journey-mobile`, not in default CI (the .NET half is excluded by living outside
-      # AerFlow.slnx). See dart_test.yaml and docs/runbooks/journeys.md.
+      # AerFlow.slnx). See dart_test.yaml and docs/runbooks/journey-tests.md.
       - name: Test
         run: flutter test --exclude-tags journey
         working-directory: src/Aer.Mobile
