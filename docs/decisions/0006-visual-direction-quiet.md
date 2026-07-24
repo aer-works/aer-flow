@@ -58,8 +58,22 @@ uses the brand accent; amber is reserved for "needs input".
 
 **Obliges us to** ship one variable font as an asset on both platforms. Avalonia defaults to Segoe
 UI and Flutter to Roboto; different faces at different metrics cannot read as one brand, and a
-font-family *name* resolves differently per device. The choice of face is still open — the shipping
-mechanism is not.
+font-family *name* resolves differently per device.
+
+**The face was left open here and has since been chosen** (2026-07-24, #453): **Source Sans 3** for
+prose, **JetBrains Mono** for code, both shipped as in-repo assets on each toolkit. Source Sans won
+on reading comfort over a long sitting — the fatigue this direction exists to avoid. The mono was
+then chosen *against* it rather than to match it: Source's own matched mono is drawn from the same
+skeleton, so code blended into prose, and separating code from prose is the thing the pairing has to
+do. Selected from rendered specimens in these components, not from description.
+
+That resolution also produced a rule this decision did not anticipate. **Code separates from prose by
+the surface it sits on, never by type size** — scaling code up overflows a phone's width and forces
+horizontal scrolling, which is worse than the problem it solves. The step is directional rather than
+a fixed elevation: code steps *away* from the page ground, down in light and up in dark. Going darker
+in dark mode was the first instinct and was rejected on this decision's own reasoning above, which
+faulted Signal partly because a near-black dark mode "can feel harsh on OLED at night" — a near-black
+code panel imports exactly that onto the surface stared at longest.
 
 **Does not settle** motion, which belongs with the switcher build rather than a palette decision.
 
