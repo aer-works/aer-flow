@@ -45,7 +45,7 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-two-nouns-workflow-and-session.md) | Two nouns: workflow and session (the session is a room) | accepted |
+| [0001](0001-two-nouns-workflow-and-session.md) | Two nouns: workflow and session (the session is a room; user-facing noun now *room*, amended by 0013) | accepted |
 | [0002](0002-one-vocabulary.md) | One vocabulary, no translation map | accepted |
 | [0003](0003-templates-collapse-to-three-shapes.md) | Templates collapse to three shapes | accepted |
 | [0004](0004-permission-scopes.md) | Permissions scope by project, session and step | accepted |
@@ -56,3 +56,10 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0009](0009-session-lifecycle-and-retention.md) | Session lifecycle & retention: a tree you count the top of | accepted |
 | [0010](0010-skills-and-advisor.md) | Worker capabilities are skills (app-level canonical, per-vendor realization); the advisor is the first one | accepted |
 | [0011](0011-token-based-context-management.md) | Context management is token-based, not turn-based | accepted |
+| [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
+| [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
+| [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph | accepted |
+| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval | proposed |
+| [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
+| [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices | accepted |
+| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide | accepted |

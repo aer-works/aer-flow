@@ -72,9 +72,11 @@ on. Any flow that requires copying an identifier out of one surface into another
 
 ## 4. The screen is organized by what needs the human next
 
-CyboFlow's structural insight, and the reason the decision inbox is Home's centerpiece: paused
-steps *are* the product's unit of attention. Whatever else a view shows, work that is waiting on
-the human outranks work that is running, which outranks work that is finished. Review surfaces
+The reason the decision inbox is Home's centerpiece: paused steps *are* the product's unit of
+attention. Agents work unattended most of the time, so the moments they need a human are both
+rare and blocking — everything stops until one is answered. That asymmetry, not any visual
+preference, is what orders the screen: work that is waiting on the human outranks work that is
+running, which outranks work that is finished. Review surfaces
 sit one click from the decision they inform — the inbox item leads with the artifact to review,
 not with navigation.
 

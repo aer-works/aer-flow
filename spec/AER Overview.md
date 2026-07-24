@@ -10,7 +10,7 @@ If a future design decision in any component spec seems technically elegant but 
 
 Local development increasingly involves more than one AI coding agent — today, Claude Code and Gemini/Antigravity; tomorrow, others. A common and effective pattern is to have one model produce a plan, a second model critique it, and a third (or the first again) implement and review the result. Right now, that pattern is manual: copy a plan from one tool, paste it into another, copy the critique back, decide what to do next, by hand, every time.
 
-No existing tool does this well on Windows, for a developer on consumer subscriptions (Claude Pro, Google AI Pro) rather than metered API access, across more than one AI vendor's tooling. Tools like Cyboflow exist for similar problems but assume a Unix shell-glue environment and a single-vendor agent loop. The goal was never to port Cyboflow — it was to solve the actual problem that prompted looking at it in the first place.
+No existing tool does this well under the three constraints that actually apply here, and they compound rather than merely coexist. **Windows**, where the shell-glue that orchestration tooling usually assumes is not available. **Consumer subscriptions** (Claude Pro, Google AI Pro) rather than metered API access — which rules out anything that expects an API key, and forces the design to drive whatever CLI is already authenticated on the host. And **more than one vendor at once**, which rules out the single-vendor agent loop that most tooling is built around. Any one of these is survivable alone; together they leave nothing off the shelf.
 
 ## 2. What AER Actually Is
 

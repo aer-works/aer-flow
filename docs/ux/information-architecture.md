@@ -29,7 +29,7 @@ version-increment decision of record).
 
 ## Home
 
-The screen that answers "what needs me?" in one glance — the CyboFlow-inspired centerpiece.
+The screen that answers "what needs me?" in one glance — the centerpiece.
 
 * **Decision inbox** (top): every step across recent tasks waiting for the human's review, one
   item per paused step. An item leads with the thing to review — the artifact preview
