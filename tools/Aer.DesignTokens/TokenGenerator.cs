@@ -40,12 +40,51 @@ public static class TokenGenerator
         {
             [AvaloniaOutputPath] = GenerateAvalonia(root),
             [FlutterOutputPath] = GenerateFlutter(root),
+            [UiCoreOutputPath] = GenerateUiCore(root),
         };
     }
 
     public const string TokensPath = "design/tokens.json";
     public const string AvaloniaOutputPath = "src/Aer.Ui/Theme/GeneratedTokens.axaml";
     public const string FlutterOutputPath = "src/Aer.Mobile/lib/theme/tokens.dart";
+
+    /// <summary>
+    /// The five states as a C# type (#458). Flutter has had a generated <c>AerStatus</c> enum since
+    /// #345 while the desktop side had nothing — its converters still keyed on the pre-#334
+    /// <c>StepStatus</c>/<c>TaskCardStatus</c> vocabularies, which is how <c>readyForReview</c> ended
+    /// up with no mark at all and <c>needsInput</c> ended up drawing the same dot as idle. Generating
+    /// it means the two toolkits cannot disagree about what the states even are.
+    /// </summary>
+    public const string UiCoreOutputPath = "src/Aer.Ui.Core/GeneratedStatus.cs";
+
+    /// <summary>
+    /// Where each toolkit draws the status marks. These files are hand-written, not generated —
+    /// vector geometry is not something this generator invents — which is exactly why the drift gate
+    /// has to check them: a status can name a mark that neither file draws, and the only symptom
+    /// would be a blank space where a status marker belongs.
+    /// </summary>
+    public const string AvaloniaIconsPath = "src/Aer.Ui/Theme/Icons.axaml";
+
+    /// <inheritdoc cref="AvaloniaIconsPath"/>
+    public const string FlutterStatusMarkPath = "src/Aer.Mobile/lib/theme/status_mark.dart";
+
+    /// <summary>
+    /// Every status's mark, as (status name, shape name, Avalonia geometry key). Exposed so the gate
+    /// checks the same values the generator emitted rather than re-deriving them — a gate with its
+    /// own idea of the mapping drifts from the generator and then passes while the UI is wrong.
+    /// </summary>
+    public static IEnumerable<(string Status, string Mark, string GeometryKey)> StatusMarks(string tokensJson)
+    {
+        using var document = JsonDocument.Parse(tokensJson, new JsonDocumentOptions
+        {
+            CommentHandling = JsonCommentHandling.Skip,
+        });
+
+        // Materialized before the document is disposed — JsonElement is a view over it.
+        return Entries(document.RootElement.GetProperty("status"))
+            .Select(entry => (entry.Name, MarkName(entry.Value), MarkGeometryKey(entry.Value)))
+            .ToList();
+    }
 
     /// <summary>The regeneration command, quoted in both the banner and the CI gate's failure text.</summary>
     public const string RegenerateCommand = "pixi run tokens";
@@ -156,6 +195,17 @@ public static class TokenGenerator
 
     private static string Pascal(string camel) => char.ToUpperInvariant(camel[0]) + camel[1..];
 
+    /// <summary>The mark's shape name, as authored in the token file (#458) — <c>ring</c>, <c>check</c>, …</summary>
+    private static string MarkName(JsonElement statusToken) => statusToken.GetProperty("mark").GetString()!;
+
+    /// <summary>
+    /// The Avalonia resource key of the <c>StreamGeometry</c> that draws a status's mark. The naming
+    /// convention (<c>Icon.</c> + the Pascal-cased shape name) is what lets the drift gate check that
+    /// <c>Icons.axaml</c> actually defines a shape for every status, rather than discovering a missing
+    /// mark as a blank space in the running UI.
+    /// </summary>
+    private static string MarkGeometryKey(JsonElement statusToken) => "Icon." + Pascal(MarkName(statusToken));
+
     /// <summary>
     /// <c>#RRGGBB</c> as Dart's <c>0xFFRRGGBB</c>. Flutter has no hex-string colour literal, so the
     /// alpha channel has to be made explicit here rather than at every call site.
@@ -215,11 +265,13 @@ public static class TokenGenerator
             invariant.AppendLine($"""    <sys:Double x:Key="FontSize{Pascal(name)}">{Number(role.GetProperty("size").GetDouble())}</sys:Double>""");
         }
 
-        // Glyph and label travel with the colour deliberately: 0006 requires every status to read
+        // Mark and label travel with the colour deliberately: 0006 requires every status to read
         // without hue, so a surface that can reach the colour must be able to reach both of these.
+        // The mark is emitted as the *resource key* of a geometry rather than as a character —
+        // see MarkGeometryKey and the token file's own note on why a codepoint cannot work.
         foreach (var (name, token) in Entries(root.GetProperty("status")))
         {
-            invariant.AppendLine($"""    <sys:String x:Key="Status{Pascal(name)}Glyph">{token.GetProperty("glyph").GetString()}</sys:String>""");
+            invariant.AppendLine($"""    <sys:String x:Key="Status{Pascal(name)}Mark">{MarkGeometryKey(token)}</sys:String>""");
             invariant.AppendLine($"""    <sys:String x:Key="Status{Pascal(name)}Label">{token.GetProperty("label").GetString()}</sys:String>""");
         }
 
@@ -320,7 +372,7 @@ public static class TokenGenerator
         foreach (var (name, token) in Entries(root.GetProperty("status")))
         {
             statusEnum.AppendLine($"  {name},");
-            statusGlyph.AppendLine($"        AerStatus.{name} => '{token.GetProperty("glyph").GetString()}',");
+            statusGlyph.AppendLine($"        AerStatus.{name} => '{MarkName(token)}',");
             statusLabel.AppendLine($"        AerStatus.{name} => '{token.GetProperty("label").GetString()}',");
             statusLight.AppendLine($"        AerStatus.{name} => AerTokens.status{Pascal(name)}Light,");
             statusDark.AppendLine($"        AerStatus.{name} => AerTokens.status{Pascal(name)}Dark,");
@@ -348,10 +400,15 @@ public static class TokenGenerator
         }
 
         /// Decision 0006: a status must never be conveyed by hue alone, so every state carries a
-        /// glyph and a word. Render [glyph] and [label] together - colour is the third channel, not
+        /// mark and a word. Render [mark] and [label] together - colour is the third channel, not
         /// the only one.
+        ///
+        /// [mark] names a shape, not a character (#458): the shipped faces do not cover the
+        /// codepoints this originally used, and between them have no checkmark and no cross at all.
+        /// `StatusMark` in status_mark.dart draws it; desktop draws the same shape from a
+        /// StreamGeometry of the matching name.
         extension AerStatusPresentation on AerStatus {
-          String get glyph => switch (this) {
+          String get mark => switch (this) {
         {{statusGlyph.ToString().TrimEnd()}}
               };
 
@@ -409,6 +466,83 @@ public static class TokenGenerator
               ),
             ),
           );
+        }
+
+        """.ReplaceLineEndings(Lf);
+    }
+
+    // ---- Aer.Ui.Core ----------------------------------------------------------------------
+
+    /// <summary>
+    /// The five states, their marks and their labels as ordinary C#, so the desktop side reaches
+    /// them the same way Flutter already does. Deliberately emitted into the Avalonia-free core
+    /// project: nothing here is a toolkit type, and putting it in <c>Aer.Ui</c> would make the
+    /// remote/mobile-facing ViewModels unable to name a status.
+    /// </summary>
+    private static string GenerateUiCore(JsonElement root)
+    {
+        var members = new StringBuilder();
+        var marks = new StringBuilder();
+        var labels = new StringBuilder();
+        var colors = new StringBuilder();
+
+        foreach (var (name, token) in Entries(root.GetProperty("status")))
+        {
+            members.AppendLine($"    {Pascal(name)},");
+            marks.AppendLine($"""        AerStatus.{Pascal(name)} => "{MarkGeometryKey(token)}",""");
+            labels.AppendLine($"""        AerStatus.{Pascal(name)} => "{token.GetProperty("label").GetString()}",""");
+            colors.AppendLine($"""        AerStatus.{Pascal(name)} => "Status{Pascal(name)}Color",""");
+        }
+
+        return $$"""
+        {{Banner("//", null)}}
+
+        namespace Aer.Ui.Core;
+
+        /// <summary>The five states from #334's split — the vocabulary every status-rendering surface uses.</summary>
+        public enum AerStatus
+        {
+        {{members.ToString().TrimEnd()}}
+        }
+
+        /// <summary>
+        /// Decision 0006: a status must never be conveyed by hue alone, so every state carries a mark
+        /// and a word. Any surface that renders <see cref="ColorResourceKey"/> must also render
+        /// <see cref="MarkResourceKey"/> and <see cref="Label"/> — colour is the third channel, never
+        /// the only one.
+        /// </summary>
+        public static class AerStatusPresentation
+        {
+            /// <summary>
+            /// The resource key of the <c>StreamGeometry</c> that draws this status's mark, defined in
+            /// <c>Aer.Ui/Theme/Icons.axaml</c>. A shape rather than a character: the shipped faces do not
+            /// cover the codepoints originally chosen, and between them carry no checkmark and no cross
+            /// at all, so a text glyph cannot express this set on both platforms (#458).
+            /// </summary>
+            public static string MarkResourceKey(this AerStatus status) => status switch
+            {
+        {{marks.ToString().TrimEnd()}}
+                _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
+            };
+
+            /// <summary>The status in words — rendered alongside the mark, never replaced by it.</summary>
+            public static string Label(this AerStatus status) => status switch
+            {
+        {{labels.ToString().TrimEnd()}}
+                _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
+            };
+
+            /// <summary>
+            /// The key of this status's <c>Color</c> in the generated theme dictionaries. A colour, not a
+            /// brush: it resolves per theme variant, so a consumer must look it up against the live
+            /// variant rather than through the theme-oblivious overload (the washed-out DAG boxes of
+            /// #204/#205 were exactly that mistake).
+            /// </summary>
+            public static string ColorResourceKey(this AerStatus status) => status switch
+            {
+        {{colors.ToString().TrimEnd()}}
+                _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
+            };
         }
 
         """.ReplaceLineEndings(Lf);

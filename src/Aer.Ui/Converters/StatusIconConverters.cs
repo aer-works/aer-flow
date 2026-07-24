@@ -16,12 +16,19 @@ namespace Aer.Ui.Converters;
 /// </summary>
 internal static class StatusIconMap
 {
+    /// <summary>
+    /// #458: <see cref="StepStatus.Paused"/> drew <c>Icon.Dot</c> — the same mark as Pending and
+    /// Cancelled — so the one state that means "this is waiting on you" was shaped identically to
+    /// "nothing is happening here", leaving colour as the only difference. That is the failure
+    /// decision 0006's rule exists to prevent, and it was live. It now draws the diamond, the mark
+    /// <c>needsInput</c> carries in <c>design/tokens.json</c>.
+    /// </summary>
     public static string GeometryKeyFor(StepStatus status) => status switch
     {
         StepStatus.Running => "Icon.Ring",
         StepStatus.Succeeded => "Icon.Check",
         StepStatus.Failed or StepStatus.Rejected => "Icon.Cross",
-        StepStatus.Paused => "Icon.Dot",
+        StepStatus.Paused => "Icon.Diamond",
         _ => "Icon.Dot", // Pending, Cancelled: idle
     };
 
@@ -35,10 +42,11 @@ internal static class StatusIconMap
         _ => "Status.Idle", // Pending
     };
 
+    /// <summary>Same #458 correction as the <see cref="StepStatus"/> overload above: NeedsYou was a dot.</summary>
     public static string GeometryKeyFor(TaskCardStatus status) => status switch
     {
         TaskCardStatus.Running => "Icon.Ring",
-        TaskCardStatus.NeedsYou => "Icon.Dot",
+        TaskCardStatus.NeedsYou => "Icon.Diamond",
         TaskCardStatus.Finished => "Icon.Check",
         TaskCardStatus.Failed => "Icon.Cross",
         _ => "Icon.Refresh", // Unavailable: §3's stale-list state

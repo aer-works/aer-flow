@@ -51,6 +51,55 @@ public class DesignTokenDriftTests
     }
 
     /// <summary>
+    /// #458's gate: every status names a mark, and both toolkits must actually draw it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The marks are the one part of the design system that cannot be generated — vector geometry is
+    /// hand-drawn, in a <c>StreamGeometry</c> on Avalonia and a <c>CustomPainter</c> on Flutter — so
+    /// they are also the one part that can silently go missing. Adding a status to the token file, or
+    /// renaming a mark, compiles and runs on both platforms and shows up only as a blank space where
+    /// a status marker belongs, on whichever platform whoever made the change was not looking at.
+    /// </para>
+    /// <para>
+    /// This is a deliberately shallow check — it asserts a mark is *defined*, not that the two
+    /// drawings agree. Shape equivalence across two toolkits' path syntaxes is not something a test
+    /// can assert honestly, and pretending otherwise would be worse than admitting the limit: that
+    /// half stays a review question, kept tractable by both files being authored on the same 16x16
+    /// grid with matching coordinates.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryStatusMarkIsDrawnByBothToolkits()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var tokensJson = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.TokensPath));
+
+        var avaloniaIcons = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.AvaloniaIconsPath));
+        var flutterMarks = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.FlutterStatusMarkPath));
+
+        var marks = TokenGenerator.StatusMarks(tokensJson).ToList();
+        Assert.NotEmpty(marks);
+
+        foreach (var (status, mark, geometryKey) in marks)
+        {
+            Assert.True(
+                avaloniaIcons.Contains($"""x:Key="{geometryKey}" """.TrimEnd(), StringComparison.Ordinal),
+                $"""
+                Status '{status}' names the mark '{mark}', but {TokenGenerator.AvaloniaIconsPath} defines
+                no geometry with the key '{geometryKey}'. Desktop would render that status as a blank space.
+                """);
+
+            Assert.True(
+                flutterMarks.Contains($"case '{mark}':", StringComparison.Ordinal),
+                $"""
+                Status '{status}' names the mark '{mark}', but {TokenGenerator.FlutterStatusMarkPath} has
+                no case for it. Mobile would throw when asked to draw that status.
+                """);
+        }
+    }
+
+    /// <summary>
     /// The first differing line, both sides. A whole-file diff in an assertion message is unreadable;
     /// the first divergence is almost always the whole story for a generated file.
     /// </summary>
