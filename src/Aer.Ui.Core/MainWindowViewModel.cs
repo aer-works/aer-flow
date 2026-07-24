@@ -30,6 +30,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsRemoteVisible))]
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
     [NotifyPropertyChangedFor(nameof(IsTasksVisible))]
+    [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
     private ShellSection currentSection = ShellSection.Home;
 
     public bool IsHomeVisible => CurrentSection == ShellSection.Home;
@@ -38,6 +39,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsRemoteVisible => CurrentSection == ShellSection.Remote;
     public bool IsChatVisible => CurrentSection == ShellSection.Chat;
     public bool IsTasksVisible => CurrentSection == ShellSection.Tasks;
+
+    /// <summary>
+    /// Whether the shell is showing an opened record, whichever shape it has (#336). The switcher
+    /// collapsed six rail destinations to four by making "the thing you have open" *one* destination:
+    /// <see cref="ShellSection.Task"/> and <see cref="ShellSection.Chat"/> are no longer two places a
+    /// user navigates between, they are two renderings of one place, chosen by whether the selected
+    /// record is a session or a workflow. Both enum members survive because the two panes are still
+    /// genuinely different views; what went away is the user having to know which one they wanted.
+    /// </summary>
+    public bool IsDetailVisible => IsTaskVisible || IsChatVisible;
 
     /// <summary>The Enable Remote Access view's state (M21 Phase 3, issue #234) — see <see cref="RemoteViewModel"/>.</summary>
     public RemoteViewModel Remote { get; } = new();

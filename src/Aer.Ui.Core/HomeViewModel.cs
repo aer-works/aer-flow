@@ -207,7 +207,20 @@ public sealed partial class TaskCardViewModel(
     public static TaskCardViewModel FromProjection(
         string taskDirectoryPath, TaskProjection projection, Func<string, Task> openTaskAsync)
     {
-        var (statusText, status) = projection.State.Status switch
+        var (statusText, status) = DeriveStatus(projection);
+        return new TaskCardViewModel(taskDirectoryPath, TitleFor(taskDirectoryPath), statusText, status, openTaskAsync);
+    }
+
+    /// <summary>
+    /// The one place a <see cref="TaskProjection"/> becomes a human status line and a
+    /// <see cref="TaskCardStatus"/>. Shared with the #336 switcher's rows rather than duplicated:
+    /// the same surfaces that made #458's marks disagree across toolkits would make two copies of
+    /// this disagree across views — Home would say "Cancelled" while the switcher said "Finished",
+    /// which is the exact defect #461 had just fixed in one place.
+    /// </summary>
+    public static (string StatusText, TaskCardStatus Status) DeriveStatus(TaskProjection projection)
+    {
+        return projection.State.Status switch
         {
             WorkflowStatus.Paused => (PausedCardStatusText(projection), TaskCardStatus.NeedsYou),
             WorkflowStatus.Running when projection.State.Steps.FirstOrDefault(s => s.Status == StepStatus.Running) is { } runningStep
@@ -224,8 +237,6 @@ public sealed partial class TaskCardViewModel(
                 => ("Cancelled", TaskCardStatus.Cancelled),
             _ => ("Finished", TaskCardStatus.Finished),
         };
-
-        return new TaskCardViewModel(taskDirectoryPath, TitleFor(taskDirectoryPath), statusText, status, openTaskAsync);
     }
 
     // #334: a paused chat turn is "your turn to reply", not an approval gate. A card whose only
