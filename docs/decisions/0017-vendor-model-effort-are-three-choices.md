@@ -1,7 +1,19 @@
 # 0017 — Vendor, model and effort are three separate choices
 
-Status: accepted
+Status: accepted, except the effort-naming clause — **corrected by
+[0023](0023-effort-and-models-are-named-by-behaviour.md)**
 Date: 2026-07-24
+
+> **Amendment, 2026-07-24 — this one corrects rather than extends.** The three-axis model below
+> (vendor · model · effort, all on the chip) stands and is the foundation
+> [0023](0023-effort-and-models-are-named-by-behaviour.md) builds on. **One clause is wrong:** where
+> the Decision section says effort's *"allowed values are vendor-named … rather than a fabricated
+> universal scale"*, read 0023 instead. Effort is named by **behaviour** (quick / standard / careful
+> / exhaustive) and models are offered by **purpose** (deep / balanced / fast), with the adapter
+> mapping onto whatever the vendor's CLI wants — because a vendor's flag value reaching the UI is
+> exactly the quirk CLAUDE.md's Adapter Isolation rule requires to stay inside `Aer.Adapters`.
+> The clause is left in place below rather than edited, because the reasoning that was wrong is
+> part of the record.
 
 ## Context
 

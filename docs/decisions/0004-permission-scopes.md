@@ -3,6 +3,13 @@
 Status: accepted
 Date: 2026-07-22
 
+> **Amendment, 2026-07-24.** [0022](0022-permission-ladder-and-denial-is-an-answer.md) adds what this
+> record does not cover: the scope **ladder** is offered at the moment of asking rather than in
+> settings, and **a denial is a real answer** the worker is told about and continues from. Everything
+> below about the scope model — project ∩ session ∩ step, failing closed — stands unchanged; 0022
+> governs the moment a permission is asked, not what a permission bounds. The body is left as
+> written.
+
 ## Context
 
 Permissions today are a single flat `PermissionGrant` per worker binding, and they are **not

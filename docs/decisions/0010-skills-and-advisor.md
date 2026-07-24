@@ -3,6 +3,13 @@
 Status: accepted
 Date: 2026-07-23
 
+> **Amendment, 2026-07-24.** [0024](0024-commands-are-namespaced.md) adds how these are *addressed*
+> in a room with more than one worker: commands and skills are **namespaced by owner** — canonical
+> skills under Room, a vendor's native ones under that vendor, both marked — plus `/ask-all` as the
+> broadcast and an Actions sheet in place of the slash palette on a phone. Everything below about
+> what a skill *is* stands unchanged; 0024 governs the palette, not the model. The body is left as
+> written.
+
 ## Context
 
 Two capabilities were raised together, and they turn out to be one architecture question.
