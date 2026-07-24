@@ -118,6 +118,35 @@ public sealed partial class TaskSession
     public event Action<string, string, WorkerProgressEvent>? SessionProgressReceived;
 
     /// <summary>
+    /// Every projection push this client receives, for *any* directory (#336) — the switcher's list
+    /// shows all known sessions at once, so a push for a session that is not the one currently open
+    /// is precisely what that session's row needs. Deliberately separate from the detail pane's own
+    /// consumer, which still goes through <see cref="ShouldApplyProjectionPush"/>: see
+    /// <see cref="ReceiveWebSocketDataAsync"/>'s remarks on why this is two consumers of one frame
+    /// rather than a widened filter. Fires on the same <see cref="SynchronizationContext"/> as
+    /// <see cref="SessionProgressReceived"/>, and like it carries the directory alongside the payload
+    /// so a subscriber can filter by directory itself.
+    /// </summary>
+    public event Action<string, TaskProjection>? FleetProjectionReceived;
+
+    private void RaiseFleetProjectionReceived(string directoryPath, TaskProjection projection)
+    {
+        if (FleetProjectionReceived == null)
+        {
+            return;
+        }
+
+        if (_syncContext != null)
+        {
+            _syncContext.Post(_ => FleetProjectionReceived?.Invoke(directoryPath, projection), null);
+        }
+        else
+        {
+            FleetProjectionReceived.Invoke(directoryPath, projection);
+        }
+    }
+
+    /// <summary>
     /// One in-flight pump this process is hosting, and everything needed to reach it: the
     /// caller-retained delivery point for a targeted cancel (M15 Phase 4, issue #140), the host-stop
     /// source that is the Ctrl+C equivalent <c>Aer.Cli</c> wires to <c>Console.CancelKeyPress</c>,

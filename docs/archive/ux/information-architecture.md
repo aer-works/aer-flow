@@ -5,6 +5,22 @@
 > model (decision [0001](../../decisions/0001-two-nouns-workflow-and-session.md)). See
 > [`docs/plan.md`](../plan.md) for the current direction; read this as the M19 baseline it is, not
 > the target design.
+>
+> **The switcher shipped (#336).** The rail below grew from three destinations to six as Remote
+> (#234), Chat (#262) and Tasks (#278) were added one at a time, and #336 collapsed it back to
+> **four — Home / Open / Author / Remote** — around a permanently-visible list of every known
+> session:
+>
+> * **Chat and Task merged into "Open."** They were two destinations you had to choose between
+>   before navigating, but the shape of a record is a property of the record, not a choice. One
+>   destination, two renderings, selected by whether the record is a session.
+> * **Tasks stopped being a destination** and became the switcher list itself. A fleet you can only
+>   see by navigating away from your work is not a switcher. Its bulk-management surface (#278/#288)
+>   is reached from the foot of that list — a 260px rail cannot host a bulk action bar, and dropping
+>   working functionality to make the rail tidier would be a bad trade.
+> * **The list is live, not rebuilt on activation.** Because it is always visible it never gets
+>   activated, so it folds in projection pushes instead — including pushes for sessions that are not
+>   the one open, which the detail pane deliberately still ignores (#262).
 
 M19 Phase 1 (#186). The structure Phases 2–4 build: three views under one navigation shell,
 replacing today's single window of stacked sections. Everything the UI does today survives —

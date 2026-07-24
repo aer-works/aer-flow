@@ -95,13 +95,16 @@
             <AccessText Text="_Home" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsTaskVisible}"
+        <!-- #336: one destination for "the record you have open", whichever shape it is. This was
+             two rail buttons (Task and Chat) that a user had to already know the answer to before
+             navigating — the shape of a record is a property of the record, not a choice. -->
+        <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
                 HorizontalAlignment="Stretch">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
             <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
                   StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
                   Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Task" VerticalAlignment="Center" />
+            <AccessText Text="_Open" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
         <Button x:Name="NavAuthorButton" Classes="nav" Classes.selected="{Binding IsAuthorVisible}"
@@ -123,28 +126,79 @@
             <AccessText Text="Re_mote" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <!-- M24 Phase 1 (#262): the fifth nav destination — a chat/codebase session opened from Home. -->
-        <Button x:Name="NavChatButton" Classes="nav" Classes.selected="{Binding IsChatVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Chat}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="C_hat" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <!-- M24 Phase 5 (#278): the sixth nav destination — every known task/session directory,
-             archive/unarchive/delete, distinct from Home's capped 10-item recents cards. -->
-        <Button x:Name="NavTasksButton" Classes="nav" Classes.selected="{Binding IsTasksVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Fleet}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="Task_s" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
+        <!-- #336 removed two rail buttons. Chat folded into "Open" above (one destination, two
+             renderings). Tasks became the permanent switcher list to the right of this rail — a
+             fleet you can only see by navigating away from your work is not a switcher; its
+             management affordances live on at the foot of that list. NavChatButton/NavTasksButton
+             are gone as controls, not merely hidden. -->
       </StackPanel>
+    </Border>
+
+    <!-- #336: the switcher. Permanently visible rather than a destination, which is the whole point
+         — every known session is legible and one click away while you work in one of them. Because
+         it never gets "activated", it cannot rebuild on activation the way the Tasks view did
+         (MainWindow.axaml.cs's SectionChanged); it stays current from live projection pushes
+         instead, which is why that fan-out ships with this shell rather than after it. -->
+    <Border DockPanel.Dock="Left" Width="260"
+            Background="{DynamicResource Color.Surface}"
+            BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="12,12,12,8" Spacing="{DynamicResource Space.2}">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+            <TextBlock Classes="body-strong" Text="Sessions" VerticalAlignment="Center" />
+            <Button x:Name="SwitcherRefreshButton" Classes="quiet" ToolTip.Tip="Refresh"
+                    VerticalAlignment="Center">
+              <Path Data="{StaticResource Icon.Refresh}" Stroke="{DynamicResource Color.TextSecondary}"
+                    StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                    Width="14" Height="14" Stretch="Uniform" />
+            </Button>
+          </StackPanel>
+          <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
+                     TextWrapping="Wrap" Text="{Binding Tasks.ErrorText}"
+                     IsVisible="{Binding Tasks.HasErrorText}" />
+        </StackPanel>
+
+        <!-- The management surface #278/#288 shipped is reached from here rather than from the rail:
+             a 260px switcher cannot host a bulk action bar, and dropping bulk archive/delete to make
+             the rail smaller would be trading working functionality for tidiness. -->
+        <Button x:Name="SwitcherManageButton" DockPanel.Dock="Bottom" Classes="quiet"
+                HorizontalAlignment="Stretch" Margin="8" Classes.selected="{Binding IsTasksVisible}">
+          <AccessText Text="Manage task_s…" />
+        </Button>
+
+        <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
+                   Text="No tasks or sessions yet." IsVisible="{Binding Tasks.HasNoItems}" />
+
+        <ListBox x:Name="SwitcherList" ItemsSource="{Binding Tasks.Items}"
+                 SelectedItem="{Binding Tasks.CurrentItem}"
+                 Background="Transparent" BorderThickness="0">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:TaskFleetItemViewModel">
+              <StackPanel Spacing="2" Margin="0,2">
+                <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
+                           TextTrimming="CharacterEllipsis" />
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                  <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks Home's
+                       cards draw, from the same derivation — a second surface showing the same fact
+                       with its own vocabulary is how #461's "cancelled reads as Finished" came back. -->
+                  <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
+                        Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
+                        Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
+                        StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                        Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center" />
+                  <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+                             TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="caption secondary" Text="archived"
+                             IsVisible="{Binding IsArchived}" />
+                </StackPanel>
+                <TextBlock Classes="caption"
+                           Text="{Binding PausedStepCount, StringFormat='{}{0} awaiting a decision'}"
+                           IsVisible="{Binding HasPausedSteps}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
     </Border>
     <Panel>
       <views:HomeView x:Name="HomeViewControl" IsVisible="{Binding IsHomeVisible}" />

@@ -17,6 +17,13 @@ namespace Aer.Ui.Core;
 /// </summary>
 /// <param name="Created">When this task/session was first created (UTC).</param>
 /// <param name="Updated">When this task/session last changed (UTC) — the key the fleet list orders by.</param>
+/// <param name="IsSession">
+/// Whether this directory is an interactive session (chat-shaped) rather than a workflow (DAG-shaped)
+/// — the structural fact behind <paramref name="TypeLabel"/>, surfaced separately because #336's
+/// switcher routes the detail pane on it. <paramref name="TypeLabel"/> is a *display* string
+/// ("interactive session", or a workflow's template id), so routing on it would mean string-matching
+/// a rendered label; this is the same fact the loader already computes to build that label.
+/// </param>
 public sealed record TaskFleetItem(
     string TaskDirectoryPath,
     string FriendlyName,
@@ -25,7 +32,8 @@ public sealed record TaskFleetItem(
     int PausedStepCount,
     bool IsArchived,
     DateTimeOffset Created,
-    DateTimeOffset Updated);
+    DateTimeOffset Updated,
+    bool IsSession = false);
 
 /// <summary>
 /// The seam this phase exists to prove (issue #118): opens a real task directory using exactly
@@ -105,7 +113,8 @@ public static class TaskProjectionLoader
             // represented the same defensive way rather than thrown on.
             return new TaskFleetItem(
                 taskDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow",
-                isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived, created, updated);
+                isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived, created, updated,
+                isSession);
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -118,7 +127,7 @@ public static class TaskProjectionLoader
         var state = StateProjector.Project(events, snapshot);
         var pausedStepCount = state.Steps.Count(s => s.Status == StepStatus.Paused);
 
-        return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated);
+        return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession);
     }
 
     /// <summary>

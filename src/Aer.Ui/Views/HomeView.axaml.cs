@@ -27,6 +27,14 @@ public partial class HomeView : UserControl
             TaskDirectoryPathBox.Text = taskPath;
             if (topLevel != null)
             {
+                // A record becomes visible the moment it exists on disk, not when its first
+                // execution happens to succeed. Materializing a workflow used to leave it listed
+                // nowhere: Run registers the task only on a 2xx (TaskSession.RunAsync's
+                // _reopenTaskAsync call), so a run that was refused — "something else is already
+                // running against this directory" — created a real task directory that no surface
+                // knew about. Found by running the app: a freshly created task was reachable only
+                // through the folder picker.
+                await topLevel.RefreshRecordListsAsync();
                 if (File.Exists(Path.Combine(taskPath, ".aer", "session.json")))
                 {
                     // A chat/codebase session's initial turn is already dispatched (or about to be)
