@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.WebSockets;
@@ -1456,7 +1457,98 @@ namespace Aer.Daemon
             }
         }
 
+        /// <summary>
+        /// #393: one turn at a time per session directory. Every turn does
+        /// <see cref="TaskSession.LoadAsync"/>, branches on the projection, and -- in the
+        /// re-materialize branch -- deletes <c>snapshot.json</c>/<c>flow.jsonl</c>/<c>artifacts</c>
+        /// *before* <c>RunAsync</c> takes Flow's per-task-directory lock, so that read-then-delete
+        /// window sits outside every existing lock. Turns also run fire-and-forget behind an
+        /// already-returned 200, so two overlapping <c>POST /api/sessions/send</c> calls for the same
+        /// session genuinely interleave there. <see cref="IsSessionSafeToReMaterialize"/> (#354) makes
+        /// the delete refuse in the unsafe states; this closes the ordering hole itself.
+        ///
+        /// Keyed by the session's task directory: that is what the deletes target, it matches Flow's
+        /// own lock granularity, and it is the one identifier all three call sites (create, send,
+        /// compact) share. Keys are normalised and compared case-insensitively so two spellings of the
+        /// same directory cannot end up with two different semaphores -- on a case-sensitive
+        /// filesystem that can only ever over-serialise two genuinely distinct directories, which is
+        /// safe; under-locking is the bug worth avoiding.
+        ///
+        /// Never removed: one <see cref="SemaphoreSlim"/> per session seen per daemon lifetime is
+        /// bounded and tiny, and safe removal would need refcounting to avoid disposing a semaphore a
+        /// waiter still holds. #335's keyed per-task state absorbs this.
+        /// </summary>
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> SessionTurnLocks =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Canonical <see cref="SessionTurnLocks"/> key for a session's task directory -- absolute and
+        /// without a trailing separator, so <c>C:\a\b</c>, <c>C:\a\b\</c> and <c>C:\a\.\b</c> all map
+        /// to one lock.
+        /// </summary>
+        internal static string SessionTurnLockKey(string directoryPath) =>
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryPath));
+
+        /// <summary>
+        /// The one semaphore guarding turns for <paramref name="directoryPath"/>. Two spellings of the
+        /// same directory must return the same instance -- if they ever return two, the lock silently
+        /// becomes a no-op and every guarantee above is void, which is why this is reachable from tests.
+        /// </summary>
+        internal static SemaphoreSlim SessionTurnLockFor(string directoryPath) =>
+            SessionTurnLocks.GetOrAdd(SessionTurnLockKey(directoryPath), _ => new SemaphoreSlim(1, 1));
+
         private static async Task ExecuteSessionTurnAsync(
+            TaskSession session,
+            string directoryPath,
+            SessionMetadata metadata,
+            string userMessage,
+            string? requestAdapter,
+            string? requestModel,
+            bool isInitial,
+            Func<TaskProjection, string?, Task> broadcastStateAsync,
+            IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+            Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync,
+            bool forceHandoff = false)
+        {
+            var turnLock = SessionTurnLockFor(directoryPath);
+            await turnLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                // #393: the caller's `metadata` was read before the lock -- by the send endpoint well
+                // before this turn was queued, or (create) built in-memory by materialization. Holding
+                // it across the wait would serialise execution while still acting on a pre-wait
+                // snapshot: a turn queued behind another would see the *previous* turn's
+                // VendorSessionEstablished/CurrentVendorSessionId and mint a fresh vendor id instead of
+                // resuming -- reopening #285's wedge, now concurrency-triggered -- and would append to
+                // a stale Turns transcript, dropping the turn the other one wrote. Re-read inside the
+                // lock so the turn acts on state the previous turn actually committed. Materialization
+                // persists session.json before returning, so the on-disk copy is authoritative for the
+                // create path too; the parameter remains the fallback for an unreadable file.
+                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var current = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(false);
+
+                await ExecuteSessionTurnCoreAsync(
+                    session,
+                    directoryPath,
+                    current ?? metadata,
+                    userMessage,
+                    requestAdapter,
+                    requestModel,
+                    isInitial,
+                    broadcastStateAsync,
+                    adapters,
+                    broadcastSessionProgressAsync,
+                    forceHandoff).ConfigureAwait(false);
+            }
+            finally
+            {
+                // Turns throw in several places and the fire-and-forget catch sits outside this method,
+                // so an un-released semaphore would wedge the session permanently.
+                turnLock.Release();
+            }
+        }
+
+        private static async Task ExecuteSessionTurnCoreAsync(
             TaskSession session,
             string directoryPath,
             SessionMetadata metadata,
@@ -1818,10 +1910,11 @@ namespace Aer.Daemon
         /// A null/empty projection is "nothing of value" only for a brand-new session (no recorded
         /// turns); for an established one it means a lagging or failed read, where deleting is data
         /// loss. This is a decision over a single state snapshot: it makes the delete refuse in the
-        /// unsafe states, but it cannot by itself close the underlying read-then-delete race (that
-        /// needs per-session turn serialisation, tracked separately) -- the guarantee it gives is by
-        /// construction, not by a test that could deterministically reproduce a live Running anchor
-        /// against a synchronous stub.
+        /// unsafe states, but it cannot by itself close the underlying read-then-delete race -- that
+        /// is now closed by <see cref="SessionTurnLocks"/> (#393), which serialises turns per session
+        /// directory so the read, the branch and the delete can no longer interleave with another
+        /// turn. The guarantee this check gives is still by construction, not by a test that could
+        /// deterministically reproduce a live Running anchor against a synchronous stub.
         /// </summary>
         internal static bool IsSessionSafeToReMaterialize(IReadOnlyList<StepState>? steps, int recordedTurnCount)
         {

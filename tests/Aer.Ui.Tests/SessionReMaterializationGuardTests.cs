@@ -12,7 +12,8 @@ namespace Aer.Ui.Tests;
 /// multi-state DAG. These cover the decision <em>table</em>: which state snapshots are safe to wipe
 /// and which are not. They deliberately do NOT claim to prove the read-then-delete <em>race</em> is
 /// closed -- a synchronous stub cannot hold an anchor <c>Running</c> at the instant of the check --
-/// which is a by-construction property plus the separately-tracked per-session turn serialisation,
+/// which is a by-construction property plus the per-session turn serialisation landed in #393
+/// (<see cref="SessionTurnSerializationTests"/>, <see cref="SessionTurnSerializationEndToEndTests"/>),
 /// in the same spirit the live-vendor smokes are a human gate rather than an automated one.
 /// </summary>
 public class SessionReMaterializationGuardTests
