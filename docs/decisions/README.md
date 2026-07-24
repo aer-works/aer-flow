@@ -76,3 +76,4 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
 | [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices | accepted |
 | [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide | accepted |
+| [0019](0019-consulting-is-not-deciding.md) | Consulting is not deciding: you can ask anyone, and the gate stays open | accepted |

@@ -1,0 +1,527 @@
+<title>AER Flow — screens</title>
+<style>
+@font-face{font-family:"Source Sans 3";src:url("../../../src/Aer.Ui/Assets/Fonts/SourceSans3.ttf") format("truetype");font-weight:200 900;font-style:normal;font-display:block}
+@font-face{font-family:"JetBrains Mono";src:url("../../../src/Aer.Ui/Assets/Fonts/JetBrainsMono.ttf") format("truetype");font-weight:100 800;font-style:normal;font-display:block}
+
+:root{
+  --ground:#F2F4F5;--raised:#FFFFFF;--sunk:#E7EBEC;--codebg:#DFE6E8;--rule:#D6DDDF;
+  --accent:#3F8C87;--on-accent:#FFFFFF;
+  --text:#1B2226;--text-2:#5A676D;--text-3:#88969C;
+  --working:#1F6FA8;--needs:#8F5E0E;--review:#63489E;--done:#2C6E4C;--fail:#9E382C;--idle:#88969C;
+  --sans:"Source Sans 3",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#14191B;--raised:#1B2124;--sunk:#101517;--codebg:#222A2E;--rule:#2A3236;
+  --accent:#5FB3AD;--on-accent:#0B1112;--text:#DCE4E6;--text-2:#94A3A8;--text-3:#6C7A80;
+  --working:#5AB0E0;--needs:#DFA84E;--review:#A88CDE;--done:#6DBE94;--fail:#E08274;--idle:#6C7A80;}}
+:root[data-theme="dark"]{
+  --ground:#14191B;--raised:#1B2124;--sunk:#101517;--codebg:#222A2E;--rule:#2A3236;
+  --accent:#5FB3AD;--on-accent:#0B1112;--text:#DCE4E6;--text-2:#94A3A8;--text-3:#6C7A80;
+  --working:#5AB0E0;--needs:#DFA84E;--review:#A88CDE;--done:#6DBE94;--fail:#E08274;--idle:#6C7A80;}
+:root[data-theme="light"]{
+  --ground:#F2F4F5;--raised:#FFFFFF;--sunk:#E7EBEC;--codebg:#DFE6E8;--rule:#D6DDDF;
+  --accent:#3F8C87;--on-accent:#FFFFFF;--text:#1B2226;--text-2:#5A676D;--text-3:#88969C;
+  --working:#1F6FA8;--needs:#8F5E0E;--review:#63489E;--done:#2C6E4C;--fail:#9E382C;--idle:#88969C;}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--text);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1140px;margin:0 auto;padding:0 clamp(18px,4vw,48px) 110px}
+.mast{padding:clamp(48px,8vw,88px) 0 0;max-width:60ch}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-3);margin:0 0 18px}
+h1{font-size:clamp(31px,4.6vw,46px);line-height:1.1;font-weight:600;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.lede{font-size:clamp(18px,2.2vw,21px);color:var(--text-2);margin:22px 0 0;text-wrap:balance}
+.toc{margin:30px 0 0;font-family:var(--mono);font-size:12.5px;color:var(--text-3);display:flex;flex-wrap:wrap;gap:6px 14px}
+.toc a{color:var(--text-2);text-decoration:none;border-bottom:1px solid var(--rule)}
+.toc a:hover{color:var(--accent);border-color:var(--accent)}
+hr.div{border:0;border-top:1px solid var(--rule);margin:clamp(48px,7vw,76px) 0}
+h2{font-size:clamp(22px,2.9vw,28px);font-weight:600;letter-spacing:-.013em;margin:0 0 8px;text-wrap:balance;scroll-margin-top:20px}
+.sub{color:var(--text-2);margin:0 0 26px;max-width:66ch}
+p{margin:0 0 15px;max-width:66ch}
+code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.12em .38em;border-radius:3px}
+.plat{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 14px;display:flex;align-items:center;gap:10px}
+.plat::after{content:"";flex:1;height:1px;background:var(--rule)}
+
+.shot{margin:0 0 12px;background:var(--raised);border:1px solid var(--rule);border-radius:8px;overflow:hidden;font-family:var(--mono);font-size:12.5px}
+.scrollx{overflow-x:auto}
+.note{font-size:15px;color:var(--text-2);margin:0 0 40px;max-width:70ch}
+.note b{color:var(--text);font-weight:600}
+
+.d-inner{min-width:820px}
+.d-top{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--rule);background:var(--sunk);color:var(--text-3);font-size:11.5px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.d-body{display:grid;grid-template-columns:48px 226px 1fr}
+.d-body.wide{grid-template-columns:48px 226px 1fr 236px}
+.d-body.solo{grid-template-columns:48px 1fr}
+.rail{border-right:1px solid var(--rule);padding:9px 0;display:flex;flex-direction:column;gap:5px;align-items:center}
+.rail i{width:29px;height:29px;border:1px solid var(--rule);border-radius:6px;display:grid;place-items:center;color:var(--text-3);font-size:12px;font-style:normal}
+.rail i.on{border-color:var(--accent);color:var(--accent);background:var(--sunk)}
+.list{border-right:1px solid var(--rule);padding:8px;display:flex;flex-direction:column;gap:1px}
+.lhead{display:flex;justify-content:space-between;align-items:center;color:var(--text-3);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;padding:2px 6px 9px}
+.lhead b{color:var(--accent);font-weight:400}
+.row{padding:7px 8px;border-radius:6px;display:flex;gap:8px;align-items:flex-start;line-height:1.35}
+.row.sel{background:var(--sunk);box-shadow:inset 2px 0 0 var(--accent)}
+.mk{font-size:12px;line-height:1.2;width:12px;flex:none}
+.nm{color:var(--text);font-size:12.5px}
+.st{color:var(--text-3);font-size:10.5px;display:block;margin-top:1px}
+.w{color:var(--working)}.n{color:var(--needs)}.d{color:var(--done)}.i{color:var(--idle)}.f{color:var(--fail)}.r{color:var(--review)}
+.main{padding:12px 15px;display:flex;flex-direction:column;gap:9px;min-height:300px}
+.mhead{display:flex;justify-content:space-between;align-items:center;padding-bottom:9px;border-bottom:1px solid var(--rule)}
+.mhead .t{color:var(--text);font-size:14px;font-weight:600;font-family:var(--sans)}
+.who-chips{display:flex;gap:5px;align-items:center;color:var(--text-3);font-size:11px}
+.chip{border:1px solid var(--rule);border-radius:20px;padding:2px 9px;color:var(--text-2)}
+.chip.add{border-style:dashed;color:var(--accent);border-color:var(--accent)}
+.turn{border:1px solid var(--rule);border-radius:7px;padding:8px 11px;color:var(--text-2);line-height:1.5}
+.turn .who{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;display:block;margin-bottom:3px;color:var(--accent)}
+.turn.you{background:var(--sunk);border-color:transparent}
+.turn.you .who{color:var(--text-3)}
+.turn.gate{border-color:var(--needs)}
+.turn.gate .who{color:var(--needs)}
+.turn.gem .who{color:var(--review)}
+.turn.bad{border-color:var(--fail)}
+.turn.bad .who{color:var(--fail)}
+.err{background:var(--codebg);border-radius:5px;padding:7px 9px;margin-top:7px;color:var(--text-2);font-size:11.5px;line-height:1.5;white-space:pre-wrap}
+.btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--rule);border-radius:6px;padding:4px 11px;font-size:11.5px;color:var(--text-2)}
+.btn.pri{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.comp{margin-top:auto;border:1px solid var(--rule);border-radius:7px;padding:8px 11px;color:var(--text-3);display:flex;justify-content:space-between}
+.insp{border-left:1px solid var(--rule);padding:11px 12px;display:flex;flex-direction:column;gap:9px}
+.insp .ih{color:var(--text-3);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;padding-bottom:8px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between}
+.node{border:1px solid var(--rule);border-radius:6px;padding:6px 9px;color:var(--text-2);font-size:11.5px}
+.node.on{border-color:var(--working);color:var(--text)}
+.node.ok{border-color:var(--done)}
+.node.wait{border-color:var(--needs)}
+.arrow{text-align:center;color:var(--text-3);font-size:11px;line-height:1}
+
+/* empty / centred states */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:330px;padding:30px;text-align:center}
+.empty .big{font-family:var(--sans);font-size:19px;font-weight:600;color:var(--text)}
+.empty .sm{color:var(--text-2);max-width:44ch;font-size:12px;line-height:1.6}
+.ready{display:flex;gap:14px;margin-top:6px;color:var(--text-3);font-size:11px}
+.ready b{color:var(--done);font-weight:400}
+.ready s{color:var(--needs);text-decoration:none}
+
+/* editor */
+.ed{display:flex;flex-direction:column;gap:0;padding:14px 16px;min-height:300px}
+.step{border:1px solid var(--rule);border-radius:7px;padding:9px 11px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.step.sel{border-color:var(--accent);background:var(--sunk)}
+.step .l{color:var(--text);font-size:12.5px}
+.step .r{color:var(--text-3);font-size:11px;display:flex;gap:9px;align-items:center}
+.step .r .pill{border:1px solid var(--rule);border-radius:20px;padding:1px 8px;color:var(--text-2)}
+.step .r .pill.on{border-color:var(--needs);color:var(--needs)}
+.ins{display:flex;justify-content:center;padding:5px 0;color:var(--text-3);font-size:11px}
+.ins span{border:1px dashed var(--rule);border-radius:20px;padding:1px 12px}
+
+/* settings */
+.set{padding:14px 18px;display:flex;flex-direction:column;gap:0}
+.sgroup{padding:12px 0;border-bottom:1px solid var(--rule)}
+.sgroup:last-child{border-bottom:0}
+.sgroup .gh{color:var(--text-3);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:9px}
+.sline{display:flex;justify-content:space-between;align-items:center;padding:5px 0;color:var(--text-2);font-size:12px}
+.sline .k{color:var(--text)}
+.seg{display:flex;border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.seg span{padding:2px 10px;color:var(--text-3);font-size:11px}
+.seg span.on{background:var(--accent);color:var(--on-accent)}
+
+/* phone */
+.phones{display:flex;gap:22px;flex-wrap:wrap}
+.phone{width:264px;flex:none;background:var(--raised);border:1px solid var(--rule);border-radius:20px;overflow:hidden;font-family:var(--mono);font-size:12px}
+.p-status{display:flex;justify-content:space-between;padding:7px 14px 4px;color:var(--text-3);font-size:10px}
+.p-head{padding:6px 13px 10px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:8px}
+.p-head .back{color:var(--accent);font-size:14px}
+.p-head .t{color:var(--text);font-size:14px;font-weight:600;font-family:var(--sans)}
+.p-head .sub2{color:var(--text-3);font-size:10.5px;display:block}
+.p-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-height:330px}
+.p-row{padding:8px 9px;border-radius:7px;display:flex;gap:9px;align-items:flex-start;border:1px solid transparent}
+.p-row.hi{border-color:var(--needs);background:color-mix(in srgb,var(--needs) 7%,transparent)}
+.p-tabs{margin-top:auto;border-top:1px solid var(--rule);display:flex;justify-content:space-around;padding:8px 0 10px;color:var(--text-3);font-size:10px}
+.p-tabs span.on{color:var(--accent)}
+.notif{border:1px solid var(--rule);border-radius:11px;padding:9px 11px;background:var(--sunk);color:var(--text-2);line-height:1.45}
+.notif b{color:var(--text);display:block;font-size:11.5px;margin-bottom:2px}
+.p-comp{border:1px solid var(--rule);border-radius:18px;padding:7px 12px;color:var(--text-3);display:flex;justify-content:space-between;margin-top:auto}
+.code-in{display:flex;gap:6px;justify-content:center;margin:4px 0}
+.code-in span{width:30px;height:38px;border:1px solid var(--rule);border-radius:7px;display:grid;place-items:center;color:var(--text);font-size:16px}
+.code-in span.e{color:var(--text-3);border-style:dashed}
+
+.calls{border:1px solid var(--rule);background:var(--raised);border-radius:8px}
+.call{display:grid;grid-template-columns:minmax(120px,178px) 1fr;gap:24px;padding:17px 20px;border-bottom:1px solid var(--rule)}
+.call:last-child{border-bottom:0}
+.call dt{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.03em}
+.call dd{margin:0;font-size:15.5px;color:var(--text-2)}
+.call dd b{color:var(--text);font-weight:600}
+@media(max-width:640px){.call{grid-template-columns:1fr;gap:5px}}
+.foot{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);font-size:14.5px;color:var(--text-3);max-width:66ch}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- depth: Quiet is low-chroma, not flat ---- */
+:root{
+  --el1:0 1px 2px rgba(20,29,33,.07), 0 2px 6px rgba(20,29,33,.05);
+  --el2:0 2px 6px rgba(20,29,33,.08), 0 12px 32px rgba(20,29,33,.10);
+  --hair:inset 0 1px 0 rgba(255,255,255,.6);
+}
+@media (prefers-color-scheme:dark){:root{
+  --el1:0 1px 2px rgba(0,0,0,.42), 0 3px 10px rgba(0,0,0,.3);
+  --el2:0 4px 12px rgba(0,0,0,.5), 0 18px 44px rgba(0,0,0,.55);
+  --hair:inset 0 1px 0 rgba(255,255,255,.05);}}
+:root[data-theme="dark"]{
+  --el1:0 1px 2px rgba(0,0,0,.42), 0 3px 10px rgba(0,0,0,.3);
+  --el2:0 4px 12px rgba(0,0,0,.5), 0 18px 44px rgba(0,0,0,.55);
+  --hair:inset 0 1px 0 rgba(255,255,255,.05);}
+:root[data-theme="light"]{
+  --el1:0 1px 2px rgba(20,29,33,.07), 0 2px 6px rgba(20,29,33,.05);
+  --el2:0 2px 6px rgba(20,29,33,.08), 0 12px 32px rgba(20,29,33,.10);
+  --hair:inset 0 1px 0 rgba(255,255,255,.6);}
+
+.shot,.phone{box-shadow:var(--el2),var(--hair)}
+.turn,.blk,.step,.p-step,.notif,.att,.node,.parent,.prim,.wire{box-shadow:var(--el1)}
+.menu{box-shadow:var(--el2)}
+.calls,.tblwrap,.prims,.parents,.figure{box-shadow:var(--el1)}
+.turn.you{box-shadow:none}
+.list,.rail,.insp,.p-tabs{box-shadow:none}
+.btn.pri{box-shadow:var(--el1)}
+.row.sel,.p-row.hi{box-shadow:inset 2px 0 0 var(--accent),var(--el1)}
+
+/* ---- typography: mono means code, not chrome ---- */
+.shot,.phone,.wire,.d-inner,.pane,.p-body,.menu,.set,.ed{font-family:var(--sans)}
+.blk pre,.err,code,.blk .bh .nm,.p-status,.frow .p,.meter .val,.eyebrow{font-family:var(--mono)}
+.nm,.st,.lhead,.gh,.sect,.ih,.who,.btn,.chip,.pill,.step .l,.p-step,.sline,.lbl{font-family:var(--sans)}
+.shot,.phone{font-size:13px}
+.nm{font-size:13px}.st{font-size:11.5px}
+.turn,.btn,.chip{font-size:12.5px}
+.lhead,.sect,.gh,.ih{letter-spacing:.05em;font-weight:600;font-size:11px}
+.who{letter-spacing:.05em;font-weight:600;font-size:11px}
+
+/* ---- elevation: restraint. surface + hairline first, shadow last ---- */
+:root{--el1:0 1px 2px rgba(20,29,33,.05);--el2:0 3px 10px rgba(20,29,33,.07);--hair:none}
+@media (prefers-color-scheme:dark){:root{--el1:0 1px 2px rgba(0,0,0,.3);--el2:0 3px 12px rgba(0,0,0,.36);--hair:none}}
+:root[data-theme="dark"]{--el1:0 1px 2px rgba(0,0,0,.3);--el2:0 3px 12px rgba(0,0,0,.36);--hair:none}
+:root[data-theme="light"]{--el1:0 1px 2px rgba(20,29,33,.05);--el2:0 3px 10px rgba(20,29,33,.07);--hair:none}
+.shot,.phone{box-shadow:var(--el2)}
+.menu{box-shadow:var(--el2)}
+.turn,.blk,.step,.p-step,.att,.node,.parent,.prim,.wire,.notif,.calls,.tblwrap,.prims,.parents,.figure,.btn.pri{box-shadow:none}
+.row.sel,.p-row.hi{box-shadow:inset 2px 0 0 var(--accent)}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Screen design · draft 3 · complete set</p>
+  <h1>Screens</h1>
+  <p class="lede">Every shape the product needs, on both surfaces. Desktop and phone are different views of one thing, not one layout at two widths — where they diverge, the divergence is written down here rather than discovered in code.</p>
+  <nav class="toc">
+    <a href="#first">First run</a><a href="#daily">The daily driver</a><a href="#multi">Two workers, a gate</a>
+    <a href="#fail">When it fails</a><a href="#start">Starting from a template</a><a href="#shape">Drawing a shape</a>
+    <a href="#settings">Settings</a><a href="#phone">Phone</a><a href="#calls">The calls</a>
+  </nav>
+</header>
+
+<hr class="div">
+
+<section>
+  <h2 id="first">First run</h2>
+  <p class="sub">One screen, one action, and the answer to the question that actually breaks first installs: <em>are my CLIs even being found?</em> Onboarding and diagnosis are the same screen because they are the same worry.</p>
+  <p class="plat">Desktop · nothing yet</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow</div>
+    <div class="d-body solo">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="empty">
+        <div class="big">Point AER Flow at a folder</div>
+        <div class="sm">A room is a conversation about one folder. Open one and start talking; add a second worker whenever it is worth it.</div>
+        <div class="btns" style="justify-content:center"><span class="btn pri">Choose a folder…</span><span class="btn">Start from a template</span></div>
+        <div class="ready"><span>Workers found</span><b>✓ claude</b><b>✓ antigravity</b><s>— antigravity not installed</s></div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>The readiness line is the real feature here.</b> Every vendor CLI is authenticated outside this product, so "it can't find claude" is the most likely first failure and the least self-evident. Showing what was detected — and naming what wasn't, without treating it as an error — turns a dead end into a fact. <b>Nothing else is on this screen.</b> No tour, no sample project, no checklist: one sentence explaining what a room is, and the button that makes one.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="daily">Desktop · the daily driver</h2>
+  <p class="sub">One room, one worker. This is the screen you look at most, so it has to be boring and fast. Nothing here is a mode you enter.</p>
+  <p class="plat">Desktop · one worker</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · claude</span></span></div>
+        <div class="row"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you</span></span></div>
+        <div class="row"><span class="mk d">✓</span><span><span class="nm">docs-sweep</span><span class="st">Finished · 1h</span></span></div>
+        <div class="row"><span class="mk i">—</span><span><span class="nm">spike-cache</span><span class="st">Cancelled · 1d</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip add">+ Add worker</span></span></div>
+        <div class="turn you"><span class="who">you</span>Why does a new room not show up in the list?</div>
+        <div class="turn"><span class="who">claude</span>Two causes. The list only refreshed at startup, and a room was registered only when its first run returned 2xx — so a refused run left a real folder nothing knew about.</div>
+        <div class="turn you"><span class="who">you</span>Fix both.</div>
+        <div class="turn"><span class="who">claude · working</span>Editing <code>MainWindow.axaml.cs</code>…</div>
+        <div class="comp"><span>Reply…</span><span>⏎</span></div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>The sidebar is a presence list, not a file browser.</b> Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. <b>"+ Add worker" is a control in the header</b>, not a new object to create: that is what keeps "room" a single noun.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="multi">Desktop · two workers and a gate</h2>
+  <p class="sub">The escalation. You added a reviewer, it disagreed, and now something needs you. Note what did <em>not</em> happen: you did not move to a different screen.</p>
+  <p class="plat">Desktop · two workers · decision inline</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow</div>
+    <div class="d-body wide">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk n">◗</span><span><span class="nm">aer-flow</span><span class="st">Needs you · 2 workers</span></span></div>
+        <div class="row"><span class="mk w">◔</span><span><span class="nm">payments-api</span><span class="st">Working · 4m</span></span></div>
+        <div class="row"><span class="mk f">✕</span><span><span class="nm">migration</span><span class="st">Failed · 3h</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip">antigravity</span><span class="chip add">+</span></span></div>
+        <div class="turn"><span class="who">claude</span>Patch ready: refresh both lists through one call, and register a room when it is created.</div>
+        <div class="turn gem"><span class="who">antigravity · reviewing</span>The refresh is right. But the picker path is not the only entry point — the CLI still registers only on success.</div>
+        <div class="turn gate"><span class="who">Needs you</span>Apply antigravity's correction before continuing?
+          <div class="btns"><span class="btn pri">Apply</span><span class="btn">Skip</span><span class="btn">Ask claude to respond</span></div>
+        </div>
+        <div class="comp"><span>Reply…</span><span>⏎</span></div>
+      </div>
+      <div class="insp">
+        <div class="ih"><span>Shape</span><span style="color:var(--accent)">Hide</span></div>
+        <div class="node ok">draft · claude</div>
+        <div class="arrow">↓</div>
+        <div class="node ok">review · antigravity</div>
+        <div class="arrow">↓</div>
+        <div class="node wait">gate · you</div>
+        <div class="arrow">↓</div>
+        <div class="node">apply</div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>A gate is answered where it was raised.</b> It renders as a turn in the conversation, because that is where the context is — the argument you are ruling on is directly above it. It <em>also</em> appears on the phone and in the "needs you" filter; same object, several entry points, never several copies of the state. <b>The shape panel is optional</b>, showing where this room is in the template it was started from — dismissible, and absent entirely for a room you just started by talking.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="fail">When it fails</h2>
+  <p class="sub">A failure is a state, not an absence. The rule this screen exists to enforce: a failed room reads as failed everywhere, and the reason is on screen rather than behind a drill-in.</p>
+  <p class="plat">Desktop · failed room</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk f">✕</span><span><span class="nm">migration</span><span class="st">Failed · 3h</span></span></div>
+        <div class="row"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · claude</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">migration</span><span class="who-chips"><span class="chip">claude</span></span></div>
+        <div class="turn you"><span class="who">you</span>Run the schema migration.</div>
+        <div class="turn bad"><span class="who">Failed · claude · 3h ago</span>The worker exited before finishing.
+          <div class="err">migrate: connect ECONNREFUSED 127.0.0.1:5432
+  at TCPConnectWrap.afterConnect</div>
+          <div class="btns"><span class="btn pri">Try again</span><span class="btn">Ask claude to fix it</span><span class="btn">Show full output</span></div>
+        </div>
+        <div class="comp"><span>Reply…</span><span>⏎</span></div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>The error text is the content, not a detail.</b> A failure that says only "failed" forces a hunt through logs; the first few lines of what actually broke are almost always enough to know whether it is your problem or the agent's. Full output stays one click away for when it isn't. <b>"Ask claude to fix it" is the interesting affordance</b> — the worker that failed is right there and has the error in context, so the most common next action should not require you to retype the problem.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="start">Starting from a template</h2>
+  <p class="sub">Shaped work has to be about as cheap to start as a bare conversation, or nobody will ever use it. Three fields and a button.</p>
+  <p class="plat">Desktop · new room from a template</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · New room</div>
+    <div class="d-body">
+      <div class="rail"><i>▤</i><i class="on">◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Templates</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk r">◆</span><span><span class="nm">draft → review</span><span class="st">2 workers · 1 gate</span></span></div>
+        <div class="row"><span class="mk r">◆</span><span><span class="nm">just talk</span><span class="st">1 worker</span></span></div>
+        <div class="row"><span class="mk r">◆</span><span><span class="nm">triage sweep</span><span class="st">3 workers</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">draft → review</span><span class="who-chips"><span class="chip">Edit shape</span></span></div>
+        <div class="turn" style="border:0;padding:0;color:var(--text-3)">Folder</div>
+        <div class="turn" style="color:var(--text)">~/source/repos/aer/aer-flow &nbsp;&nbsp;<span style="color:var(--accent)">Choose…</span></div>
+        <div class="turn" style="border:0;padding:0;color:var(--text-3);margin-top:4px">Who runs it</div>
+        <div class="turn" style="color:var(--text)">draft <span style="color:var(--text-3)">·</span> claude &nbsp;&nbsp;&nbsp; review <span style="color:var(--text-3)">·</span> antigravity</div>
+        <div class="btns" style="margin-top:12px"><span class="btn pri">Start room</span><span class="btn">Save as my default</span></div>
+        <div class="comp" style="margin-top:auto;border:0;color:var(--text-3);padding-left:0">A template names the shape and the roles. It does not name the folder — that is chosen per room.</div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>"Edit shape" is the only door to the editor</b> — and the editor edits a template, never a running room. That separation is what stops the graph creeping back into the daily path. A template deliberately does not remember a folder, so one shape serves every project.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="shape">Drawing a shape</h2>
+  <p class="sub">The one place the product asks you to think structurally. It gets the strongest opinion in this document: <b>it is not a freeform canvas.</b></p>
+  <p class="plat">Desktop · template editor</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · draft → review</div>
+    <div class="d-body wide">
+      <div class="rail"><i>▤</i><i class="on">◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Templates</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk r">◆</span><span><span class="nm">draft → review</span><span class="st">editing</span></span></div>
+        <div class="row"><span class="mk r">◆</span><span><span class="nm">just talk</span><span class="st">1 worker</span></span></div>
+      </div>
+      <div class="ed">
+        <div class="mhead" style="margin-bottom:10px"><span class="t">draft → review</span><span class="who-chips"><span class="chip">Done</span></span></div>
+        <div class="step"><span class="l">draft</span><span class="r"><span class="pill">claude</span><span>ask me first ○</span></span></div>
+        <div class="ins"><span>+ step</span></div>
+        <div class="step sel"><span class="l">review</span><span class="r"><span class="pill">antigravity</span><span class="pill on">ask me first ●</span></span></div>
+        <div class="ins"><span>+ step</span></div>
+        <div class="step"><span class="l">apply</span><span class="r"><span class="pill">claude</span><span>ask me first ○</span></span></div>
+        <div class="ins"><span>+ step</span></div>
+        <div class="comp" style="border:0;color:var(--text-3);padding-left:0;margin-top:14px">Each step runs after the one above it. Turn on "ask me first" to put a gate before a step.</div>
+      </div>
+      <div class="insp">
+        <div class="ih"><span>Preview</span></div>
+        <div class="node">draft · claude</div>
+        <div class="arrow">↓</div>
+        <div class="node wait">gate · you</div>
+        <div class="arrow">↓</div>
+        <div class="node">review · antigravity</div>
+        <div class="arrow">↓</div>
+        <div class="node">apply · claude</div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>A list that renders as a graph, not a canvas you drag on.</b> Freeform node editors are the reason visual workflow tools feel like work: you spend your attention on layout — arranging boxes, routing edges — rather than on the actual decision, which is <em>who does what, in what order, and where do I want a say.</em> A vertical list of steps expresses every shape this product realistically needs, is keyboard-navigable, diffs cleanly in version control, and cannot produce an unreadable tangle.
+  <br><br><b>A gate is a property of a step, not a node you add.</b> "Ask me first" is the entire mental model for human oversight — one toggle, in the place you are already looking. That is also what makes the shape readable at a glance: the gates are the highlighted rows.
+  <br><br><b>The cost of this choice</b> is that genuinely parallel fan-out — three workers at once on the same input — needs a second affordance later. That is a real limitation and worth paying, because it is rare and the tangle is not.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="settings">Settings</h2>
+  <p class="sub">Three groups, one screen, no tabs. Settings should be somewhere you visit rarely and leave quickly.</p>
+  <p class="plat">Desktop · settings</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · Settings</div>
+    <div class="d-body solo">
+      <div class="rail"><i>▤</i><i>◱</i><i class="on">⚙</i></div>
+      <div class="set">
+        <div class="sgroup">
+          <div class="gh">Workers</div>
+          <div class="sline"><span class="k">claude</span><span>✓ found · signed in</span></div>
+          <div class="sline"><span class="k">antigravity</span><span>✓ found · signed in</span></div>
+          <div class="sline"><span class="k">antigravity</span><span style="color:var(--needs)">not installed · how to add</span></div>
+          <div class="sline" style="color:var(--text-3)"><span>AER runs whichever CLI is already signed in on this machine. It never stores keys.</span></div>
+        </div>
+        <div class="sgroup">
+          <div class="gh">Your phone</div>
+          <div class="sline"><span class="k">Pixel 8</span><span>paired · last seen 2m ago &nbsp; <span style="color:var(--fail)">Unpair</span></span></div>
+          <div class="sline"><span class="k">Pair another device</span><span style="color:var(--accent)">Show code</span></div>
+        </div>
+        <div class="sgroup">
+          <div class="gh">Appearance</div>
+          <div class="sline"><span class="k">Theme</span><span class="seg"><span>Light</span><span>Dark</span><span class="on">System</span></span></div>
+          <div class="sline"><span class="k">Density</span><span class="seg"><span class="on">Comfortable</span><span>Compact</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>"Workers" is the same information as the first-run readiness line</b>, in the place you would go looking for it later — one source, two contexts, so a CLI that stops working has an obvious home. <b>A missing worker offers a way to fix it</b> rather than only reporting its absence. The line about never storing keys sits here because this is where people expect to be asked for one, and the answer is that they never will be.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="phone">Phone</h2>
+  <p class="sub">Same product, held differently. Rooms is the root here as on the desktop — you are visiting your work, not working a queue.</p>
+  <p class="plat">Phone · first run · rooms · a gate · a notification</p>
+  <div class="phones">
+
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span><span class="t">Connect</span><span class="sub2">First run</span></span></div>
+      <div class="p-body">
+        <div class="sm" style="color:var(--text-2);font-size:11.5px;line-height:1.6;padding:4px 2px">Open AER Flow on your computer, go to Settings → Your phone, and enter the code it shows.</div>
+        <div class="code-in"><span>4</span><span>7</span><span>2</span><span class="e">·</span><span class="e">·</span><span class="e">·</span></div>
+        <div class="sm" style="color:var(--text-3);font-size:11px;text-align:center">Codes expire after a minute.</div>
+        <div class="btns" style="justify-content:center;margin-top:4px"><span class="btn">Scan a QR instead</span></div>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span><span class="t">Rooms</span><span class="sub2">2 need you · 1 running</span></span></div>
+      <div class="p-body">
+        <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">aer-flow</span><span class="st">Needs you · claude + antigravity</span></span></div>
+        <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you · schema change</span></span></div>
+        <div class="p-row"><span class="mk w">◔</span><span><span class="nm">docs-sweep</span><span class="st">Working · 4m</span></span></div>
+        <div class="p-row"><span class="mk f">✕</span><span><span class="nm">migration</span><span class="st">Failed · 3h</span></span></div>
+        <div class="p-row"><span class="mk i">—</span><span><span class="nm">spike-cache</span><span class="st">Cancelled · 1d</span></span></div>
+        <div class="p-tabs"><span class="on">Rooms</span><span>Needs you</span><span>Settings</span></div>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">claude + antigravity</span></span></div>
+      <div class="p-body">
+        <div class="turn"><span class="who">claude</span>Patch ready: refresh both lists through one call.</div>
+        <div class="turn gem"><span class="who">antigravity</span>The CLI entry point still registers only on success.</div>
+        <div class="turn gate"><span class="who">Needs you</span>Apply antigravity's correction?
+          <div class="btns"><span class="btn pri">Apply</span><span class="btn">Skip</span></div>
+        </div>
+        <div class="p-comp"><span>Reply…</span><span>↑</span></div>
+      </div>
+    </div>
+
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span><span class="t">Locked</span><span class="sub2">Notification</span></span></div>
+      <div class="p-body">
+        <div class="notif"><b>AER Flow · aer-flow</b>antigravity corrected claude's patch — a decision is waiting.
+          <div class="btns"><span class="btn pri">Open</span></div>
+        </div>
+        <div class="notif" style="opacity:.55"><b>AER Flow · migration</b>Failed — the worker exited before finishing.</div>
+        <p class="note" style="font-size:11px;color:var(--text-3);margin:14px 2px 0;font-family:var(--mono);line-height:1.5">A notification says enough to judge whether it is worth opening, and never decides anything.</p>
+      </div>
+    </div>
+
+  </div>
+  <p class="note"><b>The phone's first run is pairing, and nothing else.</b> It has no folders of its own and no CLIs installed, so until it is connected to a computer there is genuinely nothing it can do — pretending otherwise with an empty rooms list would be worse than saying so. <b>Notifications inform, they never decide:</b> one tap opens the gate beside the argument you are ruling on, because approving an agent's work from a lock screen is one mis-tap from approving something you never read. <b>Template authoring is out of scope for the phone's first version</b>, not ruled out — a small-screen shape editor is an interesting problem worth returning to, and the step-list model above is far more portable to a phone than a canvas would have been.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <h2 id="calls">The calls made here</h2>
+  <p class="sub">Each of these is a deliberate divergence between the two views, or a place these screens stop doing something the current app does.</p>
+  <dl class="calls">
+    <div class="call"><dt>One noun</dt><dd><b>Adding a worker never creates a new object.</b> The header chip changes; the room is the same room. "Session" retreats to its technical meaning — the vendor CLI's resumable session — and stops appearing in the interface at all.</dd></div>
+    <div class="call"><dt>Gates inline</dt><dd><b>Decisions render in the conversation that produced them</b>, and are also reachable from the "needs you" filter and the phone. Several entry points, one piece of state. The separate decision surface goes away.</dd></div>
+    <div class="call"><dt>Steps, not a canvas</dt><dd><b>Shapes are authored as an ordered list that renders as a graph.</b> Costs genuine parallel fan-out until a later affordance; buys keyboard navigation, clean diffs, and no tangle.</dd></div>
+    <div class="call"><dt>Gate as a toggle</dt><dd><b>"Ask me first" is a property of a step, not a node type.</b> One switch is the entire mental model for human oversight.</dd></div>
+    <div class="call"><dt>State first, then recency</dt><dd><b>The room list groups by state — needs you, working, earlier — and orders by recency inside each group.</b> An earlier draft said recency alone; the stress test showed that at a hundred rooms the three that need you get buried among ninety-one finished ones. Grouping is what keeps the list stable <em>and</em> useful.</dd></div>
+    <div class="call"><dt>Same root</dt><dd><b>Both surfaces open on rooms.</b> "Needs you" is a filter, not the front door — a product that greets you with a queue feels like a chore list rather than a place your work lives.</dd></div>
+    <div class="call"><dt>Notifications inform</dt><dd><b>No approve or reject from the lock screen.</b> It says enough to judge whether to open, then takes you to the decision in context.</dd></div>
+    <div class="call"><dt>Errors are content</dt><dd><b>A failure shows what broke, in the room.</b> Not a status word with the reason behind a drill-in — and the worker that failed is right there to be asked about it.</dd></div>
+    <div class="call"><dt>Readiness up front</dt><dd><b>Which CLIs were detected is shown at first run and in Settings.</b> The most likely first failure is the least self-evident one, so it gets stated rather than discovered.</dd></div>
+    <div class="call"><dt>State is one thing</dt><dd><b>Every surface renders the room's state machine</b> and none derives its own — which is what makes "no task open" while running impossible rather than merely fixed.</dd></div>
+  </dl>
+</section>
+
+<p class="foot">Complete set, draft 3 — the shapes and the calls, not the pixels. Mark it up and I'll take another pass before any of it becomes a decision record or touches the backlog.</p>
+
+</div>
