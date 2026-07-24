@@ -1,0 +1,83 @@
+<!--
+    GENERATED FILE — DO NOT EDIT.
+    Source: design/tokens.json
+    Regenerate: pixi run tokens
+
+    Hand edits are reverted by the next regeneration and fail CI in the meantime
+    (Aer.Architecture.Tests). Change the token file instead.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="BrandAccentColor">#3F8C87</Color>
+      <Color x:Key="BrandOnAccentColor">#FFFFFF</Color>
+      <Color x:Key="SurfaceGroundColor">#F2F4F5</Color>
+      <Color x:Key="SurfaceRaisedColor">#FFFFFF</Color>
+      <Color x:Key="SurfaceSunkColor">#E7EBEC</Color>
+      <Color x:Key="SurfaceRuleColor">#D6DDDF</Color>
+      <Color x:Key="TextPrimaryColor">#1B2226</Color>
+      <Color x:Key="TextSecondaryColor">#5A676D</Color>
+      <Color x:Key="TextMutedColor">#88969C</Color>
+      <Color x:Key="StatusWorkingColor">#1F6FA8</Color>
+      <Color x:Key="StatusNeedsInputColor">#8F5E0E</Color>
+      <Color x:Key="StatusReadyForReviewColor">#63489E</Color>
+      <Color x:Key="StatusFinishedColor">#2C6E4C</Color>
+      <Color x:Key="StatusFailedColor">#9E382C</Color>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <Color x:Key="BrandAccentColor">#5FB3AD</Color>
+      <Color x:Key="BrandOnAccentColor">#0B1112</Color>
+      <Color x:Key="SurfaceGroundColor">#14191B</Color>
+      <Color x:Key="SurfaceRaisedColor">#1B2124</Color>
+      <Color x:Key="SurfaceSunkColor">#101517</Color>
+      <Color x:Key="SurfaceRuleColor">#2A3236</Color>
+      <Color x:Key="TextPrimaryColor">#DCE4E6</Color>
+      <Color x:Key="TextSecondaryColor">#94A3A8</Color>
+      <Color x:Key="TextMutedColor">#6C7A80</Color>
+      <Color x:Key="StatusWorkingColor">#5AB0E0</Color>
+      <Color x:Key="StatusNeedsInputColor">#DFA84E</Color>
+      <Color x:Key="StatusReadyForReviewColor">#A88CDE</Color>
+      <Color x:Key="StatusFinishedColor">#6DBE94</Color>
+      <Color x:Key="StatusFailedColor">#E08274</Color>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+    <CornerRadius x:Key="RadiusSm">3</CornerRadius>
+    <CornerRadius x:Key="RadiusMd">5</CornerRadius>
+    <CornerRadius x:Key="RadiusLg">7</CornerRadius>
+    <CornerRadius x:Key="RadiusXl">9</CornerRadius>
+    <CornerRadius x:Key="RadiusPanel">10</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+    <sys:Double x:Key="SpacingXs">3</sys:Double>
+    <sys:Double x:Key="SpacingSm">6</sys:Double>
+    <sys:Double x:Key="SpacingMd">10</sys:Double>
+    <sys:Double x:Key="SpacingLg">16</sys:Double>
+    <sys:Double x:Key="SpacingXl">20</sys:Double>
+    <sys:Double x:Key="SpacingXxl">28</sys:Double>
+    <sys:Double x:Key="FontSizeTitle">13.5</sys:Double>
+    <sys:Double x:Key="FontSizeBody">13</sys:Double>
+    <sys:Double x:Key="FontSizeSecondary">12</sys:Double>
+    <sys:Double x:Key="FontSizeAction">12.5</sys:Double>
+    <sys:Double x:Key="FontSizeStatus">12</sys:Double>
+    <sys:Double x:Key="FontSizeMeta">10.5</sys:Double>
+    <sys:Double x:Key="FontSizeLabel">9.5</sys:Double>
+    <sys:Double x:Key="FontSizeCode">11.5</sys:Double>
+    <sys:String x:Key="StatusWorkingGlyph">◐</sys:String>
+    <sys:String x:Key="StatusWorkingLabel">Working</sys:String>
+    <sys:String x:Key="StatusNeedsInputGlyph">◆</sys:String>
+    <sys:String x:Key="StatusNeedsInputLabel">Needs input</sys:String>
+    <sys:String x:Key="StatusReadyForReviewGlyph">▣</sys:String>
+    <sys:String x:Key="StatusReadyForReviewLabel">Ready for review</sys:String>
+    <sys:String x:Key="StatusFinishedGlyph">✓</sys:String>
+    <sys:String x:Key="StatusFinishedLabel">Finished</sys:String>
+    <sys:String x:Key="StatusFailedGlyph">✕</sys:String>
+    <sys:String x:Key="StatusFailedLabel">Failed</sys:String>
+    <sys:Double x:Key="DensityRowPaddingX">9</sys:Double>
+    <sys:Double x:Key="DensityRowPaddingY">7</sys:Double>
+    <sys:Double x:Key="DensityRowGap">3</sys:Double>
+    <sys:Double x:Key="DensityMinTouchTarget">0</sys:Double>
+    <sys:Double x:Key="DensityTypeScaleTitle">13.5</sys:Double>
+    <sys:Double x:Key="DensityTypeScaleSecondary">12</sys:Double>
+</ResourceDictionary>

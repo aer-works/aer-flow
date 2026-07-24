@@ -5,8 +5,14 @@
     reference-direction architecture invariants against the actual project graph, so the room-model
     churn (#333/#335) can't silently introduce a layering violation. IN AerFlow.slnx on purpose —
     it must run in default CI (`pixi run test`) so a forbidden dependency fails the build the moment
-    it is added. Pure file reading over the repo; no project references, no network — so it runs
-    identically on every CI platform, the same shape as Aer.Plan.Tests.
+    it is added. Mostly pure file reading over the repo, and no network — so it runs identically on
+    every CI platform, the same shape as Aer.Plan.Tests.
+
+    The one project reference is Aer.DesignTokens, the #345 token generator, so the drift gate can
+    regenerate in memory and compare against the checked-in artifacts. Sharing the generator rather
+    than reimplementing the comparison is the whole point: a gate with its own idea of correct output
+    would drift from the generator and pass while the artifacts were wrong. The tool is pure managed
+    code with no package or native dependencies, so the cross-platform property above still holds.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -21,6 +27,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\tools\Aer.DesignTokens\Aer.DesignTokens.csproj" />
   </ItemGroup>
 
   <ItemGroup>

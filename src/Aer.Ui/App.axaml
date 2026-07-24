@@ -6,6 +6,12 @@
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
+        <!-- M25 (#345): generated from design/tokens.json, the source of truth shared with Flutter.
+             Merged FIRST on purpose: the hand-maintained Tokens.axaml below still wins for every key
+             it defines, so this PR ships the pipeline without restyling anything. Applying these to
+             the real layout — and retiring the file below — is #336's switcher build, where the
+             result actually gets looked at (decision 0006). Do not hand-edit; CI fails on drift. -->
+        <ResourceInclude Source="/Theme/GeneratedTokens.axaml" />
         <!-- M19 Phase 2 (#187): the design-language token system — every surface consumes these by name -->
         <ResourceInclude Source="/Theme/Tokens.axaml" />
         <!-- Post-M19 design review (#206): status icon geometries -->
