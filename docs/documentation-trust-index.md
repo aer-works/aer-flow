@@ -49,7 +49,7 @@ full re-read (noted inline). Where that is the basis, the rating is deliberately
 
 | Document | Role | Rating | Note / what was done |
 |---|---|---|---|
-| `spec/journeys.md` | What the product promises a person | 🟡 Trust with caveat | The *form* (promises as cross-surface outcomes) is exactly what `0012` endorses. The *specific* nine journeys predate 0012–0018 and its four named demonstrations (cross-vendor contradiction, no-key two-vendor run, cross-vendor fact reuse, desk-to-phone continuity). **Propose:** reconcile the journey set against `0012` during `#367`/`#314`; it stays structurally live (the plan gate references its `J`-ids). |
+| `spec/journeys.md` | What the product promises a person | ✅ **Trust** | **Upgraded from 🟡 on a re-read — this is the healthiest document in the repo, not a stale one.** A journey is a promise to a person across surfaces ("approve it from your phone"), never a description of a screen, and that altitude is immune to a UI rebuild — which is exactly why the UX docs died and these did not. J2 already uses the **room** noun and already describes a session as a multi-participant conversation spawning children; it reached `0012`'s model before `0012` existed. **J7 is the executable form of the crash/disconnect principle `0018` was amended for** ("a truthful state, not a raw exception… no dead-end button that can't succeed") — the same failure #326 and #346 found on a real device. Guarded by `ReconcileTests`, which keeps spec and registry byte-identical. Seven of nine currently read **Fails**: that is an honest scoreboard, not rot. **Remaining work is additive, not corrective** — three of `0012`'s demonstrations (cross-vendor contradiction, no-key two-vendor run, cross-vendor fact reuse) have no journey yet. |
 | `docs/runbooks/journey-tests.md` | How to *run* the journey tests | ✅ Trust | Not a duplicate of the above — it is the test runbook (`#313`). Procedure, current. **Done:** renamed from `journeys.md` to end the basename collision with `spec/journeys.md`; all six inbound references updated. |
 
 ### Behavioural specs
@@ -104,7 +104,7 @@ PR. Seven items, five done and two deliberately deferred.
 | # | Item | Status |
 |---|---|---|
 | 1 | Rewrite the UI behavioural spec against 0012–0018 | **Deferred, deliberately** — archived with a banner instead. See below. |
-| 2 | Reconcile `spec/journeys.md`'s nine journeys against `0012`'s demonstrations | **Deferred** — `#367`/`#314`. See below. |
+| 2 | Reconcile `spec/journeys.md`'s nine journeys against `0012`'s demonstrations | **Reframed — the premise was wrong.** A re-read found the journeys *aligned*, not stale (J2 already says "room"; J7 already specifies the disconnect principle 0018 was amended for). Nothing needs retiring. What remains is **adding** journeys for three of 0012's demonstrations — a statement about what the product promises, and a coordinated spec + registry change under `ReconcileTests`. Own piece of work, not a docs cleanup. |
 | 3 | Retire `ux-principles.md`'s vocabulary map | **Done** — marked retired in-file, then archived. |
 | 4 | Note the `0006`/`0014` supersession in `design-language.md` | **Done** — inline, n8n row struck through, then archived. |
 | 5 | Rewrite `first-real-workflow.md` | **Done as far as is honest** — archived with the mechanics/framing split called out; the rewrite needs the rebuilt UI. |
@@ -117,16 +117,20 @@ it; a directory named `archive` cannot be misread.
 
 ### Why two are deferred, and what would be wrong with doing them now
 
-**The UI spec rewrite (1) and the journey reconciliation (2) both describe a surface that does not
-exist yet.** The rebuild has not happened. Writing either now means inventing the behaviour of
-screens nobody has built, which is not documentation — it is a design proposal wearing a spec's
-clothes, and it would be the *next* thing this index has to rate ⛔. The decision records already
-carry the intent; the spec is written when there is something to specify.
+**The UI spec rewrite (1) describes a surface that does not exist yet.** The rebuild has not
+happened. Writing it now means inventing the behaviour of screens nobody has built, which is not
+documentation — it is a design proposal wearing a spec's clothes, and it would be the *next* thing
+this index has to rate ⛔. The decision records already carry the intent; the spec is written when
+there is something to specify.
 
-The journeys have a second reason: they are **gated**. `Aer.Plan.Tests` asserts that every journey
-`docs/plan.md` references exists in `spec/journeys.md`, so reconciling the set is a coordinated
-change to both, and it is a statement about what the product *promises* — that deserves its own
-review, not a footnote in a documentation PR.
+**(2) turned out to rest on a false premise, and the correction is worth keeping.** The journeys were
+rated 🟡 on the assumption that they predated 0012–0018 and needed reconciling. Reading them showed
+the reverse: they are written one level above the UI — as outcomes a person gets, not screens they
+touch — so the rebuild does not reach them. Two are ahead of the records rather than behind
+(J2's room, J7's disconnect truthfulness). The work left is **additive**: three of 0012's
+demonstrations have no journey, and adding one is a coordinated `spec/journeys.md` + registry change
+under `ReconcileTests`, plus a statement about what the product promises. That earns its own review,
+which is why it is not slipped into this PR — but it is *growth*, not repair.
 
 ## What is now gated, and what still is not
 
