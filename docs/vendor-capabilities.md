@@ -145,8 +145,16 @@ outbound WebChannel connection to a Google-hosted relay (`newWebChannelHandler` 
 `…V2`, `startRemoteControlConnection` / `…V2`, `UpdateInstanceMetadata`), with a warning path about
 binding to a public IP. Outbound-only, so it would traverse NAT without port forwarding.
 
-**Deliberately not run** — it persists state and dials a third-party relay, which is not something to
-switch on incidentally. Vendor forum discussion as of the probe date describes no *official* mobile
+**Attempted, and it will not enable non-interactively.** `agy --remote-control -p …` reports
+*"No valid authentication found"* and starts a **fresh OAuth login**, requesting scopes
+(`cloud-platform`, `cclog`, `experimentsandconfigs`, `aicode`, userinfo) beyond what an ordinary
+authenticated session holds — then fails with *"You are not logged into Antigravity"* without writing
+any state. So remote control sits behind a **separate, interactive consent**, not merely a flag. An
+ordinary `agy -p` still authenticates normally afterwards; the attempt does not disturb the existing
+token. Enabling it therefore needs a human at a browser, which also means **AER cannot turn it on for
+the operator** — worth knowing before designing any flow that assumes it.
+
+Vendor forum discussion as of the probe date describes no *official* mobile
 remote control, while several third-party clients exist; one reportedly speaks **Connect RPC to the
 Antigravity language server** directly. That, plus the public Python SDK
 (`pip install google-antigravity`) exposing streamed strongly-typed `ToolCall` events, thought deltas
