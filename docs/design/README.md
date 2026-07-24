@@ -15,6 +15,10 @@ not carry all of it.
 | 06 | [Answers](06-answers.md) | Every question the first five passes left open, closed with a decision |
 | 07 | [What is actually new](07-whats-new.md) | Nine differentiating claims, eight delights, six table stakes, and how each is demonstrated |
 
+**The mockups themselves are in [`mockups/`](mockups/)** — open any of them in a browser. The
+markdown here carries the words; those carry the layout, the states and the visual treatment, which
+for a screen design is most of the point.
+
 ## Why this exists, and the rule for reading it
 
 A decision record answers *why we chose this*. Much of what was settled during the pause is **not
