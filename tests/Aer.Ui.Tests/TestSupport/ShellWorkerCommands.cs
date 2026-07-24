@@ -26,6 +26,47 @@ internal static class ShellWorkerCommands
     /// <c>Aer.Flow.Tests.TestSupport.ShellWorkerCommands</c> rather than shared, matching this file's
     /// own convention (M14 Phase 5, issue #122).
     /// </summary>
+    /// <summary>
+    /// Announces itself at <paramref name="startedMarkerPath"/>, then blocks until
+    /// <paramref name="releaseFilePath"/> appears, and only then writes its output and
+    /// <paramref name="finishedMarkerPath"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// #335 needs two runs genuinely in flight at the same instant to prove the daemon can hold
+    /// more than one, and it needs them held there long enough to cancel one and watch the other
+    /// survive. A synchronous stub cannot do that: it is finished before a second request arrives,
+    /// so a "concurrent" test with one would only ever observe two runs that happened to be quick.
+    /// </para>
+    /// <para>
+    /// The three markers are what make the assertions unambiguous rather than timing-dependent.
+    /// <b>Started</b> proves the run really is in flight (so "two at once" is observed, not assumed).
+    /// <b>Finished</b> proves it ran to completion — a cancelled run's process is killed while
+    /// blocked, so its finished marker never appears no matter how long the test waits, and absence
+    /// therefore means cancelled rather than merely slow.
+    /// </para>
+    /// </remarks>
+    public static CoreDispatchTarget BlockUntilReleased(
+        string startedMarkerPath, string releaseFilePath, string finishedMarkerPath, string outputName) => OperatingSystem.IsWindows()
+        ? new CoreDispatchTarget(
+            "powershell",
+            [
+                "-NoProfile", "-Command",
+                $"New-Item -ItemType File -Force '{startedMarkerPath}' | Out-Null; " +
+                $"while (-not (Test-Path '{releaseFilePath}')) {{ Start-Sleep -Milliseconds 100 }}; " +
+                $"Set-Content -Path (Join-Path $env:AER_OUTPUT_DIR '{outputName}') -Value 'stub-turn-response'; " +
+                $"New-Item -ItemType File -Force '{finishedMarkerPath}' | Out-Null",
+            ])
+        : new CoreDispatchTarget(
+            "sh",
+            [
+                "-c",
+                $"touch \"{startedMarkerPath}\"; " +
+                $"while [ ! -f \"{releaseFilePath}\" ]; do sleep 0.1; done; " +
+                $"echo stub-turn-response > \"$AER_OUTPUT_DIR/{outputName}\"; " +
+                $"touch \"{finishedMarkerPath}\"",
+            ]);
+
     public static CoreDispatchTarget FailOnFirstAttemptThenSucceed(string markerFilePath, string outputName, string content) => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget(
             "cmd",

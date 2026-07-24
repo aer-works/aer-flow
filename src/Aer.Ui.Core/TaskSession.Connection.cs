@@ -382,11 +382,13 @@ public sealed partial class TaskSession
         }
     }
 
-    // #335 seam: this WS receive loop is transport, but it mutates *per-task* state — it calls
+    // This WS receive loop is transport, but it mutates *client* state — it calls
     // ShouldApplyProjectionPush / UpdateProjection (in TaskSession.cs) which seed
-    // CurrentTaskDirectoryPath and the live projection. When #335 keys tasks per-instance, routing
-    // which socket feeds which task's projection is #335's job, not something this split partitioned
-    // away. The cross-file call is deliberate and marks exactly where that rewiring lands.
+    // CurrentTaskDirectoryPath and the live projection. #335 keyed the *host* side per session and
+    // deliberately left this alone: a client still watches one session at a time, so filtering on
+    // arrival remains correct. Routing pushes at the server so a client is not sent what it will
+    // discard is #446, and ShouldApplyProjectionPush stays afterwards as defence in depth — a
+    // subscription bug should cost traffic, not resurrect #262's cross-client corruption.
     private async Task ReceiveWebSocketDataAsync(ClientWebSocket webSocket, CancellationToken cancellationToken)
     {
         var buffer = new byte[1024 * 1024];

@@ -841,7 +841,11 @@ namespace Aer.Daemon
                 }
                 else
                 {
-                    session.RequestHostStop();
+                    // Targeted at the directory the caller named (#335). The parameterless overload
+                    // stops every hosted pump, which was indistinguishable from "stop this one" only
+                    // while the daemon could host a single session -- with two running it stopped
+                    // whichever started last, so a client asking to stop A stopped B.
+                    session.RequestHostStop(request.DirectoryPath);
                 }
 
                 return Results.Ok();
@@ -1492,18 +1496,21 @@ namespace Aer.Daemon
         ///
         /// Never removed: one <see cref="SemaphoreSlim"/> per session seen per daemon lifetime is
         /// bounded and tiny, and safe removal would need refcounting to avoid disposing a semaphore a
-        /// waiter still holds. #335's keyed per-task state absorbs this.
+        /// waiter still holds. #335 landed its keyed host state without absorbing this, and
+        /// deliberately so -- the two have different lifetimes. A hosted run exists only while its
+        /// pump is in flight and is removed by that run; a turn lock must outlive every turn, because
+        /// its whole job is to be found again by the next one.
         /// </summary>
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> SessionTurnLocks =
-            new(StringComparer.OrdinalIgnoreCase);
+            new(AerPaths.RecordKeyComparer);
 
         /// <summary>
-        /// Canonical <see cref="SessionTurnLocks"/> key for a session's task directory -- absolute and
-        /// without a trailing separator, so <c>C:\a\b</c>, <c>C:\a\b\</c> and <c>C:\a\.\b</c> all map
-        /// to one lock.
+        /// Canonical <see cref="SessionTurnLocks"/> key for a session's directory. Delegates to
+        /// <see cref="AerPaths.RecordKey"/> rather than normalising here: #335 keys host state on the
+        /// same directories, and two normalisers that disagree about whether two spellings are one
+        /// record would make one of the two primitives silently miss.
         /// </summary>
-        internal static string SessionTurnLockKey(string directoryPath) =>
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryPath));
+        internal static string SessionTurnLockKey(string directoryPath) => AerPaths.RecordKey(directoryPath);
 
         /// <summary>
         /// The one semaphore guarding turns for <paramref name="directoryPath"/>. Two spellings of the
