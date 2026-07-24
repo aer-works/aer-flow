@@ -55,6 +55,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0016](decisions/0016-memory-is-room-owned.md) | **Memory belongs to the room, not the worker** — shared across vendors, a visible and versioned working document; workers propose additions, the product never infers them (#442). |
 | [0017](decisions/0017-vendor-model-effort-are-three-choices.md) | **Vendor, model and effort are three separate choices** on the worker chip — vendor is the tool (`claude`/`agy`), model is chosen within its subscription, effort is per-run. |
 | [0018](decisions/0018-attention-is-the-primary-signal.md) | **Attention orders the list; notifications never decide** — rooms sort by state (needs-you → working → idle → quiet) then recency, surviving a hundred rooms; a notification informs and links into the room, never carries the verdict (#282). |
+| [0019](decisions/0019-consulting-is-not-deciding.md) | **Consulting is not deciding** — put a question to anyone, including a worker not yet in the room, and the gate stays open until *you* answer it; the consulted worker gets the room summary plus the raising turn verbatim, disclosed and editable before sending, and the responder is always chosen, never inferred (Rule 1). The corpus's centrepiece, absent from the repo until #474. |
 
 ## The completion bar: journeys
 
