@@ -2,8 +2,8 @@
 
 The living plan for AER — versioned with the code, reviewed in PRs, and **gated so it can't rot**.
 Its predecessor was a GitHub issue (#283) that went stale in five places while nothing caught it;
-that is the exact failure this milestone exists to kill, so the plan now lives where the discipline
-does.
+that is the exact failure the M25 re-architecture existed to kill, so the plan now lives where the
+discipline does.
 
 ## The bar
 
@@ -14,8 +14,8 @@ directly, not as an isolated screen.
 
 ## How this plan stays honest
 
-This document owns **durable structure** — the bar, the phases, the dependency order, the decisions
-in force. It does **not restate status**, because restated status is what rots. Status is deferred
+This document owns **durable structure** — the bar, the milestones and what each one demonstrates,
+the dependency order, and the decisions in force. It does **not restate status**, because restated status is what rots. Status is deferred
 to the sources that already keep it, each with its own gate:
 
 | For… | Look at | Kept honest by |
@@ -23,7 +23,8 @@ to the sources that already keep it, each with its own gate:
 | *why* we chose something | [`docs/decisions/`](decisions/) | numbered, immutable — superseded, never edited |
 | what the product *promises*, and whether it's met | [`spec/journeys.md`](../spec/journeys.md) | the journey tests (#313) + the reconcile gate (#314) |
 | what the *engine* does | [`spec/`](../spec/) behavioural specs | the test suite |
-| an issue's live state | the **[M25 milestone](https://github.com/aer-works/aer-flow/milestone/18)** / project board | GitHub |
+| an issue's live state | the **[milestones](https://github.com/aer-works/aer-flow/milestones)** (M26–M30) / project board | GitHub |
+| what a *past* milestone shipped | [`docs/milestone-history.md`](milestone-history.md) | append-only; provenance, never authority |
 
 **The gate.** `tests/Aer.Plan.Tests` runs in default CI and fails the build if this file drifts from
 those sources — every decision it names must exist in `docs/decisions/` and match the index, and
@@ -68,107 +69,139 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 A milestone is done when its **[journeys](../spec/journeys.md)** pass — a promise driven against the
 *real* surface a person uses, not an isolated screen. Nine are defined (J1–J9); their statuses are
 machine-kept, so this document links them rather than repeating them. Journey tests are the answer
-to the milestone's sharpest finding: *not one completion gate touched a UI, so a product could pass
+to M25's sharpest finding: *not one completion gate touched a UI, so a product could pass
 every gate it had with no working client — and very nearly did.*
 
-## The work, by phase
+## The work, by milestone
 
-Ordered by dependency, not visibility. Per-issue state lives on the
-[milestone board](https://github.com/aer-works/aer-flow/milestone/18); this is the structure and the
-reasoning, which change rarely.
+**Ordered by what a person can do, not by capability.** Decision
+[0012](decisions/0012-what-aer-flow-is.md) retires capability-shaped milestones for anything
+user-facing, because #465–#469 were all *missing specifications* rather than wrong code — a milestone
+that ships a capability can be complete while the thing a person does with it does not work. Each
+milestone below therefore ends on a **demonstration**, not a checklist. Per-issue state lives on the
+board; this is the structure and the reasoning, which change rarely.
 
-**Scope of the re-architecture: the UI layers are rebuilt, the rest stays.** The 2026-07-24 design
-pass (decision [0012](decisions/0012-what-aer-flow-is.md)) confirmed what the five manual-run defects
-already implied — the engine, adapters, daemon and protocol were never what failed; every defect was
-a missing specification surfacing at a UI seam. So the re-architecture **rips out and rebuilds the UI
-layers** (`Aer.Ui`, `Aer.Ui.Core`, `Aer.Mobile`) against the decisions below, and leaves `Aer.Flow`,
-`Aer.Adapters`, `Aer.Daemon` and the wire protocol in place. This is a delivery decision, not a
-product one, which is why it lives here rather than in a numbered record; it bounds what the phases
-below may touch.
+**Scope of the rebuild: the UI layers are rebuilt, the rest stays.** The 2026-07-24 design pass
+confirmed what the five manual-run defects already implied — the engine, adapters, daemon and protocol
+were never what failed; every defect was a missing specification surfacing at a UI seam. So the
+rebuild **rips out and rebuilds** `Aer.Ui`, `Aer.Ui.Core` and `Aer.Mobile` against the decisions
+above, and leaves `Aer.Flow`, `Aer.Adapters`, `Aer.Daemon` and the wire protocol in place. This is a
+delivery decision, not a product one, which is why it lives here rather than in a numbered record; it
+bounds what every milestone below may touch.
 
-### Phase 0 — make verification possible *(landed)*
-The infrastructure everything after it is unverifiable without: **#328** UI driving harness · **#317**
-`AerPaths` seam · **#318** test isolation · **#312** journeys as a spec artifact · **#313** journey
-tests driving the real desktop and mobile UI. This phase ships nothing a user sees; it is the reason
-the rest can be trusted.
+### M26 — The room works
 
-### Phase 1 — safety and correctness on the core path
-**#331** enforce permissions and fail closed *(J6 — a shell-denied session ran `hostname` and got the
-real value; every permission surface is decorative until this lands)* · **#321** bind a directory ·
-**#330** broadcast desktop-started state · **#348** phone-started work never opens · **#347** a restart
-strands paired phones · **#349** "Forget pairing" leaves the token valid.
+The daily driver, excellent: one room, one worker, one folder, nothing in the way. **This is the
+milestone the product is judged on** — [0012](decisions/0012-what-aer-flow-is.md) commits to
+multi-model as an escalation and never a tax on the simple case, so if M26 is not good, nothing after
+it matters.
 
-*Independent of every IA decision; none of it waits on the rethink.* **#393** landed first
-deliberately (a re-materialize read-then-delete of `flow.jsonl`/`snapshot.json` sitting *outside*
-Flow's per-task lock, surfaced by the #398 flake investigation): its per-session turn lock is the
-primitive #335 then keyed host state against, sharing one path normaliser so the two cannot disagree
-about whether two spellings are one session. #335's `ConcurrencyGuard` assumption held —
-`flow.lock` is per session directory, so the engine needed no change for the daemon to host several.
-**#341** (a send accepted, then the decision silently dropped) still interacts on this path and is
-still open. Remote is broken in **both** directions (#330
-desktop→phone, #348 phone's own work), and pairing itself is unreliable (#347) and un-revocable
-(#349) — walked live 2026-07-22.
+**Demonstrated when** a person can talk to one agent about one folder with nothing in the way; every
+surface renders the room's own state, so "no room open" while running is impossible rather than merely
+fixed ([0020](decisions/0020-one-state-machine.md)); a failure shows what broke *in the room*, with the
+worker that failed there to be asked; and first run states which vendor CLIs were found.
 
-### Phase 2 — contract gaps the UI can't work around *(landed)*
-**#322** timestamps · **#324** empty 400 body. *(**#319** inbox scoping moved to Phase 3 — its
-escape-hatch half *was* #324; the remaining scope-switching half is definitionally the multi-task
-daemon **#335** plus the phone switcher **#337**, so it cannot precede them.)*
+**Depends on** nothing but the seam work M25 already landed. It is first because every other milestone
+renders inside it.
 
-### Phase 3 — the rethink proper (the room model)
-The object model unifies on two nouns and a session becomes a **room** — a multi-participant
-conversation that spawns children into a tree (decisions [0001](decisions/0001-two-nouns-workflow-and-session.md)
-/ [0008](decisions/0008-runtime-streaming-over-append-log.md) /
-[0009](decisions/0009-session-lifecycle-and-retention.md)). A participant's behaviour must be modelled
-as a **named role/skill binding, not a hardcoded prompt** (decision
-[0010](decisions/0010-skills-and-advisor.md)) — the one affordance this phase must not foreclose, so the
-advisor participant and skills (M26) slot in without reworking the object model.
+### M27 — More than one model in the room
 
-**#370** architecture-invariant enforcement — build-fails-on-violation checks for Flow-carries-discipline,
-adapter isolation, and the reference direction — lands **first**, a seam gate in
-[0005](decisions/0005-seam-milestones.md)'s rhythm (like #317/#318 in Phase 0), so the churn below cannot
-silently erode the invariants while it moves code. A guard that lands after the refactor it guards is worthless.
+The reason the product exists ([0012](decisions/0012-what-aer-flow-is.md)), and the half no
+single-vendor tool can copy.
 
-**#333** unify the object model on two nouns *(storage folded; the identifier/vocabulary rename split
-out as **#443**, which waits on #315's lint so the rename lands against an enforced word list rather
-than a hand-checked one)* · **#334** split `PausePoint` · **#390** a worker's interactive questions
-become answerable PausePoints *(**premise disproved by measurement** — `claude -p` surfaces MCP tools
-and auto-approves them, so there is nothing to intercept: the seam inverts and AER **hosts** an MCP
-server the worker calls, now **#445**. The mechanism must end the turn rather than block inside a tool
-call, or it deadlocks against #393's per-session turn lock)* · **#335** multi-session daemon
-*(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an append-log
-compaction/archival step for completed subtrees, a real engine addition. Rescoped to the keyed-state
-seam alone; the protocol change is **#446**, the `MainWindowViewModel` extraction **#447**, and the
-concurrency cap's visible-then-adjustable half **#448**)* · **#345** one token file for both toolkits ·
-**#336** desktop switcher shell · **#337** mobile list-as-destination · **#319** decision-inbox
-scope-switching (rides #335 + #337) · **#338** Settings surface · **#339** templates to three shapes ·
-**#340** derived sessions · **#368** scoped warmth (0008 Path C) · cross-vendor usage view (**J9**, on
-the dedicated activity surface #360).
+**Demonstrated when** two subscriptions act in one room on plan auth with no key configured anywhere;
+two workers of the *same* vendor run at different models and efforts, in AER's own vocabulary
+([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md)); a fact one vendor established is
+used by another later in the same room ([0016](decisions/0016-memory-is-room-owned.md)); a document
+authored by one vendor and edited by another carries a diff between their versions
+([0021](decisions/0021-artifacts-are-files.md)); and one question put to every worker returns answers
+side by side ([0024](decisions/0024-commands-are-namespaced.md)).
 
-**A pattern worth naming, because it recurred three times in one sitting.** #333, #390 and #335 each
-arrived as a single issue that turned out to be several, or to rest on a premise that measurement
-disproved. Splitting them *before* writing code — not at PR time — is what kept each diff reviewable;
-checking #390's premise against the actual vendor CLI is what stopped a whole feature being built
-against a mechanism that does not exist. **An issue body is a hypothesis, not a specification.** Both
-#345 and #381 were also found stale on inspection: #345 still demanded a direction decision that
-0006 had already recorded, and #381's "split the god files first" prerequisite was already satisfied
-for the file #335 actually touched.
+**Depends on** M26 — a second worker is an escalation from a room that already works.
 
-### Phase 4 — presentation and parity
-**#320** approval-gate defaults · **#327** Author's graph · **#267** markdown rendering · **#323**
-progress events · **#326** revoked pairing · **#346** the disconnected screen · **#325** stale
-`CLAUDE.md` · **#282** notifications · **#266** / **#208** motion *(M26)*.
+### M28 — Needs you
 
-### Phase 5 — rewrite the spec to the target design
-**#367** re-establish a coherent doc base and guard it against re-rot *(the decompose-and-audit this
-plan's own move is part of — a spec rewritten over stale docs re-specifies stale claims)* · **#314**
-assert spec claims in CI *(and promote the journey reconcile + this plan gate into the same required
-check)* · **#315** vocabulary lint. *Gated on Phase 0's journeys landing first — a spec written
-before them specifies screens instead of outcomes.*
+Attention, permission, and answering from anywhere. The milestone that makes leaving the room safe.
+
+**Demonstrated when** at a live gate a person asks a worker not previously in the room, gets a
+contradicting answer, and **the gate is still open**
+([0019](decisions/0019-consulting-is-not-deciding.md)); granting "allow in this room" means not being
+asked again, and the grant can be found and revoked in settings
+([0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md)); and quitting the desktop app
+mid-run, answering the permission on the phone, and reopening finds it continued.
+
+**Depends on** M26 for the surface and M27 for a second worker to consult, and on **#445** for the
+mechanism a permission is raised through — see the note below, which corrects what this plan
+previously said about it.
+
+### M29 — Shapes
+
+Repeatable work, authored as an ordered list that renders as a graph
+([0014](decisions/0014-shapes-are-a-list-not-a-canvas.md),
+[0025](decisions/0025-a-step-is-an-instruction-with-a-gate-toggle.md)).
+
+**Demonstrated when** a person authors a four-step template on a phone, starts it on the desktop, and
+watches it run.
+
+**Depends on** M26. It is deliberately late: shapes are the leverage, not the day job, and a shape
+editor built before the room works would be a canvas with better marketing.
+
+### M30 — Visual polish
+
+Presentational work that depends on the rebuilt surfaces existing first. **Nothing here blocks a
+demonstration**, and everything here is judged against
+[0006](decisions/0006-visual-direction-quiet.md) (Quiet): motion confirms, it never performs.
+
+### The permission mechanism — what this plan used to say, and what was measured
+
+This section previously asserted that *"`claude -p` surfaces MCP tools and auto-approves them, so
+there is nothing to intercept"*, and that the mechanism *"must end the turn rather than block inside a
+tool call, or it deadlocks."* **`#472` measured the opposite of both**, and
+`docs/vendor-capabilities.md` records the runs:
+
+- **Both CLIs fail closed headless.** `claude -p` with a clean environment denied the write and
+  reported `permissionMode: default`. `--permission-mode manual` is a **no-op** — still `default`, no
+  prompt ever issued.
+- **A blocking MCP tool holds a vendor turn open on both.** A watcher minted a token *after* observing
+  the call start, so the correct answer proves the turn genuinely waited: `claude` 10.9 s, `agy`
+  10.3 s. MCP is not Claude-only — `agy` loads servers from `~/.gemini/config/mcp_config.json`.
+
+**The limit of the correction.** The probe disproved the *vendor* half. It did **not** test whether
+AER's own per-session turn lock (#393) tolerates a turn held open while a human answers — that
+interaction remains genuinely open and must be settled before #445 is built. Correcting one confident
+wrong claim into another is the same failure.
+
+Two implementation constraints fall out and belong here rather than in an issue body: `claude` **spawns
+the server twice** (once to enumerate tools, then again for the real turn), so it must be cheap to
+start and hold no in-memory state across spawns; and `agy` **hands back the resume key at gate time**
+(`antigravity.google/conversation_id`), so a gate persisted with it survives a host crash — which is
+[0015](decisions/0015-three-kinds-of-needs-you.md)'s ask-time persistence obligation made concrete.
+
+### A pattern worth naming, because it recurred three times in one sitting
+
+**#333, #390 and #335 each arrived as a single issue that turned out to be several, or rested on a
+premise that measurement disproved.** Splitting them *before* writing code — not at PR time — is what
+kept each diff reviewable; checking #390's premise against the actual vendor CLI is what stopped a
+whole feature being built against a mechanism that does not exist. **An issue body is a hypothesis, not
+a specification.**
+
+Both #345 and #381 were also found stale on inspection: #345 still demanded a direction decision that
+[0006](decisions/0006-visual-direction-quiet.md) had already recorded, and #381's "split the god files
+first" prerequisite was already satisfied for the file #335 actually touched.
+
+The generalisation, paid for twice more since: **judge the thing, not a proxy for it.** A backlog
+combed by issue *title* got 2 of 4 wrong; a document set reviewed by *name* got 5 of 6 wrong; and a
+design transfer checked by whether records *existed* rather than what they *covered* lost 16 of 18
+settled calls. The correction is mechanical verification against the source —
+[`docs/design/coverage-audit.md`](design/coverage-audit.md) exists because of it.
 
 ## Why a disciplined spec produced an unusable product
 
-The full evidence is in the **[ground-up evaluation](https://claude.ai/code/artifact/1ff40ef3-35d9-4492-ad88-549d8aeb6e44)**
-(2026-07-22). The operative lesson, distilled: every defect found lived in a **seam**, and every
+The evidence that is **in the repo** is [`docs/design/`](design/) — the seven artifacts of the
+2026-07-24 design pass — and [`docs/milestone-history.md`](milestone-history.md)'s M25 entry. The
+original ground-up evaluation (2026-07-22) was an external artifact and is deliberately not the
+citation here: a plan that rests on a link outside the repo is one revoked share away from resting on
+nothing. The operative lesson, distilled: every defect found lived in a **seam**, and every
 structural failure had the same shape — *something could go stale silently because nothing checked.*
 The corrections are controls, not notes: a required artifact (#312), a gate (#313, #314), a lint
 (#315), an immutable record (#316), and now this plan's own gate. **A recorded lesson is not a
@@ -182,10 +215,24 @@ so.
 
 ## Open questions
 
-- Whether a directory-less session is allowed at all, and where it runs (forced by #321, sharpened by #331).
-- Where a project's permission ceiling is stored and first presented (0004 sets the ceiling, not its home — moves with #338).
-- Typeface and motion — the direction is settled (**Quiet**, 0006) but the face is not, and it must ship as an asset on both toolkits (Avalonia defaults to Segoe UI, Flutter to Roboto). Motion belongs with the switcher build.
-- Empty first run, derived-session grouping (#340), title derivation, and the spec-rename cost.
+Genuinely undecided. Four earlier entries were closed by M25 and are recorded here as closed rather
+than deleted, because "we already answered that" is the cheapest thing for a plan to forget:
+directory-less rooms (#321, #331, #407 — a neutral scratch dir), and the typeface (#453/#456 shipped
+Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits).
+
+- **Does a room live in one folder forever?** Everything designed assumes one directory for life, and
+  work spanning two repositories is normal. `#472` found `--add-dir` on both CLIs, so disjoint folders
+  are feasible at the vendor level — this is a product question, not a capability one. Reopened rather
+  than closed; see #443. It changes the object model, not a screen.
+- **Whether AER's per-session turn lock tolerates a turn held open** while a human answers a
+  permission (#393 ↔ #445). The vendor half is measured; this half is not.
+- **How AER's canonical effort levels map onto each vendor's**, given `claude` exposes five and `agy`
+  three ([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) sets the rule and
+  deliberately leaves the mapping to a probe).
+- **Where a project's permission ceiling is stored and first presented** — 0004 sets the ceiling, not
+  its home; moves with #338.
+- **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
+  how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
 
 ## Not in scope
 
