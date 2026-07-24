@@ -57,9 +57,25 @@ public static class AerPaths
         }
     }
 
-    /// <summary><c>{Root}/tasks</c> — the workflow (task) directories.</summary>
-    public static string Tasks => Path.Combine(Root, "tasks");
+    /// <summary>
+    /// <c>{Root}/sessions</c> — <b>the</b> record root. Decision 0001 deletes "task" from the product
+    /// and defines a session as a running instance of a workflow, so this holds every record: a DAG
+    /// run is a session whose workflow is an authored pipeline, exactly as a chat is a session whose
+    /// workflow is the conversation shape.
+    /// </summary>
+    public static string Sessions => Path.Combine(Root, SessionsDirectoryName);
 
-    /// <summary><c>{Root}/sessions</c> — the interactive-session directories.</summary>
-    public static string Sessions => Path.Combine(Root, "sessions");
+    /// <summary>Directory name of <see cref="Sessions"/> relative to a root.</summary>
+    public const string SessionsDirectoryName = "sessions";
+
+    /// <summary>Directory name of <see cref="LegacyTasks"/> relative to a root.</summary>
+    public const string LegacyTasksDirectoryName = "tasks";
+
+    /// <summary>
+    /// <c>{Root}/tasks</c> — the pre-#333 second root, <b>read by the migration only</b>. Nothing
+    /// else may write here or enumerate it: doing so would recreate the parallel-root split that
+    /// scattered <c>isSession</c> special-casing through the daemon and UI. New records always go to
+    /// <see cref="Sessions"/>. Retained (not deleted) after migration so the fold stays reversible.
+    /// </summary>
+    public static string LegacyTasks => Path.Combine(Root, LegacyTasksDirectoryName);
 }

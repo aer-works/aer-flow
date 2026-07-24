@@ -55,6 +55,20 @@ namespace Aer.Daemon
             var aerDir = AerPaths.Root;
             Directory.CreateDirectory(aerDir);
 
+            // #333: fold the legacy `tasks` root into `sessions` before anything reads either. Runs
+            // under the single-instance mutex above, so two daemons can never migrate concurrently.
+            // Copy-only and marker-gated: after the first successful run this is a single File.Exists.
+            // A failure must not start a daemon that would then serve a half-migrated store, so this
+            // is deliberately not wrapped in a catch -- the legacy directory is untouched either way,
+            // and the next start retries from the persisted plan.
+            var migration = await LegacyStorageMigration.RunAsync().ConfigureAwait(false);
+            if (migration.Ran)
+            {
+                Console.WriteLine(
+                    $"Unified storage: migrated {migration.RecordsMigrated} record(s) from 'tasks' into 'sessions'. " +
+                    "The legacy directory was copied, not moved, and is safe to remove by hand.");
+            }
+
             // Generate token if not exists
             var tokenFile = Path.Combine(aerDir, "daemon.token");
             string token;
@@ -623,7 +637,8 @@ namespace Aer.Daemon
                     return Results.BadRequest("TemplateId is required.");
                 }
 
-                var baseTasksDir = AerPaths.Tasks;
+                // #333: new records are created in the one record root, never the legacy split.
+                var baseTasksDir = AerPaths.Sessions;
                 var folderName = string.IsNullOrWhiteSpace(request.TaskName)
                     ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}"
                     : request.TaskName.Trim();
@@ -841,14 +856,11 @@ namespace Aer.Daemon
             // the whole list, since one bad item shouldn't hide every other task/session.
             app.MapGet("/api/tasks", async (bool? includeArchived) =>
             {
-                var baseTasksDir = AerPaths.Tasks;
+                // #333: one root, one kind of record -- the two-root concatenation this replaced is
+                // what "one list of one kind of thing" was blocked on.
                 var baseSessionsDir = AerPaths.Sessions;
 
                 var directories = new List<string>();
-                if (Directory.Exists(baseTasksDir))
-                {
-                    directories.AddRange(Directory.GetDirectories(baseTasksDir));
-                }
                 if (Directory.Exists(baseSessionsDir))
                 {
                     directories.AddRange(Directory.GetDirectories(baseSessionsDir));
@@ -1395,17 +1407,21 @@ namespace Aer.Daemon
         // DaemonClient.deleteTask() included) -- an unchecked path here is a strictly worse version
         // of #250's RunTemplate TaskName traversal, since delete needs no traversal trick at all,
         // just any absolute path. Every fleet item this API surfaces is itself a direct child of
-        // one of these two roots (Directory.GetDirectories in the /api/tasks handler above), so
-        // requiring the resolved path be contained within one of them costs nothing legitimate.
+        // the record root (Directory.GetDirectories in the /api/tasks handler above), so requiring
+        // the resolved path be contained within it costs nothing legitimate.
+        // #333: this deliberately no longer accepts the legacy `tasks` root. Migration copies rather
+        // than moves, so those directories still exist on disk -- but nothing enumerates them any
+        // more, and a stale client path pointing at one would mutate an abandoned copy that no read
+        // path will ever surface again, silently diverging from the live record. Narrowing a
+        // containment check fails closed: the request is rejected instead of quietly doing the wrong
+        // thing to the wrong directory.
         private static bool TryResolveManagedTaskDirectory(string directoryPath, out string resolvedPath)
         {
             resolvedPath = Path.GetFullPath(directoryPath);
 
-            var baseTasksDir = Path.GetFullPath(AerPaths.Tasks);
             var baseSessionsDir = Path.GetFullPath(AerPaths.Sessions);
 
-            return resolvedPath.StartsWith(baseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-                || resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+            return resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
         }
 
         private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
