@@ -16,6 +16,8 @@
       <Color x:Key="SurfaceGroundColor">#F2F4F5</Color>
       <Color x:Key="SurfaceRaisedColor">#FFFFFF</Color>
       <Color x:Key="SurfaceSunkColor">#E7EBEC</Color>
+      <Color x:Key="SurfaceCodeColor">#DFE6E8</Color>
+      <Color x:Key="SurfaceCodeInlineColor">#E9EEF0</Color>
       <Color x:Key="SurfaceRuleColor">#D6DDDF</Color>
       <Color x:Key="TextPrimaryColor">#1B2226</Color>
       <Color x:Key="TextSecondaryColor">#5A676D</Color>
@@ -32,6 +34,8 @@
       <Color x:Key="SurfaceGroundColor">#14191B</Color>
       <Color x:Key="SurfaceRaisedColor">#1B2124</Color>
       <Color x:Key="SurfaceSunkColor">#101517</Color>
+      <Color x:Key="SurfaceCodeColor">#222A2E</Color>
+      <Color x:Key="SurfaceCodeInlineColor">#1E262A</Color>
       <Color x:Key="SurfaceRuleColor">#2A3236</Color>
       <Color x:Key="TextPrimaryColor">#DCE4E6</Color>
       <Color x:Key="TextSecondaryColor">#94A3A8</Color>
@@ -80,4 +84,6 @@
     <sys:Double x:Key="DensityMinTouchTarget">0</sys:Double>
     <sys:Double x:Key="DensityTypeScaleTitle">13.5</sys:Double>
     <sys:Double x:Key="DensityTypeScaleSecondary">12</sys:Double>
+    <FontFamily x:Key="FontSans">avares://Aer.Ui/Assets/Fonts#Source Sans 3</FontFamily>
+    <FontFamily x:Key="FontMono">avares://Aer.Ui/Assets/Fonts#JetBrains Mono</FontFamily>
 </ResourceDictionary>

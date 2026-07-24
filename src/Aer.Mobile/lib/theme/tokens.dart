@@ -18,6 +18,10 @@ class AerTokens {
   static const Color surfaceRaisedDark = Color(0xFF1B2124);
   static const Color surfaceSunkLight = Color(0xFFE7EBEC);
   static const Color surfaceSunkDark = Color(0xFF101517);
+  static const Color surfaceCodeLight = Color(0xFFDFE6E8);
+  static const Color surfaceCodeDark = Color(0xFF222A2E);
+  static const Color surfaceCodeInlineLight = Color(0xFFE9EEF0);
+  static const Color surfaceCodeInlineDark = Color(0xFF1E262A);
   static const Color surfaceRuleLight = Color(0xFFD6DDDF);
   static const Color surfaceRuleDark = Color(0xFF2A3236);
   static const Color textPrimaryLight = Color(0xFF1B2226);
@@ -57,6 +61,8 @@ class AerTokens {
   static const double fontSizeMeta = 10.5;
   static const double fontSizeLabel = 9.5;
   static const double fontSizeCode = 11.5;
+  static const String fontSans = 'Source Sans 3';
+  static const String fontMono = 'JetBrains Mono';
   static const double densityRowPaddingX = 12;
   static const double densityRowPaddingY = 13;
   static const double densityRowGap = 3;
@@ -129,6 +135,7 @@ ThemeData aerTheme(Brightness brightness) {
 
   return ThemeData(
     brightness: brightness,
+    fontFamily: AerTokens.fontSans,
     scaffoldBackgroundColor: ground,
     colorScheme: ColorScheme.fromSeed(
       seedColor: accent,
