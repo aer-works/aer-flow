@@ -27,10 +27,10 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 
 | Call | Source | Status |
 |---|---|---|
-| **Consulting is not deciding.** Put a question to anyone — including a worker not yet in the room — and it joins to answer. The gate stays open the whole time; only you close it. Asking three still decides nothing. | 03, 07 | **→ new decision record.** The corpus calls this *"the single most important behaviour in the room model"* and *"if only one thing survives contact with implementation, it should be this."* Absent from the repo entirely. |
-| **Routing is a control.** You choose who answers and what they see. The product never reads the conversation to decide who should respond. | 03 | **→ same record.** This is CLAUDE.md Architecture Rule 1 surfacing in the UI, and it is what keeps cross-examination from becoming inference. |
-| **Adding a worker = asking a question.** No separate participant-management surface. | 03 | **→ same record.** |
-| **What a newly-added worker sees:** a room summary + the raising turn and its attachments verbatim + the ability to query for more (`#424`). Always disclosed before sending, every item removable. | 06 | **→ same record**, and the disclosure UI to `#367`. |
+| **Consulting is not deciding.** Put a question to anyone — including a worker not yet in the room — and it joins to answer. The gate stays open the whole time; only you close it. Asking three still decides nothing. | 03, 07 | ✅ **landed** — [0019](../decisions/0019-consulting-is-not-deciding.md). The corpus calls this *"the single most important behaviour in the room model"* and *"if only one thing survives contact with implementation, it should be this."* |
+| **Routing is a control.** You choose who answers and what they see. The product never reads the conversation to decide who should respond. | 03 | ✅ **landed** — 0019 §4. CLAUDE.md Architecture Rule 1 surfacing in the UI, and what keeps cross-examination from becoming inference. |
+| **Adding a worker = asking a question.** No separate participant-management surface. | 03 | ✅ **landed** — 0019 §1. |
+| **What a newly-added worker sees:** a room summary + the raising turn and its attachments verbatim + the ability to query for more (`#424`). Always disclosed before sending, every item removable. | 06 | ✅ **landed** — 0019 §3; the disclosure *UI* still routes to `#367`. |
 
 ## 2 · Permissions
 
@@ -48,8 +48,8 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 | **One state machine.** Every surface renders the room's state; none derives its own. | 02 | **→ new decision record.** This is the general form of `#467`/`#468` — it makes "no room open while running" *impossible* rather than merely fixed. |
 | **Errors are content.** A failure shows what broke, in the room, with the worker that failed right there to be asked about it. Not a status word with the reason behind a drill-in. | 02, 03 | **→ same record**, plus `#404`. |
 | **Stale, not blank.** Refreshing never empties a list; previous content stays and is marked stale. | 03 | ✅ **landed** — [0018](../decisions/0018-attention-is-the-primary-signal.md)'s freshness amendment. Arrived independently via the power-cut analysis. |
-| **Success collapses, failure opens.** A passing command shows one line; a failing one opens itself. Status and duration stay visible either way. | 03, 07 | **→ issue** (extends `#267`). |
-| **Readiness up front.** Which vendor CLIs were detected, at first run and in Settings — the most likely first failure is the least self-evident. | 02 | **→ issue.** Absent, and it is the first screen a new user meets. |
+| **Success collapses, failure opens.** A passing command shows one line; a failing one opens itself. Status and duration stay visible either way. | 03, 07 | **→ `#267`** — scope extended on the issue. |
+| **Readiness up front.** Which vendor CLIs were detected, at first run and in Settings — the most likely first failure is the least self-evident. | 02 | **→ `#478`.** The first screen a new user meets, and the least self-evident failure in the product. |
 
 ## 4 · Workers, models, effort
 
@@ -59,8 +59,8 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 | **Effort is named by behaviour** — quick / standard / careful / exhaustive — never a token budget or a vendor's flag name. | 04, 05 | **→ extends 0017.** The axis landed; the *naming rule* did not. `#472` confirmed both CLIs expose a real `--effort`, so this is now implementable. |
 | **Models are offered by purpose** — deep / balanced / fast. Nobody should need this month's model string. | 04 | **→ extends 0017.** Absent. |
 | Two workers may share a vendor at different models/efforts — a normal room, not an edge case | 04, 07 | ✅ **landed** — 0017. |
-| **Context is per worker**, and running out is offered as a choice before it becomes an event. | 04 | **→ `#395`**, which currently scopes auto-compact but not per-worker headroom. |
-| **Limits, not dollars.** Spend shown against the subscription's own limits. | 04 | **→ issue.** Absent; it is the unit this product actually runs on. |
+| **Context is per worker**, and running out is offered as a choice before it becomes an event. | 04 | **→ `#395`** — scope extended: per-worker headroom, and the choice offered before the event. |
+| **Limits, not dollars.** Spend shown against the subscription's own limits. | 04 | **→ `#479`.** The unit this product actually runs on. What each CLI reports about quota is still unprobed. |
 
 ## 5 · Commands and skills
 
@@ -83,8 +83,8 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 | **Artifacts are files** — vendor-neutral, versioned, attributed, explicitly attached, diffable between vendors. | 03, 07 | **→ new decision record.** Only partially implied today; `#377` covers the viewer, not the model. |
 | **Saving a working document into the project: diff-and-choose, never overwrite by default**, and flag divergence since derivation. | 06 | **→ same record.** |
 | **Documents stay, plumbing goes.** One file list; the only distinction is "in your project" or not. Execution directories are never surfaced. | 04 | **→ same record.** |
-| **Child rooms** nest in the list and report back as a turn; the parent never blocks. | 06 | **→ `#340`**, which scopes derived sessions but not the non-blocking parent. |
-| **Two rooms on one folder**: serialised already (verified — the turn lock is keyed on directory path). Surface the wait, name the holder, warn on a duplicate room. | 06 | **→ issue.** The engine behaviour is verified; the *surfacing* is absent. |
+| **Child rooms** nest in the list and report back as a turn; the parent never blocks. | 06 | **→ `#340`** — scope extended with the non-blocking parent, and its interaction with `#480`'s directory lock. |
+| **Two rooms on one folder**: serialised already (verified — the turn lock is keyed on directory path). Surface the wait, name the holder, warn on a duplicate room. | 06 | **→ `#480`.** The engine behaviour is verified and correct; only the *surfacing* is absent. |
 | **Gates render inline**, in the conversation that produced them, reachable from a "needs you" filter and the phone. The separate decision surface goes away. | 02 | **→ `#367`** + `#434`. |
 | Rooms are the front door on both surfaces; "needs you" is a filter, not the landing screen | 02 | ✅ **landed** — 0018 + `#337`. |
 
@@ -109,21 +109,57 @@ change under `ReconcileTests`. None exists today.
 ## 8 · The eight delights
 
 Not differentiators alone; collectively the difference between a tool you tolerate and one you like.
-**All → issues**, none currently exists as one except where noted.
+**All eight now have a home.**
 
-`y`/`n` for permissions, never bound to Enter so a reflex cannot approve · typing never blocks, queue
-visible with interrupt and remove (`#462`, partial) · failures offer the fix, with the worker that
-failed already holding the context · jump to the last decision via an event rail (`#459`) · status
-readable without colour (✅ shipped, `#463`) · *"Thought for 12s"* reported after the fact, never a
-live counter · success collapses / failure opens · refresh never blanks (✅ 0018).
+| Delight | Status |
+|---|---|
+| `y`/`n` for permissions, never bound to Enter, so a reflex cannot approve | **→ `#481`** |
+| Typing never blocks; the queue is visible, with interrupt and remove | **→ `#462`** — was partial; the visible/removable half is recorded on it |
+| Failures offer the fix, with the worker that failed already holding the context | **→ `#482`** |
+| Jump to the last decision via an event rail | **→ `#459`** (exists) |
+| Status readable without colour | ✅ **shipped** — `#463` |
+| *"Thought for 12s"* reported after the fact, never a live counter | **→ `#483`** |
+| Success collapses, failure opens | **→ `#267`** — scope extended |
+| Refresh never blanks | ✅ **landed** as a rule — [0018](../decisions/0018-attention-is-the-primary-signal.md); built with the rebuild |
 
 ## 9 · Deliberate drops
 
 | Item | Why |
 |---|---|
-| Curved Bézier DAG edges, hover tracing | ⛔ The corpus itself marks this *"obsolete — close rather than implement"*: it is polish for the freeform canvas 0014 rejects. `#266` splits — the brand marks and motion survive, the canvas half does not. |
+| Curved Bézier DAG edges, hover tracing | ⛔ The corpus itself marks this *"obsolete — close rather than implement"*: it is polish for the freeform canvas 0014 rejects. **Done:** `#266` was split and closed, `#208` folded in, and the surviving half — vendor brand marks on workers plus status motion and skeletons — carried to **`#476`** in M30. |
 | The pixel-level styling of the mockups | ⛔ Superseded by [0006](../decisions/0006-visual-direction-quiet.md) and the shipped token set, which are normative. The mockups are kept for layout and state, not colour values. |
 | Anything in the corpus contradicted by a later correction | ⛔ Records win over corpus — see [`README.md`](README.md). Notably: notifications never carry a verdict, rooms rather than "needs you" as the phone's landing screen, and the playful status verbs are **kept** (an earlier pass proposed removing them). |
+
+## What is left to route
+
+The issue-shaped and centrepiece items above are done. Three kinds of work remain, tracked by `#474`.
+
+**New decision records.** Two concepts have no record and are not extensions of one: **one state machine**
+(every surface renders the room's state, none derives its own — the general form of `#467`/`#468`, which
+makes "no room open while running" *impossible* rather than merely fixed, and which carries "errors are
+content" with it), and **artifacts are files** (vendor-neutral, versioned, attributed, diffable — plus
+diff-and-choose on save, and "documents stay, plumbing goes").
+
+**Records that amend existing ones.** Four items extend a record — and because records are
+[immutable](../decisions/README.md), each is a **new record that amends its predecessor**, the way 0013
+amends 0001. Never an edit to the original. They are: the permission **scope ladder** at the moment of
+asking plus **denial is an answer** (amends [0004](../decisions/0004-permission-scopes.md)); **effort named
+by behaviour** and **models offered by purpose** (amends
+[0017](../decisions/0017-vendor-model-effort-are-three-choices.md)); **namespaced commands**, `/ask-all`,
+and canonical-vs-native skills (amends [0010](../decisions/0010-skills-and-advisor.md)); **"ask me first"
+as a property of a step** and **the instruction is the step's body** (amends
+[0014](../decisions/0014-shapes-are-a-list-not-a-canvas.md)).
+
+Each is a **three-file change** — the record, `docs/plan.md`'s table, and `decisions/README.md` — or the
+plan gate's three-way set comparison fails the build.
+
+**The nine claims → journeys.** §7's table becomes journeys in `spec/journeys.md` plus the registry, as
+one coordinated change under `ReconcileTests`. Note the ordering constraint: the plan gate extracts every
+`J<n>` reference from `docs/plan.md` and requires a matching heading in the spec, so the journeys must
+land **before** anything cites them.
+
+**The screens** (§ across 02) go to `#367`, the UI spec replacement — the largest single body of untransferred
+material, ~350 lines across eight screens on two surfaces.
 
 ## Still genuinely open
 
