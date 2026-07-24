@@ -247,12 +247,20 @@ public class TasksViewModelTests
     [Fact]
     public void Two_spellings_of_one_directory_resolve_to_the_same_row()
     {
+        // Built from Path rather than written as a literal: AerPaths.RecordKey runs
+        // Path.GetFullPath, so a Windows-shaped literal ("C:\tasks\Alpha") is an absolute path on
+        // Windows and a *relative* one on Linux — and '\' is not a separator there, so a trailing
+        // one never gets trimmed. A hardcoded path would make this assert a different thing per OS.
         var viewModel = new TasksViewModel();
-        var row = viewModel.AddTestItem(NewItem(@"C:\tasks\Alpha"));
+        var directoryPath = Path.Combine(Path.GetTempPath(), "aer-switcher-key", "Alpha");
+        var row = viewModel.AddTestItem(NewItem(directoryPath));
 
-        // #335's durable lesson: the *second* primitive keyed on a record path is where normalisers
-        // drift apart. This is that second primitive, so it uses the same AerPaths.RecordKey.
-        viewModel.ApplyProjectionPush(@"C:\TASKS\alpha\", ProjectionWith(WorkflowStatus.Terminal));
+        // The two spellings that must collapse to one row: different casing, and a trailing
+        // separator. #335's durable lesson is that the *second* primitive keyed on a record path is
+        // where normalisers drift apart — this is that second primitive, so it shares RecordKey.
+        var sameRecordSpeltDifferently = directoryPath.ToUpperInvariant() + Path.DirectorySeparatorChar;
+
+        viewModel.ApplyProjectionPush(sameRecordSpeltDifferently, ProjectionWith(WorkflowStatus.Terminal));
 
         Assert.Equal("Finished", row.StatusText);
     }
