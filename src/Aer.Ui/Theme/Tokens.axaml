@@ -108,7 +108,11 @@
 
   </ResourceDictionary.ThemeDictionaries>
 
-  <!-- Type scale (Inter is the app default family via WithInterFont; mono for artifact/transcript content) -->
+  <!-- Type scale. The families themselves are no longer defined here (#456): they moved to
+       GeneratedTokens.axaml's FontSans/FontMono, generated from design/tokens.json so desktop and
+       mobile cannot drift, and the prose face is the app-wide default set in Program.cs. This file
+       keeps only the sizes, which are still M19's hand-tuned ramp — the generated FontSize* ramp
+       supersedes them per-surface as #336/#337 restyle each layout, not in one sweep. -->
   <x:Double x:Key="Type.Display.FontSize">24</x:Double>
   <x:Double x:Key="Type.Heading.FontSize">17</x:Double>
   <x:Double x:Key="Type.Body.FontSize">14</x:Double>
@@ -116,7 +120,6 @@
   <x:Double x:Key="Type.BodyStrong.FontSize">14</x:Double>
   <x:Double x:Key="Type.Caption.FontSize">12</x:Double>
   <x:Double x:Key="Type.Mono.FontSize">13</x:Double>
-  <FontFamily x:Key="Type.Mono.FontFamily">Cascadia Mono,Consolas,Menlo,monospace</FontFamily>
 
   <!-- 4px spacing grid -->
   <x:Double x:Key="Space.1">4</x:Double>
