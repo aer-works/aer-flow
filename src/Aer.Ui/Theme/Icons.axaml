@@ -22,6 +22,27 @@
   <!-- Stale: a ring left open with a small arrow tick — the refresh mark. -->
   <StreamGeometry x:Key="Icon.Refresh">M 12.8,5.2 A 5,5 0 1 0 13,8 M 13,8 L 13,5.3 M 13,8 L 10.3,7.3</StreamGeometry>
 
+  <!-- #458: the two marks #334's five states needed and this set did not have. Named for their
+       shape, because design/tokens.json addresses them by shape name and the drift gate resolves
+       "Icon." + the name — a status whose mark has no geometry here fails CI rather than rendering
+       as a blank space.
+
+       The five status marks are Ring (working), Diamond (needs input), Page (ready for review),
+       Check (finished) and Cross (failed). They are chosen to differ in *silhouette*: round-open,
+       angular-solid, tall-rectangular, angular-line, angular-X. That is what decision 0006's rule
+       actually asks for — five marks distinguishable only once you can see their colour would
+       satisfy a literal reading of "carries a glyph" and fail the people the rule is for. -->
+
+  <!-- Needs input: a solid diamond. Filled and angular so it separates from Icon.Dot (idle) by
+       shape and weight, not only size — before this, "waiting on you" and "nothing is happening"
+       drew the same circle. -->
+  <StreamGeometry x:Key="Icon.Diamond">M 8,2.5 L 13.5,8 L 8,13.5 L 2.5,8 Z</StreamGeometry>
+
+  <!-- Ready for review: a page with a turned corner — there is an output here to look at. Its tall
+       rectangular silhouette is the only one in the set that is not built from circles or
+       diagonals, so it survives being small. -->
+  <StreamGeometry x:Key="Icon.Page">M 4,2.5 L 9.5,2.5 L 12,5 L 12,13.5 L 4,13.5 Z M 9.5,2.5 L 9.5,5 L 12,5</StreamGeometry>
+
   <!-- #218: navigation rail + common actions, same 16x16 hand-drawn stroke set as the status
        icons above — Approve reuses Icon.Check and Reject reuses Icon.Cross (the issue's own
        "approve/check", "reject/cross" pairing); Retry reuses Icon.Refresh (an "again" arrow

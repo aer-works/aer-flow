@@ -44,9 +44,12 @@ These hold regardless of direction and must not be re-decided per screen:
 1. **Semantic status colour is a separate ramp from the brand accent.** Status is this product's
    primary information. Its scale does not move when the brand does — which is what allows the accent
    to change without re-teaching anyone what amber means.
-2. **Status reads without colour.** Every state carries a distinct glyph *and* a word, never hue
+2. **Status reads without colour.** Every state carries a distinct **mark** *and* a word, never hue
    alone. Roughly one man in twelve has some colour-vision deficiency, and the phone case is
-   frequently bright sunlight; a coloured dot with nothing else is unreadable in both.
+   frequently bright sunlight; a coloured dot with nothing else is unreadable in both. The marks
+   must differ in *silhouette*, not merely be five different things — five marks that can only be
+   told apart once you can see their colour satisfy a literal reading of this rule and fail the
+   people it is for.
 
 The five states are #334's split: Working / Needs input / Ready for review / Finished / Failed.
 
@@ -74,6 +77,21 @@ a fixed elevation: code steps *away* from the page ground, down in light and up 
 in dark mode was the first instinct and was rejected on this decision's own reasoning above, which
 faulted Signal partly because a near-black dark mode "can feel harsh on OLED at night" — a near-black
 code panel imports exactly that onto the surface stared at longest.
+
+**The mark is a drawn shape, not a character** (2026-07-24, #458). This decision said "glyph", and
+the token file took that literally — one Unicode codepoint per state. That does not work with the
+faces chosen above: `◐`, `▣` and `✕` are absent from Source Sans 3 and `✓` from JetBrains Mono, and
+the two shipped faces share **no checkmark and no cross at all**, so no choice of characters can
+express this set. A codepoint a font lacks renders as tofu or falls back to whatever the device
+happens to have — the per-device resolution this decision rules out, arriving through the back door
+on the one element the accessibility rule depends on. The token file therefore names a shape and
+each toolkit draws it: a `StreamGeometry` on Avalonia, a `CustomPainter` on Flutter, both authored
+on the same 16×16 grid, with CI failing if either lacks a mark the token file names.
+
+That correction also exposed a live defect this decision had not noticed: **"needs input" was
+drawing the same dot as idle**, so the one state meaning "this is waiting on you" was shaped
+identically to "nothing is happening" and differed only in hue — rule 2 failing in the shipped
+product, not hypothetically. The five marks are now ring / diamond / page / check / cross.
 
 **Does not settle** motion, which belongs with the switcher build rather than a palette decision.
 

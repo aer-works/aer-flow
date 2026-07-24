@@ -84,15 +84,20 @@ enum AerStatus {
 }
 
 /// Decision 0006: a status must never be conveyed by hue alone, so every state carries a
-/// glyph and a word. Render [glyph] and [label] together - colour is the third channel, not
+/// mark and a word. Render [mark] and [label] together - colour is the third channel, not
 /// the only one.
+///
+/// [mark] names a shape, not a character (#458): the shipped faces do not cover the
+/// codepoints this originally used, and between them have no checkmark and no cross at all.
+/// `StatusMark` in status_mark.dart draws it; desktop draws the same shape from a
+/// StreamGeometry of the matching name.
 extension AerStatusPresentation on AerStatus {
-  String get glyph => switch (this) {
-        AerStatus.working => '◐',
-        AerStatus.needsInput => '◆',
-        AerStatus.readyForReview => '▣',
-        AerStatus.finished => '✓',
-        AerStatus.failed => '✕',
+  String get mark => switch (this) {
+        AerStatus.working => 'ring',
+        AerStatus.needsInput => 'diamond',
+        AerStatus.readyForReview => 'page',
+        AerStatus.finished => 'check',
+        AerStatus.failed => 'cross',
       };
 
   String get label => switch (this) {
