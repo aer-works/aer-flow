@@ -1,6 +1,6 @@
 # Backlog comb — every open issue judged against 0012–0018
 
-**Status: proposal. This document closes nothing.** It reads all 58 open issues against the ground-up
+**Status: proposal. This document closes nothing.** It judges all 58 open issues against the ground-up
 design ([0012](decisions/0012-what-aer-flow-is.md)–[0018](decisions/0018-attention-is-the-primary-signal.md))
 and the `#472` vendor probe, and says what each one *becomes*. Executing any row — closing, splitting,
 re-milestoning — is a separate owner-approved step.
@@ -9,6 +9,20 @@ The redesign rips out **the UI layers only**; engine, adapters, daemon and proto
 fact decides most rows: a bug in a surface being deleted is not a bug to fix, it is a **requirement on
 the replacement** — but only if the requirement is written down somewhere before the issue closes.
 Closing them silently is how the replacement inherits the same defects.
+
+## How much to trust each row
+
+**Not every issue was read in full.** Nine were read body-and-code (#266, #319\*, #323, #326, #346,
+#350, #355, #467, and the two delivered rows); the rest are classified from title, labels, milestone
+and the decision they intersect. That is the same honest caveat
+[`documentation-trust-index.md`](documentation-trust-index.md) carries, and it matters here more,
+because **in the first four bodies I read, two of my title-level calls were wrong** (below). Treat a
+row as a *prompt to read the issue*, not a verdict to execute. Rows marked **read** were verified;
+the rest are provisional.
+
+The error mode is specific and worth naming: a title names a **surface**, and this rebuild is
+scoped to **layers**. `fix(mobile): …` does not mean the defect lives in the mobile layer. Confirm
+where the fix actually lands before closing anything as superseded.
 
 ## Verify before acting
 
@@ -80,11 +94,16 @@ should be closed until its requirement is captured in the rebuild issue named be
 |---|---|---|
 | #319 | #337 | The inbox must not be scoped to one open room. |
 | #320 | #336 / #434 | A gate must open on the step it belongs to, and never summarise the prompt away. |
-| #323 | #337 | Progress events need separators — output is read, not concatenated. |
-| #350 | #336 | Live refresh must not rebuild every row per tick; hover and focus survive updates. |
+| #350 **read** | #336 | **Verified UI-only** — the 2 s `DispatcherTimer` in `MainWindow.axaml.cs:45` driving unconditional rebuilds in `TaskSession.cs:643`. Both files are in the layer being replaced. Safe to fold. Requirement: live refresh must not destroy the control under the cursor. |
 | #383 | #336 | Selection uses the brand accent, never the "needs input" amber. |
-| #467 | #336 | The shell must never report "no room open" while one is open — the defect that started this pause. |
 | #468 | #336 | A tab must not deny the content rendered directly beneath it. |
+
+**Two of these do not fold cleanly, and folding them would lose real work:**
+
+| Issue | Why it resists |
+|---|---|
+| #467 **read** | **Split — do not fold whole.** Its record-visibility half is already fixed in #464. Of the remaining two symptoms, the header-contradicts-projection half is UI and folds into #336; but *"a refused mutation reports a conflict without pointing at what it conflicted with"* is a **daemon contract change** — the refusal must name the execution holding the directory (#335's per-directory lock). That half survives the UI rebuild and needs its own home, or the product keeps telling the operator "something else is running" about something they cannot see or reach. |
+| #323 **read** | **Root cause unverified.** The symptom (`Session startedrequestingPowerShellrequesting`) is consistent with *either* mobile-side concatenation of an event list *or* the daemon emitting an already-joined progress string. Only the first folds into #337. Determine which before closing — and note the probe found `agy` emits **PowerShell** command lines on Windows, which is exactly the text appearing mangled here. |
 
 ## Survives untouched — the rebuild does not reach these
 

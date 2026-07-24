@@ -99,9 +99,23 @@ the **only** settings path — there is no project-local override file. Prefixes
 MCP rules take `mcp(server/tool)`, `mcp(server/*)` or `mcp(*)`. Observed: `mcp(aerhuman)` — the bare
 server name — **does not match**; `mcp(aerhuman/*)` does.
 
-**Command matching is stricter than the docs imply.** With the command line
-`node C:/…/escape.js`, a rule of `command(node)` was **denied**; the exact full command line was
-**granted**. Do not assume a bare binary name pre-authorises its invocations.
+**Command rules are matched literally, against the whole command line.** This is the single most
+consequential finding for the permission surface, and it contradicts the vendor's own docs (which
+describe `command(git)` as covering "standard git commands"). Four runs against the identical command
+`node --version`, each changing only the rule:
+
+| rule | result |
+|---|---|
+| `command(node)` | **denied** — a bare binary name does not cover its invocations |
+| `command(node .*)` | **denied** — so the match is not a regex, despite the docs' `command(npm run (build\|lint\|test))` example |
+| `command(node --version)` | **granted, ran** |
+| `command(node C:/…/escape.js)` (exact, separate run) | **granted** |
+
+**Consequence: AER cannot pre-authorise a *family* of commands on `agy`, only enumerate exact command
+lines.** A ceiling like "this room may run git, but not push" is not expressible as an allow-rule.
+Where a family-shaped grant is needed, the enforceable instrument is `--sandbox` plus targeted
+`unsandboxed(…)` escapes, or the MCP consultation path — not `permissions.allow`. Design the
+permission surface accordingly rather than assuming prefix semantics.
 
 ## `agy --sandbox` genuinely enforces
 
@@ -124,11 +138,14 @@ rather than implying a guarantee we cannot keep.
 
 ## Sharp edges
 
-**`agy -p` ignores the working directory.** It runs the agent in its own scratch directory
-(`~/.gemini/antigravity-cli/scratch`), not the shell's cwd. Observed: a run launched from a workspace
-could not find a file sitting in that workspace and began a recursive search of the whole home
-directory. **Bind the room's directory explicitly with `--add-dir`** — never rely on cwd. Any adapter
-that assumes cwd is silently pointing the worker somewhere else.
+**`agy -p` ignores the working directory.** It runs the agent under its own install directory, not the
+shell's cwd. Observed twice, including in **the case the adapter will actually hit** — launched from
+`aer-flow`, which *is* listed in the settings' `trustedWorkspaces`, the emitted command still carried
+`"Cwd":"C:\\Users\\pbree\\.gemini\\antigravity-cli"`. From an untrusted temp directory it used
+`…\antigravity-cli\scratch` and, unable to find a file sitting in the launch directory, began a
+recursive search of the entire home folder. Workspace trust does not change the behaviour.
+**Bind the room's directory explicitly with `--add-dir`** — never rely on cwd. Any adapter that
+assumes cwd is silently pointing the worker somewhere else.
 
 **`agy` emits PowerShell on Windows**, not POSIX shell — its `run_command` steps carry PowerShell
 command lines. Pre-authorisation rules must match what it actually emits.
@@ -145,14 +162,26 @@ outbound WebChannel connection to a Google-hosted relay (`newWebChannelHandler` 
 `…V2`, `startRemoteControlConnection` / `…V2`, `UpdateInstanceMetadata`), with a warning path about
 binding to a public IP. Outbound-only, so it would traverse NAT without port forwarding.
 
-**Attempted, and it will not enable non-interactively.** `agy --remote-control -p …` reports
-*"No valid authentication found"* and starts a **fresh OAuth login**, requesting scopes
-(`cloud-platform`, `cclog`, `experimentsandconfigs`, `aicode`, userinfo) beyond what an ordinary
-authenticated session holds — then fails with *"You are not logged into Antigravity"* without writing
-any state. So remote control sits behind a **separate, interactive consent**, not merely a flag. An
-ordinary `agy -p` still authenticates normally afterwards; the attempt does not disturb the existing
-token. Enabling it therefore needs a human at a browser, which also means **AER cannot turn it on for
-the operator** — worth knowing before designing any flow that assumes it.
+**It cannot be enabled non-interactively.** `agy --remote-control -p …` reports *"No valid
+authentication found"* and starts a **fresh OAuth login**, requesting scopes (`cloud-platform`,
+`cclog`, `experimentsandconfigs`, `aicode`, userinfo) beyond what an ordinary authenticated session
+holds — then fails with *"You are not logged into Antigravity"* without writing any state. An ordinary
+`agy -p` still authenticates normally afterwards; the attempt does not disturb the existing token. So
+remote control sits behind a **separate, interactive consent**, and **AER cannot turn it on for the
+operator** — worth knowing before designing any flow that assumes it.
+
+**Enabled by the owner 2026-07-24**, which revealed where the state lands and what identity it uses:
+
+```jsonc
+// ~/.gemini/config/config.json  — the shared config, not the CLI's settings.json
+"remoteControlEnabled": true,
+"remoteControlHostname": "compy-2-plasma-mars"
+```
+
+The auto-generated hostname is **speakable, not a UUID or an IP**. That is worth copying: AER's own
+pairing identity is a token today, and #326 shows what a machine-shaped identity costs a user when it
+goes wrong (a raw `401`). A device you can *name out loud* is easier to recognise, to confirm over the
+phone, and to tell apart from another machine on the same account.
 
 Vendor forum discussion as of the probe date describes no *official* mobile
 remote control, while several third-party clients exist; one reportedly speaks **Connect RPC to the
