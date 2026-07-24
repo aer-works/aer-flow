@@ -72,6 +72,36 @@ public static class AerPaths
     public const string LegacyTasksDirectoryName = "tasks";
 
     /// <summary>
+    /// The canonical key for a record directory: absolute, with any trailing separator removed, so
+    /// <c>C:\x\run</c>, <c>C:\x\run\</c> and <c>C:\x\..\x\run</c> all resolve to one entry.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every per-record concurrency primitive keys on a directory path, and each one that derives
+    /// its own key is a chance for two of them to disagree about whether two paths are the same
+    /// record. #393's per-session turn lock was the first (a mismatch there loses turns); #335's
+    /// per-session host state is the second (a mismatch there stops the wrong session). One
+    /// normaliser, used by both, is what stops the third from drifting from the first two.
+    /// </para>
+    /// <para>
+    /// Pair this with <see cref="RecordKeyComparer"/>. Path case-sensitivity is per-filesystem, not
+    /// per-OS, so neither comparer is universally correct: an ordinal one under-locks on Windows
+    /// (two casings of one directory become two records — the actual bug), an ignore-case one
+    /// over-locks on a case-sensitive filesystem (two genuinely distinct records serialise against
+    /// each other). Over-locking costs throughput; under-locking costs correctness, so the choice
+    /// is not close.
+    /// </para>
+    /// </remarks>
+    public static string RecordKey(string directoryPath) =>
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryPath));
+
+    /// <summary>
+    /// The comparer every dictionary keyed by <see cref="RecordKey"/> must use. See that method's
+    /// remarks for why this errs toward treating two paths as one record.
+    /// </summary>
+    public static StringComparer RecordKeyComparer => StringComparer.OrdinalIgnoreCase;
+
+    /// <summary>
     /// <c>{Root}/tasks</c> — the pre-#333 second root, <b>read by the migration only</b>. Nothing
     /// else may write here or enumerate it: doing so would recreate the parallel-root split that
     /// scattered <c>isSession</c> special-casing through the daemon and UI. New records always go to

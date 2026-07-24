@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -58,14 +59,18 @@ public class BindingsPathHolder
 public sealed partial class TaskSession
 {
     // Partial split (#426, no behaviour change): this file holds the shell (shared connection/
-    // client state + the constructor) and the *per-task core* — the projection triplet
-    // (CurrentTaskDirectoryPath, CurrentPumpTask, _currentInFlightExecutions) plus
-    // SetCurrentTaskDirectory / LoadAsync / RunAsync / DecideAsync / CancelExecutionAsync and the
-    // ShouldApplyProjectionPush / UpdateProjection / Rebuild* projection helpers. That triplet and
-    // these methods are the surface #335 lifts into a per-task *type* keyed in a dictionary; #426
-    // only makes that boundary visible, it does not create the per-task instance. Peripheral
-    // clusters live in TaskSession.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial
-    // class, same fields.
+    // client state + the constructor) and the *per-session core* — SetCurrentTaskDirectory /
+    // LoadAsync / RunAsync / DecideAsync / CancelExecutionAsync and the ShouldApplyProjectionPush /
+    // UpdateProjection / Rebuild* projection helpers. Peripheral clusters live in
+    // TaskSession.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial class, same
+    // fields.
+    //
+    // #426 named a triplet here (CurrentTaskDirectoryPath, CurrentPumpTask,
+    // _currentInFlightExecutions) as the surface #335 would lift into a per-session type. #335 has
+    // landed and did exactly that for the *host* half: the registry, stop source and pump task now
+    // live in HostedRun, keyed by session directory in _hostedRuns, so the daemon holds as many as
+    // it is running. CurrentTaskDirectoryPath deliberately stayed single-valued — it is the
+    // *client's* idea of what it is looking at, and desktop multi-session is #336's switcher.
 
     /// <summary>The outcome one load produces: exactly one of the two is non-null (§3's honest-error rule — an invalid directory is a rendered message, never a crash).</summary>
     public sealed record LoadOutcome(TaskProjection? Projection, string? ErrorMessage);
@@ -113,21 +118,79 @@ public sealed partial class TaskSession
     public event Action<string, string, WorkerProgressEvent>? SessionProgressReceived;
 
     /// <summary>
-    /// The caller-retained delivery point (M15 Phase 4, issue #140) for whichever Run or Decide pump
-    /// this session currently has in flight — <see langword="null"/> whenever this process is not
-    /// hosting one. A targeted Cancel on an execution registered here is delivered in-process via
+    /// One in-flight pump this process is hosting, and everything needed to reach it: the
+    /// caller-retained delivery point for a targeted cancel (M15 Phase 4, issue #140), the host-stop
+    /// source that is the Ctrl+C equivalent <c>Aer.Cli</c> wires to <c>Console.CancelKeyPress</c>,
+    /// and the pump task itself so a caller can wait for a durable fixed point rather than
+    /// abandoning it mid-write.
+    /// </summary>
+    /// <remarks>
+    /// A targeted cancel on an execution registered here is delivered in-process via
     /// <see cref="InFlightExecutionRegistry.RequestCancellationAsync"/>, never a second
     /// mutation-surface call, since §15's guard is already held for this call's entire duration
     /// (M10's decision of record).
-    /// </summary>
-    private InFlightExecutionRegistry? _currentInFlightExecutions;
+    /// </remarks>
+    internal sealed class HostedRun(InFlightExecutionRegistry inFlightExecutions, CancellationTokenSource hostStopSource)
+    {
+        public InFlightExecutionRegistry InFlightExecutions { get; } = inFlightExecutions;
+
+        public CancellationTokenSource HostStopSource { get; } = hostStopSource;
+
+        public Task? PumpTask { get; set; }
+    }
 
     /// <summary>
-    /// The host-stop token source for whichever pump this session currently has in flight (issue
-    /// #140) — cancelling it is the Ctrl+C equivalent <c>Aer.Cli</c>'s <c>Program.cs</c> wires to
-    /// <c>Console.CancelKeyPress</c>, reused by the desktop's Stop button and window-close handler.
+    /// Every pump this process is hosting, keyed by session directory (#335).
     /// </summary>
-    private CancellationTokenSource? _currentHostStopSource;
+    /// <remarks>
+    /// <para>
+    /// Before this these were three single-slot fields, so a second concurrent run overwrote the
+    /// first's registry and stop source. The consequences were not subtle: a targeted cancel for
+    /// session A fell through to the out-of-process <c>CancelCommand</c> path because
+    /// <see cref="CurrentTaskDirectoryPath"/> had moved to B, and <see cref="RequestHostStop()"/>
+    /// cancelled whichever run started last — so asking the daemon to stop A stopped B instead.
+    /// Whichever pump finished first then nulled the shared fields, breaking cancellation for the
+    /// one still running.
+    /// </para>
+    /// <para>
+    /// Keyed by <see cref="AerPaths.RecordKey"/>, deliberately the same normaliser #393's per-session
+    /// turn lock uses: two directory keys that disagree about whether two spellings are one session
+    /// is exactly the failure both primitives exist to prevent.
+    /// </para>
+    /// <para>
+    /// Entries are removed by the run that added them, in its own <c>finally</c> — never "clear the
+    /// current one", which is the bug above in a new spelling.
+    /// </para>
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, HostedRun> _hostedRuns = new(AerPaths.RecordKeyComparer);
+
+    /// <summary>The hosted run for <paramref name="taskDirectoryPath"/>, or null if this process is not running it.</summary>
+    internal HostedRun? HostedRunFor(string taskDirectoryPath) =>
+        _hostedRuns.TryGetValue(AerPaths.RecordKey(taskDirectoryPath), out var run) ? run : null;
+
+    /// <summary>How many pumps this process is hosting right now — the multi-session invariant, observable.</summary>
+    internal int HostedRunCount => _hostedRuns.Count;
+
+    /// <summary>
+    /// Claims the host slot for <paramref name="taskDirectoryPath"/>. Overwrites any stale entry
+    /// rather than refusing: §15's <c>flow.lock</c> is what actually prevents two mutators on one
+    /// session, and duplicating that decision here would mean two guards that can disagree.
+    /// </summary>
+    private HostedRun RegisterHostedRun(
+        string taskDirectoryPath, InFlightExecutionRegistry inFlightExecutions, CancellationTokenSource hostStopSource)
+    {
+        var hostedRun = new HostedRun(inFlightExecutions, hostStopSource);
+        _hostedRuns[AerPaths.RecordKey(taskDirectoryPath)] = hostedRun;
+        return hostedRun;
+    }
+
+    /// <summary>
+    /// Releases the host slot, but <b>only if it still holds this run</b>. The identity check is the
+    /// point: an unconditional remove would let a finishing run evict a newer run that had already
+    /// claimed the same directory, silently disarming cancellation for the one still going.
+    /// </summary>
+    private void ReleaseHostedRun(string taskDirectoryPath, HostedRun hostedRun) =>
+        _hostedRuns.TryRemove(new KeyValuePair<string, HostedRun>(AerPaths.RecordKey(taskDirectoryPath), hostedRun));
 
     public MainWindowViewModel ViewModel { get; }
 
@@ -154,7 +217,14 @@ public sealed partial class TaskSession
     /// window-close handler can wait for it to reach a durable fixed point before actually closing,
     /// rather than abandoning it mid-write (issue #140).
     /// </summary>
-    public Task? CurrentPumpTask { get; private set; }
+    /// <remarks>
+    /// Its one caller is the desktop close handler, which hosts a single run, so "the pump" is
+    /// unambiguous there. In the daemon, which may host several (#335), this returns an arbitrary
+    /// one — callers that mean a specific session must go through <see cref="HostedRunFor"/>. This
+    /// stays deliberately non-plural rather than being made per-session for a caller that has no
+    /// second session to distinguish; desktop multi-session is #336.
+    /// </remarks>
+    public Task? CurrentPumpTask => _hostedRuns.Values.FirstOrDefault()?.PumpTask;
 
     /// <summary>Whether the poller should keep observing: a successfully opened task that has not reached §12's terminal fixed point.</summary>
     public bool ShouldLiveRefresh => LastLoadSucceeded && LastWorkflowStatus != WorkflowStatus.Terminal;
@@ -377,14 +447,13 @@ public sealed partial class TaskSession
 
         var inFlightExecutions = new InFlightExecutionRegistry();
         var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _currentInFlightExecutions = inFlightExecutions;
-        _currentHostStopSource = hostStopSource;
+        var hostedRun = RegisterHostedRun(taskDirectoryPath, inFlightExecutions, hostStopSource);
 
         try
         {
             var pumpTask = Task.Run(
                 () => RunCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token, onWorkerStdoutLine), hostStopSource.Token);
-            CurrentPumpTask = pumpTask;
+            hostedRun.PumpTask = pumpTask;
             await pumpTask.ConfigureAwait(true);
 
             ViewModel.RunStatusText = string.Empty;
@@ -412,9 +481,7 @@ public sealed partial class TaskSession
         finally
         {
             ViewModel.IsMutationInFlight = false;
-            _currentInFlightExecutions = null;
-            _currentHostStopSource = null;
-            CurrentPumpTask = null;
+            ReleaseHostedRun(taskDirectoryPath, hostedRun);
             hostStopSource.Dispose();
         }
 
@@ -513,8 +580,7 @@ public sealed partial class TaskSession
 
         var inFlightExecutions = new InFlightExecutionRegistry();
         var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _currentInFlightExecutions = inFlightExecutions;
-        _currentHostStopSource = hostStopSource;
+        var hostedRun = RegisterHostedRun(taskDirectoryPath, inFlightExecutions, hostStopSource);
 
         try
         {
@@ -545,7 +611,7 @@ public sealed partial class TaskSession
 
             var pumpTask = Task.Run(
                 () => DecideCommand.ExecuteAsync(options, _adapters, inFlightExecutions, hostStopSource.Token, onWorkerStdoutLine), hostStopSource.Token);
-            CurrentPumpTask = pumpTask;
+            hostedRun.PumpTask = pumpTask;
             await pumpTask.ConfigureAwait(true);
 
             ViewModel.DecisionStatusText = string.Empty;
@@ -559,9 +625,7 @@ public sealed partial class TaskSession
         finally
         {
             ViewModel.IsMutationInFlight = false;
-            _currentInFlightExecutions = null;
-            _currentHostStopSource = null;
-            CurrentPumpTask = null;
+            ReleaseHostedRun(taskDirectoryPath, hostedRun);
             hostStopSource.Dispose();
         }
 
@@ -610,10 +674,13 @@ public sealed partial class TaskSession
             }
         }
 
-        // In-process fallback
-        if (_currentInFlightExecutions is { } registry && CurrentTaskDirectoryPath == taskDirectoryPath)
+        // In-process fallback. Resolved by the directory the caller named, never by whichever
+        // session happens to be "current" (#335): with two runs in flight the current one is
+        // simply the more recent, so cancelling the other used to miss its live registry entirely
+        // and fall through to the out-of-process path below.
+        if (HostedRunFor(taskDirectoryPath) is { } hostedRun)
         {
-            await registry.RequestCancellationAsync(executionId, cancellationToken).ConfigureAwait(true);
+            await hostedRun.InFlightExecutions.RequestCancellationAsync(executionId, cancellationToken).ConfigureAwait(true);
             return new MutationOutcome(null);
         }
 
@@ -645,7 +712,9 @@ public sealed partial class TaskSession
     }
 
     /// <summary>
-    /// Stops the host pump.
+    /// Stops <b>every</b> pump this process is hosting — the desktop's Stop button and window-close
+    /// handler, where there is only ever one, and daemon shutdown, where stopping all is the intent.
+    /// To stop one named session, use <see cref="RequestHostStop(string)"/>.
     /// </summary>
     public void RequestHostStop()
     {
@@ -655,7 +724,37 @@ public sealed partial class TaskSession
             return;
         }
 
-        _currentHostStopSource?.Cancel();
+        foreach (var hostedRun in _hostedRuns.Values)
+        {
+            hostedRun.HostStopSource.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Stops the pump hosting <paramref name="taskDirectoryPath"/>, leaving every other hosted
+    /// session running. Returns whether one was found.
+    /// </summary>
+    /// <remarks>
+    /// The parameterless overload used to cancel a single shared token source, which with two runs
+    /// in flight was whichever started last — so a daemon client asking to stop session A stopped
+    /// session B and left A running (#335). Any caller that knows which session it means must call
+    /// this one.
+    /// </remarks>
+    public bool RequestHostStop(string taskDirectoryPath)
+    {
+        if (_isClientMode && _activeDaemonUrl != null)
+        {
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/cancel", new CancelTaskRequest(taskDirectoryPath, null));
+            return true;
+        }
+
+        if (HostedRunFor(taskDirectoryPath) is not { } hostedRun)
+        {
+            return false;
+        }
+
+        hostedRun.HostStopSource.Cancel();
+        return true;
     }
 
     private void RebuildPausedSteps(TaskProjection projection, string taskDirectoryPath)
@@ -691,7 +790,7 @@ public sealed partial class TaskSession
     {
         ViewModel.RunningExecutions.Clear();
 
-        var isLocallyHostedTask = _currentInFlightExecutions is not null && CurrentTaskDirectoryPath == taskDirectoryPath;
+        var isLocallyHostedTask = HostedRunFor(taskDirectoryPath) is not null;
 
         foreach (var stepState in projection.State.Steps)
         {
