@@ -68,8 +68,10 @@ are. It never becomes the review.
 - **Verify** — spawn / host / gate and async liveness automated; the live-vendor quality of a review
   is a human / live-smoke check (vendor auth can't be automated).
 - **Today** — sessions and review-runs exist only in isolation; the room model — several workers,
-  spawn-and-hold child sessions, staying live while a child runs — isn't built, and the singleton
-  daemon can't hold a chat and its child at once.
+  spawn-and-hold child sessions, staying live while a child runs — isn't built. The *daemon-side*
+  half of that is no longer the obstacle: #335 keyed host state per session, so one daemon can hold a
+  chat and a child running at once. What is missing is the spawn itself (#340) and a surface that can
+  show both (#336/#337).
 - **Serves** — #333, #335, #340, decisions 0001/0008/0009
 
 ## J3 — Come back after a day and immediately see what needs you

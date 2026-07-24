@@ -75,11 +75,14 @@ real value; every permission surface is decorative until this lands)* · **#321*
 **#330** broadcast desktop-started state · **#348** phone-started work never opens · **#347** a restart
 strands paired phones · **#349** "Forget pairing" leaves the token valid.
 
-*Independent of every IA decision; none of it waits on the rethink.* Before scoping **#335**,
-re-confirm its `ConcurrencyGuard` assumption against **#341** (a send accepted, then the decision
-silently dropped) and **#393** (a re-materialize read-then-delete of `flow.jsonl`/`snapshot.json`
-that sits *outside* Flow's per-task lock — surfaced by the #398 flake investigation) — all three
-interact on the core path. Remote is broken in **both** directions (#330
+*Independent of every IA decision; none of it waits on the rethink.* **#393** landed first
+deliberately (a re-materialize read-then-delete of `flow.jsonl`/`snapshot.json` sitting *outside*
+Flow's per-task lock, surfaced by the #398 flake investigation): its per-session turn lock is the
+primitive #335 then keyed host state against, sharing one path normaliser so the two cannot disagree
+about whether two spellings are one session. #335's `ConcurrencyGuard` assumption held —
+`flow.lock` is per session directory, so the engine needed no change for the daemon to host several.
+**#341** (a send accepted, then the decision silently dropped) still interacts on this path and is
+still open. Remote is broken in **both** directions (#330
 desktop→phone, #348 phone's own work), and pairing itself is unreliable (#347) and un-revocable
 (#349) — walked live 2026-07-22.
 
@@ -102,13 +105,30 @@ adapter isolation, and the reference direction — lands **first**, a seam gate 
 [0005](decisions/0005-seam-milestones.md)'s rhythm (like #317/#318 in Phase 0), so the churn below cannot
 silently erode the invariants while it moves code. A guard that lands after the refactor it guards is worthless.
 
-**#333** unify the object model on two nouns · **#334** split `PausePoint` · **#390** a worker's
-interactive questions become answerable PausePoints (rides #334, the canonical "needs input" case) ·
-**#335** multi-task daemon *(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an
-append-log compaction/archival step for completed subtrees, a real engine addition)* · **#345** one token file
-for both toolkits · **#336** desktop switcher shell · **#337** mobile list-as-destination · **#319** decision-inbox scope-switching (rides #335 + #337) ·
-**#338** Settings surface · **#339** templates to three shapes · **#340** derived sessions · **#368** scoped
-warmth (0008 Path C) · cross-vendor usage view (**J9**, on the dedicated activity surface #360).
+**#333** unify the object model on two nouns *(storage folded; the identifier/vocabulary rename split
+out as **#443**, which waits on #315's lint so the rename lands against an enforced word list rather
+than a hand-checked one)* · **#334** split `PausePoint` · **#390** a worker's interactive questions
+become answerable PausePoints *(**premise disproved by measurement** — `claude -p` surfaces MCP tools
+and auto-approves them, so there is nothing to intercept: the seam inverts and AER **hosts** an MCP
+server the worker calls, now **#445**. The mechanism must end the turn rather than block inside a tool
+call, or it deadlocks against #393's per-session turn lock)* · **#335** multi-session daemon
+*(**its "zero `Aer.Flow` changes" estimate is retired** — 0009 obliges an append-log
+compaction/archival step for completed subtrees, a real engine addition. Rescoped to the keyed-state
+seam alone; the protocol change is **#446**, the `MainWindowViewModel` extraction **#447**, and the
+concurrency cap's visible-then-adjustable half **#448**)* · **#345** one token file for both toolkits ·
+**#336** desktop switcher shell · **#337** mobile list-as-destination · **#319** decision-inbox
+scope-switching (rides #335 + #337) · **#338** Settings surface · **#339** templates to three shapes ·
+**#340** derived sessions · **#368** scoped warmth (0008 Path C) · cross-vendor usage view (**J9**, on
+the dedicated activity surface #360).
+
+**A pattern worth naming, because it recurred three times in one sitting.** #333, #390 and #335 each
+arrived as a single issue that turned out to be several, or to rest on a premise that measurement
+disproved. Splitting them *before* writing code — not at PR time — is what kept each diff reviewable;
+checking #390's premise against the actual vendor CLI is what stopped a whole feature being built
+against a mechanism that does not exist. **An issue body is a hypothesis, not a specification.** Both
+#345 and #381 were also found stale on inspection: #345 still demanded a direction decision that
+0006 had already recorded, and #381's "split the god files first" prerequisite was already satisfied
+for the file #335 actually touched.
 
 ### Phase 4 — presentation and parity
 **#320** approval-gate defaults · **#327** Author's graph · **#267** markdown rendering · **#323**
