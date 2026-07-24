@@ -20,17 +20,35 @@ internal static class StatusIconMap
     /// #458: <see cref="StepStatus.Paused"/> drew <c>Icon.Dot</c> — the same mark as Pending and
     /// Cancelled — so the one state that means "this is waiting on you" was shaped identically to
     /// "nothing is happening here", leaving colour as the only difference. That is the failure
-    /// decision 0006's rule exists to prevent, and it was live. It now draws the diamond, the mark
-    /// <c>needsInput</c> carries in <c>design/tokens.json</c>.
+    /// decision 0006's rule exists to prevent, and it was live.
     /// </summary>
+    /// <remarks>
+    /// <see cref="StepStatus"/> alone cannot distinguish a pause awaiting a *reply* from one awaiting
+    /// a *review* — that lives in the step's <see cref="Aer.Flow.Domain.PausePointKind"/>, which this
+    /// converter is not given. It therefore draws the reply mark for both, which is right for the
+    /// common case and no worse than the single dot it replaces. #336 replaces this mapping wholesale
+    /// with <c>AerStatus</c>, which carries the distinction.
+    /// </remarks>
     public static string GeometryKeyFor(StepStatus status) => status switch
     {
         StepStatus.Running => "Icon.Ring",
         StepStatus.Succeeded => "Icon.Check",
         StepStatus.Failed or StepStatus.Rejected => "Icon.Cross",
-        StepStatus.Paused => "Icon.Diamond",
-        _ => "Icon.Dot", // Pending, Cancelled: idle
+        StepStatus.Paused => "Icon.Bubble",
+        // #461: cancelled is no longer "idle". Stopping something on purpose is an outcome, and
+        // rendering it as the pending dot said nothing happened.
+        StepStatus.Cancelled => "Icon.Dash",
+        _ => "Icon.Dot", // Pending: genuinely not started
     };
+
+    /// <summary>
+    /// Whether a status's mark is painted solid rather than stroked (#461). Delegates to the
+    /// generated table so the fill decision is stated once, in <c>design/tokens.json</c> — the call
+    /// sites used to set <c>Stroke</c> and never <c>Fill</c>, so a mark authored as a solid on mobile
+    /// rendered as an outline here.
+    /// </summary>
+    public static bool IsFilled(string geometryKey) =>
+        Enum.GetValues<AerStatus>().Any(status => status.MarkResourceKey() == geometryKey && status.MarkIsFilled());
 
     public static string ColorKeyFor(StepStatus status) => status switch
     {
@@ -46,10 +64,13 @@ internal static class StatusIconMap
     public static string GeometryKeyFor(TaskCardStatus status) => status switch
     {
         TaskCardStatus.Running => "Icon.Ring",
-        TaskCardStatus.NeedsYou => "Icon.Diamond",
+        TaskCardStatus.NeedsYou => "Icon.Bubble",
         TaskCardStatus.Finished => "Icon.Check",
         TaskCardStatus.Failed => "Icon.Cross",
-        _ => "Icon.Refresh", // Unavailable: §3's stale-list state
+        TaskCardStatus.Cancelled => "Icon.Dash",
+        // #461: the stale-list state gets its own mark. It previously borrowed Icon.Refresh, the
+        // Retry *action*'s glyph — a state wearing an action's icon invites clicking it.
+        _ => "Icon.Slashed", // Unavailable: §3's stale-list state
     };
 
     public static string ColorKeyFor(TaskCardStatus status) => status switch
@@ -58,8 +79,51 @@ internal static class StatusIconMap
         TaskCardStatus.NeedsYou => "Status.NeedsYou",
         TaskCardStatus.Finished => "Status.Succeeded",
         TaskCardStatus.Failed => "Status.Failed",
+        // Cancelled shares the muted brush rather than earning a hue: it is a quiet outcome, and
+        // colouring it like a failure is exactly the alarm #461 exists to remove.
+        TaskCardStatus.Cancelled => "Status.Idle",
         _ => "Status.Idle", // Unavailable
     };
+}
+
+/// <summary>
+/// Status → the mark's fill brush, or <c>null</c> where the mark is stroked (#461). Paired with
+/// <see cref="StatusToIconGeometryConverter"/> at every call site: a <c>Path</c> that sets only
+/// <c>Stroke</c> renders a closed shape as an outline, so before this a mark authored solid drew
+/// solid on the phone and hollow on the desktop. The decision now comes from the token file.
+/// </summary>
+public sealed class StatusToIconFillConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var geometryKey = value switch
+        {
+            StepStatus stepStatus => StatusIconMap.GeometryKeyFor(stepStatus),
+            TaskCardStatus cardStatus => StatusIconMap.GeometryKeyFor(cardStatus),
+            _ => null,
+        };
+
+        if (geometryKey is null || !StatusIconMap.IsFilled(geometryKey) || Application.Current is not { } app)
+        {
+            return null;
+        }
+
+        var colorKey = value switch
+        {
+            StepStatus stepStatus => StatusIconMap.ColorKeyFor(stepStatus),
+            TaskCardStatus cardStatus => StatusIconMap.ColorKeyFor(cardStatus),
+            _ => null,
+        };
+
+        // Same live-variant lookup as the stroke converter below — the theme-oblivious overload is
+        // what washed out the DAG boxes in #204/#205.
+        return colorKey is not null && app.TryFindResource(colorKey, app.ActualThemeVariant, out var resource) && resource is IBrush brush
+            ? brush
+            : null;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
 }
 
 /// <summary>Status → glyph. Icon geometries live outside <c>ThemeDictionaries</c> (one shape, not

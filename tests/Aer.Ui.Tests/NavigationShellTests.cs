@@ -62,6 +62,42 @@ public class NavigationShellTests
         return taskDirectory;
     }
 
+    /// <summary>
+    /// #461: a cancelled run reaches <see cref="WorkflowStatus.Terminal"/> like any other — there is
+    /// no cancelled workflow status — so the card derivation fell through to "Finished" and told you
+    /// a task you had just stopped had completed. Cancellation is only visible in the steps.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task InitializeAsync_shows_a_cancelled_task_as_cancelled_and_not_as_finished()
+    {
+        var configFilePath = NewConfigFilePath();
+        var executionId = new ExecutionId("a-1");
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+                new FlowEvent.ExecutionCancelled(executionId),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            await new LocalUiConfigurationStore(configFilePath)
+                .RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
+            await window.InitializeAsync(TestContext.Current.CancellationToken);
+
+            var card = Assert.Single(window.ViewModel.Home.TaskCards);
+
+            Assert.Equal(TaskCardStatus.Cancelled, card.Status);
+            Assert.Equal("Cancelled", card.StatusText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
     /// <summary>A task paused at critic, with a durable output file for the inbox preview.</summary>
     private static async Task<string> CreatePausedTaskDirectoryAsync(string reviewContent, CancellationToken cancellationToken)
     {

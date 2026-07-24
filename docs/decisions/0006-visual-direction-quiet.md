@@ -51,7 +51,8 @@ These hold regardless of direction and must not be re-decided per screen:
    told apart once you can see their colour satisfy a literal reading of this rule and fail the
    people it is for.
 
-The five states are #334's split: Working / Needs input / Ready for review / Finished / Failed.
+The states began as #334's split — Working / Needs input / Ready for review / Finished / Failed —
+and grew by three under Consequences below (#461): Cancelled, Queued, Unavailable.
 
 ## Consequences
 
@@ -91,7 +92,28 @@ on the same 16×16 grid, with CI failing if either lacks a mark the token file n
 That correction also exposed a live defect this decision had not noticed: **"needs input" was
 drawing the same dot as idle**, so the one state meaning "this is waiting on you" was shaped
 identically to "nothing is happening" and differed only in hue — rule 2 failing in the shipped
-product, not hypothetically. The five marks are now ring / diamond / page / check / cross.
+product, not hypothetically.
+
+**The five states were not enough** (#461). Reviewing the marks as rendered specimens surfaced three
+more that the surfaces actually have to draw, and one worse defect: **a cancelled task reported
+itself as "Finished"**, because cancellation has no `WorkflowStatus` of its own and the card
+derivation fell through. Cancelled, Queued (which #448's concurrency cap must show) and Unavailable
+(the stale-list state) are now part of the model. They share one muted colour rather than earning
+three hues — they are states you are *not* being asked to act on, and the ramp's vocabulary is worth
+spending on the ones that ask something of you. They differ by mark, which is the channel that
+carries the meaning anyway.
+
+The marks are ring / bubble / eye / check / cross / dash / ellipsis / slashed-circle. Two were
+replaced after review: a diamond read as a gem rather than an alert, and a page read as "a document"
+rather than "review this". **Cancelled is deliberately not a filled square** — a square is
+universally a *stop control*, this product needs a real stop affordance for a running session, and a
+state that looks like an action is a trap.
+
+**Whether a mark is filled is part of the design, not of each toolkit.** Avalonia's call sites set
+`Stroke` and never `Fill` while Flutter's painter filled the same closed path, so one status drew as
+an outline on desktop and a solid on the phone. The token file now states it once. This is the
+general shape of the risk: the marks are the only part of the system that cannot be generated, so
+every property of them that *can* be made declarative should be.
 
 **Does not settle** motion, which belongs with the switcher build rather than a palette decision.
 

@@ -77,6 +77,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
                   <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
                         Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
+                        Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
                         StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
                         Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
                   <TextBlock Classes="body-strong" Text="{Binding Title}" />
