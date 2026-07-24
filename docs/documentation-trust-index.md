@@ -35,9 +35,10 @@ full re-read (noted inline). Where that is the basis, the rating is deliberately
 
 | Document | Role | Rating | Note / proposed action |
 |---|---|---|---|
-| `docs/decisions/0001–0018` + `README.md` | Why we chose what we chose | ✅ Trust | The source of truth. `0001` is **amended** by `0013` (room becomes the user-facing noun); `0015` is **proposed**, not accepted — its permission kind is gated on `#445` plus an unrun probe. Both states are marked in-file and in the index. Keep. |
+| `docs/decisions/0001–0018` + `README.md` | Why we chose what we chose | ✅ Trust | The source of truth. `0001` is **amended** by `0013` (room becomes the user-facing noun). `0015` was **promoted proposed → accepted** on 2026-07-24 once the `#472` probe ran: the blocking-MCP mechanism is demonstrated on **both** vendors, and the probe *disproved* the record's original premise that `claude` headless auto-approves. `0015` and `0018` both carry crash-durability amendments from the same day. Keep. |
 | `docs/plan.md` | The living, gated plan | ✅ Trust | Updated in this change to carry 0012–0018 and the UI-only rebuild scope. Gated by `Aer.Plan.Tests`. Keep. |
 | `docs/decisions-of-record.md` | Milestone history + decisions of record | ✅ Trust *(as history)* | Append-only and self-labelled as history, not the current plan. Its M19–M24 summaries use pre-`0001` vocabulary (`task`, `session`) — correct *for their date*. Keep; do not back-edit. |
+| `docs/vendor-capabilities.md` | What each worker CLI can actually do | ✅ Trust *(with an expiry)* | Every row observed in a live run or read from the shipped binary (`#472`, 2026-07-24). It **corrects two assumptions this milestone was designing against** — `claude -p` does not auto-approve, and MCP is not Claude-only. Caveat: both CLIs self-update, so it is true of `claude` 2.1.219 / `agy` 1.1.6 and should be re-probed after a vendor bump. Keep. |
 
 ### Journeys — the completion bar
 

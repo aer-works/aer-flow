@@ -1,11 +1,12 @@
 # 0015 — A pause asks for one of three things: permission, a decision, or approval
 
-Status: proposed
+Status: accepted
 Date: 2026-07-24
 
-**Proposed, not accepted.** Two of the three kinds map onto machinery that already ships. The third
-— permission — depends on #445's mechanism and an **unrun per-vendor probe**; until that probe
-runs, this record describes an intent, not a guarantee. See *The open dependency* below.
+**Accepted 2026-07-24, after the probe this record was blocked on actually ran (#472).** All three
+kinds are now backed by verified mechanism: two by machinery that already ships, and permission by a
+blocking MCP tool demonstrated working on **both** vendors. The probe also **disproved a premise this
+record was originally written on** — see *The dependency, resolved* below.
 
 ## Context
 
@@ -54,21 +55,65 @@ needs asking and what fails closed. This record governs what happens *at runtime
 anyway*: a permission pause is the fall-through when a capability is neither pre-granted nor
 pre-denied. 0004 is the policy; this is the interruption when policy is silent.
 
-### The open dependency
+### The dependency, resolved
 
 The permission kind is only real if a vendor CLI, running headless under AER, will **stop and ask**
-rather than decide for itself. That is exactly what is unverified, and the evidence cuts both ways:
+rather than decide for itself. That probe ran on 2026-07-24 (#472), and it settled the question in
+our favour while correcting the record's own starting assumption.
 
-- `claude` headless historically **auto-approves** — the #331 defect: it ran a command a grant
-  omitted. An auto-approving CLI never raises a permission pause on its own.
-- `agy` (the Antigravity CLI) headless **fails closed** — it denies a capability it cannot get
-  cleared. A fail-closed CLI might deny AER's own "ask the operator" call before the operator ever
-  sees it.
+**Correction: `claude` headless does *not* auto-approve.** The earlier reading — the #331 defect —
+came from a probe that leaked the parent session's environment, so the child inherited a tool set no
+daemon-spawned worker ever has. Re-run with every `^CLAUDE` variable stripped, in a neutral
+directory, `claude -p` **denies** a `Write` it was not granted. **Both vendors fail closed.** That is
+strictly better for us than the asymmetry we feared: the risk was never silent approval, it is that a
+capability dies quietly unless AER pre-authorises or mediates it.
 
-So permission-as-a-pause depends on #445 providing a mechanism (an AER-hosted tool the worker
-calls to *request*, which blocks the turn on a human answer) **and** on a live probe confirming each
-vendor actually routes through it headless instead of auto-deciding. Until that probe runs, permission
-stays `proposed`; decision and approval are safe to build now because their engine kinds already ship.
+Two further facts, both material:
+
+- **`--permission-mode manual` is a no-op headless.** The session still reports
+  `permissionMode: default`, and no prompt is ever issued. `--permission-prompt-tool` does not exist
+  on either CLI. There is no built-in headless "ask the human" path — which is exactly why #445's
+  mechanism has to exist rather than being a flag we could have set.
+- **Denials are structured.** `claude`'s result event carries
+  `permission_denials: [{tool_name, tool_use_id, tool_input}]` — the whole call, replayable verbatim
+  once a human answers.
+
+**The mechanism works, on both vendors.** An AER-hosted MCP server exposing a blocking `ask_human`
+tool held a turn open on an out-of-band human answer, proven with a token minted *after* the tool
+call began so it could not have been foreknown:
+
+| vendor | blocked for | tool-call metadata returned |
+|---|---|---|
+| `claude` | 10.9 s | `claudecode/toolUseId`, `progressToken` |
+| `agy` | 10.3 s | `antigravity.google/conversation_id`, `artifacts_dir`, `progressToken` |
+
+`agy` discovers MCP servers from `~/.gemini/config/mcp_config.json`; the grant grammar is
+`mcp(server/tool)` / `mcp(server/*)`. So permission-by-consultation is **uniform across vendors**, not
+Claude-only as an earlier note in this milestone claimed.
+
+### Gate durability — a pause must outlive the process holding it
+
+The mechanism above blocks a turn by holding a tool call open. **The process holding it open is the
+one a crash kills** — the point was made concretely when a power cut ended the session this probe ran
+in. If the pending question lives only in that process, a host loss silently converts "needs you" into
+"nothing here", which is the exact failure [0018](0018-attention-is-the-primary-signal.md) exists to
+prevent.
+
+So: **the room records the pause when the question is asked, not when it is answered.** The instant
+the tool is invoked, the room's durable state gains the kind, the question, and the vendor's
+correlation id. Both vendors hand us one in the call metadata, and `agy`'s
+`antigravity.google/conversation_id` *is* the key `agy --conversation <id>` resumes with — the vendor
+gives us the resume key at gate time, for free.
+
+On restart a room is therefore in one of **three** states, not two, and they are not interchangeable:
+
+1. **Completed** — nothing to do.
+2. **Interrupted mid-flight** — resumable against the vendor conversation (`claude -c`,
+   `agy --continue` / `--conversation <id>`). The expensive context survives on disk; only AER's
+   orchestration state was lost.
+3. **Was blocked on a gate** — **re-present the question; do not re-run the worker.** Re-running
+   silently re-does work the human never approved, which is the same class of error as answering the
+   wrong kind of question.
 
 ## Consequences
 
@@ -77,14 +122,17 @@ single bucket the UI has to guess the meaning of, and the guess that produced ap
 is designed out.
 
 **Harder.** The product now has to *know* which kind a given pause is at the moment it renders it —
-trivial for decision/approval (the snapshot says so), unresolved for permission until the mechanism
-and probe land. Shipping decision and approval while permission is still `proposed` means the UI must
-gracefully handle a permission pause that cannot yet occur, rather than assume all three exist.
+trivial for decision/approval (the snapshot says so), and for permission it means AER must host an
+MCP server and keep it running for the life of every turn. That server is also a **new crash
+surface**: it must be cheap to start and hold no state, because `claude` spawns it **twice** per run
+(once to enumerate tools, killing it immediately after `tools/list`, then again for the turn itself).
+Any state it needs belongs in the room, not the process.
 
-**Obliges us to** run the #445 probe before promoting this to `accepted`, keep the kind derived from
-the declaration and never from content (CLAUDE.md Rule 1, as `PausePointKind` already does), and —
-when permission does land — wire its answer into [0004](0004-permission-scopes.md)'s scope
-intersection rather than treating it as a fourth, ad-hoc grant.
+**Obliges us to** persist a gate at ask-time rather than answer-time (above), keep the kind derived
+from the declaration and never from content (CLAUDE.md Rule 1, as `PausePointKind` already does), and
+wire a permission answer into [0004](0004-permission-scopes.md)'s scope intersection rather than
+treating it as a fourth, ad-hoc grant. It also obliges the room list to treat a gate recovered from
+disk exactly like a live one — the operator must not be able to tell that the host restarted.
 
 **Supersedes nothing.** It *extends* #334's two-kind split to three and names the third as the work
 #445 exists to enable.

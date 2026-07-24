@@ -53,6 +53,33 @@ This also constrains [0004](0004-permission-scopes.md)'s "inheritance must be vi
 prompt is shown where its effective scope can be shown, which a notification cannot do — so a
 permission is *announced* by notification and *answered* in the room.
 
+**Silence must be earned: "nothing needs you" and "I cannot tell" are different states.**
+
+A mains power cut ended the authoring session for this record, which turned out to be the sharpest
+available test of it. Apply that event to the bands above: the host dies, every room becomes
+unavailable, and *unavailable sits in band 4* — the muted band, defined as "states you are not asked
+to act on". The whole list therefore collapses into the calmest rendering the product has, at the
+precise moment nothing is working. **The worse the failure, the more serene the screen.** That
+inverts this record's entire purpose, and it is worst on the phone, where the host is always
+somewhere else.
+
+Two corrections follow.
+
+**"Unavailable" splits by cause, and the halves belong in opposite bands.** One vendor being
+rate-limited while other rooms run is genuinely quiet — band 4, correct as written. The *host being
+unreachable* is the loudest state the product has, because it invalidates every other row on screen
+at once. They share a word today and must not share a band.
+
+**Freshness is part of the signal.** An empty "needs you" band is only information if the operator
+knows how recently it was true. A room list rendered from a stale cache asserts calm it cannot
+justify. The surface therefore shows when it last heard from the host, and a list it cannot vouch for
+is marked as such rather than drawn as though current — the absence of a summons has to be *observed*,
+never merely *assumed*.
+
+This is the list-level counterpart to [0015](0015-three-kinds-of-needs-you.md)'s gate durability: that
+record keeps an individual pause alive across a crash by persisting it at ask-time; this one keeps the
+*list* honest when the thing that would have reported the pause is gone.
+
 ## Consequences
 
 **Easier.** Returning to a hundred rooms, the top of the list *is* the work queue — sorted by what is
@@ -71,6 +98,10 @@ oversight — the friction *is* the safeguard against deciding blind.
 embedded action, and reconcile with [0007](0007-background-work-inline-and-dedicated.md): that record
 governs how deep you see into one item, this one governs the order of the items and how their changes
 reach you when you are away.
+
+It further obliges us to **treat host-unreachable as a first-class loud state** rather than a
+connection error swallowed by the transport layer, and to **never render a room list without a
+freshness claim** — the calm screen is the dangerous one, so calm has to be evidenced.
 
 **Relates to** [0009](0009-session-lifecycle-and-retention.md) — you accumulate the rooms you opened,
 "count the top of the tree," so the list this orders is top-level rooms, with children surfaced under
