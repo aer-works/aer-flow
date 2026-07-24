@@ -215,6 +215,13 @@ public sealed partial class TaskCardViewModel(
             WorkflowStatus.Running => ("Working", TaskCardStatus.Running),
             _ when projection.State.Steps.Any(s => s.Status is StepStatus.Failed or StepStatus.Rejected)
                 => ("Failed", TaskCardStatus.Failed),
+            // #461: a cancelled run has no WorkflowStatus of its own — it reaches Terminal like any
+            // other, which is exactly why it used to fall through to "Finished" and tell you a task
+            // you had just stopped had completed. Cancellation is only visible in the steps. Ordered
+            // after Failed on purpose: if something failed *and* something was cancelled, the
+            // failure is the more important truth about the run.
+            _ when projection.State.Steps.Any(s => s.Status == StepStatus.Cancelled)
+                => ("Cancelled", TaskCardStatus.Cancelled),
             _ => ("Finished", TaskCardStatus.Finished),
         };
 
@@ -252,6 +259,14 @@ public enum TaskCardStatus
     NeedsYou,
     Finished,
     Failed,
+
+    /// <summary>
+    /// The run was stopped on purpose (#461). Previously absent, which meant a cancelled task fell
+    /// through to <see cref="Finished"/> — the UI told you a task you had just stopped had finished.
+    /// Deliberately distinct from <see cref="Failed"/>: "you stopped it" is not "it broke", and a
+    /// list that renders them alike reads far more alarming than reality.
+    /// </summary>
+    Cancelled,
 
     /// <summary>§3's stale list state: recorded in Local UI Configuration but no longer loadable — greyed, never an error.</summary>
     Unavailable,

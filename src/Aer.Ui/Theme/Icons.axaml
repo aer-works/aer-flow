@@ -19,8 +19,14 @@
   <!-- Running: an open ring — the static frame of a spinner (no motion in this pass, #208 owns animation). -->
   <StreamGeometry x:Key="Icon.Ring">M 8,3 A 5,5 0 1 1 3.66,10.5</StreamGeometry>
 
-  <!-- Stale: a ring left open with a small arrow tick — the refresh mark. -->
-  <StreamGeometry x:Key="Icon.Refresh">M 12.8,5.2 A 5,5 0 1 0 13,8 M 13,8 L 13,5.3 M 13,8 L 10.3,7.3</StreamGeometry>
+  <!-- A circular arrow — the Retry action (and formerly the stale-list status, now Icon.Slashed).
+       #461 redrew this: the original was "M 12.8,5.2 A 5,5 0 1 0 13,8 …", whose start point is 5.56
+       from the centre, not 5. SVG silently scales radii up until both endpoints fit, so the arc was
+       never the circle it was drawn as; and its "arrowhead" was two segments meeting at ~90° with
+       one of them collinear with the tangent, which renders as a corner rather than an arrow. It
+       read as broken because it was. Both endpoints are now exactly on r=5 about (8,8) — a 290°
+       sweep leaving the gap at the top — with a proper chevron head along the tangent. -->
+  <StreamGeometry x:Key="Icon.Refresh">M 10.87,3.9 A 5,5 0 1 1 5.13,3.9 M 10.05,1.64 L 10.87,3.9 L 8.47,3.9</StreamGeometry>
 
   <!-- #458: the two marks #334's five states needed and this set did not have. Named for their
        shape, because design/tokens.json addresses them by shape name and the drift gate resolves
@@ -33,15 +39,32 @@
        actually asks for — five marks distinguishable only once you can see their colour would
        satisfy a literal reading of "carries a glyph" and fail the people the rule is for. -->
 
-  <!-- Needs input: a solid diamond. Filled and angular so it separates from Icon.Dot (idle) by
-       shape and weight, not only size — before this, "waiting on you" and "nothing is happening"
-       drew the same circle. -->
-  <StreamGeometry x:Key="Icon.Diamond">M 8,2.5 L 13.5,8 L 8,13.5 L 2.5,8 Z</StreamGeometry>
+  <!-- Needs input: a filled speech bubble. #334's own description of this state is "an ordinary
+       chat turn ... it is not awaiting approval, it is awaiting input", so the mark says *reply*.
+       Filled rather than stroked because this is the loudest state in the set — it is the one
+       actually asking something of you. (#461 replaced a solid diamond here, which reviewed as a
+       gem rather than an alert.) -->
+  <StreamGeometry x:Key="Icon.Bubble">M 3,3.5 L 13,3.5 L 13,10.5 L 7,10.5 L 4.5,13.5 L 4.5,10.5 L 3,10.5 Z</StreamGeometry>
 
-  <!-- Ready for review: a page with a turned corner — there is an output here to look at. Its tall
-       rectangular silhouette is the only one in the set that is not built from circles or
-       diagonals, so it survives being small. -->
-  <StreamGeometry x:Key="Icon.Page">M 4,2.5 L 9.5,2.5 L 12,5 L 12,13.5 L 4,13.5 Z M 9.5,2.5 L 9.5,5 L 12,5</StreamGeometry>
+  <!-- Ready for review: an eye — there is a result here for your eyes to judge. (#461 replaced a
+       page-with-turned-corner, which reviewed as "a document" rather than "review this".) -->
+  <StreamGeometry x:Key="Icon.Eye">M 2.5,8 C 5,3.6 11,3.6 13.5,8 C 11,12.4 5,12.4 2.5,8 Z M 9.9,8 A 1.9,1.9 0 1 1 6.1,8 A 1.9,1.9 0 1 1 9.9,8 Z</StreamGeometry>
+
+  <!-- Cancelled: a dash. Deliberately NOT the filled square that suggests itself — a square is
+       universally a *stop control*, this app needs a real stop affordance for a running session,
+       and a state that looks like an action is a trap (owner review, #461). A bare bar reads
+       "no outcome", which is exactly what a cancelled run has, and stays quiet: stopping something
+       on purpose is not a failure and must not be dressed as one. -->
+  <StreamGeometry x:Key="Icon.Dash">M 3.5,8 L 12.5,8</StreamGeometry>
+
+  <!-- Queued: an ellipsis — waiting its turn, nothing has happened yet. Filled dots so it holds at
+       row size, where stroked circles this small collapse into mush. -->
+  <StreamGeometry x:Key="Icon.Ellipsis">M 5.55,8 A 1.35,1.35 0 1 1 2.85,8 A 1.35,1.35 0 1 1 5.55,8 Z M 9.35,8 A 1.35,1.35 0 1 1 6.65,8 A 1.35,1.35 0 1 1 9.35,8 Z M 13.15,8 A 1.35,1.35 0 1 1 10.45,8 A 1.35,1.35 0 1 1 13.15,8 Z</StreamGeometry>
+
+  <!-- Unavailable: a slashed circle — recorded in the list but no longer readable. The international
+       "not available" mark, and unmistakable against Icon.Cross (two diagonals, no circle) and
+       Icon.Ring (an open arc, no slash). -->
+  <StreamGeometry x:Key="Icon.Slashed">M 13,8 A 5,5 0 1 1 3,8 A 5,5 0 1 1 13,8 Z M 4.5,11.5 L 11.5,4.5</StreamGeometry>
 
   <!-- #218: navigation rail + common actions, same 16x16 hand-drawn stroke set as the status
        icons above — Approve reuses Icon.Check and Reject reuses Icon.Cross (the issue's own

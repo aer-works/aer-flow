@@ -15,6 +15,9 @@ public enum AerStatus
     ReadyForReview,
     Finished,
     Failed,
+    Cancelled,
+    Queued,
+    Unavailable,
 }
 
 /// <summary>
@@ -34,10 +37,13 @@ public static class AerStatusPresentation
     public static string MarkResourceKey(this AerStatus status) => status switch
     {
         AerStatus.Working => "Icon.Ring",
-        AerStatus.NeedsInput => "Icon.Diamond",
-        AerStatus.ReadyForReview => "Icon.Page",
+        AerStatus.NeedsInput => "Icon.Bubble",
+        AerStatus.ReadyForReview => "Icon.Eye",
         AerStatus.Finished => "Icon.Check",
         AerStatus.Failed => "Icon.Cross",
+        AerStatus.Cancelled => "Icon.Dash",
+        AerStatus.Queued => "Icon.Ellipsis",
+        AerStatus.Unavailable => "Icon.Slashed",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
     };
 
@@ -49,6 +55,9 @@ public static class AerStatusPresentation
         AerStatus.ReadyForReview => "Ready for review",
         AerStatus.Finished => "Finished",
         AerStatus.Failed => "Failed",
+        AerStatus.Cancelled => "Cancelled",
+        AerStatus.Queued => "Queued",
+        AerStatus.Unavailable => "Unavailable",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
     };
 
@@ -65,6 +74,28 @@ public static class AerStatusPresentation
         AerStatus.ReadyForReview => "StatusReadyForReviewColor",
         AerStatus.Finished => "StatusFinishedColor",
         AerStatus.Failed => "StatusFailedColor",
+        AerStatus.Cancelled => "StatusCancelledColor",
+        AerStatus.Queued => "StatusQueuedColor",
+        AerStatus.Unavailable => "StatusUnavailableColor",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
+    };
+
+    /// <summary>
+    /// Whether this status's mark is painted solid rather than stroked. Stated in the token file
+    /// so both toolkits obey one instruction: the Avalonia call sites previously set only
+    /// <c>Stroke</c> while Flutter's painter filled the same closed path, so one status drew as an
+    /// outline on desktop and a solid on mobile (#461).
+    /// </summary>
+    public static bool MarkIsFilled(this AerStatus status) => status switch
+    {
+        AerStatus.Working => false,
+        AerStatus.NeedsInput => true,
+        AerStatus.ReadyForReview => false,
+        AerStatus.Finished => false,
+        AerStatus.Failed => false,
+        AerStatus.Cancelled => false,
+        AerStatus.Queued => true,
+        AerStatus.Unavailable => false,
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
     };
 }

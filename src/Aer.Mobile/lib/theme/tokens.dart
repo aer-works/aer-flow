@@ -40,6 +40,12 @@ class AerTokens {
   static const Color statusFinishedDark = Color(0xFF6DBE94);
   static const Color statusFailedLight = Color(0xFF9E382C);
   static const Color statusFailedDark = Color(0xFFE08274);
+  static const Color statusCancelledLight = Color(0xFF88969C);
+  static const Color statusCancelledDark = Color(0xFF6C7A80);
+  static const Color statusQueuedLight = Color(0xFF88969C);
+  static const Color statusQueuedDark = Color(0xFF6C7A80);
+  static const Color statusUnavailableLight = Color(0xFF88969C);
+  static const Color statusUnavailableDark = Color(0xFF6C7A80);
 
   static const double radiusSm = 3;
   static const double radiusMd = 5;
@@ -81,6 +87,9 @@ enum AerStatus {
   readyForReview,
   finished,
   failed,
+  cancelled,
+  queued,
+  unavailable,
 }
 
 /// Decision 0006: a status must never be conveyed by hue alone, so every state carries a
@@ -94,10 +103,27 @@ enum AerStatus {
 extension AerStatusPresentation on AerStatus {
   String get mark => switch (this) {
         AerStatus.working => 'ring',
-        AerStatus.needsInput => 'diamond',
-        AerStatus.readyForReview => 'page',
+        AerStatus.needsInput => 'bubble',
+        AerStatus.readyForReview => 'eye',
         AerStatus.finished => 'check',
         AerStatus.failed => 'cross',
+        AerStatus.cancelled => 'dash',
+        AerStatus.queued => 'ellipsis',
+        AerStatus.unavailable => 'slashed',
+      };
+
+  /// Whether [mark]'s shape is painted solid rather than stroked. Stated in the token file so
+  /// both toolkits obey one instruction - Avalonia's call sites once set only Stroke while this
+  /// painter filled the same closed path, drawing one status two different ways (#461).
+  bool get markFilled => switch (this) {
+        AerStatus.working => false,
+        AerStatus.needsInput => true,
+        AerStatus.readyForReview => false,
+        AerStatus.finished => false,
+        AerStatus.failed => false,
+        AerStatus.cancelled => false,
+        AerStatus.queued => true,
+        AerStatus.unavailable => false,
       };
 
   String get label => switch (this) {
@@ -106,6 +132,9 @@ extension AerStatusPresentation on AerStatus {
         AerStatus.readyForReview => 'Ready for review',
         AerStatus.finished => 'Finished',
         AerStatus.failed => 'Failed',
+        AerStatus.cancelled => 'Cancelled',
+        AerStatus.queued => 'Queued',
+        AerStatus.unavailable => 'Unavailable',
       };
 
   Color color(Brightness brightness) => brightness == Brightness.dark
@@ -115,6 +144,9 @@ extension AerStatusPresentation on AerStatus {
         AerStatus.readyForReview => AerTokens.statusReadyForReviewDark,
         AerStatus.finished => AerTokens.statusFinishedDark,
         AerStatus.failed => AerTokens.statusFailedDark,
+        AerStatus.cancelled => AerTokens.statusCancelledDark,
+        AerStatus.queued => AerTokens.statusQueuedDark,
+        AerStatus.unavailable => AerTokens.statusUnavailableDark,
         }
       : switch (this) {
         AerStatus.working => AerTokens.statusWorkingLight,
@@ -122,6 +154,9 @@ extension AerStatusPresentation on AerStatus {
         AerStatus.readyForReview => AerTokens.statusReadyForReviewLight,
         AerStatus.finished => AerTokens.statusFinishedLight,
         AerStatus.failed => AerTokens.statusFailedLight,
+        AerStatus.cancelled => AerTokens.statusCancelledLight,
+        AerStatus.queued => AerTokens.statusQueuedLight,
+        AerStatus.unavailable => AerTokens.statusUnavailableLight,
         };
 }
 

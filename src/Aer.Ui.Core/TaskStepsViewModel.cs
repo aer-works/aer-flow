@@ -19,7 +19,9 @@ public static class PlainLanguage
         StepStatus.Running => "Working",
         StepStatus.Succeeded => "Done",
         StepStatus.Failed => "Failed",
-        StepStatus.Cancelled => "Stopped",
+        // #461: was "Stopped". The token file's label for this state is "Cancelled", and a step
+        // saying one word while the task card says another is the collage this milestone is undoing.
+        StepStatus.Cancelled => "Cancelled",
         StepStatus.Paused => "Waiting for your review",
         StepStatus.Rejected => "Rejected",
         _ => status.ToString(),

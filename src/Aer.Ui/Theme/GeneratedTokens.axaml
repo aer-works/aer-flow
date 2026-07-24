@@ -27,6 +27,9 @@
       <Color x:Key="StatusReadyForReviewColor">#63489E</Color>
       <Color x:Key="StatusFinishedColor">#2C6E4C</Color>
       <Color x:Key="StatusFailedColor">#9E382C</Color>
+      <Color x:Key="StatusCancelledColor">#88969C</Color>
+      <Color x:Key="StatusQueuedColor">#88969C</Color>
+      <Color x:Key="StatusUnavailableColor">#88969C</Color>
     </ResourceDictionary>
     <ResourceDictionary x:Key="Dark">
       <Color x:Key="BrandAccentColor">#5FB3AD</Color>
@@ -45,6 +48,9 @@
       <Color x:Key="StatusReadyForReviewColor">#A88CDE</Color>
       <Color x:Key="StatusFinishedColor">#6DBE94</Color>
       <Color x:Key="StatusFailedColor">#E08274</Color>
+      <Color x:Key="StatusCancelledColor">#6C7A80</Color>
+      <Color x:Key="StatusQueuedColor">#6C7A80</Color>
+      <Color x:Key="StatusUnavailableColor">#6C7A80</Color>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 
@@ -70,14 +76,20 @@
     <sys:Double x:Key="FontSizeCode">11.5</sys:Double>
     <sys:String x:Key="StatusWorkingMark">Icon.Ring</sys:String>
     <sys:String x:Key="StatusWorkingLabel">Working</sys:String>
-    <sys:String x:Key="StatusNeedsInputMark">Icon.Diamond</sys:String>
+    <sys:String x:Key="StatusNeedsInputMark">Icon.Bubble</sys:String>
     <sys:String x:Key="StatusNeedsInputLabel">Needs input</sys:String>
-    <sys:String x:Key="StatusReadyForReviewMark">Icon.Page</sys:String>
+    <sys:String x:Key="StatusReadyForReviewMark">Icon.Eye</sys:String>
     <sys:String x:Key="StatusReadyForReviewLabel">Ready for review</sys:String>
     <sys:String x:Key="StatusFinishedMark">Icon.Check</sys:String>
     <sys:String x:Key="StatusFinishedLabel">Finished</sys:String>
     <sys:String x:Key="StatusFailedMark">Icon.Cross</sys:String>
     <sys:String x:Key="StatusFailedLabel">Failed</sys:String>
+    <sys:String x:Key="StatusCancelledMark">Icon.Dash</sys:String>
+    <sys:String x:Key="StatusCancelledLabel">Cancelled</sys:String>
+    <sys:String x:Key="StatusQueuedMark">Icon.Ellipsis</sys:String>
+    <sys:String x:Key="StatusQueuedLabel">Queued</sys:String>
+    <sys:String x:Key="StatusUnavailableMark">Icon.Slashed</sys:String>
+    <sys:String x:Key="StatusUnavailableLabel">Unavailable</sys:String>
     <sys:Double x:Key="DensityRowPaddingX">9</sys:Double>
     <sys:Double x:Key="DensityRowPaddingY">7</sys:Double>
     <sys:Double x:Key="DensityRowGap">3</sys:Double>

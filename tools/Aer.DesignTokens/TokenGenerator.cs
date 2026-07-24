@@ -207,6 +207,15 @@ public static class TokenGenerator
     private static string MarkGeometryKey(JsonElement statusToken) => "Icon." + Pascal(MarkName(statusToken));
 
     /// <summary>
+    /// Whether the mark is painted solid rather than stroked (#461). Declared in the token file so
+    /// both toolkits read one instruction: before this, Avalonia's call sites set only
+    /// <c>Stroke</c> while the Flutter painter filled the same closed path, and the same status drew
+    /// as an outline on desktop and a solid on mobile.
+    /// </summary>
+    private static bool MarkFilled(JsonElement statusToken) =>
+        statusToken.TryGetProperty("filled", out var filled) && filled.GetBoolean();
+
+    /// <summary>
     /// <c>#RRGGBB</c> as Dart's <c>0xFFRRGGBB</c>. Flutter has no hex-string colour literal, so the
     /// alpha channel has to be made explicit here rather than at every call site.
     /// </summary>
@@ -368,10 +377,12 @@ public static class TokenGenerator
         var statusLabel = new StringBuilder();
         var statusLight = new StringBuilder();
         var statusDark = new StringBuilder();
+        var statusFilled = new StringBuilder();
 
         foreach (var (name, token) in Entries(root.GetProperty("status")))
         {
             statusEnum.AppendLine($"  {name},");
+            statusFilled.AppendLine($"        AerStatus.{name} => {(MarkFilled(token) ? "true" : "false")},");
             statusGlyph.AppendLine($"        AerStatus.{name} => '{MarkName(token)}',");
             statusLabel.AppendLine($"        AerStatus.{name} => '{token.GetProperty("label").GetString()}',");
             statusLight.AppendLine($"        AerStatus.{name} => AerTokens.status{Pascal(name)}Light,");
@@ -410,6 +421,13 @@ public static class TokenGenerator
         extension AerStatusPresentation on AerStatus {
           String get mark => switch (this) {
         {{statusGlyph.ToString().TrimEnd()}}
+              };
+
+          /// Whether [mark]'s shape is painted solid rather than stroked. Stated in the token file so
+          /// both toolkits obey one instruction - Avalonia's call sites once set only Stroke while this
+          /// painter filled the same closed path, drawing one status two different ways (#461).
+          bool get markFilled => switch (this) {
+        {{statusFilled.ToString().TrimEnd()}}
               };
 
           String get label => switch (this) {
@@ -485,6 +503,7 @@ public static class TokenGenerator
         var marks = new StringBuilder();
         var labels = new StringBuilder();
         var colors = new StringBuilder();
+        var fills = new StringBuilder();
 
         foreach (var (name, token) in Entries(root.GetProperty("status")))
         {
@@ -492,6 +511,7 @@ public static class TokenGenerator
             marks.AppendLine($"""        AerStatus.{Pascal(name)} => "{MarkGeometryKey(token)}",""");
             labels.AppendLine($"""        AerStatus.{Pascal(name)} => "{token.GetProperty("label").GetString()}",""");
             colors.AppendLine($"""        AerStatus.{Pascal(name)} => "Status{Pascal(name)}Color",""");
+            fills.AppendLine($"        AerStatus.{Pascal(name)} => {(MarkFilled(token) ? "true" : "false")},");
         }
 
         return $$"""
@@ -541,6 +561,18 @@ public static class TokenGenerator
             public static string ColorResourceKey(this AerStatus status) => status switch
             {
         {{colors.ToString().TrimEnd()}}
+                _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
+            };
+
+            /// <summary>
+            /// Whether this status's mark is painted solid rather than stroked. Stated in the token file
+            /// so both toolkits obey one instruction: the Avalonia call sites previously set only
+            /// <c>Stroke</c> while Flutter's painter filled the same closed path, so one status drew as an
+            /// outline on desktop and a solid on mobile (#461).
+            /// </summary>
+            public static bool MarkIsFilled(this AerStatus status) => status switch
+            {
+        {{fills.ToString().TrimEnd()}}
                 _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped status."),
             };
         }
