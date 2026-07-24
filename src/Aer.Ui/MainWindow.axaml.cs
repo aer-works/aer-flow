@@ -598,7 +598,7 @@ public partial class MainWindow : Window
         if (_session.LastLoadSucceeded)
         {
             await _session.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
-            await RefreshHomeAsync(cancellationToken);
+            await RefreshRecordListsAsync(cancellationToken);
         }
 
         UpdateLiveRefreshTimer();
@@ -710,7 +710,7 @@ public partial class MainWindow : Window
             _session.SetCurrentTaskDirectory(metadata.TaskDirectoryPath);
             await _session.RecordOpenedAsync(metadata.TaskDirectoryPath).ConfigureAwait(true);
             chat.LoadFromMetadata(metadata, metadata.TaskDirectoryPath);
-            await RefreshHomeAsync(CancellationToken.None).ConfigureAwait(true);
+            await RefreshRecordListsAsync(CancellationToken.None).ConfigureAwait(true);
             UpdateLiveRefreshTimer();
         }
         finally
@@ -1881,6 +1881,30 @@ public partial class MainWindow : Window
     /// <summary>Rebuilds Home's task cards and decision inbox from Local UI Configuration + durable task contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
     private Task RefreshHomeAsync(CancellationToken cancellationToken)
         => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
+
+    /// <summary>
+    /// Rebuilds *both* surfaces that answer "what records exist" — Home's cards and the switcher's
+    /// list — after a structural change: a record was created, or one was opened for the first time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These must refresh together, and the first cut of #336 is why this exists as one call rather
+    /// than two adjacent ones. The switcher was populated once at startup and kept live by projection
+    /// pushes thereafter — but a push only ever *updates an existing row*, so a task created after
+    /// launch never joined the list at all. Found by running the app, not by a test: a freshly
+    /// created session vanished from every surface except the folder picker.
+    /// </para>
+    /// <para>
+    /// Deliberately not called from the live-refresh poller tick — that fires repeatedly while a task
+    /// runs, and a full fleet re-fetch per tick would be pure waste. Status changes are exactly what
+    /// the push fan-out already carries; this is only for records appearing or disappearing.
+    /// </para>
+    /// </remarks>
+    internal async Task RefreshRecordListsAsync(CancellationToken cancellationToken = default)
+    {
+        await RefreshHomeAsync(cancellationToken);
+        await ViewModel.Tasks.RefreshAsync(_session, cancellationToken);
+    }
 
     /// <summary>
     /// Polling, not a <see cref="System.IO.FileSystemWatcher"/> (issue #119's named open question):
