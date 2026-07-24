@@ -10,13 +10,26 @@ where four surfaces show the same objects and none reconciles with the others.
 
 | Artefact | Answers | Lives |
 |---|---|---|
-| **Decision record** | *why* we chose this | here, numbered, cited by the rest |
+| **Decision record** | *why* we chose this, **and it is still in force** | here, numbered, cited by the rest |
 | **Journey** | *what the product promises* | `spec/`, see #312 |
 | **Behavioural spec** | *what the engine does* | `spec/` |
+| **Milestone history** | *what we decided **then***, kept for provenance | [`docs/milestone-history.md`](../milestone-history.md) |
+| **Plan** | *what we are doing **now*** | [`docs/plan.md`](../plan.md), gated |
 | **Issue** | *what to change* | GitHub, cites a journey |
 
 The spec cites decisions. Issues cite journeys. **#283 is the index that links both** — it is not
 another document competing with them.
+
+**Decision record vs milestone history** — the distinction that used to be missing, and the reason
+that file was renamed (it was `decisions-of-record.md`, which read as a rival to this folder):
+
+> A **decision record** is a rule you must follow today. **Milestone history** is why a past
+> milestone did what it did — provenance, cited from code comments and runbooks when someone asks
+> "why is this field here?". If a historical decision is still binding, it belongs *here*, as a
+> numbered record. History is never the authority for current work.
+
+Neither is the same as the plan: the plan says what is being built, and defers *status* to the
+sources that keep it.
 
 ## Format
 

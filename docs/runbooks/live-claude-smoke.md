@@ -67,7 +67,7 @@ not "the file says X" — the same rule that keeps `Aer.Flow` from ever parsing 
 ## Recording a green run
 
 M11 is complete once this has been run successfully at least once. Record the date and the
-`claude` CLI version used in the PR that lands this runbook (see `docs/decisions-of-record.md`,
+`claude` CLI version used in the PR that lands this runbook (see `docs/milestone-history.md`,
 M11) — this file only documents *how* to run it, not a rolling log of every run.
 
 **Recorded green run:** 2026-07-12, `claude` CLI 2.1.207. First attempt caught a real fixture bug
@@ -101,7 +101,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 
 ```bash
 PROMPT="Run the shell command 'hostname' and report its exact output verbatim. If you are not permitted to run shell commands, reply with exactly NO_SHELL and nothing else."
-CLEAN="env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_EXECPATH"
+CLEAN="env $(env | grep -o '^CLAUDE[A-Z_]*' | sed 's/^/-u /' | tr '\n' ' ')"   # every ^CLAUDE var, not a hand-list
 
 # Leak repro — WITHOUT the deny flag, the withheld shell runs (the bug):
 $CLEAN claude -p "$PROMPT" --allowedTools Read --output-format text            # -> the real hostname

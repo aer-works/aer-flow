@@ -48,14 +48,14 @@ public class PlanConsistencyTests
     [Fact]
     public void The_retired_implementation_plan_has_not_come_back()
     {
-        // IMPLEMENTATION_PLAN.md was decomposed into docs/decisions-of-record.md (milestone history)
+        // IMPLEMENTATION_PLAN.md was decomposed into docs/milestone-history.md (milestone history)
         // and docs/plan.md (the current, gated plan), then deleted (#367). A second competing plan
         // document is exactly the drift this whole effort exists to kill — fail if one reappears.
         var path = Path.Combine(RepoRoot(), "IMPLEMENTATION_PLAN.md");
         Assert.False(
             File.Exists(path),
             "IMPLEMENTATION_PLAN.md is back. Its roadmap and milestone summaries belong in "
-            + "docs/decisions-of-record.md, and the current, gated plan is docs/plan.md — there is no "
+            + "docs/milestone-history.md, and the current, gated plan is docs/plan.md — there is no "
             + "second plan document (#367).");
     }
 
@@ -65,7 +65,7 @@ public class PlanConsistencyTests
         // Link rot is the plainest form of doc rot. The two docs this milestone made canonical must
         // never point at a file that has moved or been deleted — the failure that dangled every
         // IMPLEMENTATION_PLAN.md reference the moment it was retired.
-        string[] docs = { Path.Combine("docs", "plan.md"), Path.Combine("docs", "decisions-of-record.md") };
+        string[] docs = { Path.Combine("docs", "plan.md"), Path.Combine("docs", "milestone-history.md") };
         var broken = new List<string>();
         foreach (var doc in docs)
         {

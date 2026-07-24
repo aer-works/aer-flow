@@ -4,7 +4,7 @@ The Flutter/Android **remote client** for AER Flow — the phone half of the dae
 story (M21–M24). It pairs with a running `Aer.Daemon`, then drives real work from anywhere:
 
 - **Pairing** — QR-code scan or manual host/code entry, over zero-config Tailscale (embedded `tsnet`
-  via Go CGO — no separate Tailscale app install; see `docs/decisions-of-record.md`, M21).
+  via Go CGO — no separate Tailscale app install; see `docs/milestone-history.md`, M21).
 - **Decision inbox** — Approve / Reject / Cancel a paused step, with the artifact to review shown
   before deciding, and artifact-referenced send-back (Supersede) with no host filesystem access.
 - **Live task & chat streaming** — task projection and in-turn progress pushed over WebSockets

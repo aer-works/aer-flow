@@ -25,10 +25,11 @@ aer-flow/
 │   ├── journeys.md
 │   └── AER Overview.md
 ├── docs/                      plan.md (the living, gated plan), decisions/ (numbered ADRs),
-│   │                          decisions-of-record.md, documentation-trust-index.md,
-│   │                          vendor-capabilities.md, backlog-comb.md, runbooks/
-│   └── archive/               superseded docs — the M19 UX set, the walkthroughs, and the UI
-│                              behavioural spec. Nothing here is current; see archive/README.md
+│   │                          milestone-history.md, documentation-trust-index.md,
+│   │                          vendor-capabilities.md, runbooks/
+│   └── archive/               superseded docs — the M19 UX set, the walkthroughs, the UI
+│                              behavioural spec, and the per-milestone decision archive.
+│                              Nothing here is current; see archive/README.md
 ├── external/
 │   └── aer-core/              git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
 ├── tools/                     ui-harness — the UI driving harness

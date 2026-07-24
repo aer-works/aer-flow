@@ -42,7 +42,7 @@ full re-read (noted inline). Where that is the basis, the rating is deliberately
 |---|---|---|---|
 | `docs/decisions/0001–0018` + `README.md` | Why we chose what we chose | ✅ Trust | The source of truth. `0001` is **amended** by `0013` (room becomes the user-facing noun). `0015` was **promoted proposed → accepted** on 2026-07-24 once the `#472` probe ran: the blocking-MCP mechanism is demonstrated on **both** vendors, and the probe *disproved* the record's original premise that `claude` headless auto-approves. `0015` and `0018` both carry crash-durability amendments from the same day. Keep. |
 | `docs/plan.md` | The living, gated plan | ✅ Trust | Updated in this change to carry 0012–0018 and the UI-only rebuild scope. Gated by `Aer.Plan.Tests`. Keep. |
-| `docs/decisions-of-record.md` | Milestone history + decisions of record | ✅ Trust *(as history)* | Append-only and self-labelled as history, not the current plan. Its M19–M24 summaries use pre-`0001` vocabulary (`task`, `session`) — correct *for their date*. Keep; do not back-edit. |
+| `docs/milestone-history.md` | Milestone history + decisions of record | ✅ Trust *(as history)* | Append-only and self-labelled as history, not the current plan. Its M19–M24 summaries use pre-`0001` vocabulary (`task`, `session`) — correct *for their date*. Keep; do not back-edit. |
 | `docs/vendor-capabilities.md` | What each worker CLI can actually do | ✅ Trust *(with an expiry)* | Every row observed in a live run or read from the shipped binary (`#472`, 2026-07-24). It **corrects two assumptions this milestone was designing against** — `claude -p` does not auto-approve, and MCP is not Claude-only. Caveat: both CLIs self-update, so it is true of `claude` 2.1.219 / `agy` 1.1.6 and should be re-probed after a vendor bump. Keep. |
 
 ### Journeys — the completion bar
@@ -91,7 +91,7 @@ full re-read (noted inline). Where that is the basis, the rating is deliberately
   guarded: `IMPLEMENTATION_PLAN.md` is deleted and `Aer.Plan.Tests` fails the build if it returns.
   No action needed; noted so the guarantee is visible here too.
 - **Doc rot generally** is gated only for `docs/plan.md` and `docs/decisions/` (set equality) and for
-  relative links in `plan.md` + `decisions-of-record.md`. Everything rated 🕓 or ⛔ above sits
+  relative links in `plan.md` + `milestone-history.md`. Everything rated 🕓 or ⛔ above sits
   **outside** any gate — which is precisely why they can read as current while being stale. The Phase
   5 rewrite (`#367`) plus the spec-in-CI gate (`#314`) and vocabulary lint (`#315`) are what would
   bring them inside a gate; this index is the interim map until they do.
@@ -136,7 +136,7 @@ which is why it is not slipped into this PR — but it is *growth*, not repair.
 
 - **Competing plan documents** — the exact rot this effort exists to kill — remain guarded:
   `IMPLEMENTATION_PLAN.md` is deleted and `Aer.Plan.Tests` fails the build if it returns.
-- **Link rot** in `docs/plan.md` and `docs/decisions-of-record.md` is gated. That gate was checked
+- **Link rot** in `docs/plan.md` and `docs/milestone-history.md` is gated. That gate was checked
   before the archive move: neither file markdown-links into anything that moved.
 - **Still ungated:** everything in `docs/archive/` (by design — it is frozen), and the vocabulary of
   the live docs. `#315` (vocabulary lint) and `#314` (spec structure in CI) are what would close

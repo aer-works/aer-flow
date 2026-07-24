@@ -12,7 +12,7 @@ Built in .NET, it reads structured workflow definitions, dispatches them to Work
 - [Which docs can I trust?](docs/documentation-trust-index.md) - Every document rated against the
   current design. Read this before trusting anything older than M25.
 - [The plan](docs/plan.md) - The living, gated plan: the bar, the decisions in force, and the work by phase.
-- [Milestone history & decisions of record](docs/decisions-of-record.md) - What each completed milestone shipped and the durable decisions it left behind.
+- [Milestone history & decisions of record](docs/milestone-history.md) - What each completed milestone shipped and the durable decisions it left behind.
 - [Agent Instructions](CLAUDE.md) - Architectural rules and development workflows for AI agents.
 - [Vendor capabilities](docs/vendor-capabilities.md) - What each worker CLI can actually enforce and
   ask, every claim observed rather than assumed.

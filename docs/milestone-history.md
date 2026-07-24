@@ -1,13 +1,20 @@
-# AER Flow — Milestone History & Decisions of Record
+# AER Flow — Milestone history
 
-This file is the append-only record of the project's completed milestones: a one-paragraph
-**summary** of what each one shipped, and the durable **decisions of record** it left behind —
-the constraints and precedents later work still leans on. Newest milestone first. Decisions are
-extracted verbatim from each milestone's phase work as it completed and are never rewritten to
-change meaning — superseded instead, the same rule the numbered ADRs in
-[`docs/decisions/`](decisions/) follow. Each milestone's phase checklist lives in its closed
-GitHub milestone; the full phase plans live in the linked issues; and the **current** milestone's
-living, gated plan is [`docs/plan.md`](plan.md), not this file.
+**This is provenance, not authority.** It is the append-only record of completed milestones: a
+one-paragraph **summary** of what each shipped, and the reasoning it left behind — read when
+something in the code or a runbook makes you ask *"why is this here?"*. Newest first.
+
+> **It is never the justification for current work.** A rule you must follow today is a numbered
+> record in [`docs/decisions/`](decisions/); what is being built now is [`docs/plan.md`](plan.md).
+> If something in this file is still binding, promote it to a numbered record and cite that instead.
+>
+> *(Renamed from `decisions-of-record.md` — the old name read as a rival to `docs/decisions/`, and
+> nothing said which of the two you were supposed to consult. See
+> [`decisions/README.md`](decisions/README.md) for the full split.)*
+
+Entries are extracted verbatim from each milestone's phase work as it completed and are never
+rewritten to change meaning. Each milestone's phase checklist lives in its closed GitHub milestone;
+the full phase plans live in the linked issues.
 
 ## Milestone summaries
 
