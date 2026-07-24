@@ -50,6 +50,16 @@ public static class TokenGenerator
     /// <summary>The regeneration command, quoted in both the banner and the CI gate's failure text.</summary>
     public const string RegenerateCommand = "pixi run tokens";
 
+    /// <summary>
+    /// Where the shipped font files live inside <c>Aer.Ui</c>, as an Avalonia resource URI. The
+    /// directory is covered by that project's <c>Assets\**</c> <c>AvaloniaResource</c> glob, so a
+    /// file dropped there is embedded without further wiring.
+    /// </summary>
+    private const string AvaloniaFontAssetPath = "avares://Aer.Ui/Assets/Fonts";
+
+    /// <summary>The same fonts' location in the Flutter project, as declared in <c>pubspec.yaml</c>.</summary>
+    private const string FlutterFontAssetPath = "assets/fonts";
+
     private const string BannerLine1 = "GENERATED FILE — DO NOT EDIT.";
 
     private static readonly string[] BannerBody =
@@ -219,6 +229,16 @@ public static class TokenGenerator
             invariant.AppendLine($"""    <sys:Double x:Key="Density{name}">{Number(value)}</sys:Double>""");
         }
 
+        // Resolved to the *shipped* asset, never a bare family name (#453, decision 0006): an
+        // avares: URI can only resolve to the file in Assets/Fonts, so it cannot silently fall back
+        // to whatever the machine happens to have installed.
+        var fontFamily = root.GetProperty("type").GetProperty("fontFamily");
+        foreach (var (role, family) in Entries(fontFamily))
+        {
+            invariant.AppendLine(
+                $"""    <FontFamily x:Key="Font{Pascal(role)}">{AvaloniaFontAssetPath}#{family.GetString()}</FontFamily>""");
+        }
+
         return $"""
         {Banner("<!--", "-->")}
         <ResourceDictionary xmlns="https://github.com/avaloniaui"
@@ -274,6 +294,15 @@ public static class TokenGenerator
         foreach (var (name, role) in Entries(root.GetProperty("type").GetProperty("role")))
         {
             scalars.AppendLine($"  static const double fontSize{Pascal(name)} = {Number(role.GetProperty("size").GetDouble())};");
+        }
+
+        // Safe as bare family names here only because pubspec.yaml declares each one against a file
+        // under FlutterFontAssetPath; a family Flutter cannot find falls back to Roboto silently,
+        // which is the per-device resolution decision 0006 rules out.
+        var fontFamily = root.GetProperty("type").GetProperty("fontFamily");
+        foreach (var (role, family) in Entries(fontFamily))
+        {
+            scalars.AppendLine($"  static const String font{Pascal(role)} = '{family.GetString()}';");
         }
 
         var mobile = root.GetProperty("density").GetProperty("mobile");
@@ -354,6 +383,7 @@ public static class TokenGenerator
 
           return ThemeData(
             brightness: brightness,
+            fontFamily: AerTokens.fontSans,
             scaffoldBackgroundColor: ground,
             colorScheme: ColorScheme.fromSeed(
               seedColor: accent,
