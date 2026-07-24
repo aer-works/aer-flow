@@ -5,11 +5,23 @@ AER Flow is the workflow execution engine layer for the AER (Agent Execution Run
 Built in .NET, it reads structured workflow definitions, dispatches them to Workers (via `aer-core`), and bridges outputs back to the engine.
 
 ## Documentation
+
+**Start here:** [Decision records](docs/decisions/) — why the product is shaped the way it is.
+[0012](docs/decisions/0012-what-aer-flow-is.md) says what AER Flow *is*; 0013–0018 follow from it.
+
+> **If a document is in the live tree, it is current.** Anything superseded lives in
+> [`docs/archive/`](docs/archive/) and is never an authority for current work. There is no
+> "trust this one, but not that one" — a document that cannot be trusted gets fixed or archived.
+
 - [The plan](docs/plan.md) - The living, gated plan: the bar, the decisions in force, and the work by phase.
-- [Milestone history & decisions of record](docs/decisions-of-record.md) - What each completed milestone shipped and the durable decisions it left behind.
+- [Milestone history & decisions of record](docs/milestone-history.md) - What each completed milestone shipped and the durable decisions it left behind.
 - [Agent Instructions](CLAUDE.md) - Architectural rules and development workflows for AI agents.
-- [Behavioral Specs](spec/) - The source of truth for engine routing and adapter behaviors.
-- [Walkthroughs](docs/walkthroughs/) - Guided, end-to-end usage of the shipped stack, starting with your first real workflow.
+- [Vendor capabilities](docs/vendor-capabilities.md) - What each worker CLI can actually enforce and
+  ask, every claim observed rather than assumed.
+- [Behavioral Specs](spec/) - The source of truth for engine routing and adapter behaviors. The
+  **engine** spec is current; the **UI** spec is superseded and marked as such — the UI is being rebuilt.
+- [Walkthroughs](docs/archive/walkthroughs/) - Guided, end-to-end usage of the shipped stack. Currently
+  historical: they teach the outgoing UI.
 - [Runbooks](docs/runbooks/) - Manual, key-gated operational procedures not covered by CI.
 
 ## Prerequisites

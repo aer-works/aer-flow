@@ -8,13 +8,30 @@ If a future design decision in any component spec seems technically elegant but 
 
 ## 1. The Original Problem
 
-Local development increasingly involves more than one AI coding agent — today, Claude Code and Gemini/Antigravity; tomorrow, others. A common and effective pattern is to have one model produce a plan, a second model critique it, and a third (or the first again) implement and review the result. Right now, that pattern is manual: copy a plan from one tool, paste it into another, copy the critique back, decide what to do next, by hand, every time.
+Local development increasingly involves more than one AI coding agent — today, Claude Code and Antigravity (`agy`, the successor to the Gemini CLI); tomorrow, others. A common and effective pattern is to have one model produce a plan, a second model critique it, and a third (or the first again) implement and review the result. Right now, that pattern is manual: copy a plan from one tool, paste it into another, copy the critique back, decide what to do next, by hand, every time.
 
-No existing tool does this well on Windows, for a developer on consumer subscriptions (Claude Pro, Google AI Pro) rather than metered API access, across more than one AI vendor's tooling. Tools like Cyboflow exist for similar problems but assume a Unix shell-glue environment and a single-vendor agent loop. The goal was never to port Cyboflow — it was to solve the actual problem that prompted looking at it in the first place.
+No existing tool does this well under the three constraints that actually apply here, and they compound rather than merely coexist. **Windows**, where the shell-glue that orchestration tooling usually assumes is not available. **Consumer subscriptions** (Claude Pro, Google AI Pro) rather than metered API access — which rules out anything that expects an API key, and forces the design to drive whatever CLI is already authenticated on the host. And **more than one vendor at once**, which rules out the single-vendor agent loop that most tooling is built around. Any one of these is survivable alone; together they leave nothing off the shelf.
 
 ## 2. What AER Actually Is
 
 **AER lets you define roles — Architect, Critic, Implementer, Reviewer, Tester, Human-approver — and bind each role to whichever AI tool or human currently does it best, then runs that pipeline reliably, resumably, and without babysitting the handoffs by hand.**
+
+> **Reframed by [0012](../docs/decisions/0012-what-aer-flow-is.md) (M25).** The paragraph above is
+> still true and still the hard part, but it describes the *machinery*, and for a while it was also
+> the interface — the product asked you to author a pipeline before it would do anything. That is no
+> longer the shape.
+>
+> **The day job is a room you talk to**, with more than one model in it. A pipeline is one thing a
+> room can be; shapes exist to *start* a room quickly and to visualise one that is running, not as a
+> toll you pay first ([0014](../docs/decisions/0014-shapes-are-a-list-not-a-canvas.md)). Read §2 as
+> what the engine guarantees, and 0012 as what the person meets.
+>
+> The user-facing noun for that unit **will be room**
+> ([0013](../docs/decisions/0013-room-is-the-user-facing-noun.md)), with `session` narrowing to the
+> vendor CLI's resumable thread. **That rename has not shipped** — the product and this spec still
+> say *task* throughout, and they change together in `#443`. A document that adopted the new word
+> ahead of the code would just be a translation map pointed the other way, which
+> [0002](../docs/decisions/0002-one-vocabulary.md) exists to forbid.
 
 Concretely, that means:
 

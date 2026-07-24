@@ -1,4 +1,4 @@
-<!-- M19 Phase 2 (#187): the navigation shell — docs/ux/information-architecture.md's flat
+<!-- M19 Phase 2 (#187): the navigation shell — docs/archive/ux/information-architecture.md's flat
      three-destination navigation over the re-homed views. All views stay instantiated (visibility
      toggled), so control state and tests survive navigation exactly as they survived scrolling in
      the single stacked window this replaces. Phase 5 (#190): chrome — the rail carries the

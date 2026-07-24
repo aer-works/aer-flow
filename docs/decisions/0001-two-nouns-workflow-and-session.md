@@ -3,6 +3,12 @@
 Status: accepted
 Date: 2026-07-22 (room model added 2026-07-22)
 
+> **Amendment, 2026-07-24.** [0013](0013-room-is-the-user-facing-noun.md) makes **room** the
+> user-facing noun for what this record calls a session, and narrows "session" to the vendor CLI's
+> resumable thread. Everything below about the *model* — participants, floor-passing, the child
+> tree, the deletion of "task" — stands unchanged; only the word shown to the operator moves. The
+> body is left as written, because the transition is itself part of the record.
+
 ## Context
 
 One object is called four things, and two of them are navigation destinations sitting next to each

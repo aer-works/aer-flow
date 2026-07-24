@@ -287,7 +287,7 @@
           <TextBlock Classes="heading" Text="Recorded decisions:" />
           <StackPanel x:Name="DecisionsPanel" Spacing="{DynamicResource Space.1}" />
 
-          <!-- #213: plain-language renames per docs/ux/ux-principles.md's vocabulary map — these
+          <!-- #213: plain-language renames per docs/archive/ux/ux-principles.md's vocabulary map — these
                stay one disclosure away (this Expander), so the precise spec terms survive in the
                tooltips/ids next to each entry, per the map's own "survives in disclosure
                surfaces" rule; only the section headers themselves needed to change. -->

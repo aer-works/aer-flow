@@ -1,5 +1,28 @@
 # AER Flow UI Behavioral Specification — v1.0
 
+> ## ⛔ Superseded — read as a record of the outgoing UI, not as the target
+>
+> **This specifies the surface being torn out.** M25 rebuilds the UI layers (engine, adapters,
+> daemon and protocol are untouched), and this document describes that UI in three ways that are no
+> longer true:
+>
+> - **Its vocabulary is retired.** It speaks of `task`; the user-facing noun is now **room**
+>   ([0013](../../decisions/0013-room-is-the-user-facing-noun.md)), and `session` has retreated to
+>   its precise technical meaning.
+> - **Its authoring model is reversed.** It specifies a freeform DAG canvas;
+>   [0014](../../decisions/0014-shapes-are-a-list-not-a-canvas.md) makes a shape an ordered **list
+>   that renders as a graph**, and makes shapes a way to *author templates* rather than the day job.
+> - **Its surface split is gone.** Home / Task / Author become one switcher shell (#336, #337).
+>
+> **It has not been rewritten, deliberately.** Rewriting a UI contract against a UI that does not
+> exist yet would be fiction, and would itself become the next stale document. The replacement is
+> written when the rebuilt surface lands (#367, #314). Until then the current design intent lives in
+> decision records [0012](../../decisions/0012-what-aer-flow-is.md)–[0018](../../decisions/0018-attention-is-the-primary-signal.md),
+> and this file is kept because the transition is itself part of the record.
+>
+> It is in [`docs/archive/`](../README.md), which is the whole trust signal — the live tree is
+> current, this is not.
+
 This document defines the behavioral contract of AER Flow UI.
 
 AER Flow UI is a control-plane and visualization layer for AER Flow. It depends on:

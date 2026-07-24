@@ -1,5 +1,21 @@
 # Walkthrough: your first real workflow (draft → critique → send-back)
 
+> ## 🕓 Historical — the mechanics still run, the framing is superseded
+>
+> The send-back machinery this teaches is real and still works; it lives in the engine, which M25
+> does not touch. What has changed is everything *around* it:
+>
+> - It frames the day job as **authoring a workflow**. [0012](../../decisions/0012-what-aer-flow-is.md)
+>   makes the day job a **room you talk to**, with shapes as a way to start one quickly — not the
+>   thing you do every day.
+> - It calls the unit a **task**; the user-facing noun is **room**
+>   ([0013](../../decisions/0013-room-is-the-user-facing-noun.md)).
+> - It casts you as **"the relay"**, hand-carrying each round. That was honest for M17 and is exactly
+>   what the product now exists to absorb.
+>
+> **Not yet rewritten**, because it walks through a UI that is being replaced — the rewrite lands
+> with the rebuilt surface (#367). Read it for the mechanics, not the workflow.
+
 This is the "how do I actually use this" guide (M17 Phase 1, #164). Everything it uses shipped in
 M11–M16; nothing here is new machinery. You will run a real two-role workflow — an **architect**
 (Claude) writes a design proposal, a **critic** (Gemini/`agy`) reviews it — then use the pause
@@ -10,7 +26,7 @@ model's critique driving another model's revision, with you deciding each round.
 Be aware of what you are in this loop: **the relay**. Every round of the exchange passes through
 your hands (inspect the critique, decide, supply feedback). That is by design at this layer —
 and it is exactly the manual work the M17 dialogue worker exists to absorb; see
-`docs/decisions-of-record.md` (M17).
+`docs/milestone-history.md` (M17).
 
 Everything in §1–§6 needs live, authenticated vendor CLIs and is therefore a human-run activity
 (see CLAUDE.md's "Live-vendor smoke tests" for why that never changes). §7 runs the identical

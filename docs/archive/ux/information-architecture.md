@@ -2,7 +2,7 @@
 
 > **Status (M25):** this records the **M19** IA. The room-model re-architecture revisits it — a
 > single switcher shell replaces the three-view split (#336) and "task" gives way to the two-noun
-> model (decision [0001](../decisions/0001-two-nouns-workflow-and-session.md)). See
+> model (decision [0001](../../decisions/0001-two-nouns-workflow-and-session.md)). See
 > [`docs/plan.md`](../plan.md) for the current direction; read this as the M19 baseline it is, not
 > the target design.
 >
@@ -45,7 +45,7 @@ version-increment decision of record).
 
 ## Home
 
-The screen that answers "what needs me?" in one glance — the CyboFlow-inspired centerpiece.
+The screen that answers "what needs me?" in one glance — the centerpiece.
 
 * **Decision inbox** (top): every step across recent tasks waiting for the human's review, one
   item per paused step. An item leads with the thing to review — the artifact preview

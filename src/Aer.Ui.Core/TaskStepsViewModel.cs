@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// M19 Phase 3 (issue #188): the plain-language vocabulary map (docs/ux/ux-principles.md) applied
+/// M19 Phase 3 (issue #188): the plain-language vocabulary map (docs/archive/ux/ux-principles.md) applied
 /// to the task view's primary text. Total for primary labels — a spec term reaching a primary
 /// label is a defect (Phase 1 decision of record); the precise engine vocabulary survives one
 /// disclosure away (ids as handles, the Details section, tooltips).
@@ -58,7 +58,7 @@ public static class PlainLanguage
 
 /// <summary>
 /// One step of the open task as the drill-in's read model (M19 Phase 3, issue #188;
-/// docs/ux/information-architecture.md's Task view): the plain status up front, and everything
+/// docs/archive/ux/information-architecture.md's Task view): the plain status up front, and everything
 /// that used to sprawl as separate stacked sections — attempts, output files, conversations,
 /// recorded decisions — sliced per step. Rebuilt wholesale on every refresh like every other
 /// projection surface; selection is re-anchored by <see cref="StepId"/> across rebuilds.
