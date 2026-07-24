@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/aer-works/aer-flow/compare/cli-v0.19.0...cli-v0.20.0) (2026-07-24)
+
+
+### Features
+
+* **flow:** Split PausePoint into needs-input and ready-for-review kinds ([#435](https://github.com/aer-works/aer-flow/issues/435)) ([82a9d95](https://github.com/aer-works/aer-flow/commit/82a9d955da69be3bed3778d25415f9f2ec0185e7))
+
 ## [0.19.0](https://github.com/aer-works/aer-flow/compare/cli-v0.18.0...cli-v0.19.0) (2026-07-22)
 
 

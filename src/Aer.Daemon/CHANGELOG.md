@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.20.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.19.0...daemon-v0.20.0) (2026-07-24)
+
+
+### Features
+
+* **daemon:** Add timestamps to the task list contract ([#416](https://github.com/aer-works/aer-flow/issues/416)) ([439c927](https://github.com/aer-works/aer-flow/commit/439c927a31bf338bb2d8b194adc230f0a54c9d94))
+
+
+### Bug Fixes
+
+* **daemon,adapters:** Stop a concurrent read failing a session metadata write ([#353](https://github.com/aer-works/aer-flow/issues/353)) ([1cb2265](https://github.com/aer-works/aer-flow/commit/1cb2265f6dc03b9fbb62869f381d362125416514))
+* **daemon,ui:** broadcast desktop-started runs to connected WS clients ([#401](https://github.com/aer-works/aer-flow/issues/401)) ([ef9f0c5](https://github.com/aer-works/aer-flow/commit/ef9f0c5b49b19910f1a768f96d9e204073977389))
+* **daemon:** Fail closed when an interactive session has no working directory ([#402](https://github.com/aer-works/aer-flow/issues/402)) ([5a02b6f](https://github.com/aer-works/aer-flow/commit/5a02b6f4add443bf143f34a0547f676edb2cfd54))
+* **daemon:** Guard session re-materialization against live flow state ([#394](https://github.com/aer-works/aer-flow/issues/394)) ([951f69a](https://github.com/aer-works/aer-flow/commit/951f69a90e8d587271d8f437f53425e0e40f1fe0))
+* **daemon:** Keep --remote port stable so a restart doesn't strand paired phones ([#400](https://github.com/aer-works/aer-flow/issues/400)) ([25c8631](https://github.com/aer-works/aer-flow/commit/25c8631fbfdad0c8712c3734472b6c7acf3c3f71))
+* **daemon:** Return a meaningful message when opening a locked task ([#415](https://github.com/aer-works/aer-flow/issues/415)) ([f33cf89](https://github.com/aer-works/aer-flow/commit/f33cf89b5edbf954ada40a5a81aeafda721dfbc8))
+* **daemon:** Run a directory-less session in its own dir, not the inherited cwd ([#440](https://github.com/aer-works/aer-flow/issues/440)) ([513c6d0](https://github.com/aer-works/aer-flow/commit/513c6d0ccd286f2f40f5e7dffc4a42f8415e7792))
+* **daemon:** Serialize per-session turns so re-materialization can't race a live turn ([#441](https://github.com/aer-works/aer-flow/issues/441)) ([318c85d](https://github.com/aer-works/aer-flow/commit/318c85df01dbf409e4601ce90e600a2e697fe5ef))
+
+
+### Code Refactoring
+
+* **core,daemon,ui:** Unify sessions and tasks into one storage root, with migration ([#444](https://github.com/aer-works/aer-flow/issues/444)) ([04a11b8](https://github.com/aer-works/aer-flow/commit/04a11b8ce095f37f4ff4bc9eba137461016dbbc0))
+* **core:** Introduce AerPaths so the storage root has a single seam ([#362](https://github.com/aer-works/aer-flow/issues/362)) ([4b81e57](https://github.com/aer-works/aer-flow/commit/4b81e573b73a839e9dd713acb662b0d1bfb357e9))
+* **daemon:** Extract the broadcast subsystem into DaemonBroadcast ([#433](https://github.com/aer-works/aer-flow/issues/433)) ([03245fa](https://github.com/aer-works/aer-flow/commit/03245facf740ce439d27bcbac18034fc65a41a19))
+* **daemon:** Key host session state per session so the daemon can hold more than one ([#449](https://github.com/aer-works/aer-flow/issues/449)) ([bc3bc98](https://github.com/aer-works/aer-flow/commit/bc3bc98455548e4be9c9aa7e0834aba11d1a4e8b))
+
+
+### Documentation
+
+* Retire IMPLEMENTATION_PLAN.md into gated homes and audit the doc surface ([#379](https://github.com/aer-works/aer-flow/issues/379)) ([5a0b2ba](https://github.com/aer-works/aer-flow/commit/5a0b2ba04854245beca447ad1b1611b02b96a461))
+
 ## [0.19.0](https://github.com/aer-works/aer-flow/compare/daemon-v0.18.0...daemon-v0.19.0) (2026-07-22)
 
 

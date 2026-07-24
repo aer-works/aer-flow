@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.0](https://github.com/aer-works/aer-flow/compare/flow-v0.19.0...flow-v0.20.0) (2026-07-24)
+
+
+### Features
+
+* **flow:** Split PausePoint into needs-input and ready-for-review kinds ([#435](https://github.com/aer-works/aer-flow/issues/435)) ([82a9d95](https://github.com/aer-works/aer-flow/commit/82a9d955da69be3bed3778d25415f9f2ec0185e7))
+
+
+### Bug Fixes
+
+* **daemon:** Return a meaningful message when opening a locked task ([#415](https://github.com/aer-works/aer-flow/issues/415)) ([f33cf89](https://github.com/aer-works/aer-flow/commit/f33cf89b5edbf954ada40a5a81aeafda721dfbc8))
+
 ## [0.19.0](https://github.com/aer-works/aer-flow/compare/flow-v0.18.0...flow-v0.19.0) (2026-07-22)
 
 

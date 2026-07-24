@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.20.0](https://github.com/aer-works/aer-flow/compare/ui-v0.19.0...ui-v0.20.0) (2026-07-24)
+
+
+### Features
+
+* **flow:** Split PausePoint into needs-input and ready-for-review kinds ([#435](https://github.com/aer-works/aer-flow/issues/435)) ([82a9d95](https://github.com/aer-works/aer-flow/commit/82a9d955da69be3bed3778d25415f9f2ec0185e7))
+* **ui,mobile:** Generate both toolkits' themes from one token file ([#450](https://github.com/aer-works/aer-flow/issues/450)) ([c4666a2](https://github.com/aer-works/aer-flow/commit/c4666a29796bbe0f76d4b7803b09b8835fa4b026))
+
+
+### Bug Fixes
+
+* **ui:** Remote advertises the unreachable address and hides the not-encrypted warning ([#392](https://github.com/aer-works/aer-flow/issues/392)) ([41ec69f](https://github.com/aer-works/aer-flow/commit/41ec69f945a874210f51e5277529d18470070822))
+
+
+### Code Refactoring
+
+* **core,daemon,ui:** Unify sessions and tasks into one storage root, with migration ([#444](https://github.com/aer-works/aer-flow/issues/444)) ([04a11b8](https://github.com/aer-works/aer-flow/commit/04a11b8ce095f37f4ff4bc9eba137461016dbbc0))
+* **core:** Introduce AerPaths so the storage root has a single seam ([#362](https://github.com/aer-works/aer-flow/issues/362)) ([4b81e57](https://github.com/aer-works/aer-flow/commit/4b81e573b73a839e9dd713acb662b0d1bfb357e9))
+
+
+### Tests
+
+* Add the journey-test harness with its first driveable legs ([#372](https://github.com/aer-works/aer-flow/issues/372)) ([3c30827](https://github.com/aer-works/aer-flow/commit/3c308276ced96654a4326cb948547fc2821f9a35))
+
 ## [0.19.0](https://github.com/aer-works/aer-flow/compare/ui-v0.18.0...ui-v0.19.0) (2026-07-22)
 
 

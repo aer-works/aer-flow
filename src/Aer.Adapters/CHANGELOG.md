@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.20.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.19.0...adapters-v0.20.0) (2026-07-24)
+
+
+### Features
+
+* **flow:** Split PausePoint into needs-input and ready-for-review kinds ([#435](https://github.com/aer-works/aer-flow/issues/435)) ([82a9d95](https://github.com/aer-works/aer-flow/commit/82a9d955da69be3bed3778d25415f9f2ec0185e7))
+
+
+### Bug Fixes
+
+* **adapters:** Enforce withheld permissions with --disallowedTools ([#380](https://github.com/aer-works/aer-flow/issues/380)) ([145d9c9](https://github.com/aer-works/aer-flow/commit/145d9c97255a551c85f812ae6870d51bfeee94c6))
+* **daemon,adapters:** Stop a concurrent read failing a session metadata write ([#353](https://github.com/aer-works/aer-flow/issues/353)) ([1cb2265](https://github.com/aer-works/aer-flow/commit/1cb2265f6dc03b9fbb62869f381d362125416514))
+* **daemon:** Fail closed when an interactive session has no working directory ([#402](https://github.com/aer-works/aer-flow/issues/402)) ([5a02b6f](https://github.com/aer-works/aer-flow/commit/5a02b6f4add443bf143f34a0547f676edb2cfd54))
+* **daemon:** Run a directory-less session in its own dir, not the inherited cwd ([#440](https://github.com/aer-works/aer-flow/issues/440)) ([513c6d0](https://github.com/aer-works/aer-flow/commit/513c6d0ccd286f2f40f5e7dffc4a42f8415e7792))
+
+
+### Code Refactoring
+
+* **core,daemon,ui:** Unify sessions and tasks into one storage root, with migration ([#444](https://github.com/aer-works/aer-flow/issues/444)) ([04a11b8](https://github.com/aer-works/aer-flow/commit/04a11b8ce095f37f4ff4bc9eba137461016dbbc0))
+* **core:** Introduce AerPaths so the storage root has a single seam ([#362](https://github.com/aer-works/aer-flow/issues/362)) ([4b81e57](https://github.com/aer-works/aer-flow/commit/4b81e573b73a839e9dd713acb662b0d1bfb357e9))
+* **daemon:** Key host session state per session so the daemon can hold more than one ([#449](https://github.com/aer-works/aer-flow/issues/449)) ([bc3bc98](https://github.com/aer-works/aer-flow/commit/bc3bc98455548e4be9c9aa7e0834aba11d1a4e8b))
+
 ## [0.19.0](https://github.com/aer-works/aer-flow/compare/adapters-v0.18.0...adapters-v0.19.0) (2026-07-22)
 
 

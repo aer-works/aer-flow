@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.0](https://github.com/aer-works/aer-flow/compare/mobile-v0.2.0...mobile-v0.3.0) (2026-07-24)
+
+
+### Features
+
+* **ui,mobile:** Generate both toolkits' themes from one token file ([#450](https://github.com/aer-works/aer-flow/issues/450)) ([c4666a2](https://github.com/aer-works/aer-flow/commit/c4666a29796bbe0f76d4b7803b09b8835fa4b026))
+
+
+### Bug Fixes
+
+* **mobile:** Rename Forget pairing to honest sign-out with confirmation ([#399](https://github.com/aer-works/aer-flow/issues/399)) ([34f5a58](https://github.com/aer-works/aer-flow/commit/34f5a586e6915ae7279b695fbe9b090c17431b01))
+* **mobile:** Starting a non-chat template leaves the phone on the empty state ([#389](https://github.com/aer-works/aer-flow/issues/389)) ([2405bf6](https://github.com/aer-works/aer-flow/commit/2405bf65c862440f37d5ecfee36fed614bbf26eb))
+
+
+### Documentation
+
+* Retire IMPLEMENTATION_PLAN.md into gated homes and audit the doc surface ([#379](https://github.com/aer-works/aer-flow/issues/379)) ([5a0b2ba](https://github.com/aer-works/aer-flow/commit/5a0b2ba04854245beca447ad1b1611b02b96a461))
+
+
+### Tests
+
+* Add the journey-test harness with its first driveable legs ([#372](https://github.com/aer-works/aer-flow/issues/372)) ([3c30827](https://github.com/aer-works/aer-flow/commit/3c308276ced96654a4326cb948547fc2821f9a35))
+
+
+### Miscellaneous
+
+* **mobile:** Unblock x86_64 emulator testing for Aer.Mobile ([#304](https://github.com/aer-works/aer-flow/issues/304)) ([eb0afc2](https://github.com/aer-works/aer-flow/commit/eb0afc2a120f32af4977451a84a057b2f7d71590))
+
 ## [0.2.0](https://github.com/aer-works/aer-flow/compare/mobile-v0.1.0...mobile-v0.2.0) (2026-07-22)
 
 

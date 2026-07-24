@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.20.0](https://github.com/aer-works/aer-flow/compare/ui-core-v0.19.0...ui-core-v0.20.0) (2026-07-24)
+
+
+### Features
+
+* **daemon:** Add timestamps to the task list contract ([#416](https://github.com/aer-works/aer-flow/issues/416)) ([439c927](https://github.com/aer-works/aer-flow/commit/439c927a31bf338bb2d8b194adc230f0a54c9d94))
+* **flow:** Split PausePoint into needs-input and ready-for-review kinds ([#435](https://github.com/aer-works/aer-flow/issues/435)) ([82a9d95](https://github.com/aer-works/aer-flow/commit/82a9d955da69be3bed3778d25415f9f2ec0185e7))
+
+
+### Bug Fixes
+
+* **daemon,ui:** broadcast desktop-started runs to connected WS clients ([#401](https://github.com/aer-works/aer-flow/issues/401)) ([ef9f0c5](https://github.com/aer-works/aer-flow/commit/ef9f0c5b49b19910f1a768f96d9e204073977389))
+* **ui:** Remote advertises the unreachable address and hides the not-encrypted warning ([#392](https://github.com/aer-works/aer-flow/issues/392)) ([41ec69f](https://github.com/aer-works/aer-flow/commit/41ec69f945a874210f51e5277529d18470070822))
+
+
+### Code Refactoring
+
+* **core:** Introduce AerPaths so the storage root has a single seam ([#362](https://github.com/aer-works/aer-flow/issues/362)) ([4b81e57](https://github.com/aer-works/aer-flow/commit/4b81e573b73a839e9dd713acb662b0d1bfb357e9))
+* **daemon:** Key host session state per session so the daemon can hold more than one ([#449](https://github.com/aer-works/aer-flow/issues/449)) ([bc3bc98](https://github.com/aer-works/aer-flow/commit/bc3bc98455548e4be9c9aa7e0834aba11d1a4e8b))
+* **ui:** Split TaskSession god file into partial-class files ([#427](https://github.com/aer-works/aer-flow/issues/427)) ([c772587](https://github.com/aer-works/aer-flow/commit/c772587a4d46a9344a030e3004ad0db6ff30dc56))
+
+
+### Documentation
+
+* Retire IMPLEMENTATION_PLAN.md into gated homes and audit the doc surface ([#379](https://github.com/aer-works/aer-flow/issues/379)) ([5a0b2ba](https://github.com/aer-works/aer-flow/commit/5a0b2ba04854245beca447ad1b1611b02b96a461))
+
 ## [0.19.0](https://github.com/aer-works/aer-flow/compare/ui-core-v0.18.0...ui-core-v0.19.0) (2026-07-22)
 
 
