@@ -67,6 +67,8 @@ What each completed milestone shipped, newest first.
 
 The durable decisions each milestone left behind, newest first — each entry cites the phase that decided it. Coverage is uneven: M20, M23, and M24 are represented by their summary above only, having shipped without a separate decisions pass into this file; their durable decisions live in their PRs and closed milestones. (Surfaced by the #367 docs audit.)
 
+**M25 is absent from below by design, not omission** — it is the milestone that established [`docs/decisions/`](decisions/), so its durable decisions are numbered records 0001–0019 and belong there. It is the first milestone for which this section is correctly empty, and the intended state for every milestone after it.
+
 ## M22: Workflow Template Library
 
 - **Pre-authored built-in template catalog (Phase 1)** — `BuiltInWorkflowTemplates` in `Aer.Adapters` exposes built-in template shapes (`solo-run`, `review-run`) with pre-authored, engine-valid `WorkflowDefinition` definitions and `WorkerBindingConfigEntry` dictionaries, materializing against whichever vendor CLIs (`claude`, `gemini`) are probed on system PATH via `VendorCliPresence`.

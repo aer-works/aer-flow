@@ -140,9 +140,15 @@ makes "no room open while running" *impossible* rather than merely fixed, and wh
 content" with it), and **artifacts are files** (vendor-neutral, versioned, attributed, diffable — plus
 diff-and-choose on save, and "documents stay, plumbing goes").
 
-**Records that amend existing ones.** Four items extend a record — and because records are
-[immutable](../decisions/README.md), each is a **new record that amends its predecessor**, the way 0013
-amends 0001. Never an edit to the original. They are: the permission **scope ladder** at the moment of
+**Records that amend existing ones.** Four items extend a record. The repo's rule is *"never edit a
+decision **to change its meaning**"* ([`decisions/README.md`](../decisions/README.md)) — which is not the
+same as never editing it. The established pattern, from 0013 amending 0001, is **three parts**: the new
+record, a dated **amendment blockquote added to the top of the original** pointing forward to it and
+saying precisely what still stands, and the index row noting the amendment. The original's body is left
+as written, because the transition is itself part of the record.
+
+Do all three. A new record with no back-pointer from the record it amends is undiscoverable from the
+place a reader actually starts. They are: the permission **scope ladder** at the moment of
 asking plus **denial is an answer** (amends [0004](../decisions/0004-permission-scopes.md)); **effort named
 by behaviour** and **models offered by purpose** (amends
 [0017](../decisions/0017-vendor-model-effort-are-three-choices.md)); **namespaced commands**, `/ask-all`,
@@ -150,8 +156,9 @@ and canonical-vs-native skills (amends [0010](../decisions/0010-skills-and-advis
 as a property of a step** and **the instruction is the step's body** (amends
 [0014](../decisions/0014-shapes-are-a-list-not-a-canvas.md)).
 
-Each is a **three-file change** — the record, `docs/plan.md`'s table, and `decisions/README.md` — or the
-plan gate's three-way set comparison fails the build.
+Every new record is at minimum a **three-file change** — the record, `docs/plan.md`'s table, and
+`decisions/README.md` — or the plan gate's three-way set comparison fails the build. An amending one is
+four, counting the record it amends.
 
 **The nine claims → journeys.** §7's table becomes journeys in `spec/journeys.md` plus the registry, as
 one coordinated change under `ReconcileTests`. Note the ordering constraint: the plan gate extracts every
