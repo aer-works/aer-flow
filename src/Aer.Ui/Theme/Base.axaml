@@ -39,8 +39,12 @@
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
 
+  <!-- FontMono is generated from design/tokens.json (#456), replacing this file's former
+       "Cascadia Mono,Consolas,Menlo,monospace" chain. That chain resolved to a different face on
+       every OS, which is precisely the per-device resolution decision 0006 rules out; the shipped
+       JetBrains Mono renders the same everywhere. -->
   <Style Selector="TextBlock.mono">
-    <Setter Property="FontFamily" Value="{DynamicResource Type.Mono.FontFamily}" />
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
     <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
   </Style>
 
@@ -120,7 +124,7 @@
   </Style>
 
   <Style Selector="TextBox.mono">
-    <Setter Property="FontFamily" Value="{DynamicResource Type.Mono.FontFamily}" />
+    <Setter Property="FontFamily" Value="{DynamicResource FontMono}" />
     <Setter Property="FontSize" Value="{DynamicResource Type.Mono.FontSize}" />
   </Style>
 

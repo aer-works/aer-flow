@@ -10,6 +10,6 @@ internal static class Program
     /// <summary>Exposed as a static entry point, not inlined into <see cref="Main"/>, so the Avalonia previewer can find it — the standard template shape.</summary>
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
         .UsePlatformDetect()
-        .WithInterFont()
+        .WithAerFonts()
         .LogToTrace();
 }

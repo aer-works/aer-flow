@@ -27,15 +27,6 @@
           "Avalonia.X11": "12.1.0"
         }
       },
-      "Avalonia.Fonts.Inter": {
-        "type": "Direct",
-        "requested": "[12.1.0, )",
-        "resolved": "12.1.0",
-        "contentHash": "2mK5Rv6aMWgXfQ2JZOq1Wo2bTNAfiidg2GO4b3MgLRN89ezfvfsSfp4P5Pl4ssRcWWwdV0jGzIw8n0xc9B26VA==",
-        "dependencies": {
-          "Avalonia": "12.1.0"
-        }
-      },
       "Avalonia.Themes.Fluent": {
         "type": "Direct",
         "requested": "[12.1.0, )",
@@ -247,7 +238,7 @@
           "Aer.Workers.Dialogue": "[0.14.0, )",
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "QRCoder": "[1.6.0, )",
-          "aer": "[0.15.0, )"
+          "aer": "[0.19.0, )"
         }
       },
       "aer.workers.dialogue": {

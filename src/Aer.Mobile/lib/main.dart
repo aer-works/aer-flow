@@ -4,6 +4,7 @@ import 'daemon/credentials_store.dart';
 import 'daemon/tailnet_gateway.dart';
 import 'inbox_screen.dart';
 import 'pairing_screen.dart';
+import 'theme/tokens.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,11 +17,15 @@ class AerMobileApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // #456: the generated theme replaces the Flutter starter's deepPurple seed, which was never a
+    // design decision — it is what `flutter create` writes. Supplying both brightnesses is the
+    // whole of "system" support: ThemeMode.system resolves the OS preference itself, so the three
+    // modes decision 0006 asks for need no code of ours.
     return MaterialApp(
       title: 'AER Flow',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
+      theme: aerTheme(Brightness.light),
+      darkTheme: aerTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       home: const _StartupRouter(),
     );
   }
