@@ -1,3 +1,5 @@
+using Aer.Flow.Domain;
+using Aer.Flow.Templates;
 using Aer.Ui.Core;
 
 namespace Aer.Ui.Tests;
@@ -145,5 +147,163 @@ public class TasksViewModelTests
 
         b.IsSelected = true;
         Assert.Equal("Really delete 2 selected tasks? This can't be undone.", viewModel.BulkDeleteConfirmText);
+    }
+
+    // ---- #336: the switcher's push-driven liveness ----
+    //
+    // The switcher list is permanently visible, so it no longer gets a section activation to rebuild
+    // on — before this, TasksViewModel.RefreshAsync on activation was the *only* thing keeping it
+    // current. These cover the replacement: a live projection push folded into the right row.
+
+    private static TaskProjection ProjectionWith(WorkflowStatus status, params StepStatus[] stepStatuses)
+    {
+        var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
+            new WorkflowTemplateId("switcher-fixture"),
+            WorkflowTemplateVersion: 1,
+            Steps: [new WorkflowStepDefinition(new StepId("only"), "worker", ["in"], ["out"], DependsOn: [], RetryPolicy: new RetryPolicy(1))]));
+
+        var steps = stepStatuses
+            .Select((s, i) => new StepState(new StepId($"step-{i}"), s, LatestExecutionId: null, UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()))
+            .ToList();
+
+        return new TaskProjection(
+            snapshot,
+            new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, status),
+            new ExecutionHistory(new Dictionary<StepId, IReadOnlyList<ExecutionAttempt>>(), [], []),
+            new ArtifactLineage([]));
+    }
+
+    [Fact]
+    public void A_projection_push_updates_the_row_it_is_for()
+    {
+        var viewModel = new TasksViewModel();
+        var row = viewModel.AddTestItem(NewItem("/tasks/a"));
+        Assert.Equal("Idle", row.StatusText);
+
+        viewModel.ApplyProjectionPush("/tasks/a", ProjectionWith(WorkflowStatus.Terminal));
+
+        Assert.Equal("Finished", row.StatusText);
+        Assert.Equal(TaskCardStatus.Finished, row.Status);
+    }
+
+    [Fact]
+    public void A_push_for_one_session_leaves_every_other_rows_status_alone()
+    {
+        var viewModel = new TasksViewModel();
+        var a = viewModel.AddTestItem(NewItem("/tasks/a"));
+        var b = viewModel.AddTestItem(NewItem("/tasks/b"));
+
+        viewModel.ApplyProjectionPush("/tasks/a", ProjectionWith(WorkflowStatus.Terminal));
+
+        Assert.Equal("Finished", a.StatusText);
+        Assert.Equal("Idle", b.StatusText);
+        Assert.Null(b.Status);
+    }
+
+    [Fact]
+    public void A_cancelled_session_reads_as_cancelled_on_the_switcher_too()
+    {
+        // #461 fixed "a cancelled task reports itself as Finished" on Home's cards. The switcher is a
+        // second surface showing the same fact, so it shares Home's one derivation rather than
+        // growing a copy that could drift back into the same defect.
+        var viewModel = new TasksViewModel();
+        var row = viewModel.AddTestItem(NewItem("/tasks/a"));
+
+        viewModel.ApplyProjectionPush(
+            "/tasks/a", ProjectionWith(WorkflowStatus.Terminal, StepStatus.Cancelled));
+
+        Assert.Equal("Cancelled", row.StatusText);
+        Assert.Equal(TaskCardStatus.Cancelled, row.Status);
+    }
+
+    [Fact]
+    public void A_push_carries_the_paused_step_count_the_row_shows()
+    {
+        var viewModel = new TasksViewModel();
+        var row = viewModel.AddTestItem(NewItem("/tasks/a"));
+        Assert.False(row.HasPausedSteps);
+
+        viewModel.ApplyProjectionPush(
+            "/tasks/a", ProjectionWith(WorkflowStatus.Running, StepStatus.Paused, StepStatus.Paused, StepStatus.Succeeded));
+
+        Assert.Equal(2, row.PausedStepCount);
+        Assert.True(row.HasPausedSteps);
+    }
+
+    [Fact]
+    public void A_push_for_a_directory_with_no_row_is_ignored_rather_than_synthesising_one()
+    {
+        var viewModel = new TasksViewModel();
+        viewModel.AddTestItem(NewItem("/tasks/a"));
+
+        viewModel.ApplyProjectionPush("/tasks/never-seen", ProjectionWith(WorkflowStatus.Terminal));
+
+        // A push carries a projection, not the archived/created/updated fleet metadata a row needs —
+        // a synthesised row would be wrong in exactly the fields the list sorts and filters on.
+        Assert.Single(viewModel.Items);
+        Assert.Equal("Idle", viewModel.Items[0].StatusText);
+    }
+
+    [Fact]
+    public void Two_spellings_of_one_directory_resolve_to_the_same_row()
+    {
+        var viewModel = new TasksViewModel();
+        var row = viewModel.AddTestItem(NewItem(@"C:\tasks\Alpha"));
+
+        // #335's durable lesson: the *second* primitive keyed on a record path is where normalisers
+        // drift apart. This is that second primitive, so it uses the same AerPaths.RecordKey.
+        viewModel.ApplyProjectionPush(@"C:\TASKS\alpha\", ProjectionWith(WorkflowStatus.Terminal));
+
+        Assert.Equal("Finished", row.StatusText);
+    }
+
+    // ---- #336: ordering ----
+
+    [Fact]
+    public void The_list_orders_by_most_recently_updated_not_by_name()
+    {
+        // Regression guard: this used to order by FriendlyName descending, which silently discarded
+        // the recency order the daemon had already applied and contradicted TaskFleetItem.Updated's
+        // own contract. The phone showed recency; the desktop showed reverse-alphabetical.
+        var viewModel = new TasksViewModel();
+        var older = NewItem("/tasks/zulu") with { Updated = DateTimeOffset.UnixEpoch.AddHours(1) };
+        var newer = NewItem("/tasks/alpha") with { Updated = DateTimeOffset.UnixEpoch.AddHours(9) };
+
+        var ordered = TasksViewModel.InFleetOrderForTests([older, newer]).ToList();
+
+        Assert.Equal("/tasks/alpha", ordered[0].TaskDirectoryPath);
+        Assert.Equal("/tasks/zulu", ordered[1].TaskDirectoryPath);
+    }
+
+    [Fact]
+    public void Rows_updated_at_the_same_instant_order_by_name_so_the_list_is_stable()
+    {
+        // Ties must not resolve arbitrarily: on a permanently-visible switcher, a row that swaps
+        // places on an unrelated refresh moves out from under the pointer.
+        var viewModel = new TasksViewModel();
+        var sameInstant = DateTimeOffset.UnixEpoch.AddHours(3);
+        var b = NewItem("/tasks/bravo") with { Updated = sameInstant, FriendlyName = "bravo" };
+        var a = NewItem("/tasks/alpha") with { Updated = sameInstant, FriendlyName = "alpha" };
+
+        var ordered = TasksViewModel.InFleetOrderForTests([b, a]).ToList();
+
+        Assert.Equal("alpha", ordered[0].FriendlyName);
+        Assert.Equal("bravo", ordered[1].FriendlyName);
+    }
+
+    // ---- #336: the detail router's discriminator ----
+
+    [Fact]
+    public void A_row_carries_whether_it_is_a_session_structurally_not_as_a_label()
+    {
+        // The switcher routes the detail pane on this. TypeLabel is a *display* string, so routing on
+        // it would mean string-matching a rendered label.
+        var viewModel = new TasksViewModel();
+
+        var session = viewModel.AddTestItem(NewItem("/tasks/chat") with { IsSession = true, TypeLabel = "interactive session" });
+        var workflow = viewModel.AddTestItem(NewItem("/tasks/dag"));
+
+        Assert.True(session.IsSession);
+        Assert.False(workflow.IsSession);
     }
 }

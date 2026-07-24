@@ -384,11 +384,18 @@ public sealed partial class TaskSession
 
     // This WS receive loop is transport, but it mutates *client* state — it calls
     // ShouldApplyProjectionPush / UpdateProjection (in TaskSession.cs) which seed
-    // CurrentTaskDirectoryPath and the live projection. #335 keyed the *host* side per session and
-    // deliberately left this alone: a client still watches one session at a time, so filtering on
-    // arrival remains correct. Routing pushes at the server so a client is not sent what it will
-    // discard is #446, and ShouldApplyProjectionPush stays afterwards as defence in depth — a
-    // subscription bug should cost traffic, not resurrect #262's cross-client corruption.
+    // CurrentTaskDirectoryPath and the live projection.
+    //
+    // #336 retired the assumption this comment used to record ("a client watches one session at a
+    // time, so filtering on arrival is correct"). The switcher shows every session at once, so a
+    // frame now has *two* consumers: the list, which wants all of them, and the detail pane, which
+    // still wants only the one being viewed. That is deliberately expressed as two consumers of one
+    // frame rather than as a loosened filter — ShouldApplyProjectionPush's directory equality is
+    // what fixed #262 (one client opening a different task corrupting every other client's view,
+    // mislabeled under whatever directory the victim had open), and widening it would resurrect
+    // exactly that. Routing pushes at the server so a client is not sent what it will discard is
+    // #446; this filter stays afterwards as defence in depth — a subscription bug should cost
+    // traffic, not correctness.
     private async Task ReceiveWebSocketDataAsync(ClientWebSocket webSocket, CancellationToken cancellationToken)
     {
         var buffer = new byte[1024 * 1024];
@@ -415,9 +422,17 @@ public sealed partial class TaskSession
 
                     if (frame != null)
                     {
+                        var projection = new TaskProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
+
+                        // Consumer 1 (#336): every frame, whichever directory it is for. The switcher's
+                        // list shows every session at once, so a push for a session this client is not
+                        // currently *viewing* is exactly the push its row needs.
+                        RaiseFleetProjectionReceived(frame.DirectoryPath, projection);
+
+                        // Consumer 2 (unchanged, #262): the detail pane still takes only pushes for the
+                        // directory this client is actually viewing.
                         if (ShouldApplyProjectionPush(frame.DirectoryPath))
                         {
-                            var projection = new TaskProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
                             if (_syncContext != null)
                             {
                                 _syncContext.Post(_ =>
