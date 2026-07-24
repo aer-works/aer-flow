@@ -1,4 +1,4 @@
-<!-- M19 Phase 2 (#187): docs/ux/design-language.md's token system, materialized. These are the
+<!-- M19 Phase 2 (#187): docs/archive/ux/design-language.md's token system, materialized. These are the
      product's identity carried as named resources (the one-product-not-a-collage directive):
      every surface consumes tokens by name — a raw hex value, ad-hoc font size, or magic pixel
      number in a view is a defect from this phase onward. Semantic color only: light and dark are

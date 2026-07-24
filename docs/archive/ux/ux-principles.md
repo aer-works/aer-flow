@@ -15,8 +15,22 @@ terms) is met without making the spec the interface.
 
 ### The vocabulary map
 
-Authoritative for Phases 2–5. Left column: the engine/spec term (what tooltips, logs, and tests
-say). Right column: what the human reads.
+> **Retired as authoritative (M25).** This map was authoritative for Phases 2–5 and no longer is —
+> the right-hand column predates the room noun and the three-kind pause model. It is kept as the
+> record of what the words *were*, and because most rows still hold. Two do not, and they are the
+> load-bearing ones:
+>
+> - **"this task" is now "this room"** ([0013](../../decisions/0013-room-is-the-user-facing-noun.md)).
+>   The rename is tracked by `#443`; the lint that would catch violations is `#315`.
+> - **"Review gate" is no longer one thing.** A pause asks for one of *three* things — permission, a
+>   decision, or approval ([0015](../../decisions/0015-three-kinds-of-needs-you.md)) — and collapsing
+>   them into a single "review gate" is precisely the error that let a surface offer *approve* where
+>   the honest act was *answer*.
+>
+> The surviving rows fold into the spec rewrite (`#367`); the stale map retires with `#315`.
+
+Left column: the engine/spec term (what tooltips, logs, and tests say). Right column: what the human
+read at M19.
 
 | Engine / spec term | User-facing language |
 |---|---|
@@ -33,7 +47,7 @@ say). Right column: what the human reads.
 | Artifact lineage | **History** ("earlier versions") |
 | Terminal (`Succeeded`/`Failed`) | **Finished** / **Failed** |
 | Staleness | **Out of date** ("produced before *architect* was revised") |
-| Snapshot / Event Store | Never surfaced; collectively "**this task**" |
+| Snapshot / Event Store | Never surfaced; collectively "**this task**" → now "**this room**" (0013) |
 | Workflow template | **Workflow** / "**the plan**" |
 | Worker bindings | "**Who runs each step**" |
 | Worker / adapter | **Runner** — normally named by vendor ("Claude", "Gemini") |

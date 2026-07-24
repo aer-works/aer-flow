@@ -86,10 +86,18 @@ which no unit test can, because the translation was already correct and the outc
 whole point of #331).
 
 Run each probe **several times** — Claude Code's headless sandbox behaviour is non-deterministic
-(see #289's ~50% note). Strip this session's `CLAUDE_CODE_*`/`CLAUDECODE` env vars first: they make a
-nested `claude` a *child session* that inherits the parent's tool set (an early probe was bypassed by
-an inherited `Monitor` tool that isn't present in the daemon's clean spawn). The daemon spawns
-`claude` as a plain process, so the clean env is the representative one.
+(see #289's ~50% note). Strip **every** env var matching `^CLAUDE` first, not just `CLAUDE_CODE_*`:
+they make a nested `claude` a *child session* that inherits the parent's tool set (an early probe was
+bypassed by an inherited `Monitor` tool that isn't present in the daemon's clean spawn, and a later
+one drew a wrong conclusion because the `CLAUDE_CODE_` prefix misses `CLAUDECODE` itself). The daemon
+spawns `claude` as a plain process, so the clean env is the representative one. Build the list rather
+than hand-listing it, and verify it worked by reading `permissionMode` and the inherited `tools`
+array out of the `system:init` event:
+
+```sh
+STRIP=$(env | grep -o '^CLAUDE[A-Z_]*' | sed 's/^/-u /' | tr '\n' ' ')
+env $STRIP claude -p --output-format stream-json --verbose "..."
+```
 
 ```bash
 PROMPT="Run the shell command 'hostname' and report its exact output verbatim. If you are not permitted to run shell commands, reply with exactly NO_SHELL and nothing else."
@@ -116,10 +124,21 @@ close the human gate.
 `--mode`, not a refusal) still lets shell run. It does not: headless `agy` **auto-denies** any tool
 needing the `command` permission it cannot prompt for — verified 2026-07-23 across `default` / `plan`
 / `accept-edits` (6/6 refused, *"a tool required the 'command' permission that headless mode cannot
-prompt for, so it was auto-denied"*). Gemini is fail-closed by architecture (the opposite of Claude
-Code's headless auto-*approve*), and its request-side is refused at the adapter (`GeminiWorkerAdapter`
-throws for requested shell/network — unit-tested). So the deny fix is Claude-only by necessity, not
-by omission.
+prompt for, so it was auto-denied"*). Its request-side is refused at the adapter
+(`GeminiWorkerAdapter` throws for requested shell/network — unit-tested).
+
+> **Corrected 2026-07-24 (`#472`).** This section previously said `agy` was fail-closed "the opposite
+> of Claude Code's headless auto-*approve*". **That contrast is wrong: both vendors fail closed.**
+> The auto-approve reading came from a probe that stripped only `CLAUDE_CODE_*` and so missed
+> `CLAUDECODE` itself — the child still ran as a *child session*. Re-run with every `^CLAUDE`
+> variable stripped, in a neutral directory, plain `claude -p` **denies** a `Write` it was not
+> granted, and reports the denial structurally as
+> `permission_denials: [{tool_name, tool_use_id, tool_input}]`.
+>
+> Also corrected: **`--permission-mode manual` is a no-op headless** — the session still reports
+> `permissionMode: default` and no prompt is ever issued. Full matrix in
+> [`vendor-capabilities.md`](../vendor-capabilities.md); build the strip list rather than hand-listing
+> it (`env | grep -o '^CLAUDE[A-Z_]*'`).
 
 **Recorded green run:** 2026-07-13, `claude` CLI 2.1.207 (Windows). A second, unrelated bug: the
 `draft` step (no fixture changes involved) failed with no visible error. A capture-enabled repro of

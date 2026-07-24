@@ -17,4 +17,4 @@ must-stay-green suite. They compile on demand under `pixi run journey-*`.
 | `J8_DesktopFirstRunTests.cs` | Desktop leg: an empty first-run Home offers real first actions, not a blank wall. **Green** (#190). |
 | `PendingJourneys.cs` | Driveable-but-not-yet-written .NET legs, declared as skips so the suite enumerates them. |
 
-Run them, read their result, and add one: [`docs/runbooks/journeys.md`](../../docs/runbooks/journeys.md).
+Run them, read their result, and add one: [`docs/runbooks/journey-tests.md`](../../docs/runbooks/journey-tests.md).

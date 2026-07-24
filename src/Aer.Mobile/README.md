@@ -18,4 +18,4 @@ Built as a debug/sideload APK, not through `dotnet`. Use the repo's mobile tasks
 mobile-build` / `mobile-test`, or `scripts/mobile-build.sh`) rather than `flutter` directly — they
 shim the environment the `tailscale` package's native cgo build hook needs. Journey (widget) tests
 carry the `journey` tag and are excluded from the default `flutter test` run; see
-`tests/Aer.Journeys.Tests/README.md` and `docs/runbooks/journeys.md`.
+`tests/Aer.Journeys.Tests/README.md` and `docs/runbooks/journey-tests.md`.

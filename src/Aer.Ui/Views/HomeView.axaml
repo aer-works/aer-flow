@@ -1,5 +1,5 @@
 <!-- M19 Phase 2 (#187): Home — the screen that answers "what needs me?" in one glance
-     (docs/ux/information-architecture.md). Decision inbox first, task cards second, the
+     (docs/archive/ux/information-architecture.md). Decision inbox first, task cards second, the
      open-a-folder fallback last: cards are the path, picking is the fallback. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

@@ -4,7 +4,7 @@ namespace Aer.Journeys.Tests;
 /// Pending .NET-stack journey legs — surfaces that exist and are driveable, but whose journey test
 /// is a fast-follow. Declared as skipped-with-reason so running the suite <em>enumerates</em> them
 /// (with the issue that will make them driven) rather than leaving silent gaps. Cross-process and
-/// live-vendor legs are not here — they are human-attested and live in <c>docs/runbooks/journeys.md</c>,
+/// live-vendor legs are not here — they are human-attested and live in <c>docs/runbooks/journey-tests.md</c>,
 /// not as skipped tests. Phone legs live in <c>src/Aer.Mobile/test/journeys</c>.
 /// </summary>
 public class PendingJourneys

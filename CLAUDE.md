@@ -21,12 +21,14 @@ aer-flow/
 ├── tests/                     Unit/integration tests + the Aer.Plan.Tests doc gate; journey and
 │                              live-smoke test projects live outside AerFlow.slnx (default CI skips them)
 ├── spec/                      Behavioral specs (source of truth) + product journeys
-│   ├── aer-flow-behavioral-spec-v1.0.md
-│   ├── aer-flow-ui-behavioral-spec-v1.0.md
+│   ├── aer-flow-behavioral-spec-v1.0.md   the engine — current
 │   ├── journeys.md
 │   └── AER Overview.md
 ├── docs/                      plan.md (the living, gated plan), decisions/ (numbered ADRs),
-│                              decisions-of-record.md, runbooks/, walkthroughs/, ux/
+│   │                          decisions-of-record.md, documentation-trust-index.md,
+│   │                          vendor-capabilities.md, backlog-comb.md, runbooks/
+│   └── archive/               superseded docs — the M19 UX set, the walkthroughs, and the UI
+│                              behavioural spec. Nothing here is current; see archive/README.md
 ├── external/
 │   └── aer-core/              git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
 ├── tools/                     ui-harness — the UI driving harness

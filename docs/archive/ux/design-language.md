@@ -18,11 +18,22 @@ The products this should feel like, each tied to the part of M19 it informs:
 | **Stately.ai / XState Visualizer** | Visual ↔ config in lockstep — edit either, the other follows; the graph as an honest projection of the definition | Author view + DAG preview (Phase 4) |
 | **GitButler** | A desktop git client that doesn't look like one: proof a developer-tool domain can carry consumer-grade finish | Overall bar (Phase 5) |
 | **Neovim / Neovide** | Presentation-agnostic core under a polished skin — the architectural precedent for `Aer.Ui.Core` under `Aer.Ui`; Neovide's motion restraint (smooth, fast, never showy) | Phase 2 seam; motion |
-| **n8n** | Clean node-based DAG rendering: readable edges, unambiguous node status, a canvas that stays calm at scale | Task view DAG (Phases 3, 5) |
+| **n8n** | Clean node-based DAG rendering: readable edges, unambiguous node status, a canvas that stays calm at scale | ~~Task view DAG (Phases 3, 5)~~ — **superseded, see below** |
 | **Raycast** | The gold standard for the chrome itself: type discipline, spacing rhythm, subtle depth, keyboard-first with visible hints, animation that confirms rather than performs | Tokens, chrome, keyboard (all phases) |
 
 The set is the owner's (sourced via their Gemini design exploration, adopted here verbatim);
 changing it is an owner decision, not an implementation one.
+
+> **Two supersessions since this was written (M25).** The reference *set* stands as owner-supplied
+> history; two of the conclusions drawn from it do not.
+>
+> - **Visual direction** is now [0006](../../decisions/0006-visual-direction-quiet.md) (Quiet). Where
+>   this document and 0006 differ on palette, depth or motion, 0006 wins.
+> - **The n8n row is reversed.** "A canvas that stays calm at scale" was the goal for the Task view
+>   DAG; [0014](../../decisions/0014-shapes-are-a-list-not-a-canvas.md) rejects the freeform canvas
+>   outright in favour of an ordered **list that renders as a graph** — keyboard-navigable, diffing
+>   cleanly, and workable on a phone. The n8n reference remains instructive for *edge and status
+>   legibility within* that rendering; it is no longer the model for the surface itself.
 
 ### One product, not a collage (owner directive, 2026-07-17)
 
