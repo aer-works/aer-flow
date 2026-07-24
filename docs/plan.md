@@ -67,10 +67,17 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 ## The completion bar: journeys
 
 A milestone is done when its **[journeys](../spec/journeys.md)** pass — a promise driven against the
-*real* surface a person uses, not an isolated screen. Nine are defined (J1–J9); their statuses are
-machine-kept, so this document links them rather than repeating them. Journey tests are the answer
-to M25's sharpest finding: *not one completion gate touched a UI, so a product could pass
-every gate it had with no working client — and very nearly did.*
+*real* surface a person uses, not an isolated screen. **Eighteen are defined** — J1–J9 from the M25
+evaluation, J10–J18 from the design corpus's nine claims — and their statuses are machine-kept, so
+this document links them rather than repeating them. Journey tests are the answer to M25's sharpest
+finding: *not one completion gate touched a UI, so a product could pass every gate it had with no
+working client — and very nearly did.*
+
+**A decision with no journey is orphaned** — recorded, citable, looks done, and nothing will ever
+catch its absence. Journeys are the only artifact here with teeth (a test, `ReconcileTests`, and #314
+enforcing declared status against reality), so *"did this decision land?"* means *"is there a journey
+that would fail if we violated it?"*. That traceability is not yet complete in either direction and
+is part of #474's audit.
 
 ## The work, by milestone
 

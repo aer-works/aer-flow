@@ -25,8 +25,15 @@ artifact issues cite and the target-design spec rewrite is written against.
 
 ## Status today
 
-Baseline **2026-07-22** — **Fails 7 · Partial 2 · Passes 0.** The honest starting line the rebuild
+Baseline **2026-07-24** — **Fails 16 · Partial 2 · Passes 0.** The honest starting line the rebuild
 moves. Written against the target product; today's product fails most of these, which is the point.
+
+**J10–J18 were added 2026-07-24** from the M25 design corpus, whose nine claims it states are
+*“journey-shaped on purpose”* — each a claim plus the condition under which it counts as
+demonstrated. They are **additive**: two look like duplicates of J1 and J6 and are not, for reasons
+each one's *Today* and *Verify* notes give. The corpus's argument for writing them this way is this
+document's own: *“a claim that can only be demonstrated end to end cannot be quietly satisfied by a
+passing unit test.”*
 
 ---
 
@@ -203,6 +210,181 @@ worker-to-worker exchanges don't spend blindly.
   exposes (best-effort, and labelled as such).
 - **Today** — no cross-vendor usage view exists; usage is invisible across the workers AER runs.
 - **Serves** — #360, #338, decision 0008
+
+## J10 — Ask a second model at a live gate, and still not have decided
+
+**Status:** Fails — automated + live
+
+Something needs your judgement and you are not sure. You put the question to a worker that is not in
+the room; it joins, answers, and contradicts the first — and the decision is still sitting there,
+yours to make.
+
+- **Spans** — desktop · phone · *the gate as a long-lived object with its own conversation
+  (decision 0019)*
+- **Passes when** — at a live gate, a worker not previously in the room is asked, joins by being
+  asked, answers, and contradicts the first — **and the gate is still open**. Nothing but the
+  operator's answer closes it: not a consulted worker agreeing, not all of them agreeing.
+- **Path** *(illustrative)* — a gate is raised · choose "ask someone" · pick a worker not in the room ·
+  see what it will be sent, itemised, and edit it · it joins and answers · the gate is still pending.
+- **Verify** — the consulted worker's evidence bundle is disclosed before sending and every item is
+  removable; the responder is **chosen**, never inferred from conversation content (Rule 1).
+- **Today** — nothing exists. There is no gate object that survives a consultation, and no way to
+  address a worker that is not already a participant.
+- **Serves** — #424, #385, #367, decision 0019
+
+## J11 — Two subscriptions working in one room, with no key anywhere
+
+**Status:** Fails — live
+
+Both vendors act in the same room, on the plans you already pay for, and at no point were you asked
+for an API key.
+
+- **Spans** — both adapters · *the subscription-first commitment (decision 0012, CLAUDE.md Adapter
+  Isolation)*
+- **Passes when** — a room where both vendors act, on plan auth, with **no key configured anywhere** —
+  and a person can confirm that by inspection, not by trust.
+- **Path** *(illustrative)* — sign in to each vendor's CLI outside AER · open a room · add one worker
+  of each · both answer in the same conversation.
+- **Verify** — permanently a **human** gate. The adapters deliberately own no key-handling code and
+  shell out to whatever is authenticated on the host, so there is no headless way to provision this
+  and there should not be one — see CLAUDE.md's live-vendor smoke section.
+- **Today** — the machinery exists (M12 proved a live mixed-vendor run) but nothing surfaces vendor
+  readiness or presents two workers as one room's participants.
+- **Serves** — #478, #391, decision 0012
+
+## J12 — What one vendor learned, another one knows
+
+**Status:** Fails — automated + live
+
+A fact established by one worker is available to a different vendor later in the same room, without
+you restating it.
+
+- **Spans** — both adapters · the room's memory document · *decision 0016*
+- **Passes when** — a fact established by one vendor is used by a **different** vendor later in the
+  same room — and the memory it came from is visible, attributed and editable, not an invisible store.
+- **Path** *(illustrative)* — one worker establishes a project fact · it proposes remembering it · you
+  accept · a different vendor uses it many turns later without being told again.
+- **Verify** — additions are **proposed and accepted, never inferred** — the product must not decide
+  on its own what is worth remembering. The project's own vendor files (a repo's `CLAUDE.md`) stay
+  honoured; room memory is additional, never a replacement.
+- **Today** — memory falls out of the working directory and splits per vendor, so nothing one worker
+  learns reaches another (#442).
+- **Serves** — #442, #386, decision 0016
+
+## J13 — Two workers from one vendor, at different models and efforts
+
+**Status:** Fails — automated + live
+
+A patient author and a cheap reviewer, on one subscription — because vendor, model and effort are
+three separate choices.
+
+- **Spans** — desktop · phone · *decisions 0017 and 0023*
+- **Passes when** — two chips, **same vendor**, different model and effort, both answering in one
+  room — and effort and model read in AER's own vocabulary (quick/standard/careful/exhaustive;
+  deep/balanced/fast), never a vendor's flag value.
+- **Path** *(illustrative)* — add a worker at a deep model and careful effort · add a second of the
+  same vendor at a fast model and quick effort · both answer · the chips distinguish them.
+- **Verify** — a vendor's own effort string must not appear in any surface; the mapping happens in the
+  adapter (Architecture Rule 2). Where a vendor cannot express a level distinctly, the collapse is
+  **disclosed** rather than silently faked.
+- **Today** — a worker is pinned to a vendor and nothing below it; there is no representation for
+  model or effort at all.
+- **Serves** — #391, #479, decisions 0017, 0023
+
+## J14 — Hand a document to another vendor and see exactly what changed
+
+**Status:** Fails — automated + live
+
+One worker writes something, another edits it, and you can read the difference.
+
+- **Spans** — both adapters · the files surface · *decision 0021*
+- **Passes when** — one document authored by one vendor and edited by another, **with a diff between
+  their versions**, each version attributed to who produced it.
+- **Path** *(illustrative)* — a worker writes a plan · attach it and hand it to the other vendor · it
+  returns an edited version · compare the two.
+- **Verify** — the attachment is explicit and visible **before** sending, so "which version did it
+  actually see" stays answerable. No execution directory or execution number appears anywhere.
+- **Today** — the engine stores artifacts per execution, but they are not objects a person can pick
+  up, version, attribute or hand over.
+- **Serves** — #377, #455, decision 0021
+
+## J15 — Quit the app mid-run, answer on your phone, come back to it finished
+
+**Status:** Fails — human
+
+You close the laptop while something is running. A permission reaches your phone, you answer it there,
+and when you reopen the desktop the work has continued past it.
+
+- **Spans** — desktop → daemon → paired phone → desktop · *the daemon owning the run is why remote
+  cannot be bolted on later*
+- **Passes when** — the desktop app is **quit** mid-run; a **permission** raised while it is closed
+  reaches the phone; answering there advances the run; reopening the desktop finds it continued.
+- **Path** *(illustrative)* — start work · quit the app · the worker asks permission · the phone
+  notifies · answer it in context · reopen the desktop and find the run past that point.
+- **Verify** — cross-device and cross-process, so a **human** gate. The notification informs and opens;
+  it never carries the verdict (decision 0018).
+- **Today** — nothing. This is distinct from **J1**, whose bar is a *decision* gate on a still-running
+  desktop app; the permission kind is the one decision 0015 marks as genuinely new, and it is gated on
+  #445's mechanism.
+- **Serves** — #445, #337, #434, decisions 0015, 0022
+
+## J16 — Grant a permission once, stop being asked, and find it later to revoke
+
+**Status:** Fails — automated + live
+
+The scope ladder doing its job: you answer once, it holds, and three weeks later you can still find
+what you agreed to.
+
+- **Spans** — desktop · Settings · *decision 0022, over decision 0004's scopes*
+- **Passes when** — granting **"allow in this room"** means the same request is not asked again, and
+  the grant can be **found and revoked in settings**.
+- **Path** *(illustrative)* — a permission is raised · choose a room-scoped rung from the ladder shown
+  at the moment of asking · the same request proceeds silently afterwards · open Settings, find the
+  standing grant listed under that room, revoke it · it is asked again.
+- **Verify** — this is the **grant** path and is distinct from **J6**, which is deny-enforcement. Where
+  a rung is advisory rather than enforceable on the chosen vendor, that is stated at the moment of
+  granting — `agy` matches command rules literally, so a family-shaped grant is not expressible there
+  (`docs/vendor-capabilities.md`).
+- **Today** — permissions are advisory and unenforced (#331), there is no ladder, and there is no
+  Settings surface to list or revoke anything (#338).
+- **Serves** — #445, #481, #338, decisions 0004, 0022
+
+## J17 — Author a shape on a phone, start it on the desktop, watch it run
+
+**Status:** Fails — automated
+
+The payoff for choosing a list over a canvas: the authoring surface survives the small screen.
+
+- **Spans** — phone → desktop · *decisions 0014 and 0025*
+- **Passes when** — a four-step template is authored **on a phone**, started on the desktop, and runs
+  to completion with its shape legible as it goes.
+- **Path** *(illustrative)* — on the phone, add four steps, reorder by dragging, write each step's
+  instruction, toggle "ask me first" on one · on the desktop, start a room from it · watch the steps
+  advance.
+- **Verify** — each step's **instruction is its body**, previous output flows in implicitly, and there
+  is no template language to learn. A step with no instruction is rejected **at edit time**, not at run
+  time.
+- **Today** — authoring is a desktop canvas behind Advanced with a second vocabulary (#327), and the
+  step model has no instruction field at all.
+- **Serves** — #339, #327, #340, decisions 0014, 0025
+
+## J18 — Ask everyone one question and read the answers side by side
+
+**Status:** Fails — automated + live
+
+One question, every worker, answers laid out together — including when they disagree, which is the
+case that pays for the whole idea.
+
+- **Spans** — desktop · phone · *decision 0024*
+- **Passes when** — one question produces **two answers side by side, disagreeing** — presented for
+  comparison rather than as sequential turns that read like a conversation between workers.
+- **Path** *(illustrative)* — type `/ask-all` and a question · every worker in the room answers · the
+  answers are shown against each other.
+- **Verify** — it is a **command, not a mode**: you drop into it for one message and out again. On a
+  phone it is reached from the Actions sheet, since a slash palette does not survive a touch keyboard.
+  Broadcasting declines to choose a recipient, so it never becomes routing-by-inference (Rule 1).
+- **Today** — there is no command palette, no namespacing, and no multi-worker room to broadcast into.
+- **Serves** — #386, #424, decision 0024
 
 ---
 

@@ -139,5 +139,83 @@ public static class Journeys
             new("cross-vendor usage view", Runner.DesktopHeadless, Coverage.Pending,
                 "No usage surface exists yet (#360, #338); the aggregation/display leg gets driven when the surface lands."),
         ], [360, 338]),
+
+        // J10–J18 — the M25 design corpus's nine claims (docs/design/07-whats-new.md), which states
+        // they are "journey-shaped on purpose". Every leg is Pending or HumanAttested on purpose:
+        // nothing here is built, and DrivenRed would assert a test exists and fails.
+
+        new("J10", "Ask a second model at a live gate, and still not have decided",
+            "Fails — automated + live",
+        [
+            new("desktop gate — consult without closing it", Runner.DesktopHeadless, Coverage.Pending,
+                "Decision 0019's centrepiece. Needs a gate that is a long-lived object surviving consultation turns; no such object exists yet."),
+            new("a consulted worker's answer actually contradicts", Runner.Attest, Coverage.HumanAttested,
+                "Whether a second opinion genuinely disagrees is a live-vendor quality question, not something a stub can stage."),
+        ], [424, 385, 367]),
+
+        new("J11", "Two subscriptions working in one room, with no key anywhere", "Fails — live",
+        [
+            new("both vendors acting on plan auth", Runner.Attest, Coverage.HumanAttested,
+                "Permanently human: the adapters own no key-handling code and shell out to whatever is authenticated on the host, so there is no headless way to provision this (CLAUDE.md, live-vendor smoke)."),
+        ], [478, 391]),
+
+        new("J12", "What one vendor learned, another one knows", "Fails — automated + live",
+        [
+            new("room memory is visible, attributed, editable", Runner.DesktopHeadless, Coverage.Pending,
+                "Decision 0016. Memory falls out of cwd and splits per vendor today (#442); the surface does not exist."),
+            new("a fact crosses vendors in one room", Runner.Attest, Coverage.HumanAttested,
+                "Whether a second vendor actually uses the fact is a live-model behaviour, not a stub assertion."),
+        ], [442, 386]),
+
+        new("J13", "Two workers from one vendor, at different models and efforts",
+            "Fails — automated + live",
+        [
+            new("two same-vendor chips, distinct model and effort", Runner.DesktopHeadless, Coverage.Pending,
+                "Decisions 0017 + 0023. A worker is pinned to a vendor and nothing below it today; the chip must render AER's own vocabulary, never a vendor flag value."),
+            new("both actually answer, at different cost", Runner.Attest, Coverage.HumanAttested,
+                "Requires two live models on one subscription."),
+        ], [391, 479]),
+
+        new("J14", "Hand a document to another vendor and see exactly what changed",
+            "Fails — automated + live",
+        [
+            new("artifact versions, attribution and diff", Runner.DesktopHeadless, Coverage.Pending,
+                "Decision 0021. The engine stores artifacts per execution, but they are not objects a person can version, attribute or hand over (#377)."),
+            new("a second vendor edits the first's document", Runner.Attest, Coverage.HumanAttested,
+                "Cross-vendor authorship needs both CLIs authenticated."),
+        ], [377, 455]),
+
+        new("J15", "Quit the app mid-run, answer on your phone, come back to it finished",
+            "Fails — human",
+        [
+            new("quit desktop → permission on phone → reopen continued", Runner.Attest, Coverage.HumanAttested,
+                "Cross-device and cross-process. Distinct from J1, whose bar is a decision gate on a still-running app; the permission kind is 0015's genuinely-new one and is gated on #445."),
+        ], [445, 337, 434]),
+
+        new("J16", "Grant a permission once, stop being asked, and find it later to revoke",
+            "Fails — automated + live",
+        [
+            new("the ladder at the moment of asking, then Settings", Runner.DesktopHeadless, Coverage.Pending,
+                "Decision 0022 over 0004's scopes. The grant path, distinct from J6's deny-enforcement. No ladder and no Settings surface exist (#338)."),
+            new("the grant actually suppresses the next ask", Runner.Attest, Coverage.HumanAttested,
+                "Enforcement differs per vendor — agy matches command rules literally, so a family-shaped rung is not expressible there (docs/vendor-capabilities.md)."),
+        ], [445, 481, 338]),
+
+        new("J17", "Author a shape on a phone, start it on the desktop, watch it run", "Fails — automated",
+        [
+            new("phone shape editor — four steps, reorder, instructions", Runner.PhoneWidget, Coverage.Pending,
+                "Decisions 0014 + 0025. The step model has no instruction field at all today, and authoring is a desktop canvas behind Advanced (#327)."),
+            new("desktop starts it and renders the run", Runner.DesktopHeadless, Coverage.Pending,
+                "Same renderer for authoring and watching, per 0014."),
+        ], [339, 327, 340]),
+
+        new("J18", "Ask everyone one question and read the answers side by side",
+            "Fails — automated + live",
+        [
+            new("/ask-all and side-by-side answers", Runner.DesktopHeadless, Coverage.Pending,
+                "Decision 0024. No command palette, no namespacing and no multi-worker room to broadcast into yet."),
+            new("two models genuinely disagree", Runner.Attest, Coverage.HumanAttested,
+                "The disagreement is the point and cannot be staged with stubs."),
+        ], [386, 424]),
     ];
 }
