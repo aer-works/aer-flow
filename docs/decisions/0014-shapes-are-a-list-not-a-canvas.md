@@ -3,6 +3,12 @@
 Status: accepted
 Date: 2026-07-24
 
+> **Amendment, 2026-07-24.** [0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) says what a
+> *step* contains, which this record left out: the **instruction is the step's body**, previous
+> output flows in implicitly with **no template language**, and **"ask me first" is a property of a
+> step** rather than a node type. Everything below about the list-not-a-canvas shape stands
+> unchanged. The body is left as written.
+
 ## Context
 
 [0003](0003-templates-collapse-to-three-shapes.md) collapsed the template catalogue to three shapes
