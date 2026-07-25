@@ -82,7 +82,7 @@ event schema) · `hooks-guide` · `permission-modes` · `auto-mode-config` · `m
 
 ## B. `agy` — documentation coverage
 
-Index: `https://antigravity.google/docs/...`. **5 of ~60 read.** The `agy` side is audited far more
+Index: `https://antigravity.google/docs/...`. **7 of ~60 read.** The `agy` side is audited far more
 shallowly than `claude`, which is itself a risk: **our knowledge asymmetry is now larger than the
 products' asymmetry**, and that biases every design toward claude's model.
 
@@ -98,10 +98,13 @@ products' asymmetry**, and that biases every design toward claude's model.
 
 ### Not read — Tier 1, load-bearing
 
-`·` **`/docs/hooks`** — *`agy` has hooks and we did not know.* This is the `agy` answer to the gate
-question and directly determines whether 0015's mechanism is symmetric.
-`·` **`/docs/sdk/overview`** — the Python SDK, the standing candidate for #508 (structured events and
-usage on `agy`).
+`R` **`/docs/hooks`** — **read 2026-07-24.** `agy` documents `PreToolUse` with
+`allow`/`deny`/`ask`/`force_ask`, five events, `hooks.json` in `.agents/` or `~/.gemini/config/`.
+**The gate design may be symmetric after all.** CLI support unverified — a guessed schema did not
+fire; see the audit for the four candidate reasons. **Still needed: the real `hooks.json` schema.**
+`R` **`/docs/sdk/overview`** — **read 2026-07-24.** `pip install google-antigravity`. Per-turn and
+cumulative token usage, streamed structured events, Pydantic-typed results, `deny()`/`allow()`/
+`ask_user()`, headless. **Answers all three of #508's open questions.**
 `·` `cli/settings` — full settings reference · `cli/modes` — execution modes ·
 `cli/subagents` · `cli/projects` · `cli/credits` · `cli/conversations` · `cli/artifacts` ·
 `cli/using` · `cli/features` · `docs/permissions` (product-level) · `docs/agent-settings` ·
