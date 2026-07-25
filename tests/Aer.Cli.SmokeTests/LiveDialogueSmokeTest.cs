@@ -96,6 +96,17 @@ public class LiveDialogueSmokeTest
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
             StopSentinel: null,
+            // Both models are the cheapest each vendor offers, and both names are checked against
+            // the vendor's own catalogue rather than assumed. That matters asymmetrically:
+            //
+            //   claude  an unknown --model is REJECTED (is_error: true) -- a stale name fails loudly
+            //   agy     an unknown --model is ACCEPTED and silently runs on agy's default
+            //
+            // These participants previously named `gemini-3-flash`, which `agy models` does not
+            // list, so the pin enforced nothing and the run followed whatever agy's default was.
+            // A pin that looks precise and silently does not apply is worse than no pin -- agy's
+            // catalogue includes `claude-opus-4-6-thinking`, so a default drifting upward would
+            // cost real money while this line still read as cheap.
             Participants:
             [
                 new DialogueParticipant(
@@ -103,9 +114,9 @@ public class LiveDialogueSmokeTest
                     "You are debating in favor of the position. Respond in one sentence.",
                     "claude", ["-p", DialogueParticipant.PromptPlaceholder, "--allowedTools", "Write", "--output-format", "text", "--model", "claude-haiku-4-5-20251001"]),
                 new DialogueParticipant(
-                    "responder", "gemini", "gemini-3-flash",
+                    "responder", "gemini", "gemini-3.6-flash-low",
                     "You are debating against the position. Respond in one sentence.",
-                    "agy", ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits", "--model", "gemini-3-flash"]),
+                    "agy", ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits", "--model", "gemini-3.6-flash-low"]),
             ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
