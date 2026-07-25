@@ -891,6 +891,73 @@ daemon handover judged by **embedded build timestamp**, not version string.
   `--add-dir`), and the live `PreToolUse` payload carries an **undocumented `modelName`** field with
   `transcriptPath` pointing at `transcript_full.jsonl`, not the documented `transcript.jsonl`.
 
+---
+
+## Verified by running it (#527, 2026-07-25)
+
+Everything above this section is **documented** — a vendor claim. This section is what survived
+being run, on `claude` 2.1.220 / `agy` 1.1.7 / Windows 11, all under `-p`.
+
+Two rules held throughout: **one variable per test**, and **execution proven by a side effect**
+(a sentinel file the tool writes) rather than by the model's account of what it did. Both exist
+because this audit twice recorded a negative from an instrument that could not distinguish
+"never fired" from "fired and failed".
+
+### claude has two gate primitives, and both hold
+
+| primitive | scope | result |
+|---|---|---|
+| **`_meta["anthropic/requiresUserInteraction"]`** | MCP tools | ✅ **survives `--allowedTools`, `acceptEdits`, and `bypassPermissions`** |
+| **`PreToolUse` hook exit code 2** | any tool | ✅ **blocks even with an explicit `permissions.allow` entry for that tool** |
+
+Together they cover the whole surface: the annotation gates AER's own MCP tools, exit-2 gates
+everything else (`Bash`, `Write`, `Edit`). **0015 can be written on measured behaviour.**
+
+For `requiresUserInteraction`, two tools were exposed that differed *only* in that field; in every
+arm where the plain tool executed, the annotated one did not. For exit-2, the same tool and the
+same allow rule were used in both arms, with only the exit code differing.
+
+### The vendor asymmetry runs the other way
+
+An earlier section argued agy's control surface is "on several axes stronger than claude's".
+**Measurement reverses it:**
+
+| | claude | agy |
+|---|---|---|
+| uncircumventable consent | ✅ `requiresUserInteraction` | ❌ `force_ask` is defeated by `--dangerously-skip-permissions` |
+| blocks despite allow rules | ✅ hook exit-2 | ✅ hook `deny` (and it surfaces the hook's reason) |
+| grant permission from a hook | — | ❌ `permissionOverrides` did not grant under `-p` |
+| inject into the trajectory | — | ❌ `PreInvocation.injectSteps` did not inject under `-p` |
+| refuse to let the loop end | — | ✅ **`Stop.decision:"continue"` works** |
+
+agy's distinctive, working contribution is **loop control**, not permission control.
+
+### Other claims that held
+
+| claim | result |
+|---|---|
+| `agy -p` fails closed on an ungated tool | ✅ auto-denies, with a structured remedy naming the rule to add |
+| `agy` `permissions.allow` honoured under `-p` ([#548](https://github.com/google-antigravity/antigravity-cli/issues/548)) | ✅ **does not reproduce** — the rule was honoured |
+| `agy` hook `deny` on `invoke_subagent` ([#640](https://github.com/google-antigravity/antigravity-cli/issues/640)) | ✅ **does not reproduce** — the deny held |
+| claude `defer` under `-p` | ✅ `stop_reason: tool_deferred`, and no file contents leaked, so the tool truly did not run |
+| claude subagent inherits the parent allowlist ([#28584](https://github.com/anthropics/claude-code/issues/28584)) | ✅ current docs hold; the subagent read the file |
+| a silent blocking MCP tool is reaped mid-wait | ✅ **survived 200s** and returned its result — the blocking-gate design is viable |
+| `--bare` breaks subscription auth | ✅ re-confirmed against 2.1.220 |
+| undocumented `modelName` in agy hook payloads | ✅ present in `PreToolUse`, `PreInvocation`, `Stop` |
+
+### Still not settled — recorded as untested, not refuted
+
+- **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls
+  (`[1]`, `[1,1,1]`, `[1,1,1,1,1,1]` blocks per assistant message) even under an explicit
+  instruction to emit them together. The documented limit was therefore never exercised. It
+  matters because the documented failure mode is the tool **proceeding**, so if real, the gate
+  opens silently under a condition the model chooses.
+- **The MCP idle window's upper bound.** 200s survived; the ceiling is unknown.
+- **An anomaly:** six sequential deferred calls occurred inside one process run ending
+  `tool_deferred`, which does not match the documented "the process exits" on first defer.
+- **agy [#548](https://github.com/google-antigravity/antigravity-cli/issues/548) / [#640](https://github.com/google-antigravity/antigravity-cli/issues/640) not reproducing** is scoped to 1.1.7, Windows, `-p`. A reporter saw something; the
+  route they took was not the route tested here.
+
 ## Sources
 
 - Claude Code docs index — https://code.claude.com/docs/llms.txt
