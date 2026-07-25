@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 
@@ -311,37 +312,115 @@ public class ClaudeWorkerAdapterTests
     }
 
     /// <summary>
-    /// The discriminating half of the claim above: EnsureLaunchConfigFiles must never overwrite
-    /// content once written, because #543 -- or an operator inspecting the file -- may have put
-    /// something real there. A test that only checked the file exists would pass equally against
-    /// an implementation that stomps it on every call.
+    /// #543 reverses #533's "never overwrite" for this one file: the settings file is entirely
+    /// AER-owned (nothing an operator could have put there survives), and it now carries the
+    /// mandatory `PreToolUse` hook, so leaving stale content in place would permanently disable the
+    /// gate on any machine that ran a pre-#543 build even once. This inverts what
+    /// `An_existing_settings_file_survives_a_second_Resolve_call_untouched` asserted before #543 --
+    /// deliberately, not a silent edit; see `EnsureLaunchConfigFiles`'s own doc comment.
     /// </summary>
     [Fact]
-    public void An_existing_settings_file_survives_a_second_Resolve_call_untouched()
+    public void A_settings_file_with_stale_content_is_overwritten_with_the_canonical_hook_on_the_next_resolve()
     {
-        // Establish the file via a first, ordinary resolve.
         new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
         var settingsPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-settings.json");
         Assert.True(File.Exists(settingsPath));
 
-        // This test project's AER_HOME is a throwaway per-process root (tests/Shared/AerHomeRedirect),
-        // not the developer's real ~/.aer -- but the marker still has to be restored within THIS
-        // process, or a later test in the same run that reads this file's default content would be
-        // silently order-dependent on this one having run first.
-        var originalContent = File.ReadAllText(settingsPath);
-        try
-        {
-            const string marker = """{"hooks":{"PreToolUse":[{"marker":"do-not-overwrite"}]}}""";
-            File.WriteAllText(settingsPath, marker);
+        const string stale = """{"hooks":{"PreToolUse":[{"stale":"pre-543-content"}]}}""";
+        File.WriteAllText(settingsPath, stale);
 
-            new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft another plan."), ArchitectContract);
+        new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft another plan."), ArchitectContract);
 
-            Assert.Equal(marker, File.ReadAllText(settingsPath));
-        }
-        finally
-        {
-            File.WriteAllText(settingsPath, originalContent);
-        }
+        var rewritten = File.ReadAllText(settingsPath);
+        Assert.NotEqual(stale, rewritten);
+        Assert.DoesNotContain("stale", rewritten);
+    }
+
+    /// <summary>
+    /// The actual hook payload #543 ships: one `PreToolUse` matcher group covering every tool,
+    /// invoked as `dotnet &lt;Aer.Cli.dll path&gt; hook-check` in exec form (`args` present, so
+    /// Claude Code spawns it with no shell) -- see `BuildSettingsJson`'s doc comment for why this
+    /// names the managed dll via `dotnet` rather than a native apphost (the packed global tool has
+    /// no apphost at all).
+    /// </summary>
+    [Fact]
+    public void The_settings_file_carries_a_PreToolUse_hook_that_matches_every_tool_and_points_at_hook_check()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var settingsPath = ArgValue(target, "--settings")!;
+
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var preToolUse = doc.RootElement.GetProperty("hooks").GetProperty("PreToolUse");
+        Assert.Equal(1, preToolUse.GetArrayLength());
+
+        var matcherGroup = preToolUse[0];
+        Assert.Equal("*", matcherGroup.GetProperty("matcher").GetString());
+
+        var handler = matcherGroup.GetProperty("hooks")[0];
+        Assert.Equal("command", handler.GetProperty("type").GetString());
+        Assert.Equal("dotnet", handler.GetProperty("command").GetString());
+
+        var args = handler.GetProperty("args").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Equal(2, args.Count);
+        Assert.EndsWith("Aer.Cli.dll", args[0]);
+        Assert.True(File.Exists(args[0]), "the hook's first arg must point at a real, existing Aer.Cli.dll");
+        Assert.Equal("hook-check", args[1]);
+
+        // `dotnet <dll>` needs the dll's own .runtimeconfig.json alongside it to run at all -- a
+        // review pass on #543 pointed out that checking only the .dll's existence proves nothing
+        // about whether `dotnet` can actually load it.
+        var runtimeConfigPath = Path.ChangeExtension(args[0], null) + ".runtimeconfig.json";
+        Assert.True(
+            File.Exists(runtimeConfigPath),
+            $"dotnet needs '{runtimeConfigPath}' alongside Aer.Cli.dll to run it at all");
+    }
+
+    /// <summary>
+    /// #543: the settings file is one static, shared file across every spawn, so per-invocation
+    /// data (what this specific worker was denied) has to reach hook-check another way -- the
+    /// process environment, which a hook subprocess inherits from claude, which inherits it from
+    /// AER's own spawn (confirmed in `.vendor-survey/corpus/claude__hooks.md`: "A hook process
+    /// inherits the parent environment"). This is the same string `--disallowedTools` receives, not
+    /// a separately-derived value, so the two mechanisms can never disagree about what was withheld.
+    /// </summary>
+    [Fact]
+    public void The_denied_tools_environment_variable_mirrors_disallowedTools_exactly()
+    {
+        var grant = new PermissionGrant(ReadFiles: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var disallowedToolsArg = ArgValue(target, "--disallowedTools");
+        Assert.NotNull(target.Environment);
+        Assert.Contains(
+            (ClaudeWorkerAdapter.DeniedToolsVariable, disallowedToolsArg!),
+            target.Environment);
+    }
+
+    [Fact]
+    public void The_denied_tools_environment_variable_is_set_even_when_nothing_is_withheld()
+    {
+        // hook-check must see an explicit "" rather than a missing variable it could confuse with
+        // "not spawned by AER at all" -- Contains below also proves the variable is present at all.
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.NotNull(target.Environment);
+        Assert.Contains((ClaudeWorkerAdapter.DeniedToolsVariable, string.Empty), target.Environment);
+    }
+
+    /// <summary>
+    /// #543, from review: an inherited `CLAUDE_CODE_SIMPLE=1` disables hooks the same way `--bare`
+    /// does (see the doc comment above `SimpleModeVariable`'s declaration), and `AerTask` inherits
+    /// the full parent environment by default -- so this override has to actually be on the argv
+    /// this method returns, not merely exist as an idea in a comment.
+    /// </summary>
+    [Fact]
+    public void An_inherited_CLAUDE_CODE_SIMPLE_is_overridden_in_the_process_environment()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.NotNull(target.Environment);
+        Assert.Contains((ClaudeWorkerAdapter.SimpleModeVariable, "0"), target.Environment);
     }
 
     /// <summary>
@@ -358,5 +437,74 @@ public class ClaudeWorkerAdapterTests
         Assert.Contains(
             (ClaudeWorkerAdapter.MaxSubagentSpawnDepthVariable, "1"),
             target.Environment);
+    }
+
+    // The tests above assert against the C# objects Resolve() builds -- they would pass equally
+    // against a hook command that looks right on paper but fails the moment Claude Code actually
+    // spawns it. These two spawn the exact command+args the settings file names, as a real child
+    // process fed real stdin and the real environment variable, exactly as Claude Code's exec-form
+    // hook dispatch does -- proving the wiring, not just the shape. `Aer.Adapters.Tests` has no
+    // project reference to `Aer.Cli` (layering: the CLI depends on the adapters, never the
+    // reverse), so this runs the built executable directly rather than calling HookCheckCommand
+    // in-process; it needs `Aer.Cli` built into a sibling output directory, true for any normal
+    // `pixi run test` / `pixi run build` run.
+
+    [Fact]
+    public void The_resolved_hook_command_actually_denies_a_withheld_tool_when_spawned_for_real()
+    {
+        var grant = new PermissionGrant(ReadFiles: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var (exitCode, stderr) = RunResolvedHookCommand(target, """{"tool_name": "Bash"}""");
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("Bash", stderr);
+    }
+
+    [Fact]
+    public void The_resolved_hook_command_actually_allows_a_granted_tool_when_spawned_for_real()
+    {
+        var grant = new PermissionGrant(ReadFiles: true);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var (exitCode, stderr) = RunResolvedHookCommand(target, """{"tool_name": "Read"}""");
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(stderr);
+    }
+
+    private static (int ExitCode, string Stderr) RunResolvedHookCommand(CoreDispatchTarget target, string stdin)
+    {
+        var settingsPath = ArgValue(target, "--settings")!;
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var handler = doc.RootElement.GetProperty("hooks").GetProperty("PreToolUse")[0].GetProperty("hooks")[0];
+        var command = handler.GetProperty("command").GetString()!;
+        var args = handler.GetProperty("args").EnumerateArray().Select(e => e.GetString()).ToList();
+
+        var startInfo = new ProcessStartInfo(command)
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in args)
+        {
+            startInfo.ArgumentList.Add(arg!);
+        }
+
+        var deniedToolsVar = target.Environment!.First(e => e.Name == ClaudeWorkerAdapter.DeniedToolsVariable);
+        startInfo.Environment[deniedToolsVar.Name] = deniedToolsVar.Value;
+
+        using var process = Process.Start(startInfo)!;
+        process.StandardInput.Write(stdin);
+        process.StandardInput.Close();
+        var stderr = process.StandardError.ReadToEnd();
+        var exited = process.WaitForExit(TimeSpan.FromSeconds(30));
+        Assert.True(exited, "hook-check did not exit within 30s");
+
+        return (process.ExitCode, stderr);
     }
 }

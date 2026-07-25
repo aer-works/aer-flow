@@ -10,6 +10,18 @@ if (args.Length == 1 && args[0] == "--version")
     return 0;
 }
 
+// #543: the PreToolUse hook target ClaudeWorkerAdapter writes into claude-settings.json, spawned
+// directly by Claude Code (exec form -- no shell) on every tool call. Deliberately bypasses the
+// workflow-execution pipeline below (WorkerAdapterRegistry, FlowStateReporter, the AerFlowException
+// boundary): none of that applies, and this needs to stay a fast, dependency-free stdin round trip
+// since PreToolUse blocks the model's turn until it returns. Not listed in the usage banner below --
+// an operator never types this, Claude Code does.
+if (args.Length >= 1 && args[0] == "hook-check")
+{
+    var deniedTools = Environment.GetEnvironmentVariable(HookCheckCommand.DeniedToolsEnvironmentVariable);
+    return HookCheckCommand.Execute(Console.In, Console.Error, deniedTools);
+}
+
 var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
