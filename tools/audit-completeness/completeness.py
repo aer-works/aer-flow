@@ -202,6 +202,48 @@ MUST_REST_ON = (
 )
 
 
+def step5_impact():
+    rule("STEP 5 -- every measured check has a recorded architectural impact")
+    verify = read("tools/vendor-verify/verify.py")
+    checks = re.findall(r'^@check\("([^"]+)"', verify, re.M)
+    impact = read("docs/architecture-impact.md")
+    if not impact.strip():
+        print("    !! docs/architecture-impact.md not written yet -- step 5 incomplete")
+        return False
+    # A check counts only if the impact doc names it AND says something after it. The row format is
+    # `| `check.name` | result | impact |`, so the name must appear in a table row with two more
+    # populated cells -- the same rule step 6 applies to decisions, for the same reason: a bare
+    # mention is not a disposition.
+    missing = []
+    for c in checks:
+        row = next((ln for ln in impact.splitlines()
+                    if ln.strip().startswith("|") and c in ln), None)
+        if row is None:
+            missing.append((c, "no row"))
+            continue
+        cells = [x.strip() for x in row.strip().strip("|").split("|")]
+        if len(cells) < 3 or len(cells[2]) < 25:
+            missing.append((c, "row has no impact stated"))
+    ok = line("checks with an impact row", len(checks) - len(missing), len(checks),
+              "including 'no impact' + why, which is a real disposition")
+    for c, why in missing:
+        print(f"      MISSING: {c:<48} {why}")
+    return ok
+
+
+def step7_milestones():
+    rule("STEP 7 -- the milestone approach re-verified against the audit")
+    plan = read("docs/plan.md")
+    marker = "What the vendor audit (#527) changes about this sequence"
+    ok = line("plan.md carries the audit's milestone amendment",
+              "yes" if marker in plan else "NO", "yes")
+    # The amendment is only real if it names milestones. A section that says "nothing changed"
+    # without naming what it checked is the assertion this whole exercise exists to replace.
+    named = [m for m in ("M26", "M27", "M28") if plan.count(m) and marker in plan]
+    ok &= line("milestones named in the amendment", len(named), 3)
+    return ok
+
+
 def step6_decisions():
     rule("STEP 6 -- every decision record has a disposition in the audit sweep")
     d = os.path.join(ROOT, "docs", "decisions")
@@ -266,14 +308,18 @@ def git_state():
 
 def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
-    results = [step1_sources(), step2_corpus(), step3_gaps(), step6_decisions()]
+    results = [step1_sources(), step2_corpus(), step3_gaps(), step5_impact(),
+               step6_decisions(), step7_milestones()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
         "That a finding's architectural implication is CORRECT -- only that one was recorded.",
-        "Steps 4, 5, 7 and 8, whose populations are prose findings rather than files on disk.",
+        "Steps 4 and 8. Step 4's population is GitHub issues, which needs the network; step 8's",
+        "  is the build plan, whose completeness is a judgement rather than a join.",
         "That the vendor-verify checks still pass -- run `pixi run vendor-verify` for that.",
         "Whether a source nobody thought of exists. Enumeration cannot find its own blind spot.",
+        "Whether a 'no impact' or 'unaffected' call was the RIGHT call. It checks that a reason",
+        "  was given, never that the reason is good.",
     ]:
         print(f"    - {x}")
     print()
