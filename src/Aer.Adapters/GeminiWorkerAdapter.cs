@@ -78,6 +78,24 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             "--add-dir", artifactsRoot,
         ];
 
+        // #491: bind the room's own directory explicitly. `agy -p` **ignores the process working
+        // directory** — measured in #472 and recorded in docs/vendor-capabilities.md: launched from
+        // this repo, which is listed in the CLI's own `trustedWorkspaces`, the emitted command still
+        // carried `"Cwd":"C:\\Users\\...\\.gemini\\antigravity-cli"`. From an untrusted directory it
+        // used the CLI's scratch dir and, unable to find a file sitting in the launch directory,
+        // began a recursive search of the entire home folder. Workspace trust does not change it.
+        //
+        // So passing `invocation.WorkingDirectory` to CoreDispatchTarget below is necessary and NOT
+        // sufficient — that sets the process cwd, which this vendor disregards. Without this the
+        // worker cannot see the project at all, and the failure is silent: it answers confidently
+        // about a directory that is not yours. `--add-dir` is repeatable on `agy`, so this composes
+        // with the artifacts root above rather than replacing it.
+        if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory))
+        {
+            args.Add("--add-dir");
+            args.Add(invocation.WorkingDirectory);
+        }
+
         if (invocation.SessionId is not null && invocation.ResumeSession)
         {
             args.Add("--conversation");
