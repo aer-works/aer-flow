@@ -6,8 +6,20 @@ Date: 2026-07-24
 > **Amendment, 2026-07-24.** [0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) says what a
 > *step* contains, which this record left out: the **instruction is the step's body**, previous
 > output flows in implicitly with **no template language**, and **"ask me first" is a property of a
-> step** rather than a node type. Everything below about the list-not-a-canvas shape stands
-> unchanged. The body is left as written.
+> step** rather than a node type. The list-not-a-canvas shape stands unchanged.
+>
+> **Correction, 2026-07-25 (#501): `DependsOn` is an engine capability, not an authoring
+> affordance.** As written, the Decision below says *"add a step, reorder, **set a dependency** — all
+> list operations"*, and 0025 says referring to a step other than the immediately previous one *"has
+> **no expression** in this model."* Both were accepted and in force, so the editor's dependency field
+> either existed or did not depending on who built first. **0025 wins**, and the corpus is
+> unambiguous: *"each step runs after the one above it."*
+>
+> So: the engine keeps `DependsOn` and keeps running the fan-out it expresses — nothing about
+> `WorkflowDefinition` changes — but **the authoring surface does not offer it.** The "cost we are
+> accepting" section below is therefore stronger than it reads: parallel fan-out is not merely missing
+> a *gesture*, it is not authorable at all, and making it so is a new decision rather than a UI
+> addition. The body is left as written, because the transition is part of the record.
 
 ## Context
 

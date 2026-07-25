@@ -3,6 +3,8 @@
 Status: accepted
 Date: 2026-07-24
 
+> **Amendment, 2026-07-25 (#501).** [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) amends this record's band assignment for a **rate-limited vendor**. Band 4 is right for a background room and wrong for the worker you just addressed — you asked for something and it will not happen, which is an attention state. The discriminator is *did the operator just try to use it*, not *what kind of state is it*: the same correction this record already made for host-unreachable, applied to the case it missed. Everything below stands unchanged.
+
 ## Context
 
 [0012](0012-what-aer-flow-is.md) commits to a product you can walk away from — several agents working

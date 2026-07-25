@@ -97,13 +97,36 @@ rather than rendering what the room holds.
 
 ## Consequences
 
+### The ten conditions every surface must handle
+
+The corpus calls writing these down *"the actual drift protection"*, because the last rebuild drifted
+by deciding them **per screen, late, by whoever was implementing**. They are reproduced here rather
+than cited, because a rule that lives only in
+[`docs/design/`](../design/) lives in a directory whose own README labels it *"design intent that is
+still being transferred, not a specification of what exists."* **Two of the ten are defects from the
+last manual run, promoted from bugs to rules.**
+
+| Condition | What the surface does |
+|---|---|
+| **Empty** | Says what would be here and offers the one action that creates it. **Never a bare "no items."** |
+| **Loading** | Keeps the previous content and marks it **stale** rather than blanking. A list that empties itself while refreshing reads as data loss. |
+| **Disconnected** | Says so at the top, keeps showing the last known rooms marked stale, and **queues what you type**. Work continues on the computer regardless — that is the point of the daemon owning the run. |
+| **Worker missing** | Names **which** vendor CLI is gone and how to fix it. It is **not a failure of the room**. |
+| **Folder gone** | Greyed and marked unavailable. **Never an error dialog, and never silently dropped from the list.** |
+| **Cancelled** | Reads as cancelled — a distinct state with its own mark, **never collapsed into finished**. *(Promoted from a defect: a cancelled task rendered as "Finished" because the derivation fell through.)* |
+| **Failed** | Reads as failed, shows the error text **in place**, and offers the failing worker as the first way to fix it. |
+| **Archived** | Out of the default list, **still searchable**, restorable in one action. |
+| **Long output** | Truncated with an explicit *"showing first N lines"* and a way to see all of it. **Never silently cut.** |
+| **Reduced motion** | Every animated state degrades to a correct **still frame** — the working mark is a spinner's static frame by design, not an absence. |
+
+Two of these have obligations elsewhere that are easy to lose: **Archived** presumes search exists,
+which the corpus's stress test promotes from *"not yet"* to **required** at a hundred rooms and which
+is currently scoped nowhere; and **Disconnected** requires the composer to keep accepting input while
+offline, which is the same queue [0019](0019-consulting-is-not-deciding.md) and `#462` depend on.
+
 **Easier.** #467 and #468 stop being bugs and become impossible. A new surface — a third client, a
 future widget — inherits correct state by construction rather than by re-deriving it correctly. And
-the states everything must handle can be decided once, centrally: the corpus's table in
-[`03-interaction-depth.md`](../design/03-interaction-depth.md) (empty, loading, disconnected, worker
-missing, folder gone, cancelled, failed, archived, long output, reduced motion) becomes a checklist
-against one machine rather than a set of per-screen judgements. The corpus is explicit that deciding
-them per screen, late, by whoever was implementing, is *"what the last rebuild drifted on"*.
+the ten conditions above are decided once, centrally, rather than per screen.
 
 **Harder.** This is a real constraint on the daemon's contract, not only on the UI. Every question a
 surface wants to ask has to be answerable from the projected state, which means the projection grows

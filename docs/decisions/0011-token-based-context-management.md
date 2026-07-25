@@ -1,7 +1,9 @@
 # 0011 — Context management is token-based, not turn-based
 
-Status: accepted
+Status: accepted, except its unit and trigger — **corrected by [0027](0027-context-is-per-worker.md)**
 Date: 2026-07-23
+
+> **Amendment, 2026-07-25 (#501) — this one corrects rather than extends.** Token-based accounting is right and stands; counting turns was counting the wrong thing. **Two clauses are wrong.** This record tracks usage *per session* — and under [0013](0013-room-is-the-user-facing-noun.md) that object is the room — where context is a property of a **worker**: two workers in one room have completely different headroom, and a summed counter compacts the room while one of them has used almost nothing. And it makes running out an **automatic** handoff where it should be a **choice announced at a threshold** (summarise now / start a fresh room from here / leave it), with automatic compaction surviving only as a disclosed backstop. See [0027](0027-context-is-per-worker.md). The clauses are left in place below rather than edited: this record exists because a wrong unit was chosen once, and it then chose a wrong unit itself, which is worth keeping visible.
 
 ## Context
 
