@@ -157,7 +157,12 @@ vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
 # Two rules the checks are built on, both learned by getting them wrong first: one variable per
 # check (always a control arm), and execution proven by a sentinel FILE rather than by the model's
 # prose. See tools/vendor-verify/README.md.
-vendor-verify = { cmd = "python tools/vendor-verify/verify.py" }
+#
+# A full run is long -- every arm is a real CLI session -- so run it per group and unbuffered:
+#   pixi run vendor-verify -- --only gate
+# `-u` is baked in: without it Python holds print output in a block buffer when stdout is
+# redirected, and a run killed on a timeout loses everything it had already found.
+vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,

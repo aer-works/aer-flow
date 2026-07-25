@@ -110,6 +110,23 @@ servers/
   mcp_slow_server.py    blocks AER_BLOCK_SECONDS with no progress notifications
 ```
 
+Groups: `gate` (what actually stops an action), `fanout` (subagent depth and concurrency), `cost`
+(spend and structured output), `durability` (sessions and config roots), `lifecycle` (daemon and
+background sessions), `agy`.
+
+## Running it
+
+A full run is long — every arm is a real CLI session. Run it **per group**, in the background, and
+**unbuffered**:
+
+```
+python -u tools/vendor-verify/verify.py --only gate
+```
+
+Without `-u`, Python holds `print` output in an 8 KB block buffer when stdout is redirected, so a
+run in progress looks identical to a run producing nothing, and a run killed on a timeout loses
+everything it had found.
+
 ## Adding a check
 
 ```python
