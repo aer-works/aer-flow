@@ -335,6 +335,72 @@ Combined with `agy` moving 1.1.6 → 1.1.7 earlier the same day, **both CLIs shi
 inside a single working session.** Vendor drift is not a quarterly concern to design around; it is
 hours-scale. Anything derived from a probe needs a version attached or it is already decaying.
 
+### `PreToolUse` hook fires where the permission-prompt tool does not — **verified**
+
+The claim that decides AER's gate mechanism. A hook was installed via `--settings` **inline JSON**, so
+nothing was written to the operator's configuration, and asked to deny a `Write`:
+
+```json
+{"hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"python hook.py"}]}]}}
+```
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PreToolUse",
+ "permissionDecision":"deny","permissionDecisionReason":"blocked by aer probe hook"}}
+```
+
+| `--permission-mode` | hook fired | write blocked |
+|---|---|---|
+| `auto` — where `--permission-prompt-tool` is silently skipped (#514) | **yes** | **yes** |
+| `bypassPermissions` — the most permissive mode there is | **yes** | **yes** |
+
+The worker reported: *"Blocked — a hook named 'aer probe hook' rejected the Write to `x.txt`. I'm not
+going to route around it."*
+
+**So a `PreToolUse` hook is the only gate instrument observed to hold in every mode.** It is what AER
+should install on a `claude` worker. `--permission-prompt-tool` remains useful, but as a step-6
+callback it is bypassed by `auto`, by `acceptEdits`, by `bypassPermissions`, and by any allow rule.
+
+The payload is **richer than the permission-prompt tool's**:
+
+```json
+{ "session_id": "4e75b9d5-…", "prompt_id": "230ecffc-…",
+  "transcript_path": "C:\\Users\\…\\<session>.jsonl",
+  "cwd": "…\\hooktest",
+  "permission_mode": "bypassPermissions",
+  "effort": { "level": "high" },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": { "file_path": "…\\x.txt", "content": "BANANA\n" },
+  "tool_use_id": "toolu_01HS7fN4VsAy6Egjdu2fYtLk" }
+```
+
+Three fields matter beyond the call itself:
+
+- **`permission_mode`** — the gate is told what regime it is running under, so it can refuse to
+  present itself as a control when the session is in a mode that would otherwise skip it.
+- **`transcript_path`** — the conversation on disk. Structured access without parsing stdout.
+- **`effort.level`** — not in the hooks reference we read; noted as undocumented-but-present.
+
+Decision values are `allow` / `deny` / `ask` / `defer`, plus `updatedInput` to rewrite the call and
+`additionalContext` to inject text without blocking. Exit 2 is an alternative deny path with stderr as
+the reason.
+
+### Two meanings of `defer` — **unresolved, do not build on either yet**
+
+The SDK's user-input page says `defer` is how a gate outlives its process:
+
+> "If a user might take longer to respond than your process can reasonably stay running, return the
+> **`defer` hook decision**, which lets the process **exit and resume later from the persisted
+> session**."
+
+The hooks reference says `defer` means:
+
+> "Proceed with normal permission flow (**same as exiting 0 with no output**)."
+
+Those are not the same mechanism, and 0015's durable-gate section depends on which is true. **Not
+resolved.** Treat the durable-gate question as open until a run demonstrates one or the other.
+
 ### Not verifiable from an agent session
 
 - **`claude`'s sandbox** — not supported on native Windows, which is the only host available here.
