@@ -144,9 +144,35 @@ behaviour, which is what Architecture Rule 1 exists to forbid. This one is struc
 is the only path `agy` has at all. What is wrong is its stated justification, that no vendor offers a
 permission callback. Whether the decision changes belongs in the decision, not in this reference.
 
-**Still unestablished:** what the tool is *handed* when consulted, and what shape of reply grants or
-denies. That is the next probe, and it is the one that would let AER stop depending on model election
-entirely.
+### The full contract, measured
+
+A stdio MCP server registered via `--mcp-config … --strict-mcp-config` and named as
+`--permission-prompt-tool mcp__aerperm__approve` receives the whole call:
+
+```json
+{ "name": "approve",
+  "arguments": {
+    "tool_name": "Write",
+    "input": { "file_path": "…\\x.txt", "content": "BANANA\n" },
+    "tool_use_id": "toolu_01A6fPfyebEFF5judLv4Ug4S" },
+  "_meta": { "claudecode/toolUseId": "toolu_01A6…", "progressToken": 2 } }
+```
+
+Both replies were exercised in a clean environment where `claude -p` otherwise denies an ungranted
+`Write`:
+
+| reply | observed |
+|---|---|
+| `{"behavior":"allow","updatedInput":{…}}` | call proceeded — **file written** |
+| `{"behavior":"deny","message":"…"}` | **file not written**; the message reached the model verbatim, and the call still landed in `permission_denials` with its full `tool_input` |
+
+Two properties worth designing around: **`updatedInput` lets an answer modify the call**, not merely
+permit it; and **the denial message is acted on by the worker** — on deny it reported stopping *"rather
+than routing around it with a shell write."* A denial can therefore carry a reason, which is what
+[0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md) means by "denial is an answer".
+
+`agy` has no equivalent flag, so on that vendor the same MCP server must be reached by the model
+electing to call it — a weaker guarantee, and one the surface should not hide.
 
 ## The subcommand surface — three `claude` subcommands nobody had opened
 
