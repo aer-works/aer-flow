@@ -204,6 +204,88 @@ def fetch_corpus(out: str, refetch: bool) -> None:
                 os.remove(tmp)
 
 
+ISSUE_REPOS = ["google-antigravity/antigravity-cli", "anthropics/claude-code"]
+
+# Bug reports state what the documentation will not: that a feature is broken, partial, or silently
+# ignored. Two findings this audit had to be corrected on came from here, not from the docs --
+# agy's hooks path misalignment, and that --permission-prompt-tool is -p-only. Searching per open
+# question keeps it bounded; anthropics/claude-code alone has ~78k issues, so a full mirror is not
+# the goal and would drown the corpus.
+ISSUE_QUERIES = [
+    "hooks", "PreToolUse", "permission prompt", "permission-prompt-tool",
+    "requiresUserInteraction", "headless print mode", "subagent permission",
+    "resume session", "background session", "settings.json ignored",
+]
+
+
+def fetch_issues(out: str, refetch: bool) -> None:
+    """Search both vendors' trackers for AER's open questions and fold results into the corpus.
+
+    Degrades to a warning if `gh` is unavailable -- the survey is still useful without it, and this
+    should never be the reason a run fails.
+    """
+    corpus = os.path.join(out, "corpus")
+    dest = os.path.join(corpus, "issues__trackers.md")
+    if not refetch and os.path.exists(dest):
+        return
+
+    if subprocess.run(["gh", "--version"], capture_output=True).returncode != 0:
+        print("issues: `gh` unavailable — skipping tracker search")
+        return
+
+    lines = ["SOURCE: GitHub issue trackers (searched per AER open question)", ""]
+    total = 0
+    for repo in ISSUE_REPOS:
+        lines.append(f"\n# {repo}\n")
+        for q in ISSUE_QUERIES:
+            p = subprocess.run(
+                ["gh", "api", f"search/issues?q=repo:{repo}+{q.replace(' ', '+')}+in:title&per_page=15",
+                 "--jq", '.items[]? | "- [\\(.state)] #\\(.number) \\(.title)"'],
+                capture_output=True, text=True)
+            hits = [l for l in (p.stdout or "").splitlines() if l.strip()]
+            if hits:
+                lines.append(f"\n## query: {q}\n")
+                lines.extend(hits)
+                total += len(hits)
+    io.open(dest, "w", encoding="utf-8", newline="").write("\n".join(lines) + "\n")
+    print(f"issues: {total} titles across {len(ISSUE_REPOS)} trackers")
+
+
+def report_blind_spots(out: str, pages, seen_count: int) -> None:
+    """Print what this run could NOT see, every time.
+
+    The instrument reported only what it found, so its blind spots were discovered by
+    interrogation instead of being visible. Stating them on every run is the difference between
+    coverage that is claimed and coverage that is characterised.
+    """
+    corpus = os.path.join(out, "corpus")
+    topic_any = re.compile("|".join(f"(?:{p})" for p in TOPICS.values()), re.I)
+    visible = invisible = 0
+    for fn in os.listdir(corpus):
+        for line in io.open(os.path.join(corpus, fn), encoding="utf-8", errors="replace"):
+            s = line.strip()
+            if len(s) < 40 or s.startswith(("```", ">")) or not topic_any.search(s):
+                continue
+            if CONSTRAINT.search(s):
+                visible += 1
+            else:
+                invisible += 1
+
+    no_signal = [p for p in pages if not p["relevance"]]
+    print("\n--- blind spots (what this run could NOT see) ---")
+    pct = invisible / (visible + invisible) * 100 if (visible + invisible) else 0
+    print(f"  {invisible:,} lines carry topic vocabulary but state things PLAINLY (no constraint")
+    print(f"    word) and are invisible to the harvest — {pct:.0f}% of topic-relevant lines.")
+    print(f"    Mitigation: depth-read the {sum(1 for p in pages if p['score'] >= 10)} PENDING-DEPTH pages.")
+    print(f"  {len(no_signal)} pages match NO topic vocabulary at all. If a vendor ships a concept")
+    print("    AER has no word for yet, it scores zero here. Re-read this list on any redesign:")
+    for p in no_signal[:8]:
+        print(f"      {p['vendor']}/{p['name']}")
+    print("  Not covered by this tool at all: vendor CLI logs, the vendors' own `--help` output,")
+    print("    SDK package source, and anything behind auth. Those are manual surfaces.")
+    print("  Every claim here is DOCUMENTED, not verified. Running the CLI is a separate step.")
+
+
 def report_drift(out: str) -> None:
     """Say which pages appeared, changed, or vanished since the last run.
 
@@ -335,6 +417,7 @@ def survey(out: str) -> None:
     for d in ("PENDING-DEPTH", "SCAN-ONLY", "NO-SIGNAL"):
         print(f"  {d}: {sum(1 for p in pages if disposition(p) == d)}")
     print("topics: " + ", ".join(f"{t}:{len(r)}" for t, r in sorted(constraints.items(), key=lambda x: -len(x[1]))))
+    report_blind_spots(out, pages, len(seen))
 
 
 def main() -> int:
@@ -345,6 +428,7 @@ def main() -> int:
 
     os.makedirs(args.out, exist_ok=True)
     fetch_corpus(args.out, args.refetch)
+    fetch_issues(args.out, args.refetch)
     report_drift(args.out)
     survey(args.out)
     print(f"\nwrote {args.out}/{{corpus,constraints,worklist.md,ledger.tsv}}")
