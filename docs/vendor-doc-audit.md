@@ -1045,6 +1045,37 @@ and AER's own arithmetic over the top-level field is not.
 subagent being more constrained than the session that spawned it**. Whatever gate the lead runs
 under is the gate the whole tree runs under.
 
+### Group D — agy permissions are global-only, so hooks are its only project-scoped gate
+
+Another mis-transcribed backlog row. It read "three permission scopes (Project / Shared / Global)
+and their merge order". The docs describe three access **lists** — `deny`, `ask`, `allow`,
+precedence **Deny > Ask > Allow** — inside **one** file, `~/.gemini/antigravity-cli/settings.json`.
+No project scope is documented. Measurement agrees:
+
+| where the identical rule was placed | honoured under `-p`? |
+|---|---|
+| `~/.gemini/antigravity-cli/settings.json` (global) — **the control** | ✅ |
+| `<project>/.agents/settings.json` | ❌ |
+| `<project>/.gemini/antigravity-cli/settings.json` | ❌ |
+
+The global arm is what makes the two negatives mean anything: it uses the same rule string, so
+"not honoured" cannot be "the rule was malformed".
+
+**Put beside the earlier hooks result, this is the actionable shape of agy's control surface:**
+
+| mechanism | project-scoped? |
+|---|---|
+| hooks (`.agents/hooks.json`) | ✅ **yes** — verified earlier |
+| permission rules | ❌ **no** — global settings only |
+
+So **AER cannot give an agy worker its own permission rules without editing the operator's global
+file**, which Architecture Rule 4 and ordinary hygiene both forbid. For agy, **the hook is the only
+gate AER can install per-worker.** For claude the position is the opposite — `--settings` carries
+both, and `--add-dir` carries neither.
+
+*(The operator's `settings.json` was backed up byte-exact and restored; sha256 verified identical
+before and after, by the check and again independently.)*
+
 ### Group C — `CLAUDE_CONFIG_DIR` costs the subscription login (2026-07-25)
 
 Architecture Rule 4 forbids redirecting a vendor CLI's config directory. That was a design

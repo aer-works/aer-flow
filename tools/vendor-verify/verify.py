@@ -389,10 +389,16 @@ def _concurrency():
     """Measures actual overlap, not the count of subagents.
 
     SubagentStart and SubagentStop each append a timestamped line, so peak concurrency is
-    computable rather than asserted. The uncapped arm is the control: if it never exceeds the
-    capped arm's peak, the model simply did not fan out wide enough and the cap was never tested.
+    computable rather than asserted.
+
+    Both arms are CAPPED, at different values, rather than capped-versus-uncapped. A first version
+    compared cap=2 against no cap and could not conclude: the capped arm started only 2 subagents
+    in total, which is equally consistent with the cap holding and with the model just not fanning
+    out. Two capped arms under identical fan-out pressure make the cap the only variable, and the
+    high arm doubles as the control -- if its peak doesn't exceed the low arm's, nothing was
+    measured.
     """
-    PROMPT = ("Use the Task tool to launch five subagents AT THE SAME TIME, in a single batch of "
+    PROMPT = ("Use the Task tool to launch eight subagents AT THE SAME TIME, in a single batch of "
               "parallel tool calls. Each subagent's instruction is to write a short haiku about a "
               "different colour, and each should take a moment to think it through.")
 
@@ -433,14 +439,15 @@ def _concurrency():
         finally:
             shutil.rmtree(wd, ignore_errors=True)
 
-    n_free, peak_free = arm(None)
-    n_cap, peak_cap = arm(2)
-    note = f"uncapped: {n_free} spawned, peak {peak_free} | cap=2: {n_cap} spawned, peak {peak_cap}"
-    if n_free < 3 or n_cap < 3:
-        return INCONCLUSIVE, f"the model did not fan out wide enough to test a cap of 2; {note}"
-    if peak_free <= 2:
-        return INCONCLUSIVE, f"the uncapped control never exceeded 2 concurrent; {note}"
-    return (PASS if peak_cap <= 2 else FAIL), note
+    n_lo, peak_lo = arm(2)
+    n_hi, peak_hi = arm(6)
+    note = f"cap=2: {n_lo} started, peak {peak_lo} | cap=6: {n_hi} started, peak {peak_hi}"
+    if peak_hi <= 2:
+        return INCONCLUSIVE, ("the cap=6 arm never exceeded 2 concurrent either, so the model -- "
+                              f"not the cap -- set the ceiling in both arms; {note}")
+    if peak_lo > 2:
+        return FAIL, f"peak concurrency exceeded an explicit cap of 2; {note}"
+    return PASS, f"peak concurrency tracks the cap; {note}"
 
 
 @check("fanout.parent-mode-covers-subagents", "fanout",
@@ -695,6 +702,77 @@ def _agy_terminate():
     if made_cont < 3:
         return INCONCLUSIVE, f"the control arm did not finish the task either; {note}"
     return (PASS if made_term < 3 else FAIL), note
+
+
+AGY_SETTINGS = os.path.join(os.path.expanduser("~"), ".gemini", "antigravity-cli", "settings.json")
+AGY_RULE = "command(node --version)"
+
+
+def agy_ran(wd):
+    rc, out, err = run(["agy", "-p", "Run this shell command: node --version", "--add-dir", wd],
+                       cwd=wd)
+    return bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+
+
+@check("agy.permissions-are-global-only", "agy",
+       "agy permission rules live ONLY in global settings -- no project-scoped equivalent is "
+       "honoured, so AER cannot scope a worker's agy permissions without touching the operator's "
+       "own file",
+       safety="mutates-config")
+def _agy_scope():
+    """The backlog row claimed "three permission scopes (Project / Shared / Global)". The docs say
+    something different: three access LISTS (deny / ask / allow, precedence Deny > Ask > Allow)
+    inside one file, the global settings. This tests whether a project-scoped file exists anyway.
+
+    The global arm is the in-check control. Without it, "the project-local rule was not honoured"
+    is indistinguishable from "the rule string is wrong" -- the exact ambiguity that made the
+    first agy hooks conclusion wrong.
+    """
+    if not os.path.exists(AGY_SETTINGS):
+        return SKIPPED, "settings.json not present"
+    backup = os.path.join(tempfile.gettempdir(), "aer_agy_scope_backup.json")
+    shutil.copyfile(AGY_SETTINGS, backup)
+    before = hashlib.sha256(open(AGY_SETTINGS, "rb").read()).hexdigest()
+
+    # Candidate project-scoped locations, each holding the SAME rule string as the global arm.
+    candidates = {
+        ".agents/settings.json": os.path.join(".agents", "settings.json"),
+        ".gemini/antigravity-cli/settings.json":
+            os.path.join(".gemini", "antigravity-cli", "settings.json"),
+    }
+    local = {}
+    for label, rel in candidates.items():
+        wd = tempfile.mkdtemp(prefix="v-agysc-")
+        try:
+            p = os.path.join(wd, rel)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            json.dump({"permissions": {"allow": [AGY_RULE]}}, open(p, "w"))
+            local[label] = agy_ran(wd)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    try:
+        cfg = json.load(open(backup, encoding="utf-8"))
+        cfg.setdefault("permissions", {}).setdefault("allow", [])
+        cfg["permissions"]["allow"] = list(cfg["permissions"]["allow"]) + [AGY_RULE]
+        json.dump(cfg, open(AGY_SETTINGS, "w", encoding="utf-8"), indent=2)
+        wd = tempfile.mkdtemp(prefix="v-agysc-g-")
+        try:
+            glob_ok = agy_ran(wd)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    finally:
+        shutil.copyfile(backup, AGY_SETTINGS)
+        after = hashlib.sha256(open(AGY_SETTINGS, "rb").read()).hexdigest()
+        if after != before:
+            print(f"  !! RESTORE MISMATCH -- backup kept at {backup}", file=sys.stderr)
+
+    note = f"global control honoured={glob_ok}; project-scoped: {local}"
+    if not glob_ok:
+        return INCONCLUSIVE, f"the global control was not honoured, so the rule string is suspect; {note}"
+    honoured = [k for k, v in local.items() if v]
+    if honoured:
+        return FAIL, f"a project-scoped location WAS honoured ({honoured}); {note}"
+    return PASS, f"global only -- no project-scoped location was honoured; {note}"
 
 
 @check("agy.settings-allow-honoured-headless", "agy",
