@@ -21,8 +21,12 @@ namespace Aer.Cli;
 /// a real positive control to check.
 /// <para>
 /// Fails open on any input it cannot parse (empty stdin, malformed JSON, a missing
-/// <c>tool_name</c> field): <c>--disallowedTools</c> is still the primary enforcement for the tool
-/// names this checks, so a parse failure here loses only the belt, never the suspenders.
+/// <c>tool_name</c> field). <c>--disallowedTools</c> covers the exact same tool names, so a parse
+/// failure here does not create a hole wider than what already exists there — but neither mechanism
+/// is a security boundary for those names to begin with (see <c>BuildDisallowedTools</c>'s own doc
+/// comment, #529, measured: a granted <c>Bash</c> defeats a withheld write/read/network category
+/// regardless of which of these two enforces the write/read/network tool names directly). This
+/// method's fail-open only means "no worse than the pre-existing gap," never "safe."
 /// </para>
 /// </remarks>
 public static class HookCheckCommand
@@ -55,18 +59,22 @@ public static class HookCheckCommand
         ArgumentNullException.ThrowIfNull(stdin);
         ArgumentNullException.ThrowIfNull(stderr);
 
-        var denied = ParseDeniedTools(deniedToolsRaw);
-        if (denied.Count == 0)
-        {
-            return AllowedExitCode;
-        }
-
+        // Always drain stdin before deciding anything, even when there is nothing to check
+        // against below: Claude Code is the writer on the other end of this pipe, and exiting
+        // before reading its full payload risks a broken-pipe/blocked-write on its side for any
+        // tool_input large enough to fill the pipe buffer (a real Edit/Write payload can be).
         string input;
         try
         {
             input = stdin.ReadToEnd();
         }
         catch (IOException)
+        {
+            return AllowedExitCode;
+        }
+
+        var denied = ParseDeniedTools(deniedToolsRaw);
+        if (denied.Count == 0)
         {
             return AllowedExitCode;
         }

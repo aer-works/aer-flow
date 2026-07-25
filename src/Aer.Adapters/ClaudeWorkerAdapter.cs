@@ -150,8 +150,12 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         //      (#521): `claude --bare --settings <PreToolUse hook>` does not fire the hook, while
         //      the same invocation without --bare does. 0029 makes that hook mandatory on every
         //      worker AER spawns, so --bare is the flag AER passed that removed the gate. It is
-        //      not the only route to the same failure -- `--safe-mode` and CLAUDE_CODE_SIMPLE=1
-        //      (an inherited env var, no flag needed) disable hooks identically; watch for both.
+        //      not the only route to the same failure -- `--safe-mode` (a flag AER never passes,
+        //      so nothing to neutralize) and CLAUDE_CODE_SIMPLE=1, documented as equivalent to
+        //      --bare including its keychain-skip, disable hooks identically. Unlike --safe-mode,
+        //      CLAUDE_CODE_SIMPLE is an *inherited* env var (#543: neutralized below, in
+        //      CoreDispatchTarget.Environment -- AerTask inherits the full parent environment by
+        //      default, so an operator's shell setting it would otherwise reach claude unopposed).
         //
         // Reason 2 is the load-bearing one: an auth failure is loud, and a missing hook is silent
         // for one of two independent reasons -- not loaded at all, or loaded but unable to execute
@@ -182,8 +186,22 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             [
                 (MaxSubagentSpawnDepthVariable, "1"),
                 (DeniedToolsVariable, disallowed),
+                (SimpleModeVariable, ""),
             ]);
     }
+
+    /// <summary>
+    /// Overrides an inherited <c>CLAUDE_CODE_SIMPLE=1</c> (see the comment above on why that
+    /// disables hooks the same way <c>--bare</c> does) so an operator's shell cannot silently reach
+    /// the spawned <c>claude</c> process and remove the gate. <b>Best-effort, not a measured
+    /// sentinel</b>: the vendor docs state what <c>1</c> triggers but never what a blank value does
+    /// -- an empty string cannot equal the one documented trigger, which defeats both a strict
+    /// string-equality check and a truthiness check, but no live run against the installed CLI has
+    /// confirmed the vendor's own parsing treats it as "off" rather than "on, malformed." Filed as
+    /// the honest scope of what this override actually proves, per 0029/#532's own discipline of
+    /// stating what a check does not prove rather than only what it does.
+    /// </summary>
+    public const string SimpleModeVariable = "CLAUDE_CODE_SIMPLE";
 
     /// <summary>
     /// The environment variable carrying this invocation's denied-tool list to the <c>PreToolUse</c>
@@ -255,21 +273,40 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
     /// <summary>
     /// The `--settings` content #543 ships: one `PreToolUse` hook, matching every tool
-    /// (<c>"matcher": "*"</c>), pointed at this same machine's own `aer` executable in exec form
-    /// (`args` set) so Claude Code spawns it directly with no shell -- no quoting concerns, matching
-    /// this adapter's own "direct shell-less" design (see the type's own doc comment). Resolved via
-    /// <see cref="AppContext.BaseDirectory"/> rather than any single caller's process path: both
-    /// `Aer.Cli.exe` (running standalone) and `Aer.Daemon.exe` (which references `Aer.Cli` through
-    /// `Aer.Ui.Core`, so MSBuild copies the full `Aer.Cli.exe`/`.dll`/`.runtimeconfig.json` set into
-    /// its own output directory too -- confirmed by inspecting both build outputs) resolve a real,
-    /// functionally identical `hook-check` target from their own base directory, so a race between
-    /// two entry points writing this file concurrently is benign: whichever writer's content wins,
-    /// invoking it runs the same logic.
+    /// (<c>"matcher": "*"</c>), spawned in exec form (`args` set) so Claude Code invokes it directly
+    /// with no shell -- no quoting concerns, matching this adapter's own "direct shell-less" design
+    /// (see the type's own doc comment).
     /// </summary>
+    /// <remarks>
+    /// <b>Invoked as <c>dotnet &lt;Aer.Cli.dll path&gt;</c>, not the native apphost.</b> An earlier
+    /// version of this method named <c>Aer.Cli.exe</c>/<c>Aer.Cli</c> directly, resolved via
+    /// <see cref="AppContext.BaseDirectory"/>. That works for a raw build output (confirmed for both
+    /// `Aer.Cli.exe` standalone and `Aer.Daemon.exe`, which references `Aer.Cli` through
+    /// `Aer.Ui.Core` and so carries a copy in its own output directory) but is wrong for `aer`'s
+    /// other real, exercised deployment shape: <c>Aer.Cli.csproj</c> sets <c>PackAsTool</c>, and a
+    /// packed global tool's <c>DotnetToolSettings.xml</c> runs <c>Aer.Cli.dll</c> via the <c>dotnet</c>
+    /// muxer with **no apphost at all** (confirmed by packing the tool and inspecting the nupkg) --
+    /// naming the apphost there would silently write a dangling command into every worker's hook,
+    /// exactly the fail-open-and-silent failure #530 measured. `dotnet &lt;dll&gt;` works in both
+    /// shapes: the managed dll and its `.runtimeconfig.json`/`.deps.json` sit next to
+    /// <see cref="AppContext.BaseDirectory"/> either way (a raw build's own output directory, or a
+    /// global tool's own store directory -- it is, after all, the same dll this process is currently
+    /// running from), and `dotnet` itself is a hard prerequisite for this whole product already
+    /// (`CLAUDE.md`: ".NET 10 SDK is required"). The explicit <see cref="File.Exists"/> guard below
+    /// turns any future deployment shape this reasoning missed into a loud failure at dispatch time
+    /// rather than a silent one at hook-invocation time.
+    /// </remarks>
     private static string BuildSettingsJson()
     {
-        var hookExecutable = Path.Combine(
-            AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Aer.Cli.exe" : "Aer.Cli");
+        var hookAssemblyPath = Path.Combine(AppContext.BaseDirectory, "Aer.Cli.dll");
+        if (!File.Exists(hookAssemblyPath))
+        {
+            throw new InvalidOperationException(
+                $"Cannot write the mandatory PreToolUse hook (decision 0029): '{hookAssemblyPath}' " +
+                "does not exist. Every deployment of aer/Aer.Daemon must carry Aer.Cli.dll alongside " +
+                "its own binary -- a hook naming a path that does not exist fails open and silently " +
+                "(#530), so this fails loudly here instead, before any worker is dispatched.");
+        }
 
         var settings = new
         {
@@ -285,8 +322,8 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
                             new
                             {
                                 type = "command",
-                                command = hookExecutable,
-                                args = new[] { "hook-check" },
+                                command = "dotnet",
+                                args = new[] { hookAssemblyPath, "hook-check" },
                             },
                         },
                     },
@@ -302,14 +339,46 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// <see cref="File.Move(string, string, bool)"/>, whose overwrite is a same-volume rename and
     /// therefore atomic on both Windows and POSIX -- a reader never observes a torn write, which a
     /// direct <see cref="File.WriteAllText(string, string)"/> onto the final path does not guarantee
-    /// when two processes race to rewrite it (see <see cref="BuildSettingsJson"/>'s remarks on why
+    /// when two callers race to rewrite it (see <see cref="BuildSettingsJson"/>'s remarks on why
     /// that race is otherwise benign; this is what keeps it benign at the byte level too).
     /// </summary>
+    /// <remarks>
+    /// The rename itself can still collide: #533's own comment already names two chat sessions
+    /// starting their first turn from the same daemon process as a genuine, expected race, and
+    /// unlike #533's existence-only write this one repeats on every <see cref="Resolve"/>, not once
+    /// per fresh <c>~/.aer</c>. Measured under this PR's own parallel test run: a concurrent
+    /// <see cref="File.Move(string, string, bool)"/> onto the same destination throws
+    /// <see cref="UnauthorizedAccessException"/> on Windows (a transient sharing violation, not a
+    /// real permissions problem) while another thread's move or read briefly holds the destination
+    /// open. Every racing writer in one process produces byte-identical content (a deterministic
+    /// function of <see cref="AppContext.BaseDirectory"/>, constant for the process's lifetime), so
+    /// retrying is correct rather than papering over a real disagreement: whichever attempt
+    /// eventually wins, the file ends up holding the one content every writer wanted anyway.
+    /// </remarks>
     private static void WriteFileAtomically(string path, string content)
     {
-        var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, content);
-        File.Move(tempPath, path, overwrite: true);
+        const int maxAttempts = 5;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(tempPath, content);
+            try
+            {
+                File.Move(tempPath, path, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts && (ex is IOException or UnauthorizedAccessException))
+            {
+                File.Delete(tempPath);
+                Thread.Sleep(TimeSpan.FromMilliseconds(10 * attempt));
+            }
+            catch
+            {
+                File.Delete(tempPath);
+                throw;
+            }
+        }
     }
 
     /// <summary>

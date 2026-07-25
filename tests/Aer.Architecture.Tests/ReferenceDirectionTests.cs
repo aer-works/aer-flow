@@ -61,6 +61,48 @@ public class ReferenceDirectionTests
         Assert.Contains("CommunityToolkit.Mvvm", packageRefs);
     }
 
+    // #543: ClaudeWorkerAdapter.BuildSettingsJson writes the mandatory PreToolUse hook's command as
+    // Aer.Cli.dll's own path next to AppContext.BaseDirectory — silently wrong (a dangling command,
+    // #530's fail-open-and-silent failure) unless Aer.Cli.dll actually gets copied into every real
+    // entry point's own output directory. For Aer.Daemon that happens only because it references
+    // Aer.Ui.Core, which in turn references Aer.Cli — a transitive path, not a direct one, and
+    // exactly the kind of reference that erodes silently if a future refactor drops it. This is a
+    // positive-inclusion check (the graph *must* reach Aer.Cli), the deliberate opposite of every
+    // forbidden-reference check above.
+    [Fact]
+    public void Aer_Daemon_transitively_references_Aer_Cli_so_its_own_output_carries_the_hook_target()
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var toVisit = new Queue<string>();
+        toVisit.Enqueue("Aer.Daemon");
+
+        while (toVisit.Count > 0)
+        {
+            var project = toVisit.Dequeue();
+            if (!visited.Add(project))
+            {
+                continue;
+            }
+
+            // Aer.Core is a git submodule under external/, not src/ -- ReadReferences resolves the
+            // src/<project>/<project>.csproj convention only. It has no path back to Aer.Cli, so
+            // treating it (and anything else this convention can't resolve) as a leaf is correct,
+            // not a silently-swallowed gap: the one project this test needs to reach IS under src/.
+            if (!File.Exists(Path.Combine(RepoRoot(), "src", project, project + ".csproj")))
+            {
+                continue;
+            }
+
+            var (projectRefs, _) = ReadReferences(project);
+            foreach (var reference in projectRefs)
+            {
+                toVisit.Enqueue(reference);
+            }
+        }
+
+        Assert.Contains("Aer.Cli", visited);
+    }
+
     private static void AssertNoForbiddenReferences(
         string project, string[] forbiddenProjects, string[] forbiddenPackagePrefixes)
     {

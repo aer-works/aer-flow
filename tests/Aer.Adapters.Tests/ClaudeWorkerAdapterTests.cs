@@ -338,9 +338,10 @@ public class ClaudeWorkerAdapterTests
 
     /// <summary>
     /// The actual hook payload #543 ships: one `PreToolUse` matcher group covering every tool,
-    /// pointed at this same machine's own `aer` executable in exec form (`args` present, so Claude
-    /// Code spawns it with no shell -- see `BuildSettingsJson`'s doc comment for why that's the
-    /// resolvable path both `aer` and the daemon agree on) with `hook-check` as the sole argument.
+    /// invoked as `dotnet &lt;Aer.Cli.dll path&gt; hook-check` in exec form (`args` present, so
+    /// Claude Code spawns it with no shell) -- see `BuildSettingsJson`'s doc comment for why this
+    /// names the managed dll via `dotnet` rather than a native apphost (the packed global tool has
+    /// no apphost at all).
     /// </summary>
     [Fact]
     public void The_settings_file_carries_a_PreToolUse_hook_that_matches_every_tool_and_points_at_hook_check()
@@ -357,14 +358,13 @@ public class ClaudeWorkerAdapterTests
 
         var handler = matcherGroup.GetProperty("hooks")[0];
         Assert.Equal("command", handler.GetProperty("type").GetString());
-
-        var command = handler.GetProperty("command").GetString();
-        var expectedExecutable = OperatingSystem.IsWindows() ? "Aer.Cli.exe" : "Aer.Cli";
-        Assert.EndsWith(expectedExecutable, command);
-        Assert.True(File.Exists(command), "the hook command must point at a real, existing executable");
+        Assert.Equal("dotnet", handler.GetProperty("command").GetString());
 
         var args = handler.GetProperty("args").EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.Equal(["hook-check"], args);
+        Assert.Equal(2, args.Count);
+        Assert.EndsWith("Aer.Cli.dll", args[0]);
+        Assert.True(File.Exists(args[0]), "the hook's first arg must point at a real, existing Aer.Cli.dll");
+        Assert.Equal("hook-check", args[1]);
     }
 
     /// <summary>
