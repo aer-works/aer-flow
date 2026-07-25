@@ -280,6 +280,70 @@ Plus `artifactReviewPolicy` (`asks-for-review` / `agent-decides` / `always-proce
 
 ---
 
+## Verification pass
+
+Documented claims run against the live CLIs. **Verified** means observed, not read.
+
+### `--bg` background sessions — **verified**
+
+```
+$ claude --bg --name aer-probe-bg "Write a file called hello.txt containing BANANA, then stop."
+backgrounded · 330a655f · aer-probe-bg
+  claude agents             list sessions
+  claude attach 330a655f    open in this terminal
+  claude logs 330a655f      show recent output
+  claude stop 330a655f      stop this session
+```
+
+It appears in the registry, with its own working directory and the name we set:
+
+```
+background | blocked | id 330a655f | aer-probe-bg | …\scratchpad\bgtest
+```
+
+**So #506's original conclusion was wrong and its correction holds:** `claude agents --json` sees
+`--bg` sessions, and a `-p` run simply is not one. If AER spawns workers as `--bg` sessions it
+inherits the whole lifecycle — `attach`, `logs`, `stop`, `rm`, `respawn`, and a supervisor that
+survives its own restart.
+
+Two observations worth more than the flag itself:
+
+- **The probe session's state was `blocked`, because it wanted to `Write` and was waiting on
+  permission.** That is a background worker sitting on a gate, surfaced in a machine-readable
+  registry — the exact object 0015's durable-gate section and the room list are designed around,
+  already modelled by the vendor.
+- **State vocabulary, observed:** `working` · `idle` · `blocked` · `stopped`. Four values, from
+  `--json` and `--json --all`. Not established as exhaustive.
+
+`claude daemon status` also works and reports pid, version, uptime, origin (`transient — started
+on-demand by claude (pid …)`), config path and log path. Useful for #478 readiness.
+
+Cleanup: `claude stop <id>` then `claude rm <id>` removed only the probe session; the operator's own
+sessions were untouched.
+
+### Both vendors self-updated during this one session — **verified, unprompted**
+
+The staleness trigger built in #504 fired on its own within hours:
+
+```
+[STALE  ] claude has moved: findings were recorded against 2.1.219 on 2026-07-24,
+          but 2.1.220 is installed. Every row for this vendor is now unverified.
+[ok     ] agy 1.1.7 — findings recorded against this exact version on 2026-07-24.
+```
+
+Combined with `agy` moving 1.1.6 → 1.1.7 earlier the same day, **both CLIs shipped a new version
+inside a single working session.** Vendor drift is not a quarterly concern to design around; it is
+hours-scale. Anything derived from a probe needs a version attached or it is already decaying.
+
+### Not verifiable from an agent session
+
+- **`claude`'s sandbox** — not supported on native Windows, which is the only host available here.
+- **`agy`'s `command(...)` regex-vs-literal conflict** — requires writing rules into the operator's
+  real `~/.gemini/antigravity-cli/settings.json`. Needs an explicit decision about how to test safely.
+- **Channels, workflows** — gated on plan/preview availability, and channels need a plugin install.
+
+---
+
 ## Sources
 
 - Claude Code docs index — https://code.claude.com/docs/llms.txt
