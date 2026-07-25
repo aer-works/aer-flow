@@ -38,6 +38,13 @@ plus a ledger giving **every page a disposition** so coverage is checkable rathe
 All 1,475 constraint sentences have been read across nine topics. **The per-page `·` tables below are
 superseded by the ledger** and are kept only for the pages whose *contents* are summarized here.
 
+**A doc page changing is a reason to re-verify, not a reason to believe the new page.** This audit
+found four vendor statements to be wrong and two that contradicted each other, so every **V** below
+rests on a run, not on a sentence. Those runs are no longer disposable: `pixi run vendor-verify`
+(see `tools/vendor-verify/`) re-runs them, each with a control arm and each asserting on a sentinel
+file rather than on a model's account of what it did. A `FAIL` there means a behaviour a decision
+rests on has moved.
+
 ## Status legend
 
 | mark | meaning |
@@ -310,6 +317,7 @@ read. The gate-symmetry question it existed to answer is **settled, negatively**
 5. **Establish cross-platform coverage**, or state plainly that every claim is Windows-scoped.
    Newly concrete: claude's hooks run through **Git Bash on Windows** and historically failed
    *silently* there, and Windows is the primary development host.
-6. **Re-run `pixi run vendor-survey` on every vendor version bump.** The staleness gate already
-   fires on a version change; the survey is what makes re-establishing coverage cheap rather than a
-   fresh manual read.
+6. **Re-run `pixi run vendor-survey` and `pixi run vendor-verify` on every vendor version bump.**
+   The staleness gate already fires on a version change; the survey re-reads the corpus and reports
+   which pages moved, and the verifier re-runs the behaviours the decisions actually rest on. Both
+   exist so re-establishing coverage is a command rather than a fresh manual read.

@@ -903,6 +903,11 @@ Two rules held throughout: **one variable per test**, and **execution proven by 
 because this audit twice recorded a negative from an instrument that could not distinguish
 "never fired" from "fired and failed".
 
+These runs are **repeatable**, not disposable: `pixi run vendor-verify` (see
+`tools/vendor-verify/`) re-runs them against whatever CLI versions are installed, carrying both
+rules. Re-run it on every vendor version bump — the pinned versions above are what these results
+were established against, and nothing here transfers to a later one for free.
+
 ### claude has two gate primitives, and both hold
 
 | primitive | scope | result |

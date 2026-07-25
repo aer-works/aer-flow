@@ -145,6 +145,20 @@ vendor-probe = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --out docs
 # Re-run on every vendor version bump — VendorProbeStalenessTests already fails when a CLI moves.
 vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
 
+# Vendor behaviour verification (#527): the third leg. vendor-survey reads what the vendors *say*;
+# this runs what they *do*. Every check here is a behaviour an AER design decision rests on, and the
+# audit that produced them found four vendor statements to be wrong and two that contradicted each
+# other — so a doc page changing is a reason to re-run this, not a reason to trust the new page.
+#
+# NEVER runs in CI: it drives live authenticated CLIs and spends real subscription usage, same
+# permanent-human-action-item rule as smoke-* and vendor-probe. Checks that would touch the
+# operator's own ~/.claude or ~/.gemini are skipped unless --allow-config-writes is passed.
+#
+# Two rules the checks are built on, both learned by getting them wrong first: one variable per
+# check (always a control arm), and execution proven by a sentinel FILE rather than by the model's
+# prose. See tools/vendor-verify/README.md.
+vendor-verify = { cmd = "python tools/vendor-verify/verify.py" }
+
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,
 # so it runs in the ordinary dev loop — `pixi run test` runs the same comparison via
