@@ -194,6 +194,14 @@ audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py
 # when a CLI has moved; says so plainly, and does not pass, when no vendor CLI is present to inspect.
 vendor-check = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --check" }
 
+# Dispatches one AER workflow step to a worker via a real `aer run` and prints its output -- the
+# scaffolding an ad-hoc Node one-liner stood in for three times during the #513 cross-vendor
+# orchestration trial, each time with a different bug (see tools/aer-agy-loop/dispatch.py's own
+# docstring). Not a smoke test and not CI-wired: this is a dispatch primitive for whoever is
+# orchestrating a multi-step worker exchange (implementer/reviewer or otherwise), same spirit as
+# vendor-verify being a re-runnable instrument rather than a one-off script.
+aer-dispatch = { cmd = "python tools/aer-agy-loop/dispatch.py" }
+
 # M13 Phase 4 (#110), the milestone's completion gate: unlike smoke-claude/smoke-mixed-vendor
 # above, this needs no live vendor auth, so it runs unattended in default CI rather than a gated
 # runbook. Packs `aer`, installs it as a real global tool from that local nupkg, runs it against a
