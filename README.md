@@ -24,6 +24,22 @@ Built in .NET, it reads structured workflow definitions, dispatches them to Work
   historical: they teach the outgoing UI.
 - [Runbooks](docs/runbooks/) - Manual, key-gated operational procedures not covered by CI.
 
+## Vendor authentication
+
+AER Flow does not authenticate to any model provider. It spawns the vendor's own first-party CLI
+(`claude`, `agy`) as a subprocess, and that CLI uses whatever login the operator already established
+on their own machine.
+
+**AER never reads, copies, forwards, or stores a vendor credential** — no API keys, no OAuth tokens,
+no access to the OS credential store. It deliberately does not redirect the vendor CLIs'
+configuration directories, which belong to those tools. This is an enforced invariant, not an
+intention: see
+[`VendorCredentialIsolationTests`](tests/Aer.Architecture.Tests/VendorCredentialIsolationTests.cs).
+
+AER Flow is a personal tool. It is not offered as a product or a service, and it does not provide,
+resell, or proxy access to any provider — you bring a CLI you have already signed into yourself.
+Each vendor CLI remains subject to its own provider's terms, between the operator and that provider.
+
 ## Prerequisites
 
 - **[pixi](https://pixi.sh)** — task runner.

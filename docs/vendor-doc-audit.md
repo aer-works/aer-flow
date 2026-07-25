@@ -599,6 +599,163 @@ set at spawn, no session resumption with in-process teammates.
 
 ---
 
+## `agy` has hooks, and an SDK — the two pages that change the most
+
+Both were on the unread Tier 1 list in [`vendor-coverage.md`](vendor-coverage.md), flagged as the
+largest hole. They were, and reading them overturns a claim repeated throughout this audit.
+
+### `agy` documents a `PreToolUse` hook that can deny
+
+**Every statement in this audit about the gate being claude-only, or about `agy` having "none of
+these" instruments, was made without reading this page.** `agy` documents five hook events:
+
+| event | fires |
+|---|---|
+| `PreToolUse` | before a tool is executed |
+| `PostToolUse` | after a tool completes |
+| `PreInvocation` | before the model is called |
+| `PostInvocation` | after tool calls finish |
+| `Stop` | when the execution loop terminates |
+
+`PreToolUse` returns a **`decision`** of `allow` · `deny` · `ask` · **`force_ask`**, plus `reason` and
+`permissionOverrides`. `force_ask` is documented as *"always prompts, ignoring cached permissions"* —
+a **stronger** always-fires guarantee than anything claude documents, if it holds. `Stop` can return
+`continue` to prevent termination.
+
+Hooks are configured in `hooks.json` under `.agents/` or `~/.gemini/config/`, receive
+`conversationId`, `workspacePaths`, `transcriptPath` and `artifactDirectoryPath` on stdin, and reply
+on stdout.
+
+**So the gate design may be symmetric after all**, which is the opposite of what
+[0015](decisions/0015-three-kinds-of-needs-you.md) and #517 currently assume. That has to be settled
+before either is rewritten.
+
+#### Not verified on the CLI — and this is a negative claim, so it is scoped
+
+A `PreToolUse` hook was placed at `.agents/hooks.json` in a scratch workspace with a guessed schema.
+On an auto-allowed workspace file read — a call that demonstrably reached a tool, since the read
+succeeded — **the hook did not fire**.
+
+That is **not** evidence that `agy`'s CLI lacks hooks. Four candidate explanations, in rough order of
+likelihood:
+
+1. **The schema was guessed.** The documentation summary paraphrased the file as "maps hook names to
+   event configurations" without giving a schema. The most likely explanation is simply that the file
+   was malformed and silently ignored.
+2. **Discovery uses `agy`'s own working directory, not `--add-dir`.** `agy -p` is already recorded as
+   ignoring cwd and running under its install directory — so `.agents/` may never have been looked for
+   where it was written.
+3. `~/.gemini/config/hooks.json` may be the CLI's real location. No such file exists on this host, and
+   creating one means writing to the operator's configuration.
+4. The docs are written for Antigravity 2.0 and hooks may genuinely not be wired into the CLI.
+
+**What would settle it:** the actual `hooks.json` schema from the page itself, then a re-test at both
+locations. Until then this row is *"not observed on the surfaces tried"*, not *"absent"*.
+
+### The Python SDK answers all three of #508's open questions
+
+`pip install google-antigravity` — a Python framework, documented as exposing:
+
+| what | why it matters |
+|---|---|
+| **per-turn and cumulative token usage** | this is the usage/cost data for **#479**, which we recorded as unavailable on `agy` |
+| **streamed structured events**, "live model reasoning and output chunks", Pydantic-typed results | routing on structured events instead of parsed stdout — **Architecture Rule 1, structurally** |
+| **`deny()` / `allow()` / `ask_user()`**, "declarative deny-by-default policy" | a permission surface with a human-approval primitive |
+| nine lifecycle hook points, "Inspect / Decide / Transform" | the same gate shape, in-process |
+| headless by design | usable the way AER would use it |
+
+**That is #508's three unknowns — structured events, usage data, and permission control — answered by
+one page, on the surface the audit had already nominated as the most promising and never read.**
+
+It also reframes the `agy` half of the design: everything recorded so far assumes AER shells out to a
+CLI. A Python SDK is a different integration shape entirely, with different guarantees, and the choice
+between them was never made because one option was invisible.
+
+---
+
+## Should AER drive SDKs instead of CLIs? — **No, and the reason is contractual**
+
+Both vendors ship an SDK, and on the technical merits the SDK path looks strictly better than shelling
+out to a CLI. It was worth evaluating properly rather than assuming. **It is foreclosed, by policy
+rather than capability**, and the constraint is one sentence in the setup steps:
+
+> "**Unless previously approved, Anthropic does not allow third party developers to offer claude.ai
+> login or rate limits for their products, including agents built on the Claude Agent SDK. Please use
+> the API key authentication methods described in this document instead.**"
+
+The Agent SDK authenticates with `ANTHROPIC_API_KEY`, Bedrock, Vertex, or Foundry. **AER Flow's stated
+premise is subscriptions, not API keys** (CLAUDE.md: *"the project's whole point is working against
+**subscriptions**, not API keys"*, and *"dropping in an API key to make a gate pass would test a
+different auth path than the one the project exists to support"*).
+
+So the existing architecture is **correct, and for the right reason**. Shelling out to an
+already-authenticated CLI is not a compromise forced by ignorance of the SDK — it is the only path
+consistent with the product's premise. That is worth stating plainly, because every other section of
+this audit corrects something; this one confirms a decision that was already right.
+
+### What the SDK would have bought, so the cost of the constraint is visible
+
+| | SDK | CLI (what we have) |
+|---|---|---|
+| gate | in-process `canUseTool` + hook callbacks | hook via `--settings`, or an MCP server |
+| `--bare` conflict (#521) | does not exist | real, and forecloses the gate |
+| routing signal | typed events, Pydantic/TS types | `stream-json` parsed from stdout |
+| session persistence | **`SessionStore` interface** — `append`/`load`, with S3/Redis/Postgres reference adapters | `~/.claude/projects/*.jsonl` on the local disk |
+| cost/usage | per-turn and cumulative, exposed | `total_cost_usd` in the stream; `/usage` headless |
+| language | Python / TypeScript | any |
+
+`SessionStore` is the sharpest loss: it is a pluggable durable transcript store with a published
+conformance suite, dual-write semantics, and a `mirror_error` event — very close to what the room model
+needs, and unavailable on the terms we operate under.
+
+### `agy`'s SDK — same answer, and this one is enforced in code
+
+`agy` ships a Python SDK (`pip install google-antigravity`, 0.1.8). It was checked rather than
+assumed, and it does not offer an escape from the constraint — it is **stricter**, because the
+restriction is not a policy sentence but a code path.
+
+The package was downloaded and **read without being run** (`pip download --no-deps`).
+`google/antigravity/models.py` defines exactly two endpoint types, and validation *raises* without a
+key:
+
+```python
+class GeminiAPIEndpoint(ModelEndpoint):
+  def validate_endpoint(self) -> None:
+    if not (self.api_key or os.environ.get("GEMINI_API_KEY")):
+      raise ValueError(
+          "A Gemini API key is required. Set it via"
+          " GEMINI_API_KEY environment variable or via"
+          " LocalAgentConfig(api_key=...)."
+      )
+
+class VertexEndpoint(ModelEndpoint):        # project + location, i.e. GCP ADC
+  def validate_endpoint(self) -> None:
+    if not (self.project and self.location):
+      raise ValueError("For Vertex AI, a GCP project and location must be set.")
+```
+
+A search of every `.py` in the package for `keyring`, `oauth`, `keychain`, `secret_service`, or the
+CLI's credential store returns **nothing**. The CLI stores its login in the OS keyring (Windows
+Credential Manager / Keychain / Secret Service); the SDK never reads it. There is no subscription
+path to find, so `Evidence.Absent` is safe here in a way it usually is not — the surface list is the
+package's entire source, not a guessed flag name.
+
+Both SDKs bundle a native binary (`google/antigravity/bin/localharness.exe`, 120 MB; the claude SDKs
+"bundle a native Claude Code binary for your platform"). The SDK is not a different transport — it is
+the same local harness with a typed wrapper and a **different auth requirement**. That is the whole
+of the difference, and it is the part that disqualifies it.
+
+**Conclusion: CLI for both vendors.** Not a compromise — the only subscription-compatible path
+either vendor offers. The SDK question is closed.
+
+### One thing to take from the SDK regardless
+
+The SDK's `SessionStore` contract is a good design to copy even while implementing it ourselves:
+required `append`/`load` keyed by `{projectKey, sessionId, subpath}`, optional `listSessions` /
+`delete` / `listSubkeys`, entries treated as opaque ordered JSON, mirror writes best-effort with the
+local copy authoritative, and a distinct event when mirroring fails. That is a well-worn shape for
+exactly the problem 0015's durable gate and the room store both have.
+
 ## Sources
 
 - Claude Code docs index — https://code.claude.com/docs/llms.txt
@@ -609,9 +766,17 @@ set at spawn, no session resumption with in-process teammates.
   [Channels](https://code.claude.com/docs/en/channels) ·
   [Agent teams](https://code.claude.com/docs/en/agent-teams) ·
   [SDK permissions](https://code.claude.com/docs/en/agent-sdk/permissions) ·
-  [SDK user input](https://code.claude.com/docs/en/agent-sdk/user-input)
+  [SDK user input](https://code.claude.com/docs/en/agent-sdk/user-input) ·
+  [SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) ·
+  [SDK session storage](https://code.claude.com/docs/en/agent-sdk/session-storage)
 - Antigravity CLI — [overview](https://antigravity.google/docs/cli/overview) ·
   [reference](https://antigravity.google/docs/cli/reference) ·
   [permissions](https://antigravity.google/docs/cli/permissions) ·
   [sandbox](https://antigravity.google/docs/cli/sandbox) ·
-  [usage](https://antigravity.google/docs/cli/commands/usage)
+  [usage](https://antigravity.google/docs/cli/commands/usage) ·
+  [install & auth](https://antigravity.google/docs/cli/install)
+- Antigravity SDK / terms — [SDK overview](https://antigravity.google/docs/sdk/overview) ·
+  [plans](https://antigravity.google/docs/plans) ·
+  [FAQ](https://antigravity.google/docs/faq) ·
+  [terms](https://antigravity.google/terms)
+- `google-antigravity` 0.1.8 wheel, read via `pip download --no-deps`
