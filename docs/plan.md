@@ -288,6 +288,13 @@ Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits).
   its home; moves with #338.
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
   how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
+- **Whether a delegated implementer/reviewer loop can run without a human calling `aer decide`.**
+  `DecisionType` (`Resume`/`Reject`/`RetryWithRevision`/`Supersede`) already exists and is exactly the
+  primitive such a loop needs, resolved via `aer decide` at a step's declared `PausePoint` — but
+  `PausePoint`'s own doc comment records every pause as awaiting *human* review/approval. Nothing in
+  the code enforces that; nothing has tried the alternative either. M27 territory ("more than one
+  model in the room"), not M26 — a second worker reviewing the first is the same escalation the rest
+  of that milestone is built on.
 
 ## Not in scope
 
