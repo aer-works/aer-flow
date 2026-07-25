@@ -189,56 +189,78 @@ vendor assertion, and this audit has already found four vendor statements to be 
 
 Verified items move to the "Verified by running it" section of
 [`vendor-doc-audit.md`](vendor-doc-audit.md). Nothing is deleted from here without either a run or
-a reason it cannot be run.
+a reason it cannot be run. **Struck rows are re-runnable via `pixi run vendor-verify`** — that is
+what makes striking one safe across a vendor version bump.
+
+**Two rows turned out to be wrong as written**, not merely unverified. Both are corrected in place
+rather than deleted, so the wrong version does not get re-derived by a later reader.
 
 #### A. Shapes a decision currently in flight
 
-| claim | vendor | why it matters |
+| claim | vendor | status |
 |---|---|---|
-| `--add-dir` grants file access but loads **no** hooks/settings config | claude | decides **where** AER must place its gate |
-| `usage.output_tokens` excludes subagent tokens; `modelUsage` is whole-tree | claude | any cost display under-reports every fan-out (#479) |
-| a hook's `"ask"` forces a prompt in `auto` mode | claude | second always-fires path after exit-2 |
-| ~~`PermissionRequest` fires **only** in auto mode~~ — **the row was wrong, not just unverified.** The docs say it fires "when a permission dialog appears"; `PermissionDenied` is the auto-classifier event. **Now verified: `PermissionRequest` never fires under `-p`.** (`PermissionDenied` also logged zero, but nothing established that a denial occurred — that one is still open.) | claude | 0018's notify hook has no event to hang on when the CLI is spawned headless |
-| explicit `ask` rules force a prompt even in `bypassPermissions` | claude | third always-fires claim |
-| `requiresUserInteraction` allow→deny under `--permission-prompt-tool` | claude | the *block* is verified; this conversion is not |
-| an API key disables Remote Control, `/schedule`, connectors, notifications | claude | the functional half of Credential Isolation (rule 4) |
-| `PostInvocation.terminationBehavior` (`force_continue` / `terminate`) | agy | the untested half of agy's loop control |
+| ~~`--add-dir` grants file access but loads **no** hooks/settings config~~ | claude | ✅ verified |
+| ~~`usage.output_tokens` excludes subagent tokens~~ | claude | ✅ verified — 882 vs 1130 |
+| ~~a hook's `"ask"` forces a prompt in `auto` mode~~ | claude | ✅ verified |
+| ~~explicit `ask` rules force a prompt even in `bypassPermissions`~~ | claude | ✅ verified |
+| ~~`requiresUserInteraction` allow→deny under `--permission-prompt-tool`~~ | claude | ✅ verified |
+| ~~`PostInvocation.terminationBehavior`~~ | agy | ✅ verified on the redo — 7 invocations vs 1 |
+| ~~`PermissionRequest` fires **only** in auto mode~~ — **the row was wrong.** The docs say it fires "when a permission dialog appears"; `PermissionDenied` is the auto-classifier event. **Verified: `PermissionRequest` never fires under `-p`.** | claude | ⚠️ corrected + verified — 0018's notify hook has no event to hang on headless |
+| an API key disables Remote Control, `/schedule`, connectors, notifications | claude | **open** — and it will stay open: AER holds no API key by Rule 4, so establishing this would require provisioning the exact credential the design forbids. Moved to F in spirit. |
+| does `PermissionDenied` fire under `-p`? | claude | **open** — logged zero, but nothing established a denial ever occurred |
 
-#### B. Fan-out — entirely documented-only
+#### B. Fan-out
 
-**#503 items 4–5 rest on every row here, and not one has been run.**
+**#503 items 4–5 rested on these. Two are now measured, and one of the two was false.**
 
-`·` 20 concurrent subagents (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`) · nested subagents off by
-default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`) · nested teams impossible · a teammate's
-background work cannot outlive the lead · per-teammate modes cannot be set at spawn · parent
-`bypassPermissions`/`acceptEdits`/`auto` overrides every subagent · workflows `agent()`/`pipeline()`,
-16 concurrent / 1,000 per run, no mid-run input · agent-teams task dependencies and file locking ·
-the `--bg` lifecycle (`attach`, `logs`, `stop`, `rm`, `respawn`) · `daemon stop --keep-workers`
-reconnecting to live workers
+| claim | status |
+|---|---|
+| ~~`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` bounds concurrency~~ | ✅ verified — peak overlap tracked the cap (2, 6) with 8 started in both arms |
+| **nested subagents off by default** | ❌ **contradicted** — default permits one level; explicit cap of 1 does not |
+| ~~parent mode overrides every subagent~~ | ✅ verified against a `default` arm |
+| the documented **default of 20** concurrent | **open** — the cap is verified, the default value is not |
+
+`·` Still documented-only: nested teams impossible · a teammate's background work cannot outlive
+the lead · per-teammate modes cannot be set at spawn · workflows `agent()`/`pipeline()`, 16
+concurrent / 1,000 per run, no mid-run input · agent-teams task dependencies and file locking ·
+`attach` / `respawn` (`logs`, `stop`, `rm` and the state vocabulary are verified) ·
+`daemon stop --keep-workers` reconnecting to live workers
 
 #### C. Durability and sessions
 
-`·` two processes cannot write one transcript · `--fork-session` starts without session grants while
-`/branch` carries them · credential expiry stalls a long-running background session unrecoverably ·
-`CLAUDE_CONFIG_DIR` isolating a supervisor instance · `cleanupPeriodDays` retention ·
-`--no-session-persistence` · `--session-id` · `--fork-session`
+| claim | status |
+|---|---|
+| ~~`CLAUDE_CONFIG_DIR` isolating a supervisor instance~~ | ✅ verified — it is honoured, and costs the subscription login (`"Not logged in · Please run /login"`). The only fix is copying credentials, which Rule 4 forbids. |
 
-#### D. `agy` — almost all of it new on 2026-07-25
+`·` Still documented-only: two processes cannot write one transcript · `--fork-session` starts
+without session grants while `/branch` carries them · credential expiry stalls a long-running
+background session unrecoverably · `cleanupPeriodDays` retention · `--no-session-persistence` ·
+`--session-id`
 
-`·` three permission scopes (Project / Shared / Global) and their merge order · the four
-`toolPermission` presets (`request-review`, `proceed-in-sandbox`, `always-proceed`, `strict`) ·
-"permission rules govern `run_command` across **all** execution modes" · subagents starting from a
-clean slate and being unre-awakenable · AppContainer sandbox on Windows · the daemon↔credential
-coupling ("if the background daemon is locked or headless, the CLI cannot read credentials") ·
-`/usage` TUI-only · the `ask` list · implicit read-on-write · Windows path normalisation
+#### D. `agy`
 
-#### E. Flags never once exercised
+| claim | status |
+|---|---|
+| ~~three permission scopes (Project / Shared / Global) and their merge order~~ — **the row was wrong.** The docs describe three access *lists* (`deny`/`ask`/`allow`, precedence Deny > Ask > Allow) in **one** global file. | ⚠️ corrected + verified — **permissions are global-only**; no project-scoped location is honoured, so **hooks are the only gate AER can install per-worker for agy** |
 
-`·` `--max-budget-usd` · `--json-schema` · `--tools` · `--include-partial-messages` ·
-`--forward-subagent-text` · `--replay-user-messages` · `--input-format stream-json` queueing (#462) ·
-`PermissionDenied` hook · `Notification` hook (`permission_prompt` / `idle_prompt`) ·
-`Elicitation` hooks · 30 s `MCP_TIMEOUT` · `updatedPermissions` / `localSettings` persistence ·
-channels permission relay
+`·` Still documented-only: the four `toolPermission` presets (`request-review`,
+`proceed-in-sandbox`, `always-proceed`, `strict`) · "permission rules govern `run_command` across
+**all** execution modes" · subagents starting from a clean slate and being unre-awakenable ·
+AppContainer sandbox on Windows · the daemon↔credential coupling · `/usage` TUI-only · implicit
+read-on-write · Windows path normalisation
+
+#### E. Flags
+
+| claim | status |
+|---|---|
+| ~~`--max-budget-usd`~~ | ✅ verified **enforcing**, not reporting — `subtype: error_max_budget_usd` |
+| ~~`--json-schema`~~ | ✅ verified conforming — and it takes the schema **inline, not a path** |
+| ~~`--allowedTools` / `--disallowedTools` as a toolset bound~~ | ❌ **contradicted in effect** — `--allowedTools` is pre-approval only, and `--disallowedTools` removes the tool while the model **substitutes another and still reaches the goal**. Neither is a boundary. |
+
+`·` Still never exercised: `--tools` · `--include-partial-messages` · `--forward-subagent-text` ·
+`--replay-user-messages` · `--input-format stream-json` queueing (#462) · `Notification` hook
+(`permission_prompt` / `idle_prompt`) · `Elicitation` hooks · 30 s `MCP_TIMEOUT` ·
+`updatedPermissions` / `localSettings` persistence · channels permission relay
 
 #### F. Cannot be established from here — stated so they stop looking pending
 
