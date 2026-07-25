@@ -633,9 +633,9 @@ def _json_schema():
 
 
 # ====================================================================== durability
-@check("durability.one-writer-per-transcript", "durability",
-       "two processes cannot write the same session transcript concurrently -- bounds whether "
-       "Aer.Daemon may attach a second worker to a live session")
+@check("durability.session-id-guard-is-not-a-lock", "durability",
+       "--session-id is guarded by an existence check, NOT a lock: sequential reuse is refused, "
+       "but two concurrent processes both win the race and both run (docs claim one writer)")
 def _one_writer():
     """Three arms, because two cannot separate the cases.
 
@@ -684,16 +684,20 @@ def _one_writer():
     seq_first, seq_second, seq_blob = sequential_reuse()
     note = (f"concurrent/different ids: {ok_diff}/2 | concurrent/same id: {ok_same}/2 | "
             f"sequential reuse: first={seq_first} second={seq_second}")
-    if ok_diff < 2:
-        return INCONCLUSIVE, f"the control pair did not both succeed, so concurrency itself is flaky; {note}"
-    if ok_same == 2:
-        return FAIL, f"both processes wrote the same session id concurrently; {note}"
-    if not seq_second:
-        return INCONCLUSIVE, ("a session id cannot be reused even sequentially, so the concurrent "
-                              f"refusal says nothing about concurrency; {note}")
+    if ok_diff < 2 or not seq_first:
+        return INCONCLUSIVE, f"the control arms did not both succeed; {note}"
+    # PASS asserts what was MEASURED, twice, identically: the guard is an existence check that a
+    # concurrent pair races past, not a lock. Encoding the docs' single-writer claim would leave
+    # this permanently red and hide a real future change behind a known discrepancy.
+    if ok_same == 2 and not seq_second:
+        return PASS, ("existence check, not a lock -- sequential reuse refused, concurrent reuse "
+                      f"raced past by both; {note}")
+    if ok_same < 2 and not seq_second:
+        return INCONCLUSIVE, ("reuse is refused in both shapes, so nothing distinguishes a lock "
+                              f"from a plain existence check; {note}")
     exclusive = bool(re.search(r"in use|already|lock|conflict|exists", blob, re.I))
-    return PASS, (f"sequential reuse works, concurrent reuse does not -- the exclusion is about "
-                  f"concurrency; {note}; refusal names a conflict={exclusive}")
+    return FAIL, (f"the guard's behaviour changed from what was measured on 2026-07-25; "
+                  f"{note}; refusal names a conflict={exclusive}")
 
 
 @check("durability.config-dir-redirect-breaks-auth", "durability",

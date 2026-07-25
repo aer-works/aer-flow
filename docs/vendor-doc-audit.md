@@ -1176,6 +1176,32 @@ both, and `--add-dir` carries neither.
 *(The operator's `settings.json` was backed up byte-exact and restored; sha256 verified identical
 before and after, by the check and again independently.)*
 
+### `--session-id` is guarded by an existence check, not a lock
+
+The register said "two processes cannot write one transcript". Measured, that is **not what
+protects the transcript** — and the difference matters, because AER was going to rely on it.
+
+Three arms, run twice with identical results:
+
+| arm | outcome |
+|---|---|
+| two processes, two different fresh ids (flakiness control) | both succeeded |
+| **two processes, the same id, concurrently** | **both succeeded** |
+| the same id twice, **sequentially** | first succeeded, **second refused** |
+
+So the guard is an **existence check on a persisted session**, and a concurrent pair races straight
+past it: neither has committed the session yet, so both see the id as free and both proceed. Reuse
+is refused only once the session exists.
+
+The third arm is what makes this readable. Without it, "the concurrent pair was refused" and "an id
+cannot be reused at all" are the same observation — and here the concurrent pair *wasn't* refused,
+which only means something because sequential reuse *was*.
+
+**Consequence for `Aer.Daemon`: there is no vendor-side mutex.** Two workers handed the same
+session id will both run and both write. If AER needs single-writer semantics on a session, it has
+to enforce them itself — the vendor's guard will not lose loudly, it will lose silently, and only
+under the concurrency that makes it matter.
+
 ### Group C — `CLAUDE_CONFIG_DIR` costs the subscription login (2026-07-25)
 
 Architecture Rule 4 forbids redirecting a vendor CLI's config directory. That was a design

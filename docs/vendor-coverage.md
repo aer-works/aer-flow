@@ -232,7 +232,9 @@ concurrent / 1,000 per run, no mid-run input · agent-teams task dependencies an
 |---|---|
 | ~~`CLAUDE_CONFIG_DIR` isolating a supervisor instance~~ | ✅ verified — it is honoured, and costs the subscription login (`"Not logged in · Please run /login"`). The only fix is copying credentials, which Rule 4 forbids. |
 
-`·` Still documented-only: two processes cannot write one transcript · `--fork-session` starts
+| ~~two processes cannot write one transcript~~ — **not what protects it.** `--session-id` is an existence check, not a lock: sequential reuse is refused, but a concurrent pair races past and **both run**. | ⚠️ corrected + verified twice — `Aer.Daemon` must enforce single-writer itself |
+
+`·` Still documented-only: `--fork-session` starts
 without session grants while `/branch` carries them · credential expiry stalls a long-running
 background session unrecoverably · `cleanupPeriodDays` retention · `--no-session-persistence` ·
 `--session-id`
