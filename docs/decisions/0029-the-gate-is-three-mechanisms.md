@@ -56,7 +56,7 @@ another.**
 
 | mechanism | covers | property | fails when |
 |---|---|---|---|
-| **`PreToolUse` hook** | **vendor tools** — `Bash`, `Write`, `Edit`, everything the model reaches without MCP | the only enforcement point over the toolset a worker actually has; `ask` survives `auto`, exit-2 beats an allow rule | not loaded — see the discovery constraint below |
+| **`PreToolUse` hook** | **vendor tools** — `Bash`, `Write`, `Edit`, everything the model reaches without MCP | the only enforcement point over the toolset a worker actually has; `ask` survives `auto`, exit-2 beats an allow rule | **silently, and in two ways**: not loaded (see the discovery constraint below), *or* loaded but its command cannot execute — the tool then runs and the CLI reports nothing (#530) |
 | **Blocking `tools/call`** | **AER's own MCP tools** | the durable wait: AER declines to respond until its UI returns a human answer. The only mechanism that *holds* rather than refuses | reaped mid-wait without a `timeout` floor or progress notifications |
 | **`elicitation` (+ `requiresUserInteraction` on claude)** | **AER's own MCP tools** | uncircumventable refusal — no permission mode on either vendor approves it | always, headless: it denies rather than asks |
 
@@ -103,6 +103,13 @@ sharper still: permission rules are global-only (`agy.permissions-are-global-onl
 the workspace's `.agents/hooks.json` is the *only* way to gate an agy worker without writing to the
 operator's own settings file.
 
+**Which makes the self-check below strictly more load-bearing on `agy` than on `claude`.** A broken
+hook fails open and silently on both (`gate.broken-hook-fails-open`, `agy.broken-hook-fails-open` —
+measured separately, because `agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in
+opposite directions on the two vendors, and inferring one from the other is the mistake this audit
+keeps finding). But on `claude` a dead hook still leaves the MCP callback and elicitation covering
+AER's own tools. On `agy` it leaves **nothing**.
+
 **The gate must hold for a tree of unknown depth.** One level of subagent nesting runs with nothing
 configured (`fanout.nesting-allowed-by-default` — the documentation claims the opposite), and a
 subagent inherits the parent's permission mode and cannot be given a stricter one
@@ -124,7 +131,7 @@ assume a subagent is more constrained than the session that spawned it.
 | `claude` will gain `elicitation.url` | **assumed** — it declares form-only today; nothing commits it to adding url mode | the non-blocking gate stays agy-only and AER carries two gate transports indefinitely |
 | Hooks load only from the process cwd `.claude/`, with no parent fallback | **measured** — `--only gate.add-dir-loads-no-config` | AER need not control the worker's cwd; the launch constraint above relaxes |
 | One level of subagent nesting is permitted by default | **measured** — `--only fanout.nesting-allowed-by-default`, two independent runs | the vendor's documented default (off) holds and the explicit depth cap is belt-and-braces rather than required |
-| A `PreToolUse` hook whose command **cannot execute** fails **open and silently** — the tool runs, and the CLI reports nothing | **measured** — `pixi run vendor-verify -- --only gate.broken-hook` (#530). CRLF endings and a space in the path both survive, so the vendor's documented Git Bash failure mode is *not* the cause | if it failed *closed*, the startup self-check below would be belt-and-braces instead of load-bearing, and a misconfigured worker would be safe rather than ungated |
+| A `PreToolUse` hook whose command **cannot execute** fails **open and silently** — the tool runs, and the CLI reports nothing | **measured on both vendors, separately** — `--only gate.broken-hook-fails-open`, `--only agy.broken-hook-fails-open` (#530). CRLF endings and a space in the path both survive on `claude`, so the vendor's documented Git Bash failure mode is *not* the cause | if it failed *closed*, the startup self-check below would be belt-and-braces instead of load-bearing, and a misconfigured worker would be safe rather than ungated |
 | A second concurrent login against one subscription is permitted | **assumed** — needs the account owner; not measurable from an agent session | per-worker config roots collapse to one and worker isolation needs a different design |
 
 ## Consequences
@@ -137,10 +144,10 @@ never loaded and a callback disabled by `auto` both look exactly like a working 
 **verify its own gate at worker start** rather than assume configuration took effect: the discovery
 control that made these measurements trustworthy is the same technique the product needs at runtime.
 
-**This is measured, not precautionary (#530).** A hook whose command cannot execute — wrong path,
-missing interpreter — lets the tool run and the CLI says *nothing*: no error, no warning, nothing in
-`--output-format json`. So the self-check is the only thing that can detect a dead gate, and two
-properties fall out of *how* the failure presents:
+**This is measured, not precautionary (#530), and it is true of both vendors.** A hook whose command
+cannot execute — wrong path, missing interpreter — lets the tool run and the CLI says *nothing*: no
+error, no warning, nothing in `--output-format json`. So the self-check is the only thing that can
+detect a dead gate, and two properties fall out of *how* the failure presents:
 
 - It must assert a **side effect the hook actually produced**, never that the settings file was
   written. The file is written in every failing arm.

@@ -1142,9 +1142,32 @@ and AER's gate is *its own MCP tool*. **AER is the notifier.** It does not need 
 it that a decision is pending, because AER is the thing creating the decision. 0018 should be
 written that way rather than hunting for a vendor event that fires headless.
 
-**`PermissionDenied` is still open.** It also logged zero, but nothing established that a denial
-ever occurred — `node --version` may simply have been allowed. That is an unresolved arm, not a
-second finding.
+**`PermissionDenied` was left open here, and is now resolved.** It also logged zero, but nothing in
+this run established that a denial ever occurred — `node --version` may simply have been allowed.
+That was an unresolved arm, not a second finding, and it stayed that way until a check was built
+that could tell the two apart (below).
+
+#### `PermissionDenied` does not fire headless either — measured against real denials
+
+`--only gate.permission-denied-fires`. Two arms, one variable: `permissions.allow` versus
+`permissions.deny` on `Write`, with both `PreToolUse` and `PermissionDenied` registered to the same
+logging command in the same file.
+
+| arm | `PreToolUse` | `PermissionDenied` | `permission_denials` | file written |
+|---|---|---|---|---|
+| **control** — `allow` | **1** | 0 | 0 | **yes** |
+| `deny` | **3** | **0** | **3** | no |
+
+The allow arm carries the whole check: it proves the settings loaded, the registration is right, and
+the model does reach for `Write` on this prompt. The deny arm then shows the denial genuinely
+happened — the CLI's own `permission_denials` records three of them — and `PermissionDenied` still
+logged nothing. **So the zero is a result, and the third notification candidate is gone.**
+
+Worth recording *how* this check first failed, because it is the suite's own rule catching the
+suite: the initial version registered the hooks with `matcher: ".*"` and reported `PreToolUse
+fired=0`. It returned **INCONCLUSIVE**, not "PermissionDenied does not fire" — the control refused
+to let a harness bug be published as a vendor finding. The fix was to drop the matcher entirely,
+the form `gate.headless-event-surface` had already measured firing.
 
 ### Group B — fan-out (2026-07-25)
 
@@ -1559,6 +1582,32 @@ nothing short of proving the hook fires can detect it. Two properties follow for
 implementation — the self-check must assert a **side effect the hook produced**, never that the
 settings file was written; and it must run **per worker spawn**, because the failure is per-process
 (a wrong path, a missing interpreter on that host) rather than per-configuration.
+
+#### The same question, asked of `agy` — because the answer could not be carried over
+
+`--only agy.broken-hook-fails-open`. Four arms, same shape, `.agents/hooks.json` and the
+`run_command` matcher.
+
+| arm | command proceeded | CLI reported anything |
+|---|---|---|
+| **control** — working hook returning `deny` | **no**, blocked | — |
+| **control** — working hook, `exit 0` | yes | — |
+| hook script path does not exist | **yes** | **no** |
+| interpreter does not exist | **yes** | **no** |
+
+**`agy` fails open silently too.** Same answer, and it had to be measured rather than inferred:
+`agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in *opposite* directions on the
+two vendors, so "claude does X" is not evidence about agy for anything in this family.
+
+**The consequence is worse here.** `agy.permissions-are-global-only` means the workspace hook is the
+only per-worker gate an agy worker has. On `claude`, a dead hook still leaves the MCP callback and
+elicitation covering AER's own tools; on `agy` it leaves nothing at all. So 0029's startup
+self-check is load-bearing on both vendors, and *sole* cover on one.
+
+Recording why this arm was written late: 0029's mandatory self-check was justified from a
+claude-only run, while the sentence it supports — "the workspace hook is the only way to gate an agy
+worker" — is an agy claim. That is the same shape as the elicitation-portability gap earlier in this
+audit: measure one vendor, write the consequence as though it generalises.
 
 ### Still not settled — recorded as untested, not refuted
 

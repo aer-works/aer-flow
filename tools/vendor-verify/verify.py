@@ -347,6 +347,78 @@ def _broken_hook():
     return PASS, head + " | " + "; ".join(detail)
 
 
+@check("gate.permission-denied-fires", "gate",
+       "whether the PermissionDenied hook event fires under -p when a denial GENUINELY occurs -- "
+       "the arm gate.headless-event-surface could not resolve, and an assumed row in 0030")
+def _permission_denied():
+    """`gate.headless-event-surface` logged zero for `PermissionDenied`, and had to record that as
+    unresolved rather than as a finding: nothing in that run established that a denial ever
+    happened. `node --version` may simply have been allowed. A zero from a condition that never
+    arose is not evidence of anything -- the rule this whole suite is built on.
+
+    So this arm supplies the missing half: it makes a denial certainly occur and proves it did,
+    independently of the hook under test.
+
+    TWO arms, one variable -- `permissions` says allow or deny. The allow arm is the discovery
+    control and it carries the whole weight of the check:
+
+      allow: PreToolUse fires and the file is written  -> the settings loaded, the matcher is
+             right, and the model DOES reach for Write on this prompt
+      deny:  the same run with one word changed        -> whatever differs is caused by the denial
+
+    Only with the allow arm positive AND the deny arm showing a denial actually occurred does a
+    zero on PermissionDenied mean the event does not fire.
+
+    Hooks are registered with NO matcher, the form `gate.headless-event-surface` measured firing.
+    A first attempt used `matcher: ".*"` and PreToolUse never fired -- the check reported
+    INCONCLUSIVE rather than "PermissionDenied does not fire", which is the control doing its job.
+    """
+    def arm(policy):
+        wd = tempfile.mkdtemp(prefix="v-pden-")
+        try:
+            logs, hooks = {}, {}
+            for e in ("PreToolUse", "PermissionDenied"):
+                logs[e] = os.path.join(wd, f"{e}.log").replace("\\", "/")
+                hk = os.path.join(wd, f"{e}.sh").replace("\\", "/")
+                hook_script(hk, logs[e], "exit 0")
+                # Same command, same shape, registered on both events -- one variable: the event.
+                hooks[e] = [{"hooks": [{"type": "command", "command": "sh %s" % hk}]}]
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": hooks, "permissions": {policy: ["Write"]}}, open(st, "w"))
+            tgt = os.path.join(wd, "S.txt").replace("\\", "/")
+            rc, out, err = run(["claude", "-p",
+                                f"Create {tgt} containing OK using the Write tool. Try only once.",
+                                "--settings", st, "--add-dir", wd, "--output-format", "json",
+                                "--allowedTools", "Write"], cwd=wd)
+            try:
+                denials = (json.loads(out) or {}).get("permission_denials") or []
+            except ValueError:
+                denials = []
+            return (fired(logs["PreToolUse"]), fired(logs["PermissionDenied"]), len(denials),
+                    os.path.exists(os.path.join(wd, "S.txt")))
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    a_pre, a_den, a_dn, a_wrote = arm("allow")
+    d_pre, d_den, d_dn, d_wrote = arm("deny")
+    detail = (f"allow: PreToolUse={a_pre} PermissionDenied={a_den} denials={a_dn} wrote={a_wrote}"
+              f" | deny: PreToolUse={d_pre} PermissionDenied={d_den} denials={d_dn} "
+              f"wrote={d_wrote}")
+
+    if a_pre == 0 or not a_wrote:
+        return INCONCLUSIVE, ("the allow control did not fire PreToolUse and write, so the deny "
+                              "arm's zeros mean nothing; " + detail)
+    if d_wrote:
+        return INCONCLUSIVE, ("the deny arm wrote the file anyway -- no denial occurred, so "
+                              "PermissionDenied had nothing to fire on; " + detail)
+    if d_pre == 0 and d_dn == 0:
+        return INCONCLUSIVE, ("nothing shows the model even attempted Write under deny, so a "
+                              "denial is not established; " + detail)
+    return PASS, (("PermissionDenied DOES fire headless" if d_den
+                   else "PermissionDenied does NOT fire headless even when a denial occurs")
+                  + " | " + detail)
+
+
 @check("gate.ask-rule-beats-bypass", "gate",
        "an explicit ask rule still gates under bypassPermissions")
 def _ask_bypass():
@@ -1282,6 +1354,75 @@ def _agy_deny():
         return PASS, f"fired {n}x, blocked, reason surfaced={'AER_VERIFY_TOKEN' in blob}"
     finally:
         shutil.rmtree(wd, ignore_errors=True)
+
+
+@check("agy.broken-hook-fails-open", "agy",
+       "whether an agy PreToolUse hook whose command cannot execute fails OPEN -- the same "
+       "question #530 answered for claude, asked on the vendor where the hook is the ONLY gate")
+def _agy_broken_hook():
+    """`gate.broken-hook-fails-open` measured claude. This measures agy, and the answer cannot be
+    carried across: `agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in the
+    OPPOSITE direction on the two vendors, so inferring one from the other is the exact mistake
+    this suite exists to catch.
+
+    It also matters more here. On claude a dead hook still leaves the MCP callback and elicitation
+    covering AER's own tools. On agy, `agy.permissions-are-global-only` means the workspace hook is
+    the only per-worker gate there is -- so a hook that fails open leaves nothing.
+
+    Two working-hook controls first: if a live deny does not block and a live allow does not run,
+    the broken arms are measuring the harness, not the vendor.
+    """
+    def arm(kind):
+        wd = tempfile.mkdtemp(prefix="v-agyb-")
+        try:
+            os.makedirs(os.path.join(wd, ".agents"))
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            if kind in ("control-blocks", "control-allows"):
+                hook_script(hk, log,
+                            """echo '{"decision":"deny","reason":"AER_VERIFY_TOKEN"}'"""
+                            if kind == "control-blocks" else "exit 0")
+                cmd = "sh %s" % hk
+            elif kind == "missing-script":
+                cmd = "sh %s" % os.path.join(wd, "does-not-exist.sh").replace("\\", "/")
+            else:  # bad-interpreter
+                hook_script(hk, log, "exit 0")
+                cmd = "aer-no-such-interpreter %s" % hk
+            json.dump({"v": {"PreToolUse": [{"matcher": "run_command", "hooks": [
+                {"type": "command", "command": cmd, "timeout": 25}]}]}},
+                open(os.path.join(wd, ".agents", "hooks.json"), "w"))
+            rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
+                                "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
+            blob = out + err
+            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", blob))
+            # Same distinction as #530: failing open LOUDLY is detectable at startup, silently
+            # is not. That difference, not the fail-open itself, is what the design turns on.
+            noisy = any(w in blob.lower() for w in ("hook", "pretooluse", "127", "not found",
+                                                    "no such file"))
+            return ran, noisy, fired(log)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    # Filled from the first run and asserted thereafter. Encodes what was OBSERVED, not what we
+    # would prefer -- a check that stays red on a known answer is a check nobody reads.
+    BASELINE = {"control-blocks": False, "control-allows": True,
+                "missing-script": True, "bad-interpreter": True}
+
+    results, detail = {}, []
+    for kind in ("control-blocks", "control-allows", "missing-script", "bad-interpreter"):
+        ran, noisy, n = arm(kind)
+        results[kind] = ran
+        detail.append(f"{kind}: ran={ran} reported={noisy}" + (f" fired={n}" if n else ""))
+    if results["control-blocks"] or not results["control-allows"]:
+        return INCONCLUSIVE, ("the working-hook controls did not discriminate, so every broken arm "
+                              "is meaningless: " + "; ".join(detail))
+    drift = [k for k, want in BASELINE.items() if results[k] != want]
+    if drift:
+        return FAIL, f"baseline moved for {drift}: " + "; ".join(detail)
+    silent = [k for k in ("missing-script", "bad-interpreter") if results[k]]
+    head = (f"BROKEN HOOKS FAIL OPEN ON AGY TOO: {silent}" if silent
+            else "agy fails CLOSED on a broken hook -- the gate holds where claude's does not")
+    return PASS, head + " | " + "; ".join(detail)
 
 
 @check("agy.force-ask-defeated-by-skip", "agy",

@@ -29,6 +29,7 @@ This table runs the other direction: from measurement to design.
 | `gate.add-dir-loads-no-config` | `--add-dir` grants files, loads no config | Launch constraint: AER must control the worker's cwd or pass `--settings`. Lands in M26, not M28. |
 | `gate.permission-request-not-headless` | `PermissionRequest` never fires under `-p` | Removed 0018's assumed notification source. Forced [0030](decisions/0030-aer-is-its-own-notifier.md). |
 | `gate.headless-event-surface` | 10 events fire, 3 silent, 10 untested | The other half of 0030 — it is what makes "then what?" answerable, and its three-way split is why the record does not assert eleven untested things. |
+| `gate.permission-denied-fires` | `PermissionDenied` stays silent through **3** real denials | **Turned 0030's last assumed row into a measurement.** The event-surface run had logged a zero nothing could interpret; this supplies the missing half — an allow control that writes, a deny arm that records three denials in `permission_denials` and writes nothing. With `PermissionRequest` and `Notification`, that is the whole permission-notification surface confirmed absent headless, which is why 0030 says AER *is* the notifier rather than a listener. |
 
 ## Fan-out
 
@@ -63,6 +64,7 @@ This table runs the other direction: from measurement to design.
 | `agy.permissions-are-global-only` | no project-scoped permission rules are honoured | **Hooks are agy's only per-worker gate.** AER cannot scope an agy worker's permissions without writing the operator's own settings file — which it must not. Makes 0029's mandatory hook load-bearing on agy specifically. |
 | `agy.force-ask-defeated-by-skip` | `force_ask` collapses under `--dangerously-skip-permissions` | A vendor asymmetry running the *opposite* way from the usual one. It is also the evidence that made measuring agy elicitation non-optional rather than a formality. |
 | `agy.hook-deny-honoured` | a `PreToolUse` deny blocks and surfaces its reason | Confirms the gate is symmetric across vendors at the hook layer — the premise 0029's mechanism table depends on. |
+| `agy.broken-hook-fails-open` | agy also fails open, also silently | **Closed a generalisation, not a gap.** 0029's mandatory self-check was justified from a claude-only measurement while the sentence it supports — "the workspace hook is the only per-worker gate on agy" — is an agy claim. It now rests on an agy run. The consequence is worse here than on claude by exactly the asymmetry `agy.permissions-are-global-only` names: a dead hook on claude still leaves the MCP callback and elicitation; on agy it leaves nothing. |
 | `agy.fails-closed-headless` | `agy -p` auto-denies an ungated tool and names the rule | **No impact** — confirms 0015's corrected premise that both vendors fail closed. Also the reason a permissive arm is required to measure anything else about agy headless. |
 | `agy.settings-allow-honoured-headless` | `permissions.allow` is honoured under `-p` | **No impact, and deliberately kept red-adjacent**: upstream #548 says otherwise and does not reproduce here. The check exists to notice if the upstream report becomes true on this host. |
 | `agy.termination-behavior` | `PostInvocation terminationBehavior: terminate` ends the loop | Confirms agy's control surface is real and CLI-reachable. **No design change**; AER does not currently need it. |
@@ -74,6 +76,11 @@ This table runs the other direction: from measurement to design.
   defence is that each names *what* it confirms, so a wrong call is visible rather than silent.
 - **What was never measured.** The blind spot is the unrun check, not the unrecorded row. The
   standing ones are listed under *Still not settled* in
-  [`vendor-doc-audit.md`](vendor-doc-audit.md), and the highest-value of them is whether hooks fire
-  reliably on Windows through Git Bash — the platform this is developed on, and the thing 0029's
-  mandatory hook sits on top of.
+  [`vendor-doc-audit.md`](vendor-doc-audit.md); the highest-value is now #531, whether a live
+  SEP-1036 url-mode elicitation actually reaches a person and resumes, because it is the only
+  finding here that needs a human rather than a better instrument.
+- **Whether a result on one vendor holds on the other.** Nothing in this table enforces that, and
+  two rows exist only because the question got asked late: `agy.elicitation-capability` and
+  `agy.broken-hook-fails-open` were each written after noticing that a claude measurement was
+  carrying an agy sentence. `agy.force-ask-defeated-by-skip` is the standing proof that the
+  inference is unsafe — the same mechanism, opposite behaviour.

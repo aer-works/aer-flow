@@ -18,9 +18,9 @@ it. A step with no enumerable population says so instead of pretending.
 |---|---|---|---|---|
 | 1 | No doc source missed | 7 source families | [`vendor-doc-audit.md § Sources`](vendor-doc-audit.md) + `vendor_survey.py` | **yes** |
 | 2 | Every source actually read | **382 mirrored pages** | ledger + [`vendor-doc-audit.md`](vendor-doc-audit.md) dispositions | **yes** |
-| 3 | Gaps verified against real behaviour | **29 checks** | [`tools/vendor-verify/`](../tools/vendor-verify/README.md) | **yes** |
+| 3 | Gaps verified against real behaviour | **32 checks** | [`tools/vendor-verify/`](../tools/vendor-verify/README.md) | **yes** |
 | 4 | Gaps fixed or filed | defects + open questions | GitHub issues (below) | no — needs the network |
-| 5 | What reality changed | **29 checks** | [`architecture-impact.md`](architecture-impact.md) | **yes** |
+| 5 | What reality changed | **32 checks** | [`architecture-impact.md`](architecture-impact.md) | **yes** |
 | 6 | Design verified against it | **30 decision records** | [`decision-audit.md`](decision-audit.md) | **yes** |
 | 7 | Milestone approach re-verified | M26–M30 | [`plan.md § What the vendor audit changes`](plan.md) | **yes** |
 | 8 | Plan to start building | the ordered first slice | [`plan.md`](plan.md) + issues (below) | no — a judgement |
@@ -35,7 +35,7 @@ as done.
 | `--allowedTools` does not bound a worker's capabilities | **filed — [#529](https://github.com/aer-works/aer-flow/issues/529)**, live defect. Also flipped journey J6 to *Fails* and forced 0029. |
 | `--bare` disables hooks even via `--settings` | **already filed — #521.** Narrows the viable gate combinations; cited by 0029. |
 | A `PreToolUse` hook is the gate that always fires | **already filed — #517.** 0029 is the decision that answers it. |
-| Hooks may fail **silently** on Windows; 0029's mandatory hook rests on it | **filed — [#530](https://github.com/aer-works/aer-flow/issues/530)**, and it is the highest-value unrun check in the set. |
+| Hooks may fail **silently** on Windows; 0029's mandatory hook rests on it | **filed and answered — [#530](https://github.com/aer-works/aer-flow/issues/530)**, closed with a measurement (`gate.broken-hook-fails-open`). They fail **open and silently**, and the assumption named the *wrong cause*: CRLF and spaces in paths both survive. Made 0029's self-check load-bearing and fixed what it must assert. |
 | SEP-1036 URL-mode elicitation is unproven end to end | **filed — [#531](https://github.com/aer-works/aer-flow/issues/531)**, permanently a human action item. |
 | `.mcp.json` project scope is approval-gated, so unusable headless | **recorded on #445**, with the twice-spawned and release-the-call constraints. |
 | `PermissionRequest` / `Notification` silent under `-p` | **fixed in design — 0030**; no issue needed, the answer was architectural. |
@@ -43,7 +43,9 @@ as done.
 | `--session-id` is not a lock | **recorded against 0008**; `Aer.Daemon` enforces single-writer. Tracked by #393. |
 | `usage.output_tokens` excludes subagent tokens | **already filed — #479** (J9's cost surface). |
 | `CLAUDE_CONFIG_DIR` / per-worker roots viable | **fixed — CLAUDE.md Architecture Rule 4 corrected**, dated, with the measurement named. |
-| Concurrency default 20 · `defer`'s batch limit · MCP idle ceiling · `PermissionDenied` arm | **open, and recorded as open** — [`vendor-doc-audit.md § Still not settled`](vendor-doc-audit.md). Untested is not refuted. |
+| `PermissionDenied` never observed firing | **answered — `gate.permission-denied-fires`.** Was an unresolved arm (a zero from a condition that may never have arisen); a two-arm rebuild proved three real denials and a still-silent event. Converted 0030's last **assumed** row to **measured**. |
+| Broken hooks on `agy`, where the hook is the *only* per-worker gate | **answered — `agy.broken-hook-fails-open`.** Written after noticing 0029 justified an agy sentence with a claude measurement. Same result, worse consequence. |
+| Concurrency default 20 · `defer`'s batch limit · MCP idle ceiling | **open, and recorded as open** — [`vendor-doc-audit.md § Still not settled`](vendor-doc-audit.md). Untested is not refuted. |
 | A second concurrent login on one subscription | **owner action** — not measurable from an agent session; an **assumed** row in 0029. |
 
 ## Step 8 — the first slice, and why it is that one
@@ -52,9 +54,10 @@ The audit moved work *earlier*, so the build order is not the milestone order ap
 
 1. **The gate self-check, in M26** — 0029 makes a `PreToolUse` hook mandatory on every spawned
    worker, and a hook that silently does not fire looks exactly like one that works. So the first
-   thing built is the thing that proves the gate fires, not the gate. **#530 gates this**: if hooks
-   can fail silently on Windows, the self-check is the only thing standing between the product and a
-   permanently open gate on its own development platform.
+   thing built is the thing that proves the gate fires, not the gate. **#530 settled this and made
+   it non-negotiable**: a hook whose command cannot execute lets the tool run and the CLI says
+   nothing — on **both** vendors. The self-check is the only thing standing between the product and
+   a permanently open gate on its own development platform.
 2. **Worker launch: cwd, `--settings`, `--mcp-config`, depth cap** — the constraints from
    `gate.add-dir-loads-no-config`, `claude/mcp`'s approval gating, and
    `fanout.nesting-allowed-by-default`. All are spawn-path work, cheap now and expensive once three
@@ -77,8 +80,10 @@ one.**
   so a wrong one is visible rather than silent.
 - **Prove the checks still pass.** That is `pixi run vendor-verify`, which spends real subscription
   usage and is deliberately not wired into CI.
-- **Close a live-vendor gate.** #530 and #531 need a human. An agent session can build the runbook
-  and the instrument; it cannot be the person.
+- **Close a gate that needs a person on the other end.** #531 is the standing one: SEP-1036 hands a
+  human a URL to answer out of band, and no agent session can be that human. An agent session can
+  build the runbook and the instrument; it cannot be the person. Note the distinction — #530 *read*
+  like a human item and was not one; it needed a better instrument, not a browser.
 
 ## The two rules the whole audit runs on
 

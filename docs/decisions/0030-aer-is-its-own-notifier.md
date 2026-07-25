@@ -25,7 +25,10 @@ The full headless surface was then measured in one run, and the split matters mo
 - **Fires under `-p` (10):** `SessionStart`, `UserPromptSubmit`, `InstructionsLoaded`, `PreToolUse`,
   `PostToolUse`, `PostToolBatch`, `MessageDisplay`, `SubagentStart`, `SubagentStop`, `Stop`
 - **Silent, and the condition genuinely arose:** `PermissionRequest`, `PermissionDenied`,
-  `Notification`
+  `Notification`. `PermissionDenied` needed a second run to earn its place on this line rather than
+  the one below — the first measurement never established that a denial had happened, so its zero
+  meant nothing. `gate.permission-denied-fires` supplied the missing half: an allow control that
+  wrote the file, and a deny arm that recorded three real denials and still logged zero.
 - **Silent only because the task never created the condition** — untested, *not* absent:
   `PostToolUseFailure`, `PreCompact`/`PostCompact`, `StopFailure`, `TaskCreated`/`TaskCompleted`,
   `Elicitation`, `CwdChanged`, `ConfigChange`, `UserPromptExpansion`
@@ -65,7 +68,7 @@ you* — and that distinction is now observable rather than inferred from silenc
 | `PermissionRequest` and `Notification` never fire under `-p` | **measured** with a `PreToolUse` discovery control — `pixi run vendor-verify -- --only gate.permission-request-not-headless`, `--only gate.headless-event-surface` | a vendor event *could* carry the signal; this record is unnecessary though not wrong, and 0018's original assumption is restored |
 | `PreToolUse` and `Stop` fire reliably under `-p` | **measured** — `--only gate.headless-event-surface` | AER's own gate cannot observe worker activity headless and the whole notification path needs rebuilding on the vendor's stream output |
 | AER hosts the MCP gate, so it holds the pause data at ask-time | **structural** — follows from [0029](0029-the-gate-is-three-mechanisms.md), not an external fact | if 0029's mechanism changes, re-derive; this record's premise is 0029's conclusion |
-| `PermissionDenied` never fires under `-p` | **assumed** — it logged zero, but nothing established that a denial actually occurred, so the arm is unresolved | a fourth event exists that reports denials headless; worth having, does not change the decision |
+| `PermissionDenied` never fires under `-p`, **even when denials genuinely occur** | **measured** — `--only gate.permission-denied-fires`. An allow control fired `PreToolUse` and wrote the file; the deny arm recorded **3** denials in `permission_denials` and wrote nothing; `PermissionDenied` logged zero in both | a third event exists that reports denials headless; worth having, does not change the decision |
 | The `Elicitation` hook event's headless behaviour | **untested** — the measuring run registered no MCP server, so its zero means nothing | if it fires, AER gains a second observation point on its own elicitations — redundant, since AER is the server |
 
 ## Consequences
