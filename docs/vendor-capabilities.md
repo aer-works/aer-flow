@@ -174,6 +174,31 @@ than routing around it with a shell write."* A denial can therefore carry a reas
 `agy` has no equivalent flag, so on that vendor the same MCP server must be reached by the model
 electing to call it — a weaker guarantee, and one the surface should not hide.
 
+### `--permission-mode auto` silently disables the callback
+
+**The single most consequential interaction found so far, and it fails quietly.** Identical prompt,
+identical MCP server, identical flags — only the mode differs:
+
+| `--permission-mode` | our tool consulted | out-of-scope write |
+|---|---|---|
+| `default` | **yes** — one `tools/call` | proceeded, because *we* allowed it |
+| `auto` | **no** — zero `tools/call` | proceeded, because the **classifier** allowed it |
+
+Under `auto`, `--permission-prompt-tool` is **never consulted**. No error, no warning, no diagnostic:
+the flag is accepted, the server starts, and the permission path simply routes elsewhere. A gate that
+is configured, running, and never called looks exactly like a gate that is working.
+
+Tested with a write *outside* the session's own directory, which the classifier's own `allow` text
+calls scope escalation (*"wandering into ~/, ~/Library/, /etc, or other repos is scope escalation…
+not a local operation"*). It was allowed anyway. So `auto` is also more permissive in practice than
+its rule text reads — worth knowing before treating the classifier as a ceiling.
+
+**Consequence: `auto` and a permission callback are mutually exclusive. Pick one.** AER must never
+set `auto` on a worker whose gate it relies on, and if a user's own settings turn it on, AER has to
+know its gate is dead rather than reporting a permission surface it no longer has. This is a
+[0028](decisions/0028-no-permissive-control-is-the-default.md) question as much as a mechanism one:
+the more convenient mode is the one that removes the control.
+
 ## The subcommand surface — three `claude` subcommands nobody had opened
 
 **Probed 2026-07-24.** Every capability above was probed on `--help` and, where relevant, the slash

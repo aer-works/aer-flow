@@ -163,6 +163,35 @@ Three things fall out that the design did not anticipate:
 `tool_use_id` arrives in both `arguments` and `_meta`, which is the correlation key the durable gate
 below records at ask-time.
 
+#### The structural guarantee has one switch that turns it off
+
+**`--permission-mode auto` silently disables the callback.** Same prompt, same server, same flags —
+only the mode differs:
+
+| `--permission-mode` | our tool consulted |
+|---|---|
+| `default` | **yes** — one `tools/call` |
+| `auto` | **no** — zero `tools/call` |
+
+There is no error and no warning. The flag is still accepted, the MCP server still starts, and the
+permission path simply goes somewhere else — `claude`'s own `auto-mode` classifier, an
+`allow` / `soft_deny` / `hard_deny` policy that ships with the CLI (#507). **A gate that is
+configured, running, and never called is indistinguishable from a working one**, which makes this the
+most dangerous kind of vendor behaviour for this record to have missed.
+
+So the "structural" claim above holds precisely, and only, when AER controls the permission mode:
+
+- **AER must never set `auto`** on a worker whose gate it relies on.
+- **If the operator's own settings enable it, AER must treat its permission surface as absent** —
+  not degrade quietly to showing a gate that cannot fire. Same rule as
+  [0023](0023-effort-and-models-are-named-by-behaviour.md)'s disclosed collapse: the honest move is
+  to say the control is gone, never to render one that does nothing.
+
+Worth stating plainly because of the direction it points:
+[0028](0028-no-permissive-control-is-the-default.md) says no permissive control is the default, and
+here the *more convenient* mode is the one that removes the control — including for an out-of-scope
+write the classifier's own rule text describes as scope escalation, which it permitted anyway.
+
 **The method lesson is the durable part.** Both premises this record got wrong were negatives
 established from a single surface — first the environment-leaked probe, then `--help`. A negative
 claim about a vendor CLI needs more evidence than a positive one, and that is now enforced by the
