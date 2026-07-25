@@ -469,6 +469,45 @@ def _inherit_mode():
     return (PASS if not default else FAIL), f"acceptEdits wrote={accept}, default wrote={default}"
 
 
+# ====================================================================== cost
+@check("cost.max-budget-enforced", "cost",
+       "--max-budget-usd stops a session that would exceed it, rather than only reporting overrun")
+def _max_budget():
+    """Whether AER can delegate budget enforcement to the vendor or must implement its own.
+
+    Both arms run the same multi-step task; only the budget differs. A generous budget completing
+    while a near-zero one does not is the whole result -- without the generous arm, a failure
+    could just be the task failing.
+    """
+    PROMPT = ("Write a 400-word essay about the history of the lighthouse, then revise it twice, "
+              "then summarise your revisions. Finish by replying with the word ESSAYDONE.")
+
+    def arm(budget):
+        wd = tempfile.mkdtemp(prefix="v-budget-")
+        try:
+            extra = [] if budget is None else ["--max-budget-usd", str(budget)]
+            rc, out, err = run(["claude", "-p", PROMPT, "--add-dir", wd,
+                                "--output-format", "json", *extra], timeout=600, cwd=wd)
+            blob = out + err
+            try:
+                payload = json.loads(out or "{}")
+            except ValueError:
+                payload = {}
+            return rc, ("ESSAYDONE" in blob), payload.get("subtype") or payload.get("stop_reason"), blob
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    rc_free, done_free, stop_free, _ = arm(None)
+    rc_tiny, done_tiny, stop_tiny, blob = arm(0.001)
+    note = (f"unbudgeted: rc={rc_free} finished={done_free} stop={stop_free!r} | "
+            f"budget 0.001: rc={rc_tiny} finished={done_tiny} stop={stop_tiny!r}")
+    if not done_free:
+        return INCONCLUSIVE, f"the unbudgeted control never finished the task; {note}"
+    if done_tiny:
+        return FAIL, f"a $0.001 budget did not stop the session; {note}"
+    mentions = bool(re.search(r"budget|cost|limit|exceed", blob, re.I))
+    return PASS, f"{note}; stop reason names the budget={mentions}"
+
+
 # ====================================================================== durability
 @check("durability.config-dir-redirect-breaks-auth", "durability",
        "CLAUDE_CONFIG_DIR redirects session storage but not the subscription login "

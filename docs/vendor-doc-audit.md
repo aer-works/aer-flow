@@ -995,6 +995,38 @@ second finding.
 | claim | result |
 |---|---|
 | the parent's permission mode covers its subagents | ✅ **confirmed** — under `--permission-mode acceptEdits` the subagent's write landed; under `default`, with the prompt, tools and target identical, it did not. The mode reaches the child. |
+| nested subagents are **off by default** | ❌ **contradicted** — see below |
+| `--max-budget-usd` stops a session rather than only reporting overrun | ✅ **confirmed** — `$0.001` exits **1** with `subtype: error_max_budget_usd`; the unbudgeted control finished the same task on exit 0 |
+
+#### Nesting is *not* off by default — one level is already allowed
+
+Measured by counting what the CLI actually started: a `SubagentStart` hook appends one line per
+spawn. Same prompt in all three arms, only `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` differing.
+**Two independent runs produced identical numbers.**
+
+| `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | subagents actually started |
+|---|---|
+| unset (the default) | **2** |
+| `1` | **1** |
+| `2` | **2** |
+
+The variable works — capping at 1 really does prevent the nested spawn. **The default is not 1.**
+A subagent can spawn its own subagent with nothing configured.
+
+Getting here took three instruments, and the two discarded ones are the useful part of the record.
+Reading the model's prose proves nothing: it will describe a nested spawn it never performed. A
+sentinel file written by the innermost agent is better but still ambiguous — **the middle subagent
+can simply write that file itself**, producing a byte-identical result. Only counting spawns
+separates the cases. Each redo came from asking what *else* could produce the same observation.
+
+**Consequence for #503 items 4–5:** a fan-out is not one level deep unless AER makes it so.
+Concurrency budgets, cost attribution, and the gate all have to hold for a tree of unknown depth,
+or AER must set `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` explicitly and stop assuming the default.
+
+**On budgets:** `error_max_budget_usd` is a structured, machine-readable stop, so **AER can
+delegate per-session budget enforcement to the vendor** rather than implementing its own. That
+pairs with the `usage.output_tokens` shortfall above: the vendor is the reliable source for spend,
+and AER's own arithmetic over the top-level field is not.
 
 **Consequence for #503 items 4–5:** a fan-out inherits the lead's mode, so **AER cannot rely on a
 subagent being more constrained than the session that spawned it**. Whatever gate the lead runs
