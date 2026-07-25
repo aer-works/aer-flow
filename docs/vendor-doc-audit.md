@@ -945,6 +945,29 @@ agy's distinctive, working contribution is **loop control**, not permission cont
 | `--bare` breaks subscription auth | ✅ re-confirmed against 2.1.220 |
 | undocumented `modelName` in agy hook payloads | ✅ present in `PreToolUse`, `PreInvocation`, `Stop` |
 
+
+### Group A results (2026-07-25)
+
+| claim | result |
+|---|---|
+| `--add-dir` grants file access but loads **no** hooks config | ✅ **confirmed** — a hook in the added dir's `.claude/settings.json` fired **0 times** and the write proceeded |
+| an explicit `ask` rule gates even in `bypassPermissions` | ✅ **confirmed** — the tool did not execute |
+| `usage.output_tokens` excludes subagent tokens | ✅ **confirmed** — top level **882** vs `modelUsage` summed **1130** (a 22% shortfall on one subagent) |
+| agy `PostInvocation.terminationBehavior: "terminate"` | ⚠️ **inconclusive** — the task finished inside one invocation, so terminating after it is indistinguishable from normal completion. Needs a multi-invocation task. |
+
+**Consequences.**
+
+**AER must own the worker's working directory, or pass `--settings`.** `--add-dir` cannot carry a
+gate. With #521 (`--bare` disables hooks even via explicit `--settings`), the viable combinations
+are now measured rather than inferred: **no `--bare`, and either cwd control or `--settings`.**
+
+**claude has three verified always-fires primitives**, not one: `requiresUserInteraction` for MCP
+tools, hook exit-code-2 for any tool, and an explicit `ask` rule for any tool. Independent
+mechanisms with independent failure modes, which is what a gate design wants.
+
+**Any cost surface that sums top-level `usage.output_tokens` under-reports every fan-out.** The gap
+was 22% for a single subagent and grows with the tree. `modelUsage` is the whole-tree figure (#479).
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls

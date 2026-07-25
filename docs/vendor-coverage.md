@@ -173,17 +173,76 @@ side.
 | `agy --sandbox` enforces (file write + network blocked) | #472 |
 | `agy -p` ignores cwd | #472 |
 
-### Documented but **not verified**
+### Documented but **not verified** — the verification backlog
 
-`·` `--max-budget-usd` enforcement · `--json-schema` · `--tools` restriction · `--fork-session` ·
-`--session-id` · `--include-partial-messages` · `--forward-subagent-text` · `--replay-user-messages` ·
-`--input-format stream-json` queueing behaviour (#462) · `claude attach/logs/stop/rm/respawn` ·
-`claude daemon stop --keep-workers` reconnect · `PermissionDenied` hook · `Notification` hook
-(`permission_prompt`/`idle_prompt`) · `Elicitation` hooks · `ask` rules forcing a prompt in
-`bypassPermissions` · `requiresUserInteraction` allow→deny conversion · 30 s `MCP_TIMEOUT` ·
-`updatedPermissions` / `localSettings` persistence · agent-teams task dependencies · workflows
-`agent()`/`pipeline()` · channels permission relay · `agy` `/usage` TUI · `agy` `ask` list ·
-`agy` implicit read-on-write · `agy` Windows path normalisation
+**Updated 2026-07-25 (#527).** The documentation sweep produced roughly 40 new claims while 15 were
+verified, so this list **grew** during the audit. That is the expected dynamic and worth stating
+plainly: **reading generates claims faster than verification consumes them.** Anything here is a
+vendor assertion, and this audit has already found four vendor statements to be wrong.
+
+Verified items move to the "Verified by running it" section of
+[`vendor-doc-audit.md`](vendor-doc-audit.md). Nothing is deleted from here without either a run or
+a reason it cannot be run.
+
+#### A. Shapes a decision currently in flight
+
+| claim | vendor | why it matters |
+|---|---|---|
+| `--add-dir` grants file access but loads **no** hooks/settings config | claude | decides **where** AER must place its gate |
+| `usage.output_tokens` excludes subagent tokens; `modelUsage` is whole-tree | claude | any cost display under-reports every fan-out (#479) |
+| a hook's `"ask"` forces a prompt in `auto` mode | claude | second always-fires path after exit-2 |
+| `PermissionRequest` fires **only** in auto mode | claude | narrows 0018's notify hook |
+| explicit `ask` rules force a prompt even in `bypassPermissions` | claude | third always-fires claim |
+| `requiresUserInteraction` allow→deny under `--permission-prompt-tool` | claude | the *block* is verified; this conversion is not |
+| an API key disables Remote Control, `/schedule`, connectors, notifications | claude | the functional half of Credential Isolation (rule 4) |
+| `PostInvocation.terminationBehavior` (`force_continue` / `terminate`) | agy | the untested half of agy's loop control |
+
+#### B. Fan-out — entirely documented-only
+
+**#503 items 4–5 rest on every row here, and not one has been run.**
+
+`·` 20 concurrent subagents (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`) · nested subagents off by
+default (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`) · nested teams impossible · a teammate's
+background work cannot outlive the lead · per-teammate modes cannot be set at spawn · parent
+`bypassPermissions`/`acceptEdits`/`auto` overrides every subagent · workflows `agent()`/`pipeline()`,
+16 concurrent / 1,000 per run, no mid-run input · agent-teams task dependencies and file locking ·
+the `--bg` lifecycle (`attach`, `logs`, `stop`, `rm`, `respawn`) · `daemon stop --keep-workers`
+reconnecting to live workers
+
+#### C. Durability and sessions
+
+`·` two processes cannot write one transcript · `--fork-session` starts without session grants while
+`/branch` carries them · credential expiry stalls a long-running background session unrecoverably ·
+`CLAUDE_CONFIG_DIR` isolating a supervisor instance · `cleanupPeriodDays` retention ·
+`--no-session-persistence` · `--session-id` · `--fork-session`
+
+#### D. `agy` — almost all of it new on 2026-07-25
+
+`·` three permission scopes (Project / Shared / Global) and their merge order · the four
+`toolPermission` presets (`request-review`, `proceed-in-sandbox`, `always-proceed`, `strict`) ·
+"permission rules govern `run_command` across **all** execution modes" · subagents starting from a
+clean slate and being unre-awakenable · AppContainer sandbox on Windows · the daemon↔credential
+coupling ("if the background daemon is locked or headless, the CLI cannot read credentials") ·
+`/usage` TUI-only · the `ask` list · implicit read-on-write · Windows path normalisation
+
+#### E. Flags never once exercised
+
+`·` `--max-budget-usd` · `--json-schema` · `--tools` · `--include-partial-messages` ·
+`--forward-subagent-text` · `--replay-user-messages` · `--input-format stream-json` queueing (#462) ·
+`PermissionDenied` hook · `Notification` hook (`permission_prompt` / `idle_prompt`) ·
+`Elicitation` hooks · 30 s `MCP_TIMEOUT` · `updatedPermissions` / `localSettings` persistence ·
+channels permission relay
+
+#### F. Cannot be established from here — stated so they stop looking pending
+
+| claim | why not |
+|---|---|
+| claude's OS-enforced sandbox | **does not exist on native Windows**; needs macOS or Linux |
+| anything cross-platform | every observation in this repo is Windows-only |
+| managed / org settings, connector `ask` policy | requires an organisation |
+| Remote Control mobile push, Trusted Devices | requires the mobile app and a paired device |
+| `defer`'s single-tool-call limit | three attempts could not make the model batch its calls; **untested, not refuted** |
+| the MCP idle window's upper bound | 200 s survived; the ceiling is unknown |
 
 ### Contradicted or unresolved
 
