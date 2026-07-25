@@ -768,13 +768,22 @@ def _bg_projection():
         return FAIL, "agents --json did not return a list"
     keys = sorted({k for r in rows if isinstance(r, dict) for k in r})
     states = sorted({str(r.get("state")) for r in rows if isinstance(r, dict)})
-    ids = [r.get("id") for r in rows if isinstance(r, dict)]
-    shorthex = [i for i in ids if isinstance(i, str) and re.fullmatch(r"[0-9a-f]{8}", i)]
-    malformed = [i for i in ids if i is None]
-    note = f"rows={len(rows)} keys={keys} states={states} short-hex ids={len(shorthex)}"
-    if malformed:
-        note += f"; WARNING {len(malformed)} row(s) with null id -- consumers must tolerate these"
-    return (PASS if keys else INCONCLUSIVE), note
+    shorthex = [r for r in rows if isinstance(r.get("id"), str)
+                and re.fullmatch(r"[0-9a-f]{8}", r["id"])]
+    # Which rows carry an id is not arbitrary: `background` rows are addressable (logs/stop/rm
+    # take the id), `interactive` ones are not. A consumer that assumes every row has an id will
+    # crash on any session a human happens to have open.
+    idless_kinds = sorted({str(r.get("kind")) for r in rows
+                           if isinstance(r, dict) and r.get("id") is None})
+    id_kinds = sorted({str(r.get("kind")) for r in rows
+                       if isinstance(r, dict) and r.get("id") is not None})
+    note = (f"rows={len(rows)} keys={keys} states={states} short-hex ids={len(shorthex)}; "
+            f"kinds WITH id={id_kinds}, kinds WITHOUT id={idless_kinds}")
+    if not keys:
+        return INCONCLUSIVE, f"no rows to inspect; {note}"
+    if idless_kinds and idless_kinds != ["interactive"]:
+        return FAIL, f"a non-interactive row had no id -- addressability assumption broken; {note}"
+    return PASS, note
 
 
 # ====================================================================== agy
