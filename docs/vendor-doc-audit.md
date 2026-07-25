@@ -1239,14 +1239,50 @@ The variable is fully honoured — the redirected directory was populated with `
 **credentials are what live under that root**, and a fresh root has none.
 
 **This is not the same mechanism as `--bare`** (#262, #521), which actively *skips* OAuth and
-keychain reads. Stating it precisely matters, because the two would suggest different workarounds:
-`--bare` has none, whereas a config-dir redirect could "work" if AER copied credentials into the
-new root — and **that is exactly what Architecture Rule 4 forbids.**
+keychain reads. `--bare` has no remedy. A redirected config root does.
 
-So the constraint is not that the flag is broken; it is that **the only way to make it work is the
-one thing AER must never do.** Net effect, and it is unchanged: AER can own a worker's working
-directory and pass `--settings`, but it cannot give a worker its own config root. Rule 4's "no
-redirecting the vendor CLIs' config directories" is load-bearing rather than cautious.
+#### Correction: a redirected root can simply be logged in, and that is Rule-4-clean
+
+This section first concluded "AER cannot give a worker its own config root". **That was wrong**,
+and the error was assuming a fresh root's `Not logged in` is a property of the flag rather than of
+the root being new. The docs say so plainly, in the credential-management section:
+
+> On Windows, credentials are stored in `%USERPROFILE%\.claude\.credentials.json` … **If you've set
+> the `CLAUDE_CONFIG_DIR` environment variable on Linux or Windows, the `.credentials.json` file
+> lives under that directory instead.**
+
+Verified non-interactively with `claude auth status`, which reports per-root and **starts no
+session**:
+
+| config root | `loggedIn` | `authMethod` |
+|---|---|---|
+| the operator's real root | `true` | `claude.ai` |
+| a fresh redirected root | `false` | `none` |
+
+`claude auth login` is a real CLI subcommand, not only a TUI slash command, so a root is made
+usable with a one-time interactive sign-in:
+
+```
+$env:CLAUDE_CONFIG_DIR = "<root>"; claude auth login
+```
+
+**This is compatible with Architecture Rule 4, not a violation of it.** Rule 4 forbids *AER*
+reading, copying, forwarding or storing a credential. A human signing in to a root themselves is
+none of those — the vendor CLI authenticates itself, exactly as Rule 4 describes. What Rule 4 rules
+out is AER *copying* credentials into a new root, which remains true and remains forbidden.
+
+**So per-worker config roots are an available design option**, priced at one interactive login per
+root. The vendor documents this as the supported pattern: setting `CLAUDE_CONFIG_DIR` makes an
+instance "run as a separate instance with its own sessions", and the hosting guidance recommends a
+per-tenant config directory.
+
+**Still unknown, and only a real attempt will tell:** whether a second concurrent login against the
+same subscription is permitted, and how it interacts with any parallel-session limit. That is a
+question for the operator's account, not something measurable from here.
+
+**`claude auth status` is independently useful to AER**: a structured, non-interactive readiness
+probe that spends no subscription usage, so a worker's root can be checked *before* dispatch rather
+than discovering the problem as a failed run.
 
 **Consequences.**
 

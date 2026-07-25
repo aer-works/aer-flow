@@ -633,6 +633,38 @@ def _json_schema():
 
 
 # ====================================================================== durability
+@check("durability.auth-status-is-per-config-root", "durability",
+       "claude auth status reports per config root and starts NO session, so AER can check a "
+       "worker's readiness before dispatch; a fresh root is simply un-logged-in, not unusable")
+def _auth_status():
+    """Corrects an earlier over-reading. A fresh CLAUDE_CONFIG_DIR reporting "Not logged in" was
+    taken to mean a redirected root cannot be authenticated at all. It only means the root is new:
+    credentials live under the config root (docs: `.credentials.json` moves with the variable on
+    Windows and Linux), and `claude auth login` populates it.
+
+    The real root is the control -- without it, `loggedIn: false` everywhere would be equally
+    consistent with the probe itself being broken.
+
+    Costs nothing: this is the one check in the suite that spends no subscription usage.
+    """
+    rc0, out0, _ = run(["claude", "auth", "status"], timeout=90)
+    cfg = tempfile.mkdtemp(prefix="v-auth-")
+    try:
+        rc1, out1, _ = run(["claude", "auth", "status"], timeout=90,
+                           extra_env={"CLAUDE_CONFIG_DIR": cfg})
+    finally:
+        shutil.rmtree(cfg, ignore_errors=True)
+    try:
+        real, fresh = json.loads(out0 or "{}"), json.loads(out1 or "{}")
+    except ValueError:
+        return INCONCLUSIVE, "auth status did not return JSON"
+    note = (f"real root: loggedIn={real.get('loggedIn')} method={real.get('authMethod')!r} | "
+            f"fresh root: loggedIn={fresh.get('loggedIn')} method={fresh.get('authMethod')!r}")
+    if not real.get("loggedIn"):
+        return INCONCLUSIVE, f"the control root is not logged in either, so the probe proves nothing; {note}"
+    return (PASS if fresh.get("loggedIn") is False else FAIL), note
+
+
 @check("durability.session-id-guard-is-not-a-lock", "durability",
        "--session-id is guarded by an existence check, NOT a lock: sequential reuse is refused, "
        "but two concurrent processes both win the race and both run (docs claim one writer)")
