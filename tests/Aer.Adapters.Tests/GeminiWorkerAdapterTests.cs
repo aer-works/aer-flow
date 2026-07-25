@@ -29,7 +29,11 @@ public class GeminiWorkerAdapterTests
         Assert.Equal(artifactsRootVar, target.Args[5]);
     }
 
-    /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged.</summary>
+    /// <summary>
+    /// M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards
+    /// it into CoreDispatchTarget unchanged. For <c>agy</c> that is necessary and <b>not sufficient</b>;
+    /// see <see cref="The_rooms_directory_is_bound_with_add_dir_because_agy_ignores_the_process_cwd"/>.
+    /// </summary>
     [Fact]
     public void A_configured_WorkingDirectory_is_forwarded_into_the_resolved_target()
     {
@@ -37,6 +41,48 @@ public class GeminiWorkerAdapterTests
             new WorkerInvocation("Draft a plan.", WorkingDirectory: "/home/user/my-project"), ArchitectContract);
 
         Assert.Equal("/home/user/my-project", target.WorkingDirectory);
+    }
+
+    /// <summary>
+    /// #491: <c>agy -p</c> <b>ignores the process working directory</b>, so setting it on the dispatch
+    /// target does not point the worker at the room's folder. Measured in #472 and recorded in
+    /// <c>docs/vendor-capabilities.md</c>: launched from a directory listed in the CLI's own
+    /// <c>trustedWorkspaces</c>, the emitted command still carried the CLI's install path as
+    /// <c>Cwd</c>; from an untrusted directory it used the CLI's scratch dir and began a recursive
+    /// search of the home folder looking for a file in the launch directory.
+    /// </summary>
+    /// <remarks>
+    /// The failure this guards is silent rather than loud — a worker that cannot see the project does
+    /// not error, it answers confidently about the wrong directory — and J11 (two subscriptions in one
+    /// room) is a human-attested journey, so nothing automated would have caught it.
+    /// </remarks>
+    [Fact]
+    public void The_rooms_directory_is_bound_with_add_dir_because_agy_ignores_the_process_cwd()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", WorkingDirectory: "/home/user/my-project"), ArchitectContract);
+
+        var addDirValues = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .ToList();
+
+        Assert.Contains("/home/user/my-project", addDirValues);
+
+        // Composes with the artifacts root rather than replacing it — --add-dir is repeatable on agy,
+        // and the worker needs both its outputs and the project it is reasoning about.
+        var artifactsRootVar = OperatingSystem.IsWindows() ? "%AER_ARTIFACTS_ROOT%" : "$AER_ARTIFACTS_ROOT";
+        Assert.Contains(artifactsRootVar, addDirValues);
+    }
+
+    /// <summary>A directory-less room (#407's neutral-scratch case) must not emit an empty --add-dir.</summary>
+    [Fact]
+    public void No_directory_add_dir_is_emitted_when_the_room_has_no_working_directory()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.Single(target.Args, arg => arg == "--add-dir");
     }
 
     [Fact]
