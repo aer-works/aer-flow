@@ -41,6 +41,13 @@ public class LiveSessionSmokeTest
 
             var startRequest = new StartSessionRequest(
                 Adapter: "claude",
+                // Pin the CHEAPEST model. `Model: null` inherits the vendor default, which is the
+                // top-tier one -- a single turn of this test was measured at $0.298 on claude-opus-5,
+                // so 50 sequential turns is roughly $15 of subscription budget per run. Nothing this
+                // test asserts depends on model capability: it exercises turn accumulation, context
+                // growth and compaction plumbing, and a cheap model drives all three identically.
+                // A live-vendor gate nobody can afford to run is a gate that does not get run.
+                Model: "haiku",
                 TaskName: "live-session-smoke-" + Guid.NewGuid().ToString("N"),
                 InitialMessage: "Reply with a single short sentence acknowledging this is turn 1 of a smoke test. Do not ask questions.",
                 SafetyCeiling: 200);
@@ -51,7 +58,12 @@ public class LiveSessionSmokeTest
             Assert.NotNull(started);
 
             var afterTurn1 = await PollUntilTurnCountAsync(client, baseUrl, started.SessionId, expectedTurnCount: 1);
-            Assert.False(string.IsNullOrWhiteSpace(afterTurn1.Turns[0].AssistantResponse));
+            // Report the vendor's own error when the response is empty. The daemon already extracts
+            // it into ErrorMessage (Program.cs, TryExtractVendorErrorMessage) and this assertion used
+            // to discard it -- so a live failure surfaced as a bare "Expected: False / Actual: True"
+            // with no cause, on a test whose entire purpose is exercising a real vendor. A usage
+            // limit, an auth problem and a genuine engine bug all looked identical.
+            AssertTurnHasResponse(afterTurn1.Turns[0], "turn 1");
 
             const int totalTurns = 50;
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -82,7 +94,7 @@ public class LiveSessionSmokeTest
             // a live vendor: the response to a summarization request is real, substantial prose --
             // not asserting its exact content (this repo's convention against parsing worker output),
             // just that the live CLI actually produced a real summary rather than an empty/error reply.
-            Assert.False(string.IsNullOrWhiteSpace(compactTurn.AssistantResponse));
+            AssertTurnHasResponse(compactTurn, "the compact turn");
             Assert.True(compactTurn.AssistantResponse!.Length > 40, "Expected a real, non-trivial summary from the live vendor's compact turn.");
         }
         finally
@@ -90,6 +102,28 @@ public class LiveSessionSmokeTest
             // Stops this test's own daemon (the captured app), not the shared static DaemonHost.App.
             await daemon.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// Asserts a turn produced a real assistant response, and names the cause when it did not.
+    /// </summary>
+    /// <remarks>
+    /// Live-vendor tests fail for reasons that are not bugs — a usage limit, an expired login, a
+    /// vendor outage. The daemon already distinguishes them: when no output file is produced it
+    /// extracts the vendor's own error into <c>ErrorMessage</c>. Asserting on the response alone
+    /// threw that away and made every cause look the same, which is the difference between a
+    /// failure someone can act on and one that just gets re-run.
+    /// </remarks>
+    private static void AssertTurnHasResponse(SessionTurn turn, string what)
+    {
+        if (!string.IsNullOrWhiteSpace(turn.AssistantResponse))
+        {
+            return;
+        }
+
+        Assert.Fail(
+            $"The live vendor produced no assistant response for {what}. " +
+            $"Vendor error: {turn.ErrorMessage ?? "(none recorded — the CLI exited without output AND without a recognisable error, which is itself worth investigating)"}");
     }
 
     private static async Task<SessionMetadata> GetSessionAsync(HttpClient client, string baseUrl, string sessionId)
