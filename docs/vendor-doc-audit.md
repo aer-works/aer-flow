@@ -344,6 +344,108 @@ hours-scale. Anything derived from a probe needs a version attached or it is alr
 
 ---
 
+## The Agent SDK docs specify most of what 0015 is designing
+
+The single highest-value page in the sweep. It also **explains the `auto`-mode finding mechanically**
+rather than leaving it as an observation.
+
+### The permission evaluation order — six steps, in this order
+
+1. **Hooks** (`PreToolUse`) — "A hook can deny the call outright." A hook deny applies **even in
+   `bypassPermissions`**.
+2. **Deny rules** — block "even in `bypassPermissions` mode".
+3. **Ask rules** — fall through to the approval callback "even in `bypassPermissions` mode".
+4. **Permission mode** — `auto` is here: "A model classifier approves or denies permission prompts."
+5. **Allow rules**.
+6. **`canUseTool` callback** — only reached if nothing above resolved the call.
+
+**This is why `--permission-mode auto` silently bypassed our gate.** `auto` resolves at step 4;
+`--permission-prompt-tool` is the step-6 callback. The measurement was right and the mechanism is
+documented:
+
+> "**Auto-approved tools never reach `canUseTool`.** A tool call approved at any earlier step… skips
+> your `canUseTool` callback, so permission checks you put there are **silently bypassed** for that
+> tool. For checks that must run on every tool call, use a **`PreToolUse` hook**: hooks run before
+> every other step, and a hook deny applies even in `bypassPermissions` mode."
+
+**So AER's gate should be a `PreToolUse` hook, not only a permission-prompt tool.** That is a
+materially better mechanism than the one [0015](decisions/0015-three-kinds-of-needs-you.md) chose, it
+closes the hole recorded in #514, and it was documented the whole time. An `ask` rule is the second
+always-fires instrument.
+
+### `defer` — the durable-gate problem, already solved
+
+0015 devotes a section to a pause outliving the process holding it, because "the process holding it
+open is the one a crash kills". The SDK has a name for this:
+
+> "The callback can stay pending indefinitely… If a user might take longer to respond than your
+> process can reasonably stay running, return the **`defer` hook decision**, which lets the process
+> exit and resume later from the **persisted session**."
+
+That is the exact requirement 0015 states, with a shipped mechanism. It must be evaluated before we
+build our own.
+
+### `PermissionRequest` hook — the notify half of "needs you"
+
+> "You can also use the `PermissionRequest` hook to send external notifications (Slack, email, push)
+> when Claude is waiting for approval."
+
+[0018](decisions/0018-attention-is-the-primary-signal.md)'s attention signal has a vendor-side hook.
+
+### `AskUserQuestion` — the "decision" kind, with a wire format
+
+0015's three kinds are permission / decision / approval. The **decision** kind is a shipped tool with
+a defined schema: a `questions` array of `{ question, header (≤12 chars), options[{label, description}],
+multiSelect }`, answered by returning `answers` keyed by question text, plus an optional freeform
+`response`. TypeScript can request `preview` per option (`markdown` or `html`) via
+`toolConfig.askUserQuestion.previewFormat`.
+
+It **always reaches the callback even when an allow rule matches** — as do MCP tools marked
+`_meta["anthropic/requiresUserInteraction"]` and connector tools an org set to `ask`. In `dontAsk`
+mode all three are denied instead.
+
+Limits: 1–4 questions, 2–4 options each; **not available in subagents**.
+
+### The answer shapes we measured are the full documented set
+
+`{ behavior: "allow", updatedInput }` / `{ behavior: "deny", message }`, plus a third we had not
+found: **`updatedPermissions`**, echoing back a suggested `PermissionUpdate` from the callback's
+`suggestions` argument. A suggestion with the `localSettings` destination writes the rule to
+`.claude/settings.local.json` so future sessions skip the prompt.
+
+That is **"approve and remember"** as a first-class concept, and the documented response vocabulary is
+richer than approve/reject: *approve · approve with changes · approve and remember · reject · suggest
+alternative · redirect entirely*. Worth comparing against
+[0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md) before designing our own set.
+
+## Agent teams — the blockers model, shipping
+
+The fan-out design settled in #503 items 4–5 on GitHub-style blockers, with parallelism emergent.
+`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enables a feature that already works this way:
+
+> "Tasks can also **depend on other tasks**: a pending task with unresolved dependencies **cannot be
+> claimed** until those dependencies are completed."
+> "When a teammate completes a task that other tasks depend on, **blocked tasks unblock without
+> manual intervention**."
+
+Also: three task states (pending / in progress / completed), **file locking** on claim to prevent two
+teammates taking the same task, self-claim as well as lead-assign, and a mailbox per agent at
+`~/.claude/teams/{team}/inboxes/{agent}.json`. Task lists persist at `~/.claude/tasks/{team}/` and
+survive resumption; team config does not.
+
+**The owner's blockers design is independently validated by a shipping implementation.** That is a
+good outcome for #503 items 4–5 and removes the concern that it was novel.
+
+Security detail worth copying: a teammate **cannot approve a permission prompt on your behalf**, and
+"in auto mode, the classifier treats an approval claim relayed from another agent as **untrusted
+input** rather than confirmation from you." Teammate prompts surface in the **lead** session.
+
+Hooks that gate the loop: `TeammateIdle`, `TaskCreated`, `TaskCompleted` — each blocks with exit
+code 2 and sends feedback. Limits: no nested teams, one team per session, lead is fixed, permissions
+set at spawn, no session resumption with in-process teammates.
+
+---
+
 ## Sources
 
 - Claude Code docs index — https://code.claude.com/docs/llms.txt
@@ -351,7 +453,10 @@ hours-scale. Anything derived from a probe needs a version attached or it is alr
   [Sandboxing](https://code.claude.com/docs/en/sandboxing) ·
   [Permissions](https://code.claude.com/docs/en/permissions) ·
   [Workflows](https://code.claude.com/docs/en/workflows) ·
-  [Channels](https://code.claude.com/docs/en/channels)
+  [Channels](https://code.claude.com/docs/en/channels) ·
+  [Agent teams](https://code.claude.com/docs/en/agent-teams) ·
+  [SDK permissions](https://code.claude.com/docs/en/agent-sdk/permissions) ·
+  [SDK user input](https://code.claude.com/docs/en/agent-sdk/user-input)
 - Antigravity CLI — [overview](https://antigravity.google/docs/cli/overview) ·
   [reference](https://antigravity.google/docs/cli/reference) ·
   [permissions](https://antigravity.google/docs/cli/permissions) ·
