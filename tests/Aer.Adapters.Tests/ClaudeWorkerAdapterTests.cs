@@ -108,6 +108,23 @@ public class ClaudeWorkerAdapterTests
     }
 
     [Fact]
+    public void An_effort_is_passed_through_when_set()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Effort: "high"), ArchitectContract);
+
+        Assert.Equal("high", ArgValue(target, "--effort"));
+    }
+
+    [Fact]
+    public void No_effort_flag_is_emitted_when_the_effort_is_unset()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.DoesNotContain("--effort", target.Args);
+    }
+
+    [Fact]
     public void The_prompt_names_every_declared_output_and_its_env_var_path()
     {
         var contract = new WorkerContract(

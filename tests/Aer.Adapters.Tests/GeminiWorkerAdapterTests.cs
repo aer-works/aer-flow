@@ -94,6 +94,19 @@ public class GeminiWorkerAdapterTests
         Assert.Equal("yolo", target.Args[3]);
     }
 
+    private static string? ArgValue(CoreDispatchTarget target, string flag)
+    {
+        for (var i = 0; i < target.Args.Count - 1; i++)
+        {
+            if (target.Args[i] == flag)
+            {
+                return target.Args[i + 1];
+            }
+        }
+
+        return null;
+    }
+
     [Fact]
     public void A_model_is_passed_through_when_set()
     {
@@ -110,6 +123,23 @@ public class GeminiWorkerAdapterTests
         var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         Assert.DoesNotContain("--model", target.Args);
+    }
+
+    [Fact]
+    public void An_effort_is_passed_through_when_set()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Effort: "high"), ArchitectContract);
+
+        Assert.Equal("high", ArgValue(target, "--effort"));
+    }
+
+    [Fact]
+    public void No_effort_flag_is_emitted_when_the_effort_is_unset()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.DoesNotContain("--effort", target.Args);
     }
 
     [Fact]

@@ -75,6 +75,7 @@ namespace Aer.Adapters;
 /// <param name="LogFilePath">
 /// The path to a log file where the vendor CLI writes side-channel logs (e.g. Gemini <c>--log-file</c> for capturing conversation id).
 /// </param>
+/// <param name="Effort">The vendor's raw effort-level string to configure reasoning/thinking effort (e.g. Claude's <c>--effort low|medium|high|xhigh|max</c>, Gemini's <c>--effort low|medium|high</c>; see <c>docs/vendor-capabilities.md</c>). Null when not applicable or not set.</param>
 public sealed record WorkerInvocation(
     string PromptTemplate,
     string? Model = null,
@@ -85,5 +86,6 @@ public sealed record WorkerInvocation(
     string? SessionId = null,
     bool ResumeSession = false,
     bool StreamJson = false,
-    string? LogFilePath = null);
+    string? LogFilePath = null,
+    string? Effort = null);
 

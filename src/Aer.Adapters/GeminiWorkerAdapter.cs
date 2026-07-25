@@ -130,6 +130,12 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Model);
         }
 
+        if (invocation.Effort is not null)
+        {
+            args.Add("--effort");
+            args.Add(invocation.Effort);
+        }
+
         return new CoreDispatchTarget("agy", [.. args], invocation.WorkingDirectory, PromptText: prompt);
     }
 
