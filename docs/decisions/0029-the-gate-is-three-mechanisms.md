@@ -64,6 +64,13 @@ another.**
 `requiresUserInteraction` do not carry a pause across a human's absence; they guarantee that a tool
 is *not silently approved*. Use them to make the refusal unbypassable, not to ask the question.
 
+**That is now measured rather than reasoned (#531).** In a live run with a person at a real
+terminal, the blocking call was held **162 seconds**, the operator answered out of band by opening
+a URL in a browser, the server completed the call, and `agy` accepted the late result and reported
+the tool executed successfully. The full loop — worker asks, call stays open, human answers
+somewhere else entirely, worker resumes — works today, on the mechanism this record already chose.
+Notably the elicitation played **no part**: it had been refused 162 seconds earlier.
+
 **But build it to migrate, because the non-blocking gate is already standardized.**
 [SEP-1036](https://modelcontextprotocol.io/community/seps/1036-url-mode-elicitation-for-secure-out-of-band-interactions)
 (**Final**) adds `mode: "url"` elicitation: the server hands the client a URL, the human answers out
@@ -77,9 +84,21 @@ also what makes M28's own demonstration — quit the desktop app, answer on the 
 achievable rather than a race against an unknown timeout.
 
 **The vendor split is spec-defined.** A bare `elicitation: {}` means form mode only, per the SEP's
-backwards-compatibility clause. `claude` declares `{}`; `agy` declares `{'form': {}, 'url': {}}` and
-was measured to accept and route a url-mode request (`agy.url-mode-elicitation`). So the better
-mechanism exists on one vendor today.
+backwards-compatibility clause. `claude` declares `{}`; `agy` declares `{'form': {}, 'url': {}}`.
+
+**But declaring is not implementing, and on `agy` it is not implemented (#531).** A live run with a
+person present measured `agy` 1.1.7 refusing **every** elicitation without surfacing it — form in
+2.7 ms, url in 0.6 ms — in a session where that same person was answering agy's own permission
+prompts. Sub-millisecond means no UI was ever attempted.
+
+So the correction to this section is: **the better mechanism exists on no vendor today.** One
+declares it and does not implement it; the other does not declare it. The migration this record
+plans for is real and still right to build toward — SEP-1036 is Final and the shape is correct —
+but it is blocked on a vendor shipping it, and no schedule should assume it.
+
+A second-order note worth carrying: the model was told *"elicit_tool was refused (not approved)"*.
+The client refused **on the user's behalf, without asking them**. Any AER surface that reports a
+gate as "declined by the operator" must not confuse a vendor's auto-refusal with a person's answer.
 
 **What follows for the design:** AER's gate must be able to answer a pending question **without the
 originating tool call still being open**, because that is the shape both the URL-mode path and a
@@ -132,7 +151,8 @@ assume a subagent is more constrained than the session that spawned it.
 | `elicitation` is honoured and unbypassable on **both** vendors | **measured** — `--only gate.elicitation`, `--only agy.elicitation` | the portable refusal does not exist; the gate needs a per-vendor mechanism table and `requiresUserInteraction` is claude-only |
 | A blocking `tools/call` survives long enough to be answered by a human | **measured to 200 s only** — the upper bound of the idle window is unknown | the durable gate has a ceiling shorter than a person's response time, and the pause must be persisted and the call released rather than held. *This is why the design releases the call by default rather than relying on the bound* |
 | `agy` accepts and routes a SEP-1036 `mode: "url"` elicitation | **measured** — `--only agy.url-mode` | the non-blocking migration path does not exist on any vendor today and the blocking call is the only option until one ships it |
-| An interactive `agy` actually surfaces the URL to a person, and `notifications/elicitation/complete` resumes the call | **assumed** — headless there is no human, so every arm cancels; this needs a live human run | url-mode is accepted but not usable as a human channel, and the migration above is blocked on the vendor rather than on AER |
+| An interactive `agy` surfaces the URL to a person | **MEASURED FALSE 2026-07-25** (#531), with a human at a real terminal who was actively answering agy's *own* permission prompts in the same session. Both modes were refused before any UI could exist — form in **2.7 ms**, url in **0.6 ms** — and nothing was shown. Declared, not implemented | *this is the false case, and its consequence is the one predicted:* url-mode is accepted and routed but **is not a human channel**, so the non-blocking migration is blocked on the vendor rather than on AER |
+| A blocking `tools/call` can be answered out of band and the client will accept the late result | **measured 2026-07-25** (#531) — the same human run. The call was held **162 s**, the operator opened the URL in a browser, the server completed, and `agy` reported the tool executed successfully | the durable gate does not survive a human's absence at all, and 0029's central mechanism claim fails |
 | `claude` will gain `elicitation.url` | **assumed** — it declares form-only today; nothing commits it to adding url mode | the non-blocking gate stays agy-only and AER carries two gate transports indefinitely |
 | Hooks load only from the process cwd `.claude/`, with no parent fallback | **measured** — `--only gate.add-dir-loads-no-config` | AER need not control the worker's cwd; the launch constraint above relaxes |
 | One level of subagent nesting is permitted by default | **measured** — `--only fanout.nesting-allowed-by-default`, two independent runs | the vendor's documented default (off) holds and the explicit depth cap is belt-and-braces rather than required |
