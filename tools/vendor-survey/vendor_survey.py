@@ -49,6 +49,14 @@ from datetime import datetime, timezone
 CLAUDE_INDEX = "https://code.claude.com/docs/llms.txt"
 AGY_SITEMAP = "https://antigravity.google/sitemap.xml"
 
+# The Model Context Protocol specification. NOT an optional third vendor: AER ships its own MCP
+# server, and the strongest gate primitive this audit measured -- `_meta` with
+# `anthropic/requiresUserInteraction` -- is a VENDOR EXTENSION to this spec. Reading only Anthropic's
+# description of it means never learning which parts are the protocol (and so portable, and stable
+# across vendors) and which parts are one vendor's addition that can move without notice. Same
+# llms.txt + per-page .md shape as claude.
+MCP_INDEX = "https://modelcontextprotocol.io/llms.txt"
+
 # Pages the `/docs/` filter would drop, and the vendor's own release notes. These are not optional
 # extras: claude's `changelog` is the single densest page in the whole corpus (200+ constraints),
 # and agy's equivalents sit OUTSIDE its /docs/ tree, so a docs-only sweep never sees them. `terms`
@@ -152,6 +160,60 @@ def html_to_text(raw: str) -> str:
     return re.sub(r"\n\s*\n\s*\n+", "\n\n", text).strip()
 
 
+def fetch_cli_help(corpus: str, refetch: bool) -> None:
+    """Harvest each CLI's own `--help`, top level and every subcommand.
+
+    This is the only source in the survey that describes the EXACT binary installed, rather than
+    whatever version the website documents. It is also the only one that cannot go stale relative
+    to the thing AER actually spawns.
+
+    It earned its place: `claude auth login` is a real subcommand that appears here, and finding it
+    overturned a recorded conclusion that AER could not give a worker its own config root. The
+    published docs describe `/login` as a TUI slash command; only `--help` shows the CLI form.
+
+    Unlike the web sources this is captured, not fetched, so it is always re-run -- a CLI can
+    self-update at any time and a cached copy would silently describe the wrong binary.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("CLAUDE")}
+
+    def helptext(argv):
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=60, env=env,
+                               stdin=subprocess.DEVNULL)
+            return (p.stdout or "") + (p.stderr or "")
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return ""
+
+    for binary in ("claude", "agy"):
+        top = helptext([binary, "--help"])
+        if not top.strip():
+            print(f"{binary} --help: binary not present, skipped")
+            continue
+        version = helptext([binary, "--version"]).strip().splitlines()
+        version = version[0] if version else "unknown"
+        # Subcommand names are the first token of each indented line in the Commands: block.
+        subs, in_block = [], False
+        for line in top.splitlines():
+            if re.match(r"^\s*Commands:", line):
+                in_block = True
+                continue
+            if in_block:
+                if not line.strip():
+                    break
+                m = re.match(r"^\s+([a-z][a-z0-9-]*)", line)
+                if m and m.group(1) not in subs:
+                    subs.append(m.group(1))
+        parts = [f"SOURCE: `{binary} --help` as captured locally\nVERSION: {version}\n",
+                 f"===== {binary} --help =====\n{top}"]
+        for s in subs:
+            body = helptext([binary, s, "--help"])
+            if body.strip():
+                parts.append(f"===== {binary} {s} --help =====\n{body}")
+        io.open(os.path.join(corpus, f"{binary}__cli-help.md"), "w",
+                encoding="utf-8", newline="").write("\n\n".join(parts))
+        print(f"{binary} --help: {len(subs)} subcommands captured ({version})")
+
+
 def fetch_corpus(out: str, refetch: bool) -> None:
     corpus = os.path.join(out, "corpus")
     os.makedirs(corpus, exist_ok=True)
@@ -164,6 +226,18 @@ def fetch_corpus(out: str, refetch: bool) -> None:
     print(f"claude: {len(urls)} pages")
     for u in urls:
         name = "claude__" + u.split("/docs/en/")[1].replace("/", "__")
+        dest = os.path.join(corpus, name)
+        if refetch or not os.path.exists(dest):
+            curl(u, dest)
+
+    mcp_index = os.path.join(out, "mcp-llms.txt")
+    if refetch or not os.path.exists(mcp_index):
+        curl(MCP_INDEX, mcp_index)
+    mcp_urls = sorted(set(re.findall(r"https://modelcontextprotocol\.io/[a-z0-9/._-]+\.md",
+                                     io.open(mcp_index, encoding="utf-8", errors="replace").read())))
+    print(f"mcp: {len(mcp_urls)} pages")
+    for u in mcp_urls:
+        name = "mcp__" + u.split("modelcontextprotocol.io/")[1].replace("/", "__")
         dest = os.path.join(corpus, name)
         if refetch or not os.path.exists(dest):
             curl(u, dest)
@@ -184,6 +258,8 @@ def fetch_corpus(out: str, refetch: bool) -> None:
             io.open(dest, "w", encoding="utf-8", newline="").write(
                 "SOURCE: " + u + "\n\n" + html_to_text(io.open(tmp, encoding="utf-8", errors="replace").read()))
             os.remove(tmp)
+
+    fetch_cli_help(corpus, refetch)
 
     print(f"extra sources: {len(EXTRA_SOURCES)}")
     for name, url, kind in EXTRA_SOURCES:
@@ -281,8 +357,10 @@ def report_blind_spots(out: str, pages, seen_count: int) -> None:
     print("    AER has no word for yet, it scores zero here. Re-read this list on any redesign:")
     for p in no_signal[:8]:
         print(f"      {p['vendor']}/{p['name']}")
-    print("  Not covered by this tool at all: vendor CLI logs, the vendors' own `--help` output,")
-    print("    SDK package source, and anything behind auth. Those are manual surfaces.")
+    print("  Not covered by this tool at all: vendor CLI logs, SDK package source, and anything")
+    print("    behind auth. Those are manual surfaces. `--help` IS covered now (*__cli-help.md)")
+    print("    and is the only source describing the EXACT installed binary rather than the")
+    print("    version the website documents.")
     print("  Every claim here is DOCUMENTED, not verified. Running the CLI is a separate step.")
 
 
