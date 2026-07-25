@@ -42,7 +42,7 @@ The test drives `RunCommand.ExecuteAsync` then `DecideCommand.ExecuteAsync` — 
 - `draft-review-paused-workflow.json` — two steps, `draft` then `review`, `review` depending on
   `draft`'s output and declaring a `PausePoint` with no supersede targets.
 - `draft-review-paused-bindings.json` — `draft` bound to the `claude` adapter
-  (`claude-haiku-4-5-20251001`), `review` bound to the `gemini` adapter (`gemini-3-flash`) — edit
+  (`claude-haiku-4-5-20251001`), `review` bound to the `gemini` adapter (`gemini-3.6-flash-low`) — edit
   either `Model` to point at a different model without touching any code.
 
 Each run uses a fresh temporary task directory, so repeated runs never resume a prior one.

@@ -80,7 +80,7 @@ depend on what either model actually said).
   per-`Participants`-entry `Command`/`Args` this runbook's test builds mirror
   `ClaudeWorkerAdapter`/`GeminiWorkerAdapter`'s own flags (`claude -p "..." --allowedTools Write
   --output-format text --model claude-haiku-4-5-20251001` / `agy -p "..." --mode accept-edits
-  --model gemini-3-flash`) — to isolate a CLI-vs-worker issue. A clarifying question with no output
+  --model gemini-3.6-flash-low`) — to isolate a CLI-vs-worker issue. A clarifying question with no output
   is `agy`'s documented failure mode (spike #21); inside the dialogue worker this surfaces as an
   empty turn, which `DialogueRunner` already treats as a failure (M17 Phase 3).
 - **Everything else** (unexpected exception, hang): the turn loop, termination, and dispatch
