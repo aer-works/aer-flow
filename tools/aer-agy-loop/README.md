@@ -5,7 +5,7 @@ pixi run aer-dispatch -- \
     --prompt-file <path> \
     --output-name <name> \
     --working-directory <absolute path> \
-    [--adapter gemini] [--model <name>] \
+    [--adapter gemini] [--model <name>] [--effort <level>] \
     [--read-files] [--write-files] [--run-shell-commands] [--network-access] \
     [--timeout-minutes 20]
 ```
@@ -57,6 +57,14 @@ noticing the two have since diverged — nothing in a bare question prompts that
 point it at `docs/vendor-doc-audit.md`, which records measured — not vendor-claimed — behavior) into
 the prompt rather than asking from its own memory. This generalizes past this one flag: any fact
 about this project's own fast-moving tooling should be grounded the same way.
+
+**Higher effort does not fix this.** Re-asked the identical bare question at `--effort high`
+(`gemini-3.1-pro-high --effort high`), the model gave the exact same wrong answer (`--yolo`) it gave
+without an explicit effort setting. This isn't surprising in hindsight: effort controls how much a
+model deliberates on *working through* a problem, not whether it *checks* a fact it already believes
+it knows. A pure-recall question has nothing to deliberate on — more effort just delivers the same
+wrong memory more confidently, it doesn't verify it. Grounding (see above) is the only thing that
+actually helps; bumping effort is not a substitute for it.
 
 ## The shell-commands guard
 
