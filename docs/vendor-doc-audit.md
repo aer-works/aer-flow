@@ -184,10 +184,31 @@ Our measurement (against **1.1.6**) was that `command(node)` and `command(node .
 has one token, the command has two, so the extra token is uncovered. It does **not** explain
 `command(node .*)` failing — `.*` anchored should match `--version`.
 
-**Evidence class: contradicted, unresolved.** One of these is wrong: the docs, our test, or the
-version. It must be re-established before 0004 is rewritten again — and it **cannot be tested by an
-agent session unattended**, because `agy` grants live only in the operator's real
-`~/.gemini/antigravity-cli/settings.json`, which the probe suite is forbidden to touch.
+**RESOLVED 2026-07-24 — matching is literal, and the documentation is wrong.** Re-run against
+**1.1.7** with the operator's explicit authorisation, one rule at a time, restoring the settings file
+byte-exactly after every case:
+
+| rule | if literal | if regex | **observed** |
+|---|---|---|---|
+| `command(node)` | denied | denied | denied |
+| `command(node .*)` | denied | *granted* | **denied** |
+| `command(node (--version\|--help))` | denied | *granted* | **denied** |
+| `command(node --version)` | granted | granted | **granted** |
+
+Both discriminating rules failed, **including the documentation's own alternation form**. So the
+1.1.6 finding holds on 1.1.7, and 0004's consequence stands: **AER cannot pre-authorise a family of
+commands on `agy`**, only enumerate exact command lines. The asymmetry recorded in #515 is unchanged.
+
+**This is the only row in the entire audit where the documentation is wrong and our measurement was
+right.** Every other correction ran the other way. That asymmetry is worth holding onto: it is why
+documentation carries the evidence class *documented* rather than *verified*. A vendor's claim about
+its own product is still a claim, and the run is what settles it — in both directions.
+
+Method note, since it was the blocking constraint: this could not be tested unattended, because `agy`
+grants live only in the operator's real `~/.gemini/antigravity-cli/settings.json`. The run happened on
+explicit authorisation, with a byte-exact backup taken first, a restore after **every individual
+case**, and the file's SHA-256 verified unchanged afterwards
+(`d6b5507858fb371caa2a4827449fbe291f0032a341fe22ada8af99e73dfbf9df`, before and after).
 
 ### 2. There is an `ask` list, and the precedence is a three-rung ladder
 

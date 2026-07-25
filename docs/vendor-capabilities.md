@@ -419,10 +419,31 @@ the **only** settings path — there is no project-local override file. Prefixes
 MCP rules take `mcp(server/tool)`, `mcp(server/*)` or `mcp(*)`. Observed: `mcp(aerhuman)` — the bare
 server name — **does not match**; `mcp(aerhuman/*)` does.
 
-**Command rules are matched literally, against the whole command line.** This is the single most
-consequential finding for the permission surface, and it contradicts the vendor's own docs (which
-describe `command(git)` as covering "standard git commands"). Four runs against the identical command
-`node --version`, each changing only the rule:
+**Command rules are matched literally, against the whole command line.** The single most consequential
+finding for the permission surface — and **re-confirmed against 1.1.7 on 2026-07-24**, deliberately,
+because the vendor's documentation says the opposite:
+
+> "Each whitespace-separated token is evaluated as an **anchored regular expression**."
+> `command(npm run (build|lint|test))` matches `npm run build` and `npm run test`.
+
+It does not. Tested with the docs' own alternation form, one rule at a time, against `node --version`:
+
+| rule | if literal | if regex | **observed on 1.1.7** |
+|---|---|---|---|
+| `command(node)` | denied | denied | denied |
+| `command(node .*)` | denied | *granted* | **denied** |
+| `command(node (--version\|--help))` | denied | *granted* | **denied** |
+| `command(node --version)` | granted | granted | **granted** |
+
+Only the exact whole line was granted. The two rules that discriminate between the readings both
+failed, including the documented example's own shape.
+
+> **This is the one row where the documentation is wrong and our measurement was right.** Every other
+> correction in this audit ran the other way. It is the reason documentation carries the evidence class
+> *documented* rather than *verified*: a vendor's claim about its own product is still a claim. Only
+> the run settles it — in both directions.
+
+The original four runs, against 1.1.6, agreeing:
 
 | rule | result |
 |---|---|

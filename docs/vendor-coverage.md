@@ -158,7 +158,7 @@ side.
 
 | | |
 |---|---|
-| **`agy` `command()`: regex or literal?** | docs say anchored regex per token; we measured literal. `command(node .*)` denied `node --version`. **Unresolved.** |
+| ~~`agy` `command()`: regex or literal?~~ | **RESOLVED 2026-07-24 — literal.** Re-run on 1.1.7 with the operator's authorisation; both discriminating rules denied, including the docs' own alternation form. **The documentation is wrong** — the only such case in this audit. |
 | **Does `defer` replay the identical `tool_use_id`?** | verified the session resumes and work completes; **not** verified the same call is replayed. Decides whether we can promise "the exact call you approved ran". |
 
 ### X — cannot be established from an agent session on this host
@@ -166,7 +166,7 @@ side.
 | | why |
 |---|---|
 | `claude` sandbox (any of it) | **not supported on native Windows**; this host is Windows 11 |
-| `agy` `command()` re-test | needs writes to the operator's real `~/.gemini/antigravity-cli/settings.json` |
+| ~~`agy` `command()` re-test~~ | **done 2026-07-24** — run on explicit authorisation, byte-exact backup, restore after every case, SHA-256 verified unchanged |
 | Channels | research preview; needs a plugin install and org enablement |
 | Workflows | plan-gated; needs `/config` opt-in on Pro |
 | Agent teams | needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (env-only, safe — but untested) |
