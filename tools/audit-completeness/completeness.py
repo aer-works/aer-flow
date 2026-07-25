@@ -121,6 +121,19 @@ def step3_gaps():
     return True
 
 
+# A sweep row must land on one of these words. Free prose is not a disposition: "0015 was
+# considered" passes a substring test while saying nothing. Fixed vocabulary makes the sweep
+# answerable -- and makes a decision that got no real look impossible to hide.
+DISPOSITIONS = ("unaffected", "amended", "superseded", "rewritten")
+
+# Decisions the audit's own findings put in question. Each MUST carry its own `Rests on` table,
+# counted per file -- summing across files lets one table satisfy the requirement for two.
+MUST_REST_ON = (
+    "0015-three-kinds-of-needs-you.md",
+    "0018-attention-is-the-primary-signal.md",
+)
+
+
 def step6_decisions():
     rule("STEP 6 -- every decision record has a disposition in the audit sweep")
     d = os.path.join(ROOT, "docs", "decisions")
@@ -130,14 +143,38 @@ def step6_decisions():
     if not sweep.strip():
         print("    !! docs/decision-audit.md not written yet -- step 6 incomplete")
         return False
-    missing = [f for f in files if f[:4] not in sweep]
-    line("decisions appearing in the sweep", len(files) - len(missing), len(files))
-    for m in missing:
-        print(f"      MISSING: {m}")
-    rests = len(re.findall(r"## Rests on", read("docs/decisions/0015-three-kinds-of-needs-you.md")
-                           + read("docs/decisions/0018-attention-is-the-primary-signal.md")))
-    line("rewritten decisions carrying a `Rests on` table", rests)
-    return not missing
+
+    # A row is only a disposition if it names the decision AND one of the vocabulary words AND
+    # gives a reason. Mentioning "0015" somewhere in a table is not a disposition.
+    rows = {}
+    for raw in sweep.splitlines():
+        m = re.match(r"^\s*\|\s*\[?(\d{4})\]?", raw)
+        if not m:
+            continue
+        low = raw.lower()
+        verb = next((v for v in DISPOSITIONS if v in low), None)
+        # reason = prose beyond the number and the verb; a bare "| 0015 | unaffected |" is not one
+        reason = len(re.sub(r"[|\[\]()\d\s-]", "", low).replace(verb or "", "")) >= 20
+        rows[m.group(1)] = (verb, reason)
+
+    bad = []
+    for f in files:
+        num = f[:4]
+        verb, reason = rows.get(num, (None, False))
+        if verb is None:
+            bad.append((f, "no disposition row" if num not in rows
+                        else f"row names none of {'/'.join(DISPOSITIONS)}"))
+        elif not reason:
+            bad.append((f, f"'{verb}' asserted with no reason given"))
+    line("decisions with a vocabulary disposition + reason", len(files) - len(bad), len(files))
+    for f, why in bad:
+        print(f"      INCOMPLETE: {f:<52} {why}")
+
+    ok = not bad
+    for name in MUST_REST_ON:
+        n = len(re.findall(r"^## Rests on", read(f"docs/decisions/{name}"), re.M))
+        ok &= line(f"`Rests on` in {name[:4]}", n, 1, "counted per file, never summed")
+    return ok
 
 
 def git_state():

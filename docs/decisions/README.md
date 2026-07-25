@@ -55,9 +55,15 @@ fact, how it is known, and what happens to this decision if it turns out false.
 
 | fact | how we know | if false |
 |---|---|---|
-| A `PreToolUse` hook exiting 2 blocks a tool even with an allow rule | measured — `pixi run vendor-verify -- --only gate.hook-exit-2-beats-allow` | the gate has no vendor-independent enforcement point; §3 is void |
-| `--allowedTools` bounds what a worker can do | **assumed** | … |
+| A `PreToolUse` hook exiting 2 blocks a tool even with an allow rule | **measured** — `pixi run vendor-verify -- --only gate.hook-exit-2-beats-allow` | the gate has no vendor-independent enforcement point; §3 is void |
+| A second concurrent login against one subscription is permitted | **assumed** — needs the account owner; not measurable from an agent session | per-worker config roots collapse to one; §5's isolation model needs replacing |
 ```
+
+Note what the example does *not* contain: a row like *"`--allowedTools` bounds what a worker can
+do — assumed"*. That claim is **measured false** ([#529](https://github.com/aer-works/aer-flow/issues/529)),
+and filing a known-false fact as merely unverified is the most dangerous row this table can carry —
+it reads as pending work rather than as a broken dependency. **If a fact is false, the decision is
+already broken; say so in the decision, don't park it here.**
 
 **Why this is now mandatory.** The vendor audit (#527) falsified four vendor claims this project had
 built on, and the decisions that broke — 0015 and 0018 — had asserted a *mechanism* without recording
