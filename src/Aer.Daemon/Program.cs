@@ -1689,6 +1689,22 @@ namespace Aer.Daemon
             // before exiting non-zero -- captured here so a failure stops looking like silence.
             var rawStdoutCapture = new StringBuilder();
 
+            // #545 fix, corrected twice: a wall-clock last-write-time comparison (the first attempt)
+            // does not discriminate in a fast in-process test, where turn 1 and turn 2 can complete
+            // within the same millisecond -- any tolerance wide enough to survive real clock/filesystem
+            // resolution is also wide enough for a stale file from turn 1 to look "fresh" relative to
+            // turn 2. Deleting any pre-existing log file before THIS turn's own dispatch removes the
+            // ambiguity entirely: afterward, the file can only exist if THIS turn's own agy process
+            // wrote it. See the log-scrape block below for how this is used.
+            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && logFilePath != null)
+            {
+                try
+                {
+                    File.Delete(logFilePath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+
             if (updatedEntry.StreamJson && adapters.TryGetValue(targetAdapter, out var streamingAdapter))
             {
                 var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
@@ -1861,6 +1877,31 @@ namespace Aer.Daemon
                 catch { }
             }
 
+            // #545, corrected after a second review pass (both agy's own independent review and a
+            // reconciled empirical repro confirmed this, not just static reading): THIS turn's own
+            // establishment fact for agy, computed independently of vendorSessionId's value. That
+            // variable is deliberately left untouched by the turn-1-only scrape above on every later
+            // turn (a real vendor-assigned id, once minted, is never silently replaced) -- which
+            // means on turn 2+ it is already non-null before this turn even runs (carried over via
+            // metadata.CurrentVendorSessionId). Keying establishment to "vendorSessionId != null"
+            // therefore measured whether ANY turn ever succeeded, not whether THIS one did: a turn
+            // that produced nothing at all was still reported established, with its real error
+            // silently discarded. Deleting any pre-existing log file before this turn's own dispatch
+            // (above) is what makes a plain existence check here mean "THIS turn produced one" --
+            // an earlier version of this fix compared the file's last-write time against a
+            // pre-dispatch timestamp instead, which does not discriminate when turn 1 and turn 2
+            // complete within the same wall-clock second (routine in an in-process test).
+            var agyLogFreshThisTurn = false;
+            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && logFilePath != null && File.Exists(logFilePath))
+            {
+                try
+                {
+                    var freshLogText = await File.ReadAllTextAsync(logFilePath).ConfigureAwait(false);
+                    agyLogFreshThisTurn = System.Text.RegularExpressions.Regex.IsMatch(freshLogText, @"conversation=([^\s\r\n]+)");
+                }
+                catch { }
+            }
+
             // Read assistant response
             string? assistantResponse = null;
             var finalOutcome = await session.LoadAsync(directoryPath).ConfigureAwait(false);
@@ -1889,27 +1930,26 @@ namespace Aer.Daemon
             var fileResponse = assistantResponse;
             assistantResponse ??= TryExtractAssistantAnswer(rawStdoutCapture.ToString());
 
-            // #537: keyed to whether the TURN SUCCEEDED, not to whether a file was written.
+            // #537 / #545: keyed to whether the TURN SUCCEEDED, not to whether an output file was written.
             //
             // This feeds VendorSessionEstablished below, which decides whether the next turn passes
-            // `--resume`. It used to key off the output file, which is a permission outcome rather
-            // than a session one -- so a directory-less chat, which can never write the file
-            // (all-deny grant, fail-closed per #321), was never marked established, never resumed,
-            // and carried no memory between turns. Measured before changing: see
-            // SessionContinuityWithoutOutputFileTests, whose control confirms a file-writing session
-            // does resume, so the failure was about the file and not about the harness.
+            // `--resume` (or `--conversation` for agy). It used to key off the output file, which is a
+            // permission outcome rather than a session one -- so a directory-less chat, which can never
+            // write the file (all-deny grant, fail-closed per #321), was never marked established, never
+            // resumed, and carried no memory between turns. Measured before changing: see
+            // SessionContinuityWithoutOutputFileTests.
             //
-            // `assistantResponse` is the success signal because it is non-null only when the vendor
-            // produced an answer -- via the output file, or via the structured result (#534). A
-            // turn that genuinely failed leaves it null and stays unestablished, which is what
-            // #285's resume-gating regression tests pin.
+            // Establishment signal per vendor:
+            // - `claude`: `assistantResponse` is non-null when the vendor produced an answer via the output
+            //   file or via the structured result on stdout (#534).
+            // - `gemini` (`agy`): `assistantResponse != null` (output file written) OR `agyLogFreshThisTurn`
+            //   (a valid `conversation=` id appeared in agy's log file, written since THIS turn's own
+            //   dispatch started -- not merely present at all, which `vendorSessionId != null` would also
+            //   be true for on turn 2+ since that variable is never cleared between turns; see
+            //   `agyLogFreshThisTurn`'s own comment above for why the two are not interchangeable).
             //
-            // SCOPE: this repairs the directory-less case on `claude` ONLY. The structured-result
-            // half of that signal reaches stdout only when StreamJson is set, and StreamJson is
-            // claude-only (see the dispatch above). On `agy`, `assistantResponse` still comes from
-            // the output file alone, so a directory-less agy chat has exactly the #537 defect and is
-            // NOT fixed here. Filed as #545 with the establishment signal agy actually offers (the
-            // `conversation=` id already scraped below).
+            // A turn that genuinely failed leaves these signals null/false and stays unestablished, which
+            // is what #285's resume-gating regression tests pin.
             //
             // One edge is deliberately left unestablished: a vendor that succeeds while producing no
             // answer at all, so the next turn re-sends `--session-id` rather than `--resume`.
@@ -1919,8 +1959,8 @@ namespace Aer.Daemon
             // rather than retry harmlessly. It is unreconciled because the pre-fix symptom was
             // silent memory loss rather than a hard turn-2 failure, and #537 never verified turn 2
             // end to end. Tracked as #546; do not restate either side as settled until it measures.
-            var establishedThisTurn = assistantResponse != null;
-            var errorMessage = assistantResponse != null ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
+            var establishedThisTurn = assistantResponse != null || agyLogFreshThisTurn;
+            var errorMessage = establishedThisTurn ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
 
             var newTurnIndex = metadata.TurnCount + 1;
             var turn = new SessionTurn(

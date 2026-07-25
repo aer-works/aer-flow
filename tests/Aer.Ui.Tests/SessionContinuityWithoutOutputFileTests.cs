@@ -170,13 +170,98 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
             + "the next turn start over (#537)");
     }
 
-    private async Task<(SessionMetadata Metadata, SessionTurn SecondTurn)> TwoTurnsAsync(bool withOutputFile)
+    /// <summary>
+    /// The control for agy/gemini (#545). When the worker writes its output file, the gemini session is
+    /// marked established and the second turn resumes. Without this passing, the agy measurement below
+    /// proves nothing.
+    /// </summary>
+    [Fact]
+    public async Task An_agy_session_whose_worker_writes_the_file_resumes_on_the_second_turn()
     {
-        var suffix = withOutputFile ? "" : " " + SessionTurnStubAdapter.NoOutputFileSentinel;
+        var (metadata, secondTurn) = await TwoTurnsAsync(withOutputFile: true, adapter: "gemini");
+
+        Assert.True(metadata.VendorSessionEstablished,
+            "the agy control session was not marked established, so nothing discriminates for agy");
+        Assert.True(secondTurn.NativeSessionResumed,
+            "the agy control's second turn did not resume, so a non-resume below proves nothing");
+    }
+
+    /// <summary>
+    /// The measurement for agy/gemini (#545). Same shape, one variable: the agy worker succeeds and
+    /// writes no output file, establishing the session via the scraped conversation id instead.
+    /// </summary>
+    [Fact]
+    public async Task An_agy_session_whose_worker_writes_no_file_still_carries_continuity()
+    {
+        var (metadata, secondTurn) = await TwoTurnsAsync(withOutputFile: false, adapter: "gemini");
+
+        Assert.True(metadata.VendorSessionEstablished,
+            "the agy vendor ran and answered via conversation id on both turns, but AER never recorded "
+            + "the session as established -- continuity for agy was keyed to a file write (#545)");
+        Assert.True(secondTurn.NativeSessionResumed,
+            "turn 2 did not resume the agy vendor session, so a directory-less agy chat starts fresh every "
+            + "turn and carries no memory (#545)");
+    }
+
+    /// <summary>
+    /// #545, found by an independent agy review pass (confirmed via a reconciled empirical repro,
+    /// not just the review's own static reading): establishment was keyed to
+    /// <c>vendorSessionId != null</c>, which stays true on every turn after the one that first
+    /// established a session (the variable is deliberately never cleared -- see
+    /// <c>agyLogFreshThisTurn</c>'s doc comment in <c>Program.cs</c>). So a SECOND turn that
+    /// genuinely produced nothing at all was still reported established, with its real (blank)
+    /// outcome silently overwritten. Turn 1 must actually establish for this to be a meaningful
+    /// measurement -- a version of this test where turn 1 also fails to establish would pass for
+    /// the wrong reason (nothing to carry over stale), which is exactly what happened before the
+    /// log-write dispatch bug earlier in #545 was fixed.
+    /// </summary>
+    [Fact]
+    public async Task A_second_agy_turn_that_produces_nothing_is_not_misreported_as_established()
+    {
+        var start = new StartSessionRequest(
+            Adapter: "gemini",
+            TaskName: "agy-silent-second-turn-" + Guid.NewGuid().ToString("N"),
+            InitialMessage: "turn one " + SessionTurnStubAdapter.AgyNoOutputFileSentinel,
+            SafetyCeiling: 200);
+
+        var startResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/sessions/start", start, TestContext.Current.CancellationToken);
+        Assert.True(startResponse.IsSuccessStatusCode, $"session start failed: {startResponse.StatusCode}");
+        var started = await startResponse.Content.ReadFromJsonAsync<SessionMetadata>(
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(started);
+        var firstMetadata = await PollForTurnsAsync(started.SessionId, 1);
+        Assert.True(firstMetadata.VendorSessionEstablished,
+            "turn 1 did not establish, so this test cannot discriminate 'stale carry-over' from " +
+            "'nothing ever established' -- see this test's own doc comment");
+
+        var send = new SendSessionMessageRequest(
+            SessionId: started.SessionId,
+            Message: SessionTurnStubAdapter.AgySilentSuccessSentinel,
+            Adapter: "gemini");
+        var sendResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/sessions/send", send, TestContext.Current.CancellationToken);
+        Assert.True(sendResponse.IsSuccessStatusCode, $"send failed: {sendResponse.StatusCode}");
+
+        var metadata = await PollForTurnsAsync(started.SessionId, 2);
+        var secondTurn = metadata.Turns[^1];
+
+        Assert.False(string.IsNullOrWhiteSpace(secondTurn.ErrorMessage),
+            "turn 2 produced nothing at all (no file, no fresh conversation= line) but ErrorMessage " +
+            "is blank -- establishment is wrongly keyed to a conversation id existing at all, carried " +
+            "over from turn 1, rather than to what THIS turn actually produced (#545)");
+    }
+
+    private async Task<(SessionMetadata Metadata, SessionTurn SecondTurn)> TwoTurnsAsync(bool withOutputFile, string adapter = "claude")
+    {
+        var sentinel = string.Equals(adapter, "gemini", StringComparison.OrdinalIgnoreCase)
+            ? SessionTurnStubAdapter.AgyNoOutputFileSentinel
+            : SessionTurnStubAdapter.NoOutputFileSentinel;
+        var suffix = withOutputFile ? "" : " " + sentinel;
 
         var start = new StartSessionRequest(
-            Adapter: "claude",
-            TaskName: "continuity-" + Guid.NewGuid().ToString("N"),
+            Adapter: adapter,
+            TaskName: $"continuity-{adapter}-" + Guid.NewGuid().ToString("N"),
             InitialMessage: "turn one" + suffix,
             SafetyCeiling: 200);
 
@@ -191,7 +276,8 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
 
         var send = new SendSessionMessageRequest(
             SessionId: started.SessionId,
-            Message: "turn two" + suffix);
+            Message: "turn two" + suffix,
+            Adapter: adapter);
         var sendResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/sessions/send", send, TestContext.Current.CancellationToken);
         Assert.True(sendResponse.IsSuccessStatusCode, $"send failed: {sendResponse.StatusCode}");

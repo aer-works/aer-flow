@@ -44,6 +44,23 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
     /// </remarks>
     public const string NoOutputFileSentinel = "STUB_NO_OUTPUT_FILE";
 
+    /// <summary>
+    /// Sentinel forcing an agy turn to SUCCEED while writing no output file, writing a fake agy log
+    /// file containing <c>conversation=&lt;id&gt;</c> to <see cref="WorkerInvocation.LogFilePath"/> instead (#545).
+    /// </summary>
+    public const string AgyNoOutputFileSentinel = "STUB_AGY_NO_OUTPUT_FILE";
+
+    /// <summary>The agy conversation id written to the log file by an agy no-output-file turn.</summary>
+    public const string StubAgyConversationId = "stub-agy-conv-123";
+
+    /// <summary>
+    /// Sentinel forcing an agy turn to exit cleanly while producing absolutely nothing -- no
+    /// output file, no log line, nothing <see cref="AgyNoOutputFileSentinel"/> would leave behind.
+    /// Distinct from <see cref="FailureSentinel"/> (exit 1): this is a turn that exits 0 but still
+    /// genuinely produced no answer and established nothing (#545, found by review).
+    /// </summary>
+    public const string AgySilentSuccessSentinel = "STUB_AGY_SILENT_SUCCESS";
+
     /// <summary>The answer text the no-output-file turn puts on stdout, and nowhere else.</summary>
     public const string StdoutOnlyAnswer = "stub answer that only ever reached stdout";
 
@@ -89,6 +106,40 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
             return OperatingSystem.IsWindows()
                 ? new CoreDispatchTarget("cmd", ["/c", "type", payload])
                 : new CoreDispatchTarget("sh", ["-c", $"cat \"{payload}\""]);
+        }
+
+        if (invocation.PromptTemplate.Contains(AgyNoOutputFileSentinel, StringComparison.Ordinal))
+        {
+            // Written directly from C#, not via a dispatched shell redirect: an embedded `>` inside
+            // a single combined "cmd /c \"...\"" argv element silently produced no file at all --
+            // measured, not assumed (this is a test stub simulating agy's log file, not the real
+            // CLI, so there is no requirement that a subprocess be the one to write it). This is the
+            // same lesson NoOutputFileSentinel's own comment above already recorded for this exact
+            // file: cmd's quoting is unusually finicky, and the working fix there was to remove
+            // quoting from the problem entirely rather than get the escaping right.
+            var logPath = invocation.LogFilePath ?? Path.Combine(Path.GetTempPath(), "agy-log.txt");
+            if (Path.GetDirectoryName(logPath) is { } dir && !string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.WriteAllText(logPath, $"conversation={StubAgyConversationId}\n");
+            return OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 0"])
+                : new CoreDispatchTarget("sh", ["-c", "exit 0"]);
+        }
+
+        if (invocation.PromptTemplate.Contains(AgySilentSuccessSentinel, StringComparison.Ordinal))
+        {
+            // Exits 0, writes nothing at all -- no output file, no log line. Reproduces a genuinely
+            // failed/no-op agy turn that nonetheless exits cleanly, distinct from FailureSentinel
+            // (exit 1, caught earlier as a workflow-level run failure before establishment logic
+            // ever runs). This is the case #545's review found: on turn 2+, `vendorSessionId` is
+            // already non-null (carried over from an earlier established turn), so a turn producing
+            // nothing at all was still wrongly reported as established.
+            return OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 0"])
+                : new CoreDispatchTarget("sh", ["-c", "exit 0"]);
         }
 
         return OperatingSystem.IsWindows()
