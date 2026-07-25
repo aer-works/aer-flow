@@ -918,9 +918,11 @@ Five statements carry most of the weight below. Everything else is support or de
    rule, a hook's `permissionDecision: "ask"`, and `requiresUserInteraction` on MCP tools — all
    gate the operation, which is exactly why substitution doesn't defeat them. This is already a
    live defect in `src/` ([#529](https://github.com/aer-works/aer-flow/issues/529)).
-2. **AER can own a worker's cwd and pass `--settings`. It can own nothing else.** `--add-dir`
-   carries no config; `CLAUDE_CONFIG_DIR` carries config but not the login; `--bare` disables
-   hooks outright. Those three exhaust the isolation options.
+2. **Isolation has exactly three levers, and one of them is better than first recorded.**
+   `--add-dir` carries no config at all; `--bare` disables hooks outright and has no remedy; but
+   `CLAUDE_CONFIG_DIR` gives a worker a genuinely separate root, and a fresh root's `Not logged in`
+   is fixed by one interactive `claude auth login` — **not** by copying credentials, so it stays
+   Rule-4-clean. Per-worker config roots are on the table, priced at one sign-in each.
 3. **Nothing about a fan-out is bounded by default.** Nesting is on, subagents inherit the
    parent's mode, and the top-level token count under-reports the tree. The concurrency cap and
    `--max-budget-usd` are real and are AER's to set.
