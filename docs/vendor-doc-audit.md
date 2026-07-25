@@ -386,7 +386,49 @@ Decision values are `allow` / `deny` / `ask` / `defer`, plus `updatedInput` to r
 `additionalContext` to inject text without blocking. Exit 2 is an alternative deny path with stderr as
 the reason.
 
-### Two meanings of `defer` — **unresolved, do not build on either yet**
+### `defer` ends the query, and the session resumes — **verified end to end**
+
+**This is 0015's durable gate, shipping.** The conflict below is resolved: the SDK reading is right.
+
+A `PreToolUse` hook returning `defer`:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PreToolUse",
+ "permissionDecision":"defer","permissionDecisionReason":"aer probe defer"}}
+```
+
+```
+exit=0
+subtype : success
+reason  : tool_deferred        ← a distinct terminal reason
+result  : (empty)
+file written: NO
+```
+
+The query **ends cleanly** — not an error, not a denial — with `terminal_reason: "tool_deferred"`.
+The process is then free to exit. Resuming that session with a hook that allows:
+
+```
+claude --resume ce6eea58-… --settings <hook that allows> -p "continue"
+→ reason: completed
+→ "Done — x.txt created in the working directory with the contents BANANA."
+→ file written: YES
+```
+
+**So the pending work survives the process that was holding it, on disk, and completes when the gate
+opens.** That is exactly the requirement 0015 states — *"the room records the pause when the question
+is asked, not when it is answered"* — and it is available rather than needing to be built.
+
+**Stated precisely, because the distinction matters:** what is verified is that the session persists
+across process exit and the work completes once the gate allows it. Whether the *identical*
+`tool_use_id` is replayed, versus the model re-attempting the same work, is **not** established. That
+difference decides whether AER can promise "the exact call you approved is the one that ran", which is
+a claim 0022's answer semantics may depend on.
+
+Also documented, and worth having: when several hooks or rules apply, the precedence is
+**`deny` > `defer` > `ask` > `allow`**. And `updatedInput` is ignored on a `defer`.
+
+### The conflict this resolves
 
 The SDK's user-input page says `defer` is how a gate outlives its process:
 
@@ -394,12 +436,36 @@ The SDK's user-input page says `defer` is how a gate outlives its process:
 > **`defer` hook decision**, which lets the process **exit and resume later from the persisted
 > session**."
 
-The hooks reference says `defer` means:
+A summary of the CLI hooks reference read `defer` as *"proceed with normal permission flow (same as
+exiting 0 with no output)"*. **The run above shows that is wrong**, and the SDK hooks page states the
+correct behaviour outright: *"Returning `"defer"` **ends the query** so you can resume it later."*
 
-> "Proceed with normal permission flow (**same as exiting 0 with no output**)."
+**The lesson is about the reading, not the docs.** That misreading came from a *summarised extraction*
+of a long page, not from the page itself — a lossy step between the source and the claim, which is the
+same failure mode as trusting `--help` over the reference. When a documentation claim is load-bearing,
+go to the passage, and then run it.
 
-Those are not the same mechanism, and 0015's durable-gate section depends on which is true. **Not
-resolved.** Treat the durable-gate question as open until a run demonstrates one or the other.
+### Hook events the design predates
+
+The SDK hooks page lists events nothing in our records mentions. Four land directly on open work:
+
+| event | why it matters |
+|---|---|
+| **`PermissionDenied`** | *"The auto mode classifier denies a tool call"* — a hook for exactly the #514 hole, so AER can observe classifier denials it would otherwise never see |
+| **`Notification`** | fires with `permission_prompt` when Claude needs permission and `idle_prompt` when it is waiting for input — [0018](decisions/0018-attention-is-the-primary-signal.md)'s attention signal, as an event |
+| **`Elicitation`** / `ElicitationResult` | *"An MCP server requests user input mid-task"* — a second, MCP-side path for "needs you" |
+| **`SubagentStart`** / `SubagentStop` | carries `agent_transcript_path`, so fan-out progress is readable without parsing output |
+
+Others present: `PostToolUse` (with `updatedToolOutput` to rewrite results before Claude sees them),
+`PostToolUseFailure`, `PostToolBatch`, `UserPromptSubmit`, `UserPromptExpansion`, `MessageDisplay`,
+`Stop`, `StopFailure`, `PreCompact`, `PostCompact`, `SessionStart`, `SessionEnd`, `Setup`,
+`TeammateIdle`, `TaskCreated`, `TaskCompleted`, `ConfigChange`, `InstructionsLoaded`,
+`WorktreeCreate`, `WorktreeRemove`, `CwdChanged`, `FileChanged`.
+
+Two operational notes worth carrying into any gate we build: multiple hooks on one event **run in
+parallel** and the most restrictive result wins; and a `PreToolUse` callback that exceeds its timeout
+**blocks** the call (v2.1.210+), where earlier versions reported it as a user rejection and stalled
+unattended sessions.
 
 ### Not verifiable from an agent session
 
