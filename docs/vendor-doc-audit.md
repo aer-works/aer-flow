@@ -158,7 +158,138 @@ Priority, by how much design leans on it:
 5. `--max-budget-usd` enforcement (#479).
 6. `agy`'s documented surface — not yet located; see below.
 
-## `agy` documentation — not yet audited
+---
 
-The equivalent sweep for `agy` has not been done. Everything currently recorded about it came from
-`--help`, the binary, and live probing, which is exactly the method this audit exists to replace.
+## `agy` — the documentation exists, and it overturns four of our rows
+
+Docs live at `https://antigravity.google/docs/cli/...` (`overview`, `reference`, `permissions`,
+`sandbox`, `modes`, `subagents`, `projects`, and `commands/*`). None of it had been read.
+
+### 1. `command(...)` rules are documented as **regex**, and we recorded them as literal
+
+This is the most consequential conflict in the audit, because
+`vendor-capabilities.md` calls its literal-matching finding *"the single most consequential finding
+for the permission surface"*, and [0004](decisions/0004-permission-scopes.md) carries the consequence
+that a command *family* cannot be pre-authorised on `agy` at all.
+
+The documentation says the opposite:
+
+> "Each whitespace-separated token is evaluated as an **anchored regular expression**."
+> `command(npm run (build|lint|test))` matches `npm run build` and `npm run test`.
+
+Our measurement (against **1.1.6**) was that `command(node)` and `command(node .*)` both **denied**
+`node --version`, while `command(node --version)` ran.
+
+**Partially reconcilable, not fully.** Per-token anchoring explains `command(node)` failing: the rule
+has one token, the command has two, so the extra token is uncovered. It does **not** explain
+`command(node .*)` failing — `.*` anchored should match `--version`.
+
+**Evidence class: contradicted, unresolved.** One of these is wrong: the docs, our test, or the
+version. It must be re-established before 0004 is rewritten again — and it **cannot be tested by an
+agent session unattended**, because `agy` grants live only in the operator's real
+`~/.gemini/antigravity-cli/settings.json`, which the probe suite is forbidden to touch.
+
+### 2. There is an `ask` list, and the precedence is a three-rung ladder
+
+We recorded `permissions.allow` / `.deny`. There are **three** lists — `allow`, `deny`, **`ask`** —
+and:
+
+> "Conflicting rules are strictly evaluated in priority order: **Deny > Ask > Allow**."
+
+So `agy` has the same allow / ask / deny shape as `claude`'s `auto-mode` classifier and as
+[0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md)'s ladder. Three independent
+designs, one shape. 0022 should be reconciled against both rather than either.
+
+Also documented and not recorded by us:
+- **Implicit rules** — writing a file grants read on the same path; denying read blocks write.
+- **Defaults** — workspace files auto-allowed, web browsing asks, *unconfigured actions default to ask*.
+- **Interactive scope editing** — a user may edit the target string to widen scope before approving,
+  "except for terminal commands".
+- **Windows path normalisation** — paths are normalised before rule evaluation "by stripping drive
+  letters and converting all backslashes to forward slashes". Directly relevant to AER on Windows.
+
+### 3. `agy` sandboxes on Windows; `claude` does not
+
+| OS | `agy` mechanism | `claude` mechanism |
+|---|---|---|
+| Linux | `nsjail` (namespaces + cgroups) | `bubblewrap` |
+| macOS | `sandbox-exec` | Seatbelt |
+| **Windows** | **`AppContainer`** | **not supported** |
+
+Enabled by `enableTerminalSandbox` in settings (default `false`), restricting shell execution,
+filesystem, network, and CPU/memory. Per-execution override both ways: *"Yes, and run without sandbox
+restrictions"* when enabled, *"Yes, and run in sandbox"* when disabled.
+
+**On the operator's Windows host, `agy` can contain a process and `claude` cannot.** That is the real
+asymmetry, it is platform-dependent, and neither of the two previous versions of the 0004 claim said
+so.
+
+### 4. `agy` does report quota — just not headlessly
+
+`vendor-capabilities.md` says *"`agy` — nothing"*. Documented:
+
+- **`/usage`** (alias **`/quota`**) — "Display model quota usage"; shows "your usage limits and
+  remaining requests/tokens for each supported model (e.g. Gemini 3.5 Flash, Gemini 3.1 Pro)", and
+  triggers "a fresh check of your quotas on disk and from the backend service".
+- **`/credits`** — "View remaining G1 credits and purchase links", with a `useG1Credits` setting to
+  spend personal credits once quotas are exhausted.
+
+**It opens an interactive TUI panel.** So our observation — `agy -p "/usage"` produces no report — was
+correct, and the *conclusion* ("agy has no usage data") was wrong. The data exists and reaches a
+backend; what is missing is a non-interactive path to it. That reframes #479 from "impossible on agy"
+to "needs a different route" — and the local RPC server (#508) is the obvious candidate.
+
+### 5. `toolPermission` has four values, and the binary strings I guessed at were these
+
+`toolPermission`: `request-review` (default) · `proceed-in-sandbox` · `always-proceed` · `strict`.
+
+Worth recording as a near-miss: `always-proceed`, `proceed-in-sandbox` and `request-review` were all
+turned up by the binary scan and were about to be tested **as command-line flags**. They are settings
+values. The scan surfaced real strings and my interpretation of them was wrong — which is the whole
+argument for reading the docs first.
+
+### 6. Slash commands `agy` has that our records never mentioned
+
+| command | documented as |
+|---|---|
+| `/btw <query>` | "Ask a side question in the background **without interrupting the main conversation**" |
+| `/fork` / `/branch` | "Clone the current conversation thread into a **new parallel session**" |
+| `/agents` | "Agent Manager Panel to switch custom agents and **monitor background subagents**" |
+| `/tasks` | "Task Manager Panel to monitor background shell execution logs" |
+| `/rewind` / `/undo` | "Roll back your conversation history to a previous message" |
+| `/context` | "context usage visualization panel" |
+| `/permissions` | "interactive tool permissions manager panel" |
+| `/diff` | "Interactive Diff Viewer to view changes, turns, and commits" |
+| `/planning` | "multi-turn plan generation mode" |
+| `/hooks`, `/skills`, `/mcp`, `/model`, `/statusline`, `/keybindings`, `/artifact` | — |
+
+Two land directly on open work:
+
+- **`/btw` is a documented answer to the queued-message problem (#462)** — a side question that does
+  not interrupt the running turn. Worth studying before we design ours.
+- **`Alt+J` "switches focus to the next subagent awaiting confirmation"** and **`Ctrl+K` "approves the
+  pending subagent action"**. `agy` already models *a queue of gates across parallel subagents* with
+  keyboard affordances — which is close to what the room list is being designed to do.
+
+### 7. Settings keys we had not recorded
+
+`allowNonWorkspaceAccess` (default `false`) — "Permit agent file access outside workspace", which is
+almost certainly the mechanism behind the cwd sharp edge in `vendor-capabilities.md`.
+Plus `artifactReviewPolicy` (`asks-for-review` / `agent-decides` / `always-proceed`), `colorScheme`,
+`altScreenMode`, `notifications`, `verbosity`, `enableTelemetry`, `editor`, `runningLightSpeed`.
+
+---
+
+## Sources
+
+- Claude Code docs index — https://code.claude.com/docs/llms.txt
+- [CLI reference](https://code.claude.com/docs/en/cli-reference) ·
+  [Sandboxing](https://code.claude.com/docs/en/sandboxing) ·
+  [Permissions](https://code.claude.com/docs/en/permissions) ·
+  [Workflows](https://code.claude.com/docs/en/workflows) ·
+  [Channels](https://code.claude.com/docs/en/channels)
+- Antigravity CLI — [overview](https://antigravity.google/docs/cli/overview) ·
+  [reference](https://antigravity.google/docs/cli/reference) ·
+  [permissions](https://antigravity.google/docs/cli/permissions) ·
+  [sandbox](https://antigravity.google/docs/cli/sandbox) ·
+  [usage](https://antigravity.google/docs/cli/commands/usage)
