@@ -44,3 +44,7 @@ bld/
 # Vendor documentation survey output (#527): a mirrored copy of both vendors public docs plus
 # the derived index. Regenerate with `pixi run vendor-survey`; never commit ~7MB of vendor text.
 .vendor-survey/
+
+# tools/aer-agy-loop/dispatch.py's generated workflow/bindings/task-dir per run -- transient
+# per-invocation scaffolding, never the deliverable.
+/aer-agy-loop-scratch/
