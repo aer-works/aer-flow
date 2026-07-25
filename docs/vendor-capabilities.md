@@ -1,12 +1,27 @@
 # Vendor capabilities — what each worker CLI can actually do
 
-**Status: verified reference. Every row was observed, not read off a help text.** Probed 2026-07-24
-(`#472`) against `claude` 2.1.219 and `agy` 1.1.6 on Windows. Where a claim rests on a live run, the
-observation is quoted. Where it rests on inspecting the shipped binary or vendor docs, it says so.
+**Status: verified reference, with a version split that matters.** Where a claim rests on a live run,
+the observation is quoted. Where it rests on inspecting help text or the shipped binary, it says so —
+and where a row says something is *absent*, it names the surfaces that absence was established on.
+
+| established | against | covers |
+|---|---|---|
+| 2026-07-24, `#504` | `claude` 2.1.219, `agy` **1.1.7** | the rows the probe suite regenerates: usage, per-turn cost, structured output, `--permission-prompt-tool`, effort, `--add-dir`, plus the subcommand findings below |
+| 2026-07-24, `#472` | `claude` 2.1.219, `agy` **1.1.6** | everything else — the permission grammar, `--sandbox` enforcement, the cwd finding, `--remote-control`, the blocking-MCP proof |
+
+**`agy` moved from 1.1.6 to 1.1.7 partway through that same day** — the superseded binary is still on
+disk as `agy.exe.<timestamp>.old` — and nothing noticed until the probe suite recorded a version. The
+`#472` rows have **not** been re-verified against 1.1.7. They are not thereby wrong; they are
+unattributed to the CLI that is installed, which is a different and quieter problem. `pixi run
+vendor-check` going green means only "no CLI has moved since the last probe" — never "every row here
+is verified."
 
 This exists because the M25 design assumed capabilities in several places, and design that assumes
-wrongly is worse than design that knows its limits. Two assumptions were **wrong** and are corrected
-below. Re-run the probes before trusting this after a vendor update — both CLIs self-update.
+wrongly is worse than design that knows its limits. Four assumptions were **wrong** and are corrected
+below. Two of the four were this document's own rows, which is the honest reason the probes are now
+[a program](../tools/Aer.VendorProbe/) rather than a habit: `pixi run vendor-probe` regenerates the
+findings, and `pixi run vendor-check` (free — it only reads `--version`) tells you when a vendor has
+moved out from under them.
 
 ## Why the probe method matters
 
@@ -25,7 +40,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 
 ## Capability matrix
 
-| | `claude` 2.1.219 | `agy` 1.1.6 |
+| | `claude` 2.1.219 | `agy` 1.1.7 |
 |---|---|---|
 | Headless flag | `-p` / `--print` | `-p` / `--print` |
 | Effort | `--effort low\|medium\|high\|xhigh\|max` | `--effort low\|medium\|high` |
@@ -33,10 +48,16 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | MCP | `mcp` subcommand, `--mcp-config`, `--strict-mcp-config` | **config file only** — `~/.gemini/config/mcp_config.json` |
 | Permission modes | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` | `--mode accept-edits\|plan` |
 | Per-call tool grant | `--allowedTools` / `--disallowedTools` | **none** — grants must be persisted to settings |
-| `--permission-prompt-tool` | **absent** | **absent** |
+| `--permission-prompt-tool` | **honoured** — consults a named MCP tool (undocumented) | **rejected**: `flags provided but not defined` |
+| Bypass permissions | `--permission-mode bypassPermissions`, `--dangerously-skip-permissions` | **`--dangerously-skip-permissions`** |
 | Sandbox | referenced in help only | **`--sandbox`, and it enforces** |
 | Resume | `--resume`, `-c` / `--continue` | `-c` / `--continue`, `--conversation <id>` |
-| Structured output | `--output-format stream-json --verbose` | not found |
+| Structured output | `--output-format stream-json --verbose` | **a local gRPC/HTTP server** — reachable, service surface not yet enumerated |
+| Running-session registry | **`claude agents --json`** | not found on: `--help`, subcommand list |
+| Permission policy engine | **`claude auto-mode`** — allow / soft_deny / hard_deny | not found on: `--help`, subcommand list |
+| Model enumeration | not found on: `--help`, subcommand list | **`agy models`** |
+| Plan usage & reset | **`/usage` (and `/cost`) — works headlessly, see below** | **none** — `/usage` is not a real command |
+| Per-turn cost | **`total_cost_usd` in every `stream-json` result** | none |
 | Other | `--agents <json>` | `--remote-control`, `--agent`, `--project` |
 
 ## Corrections to earlier assumptions
@@ -70,6 +91,148 @@ Permission-by-consultation is therefore **uniform across vendors**.
 ("a tool required the `mcp` permission that headless mode cannot prompt for, so it was auto-denied").
 Less structured, but it names the remedy.
 
+## `--permission-prompt-tool` — honoured by `claude`, and 0015 assumed it absent
+
+**Corrected 2026-07-24.** This document recorded the flag as **absent on both vendors**, established
+from `--help` alone. [0015](decisions/0015-three-kinds-of-needs-you.md) inverted its entire mechanism
+to a blocking MCP tool on that premise. The premise does not hold for `claude`.
+
+The flag is genuinely undocumented in `claude --help`, so the original reading was not careless — it
+was *incomplete*, in the same way the `/usage` row was. What settles it is a **control flag**: pass
+something that certainly does not exist, and see whether the CLI discriminates at all.
+
+| invocation | exit | output |
+|---|---|---|
+| `claude --definitely-not-a-real-flag-xyz -p hi` | **1** | `error: unknown option '--definitely-not-a-real-flag-xyz'` |
+| `claude --permission-prompt-tool noop -p hi` | **0** | the turn runs normally |
+| `agy --definitely-not-a-real-flag-xyz -p hi` | **2** | `flags provided but not defined` |
+| `agy --permission-prompt-tool noop -p hi` | **2** | `flags provided but not defined: -permission-prompt-tool` |
+
+`claude` rejects unknown flags and accepts this one; `agy` rejects both, so *its* absence is real and
+now rests on something firmer than help text. Without the control row, a zero exit is not evidence —
+"accepted" and "silently ignored" are indistinguishable — which is why
+[`FlagProbe`](../tools/Aer.VendorProbe/FlagProbe.cs) establishes the baseline before judging any flag.
+
+### It is honoured, not merely parsed
+
+Accepting a flag is not honouring it, and the table above only proves it *parses* — the prompt `hi`
+triggers no tool call, so it can never reach a permission decision. The check that discriminates is a
+turn that forces one, with a tool name that exists nowhere:
+
+```
+claude --permission-prompt-tool aer_probe_no_such_tool -p --output-format stream-json --verbose \
+  "Use the Write tool to create a file named x.txt containing BANANA in the current directory."
+```
+
+```
+Error calling tool (Write): Error: MCP tool aer_probe_no_such_tool
+(passed via --permission-prompt-tool) not found. Available MCP tools: …
+```
+
+The CLI reached the permission path, looked for the tool **by the name we invented**, and said so.
+A name that exists nowhere could not have come from anywhere but the flag, which is what makes this a
+measurement rather than an inference. Without the flag, the identical prompt is simply denied and the
+call lands in `permission_denials`.
+
+**So `--permission-prompt-tool` routes permission decisions to an MCP tool** — the same mechanism
+[0015](decisions/0015-three-kinds-of-needs-you.md) already chose, but as the vendor's designated entry
+point, consulted for *every* decision, rather than a tool the model must elect to call. That
+difference is not cosmetic: a gate the model chooses to invoke is discipline resting on model
+behaviour, which is what Architecture Rule 1 exists to forbid. This one is structural.
+
+0015 is therefore not wrong in its mechanism — MCP consultation is proven on both vendors (below) and
+is the only path `agy` has at all. What is wrong is its stated justification, that no vendor offers a
+permission callback. Whether the decision changes belongs in the decision, not in this reference.
+
+**Still unestablished:** what the tool is *handed* when consulted, and what shape of reply grants or
+denies. That is the next probe, and it is the one that would let AER stop depending on model election
+entirely.
+
+## The subcommand surface — three `claude` subcommands nobody had opened
+
+**Probed 2026-07-24.** Every capability above was probed on `--help` and, where relevant, the slash
+commands. **`<subcommand> --help` is a third surface**, and three of `claude`'s subcommands turned out
+to hold capabilities the M25 design was building from scratch.
+
+### `claude agents --json` — a live registry of running sessions
+
+Machine-readable, explicitly *"for scripting; does not require a TTY"*. Observed:
+
+```json
+[
+  { "id": "6567d8cf", "cwd": "…\\source\\repos\\aer", "kind": "background",
+    "startedAt": 1784902257007, "sessionId": "…", "name": "Reevaluate user experience from ground up",
+    "state": "blocked" },
+  { "pid": 18272, "cwd": "…\\source\\repos\\aer", "kind": "interactive",
+    "startedAt": 1784925162327, "sessionId": "…", "name": "…", "status": "busy" }
+]
+```
+
+Every field the room list needs: identity, working directory, a background/interactive distinction, a
+start time, a human-readable name the vendor generated, and **a state**. Note `"state": "blocked"` —
+the vendor already models *waiting on a human* as a first-class state, which is the distinction
+0020's state machine draws and #462's queued-message problem lives inside.
+
+`claude agents` also accepts `--permission-mode`, `--effort`, `--model`, `--mcp-config`, `--add-dir`
+and `--settings` as **defaults for dispatched sessions**, plus `--allow-dangerously-skip-permissions`
+("make bypass available without defaulting to it") — which is precisely
+[0028](decisions/0028-no-permissive-control-is-the-default.md)'s shape, already expressible.
+
+This is the fan-out surface. It deserves a real feasibility read before AER builds its own.
+
+### `claude auto-mode` — a three-rung permission classifier that already exists
+
+`claude auto-mode defaults` prints ~62 KB of JSON with exactly four keys:
+
+| key | rules | what it is |
+|---|---|---|
+| `allow` | 17 | carve-outs that are explicitly *not* violations |
+| `soft_deny` | 65 | blocked, but overridable — each names what it must cite |
+| `hard_deny` | 1 | Data Exfiltration. Never overridable |
+| `environment` | 20 | questions about the operator's context that condition the rest |
+
+The rules are **natural-language**, evaluated by a classifier, and user-overridable via an `autoMode`
+section in the settings file (`auto-mode config` shows the effective merge, `auto-mode reset` removes
+the override, `auto-mode critique` gives AI feedback on custom rules).
+
+Two consequences worth sitting with:
+
+- **A soft/hard denial ladder is not something AER has to invent.** 0022 designed one independently,
+  and the vendor's `soft_deny` / `hard_deny` split is the same distinction — a denial you can answer
+  versus one that is the end of the conversation.
+- **This is content classification driving a permission decision**, which is exactly what
+  Architecture Rule 1 forbids *Flow* from doing. It does not forbid Flow from **delegating** it to the
+  worker's own classifier. That is a genuinely better answer than reimplementing it, and it is only
+  available because the surface was looked at.
+
+### `claude project purge`
+
+Deletes all Claude Code state for a project — transcripts, tasks, file history, config entry. Relevant
+to whatever AER does when a room is deleted, and to any claim we make about what "removing a room"
+actually removes on disk.
+
+## `agy models` — effort and model are not orthogonal
+
+`agy models` enumerates what the CLI will actually accept:
+
+```
+gemini-3.6-flash-high     gemini-3.6-flash-medium   gemini-3.6-flash-low
+gemini-3.5-flash-high     gemini-3.5-flash-medium   gemini-3.5-flash-low
+gemini-3.1-pro-high       gemini-3.1-pro-low
+claude-sonnet-4-6         claude-opus-4-6-thinking  gpt-oss-120b-medium
+```
+
+Two things the design assumed otherwise:
+
+- **Effort is baked into the model name**, *and* `--effort low|medium|high` exists as a separate flag.
+  Two overlapping controls, and the interaction between them is unprobed.
+- **The grid has holes.** `gemini-3.1-pro` has `high` and `low` but **no `medium`**. A UI offering
+  model × effort as a matrix would offer combinations the CLI rejects. This sharpens
+  [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md): naming by behaviour is right,
+  but the available set is per-model, so it has to be *enumerated*, not assumed.
+- `agy` serves **Anthropic and OpenAI models too**, not only Gemini. "The Gemini worker" is the wrong
+  mental model for it.
+
 ## A blocking MCP tool holds a turn open — on both vendors
 
 The mechanism [0015](decisions/0015-three-kinds-of-needs-you.md) depends on. A dependency-free stdio
@@ -89,6 +252,111 @@ Two implementation constraints fall out:
   state across spawns.
 - **`agy` hands us the resume key at gate time.** `antigravity.google/conversation_id` is exactly what
   `agy --conversation <id>` resumes. A gate persisted with that id survives a host crash.
+
+## Usage, cost and quota — the asymmetry that matters most
+
+**Probed 2026-07-24.** An earlier pass concluded *"neither vendor exposes remaining quota or a reset
+time."* **That was wrong, and it was wrong for a methodological reason worth recording: it probed the
+CLI's `--help` and subcommand list, not the in-session slash commands.** Those are different surfaces,
+and the answer lives in the second one.
+
+> **Probe both surfaces.** A capability absent from `--help` may still exist as a slash command, and
+> a slash command may still work under `-p`. Checking one and concluding about the other is how the
+> first pass produced a confident wrong answer about the single number this product runs on.
+>
+> **On Windows, do not probe slash commands through Git Bash.** MSYS path conversion rewrites a
+> leading `/usage` into `C:/Program Files/Git/usage` *before it reaches the CLI*, and the model then
+> answers about that path — which reads exactly like "the command does not exist." Use PowerShell, or
+> `MSYS_NO_PATHCONV=1`.
+
+### `claude` — everything needed, headlessly
+
+`claude -p "/usage"` and `claude -p "/cost"` both return the same live report:
+
+```
+Current session: 21% used · resets Jul 25, 12:09am (America/New_York)
+Current week (all models): 67% used · resets Jul 27, 5:59am (America/New_York)
+Current week (Fable): 0% used
+Last 24h · 1811 requests · 21 sessions
+  88% of your usage came from subagent-heavy sessions
+  82% of your usage was at >150k context
+```
+
+So all four things [0026](decisions/0026-running-out-of-plan-is-a-state-not-a-failure.md) and `#479`
+needed are available: **percent consumed, a real reset instant, a per-model breakdown, and request
+counts** — plus behavioural attribution (*what* is spending the plan), which nothing in the design
+anticipated and which is more actionable than the percentage alone.
+
+The corpus's mockup number — *"Claude plan · 72% of this week's limit"* — was **not** a designed
+placeholder. It is the shape of a number the CLI already reports.
+
+**One caveat the surface must carry**, in the CLI's own words: *"Approximate, based on local sessions
+on this machine — does not include other devices or claude.ai."* The figure is **machine-local**, so
+AER must not present it as an account-wide truth.
+
+Separately, every `stream-json` result event carries `input_tokens`, `output_tokens`,
+`cache_creation_input_tokens`, `cache_read_input_tokens`, `model`, `service_tier` and
+**`total_cost_usd`** — the API-equivalent cost, computed by the CLI. No price table to maintain and no
+drift to chase. Observed on a trivial *"reply with ok"* turn: **$0.2463**, of which essentially all was
+24,619 cache-creation tokens. Cache writes dominate, which is worth knowing before designing a
+per-turn cost display.
+
+### `agy` — nothing
+
+`agy -p "/usage"` is **not a built-in command**. Headless, it tried to run a shell tool and was denied;
+re-run sandboxed with permissions bypassed, the model simply answered *conversationally* — active
+model, config path, telemetry state. No tokens, no percentage, no reset. `agy -p "/cost"` likewise
+produced prose claiming the status bar shows it, which is an interactive-only surface and, being the
+model talking rather than the CLI, is not evidence of anything.
+
+Not found on the surfaces checked: `--help`, the subcommand list, the slash surface, `--log-file`
+(13 KB, **zero** token keys), and `~/.gemini/antigravity-cli/cache/conversation_metadata.json`
+(`NumSteps`, `Title`, `UpdatedAt` — no usage of any kind).
+
+**One surface remains unchecked, and it is the promising one.** See below: `agy` runs a local RPC
+server, and no usage query has been put to it. Read this row as "not found yet", not "does not exist".
+
+### `agy` has a local RPC server — the structured surface we recorded as absent
+
+**Corrected 2026-07-24.** "Structured output: not found" was established on `--help` and on trying
+`--output-format`. It missed that **every `agy` run starts a local server and prints its ports**:
+
+```
+Starting language server process with pid 29564
+Language server version: 1.1.7
+Language server listening on random port at 50871 for HTTPS (gRPC)
+Language server listening on random port at 50872 for HTTP
+```
+
+Confirmed live: an HTTP request to that port during a run returns a real Go HTTP response
+(`404`, `Vary: Origin`, `X-Content-Type-Options: nosniff`) rather than a connection refusal. The
+server is there, it is reachable, and the port is discoverable from `--log-file`.
+
+**Not yet enumerated:** the service and method names. A guessed Connect RPC path 404s, and scanning
+the 166 MB binary for `*.Service` paths found none, so the service surface is likely in the spawned
+language-server process rather than the CLI binary. This is a partial, not an absence.
+
+That matters more than a convenience feature. A typed local RPC stream would let Flow route on
+**structured events instead of parsed stdout** — satisfying Architecture Rule 1 *structurally* rather
+than by discipline. Combined with the public Python SDK (`pip install google-antigravity`, which
+exposes streamed strongly-typed `ToolCall` events), there are now two independent signals pointing at
+the same integration path, and neither has been probed. **This is the highest-value open probe on
+`agy`**, and it is the one that would decide whether the usage/cost asymmetry above is permanent or
+merely unmeasured.
+
+### The design consequence
+
+**Do not fake parity.** Exact plan usage, reset times and per-turn cost for one vendor; nothing found
+yet for the other. That asymmetry has to be visible in the interface rather than smoothed into a
+single half-trustworthy number — the same rule
+[0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) applies to effort levels, where a
+collapse is disclosed rather than silently faked.
+
+**But design the surface for "not measured", not for "does not exist".** Two unprobed `agy` surfaces
+could still produce real numbers — the local RPC server and the public Python SDK — so a UI that
+hard-codes *"agy has no usage"* would bake in a claim that two open probes might overturn next week.
+The honest element is one that can say *"no usage data from this worker"* and later carry a figure
+without being redesigned.
 
 ## `agy` permission grammar
 
@@ -191,5 +459,23 @@ and read-only-by-default capabilities, suggests a structured local integration p
 parsing stdout — and would satisfy CLAUDE.md Architecture Rule 1 structurally, since Flow would never
 need to read conversation text to route. Worth a feasibility spike before the adapter shape is fixed.
 
-Related: `#472` (this probe), `#445` (the permission-request mechanism),
+## Keeping this current
+
+Both CLIs self-update, so every row here has a shelf life. The suite splits along cost:
+
+| | what it does | cost | where it runs |
+|---|---|---|---|
+| `pixi run vendor-probe` | drives the live CLIs, regenerates the findings | **real subscription usage**, a few minutes | a human, on a machine with both vendors authenticated |
+| `pixi run vendor-check` | compares installed `--version` against the recorded one | **nothing** — no session, no tokens | the ordinary dev loop, and `pixi run test` |
+
+The free check is the trigger for the paid one. `pixi run vendor-probe` writes
+`docs/vendor-probe.lock.json` recording the versions its findings were established against;
+`VendorProbeStalenessTests` compares that against what is installed and fails the moment a CLI moves.
+
+**This deliberately does not run in CI**, and not only because the probe spends usage. No runner has
+an authenticated `claude` or `agy` on PATH, so a CI job would find both vendors absent and go green
+forever — a pass meaning only "the vendors were never here". That green would be worse than no check,
+because it looks like coverage. The check therefore *skips* where it cannot know, and says so.
+
+Related: `#472` (the first probe), `#504` (the probe suite), `#445` (the permission-request mechanism),
 [0004](decisions/0004-permission-scopes.md), [0015](decisions/0015-three-kinds-of-needs-you.md).
