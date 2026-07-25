@@ -40,6 +40,24 @@ same shape of mistake Architecture Rule 1 already forbids inside the engine itse
 parse conversation content to make routing decisions) — this just names that the same discipline
 applies one layer up, in tooling that could otherwise grow into a shadow engine.
 
+## Using this for an advisor consult
+
+`--model gemini-3.1-pro-high` (agy's Pro tier, high reasoning effort — see `agy models` for the
+full catalogue) is a reasonable default when dispatching a consult rather than an implementation or
+review task.
+
+**Ground it — don't ask it cold.** A bare knowledge question about a fast-moving CLI is a
+training-data-staleness risk, not just a style preference: asked "what CLI flag does agy use to
+auto-approve every tool permission request?" with nothing to read, `gemini-3.1-pro-high` answered
+`--yolo` — confidently, and wrong. The real flag is `--dangerously-skip-permissions`. That wasn't
+pure fabrication: `-y`/`--yolo` was a real flag on Google's Gemini CLI, the line `agy` (Antigravity
+CLI) evolved from, and the model correctly recalled a real fact about a related tool without
+noticing the two have since diverged — nothing in a bare question prompts that check. The fix isn't
+"trust it less," it's "give it something to read": paste the actual current `agy --help` output (or
+point it at `docs/vendor-doc-audit.md`, which records measured — not vendor-claimed — behavior) into
+the prompt rather than asking from its own memory. This generalizes past this one flag: any fact
+about this project's own fast-moving tooling should be grounded the same way.
+
 ## The shell-commands guard
 
 `--run-shell-commands` without `--network-access` is refused client-side, before ever calling `aer
