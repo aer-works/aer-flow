@@ -23,6 +23,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aer.Adapters\Aer.Adapters.csproj" />
+    <!-- #543: ClaudeWorkerAdapterTests spawns the real hook-check executable end to end, which
+         needs Aer.Cli's build output copied alongside this test binary. Aer.Adapters itself must
+         never reference Aer.Cli (ReferenceDirectionTests enforces that against the src/ project,
+         not this one); this is a test-only dependency to exercise the real artifact, the same
+         reason a test project routinely needs more than its production project under test does. -->
+    <ProjectReference Include="..\..\src\Aer.Cli\Aer.Cli.csproj" />
   </ItemGroup>
 
 </Project>

@@ -97,11 +97,11 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         // #533 constraints 1-2: hooks load only from the process's own cwd `.claude/`, with no
         // parent-directory fallback, and `--add-dir` (above) loads no configuration on claude --
         // measured, gate.add-dir-loads-no-config. So AER cannot rely on cwd-based discovery for
-        // either the mandatory PreToolUse hook (0029) or MCP config; it passes both explicitly,
-        // at a path AER owns rather than the room's own directory (`WorkingDirectory` may be a
-        // repo the operator did not ask AER to write into). EnsureLaunchConfigFiles only guarantees
-        // the files EXIST with valid, inert JSON -- populating real content (the hook definition)
-        // is #543's job.
+        // either the mandatory PreToolUse hook (0029) or MCP config; it passes both explicitly, at
+        // a path AER owns rather than the room's own directory (`WorkingDirectory` may be a repo the
+        // operator did not ask AER to write into). EnsureLaunchConfigFiles populates the real
+        // PreToolUse hook (#543) -- see its own doc comment for why the settings file is always
+        // rewritten rather than written once.
         var (settingsPath, mcpConfigPath) = EnsureLaunchConfigFiles();
         args.Add("--settings");
         args.Add(settingsPath);
@@ -178,8 +178,29 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         return new CoreDispatchTarget(
             "claude", [.. args], invocation.WorkingDirectory, PromptText: prompt,
-            Environment: [(MaxSubagentSpawnDepthVariable, "1")]);
+            Environment:
+            [
+                (MaxSubagentSpawnDepthVariable, "1"),
+                (DeniedToolsVariable, disallowed),
+            ]);
     }
+
+    /// <summary>
+    /// The environment variable carrying this invocation's denied-tool list to the <c>PreToolUse</c>
+    /// hook's own process (#543) — the same comma-joined names <see cref="BuildDisallowedTools"/>
+    /// emits for <c>--disallowedTools</c>. Set even when empty; <c>Aer.Cli</c>'s <c>hook-check</c>
+    /// treats an empty/missing value as "nothing withheld" and always allows. A hook process
+    /// inherits the spawning process's environment (confirmed in
+    /// <c>.vendor-survey/corpus/claude__hooks.md</c>: "A hook process inherits the parent
+    /// environment"), which is what makes this reach hook-check at all -- the settings file itself
+    /// is one static, shared file across every spawn (see <see cref="EnsureLaunchConfigFiles"/>), so
+    /// per-invocation data has to travel this way rather than through the file's content.
+    /// <see cref="Aer.Adapters"/> cannot reference <c>Aer.Cli</c> (the CLI depends on the adapters,
+    /// never the reverse), so this name is a plain string contract mirrored on
+    /// <c>HookCheckCommand.DeniedToolsEnvironmentVariable</c> — both sides assert the literal value
+    /// in their own test suite, and the two must agree.
+    /// </summary>
+    public const string DeniedToolsVariable = "AER_HOOK_DENIED_TOOLS";
 
     /// <summary>
     /// The environment variable name Claude Code reads for its subagent fan-out depth cap.
@@ -201,20 +222,28 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     public const string MaxSubagentSpawnDepthVariable = "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH";
 
     /// <summary>
-    /// Ensures the two files <see cref="AerPaths.WorkerLaunchConfig"/> needs exist with minimal,
-    /// valid, inert JSON -- never overwrites existing content. Called on every <see cref="Resolve"/>
-    /// because there is no single daemon-lifecycle hook covering every entry point that resolves a
-    /// claude invocation (the CLI's `aer run`/`aer decide`/etc. spawn a fresh process per command,
-    /// with no daemon involved at all).
+    /// Ensures the two files <see cref="AerPaths.WorkerLaunchConfig"/> needs exist. Called on every
+    /// <see cref="Resolve"/> because there is no single daemon-lifecycle hook covering every entry
+    /// point that resolves a claude invocation (the CLI's `aer run`/`aer decide`/etc. spawn a fresh
+    /// process per command, with no daemon involved at all).
     /// </summary>
+    /// <remarks>
+    /// <b>The settings file is always rewritten with canonical content (#543), reversing #533's
+    /// "never overwrite existing content."</b> That was correct while the file held only inert `{}`
+    /// with nothing to lose; now it carries the mandatory `PreToolUse` hook (0029), and "never
+    /// overwrite" would leave a pre-#543 `{}` -- or any other stale content -- permanently installed,
+    /// silently disabling the gate for good on any machine that ran an earlier build even once. The
+    /// file is entirely AER-owned (no operator content can live here, per
+    /// <see cref="AerPaths.WorkerLaunchConfig"/>'s own doc comment), so there is nothing that
+    /// overwriting could destroy. The MCP config file is untouched by #543 and keeps the old
+    /// once-only semantics.
+    /// </remarks>
     private static (string SettingsPath, string McpConfigPath) EnsureLaunchConfigFiles()
     {
         Directory.CreateDirectory(AerPaths.WorkerLaunchConfig);
 
-        // Empty is a valid, no-op --settings file: it overrides no keys, so this changes nothing
-        // about how claude behaves today. #543 populates the PreToolUse hook here.
         var settingsPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-settings.json");
-        EnsureFileExists(settingsPath, "{}");
+        WriteFileAtomically(settingsPath, BuildSettingsJson());
 
         // The standard empty MCP config shape -- declares no servers, so this adds nothing beyond
         // what claude would otherwise discover on its own.
@@ -222,6 +251,65 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         EnsureFileExists(mcpConfigPath, "{\"mcpServers\":{}}");
 
         return (settingsPath, mcpConfigPath);
+    }
+
+    /// <summary>
+    /// The `--settings` content #543 ships: one `PreToolUse` hook, matching every tool
+    /// (<c>"matcher": "*"</c>), pointed at this same machine's own `aer` executable in exec form
+    /// (`args` set) so Claude Code spawns it directly with no shell -- no quoting concerns, matching
+    /// this adapter's own "direct shell-less" design (see the type's own doc comment). Resolved via
+    /// <see cref="AppContext.BaseDirectory"/> rather than any single caller's process path: both
+    /// `Aer.Cli.exe` (running standalone) and `Aer.Daemon.exe` (which references `Aer.Cli` through
+    /// `Aer.Ui.Core`, so MSBuild copies the full `Aer.Cli.exe`/`.dll`/`.runtimeconfig.json` set into
+    /// its own output directory too -- confirmed by inspecting both build outputs) resolve a real,
+    /// functionally identical `hook-check` target from their own base directory, so a race between
+    /// two entry points writing this file concurrently is benign: whichever writer's content wins,
+    /// invoking it runs the same logic.
+    /// </summary>
+    private static string BuildSettingsJson()
+    {
+        var hookExecutable = Path.Combine(
+            AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "Aer.Cli.exe" : "Aer.Cli");
+
+        var settings = new
+        {
+            hooks = new
+            {
+                PreToolUse = new[]
+                {
+                    new
+                    {
+                        matcher = "*",
+                        hooks = new[]
+                        {
+                            new
+                            {
+                                type = "command",
+                                command = hookExecutable,
+                                args = new[] { "hook-check" },
+                            },
+                        },
+                    },
+                },
+            },
+        };
+
+        return JsonSerializer.Serialize(settings);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="content"/> to <paramref name="path"/> via a temp file plus
+    /// <see cref="File.Move(string, string, bool)"/>, whose overwrite is a same-volume rename and
+    /// therefore atomic on both Windows and POSIX -- a reader never observes a torn write, which a
+    /// direct <see cref="File.WriteAllText(string, string)"/> onto the final path does not guarantee
+    /// when two processes race to rewrite it (see <see cref="BuildSettingsJson"/>'s remarks on why
+    /// that race is otherwise benign; this is what keeps it benign at the byte level too).
+    /// </summary>
+    private static void WriteFileAtomically(string path, string content)
+    {
+        var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(tempPath, content);
+        File.Move(tempPath, path, overwrite: true);
     }
 
     /// <summary>

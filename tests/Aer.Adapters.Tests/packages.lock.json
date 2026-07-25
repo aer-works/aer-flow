@@ -169,6 +169,13 @@
           "xunit.v3.runner.common": "[3.2.2]"
         }
       },
+      "aer": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Adapters": "[0.14.0, )",
+          "Aer.Flow": "[0.14.0, )"
+        }
+      },
       "aer.adapters": {
         "type": "Project",
         "dependencies": {
