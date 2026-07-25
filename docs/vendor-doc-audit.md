@@ -1520,6 +1520,46 @@ The other 26, by group:
 | `claude/whats-new__index`, `claude/whats-new/2026-w19`, `claude/whats-new/2026-w23`, `claude/whats-new/2026-w26`, `claude/whats-new/2026-w27`, `claude/whats-new/2026-w28` | **superseded by a better source** | Weekly digests of the changelog. `claude/changelog` is cited and depth-read, is the authoritative version, and scored 1543 against these pages' 8–17. |
 | `agy/github-CHANGELOG`, `issues/trackers` | **standing sources, re-read per bump** | Not one-time reads: both are moving feeds already on the permanent source list, and both have already produced findings (agy's hook-loader bug, upstream #548/#640). Their disposition is "monitored", which no single read closes. |
 
+### A hook that cannot run fails **open**, and says nothing (#530)
+
+Decision 0029 makes a `PreToolUse` hook mandatory on every worker AER spawns, and its `Rests on`
+table carried this as **assumed**: *hooks on Windows run through Git Bash and have historically
+failed silently there.* It is now **measured**, and the answer is the unwanted one — though not for
+the documented reason.
+
+`pixi run vendor-verify -- --only gate.broken-hook`. Six arms, one variable each, same allow rule
+and same target throughout. The two working-hook arms are the discovery control: without them, a
+broken arm's result cannot be told from a settings file that never loaded.
+
+| arm | tool proceeded | CLI reported anything |
+|---|---|---|
+| **control** — working hook, `exit 2` | **no**, blocked | yes |
+| **control** — working hook, `exit 0` | yes | — |
+| hook script path does not exist | **yes** | **no** |
+| interpreter does not exist | **yes** | **no** |
+| script written **CRLF**, in a path containing a **space** | **no**, blocked | yes |
+| `exit 1` — non-zero, non-2 | yes | — |
+
+**Two findings, and the second corrects this project's own expectation.**
+
+1. **A hook whose command cannot execute fails open, silently.** No error, no warning, no mention in
+   `--output-format json`. The tool runs. This is precisely the shape 0015 names as the most
+   dangerous vendor behaviour to miss — *a gate that is configured, running, and never consulted is
+   indistinguishable from a working one* — and it is now demonstrated rather than feared.
+2. **CRLF line endings and a space in the path both survive.** The vendor's documented Git Bash
+   failure mode is not what bites. The assumption AER was carrying named the wrong cause, which
+   would have sent a mitigation at the wrong target: normalising line endings would have felt like
+   a fix and prevented nothing.
+
+`exit 1` allowing the tool is correct and documented — only `exit 2` blocks.
+
+**What this settles for 0029.** The startup self-check that record calls for is not prudence, it is
+the only thing standing between AER and a permanently open gate: the failure mode is *silent*, so
+nothing short of proving the hook fires can detect it. Two properties follow for the
+implementation — the self-check must assert a **side effect the hook produced**, never that the
+settings file was written; and it must run **per worker spawn**, because the failure is per-process
+(a wrong path, a missing interpreter on that host) rather than per-configuration.
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls

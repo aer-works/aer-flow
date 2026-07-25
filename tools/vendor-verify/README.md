@@ -81,7 +81,41 @@ moved*.
 ## Cost and safety
 
 Every check starts a real CLI session and spends real subscription usage, so this never runs in CI
-— the same permanent-human-action-item rule as `smoke-*` and `vendor-probe`.
+— the same permanent-human-action-item rule as `smoke-*` and `vendor-probe`. This is not a rounding
+error: one verification session took the operator's plan from **33% used to 78%**.
+
+### The model tier, and why it is not a blanket downgrade
+
+Checks run on **the cheapest model each vendor offers, at the lowest effort** —
+`claude --model haiku --effort low`, `agy --model gemini-3.6-flash-low`. Most checks measure a
+**mechanism**: does a hook fire, is a flag honoured, is an elicitation routed. The model has no say
+in any of that, so paying for a frontier model buys nothing.
+
+**Seven checks are exempt and run on the vendor default**, listed in `NEEDS_CAPABILITY`. The test
+for membership is one question:
+
+> Would a less capable model plausibly produce the **opposite** observation, for a reason that has
+> nothing to do with the vendor behaviour under test?
+
+For fan-out checks, yes — a weak model may simply do the work itself rather than spawning
+subagents, and "no subagents ran" would read as a cap holding. For
+`gate.allowedtools-is-preapproval-not-ceiling` (#529), emphatically yes: the finding *is* that the
+model reaches for `Bash` when `Write` is withheld. A model that never thinks of `Bash` would make
+the restriction look like a boundary and quietly reverse the most consequential result in the audit.
+
+Downgrading those would reintroduce the exact failure this suite exists to avoid — **an instrument
+that cannot separate two causes** — wearing a cost optimisation as a disguise.
+
+Two consequences, both deliberate:
+
+- **The tier is printed on every result line** (`[cheap-model]`) and in the run header. A result
+  produced on a downgraded model must never be indistinguishable from one produced as originally
+  measured.
+- **`--full-model` runs everything on the vendor default.** Reach for it when a cheap-model result
+  looks wrong and you need to know whether the *model* changed or the *vendor* did.
+
+Injection happens inside `run()`, not at each call site, so a future check cannot forget it — and a
+check that passes its own `--model` wins, because that flag is then the variable under test.
 
 Checks are `safe` unless marked otherwise: **no configuration is read, copied, or modified**, and
 the operator's `~/.claude` and `~/.gemini` settings are untouched. A check marked `mutates-config`

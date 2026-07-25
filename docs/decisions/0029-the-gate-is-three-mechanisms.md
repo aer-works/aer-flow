@@ -124,7 +124,7 @@ assume a subagent is more constrained than the session that spawned it.
 | `claude` will gain `elicitation.url` | **assumed** — it declares form-only today; nothing commits it to adding url mode | the non-blocking gate stays agy-only and AER carries two gate transports indefinitely |
 | Hooks load only from the process cwd `.claude/`, with no parent fallback | **measured** — `--only gate.add-dir-loads-no-config` | AER need not control the worker's cwd; the launch constraint above relaxes |
 | One level of subagent nesting is permitted by default | **measured** — `--only fanout.nesting-allowed-by-default`, two independent runs | the vendor's documented default (off) holds and the explicit depth cap is belt-and-braces rather than required |
-| Hooks on Windows run through Git Bash and have historically failed **silently** there | **assumed** — vendor-documented, not measured on this host; Windows is the primary development host | the mandatory hook is unreliable on the main dev platform and every gate above it is too — this is the highest-value unrun check in the set |
+| A `PreToolUse` hook whose command **cannot execute** fails **open and silently** — the tool runs, and the CLI reports nothing | **measured** — `pixi run vendor-verify -- --only gate.broken-hook` (#530). CRLF endings and a space in the path both survive, so the vendor's documented Git Bash failure mode is *not* the cause | if it failed *closed*, the startup self-check below would be belt-and-braces instead of load-bearing, and a misconfigured worker would be safe rather than ungated |
 | A second concurrent login against one subscription is permitted | **assumed** — needs the account owner; not measurable from an agent session | per-worker config roots collapse to one and worker isolation needs a different design |
 
 ## Consequences
@@ -136,7 +136,20 @@ population, read the row. The mechanism that covers it either is or is not confi
 never loaded and a callback disabled by `auto` both look exactly like a working gate. AER must
 **verify its own gate at worker start** rather than assume configuration took effect: the discovery
 control that made these measurements trustworthy is the same technique the product needs at runtime.
-This obliges a startup self-check that proves the hook fires, not merely that the file was written.
+
+**This is measured, not precautionary (#530).** A hook whose command cannot execute — wrong path,
+missing interpreter — lets the tool run and the CLI says *nothing*: no error, no warning, nothing in
+`--output-format json`. So the self-check is the only thing that can detect a dead gate, and two
+properties fall out of *how* the failure presents:
+
+- It must assert a **side effect the hook actually produced**, never that the settings file was
+  written. The file is written in every failing arm.
+- It must run **per worker spawn**, not once per configuration. The failure is a property of the
+  process and its host — a path that does not resolve there — not of the config that looks fine.
+
+Worth recording that the assumption this replaced named the **wrong cause**: CRLF line endings and
+spaces in paths both survive. Normalising line endings would have felt like a fix and prevented
+nothing.
 
 **Obliges us to** ship a `PreToolUse` hook on every spawned worker; control the worker's cwd or pass
 `--settings`; set the subagent depth cap explicitly; give every blocking MCP gate a `timeout` floor
