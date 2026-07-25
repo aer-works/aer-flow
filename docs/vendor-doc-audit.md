@@ -1402,6 +1402,77 @@ which is the one measured to survive 200s and the one that needs a `timeout` flo
 notifications so it is not reaped mid-wait. Elicitation's role is to make the refusal *portable and
 unbypassable*; the blocking response is what makes the gate *durable*.
 
+### SEP-1036 URL-mode elicitation — the non-blocking gate, standardized, and agy honours it
+
+**This finding came from a page the coverage tooling had marked `PENDING-DEPTH` and never read.**
+That is worth stating first, because the disposition was not a lie so much as a word that meant
+something other than what it said — see *How a flagged page went unread* below.
+
+[SEP-1036](https://modelcontextprotocol.io/community/seps/1036-url-mode-elicitation-for-secure-out-of-band-interactions)
+(**Final**, Standards Track) adds `mode: "url"` to elicitation. The server hands the client a URL,
+the user opens it in a browser, and the interaction happens **out of band — bypassing the MCP client
+entirely**. The SEP is explicit about the property that matters here:
+
+> *"Why doesn't the server block (wait) on the elicitation to complete? URL mode elicitation
+> requests are asynchronous or 'disconnected' flows by design… Payment flows, external
+> authorization, etc. can take minutes or more to complete, and in some cases never complete at
+> all."*
+
+Completion is reported by a `notifications/elicitation/complete` notification carrying the
+`elicitationId`; clients **MAY** auto-retry on it, and **SHOULD** offer a manual way to continue if
+it never arrives. A server may also return `URLElicitationRequiredError` (code `-32042`), which the
+spec says the client must treat as equivalent to an `elicitation/create`.
+
+**Why this matters more than any other page in the corpus.** The durable gate this audit derived —
+*persist the pause, release the call, let a human answer later* — is not an AER invention that needs
+building from nothing. It is a Final SEP with a wire format. It also removes the constraint that
+made the blocking gate awkward: no idle reaper, no `timeout` floor, no 200 s ceiling, because
+nothing is being held open.
+
+**The vendor split is spec-defined, not decorative.** Per the SEP's backwards-compatibility clause,
+a bare `elicitation: {}` means **form mode only**:
+
+| vendor | declared | modes |
+|---|---|---|
+| `claude` | `'elicitation': {}` | **form only** |
+| `agy` | `'elicitation': {'form': {}, 'url': {}}` | **form and url** |
+
+This retro-explains a difference recorded earlier in this document as agy having "more
+sub-structure". It is not richer decoration; it is a different capability set, and the earlier
+phrasing under-described it.
+
+**Measured, because declaring is not honouring** — `pixi run vendor-verify -- --only agy.url-mode`:
+
+| what | result |
+|---|---|
+| agy declares `elicitation.url` | **yes** |
+| agy accepts a `mode: "url"` `elicitation/create` mid-`tools/call` | **yes** — routed through the same three-action model |
+| the client's answer, headless | `cancel` |
+| the gated tool body ran | **no** |
+
+**The limit of this measurement, stated plainly.** Headless there is no human, so the client
+cancels. What is established is that agy **accepts and routes** a url-mode request and that the gate
+holds when the answer is not `accept`. What is **not** established: that an interactive agy surfaces
+the URL to a person, that `notifications/elicitation/complete` triggers a retry, or that the
+out-of-band round trip works end to end. Those need a human and are the natural next live-smoke
+item — not something an agent session can close.
+
+#### How a flagged page went unread, and what fixed it
+
+`vendor_survey.py` computes each page's ledger disposition from its score: `PENDING-DEPTH` if it
+scored ≥ 10. That value is a **recommendation** — *this page deserves a depth read* — produced by a
+script that runs before anyone reads anything and is regenerated from scratch on every version bump.
+It can never mean *a depth read is outstanding*, because nothing in that script can know.
+
+`tools/audit-completeness` then counted any row with a disposition as a page with a disposition, and
+reported 382/382. Both statements were true and the conclusion drawn from them was wrong — the
+failure mode `docs/documentation-lessons.md` is entirely about, found in this audit's own tooling.
+
+The fix is a join rather than a rename: the read-state is now **computed** in `step2_corpus` by
+checking whether each depth-flagged page is actually cited in the audit prose. 107 of 137 are;
+**30 are not**, and that list is now printed on every run, relevance-ordered. Citation is weaker
+evidence than an attestation, but it is recomputed every time rather than recorded once and trusted.
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls

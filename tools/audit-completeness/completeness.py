@@ -97,9 +97,57 @@ def step2_corpus():
     ok = line("pages mirrored", pages)
     ok &= line("pages with a ledger row", len(rows), pages,
                "every page must have a disposition")
+
+    # `PENDING-DEPTH` in the ledger is the HARVEST's recommendation ("worth a depth read"), not an
+    # outcome -- vendor_survey.py runs before anyone reads anything. Counting it as a disposition
+    # let this step report full coverage while 137 pages sat flagged, one of which (SEP-1036,
+    # URL-mode elicitation) changed decision 0029. Same defect as a title column passing for a
+    # reason in step 6: the check was weaker than the claim it certified.
+    #
+    # So the read-state is COMPUTED here, by joining the recommendation against whether the page is
+    # actually cited in the audit prose. Citation is the strongest evidence available without a
+    # human attestation, and it is recomputed on every run rather than recorded once and trusted.
     for d, n in sorted(dispositions.items()):
         print(f"      {d:<20} {n}")
+    flagged = [r.split("\t") for r in rows if r.split("\t")[-1].strip() == "PENDING-DEPTH"]
+    cited, uncited = [], []
+    for p in flagged:
+        (cited if page_is_cited(p[1]) else uncited).append(p)
+    line("depth-flagged pages", len(flagged))
+    ok &= line("  ... cited with a finding in the audit", len(cited), len(flagged),
+               "uncited depth-flagged pages are genuinely unread")
+    if uncited:
+        print("\n    Depth-flagged and NOT cited anywhere -- the real outstanding population:")
+        for p in sorted(uncited, key=lambda r: -int(r[4]))[:40]:
+            print(f"      relevance {int(p[4]):>5}   {p[0]}/{p[1]}")
     return ok
+
+
+AUDIT_PROSE = ["docs/vendor-doc-audit.md", "docs/vendor-capabilities.md", "docs/vendor-coverage.md",
+               "docs/decisions/0029-the-gate-is-three-mechanisms.md",
+               "docs/decisions/0030-aer-is-its-own-notifier.md",
+               "docs/decisions/0015-three-kinds-of-needs-you.md"]
+_prose = None
+
+
+def page_is_cited(name):
+    """Does the audit prose reference this mirrored page by name?
+
+    Slugs are hierarchical (`agent-sdk__typescript` -> `agent-sdk/typescript`) and the docs cite
+    them three ways: as a URL path, as `page.md:line` provenance, or as a backticked name. All
+    three count. A bare English word that merely happens to match does NOT -- the leaf must appear
+    with a delimiter around it, or `mcp` would match every sentence containing the word.
+    """
+    global _prose
+    if _prose is None:
+        _prose = "".join(read(d) for d in AUDIT_PROSE).lower()
+    slug = name.replace("__", "/")
+    leaf = slug.split("/")[-1]
+    if len(leaf) < 4:
+        return False
+    return any(re.search(p, _prose) for p in
+               (re.escape(slug), re.escape(name), re.escape(leaf) + r"\.md",
+                r"[/`]" + re.escape(leaf) + r"[`\s)\].,:]"))
 
 
 def step3_gaps():

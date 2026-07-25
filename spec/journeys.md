@@ -28,6 +28,14 @@ artifact issues cite and the target-design spec rewrite is written against.
 Baseline **2026-07-24** — **Fails 15 · Partial 3 · Passes 0.** The honest starting line the rebuild
 moves. Written against the target product; today's product fails most of these, which is the point.
 
+**Revised 2026-07-25 (#527) — Fails 16 · Partial 2 · Passes 0.** J6 moved *backwards*, from Partial
+to Fails, and that is the audit's sharpest single result. It was Partial because `--disallowedTools`
+shipped and its engine test passed; measurement then showed the flag never bounded the capability at
+all — a model denied `Write` writes the file through `Bash`
+([#529](https://github.com/aer-works/aer-flow/issues/529)). **A journey status can be too generous
+as well as too stale**, and a green test on the mechanism is what hid it. The reconcile gate (#489)
+compares declared status against test results; it cannot catch a test that asserts the wrong thing.
+
 **J10–J18 were added 2026-07-24** from the M25 design corpus, whose nine claims it states are
 *“journey-shaped on purpose”* — each a claim plus the condition under which it counts as
 demonstrated. They are **additive**: two look like duplicates of J1 and J6 and are not, for reasons
@@ -96,8 +104,13 @@ first — held apart from what's still running and what already finished.
   waiting · running work is visible but secondary · finished work (failures correctly labelled) is
   available, not in your face.
 - **Today** — a running task shows the phone "Nothing is waiting on you" and nothing else (#337);
-  failed tasks list as `Terminal`/finished (#355).
-- **Serves** — #337, #355, #334
+  failed tasks list as `Terminal`/finished (#355). The vendor audit (#527) settled *where the signal
+  comes from*, which this journey had never pinned down: both vendor events that could have announced
+  a pause — `PermissionRequest` and `Notification` — are silent under `-p`, so
+  [0030](../docs/decisions/0030-aer-is-its-own-notifier.md) makes AER the notifier. It follows that
+  **"Nothing is waiting on you" must be evidenced by AER's own gate state, never by the absence of a
+  vendor event** — an absent signal from a silent source is the calm-screen failure 0018 names.
+- **Serves** — #337, #355, #334, decisions 0018, **0030**
 
 ## J4 — Pair a phone from scratch on an ordinary network
 
@@ -139,26 +152,37 @@ object, the same state, not two disconnected views.
 
 ## J6 — Deny a tool and have it actually blocked
 
-**Status:** Partial — automated · safety
+**Status:** Fails — automated · safety
 
 When you withhold a capability from a piece of work, the work genuinely cannot use it — the permission
 is enforced, not merely displayed.
 
 - **Spans** — engine · *seam: permission grant ↔ enforcement*
-- **Passes when** — a capability the user has not granted cannot be exercised by the worker; an attempt
-  to use a denied tool is refused at the boundary and recorded — not silently allowed. **On every
-  adapter**, either by an enforcing flag or by refusing to build the dispatch at all.
+- **Passes when** — a capability the user has not granted cannot be exercised by the worker **by any
+  route**; an attempt to use a denied tool is refused at the boundary and recorded — not silently
+  allowed. **On every adapter**, either by an enforcing flag or by refusing to build the dispatch at
+  all. The withheld *capability* is what must be unreachable, not merely the named tool: writing a
+  file through `Bash` when `Write` was withheld fails this journey.
 - **Path** *(illustrative)* — start work with a tool withheld · the worker attempts to use it · the
-  attempt is refused and surfaced · the withheld capability never runs.
-- **Today** — **the original defect is fixed; the promise is not fully demonstrated.** #331 landed
-  `--disallowedTools` on `ClaudeWorkerAdapter`, so a withheld tool is now actively denied rather than
-  merely omitted from `--allowedTools`, and the engine leg is green. Two gaps remain: `agy` has no
+  attempt is refused and surfaced · the withheld capability never runs, **including through a
+  different tool that could achieve the same effect**.
+- **Today** — **Fails, and the reason changed on 2026-07-25.** #331 landed `--disallowedTools` on
+  `ClaudeWorkerAdapter` and the engine leg is green, which is why this read *Partial*. The vendor
+  audit (#527) then measured that **tool restriction is not a capability boundary**: a model denied
+  `Write` reaches for `Bash` and writes the file
+  ([#529](https://github.com/aer-works/aer-flow/issues/529),
+  `pixi run vendor-verify -- --only gate.allowedtools-is-preapproval-not-ceiling`). So the flag that
+  made this Partial never enforced the promise as written above.
+  [0029](../docs/decisions/0029-the-gate-is-three-mechanisms.md) is the answer: a `PreToolUse` hook
+  is the only mechanism covering vendor tools, exit-2 blocks even against an allow rule, and it is
+  now mandatory on every spawned worker. Three gaps remain: the hook is not yet shipped; `agy` has no
   deny-list flag, so `GeminiWorkerAdapter` fails closed by throwing
-  `PermissionGrantUnsupportedException` instead — correct per decision 0004, and **untested**; and the
-  end-to-end refusal (a live worker attempting the tool and being blocked) has never been run.
-  *This status was `Fails` for a day after #331 merged, with the engine test passing — the drift the
-  reconcile gate now runs in CI to catch (#489).*
-- **Serves** — #331, decisions 0004, 0022
+  `PermissionGrantUnsupportedException` — correct per decision 0004, and **untested**; and the
+  end-to-end refusal has never been run live.
+  *This status was `Fails` for a day after #331 merged with the engine test passing — the drift the
+  reconcile gate now runs in CI to catch (#489). It has now been wrong in the other direction too:
+  green on the mechanism, silent on whether the mechanism bounded anything.*
+- **Serves** — #331, #529, decisions 0004, 0022, **0029**
 
 ## J7 — Lose the connection and get back to work
 

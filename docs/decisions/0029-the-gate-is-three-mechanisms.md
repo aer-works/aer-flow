@@ -60,9 +60,34 @@ another.**
 | **Blocking `tools/call`** | **AER's own MCP tools** | the durable wait: AER declines to respond until its UI returns a human answer. The only mechanism that *holds* rather than refuses | reaped mid-wait without a `timeout` floor or progress notifications |
 | **`elicitation` (+ `requiresUserInteraction` on claude)** | **AER's own MCP tools** | uncircumventable refusal — no permission mode on either vendor approves it | always, headless: it denies rather than asks |
 
-**The durable gate is the blocking `tools/call`, and only that.** Elicitation and
+**Today the durable gate is the blocking `tools/call`, and only that.** Form-mode elicitation and
 `requiresUserInteraction` do not carry a pause across a human's absence; they guarantee that a tool
 is *not silently approved*. Use them to make the refusal unbypassable, not to ask the question.
+
+**But build it to migrate, because the non-blocking gate is already standardized.**
+[SEP-1036](https://modelcontextprotocol.io/community/seps/1036-url-mode-elicitation-for-secure-out-of-band-interactions)
+(**Final**) adds `mode: "url"` elicitation: the server hands the client a URL, the human answers out
+of band in a browser, and — the SEP states this outright as a design property — **the server does
+not block**. Completion is reported by `notifications/elicitation/complete`, and
+`URLElicitationRequiredError` (`-32042`) is the equivalent error form.
+
+That is exactly the shape this design needs, and it dissolves the blocking gate's whole problem
+class: no idle reaper, no `timeout` floor, no 200 s ceiling, because nothing is held open. It is
+also what makes M28's own demonstration — quit the desktop app, answer on the phone, come back —
+achievable rather than a race against an unknown timeout.
+
+**The vendor split is spec-defined.** A bare `elicitation: {}` means form mode only, per the SEP's
+backwards-compatibility clause. `claude` declares `{}`; `agy` declares `{'form': {}, 'url': {}}` and
+was measured to accept and route a url-mode request (`agy.url-mode-elicitation`). So the better
+mechanism exists on one vendor today.
+
+**What follows for the design:** AER's gate must be able to answer a pending question **without the
+originating tool call still being open**, because that is the shape both the URL-mode path and a
+crash recovery require. Persisting at ask-time ([0015](0015-three-kinds-of-needs-you.md)) already
+forces most of this; what this adds is that **releasing the call must be the normal path, not the
+crash path**. A gate designed around holding the call open would have to be rebuilt to adopt
+SEP-1036; a gate designed around a persisted question and a correlation id adopts it by adding a
+transport.
 
 **The hook is not optional, because it is the only mechanism covering vendor tools.** Per finding 1,
 an MCP-only gate protects MCP tools. Any capability the model can reach through `Bash` is ungated
@@ -93,7 +118,10 @@ assume a subagent is more constrained than the session that spawned it.
 | A `PreToolUse` hook's `ask` forces a prompt in `auto` mode | **measured** — `--only gate.hook-ask-in-auto` | 0015's original pessimism was right: an operator's `auto` removes AER's permission surface entirely and AER must refuse to render one |
 | A `PreToolUse` hook exiting 2 blocks a tool despite an allow rule | **measured** — `--only gate.hook-exit-2-beats-allow` | the hook is advisory, not an enforcement point; nothing covers vendor tools and the gate is MCP-only by necessity |
 | `elicitation` is honoured and unbypassable on **both** vendors | **measured** — `--only gate.elicitation`, `--only agy.elicitation` | the portable refusal does not exist; the gate needs a per-vendor mechanism table and `requiresUserInteraction` is claude-only |
-| A blocking `tools/call` survives long enough to be answered by a human | **measured to 200 s only** — the upper bound of the idle window is unknown | the durable gate has a ceiling shorter than a person's response time, and the pause must be persisted and the call released rather than held |
+| A blocking `tools/call` survives long enough to be answered by a human | **measured to 200 s only** — the upper bound of the idle window is unknown | the durable gate has a ceiling shorter than a person's response time, and the pause must be persisted and the call released rather than held. *This is why the design releases the call by default rather than relying on the bound* |
+| `agy` accepts and routes a SEP-1036 `mode: "url"` elicitation | **measured** — `--only agy.url-mode` | the non-blocking migration path does not exist on any vendor today and the blocking call is the only option until one ships it |
+| An interactive `agy` actually surfaces the URL to a person, and `notifications/elicitation/complete` resumes the call | **assumed** — headless there is no human, so every arm cancels; this needs a live human run | url-mode is accepted but not usable as a human channel, and the migration above is blocked on the vendor rather than on AER |
+| `claude` will gain `elicitation.url` | **assumed** — it declares form-only today; nothing commits it to adding url mode | the non-blocking gate stays agy-only and AER carries two gate transports indefinitely |
 | Hooks load only from the process cwd `.claude/`, with no parent fallback | **measured** — `--only gate.add-dir-loads-no-config` | AER need not control the worker's cwd; the launch constraint above relaxes |
 | One level of subagent nesting is permitted by default | **measured** — `--only fanout.nesting-allowed-by-default`, two independent runs | the vendor's documented default (off) holds and the explicit depth cap is belt-and-braces rather than required |
 | Hooks on Windows run through Git Bash and have historically failed **silently** there | **assumed** — vendor-documented, not measured on this host; Windows is the primary development host | the mandatory hook is unreliable on the main dev platform and every gate above it is too — this is the highest-value unrun check in the set |

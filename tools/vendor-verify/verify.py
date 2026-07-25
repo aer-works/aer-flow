@@ -479,6 +479,64 @@ def _agy_elicitation():
     return PASS, f"declared={declared}; " + "; ".join(detail)
 
 
+@check("agy.url-mode-elicitation", "agy",
+       "whether agy honours SEP-1036 URL-mode elicitation, which it DECLARES -- the standardized "
+       "non-blocking out-of-band gate, and the only measured route to a human that does not hold "
+       "the tool call open")
+def _agy_url_elicit():
+    """SEP-1036 (Final) adds `mode: "url"` to elicitation: the server hands the client a URL for the
+    user to open in a browser, out of band. The SEP is explicit that **the server does not block**
+    on it -- "asynchronous or 'disconnected' flows by design... can take minutes or more".
+
+    That is the exact shape decision 0029 needs and the blocking `tools/call` cannot give: the
+    blocking gate is measured only to 200 s, and M28's own demonstration (quit the desktop, answer
+    on the phone) takes longer.
+
+    Vendors differ, and the difference is spec-defined rather than decorative. Per the SEP's
+    backwards-compatibility clause a bare `elicitation: {}` means **form mode only**:
+
+        claude  {'elicitation': {}}                    -> form only
+        agy     {'elicitation': {'form': {}, 'url': {}}} -> form AND url
+
+    So agy declares url mode and claude does not. Declaring is not honouring -- this audit has
+    found the gap repeatedly -- so this measures whether agy does anything with a url-mode request
+    or rejects it.
+    """
+    wd = tempfile.mkdtemp(prefix="v-agyu-")
+    try:
+        os.makedirs(os.path.join(wd, ".agents"))
+        mcp_config(os.path.join(wd, ".agents", "mcp_config.json"), "mcp_elicit_server.py", wd,
+                   extra_env={"AER_ELICIT_MODE": "url"})
+        rc, out, err = run(["agy", "-p",
+                            "Call the MCP tool control_tool, then call elicit_tool. Call both.",
+                            "--add-dir", wd, "--dangerously-skip-permissions"],
+                           timeout=420, cwd=wd)
+
+        def load(n):
+            p = os.path.join(wd, n)
+            if not os.path.exists(p):
+                return None
+            try:
+                return json.load(open(p, encoding="utf-8"))
+            except ValueError:
+                return "unparseable"
+        caps, elicited = load("CAPS.json"), load("ELICITED.json")
+        control = os.path.exists(os.path.join(wd, "CALLED_control_tool"))
+        ran = os.path.exists(os.path.join(wd, "CALLED_elicit_tool"))
+        declares_url = "url" in ((caps or {}).get("capabilities", {}) or {}).get("elicitation", {})
+        if not control:
+            return INCONCLUSIVE, f"control tool never ran; caps={caps}"
+        if not (elicited or {}).get("issued"):
+            return INCONCLUSIVE, "the url-mode request was never issued -- server-side problem"
+        resp = (elicited or {}).get("response")
+        if ran:
+            return FAIL, f"the gated body ran; url-mode elicitation did not hold it. resp={resp}"
+        return PASS, (f"declares-url={declares_url}; answered={resp}; gated-body-ran={ran}; "
+                      f"rc={rc}")
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+
+
 @check("gate.headless-event-surface", "gate",
        "which hook events actually fire under -p -- the notification surface available to a "
        "worker AER spawns headless (decision 0018)")

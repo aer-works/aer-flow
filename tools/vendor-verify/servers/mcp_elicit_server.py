@@ -31,6 +31,7 @@ import os
 import sys
 
 D = os.environ.get("AER_SENTINEL_DIR", ".")
+MODE = os.environ.get("AER_ELICIT_MODE", "form")   # "form" (in-band) or "url" (out-of-band)
 
 # elicitation id -> the tools/call id that is waiting on it.
 #
@@ -107,14 +108,26 @@ for line in sys.stdin:
             _waiting[eid] = rid
             # Record that the request was ISSUED before any answer arrives -- "never answered" and
             # "never asked" must not look the same.
-            write("ELICITED.json", {"issued": True, "response": None})
+            write("ELICITED.json", {"issued": True, "mode": MODE, "response": None})
             # Ask the client for confirmation. Per spec this is a server->client request nested
             # inside the tool call, so the tools/call response is deliberately NOT sent yet.
-            send({"jsonrpc": "2.0", "id": eid, "method": "elicitation/create",
-                  "params": {"message": "AER gate: approve this operation?",
-                             "requestedSchema": {"type": "object",
-                                                 "properties": {"approve": {"type": "boolean"}},
-                                                 "required": ["approve"]}}})
+            #
+            # URL mode (SEP-1036, Final) is the out-of-band variant: the server hands the client a
+            # URL for the user to open in a browser, bypassing the MCP client entirely. It matters
+            # to AER because the SEP states outright that the server does NOT block on it -- which
+            # is the shape a durable gate needs and the blocking call cannot provide. Only clients
+            # declaring `elicitation.url` support it; a bare `elicitation: {}` means form-only, per
+            # the SEP's backwards-compatibility clause.
+            params = ({"mode": "url",
+                       "elicitationId": "aer-probe-%d" % eid,
+                       "url": "https://localhost:9/aer-gate/%d" % eid,
+                       "message": "AER gate: approve this operation out of band."}
+                      if MODE == "url" else
+                      {"message": "AER gate: approve this operation?",
+                       "requestedSchema": {"type": "object",
+                                           "properties": {"approve": {"type": "boolean"}},
+                                           "required": ["approve"]}})
+            send({"jsonrpc": "2.0", "id": eid, "method": "elicitation/create", "params": params})
             continue
         write(f"CALLED_{name}", "1")
         send({"jsonrpc": "2.0", "id": rid, "result": {

@@ -483,6 +483,18 @@ def survey(out: str) -> None:
             f.write(f"| {i} | {p['vendor']} | `{p['name']}` | {p['bytes']//1024} | {p['constraints']} | {t} |\n")
 
     def disposition(p):
+        """What the HARVEST concluded about a page -- a recommendation, never an outcome.
+
+        `PENDING-DEPTH` means "this page scored high enough to deserve a depth read", not "a depth
+        read is outstanding". Nothing here can know whether one happened, because this script runs
+        before anyone reads anything and is re-run from scratch on every version bump.
+
+        That distinction was not written down, and it cost something: `tools/audit-completeness`
+        counted a `PENDING-DEPTH` row as a page with a disposition, so it reported full coverage
+        while 137 pages sat flagged. Among them was SEP-1036 (URL-mode elicitation), which changed
+        decision 0029. **The read-state is computed there**, by joining this recommendation against
+        whether the page is actually cited in the audit prose -- see `step2_corpus`.
+        """
         return "PENDING-DEPTH" if p["score"] >= 10 else ("SCAN-ONLY" if p["relevance"] else "NO-SIGNAL")
 
     with io.open(os.path.join(out, "ledger.tsv"), "w", encoding="utf-8", newline="") as f:
