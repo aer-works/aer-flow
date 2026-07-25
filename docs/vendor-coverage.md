@@ -8,6 +8,36 @@ Companion to [`vendor-doc-audit.md`](vendor-doc-audit.md) (the findings) and
 [`vendor-capabilities.md`](vendor-capabilities.md) (the reference). Started 2026-07-24 against
 `claude` 2.1.220 and `agy` 1.1.7.
 
+## How coverage is established (2026-07-25)
+
+Page-at-a-time reading could not cover ~250 pages, and the summarizing fetch that a bulk read
+implies is lossy — it is what corrupted the first `defer` reading. **Both vendors publish a
+machine-readable index**, so the corpus is mirrored locally and read from source instead:
+
+- **`claude`** — `https://code.claude.com/docs/llms.txt`, **172 pages**, each fetchable as raw `.md`.
+- **`agy`** — `https://antigravity.google/llms.txt` (exists; previously unknown) and
+  `sitemap.xml`, **77 doc pages** — more than the ~60 this register originally assumed. No `.md`
+  variant, but pages are server-rendered, so `<main>` extraction preserves headings, code, tables.
+
+**Breadth and depth are separated rather than traded off.** Every finding that changed a decision
+was one sentence inside a large page ("Bare mode skips OAuth and keychain reads"), and those
+sentences share a grammar — *skips, only, cannot, must, requires, before v, will become*. Harvesting
+that class across the whole corpus gives **100% page coverage at ~1% of the bytes**; depth-reading
+then goes only where they cluster on an open question.
+
+`pixi run vendor-survey` (see `tools/vendor-survey/`) rebuilds this: **249 pages / 7.0 MB →
+922 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
+plus a ledger giving **every page a disposition** so coverage is checkable rather than asserted.
+
+| disposition | pages | meaning |
+|---|---|---|
+| `PENDING-DEPTH` | 84 | constraints cluster here; depth-read as decisions require |
+| `SCAN-ONLY` | 131 | touches an open question but thin; constraints harvested |
+| `NO-SIGNAL` | 34 | no open-question vocabulary at all |
+
+All 922 constraint sentences have been read across nine topics. **The per-page `·` tables below are
+superseded by the ledger** and are kept only for the pages whose *contents* are summarized here.
+
 ## Status legend
 
 | mark | meaning |
@@ -208,13 +238,21 @@ These are the ones most likely to be missed, because the audit has been pointed 
 
 ## E. Order of work
 
-Inventory first (this file), then verification, then re-derivation:
+Item 1 is **done** (#527): both indexes found, both corpora mirrored, all 922 constraint sentences
+read. The gate-symmetry question it existed to answer is **settled, negatively** — see
+`vendor-doc-audit.md`. Remaining, re-ordered by what the reading changed:
 
-1. **Read Tier 1 on both vendors** — `agy`'s `/docs/hooks` and `/docs/sdk/overview` first, because
-   they decide whether the gate design is symmetric, then `claude`'s `settings`, `hooks`,
-   `permission-modes`, `mcp`, `costs`.
-2. **Verify the "documented but not verified" list** above, in the order that decisions depend on it.
+1. **Depth-read where constraints still cluster** — `sub-agents`, `hooks`, `agent-view`, `mcp`, and
+   `errors`. Then mine `changelog` (200 constraints, 493 KB): the richest and noisiest source, and
+   the one that doubles as a **failure-mode list for AER's own supervisor**.
+2. **Verify the "documented but not verified" list** below, in the order decisions depend on it.
 3. **Audit `src/` against the corrected reality** (#521 found the first defect; sweep the rest).
-4. **Sweep 0001–0028** and record which rest on corrected premises.
-5. **Resolve the two contradictions**, one of which needs an owner decision about safe testing.
-6. **Establish cross-platform coverage**, or state plainly that every claim is Windows-scoped.
+   Now includes: does anything sum top-level `usage.output_tokens` and thereby under-report fan-out?
+4. **Sweep 0001–0028.** 0015 needs rewriting outright — its gate mechanism, its symmetry assumption,
+   and its `defer`-based durability all changed. 0018's notify hook is narrower than assumed.
+5. **Establish cross-platform coverage**, or state plainly that every claim is Windows-scoped.
+   Newly concrete: claude's hooks run through **Git Bash on Windows** and historically failed
+   *silently* there, and Windows is the primary development host.
+6. **Re-run `pixi run vendor-survey` on every vendor version bump.** The staleness gate already
+   fires on a version change; the survey is what makes re-establishing coverage cheap rather than a
+   fresh manual read.

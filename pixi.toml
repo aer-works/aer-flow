@@ -130,6 +130,21 @@ journey-reconcile = { cmd = "dotnet test tests/Aer.Journeys.Tests --filter Categ
 # See docs/runbooks/vendor-probe.md.
 vendor-probe = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --out docs/vendor-capabilities.probe.json" }
 
+# Vendor documentation survey (#527): the reading half of the same problem. `vendor-probe` above
+# measures the binaries; this mirrors both vendors' published documentation and harvests the
+# sentences that actually change decisions. Unlike vendor-probe it is safe anywhere — it only
+# fetches public docs, drives no CLI, and spends no subscription usage.
+#
+# Both vendors publish a machine-readable index (claude: llms.txt with raw .md per page; agy:
+# llms.txt + sitemap.xml, server-rendered). Reading ~250 pages by hand isn't repeatable, and a
+# summarizing fetch is lossy — that produced the first, wrong reading of claude's `defer`. Every
+# finding that changed a decision was one sentence sharing a recognisable grammar ("Bare mode skips
+# OAuth and keychain reads"), so this harvests that class corpus-wide: 100% page coverage at ~1% of
+# the bytes, plus a ledger giving every page a disposition so coverage is checkable, not asserted.
+#
+# Re-run on every vendor version bump — VendorProbeStalenessTests already fails when a CLI moves.
+vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
+
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,
 # so it runs in the ordinary dev loop — `pixi run test` runs the same comparison via

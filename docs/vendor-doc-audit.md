@@ -604,6 +604,12 @@ set at spawn, no session resumption with in-process teammates.
 Both were on the unread Tier 1 list in [`vendor-coverage.md`](vendor-coverage.md), flagged as the
 largest hole. They were, and reading them overturns a claim repeated throughout this audit.
 
+> **Superseded in part — read [§5 of the Tier 1 + Tier 2 read](#5-agys-cli-hooks-work--and-the-gate-is-symmetric).**
+> This section's "CLI support is not verified" caveat, and the four candidate explanations below,
+> are resolved: **agy's CLI hooks work.** They load from `<workspace>/.agents/hooks.json` and from
+> `~/.gemini/config/hooks.json`, fire `PreToolUse`, and enforce `deny`. The original negative was an
+> artifact of a broken hook *command*, not of hook support.
+
 ### `agy` documents a `PreToolUse` hook that can deny
 
 **Every statement in this audit about the gate being claude-only, or about `agy` having "none of
@@ -756,6 +762,135 @@ required `append`/`load` keyed by `{projectKey, sessionId, subpath}`, optional `
 local copy authoritative, and a distinct event when mirroring fails. That is a well-worn shape for
 exactly the problem 0015's durable gate and the room store both have.
 
+---
+
+## The Tier 1 + Tier 2 read (#527) — method, and what it overturned
+
+### Method: breadth and depth stopped competing
+
+Reading ~250 pages one at a time is not repeatable, and a summarizing fetch is lossy — it produced
+the first, wrong reading of `defer`. But **every finding that changed a decision was one sentence**,
+and those sentences share a grammar: *skips, only, cannot, must, requires, before v, will become*.
+
+`pixi run vendor-survey` mirrors both corpora from their published indexes (claude `llms.txt` → 172
+raw `.md` pages; agy `llms.txt` + `sitemap.xml` → 77 server-rendered pages) and harvests that
+sentence class corpus-wide: **249 pages / 7.0 MB → 922 unique constraint sentences**, tagged against
+AER's open questions with page:line provenance, plus a ledger giving **every page a disposition**.
+100% page coverage at ~1% of the bytes.
+
+It justified itself immediately: several findings below come from `glossary`, `channels`, `chrome`,
+`context-window`, and `desktop-scheduled-tasks` — pages no depth-first ranking would have opened.
+
+### 1. The strongest gate primitive is one we were not considering
+
+`_meta["anthropic/requiresUserInteraction"]` — which **AER's own MCP server can set** — survives
+every mechanism that defeats the alternatives: allow rules, *all* permission modes including
+`bypassPermissions`, the auto-mode classifier, and a permissive hook. It offers no "don't ask again".
+That is 0015's "needs you" semantic enforced by the vendor rather than by our discipline.
+
+**The catch is architectural:** headless converts it to a hard deny (`MCP tool requires user
+interaction; not supported via --permission-prompt-tool`), and `dontAsk` denies it too. A perfect
+gate where a human surface exists; a hard block where none does. AER must decide which invocations
+carry a human surface.
+
+Second primitive, for non-MCP tools: **a hook's `"ask"` forces a prompt even in auto mode** — "the
+classifier can still deny the tool call, but it can't approve the call silently."
+
+### 2. `defer` cannot carry the durable gate
+
+> "`defer` only works when Claude makes a single tool call in the turn."
+
+The earlier end-to-end verification used a single-tool turn, so it passed. `defer` **silently does
+not apply** when the model batches tool calls, which is the common case.
+
+### 3. The blocking-MCP gate can be reaped mid-wait
+
+An MCP call that sends **no response and no progress notification** for the idle window aborts. A
+per-server `timeout` ≥ 1000 acts as a floor, or the server must emit progress. Without one of those,
+a slow human produces an error instead of a gate. (Real permission *prompts*, by contrast, never
+auto-resolve on idle.)
+
+### 4. An API key silently disables the features AER is built on
+
+> "Remote Control, `/schedule`, claude.ai MCP connectors, and notification preferences are **disabled
+> when `ANTHROPIC_API_KEY` / `apiKeyHelper` / `ANTHROPIC_AUTH_TOKEN` is set, even if a Claude.ai
+> login also exists**."
+
+This upgrades **Credential Isolation (architecture rule 4)** from a premise to a *functional*
+invariant: a stray key does not degrade gracefully, it removes AER's entire remote story.
+
+### 5. agy's CLI hooks work — and the gate **is** symmetric
+
+Recorded first as "not observed", then wrongly narrowed to "IDE-only". Both were wrong.
+
+| location | result |
+|---|---|
+| `<workspace>/.agents/hooks.json` (workspace registered via `--add-dir`) | **loads and fires** |
+| `~/.gemini/config/hooks.json` | **loads, fires, `deny` enforced** |
+| `~/.gemini/antigravity-cli/hooks.json` | does not load — see [antigravity-cli#49](https://github.com/google-antigravity/antigravity-cli/issues/49) |
+
+Verified positive: `Tool execution was blocked by the system gate policy (AER global gate test).`
+
+That last row matches an open upstream issue: the CLI's own `/hooks` command *writes* to
+`antigravity-cli/` while the loader *reads* `config/`, so anyone configuring hooks through the CLI
+gets a file that is never read.
+
+So agy's control surface is real and CLI-reachable: `allow`/`deny`/`ask`/`force_ask`,
+`permissionOverrides`, `PreInvocation.injectSteps`, `PostInvocation.terminationBehavior`,
+`Stop.decision:"continue"`, `Stop.fullyIdle`. **On several axes it is stronger than claude's.**
+
+**Why it was called wrong twice, and the durable fix.** The hook command was `sh "<path>"`; JSON
+quote-escaping added a leading backslash and `sh` exited 127. The hook fired every time. The detector
+("did the side-effect file appear") could not distinguish *never fired* from *fired, command failed*
+— **a negative from an instrument that cannot separate those is not evidence.**
+
+`agy` had been writing the answer to disk the whole time, on every start:
+
+> `hooks_manager.go:53] loaded 0 named hooks from 0 hooks.json file(s)`
+
+**Check the vendor's own logs before concluding absence.** Same lesson as reading the docs before
+reverse-engineering, and as grepping the repo before re-deriving a known finding — third costume.
+
+Also newly on the permanent source list: **the CLI has a public issue tracker and changelog**
+(`google-antigravity/antigravity-cli`) that this audit had never consulted.
+
+### 6. Fan-out limits are now concrete (#503 items 4–5)
+
+Concurrent subagents cap **20** (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`); nested subagents **off by
+default**; nested teams **impossible**; per-teammate modes **cannot be set at spawn**; a parent's
+`bypassPermissions`/`acceptEdits`/`auto` **applies to every subagent and cannot be overridden**.
+
+Decisive for the design: **a teammate's background work cannot outlive the lead's process**, so
+teammates make the lead a single point of failure — while `--bg` sessions survive detach entirely.
+
+### 7. The vendor's changelog is a test plan for AER's own supervisor
+
+`Aer.Daemon` supervises workers and survives restarts; the vendor built the same thing and shipped
+the bugs. Stale lock **whose PID the OS reused**; auto-upgrade **silently killing all live sessions**;
+sleep/wake needing **clock-jump detection** rather than elapsed-idle; workers inheriting a **stale
+`PATH`** and a **stale model** from the daemon rather than the dispatching shell and `settings.json`;
+daemon handover judged by **embedded build timestamp**, not version string.
+
+### 8. Smaller corrections worth carrying
+
+- **`--add-dir` grants file access, not configuration.** Hooks load only from the process's own cwd
+  `.claude/`, with **no parent-directory fallback** — so AER must control the worker's working
+  directory or pass `--settings`. With #521 (`--bare` disables hooks even via `--settings`), the
+  viable gate combinations are narrow.
+- **Hooks on Windows run through Git Bash** and historically failed *silently* there. Windows is the
+  primary development host.
+- `PreToolUse`'s top-level `decision`/`reason` are **deprecated**; `PermissionRequest` fires **only in
+  auto mode**; `PreToolUse` never fires for `EndConversation`, and typing `/skillname` bypasses it.
+- **Two processes cannot write one transcript** — AER must serialise per session.
+- **`usage.output_tokens` excludes subagent tokens**; whole-tree accounting needs `modelUsage`.
+- **`errorCode: "credits_required"`** is a typed signal for *subscription* quota exhaustion (#479).
+- **Transcript parsing is explicitly unsupported** — verified that AER does not do it.
+- agy: **credentials are coupled to its background daemon** ("If the background daemon is locked or
+  headless, the CLI cannot read credentials") — a headless agy daemon is an *auth* failure.
+- Two more agy doc inaccuracies: `--cwd` is documented and **does not exist** (the real flag is
+  `--add-dir`), and the live `PreToolUse` payload carries an **undocumented `modelName`** field with
+  `transcriptPath` pointing at `transcript_full.jsonl`, not the documented `transcript.jsonl`.
+
 ## Sources
 
 - Claude Code docs index — https://code.claude.com/docs/llms.txt
@@ -780,3 +915,15 @@ exactly the problem 0015's durable gate and the room store both have.
   [FAQ](https://antigravity.google/docs/faq) ·
   [terms](https://antigravity.google/terms)
 - `google-antigravity` 0.1.8 wheel, read via `pip download --no-deps`
+- **Machine-readable indexes** (the whole corpus, mirrored by `pixi run vendor-survey`) —
+  [claude `llms.txt`](https://code.claude.com/docs/llms.txt) ·
+  [agy `llms.txt`](https://antigravity.google/llms.txt) ·
+  [agy `sitemap.xml`](https://antigravity.google/sitemap.xml)
+- **`google-antigravity/antigravity-cli`** — the CLI's public
+  [issue tracker](https://github.com/google-antigravity/antigravity-cli/issues) and
+  [changelog](https://github.com/google-antigravity/antigravity-cli/blob/main/CHANGELOG.md).
+  Never consulted before 2026-07-25; [#49](https://github.com/google-antigravity/antigravity-cli/issues/49)
+  documents the hooks path misalignment independently. **Check it before recording any agy negative.**
+- **`agy`'s own logs** — `~/.gemini/antigravity-cli/log/cli-*.log`. Reports hook discovery
+  (`hooks_manager.go`), hook execution failures (`command_hook_executor.go`), and the resolved
+  workspace on every start. The fastest disproof of an "it isn't there" claim.
