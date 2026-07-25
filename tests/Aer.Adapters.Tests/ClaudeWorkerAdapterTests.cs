@@ -38,8 +38,10 @@ public class ClaudeWorkerAdapterTests
         Assert.Equal("--allowedTools", target.Args[2]);
         Assert.Equal("Write", target.Args[3]);
         Assert.Equal("--add-dir", target.Args[4]);
-        Assert.Equal("--output-format", target.Args[6]);
-        Assert.Equal("text", target.Args[7]);
+        // #533 inserted --settings/--mcp-config after --add-dir's value; positional indices past
+        // that point are no longer stable, so this uses the order-independent helper like every
+        // newer test in this file already does.
+        Assert.Equal("text", ArgValue(target, "--output-format"));
     }
 
     /// <summary>
@@ -93,8 +95,7 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Model: "claude-opus-4-5"), ArchitectContract);
 
-        Assert.Equal("--model", target.Args[8]);
-        Assert.Equal("claude-opus-4-5", target.Args[9]);
+        Assert.Equal("claude-opus-4-5", ArgValue(target, "--model"));
     }
 
     [Fact]
@@ -280,5 +281,82 @@ public class ClaudeWorkerAdapterTests
             new WorkerInvocation("Draft a plan.", PermissionScope: "Read,Edit"), ArchitectContract);
 
         Assert.DoesNotContain("--disallowedTools", target.Args);
+    }
+
+    /// <summary>
+    /// #533 constraints 1-2: hooks and MCP config load only from cwd's own `.claude/`, with no
+    /// parent-directory fallback, and `--add-dir` loads neither on claude -- so both are passed
+    /// explicitly, at files AER owns rather than the room's own directory.
+    /// </summary>
+    [Fact]
+    public void Settings_and_mcp_config_are_passed_at_AER_owned_paths_that_exist_and_are_valid_json()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        var settingsPath = ArgValue(target, "--settings");
+        var mcpConfigPath = ArgValue(target, "--mcp-config");
+
+        Assert.NotNull(settingsPath);
+        Assert.NotNull(mcpConfigPath);
+        Assert.StartsWith(AerPaths.WorkerLaunchConfig, settingsPath);
+        Assert.StartsWith(AerPaths.WorkerLaunchConfig, mcpConfigPath);
+        Assert.True(File.Exists(settingsPath), "the file --settings points at must already exist");
+        Assert.True(File.Exists(mcpConfigPath), "the file --mcp-config points at must already exist");
+
+        // Both must be valid, parseable JSON, or the CLI invocation this constructs fails outright.
+        using var settingsDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(settingsPath));
+        using var mcpDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(mcpConfigPath));
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, settingsDoc.RootElement.ValueKind);
+        Assert.True(mcpDoc.RootElement.TryGetProperty("mcpServers", out _));
+    }
+
+    /// <summary>
+    /// The discriminating half of the claim above: EnsureLaunchConfigFiles must never overwrite
+    /// content once written, because #543 -- or an operator inspecting the file -- may have put
+    /// something real there. A test that only checked the file exists would pass equally against
+    /// an implementation that stomps it on every call.
+    /// </summary>
+    [Fact]
+    public void An_existing_settings_file_survives_a_second_Resolve_call_untouched()
+    {
+        // Establish the file via a first, ordinary resolve.
+        new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var settingsPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-settings.json");
+        Assert.True(File.Exists(settingsPath));
+
+        // This test project's AER_HOME is a throwaway per-process root (tests/Shared/AerHomeRedirect),
+        // not the developer's real ~/.aer -- but the marker still has to be restored within THIS
+        // process, or a later test in the same run that reads this file's default content would be
+        // silently order-dependent on this one having run first.
+        var originalContent = File.ReadAllText(settingsPath);
+        try
+        {
+            const string marker = """{"hooks":{"PreToolUse":[{"marker":"do-not-overwrite"}]}}""";
+            File.WriteAllText(settingsPath, marker);
+
+            new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft another plan."), ArchitectContract);
+
+            Assert.Equal(marker, File.ReadAllText(settingsPath));
+        }
+        finally
+        {
+            File.WriteAllText(settingsPath, originalContent);
+        }
+    }
+
+    /// <summary>
+    /// #533 constraint 3, measured (not vendor-documented) default: `verify.py`'s
+    /// `fanout.nesting-allowed-by-default` found a subagent CAN spawn its own subagent with nothing
+    /// configured, so AER sets the cap explicitly rather than trusting the vendor's stated default.
+    /// </summary>
+    [Fact]
+    public void The_subagent_spawn_depth_is_capped_to_one_via_the_process_environment()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.NotNull(target.Environment);
+        Assert.Contains(
+            (ClaudeWorkerAdapter.MaxSubagentSpawnDepthVariable, "1"),
+            target.Environment);
     }
 }

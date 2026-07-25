@@ -44,6 +44,72 @@ public class CoreDispatcherTests
         }
     }
 
+    /// <summary>
+    /// #533: <see cref="CoreDispatchTarget.Environment"/> is the seam a vendor adapter uses to set a
+    /// vendor-specific variable (e.g. Claude Code's subagent depth cap) without <c>Aer.Flow</c> ever
+    /// knowing the variable's name (Architecture Rule 2). This proves it actually reaches the child
+    /// process, not just that <c>CoreDispatcher</c> compiles against it.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_sets_CoreDispatchTarget_Environment_variables_on_the_child_process()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var target = EchoEnvVarToOutputFile("AER_533_TEST_VAR", [("AER_533_TEST_VAR", "reached-the-child")]);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+            var result = await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var written = await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken);
+            Assert.Contains("reached-the-child", written);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
+    /// The control for the test above: an unset target requests no environment contribution, so the
+    /// shell's own unset-variable expansion (empty on both cmd and sh) is what appears — proving the
+    /// prior test's positive result came from <see cref="CoreDispatchTarget.Environment"/> and not
+    /// from something already present in the test host's own environment.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_leaves_the_variable_unset_when_CoreDispatchTarget_Environment_is_null()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var target = EchoEnvVarToOutputFile("AER_533_TEST_VAR", environment: null);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+            var result = await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var written = await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken);
+            Assert.DoesNotContain("reached-the-child", written);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
     [Fact]
     public async Task DispatchAsync_records_Started_and_Exited_CoreEvents_to_the_log()
     {
@@ -201,6 +267,13 @@ public class CoreDispatcherTests
     private static CoreDispatchTarget EchoHelloToOutputFile() => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget("cmd", ["/c", "echo hello > %AER_OUTPUT_DIR%\\hello.txt"])
         : new CoreDispatchTarget("sh", ["-c", "echo hello > \"$AER_OUTPUT_DIR/hello.txt\""]);
+
+    private static CoreDispatchTarget EchoEnvVarToOutputFile(
+        string variableName, IReadOnlyList<(string Name, string Value)>? environment) => OperatingSystem.IsWindows()
+        ? new CoreDispatchTarget(
+            "cmd", ["/c", $"echo %{variableName}% > %AER_OUTPUT_DIR%\\hello.txt"], Environment: environment)
+        : new CoreDispatchTarget(
+            "sh", ["-c", $"echo \"${variableName}\" > \"$AER_OUTPUT_DIR/hello.txt\""], Environment: environment);
 
     private static CoreDispatchTarget PrintCwdToOutputFile(string workingDirectory) => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget("cmd", ["/c", "cd > %AER_OUTPUT_DIR%\\hello.txt"], workingDirectory)

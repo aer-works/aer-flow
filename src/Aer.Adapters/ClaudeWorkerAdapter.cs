@@ -94,6 +94,20 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             "--add-dir", artifactsRoot,
         ];
 
+        // #533 constraints 1-2: hooks load only from the process's own cwd `.claude/`, with no
+        // parent-directory fallback, and `--add-dir` (above) loads no configuration on claude --
+        // measured, gate.add-dir-loads-no-config. So AER cannot rely on cwd-based discovery for
+        // either the mandatory PreToolUse hook (0029) or MCP config; it passes both explicitly,
+        // at a path AER owns rather than the room's own directory (`WorkingDirectory` may be a
+        // repo the operator did not ask AER to write into). EnsureLaunchConfigFiles only guarantees
+        // the files EXIST with valid, inert JSON -- populating real content (the hook definition)
+        // is #543's job.
+        var (settingsPath, mcpConfigPath) = EnsureLaunchConfigFiles();
+        args.Add("--settings");
+        args.Add(settingsPath);
+        args.Add("--mcp-config");
+        args.Add(mcpConfigPath);
+
         // #331: --allowedTools only *pre-approves* tools so they don't prompt; it is not a sandbox,
         // and omitting a tool leaves it in the model's reach (a shell-denied session ran `hostname`
         // and returned the real value). A withheld category must be *actively* denied. Verified
@@ -162,7 +176,84 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Model);
         }
 
-        return new CoreDispatchTarget("claude", [.. args], invocation.WorkingDirectory, PromptText: prompt);
+        return new CoreDispatchTarget(
+            "claude", [.. args], invocation.WorkingDirectory, PromptText: prompt,
+            Environment: [(MaxSubagentSpawnDepthVariable, "1")]);
+    }
+
+    /// <summary>
+    /// The environment variable name Claude Code reads for its subagent fan-out depth cap.
+    /// </summary>
+    /// <remarks>
+    /// #533 constraint 3, measured rather than trusted from the vendor's own docs: the vendor
+    /// documents this variable's default as <c>1</c> (no nesting), but two independent runs of
+    /// <c>fanout.nesting-allowed-by-default</c> (<c>tools/vendor-verify/verify.py</c>) counted
+    /// actual <c>SubagentStart</c> spawns and found the unset default produces <b>2</b> -- a
+    /// subagent CAN spawn its own subagent with nothing configured. Set explicitly to <c>1</c> here
+    /// so AER's own default matches what the vendor documents rather than what it measurably does.
+    /// <para>
+    /// #533 constraint 4 is why this is the only lever: a subagent inherits its parent's permission
+    /// mode and cannot be given a stricter one, so the gate for a fan-out tree cannot be re-applied
+    /// per level -- it has to hold for whatever depth this variable allows. Raising it later (e.g.
+    /// for a legitimate multi-worker room, M27) is a deliberate widening, not a default to assume.
+    /// </para>
+    /// </remarks>
+    public const string MaxSubagentSpawnDepthVariable = "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH";
+
+    /// <summary>
+    /// Ensures the two files <see cref="AerPaths.WorkerLaunchConfig"/> needs exist with minimal,
+    /// valid, inert JSON -- never overwrites existing content. Called on every <see cref="Resolve"/>
+    /// because there is no single daemon-lifecycle hook covering every entry point that resolves a
+    /// claude invocation (the CLI's `aer run`/`aer decide`/etc. spawn a fresh process per command,
+    /// with no daemon involved at all).
+    /// </summary>
+    private static (string SettingsPath, string McpConfigPath) EnsureLaunchConfigFiles()
+    {
+        Directory.CreateDirectory(AerPaths.WorkerLaunchConfig);
+
+        // Empty is a valid, no-op --settings file: it overrides no keys, so this changes nothing
+        // about how claude behaves today. #543 populates the PreToolUse hook here.
+        var settingsPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-settings.json");
+        EnsureFileExists(settingsPath, "{}");
+
+        // The standard empty MCP config shape -- declares no servers, so this adds nothing beyond
+        // what claude would otherwise discover on its own.
+        var mcpConfigPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-mcp.json");
+        EnsureFileExists(mcpConfigPath, "{\"mcpServers\":{}}");
+
+        return (settingsPath, mcpConfigPath);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="content"/> to <paramref name="path"/> only if it does not already
+    /// exist, without silently swallowing a genuine write failure.
+    /// </summary>
+    /// <remarks>
+    /// Two turns can genuinely race here -- two chat sessions both starting their first-ever turn
+    /// against a fresh <c>~/.aer</c>, both hitting this before either file exists, from the SAME
+    /// daemon process, not just two separate `aer run` processes. That is a real TOCTOU: `File.Exists`
+    /// then `File.WriteAllText` opens write-exclusive, so the loser of the race gets an
+    /// <see cref="IOException"/>, not a second identical write as an earlier version of this comment
+    /// claimed. The content this writes is fixed and identical regardless of who wins, so the correct
+    /// response to that specific exception is "someone else just created it" -- verified by re-checking
+    /// existence, not assumed. Any other failure (permissions, disk full, a genuinely corrupt partial
+    /// write) still throws, per CLAUDE.md's rule against silently swallowing exceptions.
+    /// </remarks>
+    private static void EnsureFileExists(string path, string content)
+    {
+        if (File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(path, content);
+        }
+        catch (IOException) when (File.Exists(path))
+        {
+            // Another spawn's write won the race and the file is now there -- not our problem to fix.
+        }
     }
 
     /// <summary>
