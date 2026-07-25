@@ -63,19 +63,19 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0003](0003-templates-collapse-to-three-shapes.md) | Templates collapse to three shapes | accepted |
 | [0004](0004-permission-scopes.md) | Permissions scope by project, session and step (the ladder-at-point-of-ask and denial-is-an-answer added by 0022) | accepted |
 | [0005](0005-seam-milestones.md) | Capability milestones alternate with seam milestones | accepted |
-| [0006](0006-visual-direction-quiet.md) | Visual direction is "Quiet" | accepted |
+| [0006](0006-visual-direction-quiet.md) | Visual direction is "Quiet" (emphasis rule added by 0028) | accepted |
 | [0007](0007-background-work-inline-and-dedicated.md) | Background work: glance inline, expand in place, dedicated surface for depth | accepted |
 | [0008](0008-runtime-streaming-over-append-log.md) | Runtime: live streaming over a durable append log | accepted |
 | [0009](0009-session-lifecycle-and-retention.md) | Session lifecycle & retention: a tree you count the top of | accepted |
 | [0010](0010-skills-and-advisor.md) | Worker capabilities are skills (app-level canonical, per-vendor realization); the advisor is the first one; addressing/namespacing added by 0024 | accepted |
-| [0011](0011-token-based-context-management.md) | Context management is token-based, not turn-based | accepted |
+| [0011](0011-token-based-context-management.md) | Context management is token-based, not turn-based (its unit and trigger **corrected by 0027**) | accepted, except those |
 | [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
 | [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
-| [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph (a step's contents added by 0025) | accepted |
+| [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph (a step's contents added by 0025; `DependsOn` corrected to engine-only) | accepted |
 | [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval | accepted |
 | [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
 | [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices (its effort-naming clause **corrected by 0023**) | accepted, except that clause |
-| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide | accepted |
+| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide (rate-limited band amended by 0026) | accepted |
 | [0019](0019-consulting-is-not-deciding.md) | Consulting is not deciding: you can ask anyone, and the gate stays open | accepted |
 | [0020](0020-one-state-machine.md) | One state machine: every surface renders the room's state, none derives its own (carries "errors are content") | accepted |
 | [0021](0021-artifacts-are-files.md) | Artifacts are files: vendor-neutral, versioned, attributed, never silently overwritten | accepted |
@@ -83,3 +83,6 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0023](0023-effort-and-models-are-named-by-behaviour.md) | Effort is named by behaviour and models are offered by purpose, never a vendor's own string (corrects 0017) | accepted |
 | [0024](0024-commands-are-namespaced.md) | Commands are namespaced by owner, and /ask-all is the broadcast (amends 0010) | accepted |
 | [0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) | A step's instruction is its body, and "ask me first" is a toggle on the step (amends 0014) | accepted |
+| [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) | Running out of plan is a state with a reset time, not a generic failure | accepted |
+| [0027](0027-context-is-per-worker.md) | Context belongs to the worker, not the room; running out is a choice (corrects 0011) | accepted |
+| [0028](0028-no-permissive-control-is-the-default.md) | Visual rank is a decision: no permissive control is ever the default (amends 0006) | accepted |
