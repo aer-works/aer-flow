@@ -75,20 +75,31 @@ mobile-patch = { cmd = "bash scripts/patch-tailscale-dart.sh" }
 # verification exercises (`dotnet tool install --global --add-source bin/pack <PackageId>`).
 pack = { cmd = "dotnet pack src/Aer.Cli/Aer.Cli.csproj -o bin/pack", depends-on = ["build-core"] }
 
+# Validates what a live smoke run ASSUMES, before it is allowed to spend anything. Free: reads
+# files and queries `agy models` / `claude auth status`, and starts no billable session. Every
+# smoke-* task depends on it, so a stale assumption stops the run instead of being paid for.
+#
+# It exists because `gemini-3-flash` -- a model agy does not have -- sat in a binding fixture, two
+# dialogue participants and two runbooks while enforcing nothing: claude REJECTS an unknown --model
+# and self-reports, agy ACCEPTS it and silently runs its own default. Two smoke tests were therefore
+# running on whatever agy defaulted to while the repo read as if a cheap model was pinned. The gate
+# prints what it CANNOT check as well as what it did, so passing it is never read as "all clear".
+smoke-preflight = { cmd = "python -u tools/smoke-preflight/preflight.py" }
+
 # M11 Phase 4 (#87), the milestone's completion gate: a real draft → review workflow run through
 # `aer run` against the real, authenticated `claude` CLI, never `pixi run test`'s stub/shell-stub
 # path, and never invoked from CI. Requires a `claude` CLI on PATH already logged in (or an API
 # key configured for it) and outbound network access. `Aer.Cli.SmokeTests` is deliberately absent
 # from AerFlow.slnx so it never builds or runs as a side effect of `build`/`test`/`lint`. See
 # docs/runbooks/live-claude-smoke.md before running this.
-smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["build-core"] }
+smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["build-core", "smoke-preflight"] }
 
 # M12 Phase 4 (#98), this milestone's completion gate: a real draft (`claude`) → review (`agy`)
 # workflow, paused at review's declared PausePoint and resumed via `aer decide`, run through the
 # real, authenticated `claude` and `agy` CLIs. Same CI exclusion as smoke-claude above — requires
 # both CLIs on PATH already logged in (or API keys configured) and outbound network access to both
 # vendors' APIs. See docs/runbooks/live-mixed-vendor-smoke.md before running this.
-smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveMixedVendorPausedRunSmokeTest", depends-on = ["build-core"] }
+smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveMixedVendorPausedRunSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
 
 # M17 Phase 5 (#168), this milestone's completion gate: a real, bounded Claude <-> agy dialogue
 # exchange, run through the dialogue worker (Aer.Workers.Dialogue) via the "dialogue" adapter, driven
@@ -96,13 +107,13 @@ smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter Full
 # smoke-mixed-vendor above -- requires both CLIs on PATH already logged in (or API keys configured)
 # and outbound network access to both vendors' APIs. See docs/runbooks/live-dialogue-smoke.md before
 # running this.
-smoke-dialogue = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveDialogueSmokeTest", depends-on = ["build-core"] }
+smoke-dialogue = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveDialogueSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
 
 # M24 Phase 1/2 (#262/#263) completion gate, added retroactively: a ~50-turn interactive-session
 # stress run plus a compact round trip, driven directly against Aer.Daemon's real HTTP surface
 # (sessions have no `aer` CLI command) with the real, authenticated `claude` CLI. Same CI exclusion
 # as smoke-claude above. See docs/runbooks/live-session-smoke.md before running this.
-smoke-session = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveSessionSmokeTest", depends-on = ["build-core"] }
+smoke-session = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveSessionSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
 
 # Journey tests (#313): the product-journey harness (spec/journeys.md). Two in-process runners —
 # desktop legs via Avalonia view-mounted headless, phone legs via Flutter widget tests — plus a
