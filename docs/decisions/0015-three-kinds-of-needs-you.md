@@ -3,10 +3,12 @@
 Status: accepted
 Date: 2026-07-24
 
-**Accepted 2026-07-24, after the probe this record was blocked on actually ran (#472).** All three
-kinds are now backed by verified mechanism: two by machinery that already ships, and permission by a
-blocking MCP tool demonstrated working on **both** vendors. The probe also **disproved a premise this
-record was originally written on** — see *The dependency, resolved* below.
+**Accepted 2026-07-24, after the probe this record was blocked on actually ran (#472), and revised
+the same day when a re-runnable probe suite (#504) disproved a second premise.** All three kinds are
+backed by verified mechanism: two by machinery that already ships, and permission by MCP consultation
+demonstrated working on **both** vendors. Two premises this record was originally written on turned
+out to be false, and both corrections are absorbed into *The dependency, resolved* below rather than
+appended — the reasoning belongs where the decision is made, not in a trailer.
 
 ## Context
 
@@ -71,12 +73,100 @@ capability dies quietly unless AER pre-authorises or mediates it.
 Two further facts, both material:
 
 - **`--permission-mode manual` is a no-op headless.** The session still reports
-  `permissionMode: default`, and no prompt is ever issued. `--permission-prompt-tool` does not exist
-  on either CLI. There is no built-in headless "ask the human" path — which is exactly why #445's
-  mechanism has to exist rather than being a flag we could have set.
+  `permissionMode: default`, and no prompt is ever issued.
 - **Denials are structured.** `claude`'s result event carries
   `permission_denials: [{tool_name, tool_use_id, tool_input}]` — the whole call, replayable verbatim
   once a human answers.
+
+### The second correction: `claude` has a permission callback, and we said it did not
+
+This record originally asserted that **`--permission-prompt-tool` does not exist on either CLI**, and
+concluded that there is no built-in headless "ask the human" path — *"which is exactly why #445's
+mechanism has to exist rather than being a flag we could have set."* **That was wrong for `claude`,**
+and it was wrong because it was established from `--help` alone. The flag is undocumented there. It
+is nonetheless honoured (#504, #509):
+
+```
+claude --permission-prompt-tool aer_probe_no_such_tool -p --output-format stream-json --verbose \
+  "Use the Write tool to create a file named x.txt containing BANANA in the current directory."
+```
+
+```
+Error calling tool (Write): Error: MCP tool aer_probe_no_such_tool
+(passed via --permission-prompt-tool) not found. Available MCP tools: …
+```
+
+The CLI reached the permission path and looked for the tool **by a name we invented**, which exists
+nowhere — so it could not have come from anywhere but the flag. On `agy` the flag is genuinely
+rejected (`flags provided but not defined`), verified against a control flag that certainly does not
+exist, so *that* absence is now established rather than assumed.
+
+**What this changes, and what it does not.** The mechanism is unchanged: permission is answered by
+consulting an MCP tool, on both vendors. What changes is *how the worker is made to consult it*, and
+the difference is not cosmetic:
+
+| | how our tool gets called | what the discipline rests on |
+|---|---|---|
+| model elects to call `ask_human` | the worker decides a question is worth asking | **model behaviour** |
+| `--permission-prompt-tool` (claude) | the CLI routes **every** permission decision to it | **the vendor's control flow** |
+
+The first is the fall-through this record was designed around, and it is a weaker guarantee than the
+prose implied — a worker that never thinks to ask simply proceeds or fails closed, and AER never
+learns a question existed. The second is structural, and structural is what CLAUDE.md Architecture
+Rule 1 is asking for: Flow does not depend on the worker's judgement to know that permission was
+sought.
+
+**So prefer `--permission-prompt-tool` on `claude`, and keep the elected-tool path for `agy`.** That
+is a real vendor asymmetry and it must be visible rather than smoothed — the same discipline
+[0023](0023-effort-and-models-are-named-by-behaviour.md) applies to effort and
+`docs/vendor-capabilities.md` applies to plan usage. A permission gate that is guaranteed on one
+worker and best-effort on another is an honest thing to say and a dangerous thing to hide.
+
+#### The contract, measured end to end
+
+An AER-hosted stdio MCP server was registered with `--mcp-config … --strict-mcp-config` and named as
+`--permission-prompt-tool mcp__aerperm__approve`, in a clean environment where `claude -p` otherwise
+**denies** an ungranted `Write`. It receives the whole call:
+
+```json
+{ "method": "tools/call",
+  "params": {
+    "name": "approve",
+    "arguments": {
+      "tool_name": "Write",
+      "input": { "file_path": "…\\x.txt", "content": "BANANA\n" },
+      "tool_use_id": "toolu_01A6fPfyebEFF5judLv4Ug4S"
+    },
+    "_meta": { "claudecode/toolUseId": "toolu_01A6…", "progressToken": 2 } } }
+```
+
+Both answers were exercised, and both did what they say:
+
+| reply | result |
+|---|---|
+| `{"behavior":"allow","updatedInput":{…}}` | the call proceeded — **the file was written** |
+| `{"behavior":"deny","message":"denied by aer probe"}` | the file was **not** written; the model received our message verbatim and stopped |
+
+Three things fall out that the design did not anticipate:
+
+- **`updatedInput` means an answer can *modify* the call, not merely permit it.** A person could
+  narrow a path or edit a command before allowing it. That is a materially richer answer than
+  approve/reject, and it belongs in how a permission gate is rendered.
+- **The denial message reaches the model.** On deny it replied: *"The Write was denied by a permission
+  hook ("denied by aer probe"), so `y.txt` was not created. I've stopped rather than routing around it
+  with a shell write."* So a denial can carry a *reason the worker will act on* — which is exactly
+  [0022](0022-permission-ladder-and-denial-is-an-answer.md)'s "denial is an answer", available for
+  free rather than needing to be built.
+- **It still lands in `permission_denials`** with the full `tool_input`, so a denied call remains
+  replayable verbatim if the human later changes their mind.
+
+`tool_use_id` arrives in both `arguments` and `_meta`, which is the correlation key the durable gate
+below records at ask-time.
+
+**The method lesson is the durable part.** Both premises this record got wrong were negatives
+established from a single surface — first the environment-leaked probe, then `--help`. A negative
+claim about a vendor CLI needs more evidence than a positive one, and that is now enforced by the
+probe suite rather than remembered: `docs/runbooks/vendor-probe.md`.
 
 **The mechanism works, on both vendors.** An AER-hosted MCP server exposing a blocking `ask_human`
 tool held a turn open on an out-of-band human answer, proven with a token minted *after* the tool
@@ -128,6 +218,12 @@ surface**: it must be cheap to start and hold no state, because `claude` spawns 
 (once to enumerate tools, killing it immediately after `tools/list`, then again for the turn itself).
 Any state it needs belongs in the room, not the process.
 
+**Asymmetric, and the adapters absorb it.** The server is the same on both vendors; how the worker is
+made to consult it is not — a flag on `claude`, an elected tool call on `agy`. That divergence lives
+inside `Aer.Adapters` (CLAUDE.md Rule 2) and must never reach `Aer.Flow`, which sees only "a
+permission gate opened". But the *strength* of the guarantee differs, and the surface should not imply
+otherwise where it matters.
+
 **Obliges us to** persist a gate at ask-time rather than answer-time (above), keep the kind derived
 from the declaration and never from content (CLAUDE.md Rule 1, as `PausePointKind` already does), and
 wire a permission answer into [0004](0004-permission-scopes.md)'s scope intersection rather than
@@ -138,4 +234,5 @@ disk exactly like a live one — the operator must not be able to tell that the 
 #445 exists to enable.
 
 Related: #331 (enforcement — see 0004), #334 (the two-kind pause split), #445 (permission-request
-mechanism and its probe).
+mechanism and its probe), #504 (the probe suite), #509 (this correction), #507 (`claude auto-mode`,
+a vendor-native permission classifier this record also predates).
