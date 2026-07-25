@@ -120,6 +120,23 @@ journey-all = { depends-on = ["journey-desktop", "journey-mobile"] }
 # the journey tests' actual pass/fail.
 journey-reconcile = { cmd = "dotnet test tests/Aer.Journeys.Tests --filter Category=Reconcile", depends-on = ["build-core"] }
 
+# Vendor probe (#504): establishes what each vendor CLI can actually do, and writes both the
+# findings matrix and docs/vendor-probe.lock.json (the versions those findings were established
+# against). NEVER runs in CI — it drives live authenticated CLIs and spends real subscription usage,
+# the same permanent-human-action-item rule as smoke-* above. It exists because
+# docs/vendor-capabilities.md always said "re-run the probes after a vendor update" while the probes
+# were ad-hoc shell, written once and thrown away; several rows were wrong as a result, most
+# expensively `--permission-prompt-tool`, which decision 0015 inverted its whole mechanism on.
+# See docs/runbooks/vendor-probe.md.
+vendor-probe = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --out docs/vendor-capabilities.probe.json" }
+
+# The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
+# `--version` against the version recorded in the lock file. Starts no session and spends no quota,
+# so it runs in the ordinary dev loop — `pixi run test` runs the same comparison via
+# Aer.Architecture.Tests, which is what actually makes a vendor self-update surface. Exits non-zero
+# when a CLI has moved; says so plainly, and does not pass, when no vendor CLI is present to inspect.
+vendor-check = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --check" }
+
 # M13 Phase 4 (#110), the milestone's completion gate: unlike smoke-claude/smoke-mixed-vendor
 # above, this needs no live vendor auth, so it runs unattended in default CI rather than a gated
 # runbook. Packs `aer`, installs it as a real global tool from that local nupkg, runs it against a

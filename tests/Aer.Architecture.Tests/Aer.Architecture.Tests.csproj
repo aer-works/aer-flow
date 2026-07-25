@@ -31,6 +31,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\tools\Aer.DesignTokens\Aer.DesignTokens.csproj" />
+    <!--
+      #504's staleness check reuses the probe suite's own version comparison rather than
+      reimplementing it, for the same reason the token gate reuses the generator above: a second
+      opinion about what "up to date" means drifts from the real one and then passes while it is
+      wrong. Referencing the tool builds it in CI (which costs nothing) without ever running the
+      probe (which spends real subscription usage) — only the version flag is invoked, and only where
+      a vendor CLI actually exists.
+    -->
+    <ProjectReference Include="..\..\tools\Aer.VendorProbe\Aer.VendorProbe.csproj" />
   </ItemGroup>
 
   <ItemGroup>

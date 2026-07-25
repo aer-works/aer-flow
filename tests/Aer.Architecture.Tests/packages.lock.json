@@ -171,6 +171,9 @@
       },
       "aer.designtokens": {
         "type": "Project"
+      },
+      "aer.vendorprobe": {
+        "type": "Project"
       }
     }
   }
