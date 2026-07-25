@@ -774,7 +774,7 @@ and those sentences share a grammar: *skips, only, cannot, must, requires, befor
 
 `pixi run vendor-survey` mirrors both corpora from their published indexes (claude `llms.txt` → 172
 raw `.md` pages; agy `llms.txt` + `sitemap.xml` → 77 server-rendered pages) and harvests that
-sentence class corpus-wide: **249 pages / 7.0 MB → 922 unique constraint sentences**, tagged against
+sentence class corpus-wide: **249 pages / 7.0 MB → 1,110 unique constraint sentences**, tagged against
 AER's open questions with page:line provenance, plus a ledger giving **every page a disposition**.
 100% page coverage at ~1% of the bytes.
 

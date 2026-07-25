@@ -168,22 +168,38 @@ def survey(out: str) -> None:
         n_constraints = 0
         for lineno, line in enumerate(text.splitlines(), 1):
             s = line.strip()
-            if len(s) < 40 or s.startswith(("|", "```", ">", "- [")):
+            if not s or s.startswith("```"):
                 continue
-            for sent in re.split(r"(?<=[.!?])\s+", s):
-                sent = sent.strip()
-                if len(sent) < 40 or NOISE.match(sent) or not CONSTRAINT.search(sent):
+
+            # Table rows are NOT skipped. Both vendors state load-bearing constraints inside
+            # tables -- permission-mode semantics, agy's `toolPermission` presets, managed-policy
+            # limits. An earlier version dropped any line starting with "|" and lost 340
+            # constraint-bearing rows, ~27% on top of what it found. Split cells into candidate
+            # sentences instead, and drop the separator rows.
+            if s.startswith("|"):
+                if re.fullmatch(r"[|\s:-]+", s):
                     continue
-                matched = [t for t, p in TOPICS.items() if re.search(p, sent, re.I)]
-                if not matched:
+                candidates = [c.strip() for c in s.strip("|").split("|")]
+            else:
+                candidates = [s]
+
+            for chunk in candidates:
+                if len(chunk) < 40:
                     continue
-                n_constraints += 1
-                key = re.sub(r"\W+", "", sent.lower())[:120]
-                if key in seen:
-                    continue
-                seen.add(key)
-                for t in matched:
-                    constraints[t].append((vendor, name, lineno, sent))
+                for sent in re.split(r"(?<=[.!?])\s+", chunk):
+                    sent = sent.strip()
+                    if len(sent) < 40 or NOISE.match(sent) or not CONSTRAINT.search(sent):
+                        continue
+                    matched = [t for t, p in TOPICS.items() if re.search(p, sent, re.I)]
+                    if not matched:
+                        continue
+                    n_constraints += 1
+                    key = re.sub(r"\W+", "", sent.lower())[:120]
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    for t in matched:
+                        constraints[t].append((vendor, name, lineno, sent))
 
         pages.append({"vendor": vendor, "name": name, "bytes": len(text), "topics": topic_hits,
                       "relevance": sum(topic_hits.values()), "constraints": n_constraints,

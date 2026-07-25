@@ -26,16 +26,16 @@ that class across the whole corpus gives **100% page coverage at ~1% of the byte
 then goes only where they cluster on an open question.
 
 `pixi run vendor-survey` (see `tools/vendor-survey/`) rebuilds this: **249 pages / 7.0 MB →
-922 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
+1,110 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
 plus a ledger giving **every page a disposition** so coverage is checkable rather than asserted.
 
 | disposition | pages | meaning |
 |---|---|---|
-| `PENDING-DEPTH` | 84 | constraints cluster here; depth-read as decisions require |
-| `SCAN-ONLY` | 131 | touches an open question but thin; constraints harvested |
-| `NO-SIGNAL` | 34 | no open-question vocabulary at all |
+| `PENDING-DEPTH` | 90 | constraints cluster here; depth-read as decisions require |
+| `SCAN-ONLY` | 126 | touches an open question but thin; constraints harvested |
+| `NO-SIGNAL` | 33 | no open-question vocabulary at all |
 
-All 922 constraint sentences have been read across nine topics. **The per-page `·` tables below are
+All 1,110 constraint sentences have been read across nine topics. **The per-page `·` tables below are
 superseded by the ledger** and are kept only for the pages whose *contents* are summarized here.
 
 ## Status legend
@@ -51,7 +51,7 @@ superseded by the ledger** and are kept only for the pages whose *contents* are 
 
 ## A. `claude` — documentation coverage
 
-Index: `https://code.claude.com/docs/llms.txt` (~170 pages). **9 of ~170 read.**
+Index: `https://code.claude.com/docs/llms.txt` — **172 pages, all mirrored and swept** (`pixi run vendor-survey`). The tier lists below record the ORIGINAL triage and are kept because that triage was itself wrong: **23 of the 53 Tier 3 pages** — dismissed as "probably not relevant" — score `PENDING-DEPTH`, including `authentication` and `changelog`. Trust the ledger, not the tiers.
 
 ### Read
 
@@ -112,9 +112,7 @@ event schema) · `hooks-guide` · `permission-modes` · `auto-mode-config` · `m
 
 ## B. `agy` — documentation coverage
 
-Index: `https://antigravity.google/docs/...`. **7 of ~60 read.** The `agy` side is audited far more
-shallowly than `claude`, which is itself a risk: **our knowledge asymmetry is now larger than the
-products' asymmetry**, and that biases every design toward claude's model.
+Index: `https://antigravity.google/llms.txt` + `sitemap.xml` — **77 doc pages, all mirrored and swept.** The asymmetry warning below still holds in *volume* (7.0 MB claude vs 310 KB agy), but it is no longer an asymmetry of coverage: both corpora are swept identically.
 
 ### Read
 
@@ -238,7 +236,7 @@ These are the ones most likely to be missed, because the audit has been pointed 
 
 ## E. Order of work
 
-Item 1 is **done** (#527): both indexes found, both corpora mirrored, all 922 constraint sentences
+Item 1 is **done** (#527): both indexes found, both corpora mirrored, all 1,110 constraint sentences
 read. The gate-symmetry question it existed to answer is **settled, negatively** — see
 `vendor-doc-audit.md`. Remaining, re-ordered by what the reading changed:
 
