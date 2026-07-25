@@ -32,7 +32,10 @@ public sealed class InteractiveSessionTests
         // #521: this used to assert --bare IS emitted. Inverted deliberately, and kept rather than
         // deleted, because a silent regression here is invisible: --bare suppresses the mandatory
         // PreToolUse hook (0029/#543) even when the hook is passed explicitly via --settings, and a
-        // worker with no gate looks exactly like a worker with a gate that allowed the call.
+        // worker with no gate looks exactly like a worker with a gate that allowed the call. This
+        // only catches --bare re-added unconditionally -- it says nothing about --safe-mode, an
+        // inherited CLAUDE_CODE_SIMPLE=1, or --bare reintroduced behind a new flag (see the fuller
+        // comment in ClaudeWorkerAdapter.cs).
         Assert.DoesNotContain("--bare", target1.Args);
         Assert.Contains("stream-json", target1.Args);
         Assert.Contains("--include-partial-messages", target1.Args);

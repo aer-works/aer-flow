@@ -135,10 +135,13 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         //   2. It suppresses hooks and MCP servers EVEN WHEN PASSED EXPLICITLY via --settings
         //      (#521): `claude --bare --settings <PreToolUse hook>` does not fire the hook, while
         //      the same invocation without --bare does. 0029 makes that hook mandatory on every
-        //      worker AER spawns, so --bare is the one flag that silently removes the gate -- and
-        //      per #530 a missing hook is silent in both directions.
+        //      worker AER spawns, so --bare is the flag AER passed that removed the gate. It is
+        //      not the only route to the same failure -- `--safe-mode` and CLAUDE_CODE_SIMPLE=1
+        //      (an inherited env var, no flag needed) disable hooks identically; watch for both.
         //
-        // Reason 2 is the load-bearing one: an auth failure is loud, an ungated worker is not.
+        // Reason 2 is the load-bearing one: an auth failure is loud, and a missing hook is silent
+        // for one of two independent reasons -- not loaded at all, or loaded but unable to execute
+        // (#530 measures the second; the first traces to the discovery constraint, not to #530).
         if (invocation.SessionId is not null)
         {
             if (invocation.ResumeSession)

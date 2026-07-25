@@ -17,10 +17,14 @@ namespace Aer.Adapters.Tests;
 /// is written by the current serializer and therefore never carries a key the current record lacks.
 /// </para>
 /// <para>
-/// The fixture deliberately carries two unknown keys: <c>minimalOverhead</c>, the field this issue
-/// removed, and <c>aerNotARealField</c>, which never existed. Asserting on the removed field alone
-/// would still pass under a loader that special-cased it; the second key is the control that makes
-/// this a claim about unknown-key tolerance in general.
+/// The fixture deliberately carries two unknown keys: <c>MinimalOverhead</c>, the field this issue
+/// removed, and <c>AerNotARealField</c>, which never existed. Asserting on the removed field alone
+/// would still pass under a loader that special-cased it; the second key is a control against that,
+/// though a weak one -- both sit at the same nesting level under identical handling, so what it
+/// mainly guards against is a future back-compat shim that special-cases the removed key while
+/// tightening everything else. The assertion that actually discriminates is
+/// <c>VendorSessionEstablished</c>, a field declared AFTER the unknown keys in the record: it fails
+/// if the reader stops early instead of skipping them, which neither unknown key alone would catch.
 /// </para>
 /// </remarks>
 public class SessionMetadataSchemaToleranceTests
@@ -34,23 +38,26 @@ public class SessionMetadataSchemaToleranceTests
 
         try
         {
-            // Shaped like a session.json written before #521, plus a key that never existed.
+            // PascalCase, matching what SaveMetadataAsync actually writes (it sets no
+            // PropertyNamingPolicy) -- a camelCase fixture here would still pass, because
+            // LoadMetadataAsync sets PropertyNameCaseInsensitive, but it would be pinning that
+            // setting instead of the unmapped-member tolerance this test claims to pin.
             await File.WriteAllTextAsync(path, """
                 {
-                  "sessionId": "sess-legacy-001",
-                  "taskDirectoryPath": "C:\\tmp\\legacy-room",
-                  "currentAdapter": "claude",
-                  "currentVendorSessionId": "vendor-abc",
-                  "model": "claude-haiku-4-5-20251001",
-                  "workingDirectory": null,
-                  "turnCount": 3,
-                  "safetyCeiling": 200,
-                  "minimalOverhead": true,
-                  "aerNotARealField": {"nested": ["anything", 1, null]},
-                  "createdAt": "2026-07-01T10:00:00+00:00",
-                  "updatedAt": "2026-07-01T10:05:00+00:00",
-                  "turns": [],
-                  "vendorSessionEstablished": true
+                  "SessionId": "sess-legacy-001",
+                  "TaskDirectoryPath": "C:\\tmp\\legacy-room",
+                  "CurrentAdapter": "claude",
+                  "CurrentVendorSessionId": "vendor-abc",
+                  "Model": "claude-haiku-4-5-20251001",
+                  "WorkingDirectory": null,
+                  "TurnCount": 3,
+                  "SafetyCeiling": 200,
+                  "MinimalOverhead": true,
+                  "AerNotARealField": {"nested": ["anything", 1, null]},
+                  "CreatedAt": "2026-07-01T10:00:00+00:00",
+                  "UpdatedAt": "2026-07-01T10:05:00+00:00",
+                  "Turns": [],
+                  "VendorSessionEstablished": true
                 }
                 """, TestContext.Current.CancellationToken);
 
