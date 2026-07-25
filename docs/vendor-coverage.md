@@ -198,7 +198,7 @@ a reason it cannot be run.
 | `--add-dir` grants file access but loads **no** hooks/settings config | claude | decides **where** AER must place its gate |
 | `usage.output_tokens` excludes subagent tokens; `modelUsage` is whole-tree | claude | any cost display under-reports every fan-out (#479) |
 | a hook's `"ask"` forces a prompt in `auto` mode | claude | second always-fires path after exit-2 |
-| `PermissionRequest` fires **only** in auto mode | claude | narrows 0018's notify hook |
+| ~~`PermissionRequest` fires **only** in auto mode~~ — **the row was wrong, not just unverified.** The docs say it fires "when a permission dialog appears"; `PermissionDenied` is the auto-classifier event. **Now verified: `PermissionRequest` never fires under `-p`.** (`PermissionDenied` also logged zero, but nothing established that a denial occurred — that one is still open.) | claude | 0018's notify hook has no event to hang on when the CLI is spawned headless |
 | explicit `ask` rules force a prompt even in `bypassPermissions` | claude | third always-fires claim |
 | `requiresUserInteraction` allow→deny under `--permission-prompt-tool` | claude | the *block* is verified; this conversion is not |
 | an API key disables Remote Control, `/schedule`, connectors, notifications | claude | the functional half of Credential Isolation (rule 4) |

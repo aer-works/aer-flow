@@ -27,7 +27,7 @@ USAGE
 -----
     pixi run vendor-verify                 # every check that needs no special authorisation
     pixi run vendor-verify -- --list       # names and what each one costs
-    pixi run vendor-verify -- --only gate  # one group: gate | cost | lifecycle | agy
+    pixi run vendor-verify -- --only gate  # one group: gate | fanout | cost | lifecycle | agy
 
 SAFETY
 ------
@@ -70,9 +70,16 @@ def env():
     return {k: v for k, v in os.environ.items() if not k.upper().startswith("CLAUDE")}
 
 
-def run(cmd, timeout=300, cwd=None):
+def run(cmd, timeout=300, cwd=None, extra_env=None):
+    """extra_env is applied AFTER the strip, so a check can deliberately set one CLAUDE_CODE_* knob.
+
+    The strip stays the default -- a check should probe the vendor CLI, not the harness that
+    launched it -- but the knob a check is testing is the one variable it is allowed to set.
+    """
+    e = env()
+    e.update(extra_env or {})
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env())
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=e)
         return p.returncode, (p.stdout or ""), (p.stderr or "")
     except subprocess.TimeoutExpired:
         return None, "", "(timeout)"
@@ -220,6 +227,82 @@ def _add_dir():
         shutil.rmtree(extra, ignore_errors=True)
 
 
+@check("gate.hook-ask-in-auto", "gate",
+       "a PreToolUse hook returning permissionDecision:ask forces a prompt even in auto mode")
+def _hook_ask():
+    """Second always-fires path after exit 2, and the polite one -- exit 2 is a hard block.
+
+    Under -p there is no human, so a forced prompt must fail closed. The control arm returns
+    `allow` through the same hook, so a non-write in the ask arm can't be blamed on auto's
+    classifier.
+    """
+    def arm(decision):
+        wd = tempfile.mkdtemp(prefix="v-hookask-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, """echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse",""" +
+                        '"permissionDecision":"%s","permissionDecisionReason":"AER probe"}}\'' % decision)
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": {"PreToolUse": [{"matcher": "Write", "hooks": [
+                {"type": "command", "command": "sh %s" % hk}]}]}}, open(st, "w"))
+            tgt = os.path.join(wd, "S.txt").replace("\\", "/")
+            run(["claude", "-p", f"Create {tgt} containing OK using the Write tool.",
+                 "--settings", st, "--add-dir", wd, "--permission-mode", "auto",
+                 "--output-format", "json"], cwd=wd)
+            return fired(log), os.path.exists(os.path.join(wd, "S.txt"))
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    fa, wrote_allow = arm("allow")
+    fk, wrote_ask = arm("ask")
+    if fa == 0 or fk == 0:
+        return INCONCLUSIVE, f"hook did not fire in one arm (allow={fa}, ask={fk})"
+    if not wrote_allow:
+        return INCONCLUSIVE, "control arm did not write; auto's classifier blocked it regardless"
+    return (PASS if not wrote_ask else FAIL), f"allow wrote={wrote_allow}, ask wrote={wrote_ask}"
+
+
+@check("gate.permission-request-not-headless", "gate",
+       "PermissionRequest fires when a dialog would appear, so it never fires under -p; "
+       "PermissionDenied is the auto-classifier event that does")
+def _permission_events():
+    """Bounds decision 0018's notify hook.
+
+    The docs define PermissionRequest as firing "when a permission dialog appears" -- under `-p`
+    no dialog ever appears. The discovery control matters more than the result: the SAME hook
+    command is also registered on PreToolUse in the SAME settings file, so if PreToolUse fires and
+    PermissionRequest does not, the config was found and the event genuinely did not occur. Without
+    that arm, a silent non-fire is indistinguishable from a wrong matcher.
+    """
+    def arm(mode):
+        wd = tempfile.mkdtemp(prefix="v-preq-")
+        try:
+            logs = {e: os.path.join(wd, f"{e}.log").replace("\\", "/")
+                    for e in ("PreToolUse", "PermissionRequest", "PermissionDenied")}
+            hooks = {}
+            for event, log in logs.items():
+                hk = os.path.join(wd, f"{event}.sh").replace("\\", "/")
+                hook_script(hk, log, "exit 0")
+                hooks[event] = [{"matcher": "Bash", "hooks": [
+                    {"type": "command", "command": "sh %s" % hk}]}]
+            st = os.path.join(wd, "s.json")
+            # No allow rule for Bash in either arm, so both arms must reach a permission decision.
+            json.dump({"hooks": hooks}, open(st, "w"))
+            run(["claude", "-p", "Run this shell command and report its output: node --version",
+                 "--settings", st, "--add-dir", wd, "--permission-mode", mode,
+                 "--output-format", "json"], cwd=wd)
+            return {e: fired(p) for e, p in logs.items()}
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    auto, accept = arm("auto"), arm("acceptEdits")
+    note = f"auto={auto}  acceptEdits={accept}"
+    if not auto["PreToolUse"] and not accept["PreToolUse"]:
+        return INCONCLUSIVE, f"discovery control never fired -- the settings file was not loaded; {note}"
+    if auto["PermissionRequest"] or accept["PermissionRequest"]:
+        return FAIL, f"PermissionRequest DID fire headless; {note}"
+    return PASS, f"no PermissionRequest under -p (discovery control fired); {note}"
+
+
 # ====================================================================== cost
 @check("cost.subagent-tokens-excluded", "cost",
        "usage.output_tokens excludes subagent tokens; modelUsage is whole-tree (#479)")
@@ -243,6 +326,87 @@ def _subagent_tokens():
         return INCONCLUSIVE, "result was not JSON"
     finally:
         shutil.rmtree(wd, ignore_errors=True)
+
+
+# ====================================================================== fanout
+@check("fanout.nesting-off-by-default", "fanout",
+       "nested subagents are off by default (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH); #503 items 4-5")
+def _nesting():
+    """The control arm is a ONE-level subagent that writes its own file.
+
+    Two earlier designs for this check were both bad instruments, and the reasons are worth
+    keeping:
+
+    1. Asking the model to report what happened and reading its prose. A model will describe a
+       nested spawn it never performed.
+    2. Having the innermost agent write a sentinel file. Better, but still ambiguous: the middle
+       subagent can simply write that file ITSELF instead of nesting, and the result is
+       byte-identical to a successful nested spawn.
+
+    So this counts spawns directly. A `SubagentStart` hook appends one line per subagent the CLI
+    actually starts, which no amount of the model shortcutting can fake. One task, one prompt,
+    three arms differing only in CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH -- so the env var's effect
+    on the spawn count is the measurement.
+    """
+    PROMPT = ("Use the Task tool to launch a subagent, and instruct THAT subagent to itself use its "
+              "own Task tool to launch a further nested subagent. The nested subagent's instruction "
+              "is to reply with the word DEEP.")
+
+    def arm(depth):
+        wd = tempfile.mkdtemp(prefix="v-nest-")
+        try:
+            log = os.path.join(wd, "spawns.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, "exit 0")
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": {"SubagentStart": [{"hooks": [
+                {"type": "command", "command": "sh %s" % hk}]}]}}, open(st, "w"))
+            run(["claude", "-p", PROMPT, "--settings", st, "--add-dir", wd,
+                 "--output-format", "json", "--allowedTools", "Task",
+                 "--permission-mode", "acceptEdits"],
+                timeout=600, cwd=wd,
+                extra_env=None if depth is None else
+                {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": str(depth)})
+            return fired(log)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    default, capped, raised = arm(None), arm(1), arm(2)
+    note = f"spawns -- default={default}, MAX_SUBAGENT_SPAWN_DEPTH=1: {capped}, =2: {raised}"
+    if default == 0:
+        return INCONCLUSIVE, f"no subagent started at all; the SubagentStart hook never fired; {note}"
+    if raised <= capped:
+        return INCONCLUSIVE, ("raising the cap changed nothing, so this measured subagent count, "
+                              f"not nesting depth; {note}")
+    if default > capped:
+        return FAIL, f"the default allows deeper nesting than an explicit cap of 1; {note}"
+    return PASS, f"default matches an explicit cap of 1, and the env var raises it; {note}"
+
+
+@check("fanout.parent-mode-covers-subagents", "fanout",
+       "a subagent inherits the parent's permission mode rather than starting at default")
+def _inherit_mode():
+    """Two arms differing only in the parent's --permission-mode.
+
+    If the subagent's write lands under acceptEdits and not under default, the parent's mode
+    reached the child. Without the default arm, a successful write proves only that writes work.
+    """
+    def arm(mode):
+        wd = tempfile.mkdtemp(prefix="v-inh-")
+        try:
+            tgt = os.path.join(wd, "S.txt").replace("\\", "/")
+            run(["claude", "-p",
+                 f"Use the Task tool to launch a subagent whose instruction is to use the Write "
+                 f"tool to create the file {tgt} containing the word OK.",
+                 "--add-dir", wd, "--output-format", "json", "--allowedTools", "Task",
+                 "--permission-mode", mode], timeout=600, cwd=wd)
+            return os.path.exists(os.path.join(wd, "S.txt"))
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    accept, default = arm("acceptEdits"), arm("default")
+    if not accept:
+        return INCONCLUSIVE, "subagent did not write even under acceptEdits; nothing tested"
+    return (PASS if not default else FAIL), f"acceptEdits wrote={accept}, default wrote={default}"
 
 
 # ====================================================================== lifecycle
@@ -384,7 +548,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--only", help="a group (gate | cost | lifecycle | agy) or a check-name prefix")
+    ap.add_argument("--only", help="a group (gate | fanout | cost | lifecycle | agy) or a check-name prefix")
     ap.add_argument("--allow-config-writes", action="store_true",
                     help="also run checks that touch the operator's real settings files")
     args = ap.parse_args()

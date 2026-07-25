@@ -959,6 +959,46 @@ agy's distinctive, working contribution is **loop control**, not permission cont
 | an explicit `ask` rule gates even in `bypassPermissions` | ✅ **confirmed** — the tool did not execute |
 | `usage.output_tokens` excludes subagent tokens | ✅ **confirmed** — top level **882** vs `modelUsage` summed **1130** (a 22% shortfall on one subagent) |
 | agy `PostInvocation.terminationBehavior: "terminate"` | ⚠️ **inconclusive** — the task finished inside one invocation, so terminating after it is indistinguishable from normal completion. Needs a multi-invocation task. |
+| a hook's `permissionDecision: "ask"` forces a prompt in `auto` mode | ✅ **confirmed** — the same hook returning `allow` wrote the file; returning `ask` did not. A **fourth** always-fires path, and the polite one: unlike exit-2 it is a request, not a hard block. |
+| `PermissionRequest` fires **only** in auto mode | ❌ **the claim itself was mis-transcribed, and the corrected version is worse.** See below. |
+
+#### `PermissionRequest` does not fire under `-p` — and this bounds decision 0018
+
+The backlog row said "fires only in auto mode". The docs say no such thing: `PermissionRequest`
+fires **"when a permission dialog appears"**, and it is `PermissionDenied` that is tied to the auto
+classifier. Under `-p` **no dialog ever appears**, so the corrected reading predicts it never fires
+headless at all — which is what was measured.
+
+The **discovery control** is what makes this a result rather than another silent negative. The same
+hook command was registered on `PreToolUse` in the *same* settings file:
+
+| mode | `PreToolUse` | `PermissionRequest` | `PermissionDenied` |
+|---|---|---|---|
+| `auto` | **1** | 0 | 0 |
+| `acceptEdits` | **1** | 0 | 0 |
+
+`PreToolUse` firing proves the settings file was loaded and the `Bash` matcher was right, so the
+zero is the event genuinely not occurring — not a wrong matcher. Without that arm the two are
+indistinguishable, which is the same instrument failure that produced the wrong agy-hooks
+conclusion earlier in this audit.
+
+**Consequence for 0018:** its notification hook cannot be `PermissionRequest` if AER spawns the
+vendor CLI headless, because the event does not exist on that path. The three verified always-fires
+primitives below are the surface that *does* fire under `-p`, and the gate has to be built on those.
+
+**`PermissionDenied` is still open.** It also logged zero, but nothing established that a denial
+ever occurred — `node --version` may simply have been allowed. That is an unresolved arm, not a
+second finding.
+
+### Group B — fan-out (2026-07-25)
+
+| claim | result |
+|---|---|
+| the parent's permission mode covers its subagents | ✅ **confirmed** — under `--permission-mode acceptEdits` the subagent's write landed; under `default`, with the prompt, tools and target identical, it did not. The mode reaches the child. |
+
+**Consequence for #503 items 4–5:** a fan-out inherits the lead's mode, so **AER cannot rely on a
+subagent being more constrained than the session that spawned it**. Whatever gate the lead runs
+under is the gate the whole tree runs under.
 
 **Consequences.**
 
@@ -966,9 +1006,11 @@ agy's distinctive, working contribution is **loop control**, not permission cont
 gate. With #521 (`--bare` disables hooks even via explicit `--settings`), the viable combinations
 are now measured rather than inferred: **no `--bare`, and either cwd control or `--settings`.**
 
-**claude has three verified always-fires primitives**, not one: `requiresUserInteraction` for MCP
-tools, hook exit-code-2 for any tool, and an explicit `ask` rule for any tool. Independent
-mechanisms with independent failure modes, which is what a gate design wants.
+**claude has four verified always-fires primitives**, not one: `requiresUserInteraction` for MCP
+tools, hook exit-code-2 for any tool, an explicit `ask` rule for any tool, and a hook returning
+`permissionDecision: "ask"`. Independent mechanisms with independent failure modes, which is what a
+gate design wants. All four were verified **under `-p`** — which matters, because
+`PermissionRequest`, the event 0018 assumed it could notify on, does *not* fire there.
 
 **Any cost surface that sums top-level `usage.output_tokens` under-reports every fan-out.** The gap
 was 22% for a single subagent and grows with the tree. `modelUsage` is the whole-tree figure (#479).
