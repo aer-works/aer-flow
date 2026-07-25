@@ -32,7 +32,11 @@ aer-flow/
 │                              is not gets fixed or moved here. See archive/README.md
 ├── external/
 │   └── aer-core/              git submodule — aer-core's M5 .NET binding, P/Invoked by the Core Dispatcher
-├── tools/                     ui-harness — the UI driving harness
+├── tools/                     ui-harness (UI driving harness), vendor-verify (re-runnable vendor
+│                              checks; `--sentinels` runs only the ones a design rests on),
+│                              vendor-survey, Aer.VendorProbe, smoke-preflight (free gate on the
+│                              smoke tasks), Aer.DesignTokens, audit-completeness (one-time, #527).
+│                              `ls tools/` is the authority — this line is a map, not a register
 ├── .github/workflows/
 │   ├── ci.yml                 lint + fmt + test on win/linux/mac, plus the mobile job
 │   └── release-please.yml     versioning and changelog
@@ -91,6 +95,77 @@ adapter, etc.). When implementing a phase gated by one of these tests: build the
 *can* run locally (`build`, `test`, `lint`, `fmt-check`), leave the live smoke task itself un-run if
 its vendor isn't authenticated on this host, and say so plainly in the PR body and the phase's
 tracking issue — don't mark a live-run item done on anything short of an actual recorded run.
+
+---
+
+## Before you ship — the gates every change runs through
+
+Each was paid for by a specific failure, named so it stays concrete instead of becoming a recitation.
+They are ordered by when they bite: 1 before building, 2–4 while building, 5–7 before shipping.
+
+**1. Common sense first.** Ask the obvious question before building anything. Does the thing you are
+about to verify or depend on actually exist? Does a helper for this already exist? Is the failure you
+are theorising the one that was actually measured?
+*#534's fix was one condition away from a parser already in the file — the shape was there, and
+finding that first is what the gate buys, whether or not you end up sharing the code. #532 was scoped
+to self-check a `PreToolUse` hook AER does not ship; the issue is real, its stated mechanism was not.*
+
+**2. V&V that actually verifies.** Red before green, *proven* — never a test written against
+already-fixed code. A **control arm that discriminates**, read first: if the control fails, the result
+is about the harness, not the product. Assert **polarity in both directions** when two behaviours are
+one condition apart. A test double that can fail the same way as the thing under test cannot
+discriminate.
+*All four happened during #527 and the fixes after it — including a green check certifying that `agy`
+surfaces a deny reason it does not.*
+
+**3. Blast radius.** Trace every consumer of what you are changing *before* editing. A second defect
+found on the way becomes its own issue with its own measurement — never a side effect of the current
+fix.
+*`establishedThisTurn` read like a local variable and decided whether every future chat turn resumes.*
+
+**4. The scope of the claim.** A claim about a *population* — both vendors, every platform, all
+workers — is measured across that population or scoped to what was measured. Not the same as blast
+radius: that asks what your change touches, this asks what your **claim** covers.
+*A `claude`-only measurement justified an `agy` sentence: `agy.broken-hook-fails-open` claimed the
+failure was **silent** when no positive control for silence exists on that vendor. A Windows-only
+sandbox observation became a product-wide capability claim.*
+
+**5. Record once, reference everywhere.** Anything discovered that outlives the change gets a durable
+home *before* the change ships — an issue, `vendor-doc-audit.md`, a decision record. A comment saying
+"tracked separately" with no issue behind it is not a record. And never transcribe a value that lives
+somewhere authoritative — cite the command that computes it. A comment that describes code is a claim
+about that code: when the code changes, the comment is part of the change.
+*`gemini-3-flash` sat wrong in four files while pinning nothing; `audit-completeness.md` carried three
+different check counts in one afternoon because the number was copied into a file whose own script
+computes it; a test's doc comment claimed the opposite of its code.*
+
+**6. Cost and reversibility are the operator's call.** Say what a live run spends and what an
+irreversible step could break, then let them decide. Before calling something a human action item,
+separate *"only a person can do this"* from *"this needs a better instrument."* One exception, already
+settled: the live-vendor smoke gates above are the first kind. Do not relitigate them, and never
+install an alternate auth path to make one closable by an agent.
+*One smoke test spent top-tier model budget per run — the per-turn figure is in
+`tests/Aer.Cli.SmokeTests/LiveSessionSmokeTest.cs`, not here. Two issues were filed as permanently
+human when one needed a browser for a single question and the other needed a better probe.*
+
+**7. A second reader before a PR is called ready.** A PR touching `src/`, or making a claim in
+`docs/`, is not ready on the author's own say-so. Run it past a **reviewer agent** — one that did not
+write the change — and act on what it finds before declaring the work done. Report what the review
+said, including "nothing", rather than silently absorbing it. A typo, a version bump, or a comment fix
+that changes no claim about behaviour does not need one; if you are unsure, it does.
+*Every recurring failure above was caught by a second reader noticing, never by the author
+re-reading their own work. An author checking their own claim is the same instrument twice.*
+
+Not `/code-review`, which is **operator-triggered and billed** and cannot be launched from an agent
+session; a reviewer agent spends this session's own usage, and running one is the author's job rather
+than the operator's to ask for. It is also the deliberate exception to "Delegating to subagents"
+below: that rule is about saving *effort*, and review buys a second *instrument* instead. Hand the
+reviewer the specific claims to check, not a request for an opinion.
+
+**The question underneath all seven: name the user-visible behaviour this change improves.** If you
+cannot, it may be ceremony — and rigour that is not buying correctness is what this project keeps
+having to cut back out. `tools/audit-completeness` is scoped one-time for exactly that reason, and
+these gates are deliberately not given a checker of their own.
 
 ---
 
