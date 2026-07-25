@@ -22,6 +22,21 @@ disposition) and prints what it CANNOT check, because a completeness checker tha
 blind spots is the thing it exists to prevent.
 
     pixi run audit-completeness
+
+SCOPE -- READ THIS BEFORE EXTENDING IT
+--------------------------------------
+**This is a one-time instrument for #527, not a standing gate**, and it is deliberately not wired
+into CI. It exists so the audit's completeness claim can be checked by someone who does not trust
+it; once the audit is closed, its job is done and it should be left alone rather than grown.
+
+The distinction is worth stating because the thing it guards against is easy to become. Every check
+here verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any good. That is genuinely
+useful for catching a claim of "all N considered" when N-137 were unread, which is what it caught.
+It is worthless for catching a wrong judgement, and a gate that keeps running past its purpose
+starts costing maintenance while buying only the appearance of rigour.
+
+So: no new steps, no adoption for later milestones, and if a future change makes it fail, prefer
+retiring it over extending it. Rigour that is not buying correctness is ceremony.
 """
 from __future__ import annotations
 

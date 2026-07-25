@@ -95,9 +95,24 @@ _CURRENT = None      # name of the check being run, so run() knows whether to do
 _FULL_MODEL = False  # --full-model: run everything as originally measured
 
 
-def check(name, group, claim, safety="safe"):
+def check(name, group, claim, safety="safe", sentinel=False):
+    """Register a check.
+
+    `sentinel=True` marks the few checks worth re-running forever. The distinction exists because
+    most checks here are ONE-TIME FINDINGS, not tests: the finding lives in a decision record and
+    the code that produced it is a receipt. Re-running all of them spends real subscription usage
+    to re-confirm things no longer in question.
+
+    A check is a sentinel only if a vendor changing it would SILENTLY BREAK a design AER has
+    already committed to. "It would be interesting to know" is not the bar -- a finding that would
+    merely add a capability is not a sentinel, because nothing built on it can rot.
+
+    `--sentinels` runs exactly that set. Use it after a vendor version bump; use `--only` for
+    anything else.
+    """
     def deco(fn):
-        CHECKS[name] = {"fn": fn, "group": group, "claim": claim, "safety": safety}
+        CHECKS[name] = {"fn": fn, "group": group, "claim": claim, "safety": safety,
+                        "sentinel": sentinel}
         return fn
     return deco
 
@@ -215,7 +230,7 @@ def _prompt_tool():
 
 
 @check("gate.hook-exit-2-beats-allow", "gate",
-       "a PreToolUse hook exiting 2 blocks even with an explicit allow rule for that tool")
+       "a PreToolUse hook exiting 2 blocks even with an explicit allow rule for that tool", sentinel=True)
 def _exit2():
     def arm(code):
         wd = tempfile.mkdtemp(prefix="v-exit2-")
@@ -243,7 +258,7 @@ def _exit2():
 
 @check("gate.broken-hook-fails-open", "gate",
        "what a BROKEN PreToolUse hook does on Windows -- decision 0029 makes this hook mandatory "
-       "on every worker, and a hook that silently does not fire looks exactly like one that works")
+       "on every worker, and a hook that silently does not fire looks exactly like one that works", sentinel=True)
 def _broken_hook():
     """#530. The highest-value unrun check in the suite, because 0029 rests on an ASSUMED row:
     hooks on Windows run through Git Bash and the vendor documents them as having failed *silently*
@@ -518,7 +533,7 @@ def _ask_bypass():
 
 
 @check("gate.add-dir-loads-no-config", "gate",
-       "--add-dir grants file access but loads no hooks configuration")
+       "--add-dir grants file access but loads no hooks configuration", sentinel=True)
 def _add_dir():
     cwd = tempfile.mkdtemp(prefix="v-cwd-")
     extra = tempfile.mkdtemp(prefix="v-extra-")
@@ -543,7 +558,7 @@ def _add_dir():
 
 
 @check("gate.hook-ask-in-auto", "gate",
-       "a PreToolUse hook returning permissionDecision:ask forces a prompt even in auto mode")
+       "a PreToolUse hook returning permissionDecision:ask forces a prompt even in auto mode", sentinel=True)
 def _hook_ask():
     """Second always-fires path after exit 2, and the polite one -- exit 2 is a hard block.
 
@@ -646,7 +661,7 @@ def _subagent_tokens():
 @check("gate.elicitation-capability", "gate",
        "whether claude declares the MCP `elicitation` capability and honours an elicitation "
        "request under -p -- the PORTABLE alternative to the vendor-specific "
-       "requiresUserInteraction extension")
+       "requiresUserInteraction extension", sentinel=True)
 def _elicitation():
     """Reading the MCP specification showed `requiresUserInteraction` is nowhere in the protocol:
     it is an Anthropic extension. `elicitation/create` is the spec's own mechanism for a server to
@@ -909,7 +924,7 @@ def _event_surface():
 
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",
        "--allowedTools pre-approves tools; it does not restrict the toolset, so it cannot bound "
-       "what a worker may do")
+       "what a worker may do", sentinel=True)
 def _allowedtools_ceiling():
     """Raised by a tension between two recorded results: a subagent used Write when the parent was
     launched with `--allowedTools Task`. Either a permissive mode overrides the list, or the list
@@ -1243,7 +1258,7 @@ def _auth_status():
 
 @check("durability.session-id-guard-is-not-a-lock", "durability",
        "--session-id is guarded by an existence check, NOT a lock: sequential reuse is refused, "
-       "but two concurrent processes both win the race and both run (docs claim one writer)")
+       "but two concurrent processes both win the race and both run (docs claim one writer)", sentinel=True)
 def _one_writer():
     """Three arms, because two cannot separate the cases.
 
@@ -1616,7 +1631,7 @@ def agy_ran(wd):
        "agy permission rules live ONLY in global settings -- no project-scoped equivalent is "
        "honoured, so AER cannot scope a worker's agy permissions without touching the operator's "
        "own file",
-       safety="mutates-config")
+       safety="mutates-config", sentinel=True)
 def _agy_scope():
     """The backlog row claimed "three permission scopes (Project / Shared / Global)". The docs say
     something different: three access LISTS (deny / ask / allow, precedence Deny > Ask > Allow)
@@ -1739,6 +1754,11 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", help="a group (gate | fanout | cost | lifecycle | agy) or a check-name prefix")
+    ap.add_argument("--sentinels", action="store_true",
+                    help="run ONLY the checks whose result a design already depends on, so a "
+                         "vendor change there would break AER silently. This is the set worth "
+                         "re-running after a version bump; the rest are settled findings whose "
+                         "conclusions live in docs/decisions and need no re-confirmation.")
     ap.add_argument("--allow-config-writes", action="store_true",
                     help="also run checks that touch the operator's real settings files")
     ap.add_argument("--full-model", action="store_true",
@@ -1753,7 +1773,14 @@ def main() -> int:
     if args.list:
         for n, c in sorted(CHECKS.items()):
             tier = "default-model" if n in NEEDS_CAPABILITY else "cheap-model"
-            print(f"{n:<42} [{c['group']:<9}] {c['safety']:<15} {tier}\n    {c['claim']}")
+            kind = "SENTINEL" if c["sentinel"] else "settled  "
+            print(f"{n:<42} [{c['group']:<9}] {kind} {c['safety']:<15} {tier}\n    {c['claim']}")
+        n_sent = sum(1 for c in CHECKS.values() if c["sentinel"])
+        print(f"\nSENTINEL       {n_sent} check(s) a committed design rests on -- `--sentinels` "
+              "re-runs exactly these after a vendor version bump.")
+        print(f"settled        {len(CHECKS) - n_sent} one-time findings. The conclusion lives in "
+              "docs/decisions; the code is the receipt,\n               not a test. Re-running "
+              "them spends usage to re-confirm what is no longer in question.")
         print("\ncheap-model    runs on " + " / ".join(
             f"{v} {' '.join(f)}" for v, f in CHEAP.items()))
         print("default-model  what it observes depends on the model making a real choice "
@@ -1763,7 +1790,8 @@ def main() -> int:
         return 0
 
     selected = {n: c for n, c in sorted(CHECKS.items())
-                if not args.only or c["group"] == args.only or n.startswith(args.only)}
+                if (not args.only or c["group"] == args.only or n.startswith(args.only))
+                and (not args.sentinels or c["sentinel"])}
     if not selected:
         print(f"no check matches --only {args.only!r}; see --list", file=sys.stderr)
         return 2

@@ -170,6 +170,10 @@ vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 # claim ships with the artifact that lets someone check it. Free: reads files, starts no session.
 # It also prints what it CANNOT check, since a completeness checker that hides its own blind spots
 # is precisely the failure it exists to prevent.
+#
+# ONE-TIME INSTRUMENT for #527, not a standing gate -- see the SCOPE note in the script. It verifies
+# that a reason was written down, never that the reason is good, so it should retire with the audit
+# rather than be extended to later milestones.
 audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's

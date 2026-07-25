@@ -161,10 +161,26 @@ Without `-u`, Python holds `print` output in an 8 KB block buffer when stdout is
 run in progress looks identical to a run producing nothing, and a run killed on a timeout loses
 everything it had found.
 
+### Most of these are findings, not tests — `--sentinels` is the set worth re-running
+
+```
+python -u tools/vendor-verify/verify.py --sentinels     # after a vendor version bump
+python -u tools/vendor-verify/verify.py --list          # every check, tagged SENTINEL or settled
+```
+
+A **sentinel** is a check whose result a design has already committed to, so a vendor changing it
+would break AER *silently*. There are a handful. Everything else is a **settled finding**: the
+conclusion is written into a decision record, and the code that produced it is a receipt rather than
+a test. Re-running those spends real subscription usage to re-confirm what is no longer in question.
+
+The distinction exists because this suite is easy to mistake for a test suite and then grow like
+one. It is not. A finding that would merely *add* a capability is never a sentinel, because nothing
+built on it can rot; the bar is "a design AER has committed to would silently become wrong."
+
 ## Adding a check
 
 ```python
-@check("group.short-name", "group", "the one-sentence claim being tested")
+@check("group.short-name", "group", "the one-sentence claim being tested", sentinel=False)
 def _my_check():
     ...
     return PASS, "what was observed"
@@ -173,6 +189,14 @@ def _my_check():
 Give it a control arm, assert on a file, and return `INCONCLUSIVE` when the control arm didn't
 establish a baseline. Then record the result in the "Verified by running it" section of
 `docs/vendor-doc-audit.md` and strike the row from the backlog in `docs/vendor-coverage.md`.
+
+**The description is a claim, and the passing condition must test all of it.** This is the rule that
+went wrong most often here, four times in checks written or reviewed on the same day — a check
+described as *"blocks the call and surfaces its reason"* that only ever gated on the block, so it
+went green while certifying something measured false. A check that passes on less than it claims is
+worse than no check: it converts an open question into a confident wrong answer. If a second
+property is interesting but unproven, print it in the detail string and say it is not claimed —
+never put it in the description.
 
 ## What is *not* here
 

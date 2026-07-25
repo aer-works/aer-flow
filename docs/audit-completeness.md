@@ -12,16 +12,22 @@ completeness ships with the artifact that lets someone check it.** So every step
 **population**, the **artifact** that dispositions each member, and whether a command **recomputes**
 it. A step with no enumerable population says so instead of pretending.
 
+**No population size is written down here.** Every count in this chain is computed by the command
+above, and a number copied into prose is a number that goes stale silently — this file carried three
+different check counts in one afternoon before the copies were removed. Where you want a figure, run
+the command; it prints each population next to what it expected. That is the same rule the ledger
+enforces on everything else, applied to the ledger.
+
 ## The chain
 
 | # | step | population | artifact | recomputed |
 |---|---|---|---|---|
-| 1 | No doc source missed | 7 source families | [`vendor-doc-audit.md § Sources`](vendor-doc-audit.md) + `vendor_survey.py` | **yes** |
-| 2 | Every source actually read | **382 mirrored pages** | ledger + [`vendor-doc-audit.md`](vendor-doc-audit.md) dispositions | **yes** |
-| 3 | Gaps verified against real behaviour | **32 checks** | [`tools/vendor-verify/`](../tools/vendor-verify/README.md) | **yes** |
+| 1 | No doc source missed | the source families | [`vendor-doc-audit.md § Sources`](vendor-doc-audit.md) + `vendor_survey.py` | **yes** |
+| 2 | Every source actually read | the mirrored pages | ledger + [`vendor-doc-audit.md`](vendor-doc-audit.md) dispositions | **yes** |
+| 3 | Gaps verified against real behaviour | the registered checks | [`tools/vendor-verify/`](../tools/vendor-verify/README.md) | **yes** |
 | 4 | Gaps fixed or filed | defects + open questions | GitHub issues (below) | no — needs the network |
-| 5 | What reality changed | **32 checks** | [`architecture-impact.md`](architecture-impact.md) | **yes** |
-| 6 | Design verified against it | **30 decision records** | [`decision-audit.md`](decision-audit.md) | **yes** |
+| 5 | What reality changed | the registered checks | [`architecture-impact.md`](architecture-impact.md) | **yes** |
+| 6 | Design verified against it | the decision records | [`decision-audit.md`](decision-audit.md) | **yes** |
 | 7 | Milestone approach re-verified | M26–M30 | [`plan.md § What the vendor audit changes`](plan.md) | **yes** |
 | 8 | Plan to start building | the ordered first slice | [`plan.md`](plan.md) + issues (below) | no — a judgement |
 
@@ -73,7 +79,7 @@ one.**
 ## What this ledger cannot do
 
 - **Find a source nobody thought of.** Enumeration cannot find its own blind spot. What bounds it is
-  that step 2 dispositioned all 382 pages rather than sampling — but that bounds the *documentation*,
+  that step 2 dispositioned every mirrored page rather than sampling — but that bounds the *documentation*,
   not reality.
 - **Tell you a disposition is right.** Every checker verifies that a reason was given, never that the
   reason is good. `unaffected` in step 6 and `no impact` in step 5 are judgements; they are written

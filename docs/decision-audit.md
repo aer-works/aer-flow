@@ -19,7 +19,7 @@ it."
 
 **The blind spot this cannot cover:** a decision resting on a vendor fact nobody thought to check
 looks identical to one resting on no vendor fact. Enumeration cannot find its own blind spot. What
-narrows it is that the audit gave all 382 mirrored pages a disposition rather than sampling — but
+narrows it is that the audit gave every mirrored page a disposition rather than sampling — but
 that bounds the *documentation*, not reality.
 
 ## The sweep
