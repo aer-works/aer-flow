@@ -1,6 +1,9 @@
 # Vendor documentation audit — every documented capability, and whether we verified it
 
-**Status: in progress.** Started 2026-07-24 against `claude` 2.1.219 and `agy` 1.1.7.
+**Status: in progress.** Started 2026-07-24 against `claude` 2.1.219 and `agy` 1.1.7. **`claude`
+self-updated to 2.1.220 mid-audit**, which the staleness gate caught rather than a person noticing;
+every measurement in *Verified by running it* ran on 2.1.220, and the probe was re-run so the
+recorded attribution matches the installed binary.
 
 This exists because `docs/vendor-capabilities.md` was built by probing binaries and help text while
 both vendors publish documentation. Several rows were wrong as a result, and the errors were not
