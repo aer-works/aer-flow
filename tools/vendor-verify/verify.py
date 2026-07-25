@@ -347,41 +347,53 @@ def _elicitation():
       CALLED_*       the tool body ran anyway
     `control_tool` proves the server works at all.
     """
-    wd = tempfile.mkdtemp(prefix="v-elicit-")
-    try:
-        cfg = os.path.join(wd, "mcp.json")
-        mcp_config(cfg, "mcp_elicit_server.py", wd)
-        run(["claude", "-p", "Call the MCP tool control_tool, then call elicit_tool. Call both.",
-             "--mcp-config", cfg, "--output-format", "json",
-             "--allowedTools", "mcp__probe__control_tool,mcp__probe__elicit_tool"],
-            timeout=420, cwd=wd)
+    def arm(extra):
+        wd = tempfile.mkdtemp(prefix="v-elicit-")
+        try:
+            cfg = os.path.join(wd, "mcp.json")
+            mcp_config(cfg, "mcp_elicit_server.py", wd)
+            run(["claude", "-p", "Call the MCP tool control_tool, then call elicit_tool. Call both.",
+                 "--mcp-config", cfg, "--output-format", "json", *extra],
+                timeout=420, cwd=wd)
 
-        def load(n):
-            p = os.path.join(wd, n)
-            if not os.path.exists(p):
-                return None
-            try:
-                return json.load(open(p, encoding="utf-8"))
-            except ValueError:
-                return "unparseable"
-        caps, elicited = load("CAPS.json"), load("ELICITED.json")
-        control = os.path.exists(os.path.join(wd, "CALLED_control_tool"))
-        ran = os.path.exists(os.path.join(wd, "CALLED_elicit_tool"))
-    finally:
-        shutil.rmtree(wd, ignore_errors=True)
-    # `elicitation: {}` is a DECLARED capability with no sub-options -- truthiness is the wrong
-    # test and reported "not declared" for a client that plainly declares it.
-    declared = isinstance(caps, dict) and "elicitation" in (caps.get("capabilities") or {})
-    if not control:
-        return INCONCLUSIVE, "control tool never ran; the server itself did not work"
-    if not (elicited or {}).get("issued"):
-        return INCONCLUSIVE, f"the elicitation request was never issued; caps={caps}"
-    answer = ((elicited or {}).get("response") or {}).get("action")
-    note = (f"declared={declared} caps={(caps or {}).get('capabilities')}; "
-            f"client answered action={answer!r}; gated tool body ran={ran}")
-    if ran and answer != "accept":
-        return FAIL, f"the tool completed without approval -- elicitation is not a gate; {note}"
-    return PASS, note
+            def load(n):
+                p = os.path.join(wd, n)
+                if not os.path.exists(p):
+                    return None
+                try:
+                    return json.load(open(p, encoding="utf-8"))
+                except ValueError:
+                    return "unparseable"
+            return (load("CAPS.json"), load("ELICITED.json"),
+                    os.path.exists(os.path.join(wd, "CALLED_control_tool")),
+                    os.path.exists(os.path.join(wd, "CALLED_elicit_tool")))
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    # The decisive comparison for decision 0015: requiresUserInteraction is measured to survive
+    # every permission mode. If elicitation does too, the PORTABLE mechanism is strictly better and
+    # the gate should be built on the protocol rather than on a vendor extension.
+    arms = [("allowedTools", ["--allowedTools",
+                              "mcp__probe__control_tool,mcp__probe__elicit_tool"]),
+            ("bypassPermissions", ["--permission-mode", "bypassPermissions"]),
+            ("skip-permissions", ["--dangerously-skip-permissions"])]
+    detail, declared = [], False
+    for label, extra in arms:
+        caps, elicited, control, ran = arm(extra)
+        # `elicitation: {}` is a DECLARED capability with no sub-options -- truthiness is the wrong
+        # test and reported "not declared" for a client that plainly declares it.
+        declared = declared or (isinstance(caps, dict)
+                                and "elicitation" in (caps.get("capabilities") or {}))
+        if not control:
+            return INCONCLUSIVE, f"{label}: control tool never ran; the server did not work"
+        if not (elicited or {}).get("issued"):
+            return INCONCLUSIVE, f"{label}: the elicitation request was never issued; caps={caps}"
+        answer = ((elicited or {}).get("response") or {}).get("action")
+        detail.append(f"{label}: answered={answer!r} gated-body-ran={ran}")
+        if ran and answer != "accept":
+            return FAIL, (f"{label}: the tool completed WITHOUT approval -- elicitation is not a "
+                          f"gate in this mode; {'; '.join(detail)}")
+    return PASS, f"declared={declared}; " + "; ".join(detail)
 
 
 @check("gate.headless-event-surface", "gate",

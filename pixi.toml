@@ -164,6 +164,14 @@ vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
 # redirected, and a run killed on a timeout loses everything it had already found.
 vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 
+# Recomputes the #527 audit's completeness ledger: for each step of the chain, the population that
+# was supposed to be covered and whether every member of it carries a disposition. Exists because
+# "we read everything" is unfalsifiable -- documentation-lessons.md rule 15 says a completeness
+# claim ships with the artifact that lets someone check it. Free: reads files, starts no session.
+# It also prints what it CANNOT check, since a completeness checker that hides its own blind spots
+# is precisely the failure it exists to prevent.
+audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
+
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,
 # so it runs in the ordinary dev loop — `pixi run test` runs the same comparison via
