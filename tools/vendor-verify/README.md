@@ -83,14 +83,22 @@ moved*.
 Every check starts a real CLI session and spends real subscription usage, so this never runs in CI
 — the same permanent-human-action-item rule as `smoke-*` and `vendor-probe`.
 
-Checks are `safe` unless marked otherwise: temp directories only, nothing written outside them, and
-no mutation of the operator's `~/.claude` or `~/.gemini`. A check marked `mutates-config` is skipped
-unless `--allow-config-writes` is passed; it copies the file byte-exact, adds exactly one key,
-restores in a `finally`, and re-verifies the sha256 — printing a loud warning and keeping the backup
-if the restore doesn't match.
+Checks are `safe` unless marked otherwise: **no configuration is read, copied, or modified**, and
+the operator's `~/.claude` and `~/.gemini` settings are untouched. A check marked `mutates-config`
+is skipped unless `--allow-config-writes` is passed; it copies the file byte-exact, adds exactly
+one key, restores in a `finally`, and re-verifies the sha256 — printing a loud warning and keeping
+the backup if the restore doesn't match.
+
+**One thing `safe` does not mean.** Every `claude -p` invocation writes a session transcript into
+`~/.claude/projects/<cwd-slug>/`, exactly as any ordinary CLI run does — and since each arm uses a
+fresh temp working directory, a full suite would otherwise leave ~50 orphan project directories
+there. The runner therefore records what exists before the run and sweeps only the directories it
+created, and only ones slugged under the OS temp root. Nothing pre-existing is touched. An earlier
+version of this section claimed nothing was written outside the temp dirs; that was wrong.
 
 `CLAUDE_*` environment variables are stripped before every invocation, so a check probes the vendor
-CLI rather than the harness that launched it.
+CLI rather than the harness that launched it. A check testing a specific `CLAUDE_CODE_*` knob sets
+that one back — it is the variable under test.
 
 ## Layout
 

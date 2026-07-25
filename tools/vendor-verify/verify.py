@@ -637,12 +637,31 @@ def _json_schema():
        "two processes cannot write the same session transcript concurrently -- bounds whether "
        "Aer.Daemon may attach a second worker to a live session")
 def _one_writer():
-    """Two concurrent processes on the SAME --session-id, against a control pair on two different
-    session ids launched the same way. Without the control, a failure could be ordinary
-    concurrency flakiness rather than the session being exclusive.
+    """Three arms, because two cannot separate the cases.
+
+    Concurrent on two different ids is the flakiness control. Concurrent on ONE id is the test.
+    But a refusal there is equally consistent with "a session id cannot be REUSED at all", which
+    is a different claim -- so the third arm reuses one id SEQUENTIALLY. Only if that succeeds
+    while the concurrent pair fails is the claim about concurrency established.
     """
     import uuid
     from concurrent.futures import ThreadPoolExecutor
+
+    def once(sid, wd):
+        rc, out, err = run(["claude", "-p", "Reply with exactly the word PONG.",
+                            "--session-id", sid, "--add-dir", wd, "--output-format", "json"],
+                           timeout=300, cwd=wd)
+        return "PONG" in (out + err), (out + err)
+
+    def sequential_reuse():
+        sid = str(uuid.uuid4())
+        wd = tempfile.mkdtemp(prefix="v-seq-")
+        try:
+            first, _ = once(sid, wd)
+            second, blob = once(sid, wd)
+            return first, second, blob
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
 
     def pair(same):
         a, b = str(uuid.uuid4()), str(uuid.uuid4())
@@ -662,13 +681,19 @@ def _one_writer():
             shutil.rmtree(wd, ignore_errors=True)
     ok_diff, _ = pair(same=False)
     ok_same, blob = pair(same=True)
-    note = f"different session ids: {ok_diff}/2 succeeded | same session id: {ok_same}/2"
+    seq_first, seq_second, seq_blob = sequential_reuse()
+    note = (f"concurrent/different ids: {ok_diff}/2 | concurrent/same id: {ok_same}/2 | "
+            f"sequential reuse: first={seq_first} second={seq_second}")
     if ok_diff < 2:
         return INCONCLUSIVE, f"the control pair did not both succeed, so concurrency itself is flaky; {note}"
     if ok_same == 2:
         return FAIL, f"both processes wrote the same session id concurrently; {note}"
+    if not seq_second:
+        return INCONCLUSIVE, ("a session id cannot be reused even sequentially, so the concurrent "
+                              f"refusal says nothing about concurrency; {note}")
     exclusive = bool(re.search(r"in use|already|lock|conflict|exists", blob, re.I))
-    return PASS, f"{note}; refusal names a conflict={exclusive}"
+    return PASS, (f"sequential reuse works, concurrent reuse does not -- the exclusion is about "
+                  f"concurrency; {note}; refusal names a conflict={exclusive}")
 
 
 @check("durability.config-dir-redirect-breaks-auth", "durability",
@@ -966,6 +991,37 @@ def _agy_allow():
             print(f"  !! RESTORE MISMATCH -- backup kept at {backup}", file=sys.stderr)
 
 
+def project_slug_root():
+    """Claude records a transcript per working directory under the config root.
+
+    Every arm here runs in a fresh temp cwd, so a full suite leaves ~50 orphan project directories
+    in the operator's ~/.claude/projects. The README used to claim nothing was written outside the
+    temp dirs; it was wrong. Rather than narrow the claim and leave the litter, the runner sweeps
+    the directories its own temp cwds created.
+    """
+    root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    prefix = tempfile.gettempdir().replace(":", "-").replace(os.sep, "-").replace("/", "-")
+    return root, prefix
+
+
+def sweep_transcripts(known_before):
+    root, prefix = project_slug_root()
+    if not os.path.isdir(root):
+        return 0
+    removed = 0
+    for name in os.listdir(root):
+        # Only directories this run created, and only ones under the OS temp root: never a real
+        # project. The exact temp root itself is left alone -- it is not ours to assume.
+        if name in known_before or not name.startswith(prefix + "-"):
+            continue
+        try:
+            shutil.rmtree(os.path.join(root, name))
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -987,6 +1043,9 @@ def main() -> int:
         return 2
     print(f"running {len(selected)} check(s). Each spends real subscription usage.\n")
 
+    root, _ = project_slug_root()
+    known_before = set(os.listdir(root)) if os.path.isdir(root) else set()
+
     results = []
     for name, c in selected.items():
         if c["safety"] == "mutates-config" and not args.allow_config_writes:
@@ -1000,7 +1059,10 @@ def main() -> int:
         results.append((name, status, detail))
         print(f"{status:<13} {name}\n              {detail}")
 
+    swept = sweep_transcripts(known_before)
     print("\n" + "=" * 72)
+    if swept:
+        print(f"  swept {swept} transcript dir(s) this run created under ~/.claude/projects")
     for s in (PASS, FAIL, INCONCLUSIVE, SKIPPED):
         n = sum(1 for _, st, _ in results if st == s)
         if n:
