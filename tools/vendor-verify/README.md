@@ -47,6 +47,21 @@ along.
 A check that cannot separate its cases must return `INCONCLUSIVE`. That is a real result, and it is
 more useful than a confident wrong one.
 
+### The instruments, and what each one can't see
+
+Picking the instrument is most of the work. Three are in use here, in increasing strength:
+
+| instrument | proves | blind to |
+|---|---|---|
+| **sentinel file** written by the tool | that specific tool ran | *which* agent ran it — a subagent can write the file its child was supposed to write |
+| **hook fire count** + a discovery control on `PreToolUse` | the event occurred, and the config was loaded | nothing, *provided* the control arm fires |
+| **`SubagentStart`/`SubagentStop` timeline** | how many agents the CLI actually started, and their overlap | nothing the model can fake |
+
+`fanout.nesting-off-by-default` went through all three. Prose first (worthless — a model will
+describe a nested spawn it never performed), then a sentinel file (ambiguous — the middle subagent
+can just write the file itself, byte-identically), and finally counting spawns. Each redo was
+prompted by asking what *else* could produce the same observation.
+
 ## Reading the output
 
 | status | meaning |

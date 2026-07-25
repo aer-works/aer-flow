@@ -383,6 +383,66 @@ def _nesting():
     return PASS, f"default matches an explicit cap of 1, and the env var raises it; {note}"
 
 
+@check("fanout.concurrency-cap", "fanout",
+       "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS caps how many subagents run at once (default 20)")
+def _concurrency():
+    """Measures actual overlap, not the count of subagents.
+
+    SubagentStart and SubagentStop each append a timestamped line, so peak concurrency is
+    computable rather than asserted. The uncapped arm is the control: if it never exceeds the
+    capped arm's peak, the model simply did not fan out wide enough and the cap was never tested.
+    """
+    PROMPT = ("Use the Task tool to launch five subagents AT THE SAME TIME, in a single batch of "
+              "parallel tool calls. Each subagent's instruction is to write a short haiku about a "
+              "different colour, and each should take a moment to think it through.")
+
+    def arm(limit):
+        wd = tempfile.mkdtemp(prefix="v-conc-")
+        try:
+            hooks = {}
+            logs = {}
+            for event in ("SubagentStart", "SubagentStop"):
+                logs[event] = os.path.join(wd, f"{event}.log").replace("\\", "/")
+                hk = os.path.join(wd, f"{event}.sh").replace("\\", "/")
+                # Each line is a timestamp, so starts and stops can be interleaved into a timeline.
+                with open(hk, "w", newline="\n") as f:
+                    f.write('#!/bin/sh\ncat > /dev/null\ndate +%%s.%%N >> "%s"\n' % logs[event])
+                os.chmod(hk, 0o755)
+                hooks[event] = [{"hooks": [{"type": "command", "command": "sh %s" % hk}]}]
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": hooks}, open(st, "w"))
+            run(["claude", "-p", PROMPT, "--settings", st, "--add-dir", wd,
+                 "--output-format", "json", "--allowedTools", "Task",
+                 "--permission-mode", "acceptEdits"],
+                timeout=900, cwd=wd,
+                extra_env=None if limit is None else
+                {"CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": str(limit)})
+
+            def stamps(p):
+                if not os.path.exists(p):
+                    return []
+                return [float(x) for x in open(p).read().split() if x.strip()]
+            events = [(t, +1) for t in stamps(logs["SubagentStart"])] + \
+                     [(t, -1) for t in stamps(logs["SubagentStop"])]
+            events.sort()
+            peak = cur = 0
+            for _, d in events:
+                cur += d
+                peak = max(peak, cur)
+            return len(stamps(logs["SubagentStart"])), peak
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    n_free, peak_free = arm(None)
+    n_cap, peak_cap = arm(2)
+    note = f"uncapped: {n_free} spawned, peak {peak_free} | cap=2: {n_cap} spawned, peak {peak_cap}"
+    if n_free < 3 or n_cap < 3:
+        return INCONCLUSIVE, f"the model did not fan out wide enough to test a cap of 2; {note}"
+    if peak_free <= 2:
+        return INCONCLUSIVE, f"the uncapped control never exceeded 2 concurrent; {note}"
+    return (PASS if peak_cap <= 2 else FAIL), note
+
+
 @check("fanout.parent-mode-covers-subagents", "fanout",
        "a subagent inherits the parent's permission mode rather than starting at default")
 def _inherit_mode():
@@ -407,6 +467,45 @@ def _inherit_mode():
     if not accept:
         return INCONCLUSIVE, "subagent did not write even under acceptEdits; nothing tested"
     return (PASS if not default else FAIL), f"acceptEdits wrote={accept}, default wrote={default}"
+
+
+# ====================================================================== durability
+@check("durability.config-dir-redirect-breaks-auth", "durability",
+       "CLAUDE_CONFIG_DIR redirects session storage but not the subscription login "
+       "(the measured basis for Architecture Rule 4's 'no redirecting config directories')")
+def _config_dir():
+    """Rule 4 forbids redirecting a vendor CLI's config directory. This measures why.
+
+    The control arm is the same prompt with the variable unset. If the redirected arm cannot run
+    while the control can, an isolated config dir costs the subscription login -- which is the
+    whole product premise, not a detail. Writes only into a temp dir; the operator's real
+    ~/.claude is untouched in both arms.
+    """
+    def arm(redirect):
+        wd = tempfile.mkdtemp(prefix="v-cfg-")
+        cfg = tempfile.mkdtemp(prefix="v-cfgdir-") if redirect else None
+        try:
+            rc, out, err = run(["claude", "-p", "Reply with exactly the word PONG.",
+                                "--add-dir", wd, "--output-format", "json"],
+                               timeout=180, cwd=wd,
+                               extra_env={"CLAUDE_CONFIG_DIR": cfg} if redirect else None)
+            answered = "PONG" in (out + err)
+            populated = bool(cfg and os.path.isdir(cfg) and os.listdir(cfg))
+            return rc, answered, populated, (out + err)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+            if cfg:
+                shutil.rmtree(cfg, ignore_errors=True)
+    rc0, ok0, _, _ = arm(False)
+    rc1, ok1, populated, blob = arm(True)
+    note = f"control answered={ok0} (rc={rc0}); redirected answered={ok1} (rc={rc1}), dir populated={populated}"
+    if not ok0:
+        return INCONCLUSIVE, f"the control arm could not run at all; {note}"
+    if ok1:
+        return FAIL, ("a redirected config dir still authenticated -- Rule 4's rationale needs "
+                      f"restating; {note}")
+    auth = bool(re.search(r"auth|login|credential|api key|subscription", blob, re.I))
+    return PASS, f"{note}; denial mentions auth={auth}"
 
 
 # ====================================================================== lifecycle

@@ -1000,6 +1000,24 @@ second finding.
 subagent being more constrained than the session that spawned it**. Whatever gate the lead runs
 under is the gate the whole tree runs under.
 
+### Group C — `CLAUDE_CONFIG_DIR` costs the subscription login (2026-07-25)
+
+Architecture Rule 4 forbids redirecting a vendor CLI's config directory. That was a design
+position; it is now a measurement.
+
+| arm | result |
+|---|---|
+| control (variable unset) | ✅ answered, exit 0 |
+| `CLAUDE_CONFIG_DIR=<temp>` | ❌ **exit 1**, no answer, and the failure text names authentication |
+
+The redirected directory **was populated** — so the variable is honoured, and the CLI really did
+use it. What does not travel with it is the subscription login.
+
+This is the same shape as `--bare` (#521, #262): a flag that looks like isolation and is actually
+de-authentication. Both now point the same way — **AER can control a worker's working directory
+and pass `--settings`, but it cannot give a worker its own config root.** Rule 4's phrasing "no
+redirecting the vendor CLIs' config directories" is load-bearing rather than cautious.
+
 **Consequences.**
 
 **AER must own the worker's working directory, or pass `--settings`.** `--add-dir` cannot carry a
