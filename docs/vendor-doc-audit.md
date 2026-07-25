@@ -1723,8 +1723,8 @@ Worker asks, call stays open, human answers somewhere else entirely, worker resu
 demonstration needs, with a real person and a real browser.
 
 This promotes [0029](decisions/0029-the-gate-is-three-mechanisms.md)'s central claim from reasoned to
-measured, and its two `Rests on` rows accordingly: the url-surfacing row resolves **measured false**,
-with exactly the consequence it predicted.
+measured. Its two `Rests on` rows were amended to match in `fd1aa00` (#528), not here — the
+url-surfacing row resolves **measured false**, with exactly the consequence it predicted.
 
 #### One hazard for the gate surfaces
 
@@ -1743,17 +1743,26 @@ register.
 | | behaviour |
 |---|---|
 | `claude` | `is_error: true` — a stale pin self-reports |
-| `agy` | runs on its own default, `rc=0`, no warning |
+| `agy` | accepts the unlisted name, `rc=0`, output produced; no warning observed on the captured stream |
 
 Measured: `agy -p … --model gemini-3-flash`, a model `agy models` does not list, returned `rc=0` with
 output. That name had been sitting in a binding fixture, two dialogue participants and two runbooks,
-pinning nothing.
+pinning nothing. The `claude` arm is measured by `tools/smoke-preflight/preflight.py` and by #536's
+live run, not by this probe.
 
-**Why it matters past the tests.** AER pins a model per worker. On `agy` a pin that goes stale routes
-silently to whatever agy defaults to, so any AER cost or model-attribution surface would report the
-pinned model while another ran — and agy's catalogue includes `claude-opus-4-6-thinking`, so the drift
-is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures; **nothing guards the
-product.** Evidence class: **verified** (both directions).
+**Scope — two claims, two evidence classes.** *Accept vs. reject* is **verified (both directions)**:
+claude rejects the unlisted name, agy does not. *Which model then served the request* is
+**inferred, not measured** — AER has no attribution surface, which is the same reason it cannot be
+checked here. Likewise "no warning" is an absence with **no positive control**: nothing establishes
+that this capture would have shown a warning had one been emitted. Read it as "none observed", not
+as "none emitted".
+
+**Why it matters past the tests.** AER pins a model per worker. On `agy` a pin that goes stale is
+accepted rather than rejected, so any AER cost or model-attribution surface would report the pinned
+model with no way to confirm what ran — and agy's catalogue includes `claude-opus-4-6-thinking`, so
+the drift is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures;
+**nothing guards the product**, and no issue owns that gap — a `vendor-verify` sentinel was
+considered and is tracked in #547.
 
 **2. `claude` has no model-catalogue command, and `claude models` spends usage.** There is no such
 subcommand — the words are taken as a *prompt* and answered, costing a turn. So claude's valid model
@@ -1765,7 +1774,12 @@ workspace is not enough. Without it `agy` reports *"the requested MCP tools … 
 active environment or tool set"* — a message that reads like a model declining a tool rather than a
 config that never loaded. This is the `agy` counterpart of claude's `.mcp.json`/`--mcp-config`
 constraint: **an agy worker spawned without `--add-dir` has no gate loaded and says nothing about it.**
-Carried into #533. Evidence class: **verified**.
+Evidence class: **verified**.
+
+Note the direct contradiction with `gate.add-dir-loads-no-config`, which measured that on `claude`
+`--add-dir` loads **no** configuration. Both are true; neither is general. #533's constraint 1 stated
+the claude behaviour unscoped, and is [cross-referenced there](https://github.com/aer-works/aer-flow/issues/533#issuecomment-5079218678)
+so the spawn path carries the asymmetry rather than one rule.
 
 ### Still not settled — recorded as untested, not refuted
 

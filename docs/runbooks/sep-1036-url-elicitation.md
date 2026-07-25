@@ -10,11 +10,19 @@ it.
 | `agy` accepts and routes a `mode: "url"` request | **yes** |
 | `agy` surfaces the URL to a person | **no** |
 | `agy`'s answer, interactive, human present | **`cancel`** — form in **2.7 ms**, url in **0.6 ms** |
-| `agy` retries after `-32042` + `notifications/elicitation/complete` | **no** |
+| `agy` retries after `-32042` + `notifications/elicitation/complete` | **no** — but see the caveat below; this row is **not** independent of the row above it |
 | a blocking `tools/call` can be answered out of band and resumed | **yes — held 162 s, answer accepted** |
 
-**So the non-blocking gate exists on no vendor today**: `claude` declares form-only, `agy` declares
-url mode and does not implement it. [0029](../decisions/0029-the-gate-is-three-mechanisms.md) is
+Rows 3, 4 and 6 are human-present measurements. **The `-32042` row is automated-only and confounded:**
+the URL is never surfaced, so the client has no path to a retry — "no retry" is downstream of "no
+surfacing", not an independent characterisation of how `agy` handles `-32042`. #531 asked for
+`-32042` equivalence as its own question, and that question is **still open**. Re-running the
+automated arm cannot close it; a vendor that started surfacing URLs would have to be re-measured here
+first.
+
+**So the non-blocking gate exists on no vendor today**: `agy` declares url mode and does not implement
+it, and `claude` declares form-only — the claude half is from its declared capability set, not from a
+run in this session. [0029](../decisions/0029-the-gate-is-three-mechanisms.md) is
 unchanged in its conclusion — the durable gate is the blocking `tools/call`, and that is now measured
 rather than reasoned.
 

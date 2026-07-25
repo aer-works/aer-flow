@@ -199,6 +199,20 @@ The most useful output of the survey tool is not the 1,621 constraints. It's the
 *77% of topic-relevant lines are invisible to this method.* Every register in this repo should be
 able to say what it doesn't cover.
 
+### 18. A CLI that answers instead of erroring turns a typo into a bill
+
+`claude models` is not a subcommand. The words are taken as a **prompt** and answered — so probing for
+a capability that does not exist costs a turn, and reports success. The usual signal that you guessed
+wrong (a non-zero exit, an "unknown command") never arrives.
+
+This is why claude's valid model set cannot be enumerated for free, and why `smoke-preflight` checks
+claude pins by shape and leans on claude's own rejection instead (#538).
+
+**Applied to our own docs and tooling:** when a runbook tells a reader to try a subcommand against a
+CLI whose default behaviour is *answer the prompt*, say what it costs if the subcommand does not
+exist. And never verify a vendor capability by "running it and seeing if it worked" on a tool that
+cannot fail — establish a control that would have failed. Same family as the rule below.
+
 ---
 
 ## The method rule underneath all of it
