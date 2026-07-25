@@ -26,16 +26,16 @@ that class across the whole corpus gives **100% page coverage at ~1% of the byte
 then goes only where they cluster on an open question.
 
 `pixi run vendor-survey` (see `tools/vendor-survey/`) rebuilds this: **249 pages / 7.0 MB →
-1,110 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
+1,475 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
 plus a ledger giving **every page a disposition** so coverage is checkable rather than asserted.
 
 | disposition | pages | meaning |
 |---|---|---|
-| `PENDING-DEPTH` | 90 | constraints cluster here; depth-read as decisions require |
-| `SCAN-ONLY` | 126 | touches an open question but thin; constraints harvested |
-| `NO-SIGNAL` | 33 | no open-question vocabulary at all |
+| `PENDING-DEPTH` | 119 | constraints cluster here; depth-read as decisions require |
+| `SCAN-ONLY` | 123 | touches an open question but thin; constraints harvested |
+| `NO-SIGNAL` | 7 | no open-question vocabulary at all |
 
-All 1,110 constraint sentences have been read across nine topics. **The per-page `·` tables below are
+All 1,475 constraint sentences have been read across nine topics. **The per-page `·` tables below are
 superseded by the ledger** and are kept only for the pages whose *contents* are summarized here.
 
 ## Status legend

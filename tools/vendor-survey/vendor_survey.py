@@ -48,24 +48,42 @@ AGY_SITEMAP = "https://antigravity.google/sitemap.xml"
 
 # AER's OPEN questions, deliberately not generic keywords: a page matters in proportion to how much
 # undecided design it touches. Update this when a decision closes or a new one opens.
+#
+# EVERY topic must carry BOTH vendors' vocabulary. The first version was written from claude's docs
+# and, as a result, scored 31 of agy's 77 pages as NO-SIGNAL -- including `cli/commands/permissions`,
+# a page whose entire subject is the permission model. agy says allowlist/denylist/asklist, "Request
+# Review", "Scope Picker", run_command; claude says allow/deny/ask rules, permission mode, Bash. An
+# instrument built from one vendor's words silently under-reads the other, which is precisely the
+# knowledge asymmetry docs/vendor-coverage.md warns about -- baked into the tooling instead of the
+# notes. When adding a term, add its counterpart.
 TOPICS: dict[str, str] = {
+    # claude terms first, agy terms after the || marker in each comment.
     "gate": r"\b(PreToolUse|canUseTool|permission[- ]?prompt|permissionOverrides|force_ask|"
-            r"deny rule|ask rule|allow rule|exit code 2|requiresUserInteraction|approve|approval)\b",
+            r"deny rule|ask rule|allow rule|exit code 2|requiresUserInteraction|approve|approval|"
+            r"allowlist|denylist|asklist|Request Review|Always Proceed|toolPermission|"
+            r"ask_permission|list_permissions|auto[- ]execut\w+|Scope Picker|permission rule|"
+            r"permissions engine|Deny list|Allow list)\b",
     "durability": r"\b(--resume|--continue|fork-session|/branch|checkpoint|persist(ed|ence)?|"
-                  r"transcript|crash|survive|reconnect|respawn|keep-workers|defer)\b",
+                  r"transcript|crash|survive|reconnect|respawn|keep-workers|defer|"
+                  r"conversation|trajectory|snapshot|--conversation|knowledge item)\b",
     "routing": r"\b(stream-json|--output-format|structured[- ]?output|json-schema|parent_tool_use_id|"
-               r"tool_use_id|system/init|stream_event|partial-messages|injectSteps)\b",
+               r"tool_use_id|system/init|stream_event|partial-messages|injectSteps|"
+               r"artifact|stepIdx|toolCall|Pydantic|schema)\b",
     "multiworker": r"\b(subagent|sub-agent|agent team|teammate|background (session|agent|task)|--bg|"
-                   r"concurren\w+|invoke_subagent|send_message|spawn)\b",
+                   r"concurren\w+|invoke_subagent|send_message|spawn|"
+                   r"Cascade|define_subagent|manage_subagents|parallel|fan[- ]out)\b",
     "attention": r"\b(notification|push|idle|fullyIdle|waiting|presence|PermissionRequest|"
-                 r"CLAUDE_CLIENT_PRESENCE_FILE|notify)\b",
-    "cost": r"\b(total_cost_usd|token usage|usage limit|quota|rate limit|credits?_required|credits|cost)\b",
+                 r"CLAUDE_CLIENT_PRESENCE_FILE|notify|status bar|terminal bell|chime|awaiting)\b",
+    "cost": r"\b(total_cost_usd|token usage|usage limit|quota|rate limit|credits?_required|credits|"
+            r"cost|AI credits|baseline quota|overage)\b",
     "config": r"\b(--settings|settings\.json|hooks\.json|managed settings|precedence|"
-              r"CLAUDE_CONFIG_DIR|env(ironment)? variable|--add-dir|additionalDirectories)\b",
+              r"CLAUDE_CONFIG_DIR|env(ironment)? variable|--add-dir|additionalDirectories|"
+              r"\.agents/|customization directory|rules|workflow|Project scope|Shared|Global|"
+              r"settings file|configuration scope)\b",
     "lifecycle": r"\b(SIGTERM|exit(s|ed)? with (code|status)|timeout|terminat\w+|daemon|supervisor|"
-                 r"grace period|--bare|MinimalOverhead|lock)\b",
+                 r"grace period|--bare|MinimalOverhead|lock|background daemon|headless|sandbox)\b",
     "auth": r"\b(OAuth|keychain|keyring|API key|ANTHROPIC_API_KEY|GEMINI_API_KEY|apiKeyHelper|"
-            r"subscription|login|credential)\b",
+            r"subscription|login|credential|silent authentication|Credential Manager|sign in|logout)\b",
 }
 
 # The grammar of a design-changing sentence.
