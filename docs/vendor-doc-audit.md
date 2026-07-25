@@ -1651,6 +1651,39 @@ is honoured — that check's actual claim — but the reason is not reaching the
 `-p`. Recorded here rather than quietly fixed, since it is a live example of a detail field nobody
 was reading.
 
+### Worker identity: per-worker roots are a `claude`-only option (2026-07-25)
+
+Decision 0029 carried this as **assumed** and as an owner action item. It is now measured, and the
+two vendors diverge completely — which is why it was asked twice rather than once.
+
+**`claude`: two config roots, both live.** The operator signed a fresh `CLAUDE_CONFIG_DIR` in
+interactively. The decisive observation is the *pre-existing* root: it kept `loggedIn: true`
+throughout, so the second sign-in did not displace the first. Both roots then reported the same
+account and org, and two concurrent `-p` runs — one per root — both returned successfully with
+distinct session ids.
+
+| root | `loggedIn` before | `loggedIn` after | concurrent run |
+|---|---|---|---|
+| pre-existing | true | **true** | `ROOT_A_OK`, session `201d2470` |
+| fresh | false | **true** | `ROOT_B_OK`, session `325be984` |
+
+**`agy`: no such mechanism exists.** It documents no config-root variable, and `agy --help` lists
+**no `auth` subcommand at all** — so there is neither a per-worker root nor a free readiness probe
+(`claude auth status` is both structured and free; agy has no counterpart). The only candidate left
+was environment redirection, and it does not work: a run with `HOME`, `USERPROFILE`, `LOCALAPPDATA`
+**and** `APPDATA` all pointed at empty directories still authenticated, while creating a fresh
+`.gemini` tree it evidently did not need. Config and credential are in different places, and the
+credential follows none of those variables.
+
+**Where the credential actually lives was deliberately not investigated.** Architecture Rule 4 puts
+that off-limits, and the architectural question — *can AER give a worker a separate identity* — is
+already answered without it. Recording the boundary because the temptation to keep digging is the
+thing the rule exists to stop.
+
+**What this settles.** Per-worker config roots are a **`claude`-only** design option. Any AER
+feature that depends on distinct worker identities cannot be built for `agy` today. That is a
+constraint to design around, not a defect to file.
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls

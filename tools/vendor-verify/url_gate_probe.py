@@ -252,9 +252,20 @@ def manual(flow, where):
     print("  1. In a REAL terminal (not this session, no winpty), run:")
     print()
     print('       cd "%s"' % where)
-    print('       agy -i "Call the MCP tool control_tool, then call elicit_tool. Call both."')
+    # --add-dir is NOT optional, even though cwd is already the workspace. Without it agy
+    # reports "the requested MCP tools are not available" and never loads .agents/mcp_config.json,
+    # which looks exactly like a tool the model declined to call.
+    print('       agy -i "Call the MCP tool control_tool, then call elicit_tool. Call both." '
+          '--add-dir %s' % where.replace("\\", "/"))
     print()
-    print("  2. WATCH THE SCREEN. The only question that matters is whether agy ever asks")
+    print("     (--add-dir is required. Without it agy does not load .agents/mcp_config.json")
+    print("      and says the probe tools are unavailable.)")
+    print()
+    print("  2. Wait for [CAPS.json] to appear below -- that is the probe server completing its")
+    print("     MCP handshake. If it never appears, the server did not load and nothing after")
+    print("     this point means anything.")
+    print()
+    print("  3. WATCH THE SCREEN. The only question that matters is whether agy ever asks")
     print("     you anything about the probe tool -- a prompt, a link, a consent dialog.")
     print()
     if flow == "form":
@@ -264,7 +275,7 @@ def manual(flow, where):
         print("     url mode: expect a link, or an offer to open one. If it appears, open it")
         print("     -- that completes the gate out of band and this probe will notice.")
     print()
-    print("  3. Answer it however you like, or ignore it. Ctrl-C agy when you are done.")
+    print("  4. Answer it however you like, or ignore it. Ctrl-C agy when you are done.")
     print()
     print("  Watching for sentinels. Ctrl-C HERE when finished.")
     print()
@@ -276,7 +287,10 @@ def manual(flow, where):
                       "RETRIED.json", "CALLED_control_tool", "CALLED_elicit_tool"):
                 if n not in seen and os.path.exists(os.path.join(where, n)):
                     seen.add(n)
-                    print("   [%-22s] %s" % (n, json.dumps(_sentinel(where, n), default=str)[:200]),
+                    # Printed in full. This was truncated to 200 chars and the cut landed exactly
+                    # on `latency_s` -- the field that separates "refused on sight" from
+                    # "something waited", which is the whole question here.
+                    print("   [%-22s] %s" % (n, json.dumps(_sentinel(where, n), default=str)),
                           flush=True)
             time.sleep(1)
     except KeyboardInterrupt:
