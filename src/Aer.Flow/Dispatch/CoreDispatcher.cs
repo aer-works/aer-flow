@@ -32,12 +32,23 @@ namespace Aer.Flow.Dispatch;
 /// capture only, for UI/audit display (CLAUDE.md Architecture Rule 1) — never read back by Flow to
 /// make a routing decision.
 /// </param>
+/// <param name="Environment">
+/// Extra environment variables to set on the spawned process, beyond whatever
+/// <see cref="ExecutionRequest.Environment"/>'s <see cref="EnvironmentVariable.AerComputed"/> entries
+/// already contribute (#533). This is the adapter's own seam, not the engine's: a variable like
+/// Claude Code's <c>CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH</c> is a vendor quirk, and Architecture Rule
+/// 2 keeps vendor quirks inside <c>Aer.Adapters</c> rather than letting <c>Aer.Flow</c> know the
+/// variable's name exists. <see langword="null"/> or empty contributes nothing. The child process
+/// still inherits the daemon's own environment otherwise (<c>AerTask.WithClearEnv</c> is never
+/// called) — this only ever adds variables, it does not scope what a worker can already see.
+/// </param>
 public sealed record CoreDispatchTarget(
     string Program,
     IReadOnlyList<string> Args,
     string? WorkingDirectory = null,
     Action<string>? OnStdoutLine = null,
-    string? PromptText = null);
+    string? PromptText = null,
+    IReadOnlyList<(string Name, string Value)>? Environment = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -130,6 +141,14 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             if (environmentVariable is EnvironmentVariable.AerComputed aerComputed)
             {
                 task.WithEnv(aerComputed.Name, aerComputed.Value);
+            }
+        }
+
+        if (target.Environment is { } targetEnvironment)
+        {
+            foreach (var (name, value) in targetEnvironment)
+            {
+                task.WithEnv(name, value);
             }
         }
 

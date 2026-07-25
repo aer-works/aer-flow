@@ -68,6 +68,19 @@ public static class AerPaths
     /// <summary>Directory name of <see cref="Sessions"/> relative to a root.</summary>
     public const string SessionsDirectoryName = "sessions";
 
+    /// <summary>
+    /// <c>{Root}/worker-launch</c> — files AER writes to pass per-spawn configuration to a vendor
+    /// CLI via an explicit flag rather than the CLI's own directory-based discovery (#533). Unlike
+    /// <see cref="Sessions"/> this directory holds no operator-authored content: everything under it
+    /// is AER-owned and machine-written, the vendor-specific filename and content chosen by whichever
+    /// adapter in <c>Aer.Adapters</c> needs it (Architecture Rule 2) — this type only names where it
+    /// lives, the same role it already plays for <see cref="Sessions"/>.
+    /// </summary>
+    public static string WorkerLaunchConfig => Path.Combine(Root, WorkerLaunchConfigDirectoryName);
+
+    /// <summary>Directory name of <see cref="WorkerLaunchConfig"/> relative to a root.</summary>
+    public const string WorkerLaunchConfigDirectoryName = "worker-launch";
+
     /// <summary>Directory name of <see cref="LegacyTasks"/> relative to a root.</summary>
     public const string LegacyTasksDirectoryName = "tasks";
 
