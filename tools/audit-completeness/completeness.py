@@ -167,7 +167,7 @@ def page_is_cited(name, vendor):
 
 
 def step3_gaps():
-    rule("STEP 3 -- every verification-backlog row resolves")
+    rule("STEP 3 -- every registered check is reachable from the backlog")
     coverage = read("docs/vendor-coverage.md")
     verify = read("tools/vendor-verify/verify.py")
     checks = re.findall(r'^@check\("([^"]+)"', verify, re.M)
@@ -176,13 +176,25 @@ def step3_gaps():
     line("vendor-verify checks registered", len(checks))
     line("backlog rows struck (verified/corrected)", struck)
     line("rows explicitly marked open", open_rows)
-    print("\n Registered checks:")
-    for c in sorted(checks):
-        print(f"    - {c}")
-    # Not mechanically checkable: whether every struck row maps to a check. Say so.
-    print("\n NOT auto-checkable here: that each struck row names the check that re-runs it.")
-    print(" Verified by reading; the checks above are the population it must draw from.")
-    return True
+
+    # This function used to print those three counts, disclaim that the mapping was "verified by
+    # reading", and `return True` unconditionally -- so step 3 could not fail while the ledger
+    # advertised it as recomputed. Third instance of the rule this audit had already written down:
+    # a checker whose passing condition is weaker than the claim it certifies is worse than none,
+    # because it converts an open question into a false answer.
+    #
+    # The assertion: every registered check must be findable in the audit prose. A check nobody
+    # can trace back to the gap it closes is an orphan -- it still runs, but no reader can tell
+    # what question it answers, which is how a check survives the claim it was written for.
+    prose = coverage + read("docs/vendor-doc-audit.md") + read("docs/architecture-impact.md")
+    orphans = [c for c in checks if c not in prose]
+    ok = line("checks traceable to a documented gap", len(checks) - len(orphans), len(checks),
+              "a check no document references is an orphan")
+    for c in sorted(orphans):
+        print(f"      ORPHAN: {c}")
+    print("\n Still NOT auto-checkable: that a struck row was struck for the RIGHT reason.")
+    print(" This proves the mapping exists in both directions, never that the finding is correct.")
+    return ok
 
 
 # A sweep row must land on one of these words. Free prose is not a disposition: "0015 was
