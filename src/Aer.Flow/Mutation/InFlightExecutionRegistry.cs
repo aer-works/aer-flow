@@ -27,11 +27,11 @@ public sealed class InFlightExecutionRegistry
     /// intent-first ordering) and signals its dispatch — the same <see cref="FlowEvent.CancellationRequested"/>
     /// append <see cref="MutationInterface.RequestCancellationAsync"/> would make, but delivered
     /// in-process to a dispatch this same call already has in flight, instead of waiting on the §15
-    /// guard. A no-op — appends nothing, signals nothing — if <paramref name="targetExecutionId"/> is
-    /// not currently registered here: already settled, never dispatched by this call, or a
-    /// non-process target (Phase 1's <c>NonProcessCancellationDetector</c> already owns that tier).
+    /// guard. Returns <c>true</c> if <paramref name="targetExecutionId"/> was registered in-flight and
+    /// cancellation was recorded and signalled; <c>false</c> if it was not registered (already
+    /// settled, not yet registered by <c>MutationInterface</c>, or a non-process target).
     /// </summary>
-    public async Task RequestCancellationAsync(ExecutionId targetExecutionId, CancellationToken cancellationToken = default)
+    public async Task<bool> RequestCancellationAsync(ExecutionId targetExecutionId, CancellationToken cancellationToken = default)
     {
         CancellationTokenSource? cancellationTokenSource;
         IEventLogWriter? eventLogWriter;
@@ -43,12 +43,13 @@ public sealed class InFlightExecutionRegistry
 
         if (cancellationTokenSource is null || eventLogWriter is null)
         {
-            return;
+            return false;
         }
 
         await eventLogWriter.AppendAsync(new FlowEvent.CancellationRequested(targetExecutionId), cancellationToken)
             .ConfigureAwait(false);
         TryCancel(cancellationTokenSource);
+        return true;
     }
 
     /// <summary>

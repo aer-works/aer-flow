@@ -65,6 +65,32 @@ public class InFlightExecutionRegistryTests
         await AwaitWithTimeoutAsync(cancelTask);
     }
 
+    /// <summary>
+    /// #513: <see cref="InFlightExecutionRegistry.RequestCancellationAsync"/>'s return value became
+    /// load-bearing when <c>Aer.Flow.CrashTestHost.Program</c>'s signal watcher started retrying on
+    /// <c>false</c> until it observes <c>true</c>, to tolerate racing <see cref="InFlightExecutionRegistry.Register"/>.
+    /// Nothing asserted the boolean itself before this — every existing caller discards it. Both
+    /// arms matter: a caller that retries on <c>false</c> needs <c>false</c> to actually mean "not
+    /// yet, try again" for an unregistered target, and <c>true</c> to actually mean "delivered" once
+    /// registered — not just "didn't throw".
+    /// </summary>
+    [Fact]
+    public async Task RequestCancellationAsync_returns_false_before_registration_and_true_after()
+    {
+        var registry = new InFlightExecutionRegistry();
+        var writer = new GatedEventLogWriter();
+        registry.Bind(writer);
+        writer.ReleaseAll();
+
+        var beforeRegister = await registry.RequestCancellationAsync(A, TestContext.Current.CancellationToken);
+        Assert.False(beforeRegister, "an unregistered target has nothing to cancel and nothing to signal");
+
+        registry.Register(A);
+
+        var afterRegister = await registry.RequestCancellationAsync(A, TestContext.Current.CancellationToken);
+        Assert.True(afterRegister, "a registered target's cancellation was recorded and signalled");
+    }
+
     private static async Task AwaitWithTimeoutAsync(Task task)
     {
         var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(30)));
