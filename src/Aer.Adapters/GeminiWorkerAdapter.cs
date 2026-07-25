@@ -12,13 +12,15 @@ namespace Aer.Adapters;
 /// command injection risks. Stdin redirection to null is handled natively by the process host.
 /// <para>
 /// <b>M21 Phase 1's <see cref="IPermissionGrantTranslator"/>:</b> unlike Claude's per-tool
-/// <c>--allowedTools</c>, <c>agy</c>'s <c>--mode</c> is a single coarse setting with only three
-/// confirmed values (<c>default</c>, <c>accept-edits</c>, <c>plan</c>) — there is no confirmed
-/// non-interactive mode that auto-approves shell commands or network/web-fetch tool calls without
-/// prompting (headless <c>-p</c> execution can't answer an interactive prompt, so an unsupported
-/// grant would hang rather than fail cleanly). Requesting <see cref="PermissionGrant.RunShellCommands"/>
-/// or <see cref="PermissionGrant.NetworkAccess"/> is therefore always refused here rather than
-/// approximated to the nearest mode — see <see cref="TryTranslatePermissionGrant"/>.
+/// <c>--allowedTools</c>, <c>agy</c>'s permission flags consist of <c>--mode</c> (coarse settings:
+/// <c>default</c>, <c>accept-edits</c>, <c>plan</c>) and <c>--dangerously-skip-permissions</c> (which
+/// auto-approves all tool permission requests without prompting, including shell commands and network access).
+/// Because <c>--dangerously-skip-permissions</c> is all-or-nothing, requesting only one of
+/// <see cref="PermissionGrant.RunShellCommands"/> or <see cref="PermissionGrant.NetworkAccess"/> without
+/// the other is refused to prevent over-granting unrequested capabilities. Requesting both
+/// <see cref="PermissionGrant.RunShellCommands"/> and <see cref="PermissionGrant.NetworkAccess"/> together
+/// matches <c>--dangerously-skip-permissions</c> exactly and is translated to that flag — see
+/// <see cref="TryTranslatePermissionGrant"/>.
 /// </para>
 /// <para>
 /// <b>Why no <c>--disallowedTools</c> mirror (unlike Claude, #331):</b> a shell-<em>withheld</em>
@@ -37,22 +39,28 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     {
         ArgumentNullException.ThrowIfNull(grant);
 
+        if (grant.RunShellCommands && grant.NetworkAccess)
+        {
+            resolvedValue = "--dangerously-skip-permissions";
+            gapReason = null;
+            return true;
+        }
+
         if (grant.RunShellCommands)
         {
             resolvedValue = null;
-            gapReason = "agy has no confirmed non-interactive --mode value that auto-approves shell " +
-                "commands without prompting, so requesting shell access cannot be honored by the " +
-                "structured builder. Use the Advanced raw permission-scope field with a --mode value " +
-                "verified against your installed agy CLI instead.";
+            gapReason = "agy only supports auto-approving shell command execution via " +
+                "--dangerously-skip-permissions, which also grants network access. Granting unrequested " +
+                "network access would over-grant permissions. Use the Advanced raw permission-scope field instead.";
             return false;
         }
 
         if (grant.NetworkAccess)
         {
             resolvedValue = null;
-            gapReason = "agy has no confirmed non-interactive --mode value that auto-approves " +
-                "network/web-fetch tool calls without prompting, so requesting network access cannot " +
-                "be honored by the structured builder. Use the Advanced raw permission-scope field instead.";
+            gapReason = "agy only supports auto-approving network access via " +
+                "--dangerously-skip-permissions, which also grants shell command execution. Granting " +
+                "unrequested shell execution would over-grant permissions. Use the Advanced raw permission-scope field instead.";
             return false;
         }
 
@@ -71,12 +79,20 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         var permissionScope = ResolvePermissionScope(invocation);
         var artifactsRoot = EnvironmentReference("AER_ARTIFACTS_ROOT", isWindows);
 
-        List<string> args =
-        [
-            "-p", prompt,
-            "--mode", permissionScope,
-            "--add-dir", artifactsRoot,
-        ];
+        List<string> args = ["-p", prompt];
+
+        if (permissionScope == "--dangerously-skip-permissions")
+        {
+            args.Add("--dangerously-skip-permissions");
+        }
+        else
+        {
+            args.Add("--mode");
+            args.Add(permissionScope);
+        }
+
+        args.Add("--add-dir");
+        args.Add(artifactsRoot);
 
         // #491: bind the room's own directory explicitly. `agy -p` **ignores the process working
         // directory** — measured in #472 and recorded in docs/vendor-capabilities.md: launched from
@@ -123,9 +139,8 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// docs record this precedence).
     /// </summary>
     /// <exception cref="PermissionGrantUnsupportedException">
-    /// <paramref name="invocation"/> carries a <see cref="WorkerInvocation.PermissionGrant"/>
-    /// <see cref="TryTranslatePermissionGrant"/> refuses (<see cref="PermissionGrant.RunShellCommands"/>
-    /// or <see cref="PermissionGrant.NetworkAccess"/>).
+    /// <paramref name="invocation"/> carries a <see cref="WorkerInvocation.PermissionGrant"/> that
+    /// <see cref="TryTranslatePermissionGrant"/> refuses (e.g. requesting shell commands without network access, or vice versa).
     /// </exception>
     private string ResolvePermissionScope(WorkerInvocation invocation)
     {

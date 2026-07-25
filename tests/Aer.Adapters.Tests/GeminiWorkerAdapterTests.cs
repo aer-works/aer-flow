@@ -253,4 +253,31 @@ public class GeminiWorkerAdapterTests
         Assert.Null(resolved);
         Assert.NotNull(gapReason);
     }
+
+    [Fact]
+    public void Requesting_shell_and_network_access_together_translates_to_dangerously_skip_permissions()
+    {
+        var adapter = new GeminiWorkerAdapter();
+        var grant = new PermissionGrant(RunShellCommands: true, NetworkAccess: true);
+
+        var succeeded = adapter.TryTranslatePermissionGrant(grant, out var resolved, out var gapReason);
+
+        Assert.True(succeeded);
+        Assert.Equal("--dangerously-skip-permissions", resolved);
+        Assert.Null(gapReason);
+    }
+
+    [Fact]
+    public void Resolving_with_shell_and_network_access_emits_dangerously_skip_permissions_as_standalone_argument()
+    {
+        var grant = new PermissionGrant(RunShellCommands: true, NetworkAccess: true);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Equal("agy", target.Program);
+        Assert.Equal("-p", target.Args[0]);
+        Assert.Equal("--dangerously-skip-permissions", target.Args[2]);
+        Assert.DoesNotContain("--mode", target.Args);
+        Assert.Equal("--add-dir", target.Args[3]);
+    }
 }
