@@ -1890,17 +1890,37 @@ namespace Aer.Daemon
             var fileResponse = assistantResponse;
             assistantResponse ??= TryExtractAssistantAnswer(rawStdoutCapture.ToString());
 
-            // Deliberately still keyed to the OUTPUT FILE, not to the recovered answer.
+            // #537: keyed to whether the TURN SUCCEEDED, not to whether a file was written.
             //
-            // establishedThisTurn feeds VendorSessionEstablished below, which decides whether the
-            // NEXT turn passes `--resume`. Re-keying it to the recovered answer would silently
-            // change session-continuity behaviour for every directory-less chat -- a different
-            // change from "stop discarding the answer", and not one to make as a side effect.
-            // That the current signal is a file write at all (a permission fact, not a session
-            // fact) is itself suspect: a directory-less chat can never write the file, so it is
-            // never marked established and may never pass `--resume`. Filed as #537 with its
-            // evidence rather than changed here.
-            var establishedThisTurn = fileResponse != null;
+            // This feeds VendorSessionEstablished below, which decides whether the next turn passes
+            // `--resume`. It used to key off the output file, which is a permission outcome rather
+            // than a session one -- so a directory-less chat, which can never write the file
+            // (all-deny grant, fail-closed per #321), was never marked established, never resumed,
+            // and carried no memory between turns. Measured before changing: see
+            // SessionContinuityWithoutOutputFileTests, whose control confirms a file-writing session
+            // does resume, so the failure was about the file and not about the harness.
+            //
+            // `assistantResponse` is the success signal because it is non-null only when the vendor
+            // produced an answer -- via the output file, or via the structured result (#534). A
+            // turn that genuinely failed leaves it null and stays unestablished, which is what
+            // #285's resume-gating regression tests pin.
+            //
+            // SCOPE: this repairs the directory-less case on `claude` ONLY. The structured-result
+            // half of that signal reaches stdout only when StreamJson is set, and StreamJson is
+            // claude-only (see the dispatch above). On `agy`, `assistantResponse` still comes from
+            // the output file alone, so a directory-less agy chat has exactly the #537 defect and is
+            // NOT fixed here. Filed as #545 with the establishment signal agy actually offers (the
+            // `conversation=` id already scraped below).
+            //
+            // One edge is deliberately left unestablished: a vendor that succeeds while producing no
+            // answer at all, so the next turn re-sends `--session-id` rather than `--resume`.
+            // Whether that is the safe direction is an OPEN QUESTION, not a fact -- the register
+            // (vendor-doc-audit.md, "`--session-id` is guarded by an existence check") measured
+            // sequential reuse of an existing id as REFUSED, which would make the re-send fail
+            // rather than retry harmlessly. It is unreconciled because the pre-fix symptom was
+            // silent memory loss rather than a hard turn-2 failure, and #537 never verified turn 2
+            // end to end. Tracked as #546; do not restate either side as settled until it measures.
+            var establishedThisTurn = assistantResponse != null;
             var errorMessage = assistantResponse != null ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
 
             var newTurnIndex = metadata.TurnCount + 1;
