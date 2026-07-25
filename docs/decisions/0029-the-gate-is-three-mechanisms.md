@@ -104,11 +104,16 @@ the workspace's `.agents/hooks.json` is the *only* way to gate an agy worker wit
 operator's own settings file.
 
 **Which makes the self-check below strictly more load-bearing on `agy` than on `claude`.** A broken
-hook fails open and silently on both (`gate.broken-hook-fails-open`, `agy.broken-hook-fails-open` —
-measured separately, because `agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in
-opposite directions on the two vendors, and inferring one from the other is the mistake this audit
-keeps finding). But on `claude` a dead hook still leaves the MCP callback and elicitation covering
-AER's own tools. On `agy` it leaves **nothing**.
+hook fails **open** on both (`gate.broken-hook-fails-open`, `agy.broken-hook-fails-open` — measured
+separately, because `agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in opposite
+directions on the two vendors, and inferring one from the other is the mistake this audit keeps
+finding). But on `claude` a dead hook still leaves the MCP callback and elicitation covering AER's
+own tools. On `agy` it leaves **nothing**.
+
+*Scope note:* the failure is measured **silent** on `claude` only. On `agy` it is unmeasured — no
+arm has produced a positive control for detecting agy's output about a hook, and agy's own hooks
+documentation describes no channel that would carry one. The self-check does not rest on that: it is
+required by `claude`'s measured silence, and AER runs one self-check per worker on either vendor.
 
 **The gate must hold for a tree of unknown depth.** One level of subagent nesting runs with nothing
 configured (`fanout.nesting-allowed-by-default` — the documentation claims the opposite), and a
@@ -144,10 +149,10 @@ never loaded and a callback disabled by `auto` both look exactly like a working 
 **verify its own gate at worker start** rather than assume configuration took effect: the discovery
 control that made these measurements trustworthy is the same technique the product needs at runtime.
 
-**This is measured, not precautionary (#530), and it is true of both vendors.** A hook whose command
-cannot execute — wrong path, missing interpreter — lets the tool run and the CLI says *nothing*: no
-error, no warning, nothing in `--output-format json`. So the self-check is the only thing that can
-detect a dead gate, and two properties fall out of *how* the failure presents:
+**This is measured, not precautionary (#530).** A hook whose command cannot execute — wrong path,
+missing interpreter — lets the tool run on **both** vendors, and on `claude` the CLI says *nothing*:
+no error, no warning, nothing in `--output-format json`. So the self-check is the only thing that
+can detect a dead gate, and two properties fall out of *how* the failure presents:
 
 - It must assert a **side effect the hook actually produced**, never that the settings file was
   written. The file is written in every failing arm.

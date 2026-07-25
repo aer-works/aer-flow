@@ -44,7 +44,7 @@ as done.
 | `usage.output_tokens` excludes subagent tokens | **already filed — #479** (J9's cost surface). |
 | `CLAUDE_CONFIG_DIR` / per-worker roots viable | **fixed — CLAUDE.md Architecture Rule 4 corrected**, dated, with the measurement named. |
 | `PermissionDenied` never observed firing | **answered — `gate.permission-denied-fires`.** Was an unresolved arm (a zero from a condition that may never have arisen); a two-arm rebuild proved three real denials and a still-silent event. Converted 0030's last **assumed** row to **measured**. |
-| Broken hooks on `agy`, where the hook is the *only* per-worker gate | **answered — `agy.broken-hook-fails-open`.** Written after noticing 0029 justified an agy sentence with a claude measurement. Same result, worse consequence. |
+| Broken hooks on `agy`, where the hook is the *only* per-worker gate | **answered — `agy.broken-hook-fails-open`.** Written after noticing 0029 justified an agy sentence with a claude measurement. Fails open there too, worse consequence. Whether it also fails *silently* is recorded as **unmeasured**: no arm gave the output detector a positive control on agy. |
 | Concurrency default 20 · `defer`'s batch limit · MCP idle ceiling | **open, and recorded as open** — [`vendor-doc-audit.md § Still not settled`](vendor-doc-audit.md). Untested is not refuted. |
 | A second concurrent login on one subscription | **owner action** — not measurable from an agent session; an **assumed** row in 0029. |
 
@@ -55,9 +55,9 @@ The audit moved work *earlier*, so the build order is not the milestone order ap
 1. **The gate self-check, in M26** — 0029 makes a `PreToolUse` hook mandatory on every spawned
    worker, and a hook that silently does not fire looks exactly like one that works. So the first
    thing built is the thing that proves the gate fires, not the gate. **#530 settled this and made
-   it non-negotiable**: a hook whose command cannot execute lets the tool run and the CLI says
-   nothing — on **both** vendors. The self-check is the only thing standing between the product and
-   a permanently open gate on its own development platform.
+   it non-negotiable**: a hook whose command cannot execute lets the tool run on **both** vendors,
+   and on claude the CLI says nothing at all. The self-check is the only thing standing between the
+   product and a permanently open gate on its own development platform.
 2. **Worker launch: cwd, `--settings`, `--mcp-config`, depth cap** — the constraints from
    `gate.add-dir-loads-no-config`, `claude/mcp`'s approval gating, and
    `fanout.nesting-allowed-by-default`. All are spawn-path work, cheap now and expensive once three

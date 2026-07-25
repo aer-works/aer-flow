@@ -1588,14 +1588,14 @@ settings file was written; and it must run **per worker spawn**, because the fai
 `--only agy.broken-hook-fails-open`. Four arms, same shape, `.agents/hooks.json` and the
 `run_command` matcher.
 
-| arm | command proceeded | CLI reported anything |
+| arm | command proceeded | CLI said anything about a hook |
 |---|---|---|
-| **control** — working hook returning `deny` | **no**, blocked | — |
-| **control** — working hook, `exit 0` | yes | — |
-| hook script path does not exist | **yes** | **no** |
-| interpreter does not exist | **yes** | **no** |
+| **control** — working hook returning `deny` | **no**, blocked | no |
+| **control** — working hook, `exit 0` | yes | no |
+| hook script path does not exist | **yes** | no |
+| interpreter does not exist | **yes** | no |
 
-**`agy` fails open silently too.** Same answer, and it had to be measured rather than inferred:
+**`agy` fails open too.** Same answer, and it had to be measured rather than inferred:
 `agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in *opposite* directions on the
 two vendors, so "claude does X" is not evidence about agy for anything in this family.
 
@@ -1604,10 +1604,29 @@ only per-worker gate an agy worker has. On `claude`, a dead hook still leaves th
 elicitation covering AER's own tools; on `agy` it leaves nothing at all. So 0029's startup
 self-check is load-bearing on both vendors, and *sole* cover on one.
 
+**The right-hand column is not a finding — it is an unmeasured column, and it is labelled that way
+deliberately.** Every arm reads *no*, including the deny control, whose reason `agy` does not
+surface under `-p`. So the detector was never shown capable of a *yes*, and its zeros cannot
+distinguish "agy said nothing" from "this instrument cannot see what agy says." agy's hooks
+documentation describes no channel that would report a broken hook command either, so there is
+nothing to aim a better detector at. **Whether agy fails open *silently* is therefore unresolved**,
+and the check declares fail-open only. The claude table above is different: its deny control does
+report, which is what makes its `no` column a result.
+
+That distinction matters because "silently" is the word that makes the startup self-check the *only*
+possible detector. It is earned on `claude` and not on `agy` — and the design is unaffected, because
+one measured-silent vendor already requires the self-check and AER runs one per worker either way.
+
 Recording why this arm was written late: 0029's mandatory self-check was justified from a
 claude-only run, while the sentence it supports — "the workspace hook is the only way to gate an agy
 worker" — is an agy claim. That is the same shape as the elicitation-portability gap earlier in this
 audit: measure one vendor, write the consequence as though it generalises.
+
+A second thing surfaced on the way: `agy.hook-deny-honoured` reports `reason surfaced=<bool>` in its
+detail but does not gate its PASS on it, and this run shows that value has been **False**. The deny
+is honoured — that check's actual claim — but the reason is not reaching the CLI's output under
+`-p`. Recorded here rather than quietly fixed, since it is a live example of a detail field nobody
+was reading.
 
 ### Still not settled — recorded as untested, not refuted
 

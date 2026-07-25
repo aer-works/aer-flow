@@ -419,6 +419,88 @@ def _permission_denied():
                   + " | " + detail)
 
 
+@check("gate.elicitation-hook-event-fires", "gate",
+       "whether the Elicitation hook event fires under -p when an MCP server GENUINELY elicits -- "
+       "the untested row in 0030, and AER's only window onto a pause it did not author")
+def _elicitation_hook_event():
+    """`gate.headless-event-surface` logged zero for `Elicitation`, and correctly filed it as
+    untested rather than absent: that run registered no MCP server, so nothing could ever have
+    elicited. Third instance in this audit of a zero from a condition that never arose.
+
+    It is worth resolving rather than leaving on the untested list because of what 0030 claims:
+    **AER is the notifier**, which holds for pauses AER authors. Whether a pause AER did *not*
+    author can even arise is a second question -- it needs `--mcp-config` to MERGE with the
+    operator's configured servers rather than replace them, and nothing in this audit established
+    which. So this run also reads the session's loaded server list off the stream-json init event
+    and reports it. That costs nothing extra, uses the operator's real config as the fixture while
+    mutating nothing, and keeps the recorded implication scoped to what was measured instead of to
+    the story that motivated the check.
+
+    Controls, so a zero is a result rather than an absence:
+      PreToolUse fired        -> the settings file loaded
+      ELICITED.json issued    -> the server really sent elicitation/create, per the SERVER's own
+                                 sentinel, which is independent of both the hook and the model
+    """
+    wd = tempfile.mkdtemp(prefix="v-ehook-")
+    try:
+        logs, hooks = {}, {}
+        for e in ("PreToolUse", "Elicitation"):
+            logs[e] = os.path.join(wd, f"{e}.log").replace("\\", "/")
+            hk = os.path.join(wd, f"{e}.sh").replace("\\", "/")
+            hook_script(hk, logs[e], "exit 0")
+            hooks[e] = [{"hooks": [{"type": "command", "command": "sh %s" % hk}]}]
+        st = os.path.join(wd, "s.json")
+        json.dump({"hooks": hooks}, open(st, "w"))
+        cfg = os.path.join(wd, "mcp.json")
+        mcp_config(cfg, "mcp_elicit_server.py", wd)
+        rc, out, err = run(
+            ["claude", "-p", "Call the MCP tool control_tool, then call elicit_tool. Call both.",
+             "--mcp-config", cfg, "--settings", st, "--output-format", "stream-json", "--verbose",
+             "--dangerously-skip-permissions"], timeout=420, cwd=wd)
+        # Free discriminator for merge-vs-replace, using the operator's real user-scope config as
+        # the fixture and mutating nothing: if the loaded set is exactly the probe, --mcp-config
+        # REPLACES; if it also carries the operator's servers, it MERGES.
+        #
+        # `mcp_servers` lives on the stream-json `system/init` event and NOT in the `--output-format
+        # json` result object -- checked directly, because a `.get("mcp_servers") or []` against the
+        # result object returns [] whether the key is missing or the list is genuinely empty, and
+        # "[] servers" is exactly the answer being looked for. None here means NOT OBSERVED and is
+        # reported as such rather than folded into the empty case.
+        servers = None
+        for line in (out or "").splitlines():
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "system" and ev.get("subtype") == "init" and "mcp_servers" in ev:
+                servers = sorted((s or {}).get("name", "?") for s in (ev["mcp_servers"] or []))
+                break
+        issued = False
+        p = os.path.join(wd, "ELICITED.json")
+        if os.path.exists(p):
+            try:
+                issued = bool((json.load(open(p, encoding="utf-8")) or {}).get("issued"))
+            except ValueError:
+                issued = False
+        n_pre, n_eli = fired(logs["PreToolUse"]), fired(logs["Elicitation"])
+        control_ran = os.path.exists(os.path.join(wd, "CALLED_control_tool"))
+        detail = (f"PreToolUse fired={n_pre}; Elicitation fired={n_eli}; "
+                  f"server issued elicitation={issued}; control tool ran={control_ran}; "
+                  f"loaded mcp servers={servers}")
+        if n_pre == 0:
+            return INCONCLUSIVE, "PreToolUse never fired -- the settings file did not load; " + detail
+        if not issued:
+            return INCONCLUSIVE, ("no elicitation was ever issued, so a zero on the Elicitation "
+                                  "event would mean nothing; " + detail)
+        return PASS, (("Elicitation DOES fire headless -- AER can observe a third-party server's "
+                       "pause" if n_eli else
+                       "Elicitation does NOT fire headless even when a server really elicits -- a "
+                       "pause AER did not author is invisible to it")
+                      + " | " + detail)
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+
+
 @check("gate.ask-rule-beats-bypass", "gate",
        "an explicit ask rule still gates under bypassPermissions")
 def _ask_bypass():
@@ -1331,7 +1413,8 @@ def _agy_closed():
 
 
 @check("agy.hook-deny-honoured", "agy",
-       "an agy PreToolUse hook deny blocks the call and surfaces its reason")
+       "an agy PreToolUse hook deny BLOCKS the call. It does not claim the reason reaches the "
+       "CLI's output -- `agy.broken-hook-fails-open` measured that token absent under -p")
 def _agy_deny():
     wd = tempfile.mkdtemp(prefix="v-agyd-")
     try:
@@ -1351,14 +1434,18 @@ def _agy_deny():
             return INCONCLUSIVE, "hook never fired -- discovery problem, not a deny problem"
         if ran:
             return FAIL, "hook fired but the command ran anyway"
-        return PASS, f"fired {n}x, blocked, reason surfaced={'AER_VERIFY_TOKEN' in blob}"
+        # `reason surfaced` is reported, never gated on -- it has measured False, and the check's
+        # claim is the block. It was previously in this check's DESCRIPTION as though established.
+        return PASS, (f"fired {n}x, blocked | reason reached CLI output="
+                      f"{'AER_VERIFY_TOKEN' in blob} (reported, not claimed)")
     finally:
         shutil.rmtree(wd, ignore_errors=True)
 
 
 @check("agy.broken-hook-fails-open", "agy",
        "whether an agy PreToolUse hook whose command cannot execute fails OPEN -- the same "
-       "question #530 answered for claude, asked on the vendor where the hook is the ONLY gate")
+       "question #530 answered for claude, asked on the vendor where the hook is the ONLY gate. "
+       "Claims fail-open only; whether agy REPORTS the failure is not claimed, see the body")
 def _agy_broken_hook():
     """`gate.broken-hook-fails-open` measured claude. This measures agy, and the answer cannot be
     carried across: `agy.force-ask-defeated-by-skip` is the same gate mechanism behaving in the
@@ -1397,8 +1484,13 @@ def _agy_broken_hook():
             ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", blob))
             # Same distinction as #530: failing open LOUDLY is detectable at startup, silently
             # is not. That difference, not the fail-open itself, is what the design turns on.
+            #
+            # AER_VERIFY_TOKEN is in this list to give `noisy` a POSITIVE control. The deny arm
+            # surfaces that token, so control-blocks must report True -- otherwise every
+            # `reported=False` below is a zero from a detector never shown capable of a one,
+            # which is the same defect this suite keeps finding in its own instruments.
             noisy = any(w in blob.lower() for w in ("hook", "pretooluse", "127", "not found",
-                                                    "no such file"))
+                                                    "no such file", "aer_verify_token"))
             return ran, noisy, fired(log)
         finally:
             shutil.rmtree(wd, ignore_errors=True)
@@ -1408,10 +1500,10 @@ def _agy_broken_hook():
     BASELINE = {"control-blocks": False, "control-allows": True,
                 "missing-script": True, "bad-interpreter": True}
 
-    results, detail = {}, []
+    results, noise, detail = {}, {}, []
     for kind in ("control-blocks", "control-allows", "missing-script", "bad-interpreter"):
         ran, noisy, n = arm(kind)
-        results[kind] = ran
+        results[kind], noise[kind] = ran, noisy
         detail.append(f"{kind}: ran={ran} reported={noisy}" + (f" fired={n}" if n else ""))
     if results["control-blocks"] or not results["control-allows"]:
         return INCONCLUSIVE, ("the working-hook controls did not discriminate, so every broken arm "
@@ -1419,10 +1511,22 @@ def _agy_broken_hook():
     drift = [k for k, want in BASELINE.items() if results[k] != want]
     if drift:
         return FAIL, f"baseline moved for {drift}: " + "; ".join(detail)
-    silent = [k for k in ("missing-script", "bad-interpreter") if results[k]]
-    head = (f"BROKEN HOOKS FAIL OPEN ON AGY TOO: {silent}" if silent
-            else "agy fails CLOSED on a broken hook -- the gate holds where claude's does not")
-    return PASS, head + " | " + "; ".join(detail)
+    opened = [k for k in ("missing-script", "bad-interpreter") if results[k]]
+    if not opened:
+        return PASS, ("agy fails CLOSED on a broken hook -- the gate holds where claude's does not"
+                      " | " + "; ".join(detail))
+    # FAIL-OPEN is what this check claims, and `ran` against a working control carries it.
+    #
+    # Whether agy also fails SILENTLY is deliberately NOT claimed. `noisy` never fired on any arm
+    # here -- not even the deny control, whose reason agy does not surface under `-p` -- so the
+    # detector has no positive control and its zeros are uninterpretable. agy's own hooks
+    # documentation describes no channel by which a broken hook command would be reported, so
+    # there is nothing to point the detector at either. Recorded as unmeasured rather than
+    # asserted, because the design conclusion does not need it: claude's silence IS measured, and
+    # AER ships one self-check on every worker regardless of vendor.
+    note = ("" if noise["control-blocks"] else
+            " [silence UNMEASURED: the output detector never fired on the control either]")
+    return PASS, (f"BROKEN HOOKS FAIL OPEN ON AGY TOO: {opened}{note} | " + "; ".join(detail))
 
 
 @check("agy.force-ask-defeated-by-skip", "agy",
