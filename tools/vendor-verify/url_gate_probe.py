@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,12 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SERVER = os.path.join(HERE, "servers", "mcp_url_gate_server.py")
+
+try:
+    AGY_VERSION = subprocess.run(["agy", "--version"], capture_output=True,
+                                 text=True, timeout=60).stdout.strip()
+except Exception:                                                      # noqa: BLE001
+    AGY_VERSION = "unknown"
 
 
 def _sentinel(wd, name):
@@ -56,6 +63,26 @@ def _sentinel(wd, name):
         return open(p, encoding="utf-8").read().strip()
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
+
+
+def _surfaced(tui, url):
+    """Did the client render the elicitation url anywhere a person could see it?
+
+    Returns a dict, never a bare bool: which needle matched is the difference between "agy showed
+    a link" and "agy happened to echo a port number", and a single boolean throws that away.
+    """
+    if not url:
+        return {"checked": False, "why": "no url was ever issued"}
+    flat = re.sub(r"\s+", "", _ANSI.sub("", tui))
+    host = url.split("/")[2]
+    needles = {"full_url": url.replace(" ", ""), "host_port": host,
+               "port_only": host.split(":")[-1], "path_segment": "aer-gate",
+               "elicitation_id": "aer-531-0001"}
+    hits = {k: (v in flat) for k, v in needles.items()}
+    return {"checked": True, "any": any(hits.values()), **hits}
+
+
 def _agy_cmd(wd):
     """The agy invocation, or a free stand-in when AER_531_DRYRUN is set.
 
@@ -66,8 +93,16 @@ def _agy_cmd(wd):
     """
     if os.environ.get("AER_531_DRYRUN"):
         return "agy --help"
+    # `--dangerously-skip-permissions` is what makes the run scriptable, and it is ALSO a candidate
+    # cause of the result: the first four arms all answered `cancel` and never surfaced the url, and
+    # a flag that auto-approves tool permissions is exactly the sort of thing that would auto-decline
+    # an elicitation too. That confound is the probe's, not the vendor's, so it gets its own arm --
+    # AER_531_NO_SKIP drops the flag and relies on the driver's periodic CR to clear the trust
+    # prompt instead. Without this control, "agy declines url mode" and "the probe told it to" are
+    # the same observation.
+    skip = "" if os.environ.get("AER_531_NO_SKIP") else " --dangerously-skip-permissions"
     return ('agy -i "Call the MCP tool control_tool, then call elicit_tool. Call both." '
-            '--add-dir %s --dangerously-skip-permissions' % wd.replace("\\", "/"))
+            '--add-dir %s%s' % (wd.replace("\\", "/"), skip))
 
 
 def arm(flow, answer, seconds, keep=False):
@@ -145,15 +180,24 @@ def arm(flow, answer, seconds, keep=False):
     out = {
         "flow": flow, "answered": answer, "HARNESS_FAILED": False,
         "url": url,
-        "url_surfaced_in_tui": bool(url and url in tui),
-        "port_surfaced_in_tui": bool(url and url.split("/")[2] in tui),
+        # "the url was never shown" is the load-bearing negative here, so the detector must not be
+        # a plain substring test: a TUI wraps lines and injects ANSI, either of which would split
+        # the url and make a rendered link look absent. Strip escapes, drop ALL whitespace, then
+        # look for several independent needles -- the full url, the host:port, the unique path
+        # segment, and the elicitation id. A negative only counts if none of them appear.
+        "url_surfaced_in_tui": _surfaced(tui, url),
         "opened_by_agy_unprompted": hit_by_agy,
         "caps": _sentinel(wd, "CAPS.json"),
         "elicited": _sentinel(wd, "ELICITED.json"),
         "url_hit": _sentinel(wd, "URL_HIT.json"),
         "notified": _sentinel(wd, "NOTIFIED.json"),
         "retried": _sentinel(wd, "RETRIED.json"),
-        "tool_completed": os.path.exists(os.path.join(wd, "CALLED_elicit_tool")),
+        # `tool_completed` only says the SERVER answered the call. Whether the CLIENT took that
+        # answer is a different question, and conflating them would credit agy with accepting a
+        # result it may have already torn down. The completion text is greppable for exactly this.
+        "server_completed_call": os.path.exists(os.path.join(wd, "CALLED_elicit_tool")),
+        "client_showed_result": "AER_COMPLETION_SENTINEL" in re.sub(r"\s+", "", _ANSI.sub("", tui)),
+        "agy_version": AGY_VERSION,
         "control_ran": os.path.exists(os.path.join(wd, "CALLED_control_tool")),
         "tui_bytes": len(tui),
     }
@@ -167,12 +211,14 @@ def arm(flow, answer, seconds, keep=False):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--flow", choices=["hold", "required", "both"], default="both")
+    ap.add_argument("--flow", choices=["hold", "required", "form", "both", "all"],
+                    default="both")
     ap.add_argument("--seconds", type=int, default=150, help="wall clock per arm")
     ap.add_argument("--keep", action="store_true", help="leave the workdir for inspection")
     args = ap.parse_args()
 
-    flows = ["hold", "required"] if args.flow == "both" else [args.flow]
+    flows = ({"both": ["hold", "required"],
+          "all": ["form", "hold", "required"]}).get(args.flow, [args.flow])
     results = []
     for flow in flows:
         for answered in (False, True):
@@ -188,9 +234,11 @@ def main() -> int:
             print(f"{label:<22} HARNESS FAILED -- measured nothing about agy. {r['why']}")
             continue
         print(f"{label:<22} control={r['control_ran']} issued={bool(r['elicited'])} "
-              f"surfaced={r['url_surfaced_in_tui']} agy-opened={r['opened_by_agy_unprompted']} "
+              f"surfaced={r['url_surfaced_in_tui'].get('any')} agy-opened={r['opened_by_agy_unprompted']} "
               f"hit={bool(r['url_hit'])} notified={bool(r['notified'])} "
-              f"retried={bool(r['retried'])} completed={r['tool_completed']}")
+              f"retried={bool(r['retried'])} srv-completed={r['server_completed_call']} "
+              f"client-took-it={r['client_showed_result']} "
+              f"latency={(r['elicited'] or {}).get('latency_s')}")
     if any(r.get("HARNESS_FAILED") for _, r in results):
         print("\nAt least one arm did not run. Nothing here is a finding about agy -- fix the "
               "harness and re-run.\nA broken instrument reporting zeros is the failure this suite "

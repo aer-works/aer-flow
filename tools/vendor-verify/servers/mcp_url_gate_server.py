@@ -50,7 +50,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 D = os.environ.get("AER_SENTINEL_DIR", ".")
-FLOW = os.environ.get("AER_URL_FLOW", "hold")        # "hold" | "required"
+FLOW = os.environ.get("AER_URL_FLOW", "hold")   # "hold" | "required" | "form"
 EID = "aer-531-0001"
 
 _out_lock = threading.Lock()
@@ -91,7 +91,7 @@ class Gate(BaseHTTPRequestHandler):
         if call_id is not None:
             write("CALLED_elicit_tool", "1")
             send({"jsonrpc": "2.0", "id": call_id, "result": {
-                "content": [{"type": "text", "text": "completed after out-of-band approval"}]}})
+                "content": [{"type": "text", "text": "AER_COMPLETION_SENTINEL out-of-band approved"}]}})
 
     def log_message(self, *a):                           # noqa: A003 -- silence the access log
         pass
@@ -115,6 +115,14 @@ TOOLS = [
 ELICIT_PARAMS = {"mode": "url", "elicitationId": EID, "url": URL,
                  "message": "AER gate: approve this operation in your browser."}
 
+# The control's request. Deliberately the SIMPLEST legal form elicitation: if even this is refused,
+# the harness cannot elicit at all and nothing it reports about url mode means anything.
+FORM_PARAMS = {"message": "AER gate: approve this operation?",
+               "requestedSchema": {"type": "object",
+                                   "properties": {"approve": {"type": "boolean",
+                                                              "description": "Approve?"}},
+                                   "required": ["approve"]}}
+
 
 for line in sys.stdin:
     line = line.strip()
@@ -126,14 +134,35 @@ for line in sys.stdin:
         continue
     method, rid = req.get("method"), req.get("id")
 
-    # The client's answer to OUR elicitation/create. Per spec this is CONSENT TO OPEN THE URL and
-    # nothing more -- it must not complete the tool call. Recorded, then deliberately dropped.
+    # The client's answer to OUR elicitation/create.
     if method is None and rid == 90001:
         result = req.get("result") or {}
         _state["consented"] = result.get("action") == "accept"
+        # How LONG the client took is a discriminator nothing else provides: an instant `cancel`
+        # means the mode is unsupported and refused on sight; a slow one means something waited
+        # (a timeout, or a prompt nobody answered). Same answer, different cause.
+        t0 = _state.get("issued_at") or time.time()
         write("ELICITED.json", {"issued": True, "flow": FLOW, "url": URL,
                                 "response": req.get("result", req.get("error")),
-                                "note": "accept == consent to open the URL, NOT completion"})
+                                "issued_at": t0, "answered_at": time.time(),
+                                "latency_s": round(time.time() - t0, 2),
+                                "note": ("form mode: accept completes the call"
+                                         if FLOW == "form" else
+                                         "url mode: accept == consent to open, NOT completion")})
+        # Form mode is the POSITIVE CONTROL for this whole harness. Without it, "agy cancelled the
+        # url elicitation" cannot be told apart from "this pty harness cancels every elicitation",
+        # and the url-mode finding would rest on an instrument never shown capable of a success.
+        if FLOW == "form":
+            call_id = _state.pop("pending_call", None)
+            if call_id is not None:
+                if _state["consented"]:
+                    write("CALLED_elicit_tool", "1")
+                    send({"jsonrpc": "2.0", "id": call_id, "result": {"content": [
+                        {"type": "text", "text": "AER_COMPLETION_SENTINEL form approved"}]}})
+                else:
+                    send({"jsonrpc": "2.0", "id": call_id, "result": {
+                        "isError": True,
+                        "content": [{"type": "text", "text": "refused: not approved"}]}})
         continue
 
     if method == "initialize":
@@ -164,7 +193,7 @@ for line in sys.stdin:
             if _state["hit"]:
                 write("CALLED_elicit_tool", "1")
                 send({"jsonrpc": "2.0", "id": rid, "result": {
-                    "content": [{"type": "text", "text": "completed on retry after approval"}]}})
+                    "content": [{"type": "text", "text": "AER_COMPLETION_SENTINEL retry approved"}]}})
                 continue
 
         if FLOW == "required":
@@ -184,8 +213,9 @@ for line in sys.stdin:
                 "data": {"elicitations": [ELICIT_PARAMS]}}})
         else:
             _state["pending_call"] = rid          # answered only when the URL is hit
+            _state["issued_at"] = time.time()
             send({"jsonrpc": "2.0", "id": 90001, "method": "elicitation/create",
-                  "params": ELICIT_PARAMS})
+                  "params": FORM_PARAMS if FLOW == "form" else ELICIT_PARAMS})
     elif method and method.startswith("notifications/"):
         pass
     elif rid is not None:
