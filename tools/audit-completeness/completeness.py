@@ -112,10 +112,14 @@ def step2_corpus():
     flagged = [r.split("\t") for r in rows if r.split("\t")[-1].strip() == "PENDING-DEPTH"]
     cited, uncited = [], []
     for p in flagged:
-        (cited if page_is_cited(p[1]) else uncited).append(p)
+        (cited if page_is_cited(p[1], p[0]) else uncited).append(p)
     line("depth-flagged pages", len(flagged))
-    ok &= line("  ... cited with a finding in the audit", len(cited), len(flagged),
-               "uncited depth-flagged pages are genuinely unread")
+    # "carries a disposition", NOT "produced a finding". A page read and found inapplicable is
+    # finished; requiring a finding would make out-of-scope pages permanently outstanding and
+    # reward writing one up. The reason still has to be in the prose -- see the disposition table
+    # in vendor-doc-audit.md, which is what closes this population.
+    ok &= line("  ... carrying a disposition in the audit prose", len(cited), len(flagged),
+               "a page with no disposition anywhere is genuinely unread")
     if uncited:
         print("\n    Depth-flagged and NOT cited anywhere -- the real outstanding population:")
         for p in sorted(uncited, key=lambda r: -int(r[4]))[:40]:
@@ -130,23 +134,35 @@ AUDIT_PROSE = ["docs/vendor-doc-audit.md", "docs/vendor-capabilities.md", "docs/
 _prose = None
 
 
-def page_is_cited(name):
+def page_is_cited(name, vendor):
     """Does the audit prose reference this mirrored page by name?
 
     Slugs are hierarchical (`agent-sdk__typescript` -> `agent-sdk/typescript`) and the docs cite
     them three ways: as a URL path, as `page.md:line` provenance, or as a backticked name. All
     three count. A bare English word that merely happens to match does NOT -- the leaf must appear
     with a delimiter around it, or `mcp` would match every sentence containing the word.
+
+    A page's identity is vendor + name: `claude/mcp` and `agy/mcp` are different pages, and the
+    ledger keeps the vendor in its own column. The fully-qualified form is always accepted, which
+    is what makes short leaves like `mcp` citable at all.
     """
     global _prose
     if _prose is None:
         _prose = "".join(read(d) for d in AUDIT_PROSE).lower()
-    slug = name.replace("__", "/")
+    # _prose is lowercased, so the patterns must be too -- ledger names carry original case
+    # (`github-CHANGELOG`), and matching case-sensitively silently reported a dispositioned page
+    # as unread.
+    slug = name.replace("__", "/").lower()
+    qualified = f"{vendor.lower()}/{slug}"
+    if re.search(re.escape(qualified), _prose):
+        return True
     leaf = slug.split("/")[-1]
     if len(leaf) < 4:
+        # Too short to match safely on its own -- "mcp" appears in half the prose. The qualified
+        # form above is the only route for these, which is how the disposition table writes them.
         return False
     return any(re.search(p, _prose) for p in
-               (re.escape(slug), re.escape(name), re.escape(leaf) + r"\.md",
+               (re.escape(slug), re.escape(name.lower()), re.escape(leaf) + r"\.md",
                 r"[/`]" + re.escape(leaf) + r"[`\s)\].,:]"))
 
 

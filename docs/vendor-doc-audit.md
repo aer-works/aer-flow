@@ -1473,6 +1473,50 @@ checking whether each depth-flagged page is actually cited in the audit prose. 1
 **30 are not**, and that list is now printed on every run, relevance-ordered. Citation is weaker
 evidence than an attestation, but it is recomputed every time rather than recorded once and trusted.
 
+### The remaining 30 depth-flagged pages, each with a disposition
+
+The join above left 30 depth-flagged pages uncited. Each is dispositioned here so the population is
+closed rather than trailing off. Two produced constraints that change how AER launches a worker; the
+rest are recorded as out of scope **with the reason**, because "we didn't read it" and "we read it
+and it does not apply" are different claims and only one of them is finishable.
+
+**`claude/mcp` — two launch constraints, both in the same family as the hook-discovery one.**
+
+> *"For security reasons, Claude Code prompts for approval before using project-scoped servers from
+> `.mcp.json` files."*
+
+Project-scoped servers sit at `⏸ Pending approval (run claude to approve)` until somebody approves
+them **interactively**. So **AER must never register its gate server via `.mcp.json`** — a
+headless-spawned worker would start with the gate silently not loaded, which is precisely the
+"configured, running, never consulted" failure 0015 already names as the most dangerous shape. The
+`--mcp-config` path this audit's own checks use loads without approval and is the correct one; every
+elicitation measurement above is incidental evidence that it works headless.
+
+The three MCP scopes are also worth stating because only one of them is AER's: `local` (default,
+`~/.claude.json`, per-project, private), `project` (`.mcp.json`, shared, **approval-gated**), `user`
+(`~/.claude.json`, all projects). AER wants none of them persistently — it wants `--mcp-config`, per
+spawn, touching no file the operator owns.
+
+**`mcp/seps__1686-tasks` + `mcp/seps__2663-tasks-extension` (both Final) — a second non-blocking
+pattern.** The `tasks` primitive returns a task handle instead of a result, for "call-now,
+fetch-later" execution, queryable up to a server-defined duration after completion. Same shape as
+SEP-1036 for the durable gate. **Neither vendor declares a `tasks` capability today** (measured —
+`CAPS.json` in both elicitation checks shows `roots` and `elicitation` only), so it is a migration
+target, not an option. It reinforces 0029's "build it to migrate" clause rather than changing it.
+
+The other 26, by group:
+
+| pages | disposition | why |
+|---|---|---|
+| `claude/llm-gateway-connect`, `llm-gateway-rollout`, `llm-gateway-protocol`, `claude-apps-gateway-config`, `claude-apps-gateway-deploy` | **out of scope — Rule 4** | All describe routing Claude Code through an API gateway with a credential variable. AER never holds a vendor credential and works against subscriptions, so this whole surface is the thing the product exists not to do. Read far enough to confirm that, which is also finding 4's territory: setting a key silently disables Remote Control. |
+| `mcp/docs__tutorials__security__security_best_practices` | **read — no change** | Confused-deputy and token-passthrough attacks, both concerning servers that proxy third-party auth. AER's gate server proxies no credential, so the mitigations do not bind it. Relevant if AER ever adds a connector; noted, not actioned. |
+| `mcp/seps__2567-sessionless-mcp`, `seps__2575-stateless-mcp`, `seps__2243-http-standardization` | **read — no change** | Transport and state-handle proposals for HTTP servers. AER's gate is stdio and already required to hold no state across spawns (claude starts it twice), so these prescribe what AER does anyway. |
+| `mcp/specification__2025-11-25__schema`, `mcp/docs__learn__client-concepts`, `mcp/docs__develop__clients__client-best-practices` | **read — no change** | Client-side material (progressive tool discovery, client concepts) and the raw schema. AER is an MCP **server**, not a client; the schema was consulted for the elicitation shapes and matched what was measured. |
+| `mcp/seps__1577--sampling-with-tools`, `mcp/seps__2596-spec-feature-lifecycle-and-deprecation`, `mcp/seps__2148-contributor-ladder` | **out of scope** | Process and sampling proposals. `2148` is the MCP project's own governance ladder and touches no product surface. |
+| `claude/mcp-quickstart`, `claude/agent-sdk/mcp`, `claude/agent-sdk__modifying-system-prompts` | **read — no change** | Restatements of material already covered by `claude/mcp` and the SDK pages the audit does cite. The SDK route stays rejected for the contractual reason recorded above. |
+| `claude/whats-new__index`, `claude/whats-new/2026-w19`, `claude/whats-new/2026-w23`, `claude/whats-new/2026-w26`, `claude/whats-new/2026-w27`, `claude/whats-new/2026-w28` | **superseded by a better source** | Weekly digests of the changelog. `claude/changelog` is cited and depth-read, is the authoritative version, and scored 1543 against these pages' 8–17. |
+| `agy/github-CHANGELOG`, `issues/trackers` | **standing sources, re-read per bump** | Not one-time reads: both are moving feeds already on the permanent source list, and both have already produced findings (agy's hook-loader bug, upstream #548/#640). Their disposition is "monitored", which no single read closes. |
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls
