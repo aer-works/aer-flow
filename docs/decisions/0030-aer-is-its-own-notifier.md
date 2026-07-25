@@ -31,7 +31,10 @@ The full headless surface was then measured in one run, and the split matters mo
   wrote the file, and a deny arm that recorded three real denials and still logged zero.
 - **Silent only because the task never created the condition** — untested, *not* absent:
   `PostToolUseFailure`, `PreCompact`/`PostCompact`, `StopFailure`, `TaskCreated`/`TaskCompleted`,
-  `Elicitation`, `CwdChanged`, `ConfigChange`, `UserPromptExpansion`
+  `CwdChanged`, `ConfigChange`, `UserPromptExpansion`. `Elicitation` was on this line too and has
+  since been measured **firing** — the run that produced its zero registered no MCP server, so the
+  condition could not arise. It is the one item that moved off this list, which is the argument for
+  keeping the list separate from the findings.
 
 A single "did not fire" list would have asserted eleven untested things as findings.
 
@@ -69,7 +72,7 @@ you* — and that distinction is now observable rather than inferred from silenc
 | `PreToolUse` and `Stop` fire reliably under `-p` | **measured** — `--only gate.headless-event-surface` | AER's own gate cannot observe worker activity headless and the whole notification path needs rebuilding on the vendor's stream output |
 | AER hosts the MCP gate, so it holds the pause data at ask-time | **structural** — follows from [0029](0029-the-gate-is-three-mechanisms.md), not an external fact | if 0029's mechanism changes, re-derive; this record's premise is 0029's conclusion |
 | `PermissionDenied` never fires under `-p`, **even when denials genuinely occur** | **measured** — `--only gate.permission-denied-fires`. An allow control fired `PreToolUse` and wrote the file; the deny arm recorded **3** denials in `permission_denials` and wrote nothing; `PermissionDenied` logged zero in both | a third event exists that reports denials headless; worth having, does not change the decision |
-| The `Elicitation` hook event's headless behaviour | **untested** — the measuring run registered no MCP server, so its zero means nothing | if it fires, AER gains a second observation point on its own elicitations — redundant, since AER is the server |
+| The `Elicitation` hook event **fires** under `-p` | **measured** — `--only gate.elicitation-hook-event-fires`, with the probe server's own issued-sentinel as the control. Its earlier zero was untested, not absent: that run registered no MCP server | nothing this record depends on. It is the one *positive* event in the group, and it is redundant for AER's own gate — AER is the server, so it already knows |
 
 ## Consequences
 

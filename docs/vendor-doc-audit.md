@@ -1147,6 +1147,29 @@ this run established that a denial ever occurred — `node --version` may simply
 That was an unresolved arm, not a second finding, and it stayed that way until a check was built
 that could tell the two apart (below).
 
+#### `Elicitation` **does** fire headless — the one positive in the group
+
+`--only gate.elicitation-hook-event-fires`. The `Elicitation` row above sat on the untested list
+because the measuring run registered no MCP server: nothing could elicit, so its zero was about the
+task, not the vendor. Re-run with the probe elicitation server attached and the server's **own**
+issued-sentinel as the control — independent of both the hook and the model — it fires.
+
+| control | value |
+|---|---|
+| `PreToolUse` fired | **3** — the settings file loaded |
+| server issued `elicitation/create` | **true** — per the server's sentinel file |
+| `Elicitation` hook fired | **1** |
+
+**It changes nothing, and that is worth saying plainly.** AER *is* the MCP server behind its own
+gate, so it already holds the pause before any hook could report it — the event is a second view of
+something AER authored. It would matter for an elicitation AER did *not* author, from a server the
+operator configured, but **whether such a server is even loaded alongside `--mcp-config` is
+unresolved**: this run tried to read the session's server list off the stream-json init event and
+did not get one, which is recorded as *not observed* rather than as "no other servers." That
+distinction is the whole point — `mcp_servers` is absent from the `--output-format json` result
+object entirely, so the obvious read would have returned an empty list that looks exactly like the
+answer being hunted.
+
 #### `PermissionDenied` does not fire headless either — measured against real denials
 
 `--only gate.permission-denied-fires`. Two arms, one variable: `permissions.allow` versus
@@ -1635,7 +1658,11 @@ was reading.
   instruction to emit them together. The documented limit was therefore never exercised. It
   matters because the documented failure mode is the tool **proceeding**, so if real, the gate
   opens silently under a condition the model chooses.
-- **The MCP idle window's upper bound.** 200s survived; the ceiling is unknown.
+- **The MCP idle window's upper bound.** 200s survived; the ceiling is unknown. **Deliberately not
+  pursued**: 0029 releases the call rather than holding it, so no design depends on the bound.
+- **Whether `--mcp-config` merges with the operator's configured servers or replaces them.**
+  Attempted for free inside `gate.elicitation-hook-event-fires`; the session's server list did not
+  read, and a not-observed is not a zero. Matters only for observing a pause AER did not author.
 - **An anomaly:** six sequential deferred calls occurred inside one process run ending
   `tool_deferred`, which does not match the documented "the process exits" on first defer.
 - **agy [#548](https://github.com/google-antigravity/antigravity-cli/issues/548) / [#640](https://github.com/google-antigravity/antigravity-cli/issues/640) not reproducing** is scoped to 1.1.7, Windows, `-p`. A reporter saw something; the
