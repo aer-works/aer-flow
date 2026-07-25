@@ -1905,10 +1905,21 @@ namespace Aer.Daemon
             // turn that genuinely failed leaves it null and stays unestablished, which is what
             // #285's resume-gating regression tests pin.
             //
-            // Deliberately conservative at one edge: a vendor that succeeds while producing no
-            // answer at all is treated as NOT established, so the next turn re-sends `--session-id`
-            // instead of `--resume`. That is the safe direction -- a redundant retry rather than a
-            // guaranteed-failing resume against a session the vendor may never have created.
+            // SCOPE: this repairs the directory-less case on `claude` ONLY. The structured-result
+            // half of that signal reaches stdout only when StreamJson is set, and StreamJson is
+            // claude-only (see the dispatch above). On `agy`, `assistantResponse` still comes from
+            // the output file alone, so a directory-less agy chat has exactly the #537 defect and is
+            // NOT fixed here. Filed as #545 with the establishment signal agy actually offers (the
+            // `conversation=` id already scraped below).
+            //
+            // One edge is deliberately left unestablished: a vendor that succeeds while producing no
+            // answer at all, so the next turn re-sends `--session-id` rather than `--resume`.
+            // Whether that is the safe direction is an OPEN QUESTION, not a fact -- the register
+            // (vendor-doc-audit.md, "`--session-id` is guarded by an existence check") measured
+            // sequential reuse of an existing id as REFUSED, which would make the re-send fail
+            // rather than retry harmlessly. It is unreconciled because the pre-fix symptom was
+            // silent memory loss rather than a hard turn-2 failure, and #537 never verified turn 2
+            // end to end. Tracked as #546; do not restate either side as settled until it measures.
             var establishedThisTurn = assistantResponse != null;
             var errorMessage = assistantResponse != null ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
 

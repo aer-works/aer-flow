@@ -47,6 +47,20 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
     /// <summary>The answer text the no-output-file turn puts on stdout, and nowhere else.</summary>
     public const string StdoutOnlyAnswer = "stub answer that only ever reached stdout";
 
+    /// <summary>
+    /// The payload the no-output-file turn prints. Written once per test run rather than once per
+    /// dispatch — the content is constant, and a fresh Guid-named file per dispatch left one small
+    /// file behind in <c>%TEMP%</c> for every turn any test in the suite ran.
+    /// </summary>
+    private static readonly Lazy<string> ResultPayloadFile = new(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"aer-stub-result-{Environment.ProcessId}.json");
+        File.WriteAllText(path,
+            "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\""
+            + StdoutOnlyAnswer + "\"}");
+        return path;
+    });
+
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
     {
         var outputName = contract.ProducedOutputs.Count > 0
@@ -71,10 +85,7 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
             // JSON as a result -- which made the stub look exactly like the product defect it is
             // supposed to reproduce. A test double that can fail the same way as the thing under
             // test cannot discriminate, so the quoting is removed from the problem entirely.
-            var payload = Path.Combine(Path.GetTempPath(), $"aer-stub-result-{Guid.NewGuid():N}.json");
-            File.WriteAllText(payload,
-                "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\""
-                + StdoutOnlyAnswer + "\"}");
+            var payload = ResultPayloadFile.Value;
             return OperatingSystem.IsWindows()
                 ? new CoreDispatchTarget("cmd", ["/c", "type", payload])
                 : new CoreDispatchTarget("sh", ["-c", $"cat \"{payload}\""]);

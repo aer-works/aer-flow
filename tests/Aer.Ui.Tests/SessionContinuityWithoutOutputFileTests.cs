@@ -27,6 +27,14 @@ namespace Aer.Ui.Tests;
 /// The control is not optional here. "Turn 2 did not resume" is only a finding about the missing file
 /// if turn 2 DOES resume when the file is present; otherwise it is a fact about this harness.
 /// </para>
+/// <para>
+/// SCOPE — what this class does NOT prove. The stub ignores the permission grant entirely and
+/// reproduces the no-file case from a prompt sentinel, so these are tests of the establishment branch,
+/// not end-to-end evidence that a real directory-less session produces the stdout-only shape. That
+/// rests on #534's live measurement against `claude`, and it is claude-only: stdout is captured only
+/// when <c>StreamJson</c> is set, which is claude-only, so the agy half of this defect is untouched
+/// and tracked as #545.
+/// </para>
 /// </remarks>
 [Collection("DaemonIntegrationTests")]
 public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
@@ -112,6 +120,54 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
         Assert.True(secondTurn.NativeSessionResumed,
             "turn 2 did not resume the vendor session, so a directory-less chat starts fresh every "
             + "turn and carries no memory (#537)");
+    }
+
+    /// <summary>
+    /// The one other case this change flips, pinned so it is a decision rather than a side effect.
+    /// </summary>
+    /// <remarks>
+    /// A handoff mints a fresh vendor session id, so prior establishment cannot carry over and
+    /// <c>establishedThisTurn</c> is the sole determinant (<c>handoff ? establishedThisTurn : ...</c>).
+    /// Keyed to the output file, a handoff turn that answered without writing one was recorded as NOT
+    /// established — the new id was real and resumable, and AER threw it away. This asserts the
+    /// corrected direction. The handoff must be TO <c>claude</c>: the recovered answer arrives on
+    /// stdout, which is only captured for claude, so the same turn handed to agy still has no signal
+    /// (#545).
+    /// </remarks>
+    [Fact]
+    public async Task A_handoff_turn_that_answers_without_writing_a_file_is_still_established()
+    {
+        var start = new StartSessionRequest(
+            Adapter: "gemini",
+            TaskName: "handoff-nofile-" + Guid.NewGuid().ToString("N"),
+            InitialMessage: "turn one",
+            SafetyCeiling: 200);
+
+        var startResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/sessions/start", start, TestContext.Current.CancellationToken);
+        Assert.True(startResponse.IsSuccessStatusCode, $"session start failed: {startResponse.StatusCode}");
+        var started = await startResponse.Content.ReadFromJsonAsync<SessionMetadata>(
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.NotNull(started);
+        await PollForTurnsAsync(started.SessionId, 1);
+
+        var send = new SendSessionMessageRequest(
+            SessionId: started.SessionId,
+            Message: "switch to claude " + SessionTurnStubAdapter.NoOutputFileSentinel,
+            Adapter: "claude");
+        var sendResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/sessions/send", send, TestContext.Current.CancellationToken);
+        Assert.True(sendResponse.IsSuccessStatusCode, $"send failed: {sendResponse.StatusCode}");
+
+        var metadata = await PollForTurnsAsync(started.SessionId, 2);
+        var handoffTurn = metadata.Turns[^1];
+
+        Assert.True(handoffTurn.VendorHandoffSynthesized,
+            "this turn was not a handoff, so it does not exercise the branch under test");
+        Assert.True(metadata.VendorSessionEstablished,
+            "a handoff turn that answered was recorded as unestablished because it wrote no file -- "
+            + "the freshly minted vendor session id is real and resumable, and discarding it makes "
+            + "the next turn start over (#537)");
     }
 
     private async Task<(SessionMetadata Metadata, SessionTurn SecondTurn)> TwoTurnsAsync(bool withOutputFile)
