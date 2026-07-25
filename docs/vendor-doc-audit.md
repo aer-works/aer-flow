@@ -908,6 +908,28 @@ These runs are **repeatable**, not disposable: `pixi run vendor-verify` (see
 rules. Re-run it on every vendor version bump — the pinned versions above are what these results
 were established against, and nothing here transfers to a later one for free.
 
+#### The short version, for decision 0015
+
+Five statements carry most of the weight below. Everything else is support or detail.
+
+1. **Gate on the operation, never on the tool.** `--allowedTools` only pre-approves;
+   `--disallowedTools` removes the named tool and the model **substitutes another and still
+   succeeds**. The four mechanisms that actually stop an action — hook exit-2, an explicit `ask`
+   rule, a hook's `permissionDecision: "ask"`, and `requiresUserInteraction` on MCP tools — all
+   gate the operation, which is exactly why substitution doesn't defeat them. This is already a
+   live defect in `src/` ([#529](https://github.com/aer-works/aer-flow/issues/529)).
+2. **AER can own a worker's cwd and pass `--settings`. It can own nothing else.** `--add-dir`
+   carries no config; `CLAUDE_CONFIG_DIR` carries config but not the login; `--bare` disables
+   hooks outright. Those three exhaust the isolation options.
+3. **Nothing about a fan-out is bounded by default.** Nesting is on, subagents inherit the
+   parent's mode, and the top-level token count under-reports the tree. The concurrency cap and
+   `--max-budget-usd` are real and are AER's to set.
+4. **Headless removes the notification surface.** `PermissionRequest` does not fire under `-p`.
+   A gate that needs to tell a human something cannot learn about it from that event.
+5. **The vendors are asymmetric in opposite directions.** claude has an uncircumventable consent
+   primitive and per-project settings; agy has loop control and *only* project-scoped hooks. Neither
+   is strictly better, and the design has to use each for what it actually provides.
+
 ### claude has two gate primitives, and both hold
 
 | primitive | scope | result |
