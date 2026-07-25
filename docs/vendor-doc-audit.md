@@ -1684,6 +1684,89 @@ thing the rule exists to stop.
 feature that depends on distinct worker identities cannot be built for `agy` today. That is a
 constraint to design around, not a defect to file.
 
+### SEP-1036 url mode: `agy` declares it and does not implement it (#531, 2026-07-25)
+
+Measured with a **person at a real terminal**, which is what closed it — every automated arm answers
+`cancel` identically whether the vendor refuses or the harness suppresses, and nothing in a session
+can tell those apart. See [`runbooks/sep-1036-url-elicitation.md`](runbooks/sep-1036-url-elicitation.md).
+
+`agy` 1.1.7, protocol `2025-11-25`, declaring `elicitation: {'form': {}, 'url': {}}`:
+
+| arm | client's answer | latency | shown to the person |
+|---|---|---|---|
+| form mode (the control) | `cancel` | **2.7 ms** | no |
+| url mode | `cancel` | **0.6 ms** | no |
+
+**Sub-millisecond means no UI was ever attempted.** The control that makes this a vendor finding
+rather than a harness artefact came free: `agy` prompted the operator twice for *tool permission* in
+the same session, and they answered both. So "agy will not prompt here" is excluded by agy's own
+behaviour, not by an argument.
+
+**The form-mode arm is why this is trustworthy at all.** Without it, "agy declines url mode" could not
+be told from "this harness declines every elicitation" — the finding would have been about the driver.
+
+**Evidence class: contradicted.** The capability is declared and not honoured.
+
+#### But the blocking `tools/call` round trip works, and is now measured
+
+The same run, `hold` flow:
+
+```
+elicitation cancelled   t+0.0006s      (played no part in what followed)
+operator opened the URL t+162.7s
+server completed the call
+agy: "Executed both control_tool and elicit_tool successfully"
+```
+
+**A tool call held open 162 seconds, answered out of band in a browser, and the late result accepted.**
+Worker asks, call stays open, human answers somewhere else entirely, worker resumes — the shape M28's
+demonstration needs, with a real person and a real browser.
+
+This promotes [0029](decisions/0029-the-gate-is-three-mechanisms.md)'s central claim from reasoned to
+measured, and its two `Rests on` rows accordingly: the url-surfacing row resolves **measured false**,
+with exactly the consequence it predicted.
+
+#### One hazard for the gate surfaces
+
+The model was told *"elicit_tool was refused (not approved)"* when the **client had refused on the
+user's behalf without asking them.** Any AER surface reporting a gate as declined must not present a
+vendor's auto-refusal as a person's answer — they are different facts and only one of them is
+somebody's decision.
+
+### Three behaviours found after this audit closed (#538, 2026-07-25)
+
+Recorded here because they existed only in code comments and commit messages, which is not the
+register.
+
+**1. An unknown `--model` fails closed on `claude` and fails open on `agy`.**
+
+| | behaviour |
+|---|---|
+| `claude` | `is_error: true` — a stale pin self-reports |
+| `agy` | runs on its own default, `rc=0`, no warning |
+
+Measured: `agy -p … --model gemini-3-flash`, a model `agy models` does not list, returned `rc=0` with
+output. That name had been sitting in a binding fixture, two dialogue participants and two runbooks,
+pinning nothing.
+
+**Why it matters past the tests.** AER pins a model per worker. On `agy` a pin that goes stale routes
+silently to whatever agy defaults to, so any AER cost or model-attribution surface would report the
+pinned model while another ran — and agy's catalogue includes `claude-opus-4-6-thinking`, so the drift
+is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures; **nothing guards the
+product.** Evidence class: **verified** (both directions).
+
+**2. `claude` has no model-catalogue command, and `claude models` spends usage.** There is no such
+subcommand — the words are taken as a *prompt* and answered, costing a turn. So claude's valid model
+set cannot be enumerated for free, which is why `smoke-preflight` checks claude pins by shape and
+relies on claude's own rejection. Evidence class: **verified**.
+
+**3. `agy` needs `--add-dir` to load a workspace `.agents/mcp_config.json`.** Setting cwd to the
+workspace is not enough. Without it `agy` reports *"the requested MCP tools … are not available in the
+active environment or tool set"* — a message that reads like a model declining a tool rather than a
+config that never loaded. This is the `agy` counterpart of claude's `.mcp.json`/`--mcp-config`
+constraint: **an agy worker spawned without `--add-dir` has no gate loaded and says nothing about it.**
+Carried into #533. Evidence class: **verified**.
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls
