@@ -1,7 +1,16 @@
 # 0015 — A pause asks for one of three things: permission, a decision, or approval
 
-Status: accepted
+Status: accepted; **mechanism amended by [0029](0029-the-gate-is-three-mechanisms.md)**
 Date: 2026-07-24
+
+> **Read 0029 before building on the mechanism sections.** The three *kinds* below — permission,
+> decision, approval — stand, as does *Gate durability*. What changed is this record's guidance to
+> *"prefer `--permission-prompt-tool` on `claude`, and keep the elected-tool path for `agy`"*:
+> measurement (#527) showed the gate is **three mechanisms covering three different populations of
+> tools**, and that an MCP gate bounds nothing the model can reach through `Bash`
+> ([#529](https://github.com/aer-works/aer-flow/issues/529)). 0029 also softens the conclusion in
+> *The structural guarantee has one switch that turns it off*: a hook's `ask` **does** survive
+> `auto` mode, so an operator's `auto` no longer means AER's permission surface is simply absent.
 
 **Accepted 2026-07-24, after the probe this record was blocked on actually ran (#472), and revised
 the same day when a re-runnable probe suite (#504) disproved a second premise.** All three kinds are

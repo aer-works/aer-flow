@@ -42,7 +42,42 @@ Date: YYYY-MM-DD
 ```
 
 Then: **Context** (what forced the decision, with evidence), **Decision** (what we chose, stated
-plainly), **Consequences** (what this makes easy, what it makes hard, what it obliges us to do).
+plainly), **Consequences** (what this makes easy, what it makes hard, what it obliges us to do),
+and — **required since 2026-07-25 (#527)** — **Rests on**.
+
+### `Rests on` — the load-bearing facts, and what would falsify them
+
+A list of the specific external facts the decision would not survive losing. Each row names the
+fact, how it is known, and what happens to this decision if it turns out false.
+
+```
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| A `PreToolUse` hook exiting 2 blocks a tool even with an allow rule | **measured** — `pixi run vendor-verify -- --only gate.hook-exit-2-beats-allow` | the gate has no vendor-independent enforcement point; §3 is void |
+| A second concurrent login against one subscription is permitted | **assumed** — needs the account owner; not measurable from an agent session | per-worker config roots collapse to one; §5's isolation model needs replacing |
+```
+
+Note what the example does *not* contain: a row like *"`--allowedTools` bounds what a worker can
+do — assumed"*. That claim is **measured false** ([#529](https://github.com/aer-works/aer-flow/issues/529)),
+and filing a known-false fact as merely unverified is the most dangerous row this table can carry —
+it reads as pending work rather than as a broken dependency. **If a fact is false, the decision is
+already broken; say so in the decision, don't park it here.**
+
+**Why this is now mandatory.** The vendor audit (#527) falsified four vendor claims this project had
+built on, and the decisions that broke — 0015 and 0018 — had asserted a *mechanism* without recording
+what it rested on. When the mechanism turned out to be wrong there was no way to see what else fell
+with it, so the blast radius had to be recovered by re-reading everything. A decision that names its
+dependencies makes that mechanical instead.
+
+Two rules for the column:
+
+- **Distinguish measured from assumed, always.** An assumed row is not a defect — it is a
+  verification task with a known owner. An assumed row *recorded as measured* is how 0015 broke.
+- **Prefer a fact that a command can re-check.** Where a `pixi run vendor-verify` check exists, cite
+  it by name; that turns "is this still true?" into something a future session runs rather than
+  re-derives. See [`../documentation-lessons.md`](../documentation-lessons.md).
 
 ## Rules
 
@@ -72,10 +107,10 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
 | [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
 | [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph (a step's contents added by 0025; `DependsOn` corrected to engine-only) | accepted |
-| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval | accepted |
+| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval (its **mechanism** guidance amended by 0029) | accepted, except that |
 | [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
 | [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices (its effort-naming clause **corrected by 0023**) | accepted, except that clause |
-| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide (rate-limited band amended by 0026) | accepted |
+| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide (rate-limited band amended by 0026; notification **source** supplied by 0030) | accepted |
 | [0019](0019-consulting-is-not-deciding.md) | Consulting is not deciding: you can ask anyone, and the gate stays open | accepted |
 | [0020](0020-one-state-machine.md) | One state machine: every surface renders the room's state, none derives its own (carries "errors are content") | accepted |
 | [0021](0021-artifacts-are-files.md) | Artifacts are files: vendor-neutral, versioned, attributed, never silently overwritten | accepted |
@@ -86,3 +121,5 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) | Running out of plan is a state with a reset time, not a generic failure | accepted |
 | [0027](0027-context-is-per-worker.md) | Context belongs to the worker, not the room; running out is a choice (corrects 0011) | accepted |
 | [0028](0028-no-permissive-control-is-the-default.md) | Visual rank is a decision: no permissive control is ever the default (amends 0006) | accepted |
+| [0029](0029-the-gate-is-three-mechanisms.md) | The gate is three mechanisms with three populations, not one (amends 0015) | accepted |
+| [0030](0030-aer-is-its-own-notifier.md) | AER is its own notifier: no vendor event announces a pause (amends 0018) | accepted |

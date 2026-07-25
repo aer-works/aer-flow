@@ -189,6 +189,27 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// raw <see cref="WorkerInvocation.PermissionScope"/> escape hatch carries no category to deny) or
     /// when nothing is withheld.
     /// </para>
+    /// <para>
+    /// <b>WHAT THIS DOES NOT GUARANTEE — read before relying on it (#529, measured 2026-07-25).</b>
+    /// This method bounds <em>which tool runs</em>. It does <em>not</em> bound what the worker can
+    /// achieve, because <b>the model substitutes another tool and reaches the same goal</b>. Measured
+    /// with the exact string this method emits for a withheld-write grant,
+    /// <c>--disallowedTools Edit,Write,NotebookEdit</c>: the file was created anyway, by <c>Bash</c>.
+    /// Because the four categories are independent, <c>Bash</c> stays available whenever
+    /// <see cref="PermissionGrant.RunShellCommands"/> is granted — and <c>Bash</c> alone defeats
+    /// withheld <em>writes</em>, withheld <em>reads</em> (<c>cat</c>) and withheld <em>network</em>
+    /// (<c>curl</c>). The caveat in the previous paragraph is about tools outside the four categories;
+    /// this hole is <em>inside</em> them, and write-withheld-plus-shell-granted is a common grant
+    /// shape rather than an exotic one.
+    /// </para>
+    /// <para>
+    /// Treat the result as <b>pre-approval and routing, never as a security boundary</b>. The
+    /// mechanisms measured to stop an <em>operation</em> gate on the operation rather than the tool
+    /// (a <c>PreToolUse</c> hook exiting 2, an explicit <c>ask</c> rule, a hook returning
+    /// <c>permissionDecision: "ask"</c>, and <c>requiresUserInteraction</c> on MCP tools), which is
+    /// exactly why substitution does not defeat them. See <c>docs/vendor-doc-audit.md</c>; re-runnable
+    /// via <c>pixi run vendor-verify -- --only gate.allowedtools-is-preapproval-not-ceiling</c>.
+    /// </para>
     /// </summary>
     private static string BuildDisallowedTools(PermissionGrant? grant)
     {

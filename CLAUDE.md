@@ -99,7 +99,24 @@ tracking issue — don't mark a live-run item done on anything short of an actua
 1. **Flow carries discipline, Workers carry intelligence**: The Flow engine must *never* parse conversation content, inspect prompt text, or attempt to understand LLM outputs to make routing decisions. Routing is exclusively defined by the structured workflow config and explicit tool returns from the Workers.
 2. **Adapter Isolation**: Vendor-specific quirks (e.g., Anthropic's block format vs Gemini's part format) MUST be isolated inside `Aer.Adapters`. The `Aer.Flow` core layer only understands a single, unified canonical message protocol.
 3. **P/Invoke Layer**: Any interaction with `aer-core` for process execution must go through strict P/Invoke wrappers that match the M4 ABI (`AerTask`, `AerCancelHandle`, `AerEvent`).
-4. **Credential Isolation**: AER never reads, copies, forwards, or stores a vendor credential. It spawns the vendor's own first-party CLI, which authenticates itself — AER is a keyboard, not a client. No API keys, no OAuth tokens, no OS credential store, and no redirecting the vendor CLIs' config directories. This is the product premise made structural: AER works against **subscriptions**, not API keys, which is why both vendors' API-key-only SDKs were evaluated and rejected (`docs/vendor-doc-audit.md`). Enforced by `VendorCredentialIsolationTests` — **do not weaken that test to make something pass**; if a change appears to need a vendor key, the design is wrong, not the test.
+4. **Credential Isolation**: AER never reads, copies, forwards, or stores a vendor credential. It spawns the vendor's own first-party CLI, which authenticates itself — AER is a keyboard, not a client. No API keys, no OAuth tokens, no OS credential store, and **AER never places a credential into a config directory**. This is the product premise made structural: AER works against **subscriptions**, not API keys, which is why both vendors' API-key-only SDKs were evaluated and rejected (`docs/vendor-doc-audit.md`). Enforced by `VendorCredentialIsolationTests` — **do not weaken that test to make something pass**; if a change appears to need a vendor key, the design is wrong, not the test.
+   - **Corrected 2026-07-25 (#527).** This rule previously said "no redirecting the vendor CLIs' config directories", which was too broad and rested on a misreading. `CLAUDE_CONFIG_DIR` **is** usable: credentials live under the config root, and a fresh root is made usable by a one-time interactive `claude auth login` performed **by the operator**. That is a human signing in, not AER handling a credential, so per-worker config roots are permitted and are an available design option. What stays forbidden is AER *copying* credentials into a root, or otherwise obtaining one itself. `claude auth status` reports per-root, is structured, and spends no subscription usage — use it as a pre-dispatch readiness probe.
+
+---
+
+---
+
+## Writing documentation
+
+`docs/documentation-lessons.md` turns what surprised us while reading ~380 pages of vendor
+documentation into rules for our own — outward-facing (README, CLI help, error messages) and
+inward-facing (decisions, specs, registers). Read it before writing docs that others will rely on.
+
+The one that generalises furthest: **a reader's wrong conclusion is a documentation defect, even
+when every sentence is true.** Most of the entries are cases where the vendor's docs were accurate
+and the reader still ended up wrong — so accuracy is the floor, not the goal. In particular, state
+the negative where a reader's prior will otherwise fill the gap, say which execution modes a
+feature exists in, and never let a mechanism read as a guarantee it doesn't provide.
 
 ---
 

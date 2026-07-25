@@ -8,6 +8,43 @@ Companion to [`vendor-doc-audit.md`](vendor-doc-audit.md) (the findings) and
 [`vendor-capabilities.md`](vendor-capabilities.md) (the reference). Started 2026-07-24 against
 `claude` 2.1.220 and `agy` 1.1.7.
 
+## How coverage is established (2026-07-25)
+
+Page-at-a-time reading could not cover ~250 pages, and the summarizing fetch that a bulk read
+implies is lossy — it is what corrupted the first `defer` reading. **Both vendors publish a
+machine-readable index**, so the corpus is mirrored locally and read from source instead:
+
+- **`claude`** — `https://code.claude.com/docs/llms.txt`, **172 pages**, each fetchable as raw `.md`.
+- **`agy`** — `https://antigravity.google/llms.txt` (exists; previously unknown) and
+  `sitemap.xml`, **77 doc pages** — more than the ~60 this register originally assumed. No `.md`
+  variant, but pages are server-rendered, so `<main>` extraction preserves headings, code, tables.
+
+**Breadth and depth are separated rather than traded off.** Every finding that changed a decision
+was one sentence inside a large page ("Bare mode skips OAuth and keychain reads"), and those
+sentences share a grammar — *skips, only, cannot, must, requires, before v, will become*. Harvesting
+that class across the whole corpus gives **100% page coverage at ~1% of the bytes**; depth-reading
+then goes only where they cluster on an open question.
+
+`pixi run vendor-survey` (see `tools/vendor-survey/`) rebuilds this: **249 pages / 7.0 MB →
+1,475 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
+plus a ledger giving **every page a disposition** so coverage is checkable rather than asserted.
+
+| disposition | pages | meaning |
+|---|---|---|
+| `PENDING-DEPTH` | 119 | constraints cluster here; depth-read as decisions require |
+| `SCAN-ONLY` | 123 | touches an open question but thin; constraints harvested |
+| `NO-SIGNAL` | 7 | no open-question vocabulary at all |
+
+All 1,475 constraint sentences have been read across nine topics. **The per-page `·` tables below are
+superseded by the ledger** and are kept only for the pages whose *contents* are summarized here.
+
+**A doc page changing is a reason to re-verify, not a reason to believe the new page.** This audit
+found four vendor statements to be wrong and two that contradicted each other, so every **V** below
+rests on a run, not on a sentence. Those runs are no longer disposable: `pixi run vendor-verify`
+(see `tools/vendor-verify/`) re-runs them, each with a control arm and each asserting on a sentinel
+file rather than on a model's account of what it did. A `FAIL` there means a behaviour a decision
+rests on has moved.
+
 ## Status legend
 
 | mark | meaning |
@@ -21,7 +58,7 @@ Companion to [`vendor-doc-audit.md`](vendor-doc-audit.md) (the findings) and
 
 ## A. `claude` — documentation coverage
 
-Index: `https://code.claude.com/docs/llms.txt` (~170 pages). **9 of ~170 read.**
+Index: `https://code.claude.com/docs/llms.txt` — **172 pages, all mirrored and swept** (`pixi run vendor-survey`). The tier lists below record the ORIGINAL triage and are kept because that triage was itself wrong: **23 of the 53 Tier 3 pages** — dismissed as "probably not relevant" — score `PENDING-DEPTH`, including `authentication` and `changelog`. Trust the ledger, not the tiers.
 
 ### Read
 
@@ -82,9 +119,7 @@ event schema) · `hooks-guide` · `permission-modes` · `auto-mode-config` · `m
 
 ## B. `agy` — documentation coverage
 
-Index: `https://antigravity.google/docs/...`. **7 of ~60 read.** The `agy` side is audited far more
-shallowly than `claude`, which is itself a risk: **our knowledge asymmetry is now larger than the
-products' asymmetry**, and that biases every design toward claude's model.
+Index: `https://antigravity.google/llms.txt` + `sitemap.xml` — **77 doc pages, all mirrored and swept.** The asymmetry warning below still holds in *volume* (7.0 MB claude vs 310 KB agy), but it is no longer an asymmetry of coverage: both corpora are swept identically.
 
 ### Read
 
@@ -145,17 +180,102 @@ side.
 | `agy --sandbox` enforces (file write + network blocked) | #472 |
 | `agy -p` ignores cwd | #472 |
 
-### Documented but **not verified**
+### Documented but **not verified** — the verification backlog
 
-`·` `--max-budget-usd` enforcement · `--json-schema` · `--tools` restriction · `--fork-session` ·
-`--session-id` · `--include-partial-messages` · `--forward-subagent-text` · `--replay-user-messages` ·
-`--input-format stream-json` queueing behaviour (#462) · `claude attach/logs/stop/rm/respawn` ·
-`claude daemon stop --keep-workers` reconnect · `PermissionDenied` hook · `Notification` hook
-(`permission_prompt`/`idle_prompt`) · `Elicitation` hooks · `ask` rules forcing a prompt in
-`bypassPermissions` · `requiresUserInteraction` allow→deny conversion · 30 s `MCP_TIMEOUT` ·
-`updatedPermissions` / `localSettings` persistence · agent-teams task dependencies · workflows
-`agent()`/`pipeline()` · channels permission relay · `agy` `/usage` TUI · `agy` `ask` list ·
-`agy` implicit read-on-write · `agy` Windows path normalisation
+**Updated 2026-07-25 (#527).** The documentation sweep produced roughly 40 new claims while 15 were
+verified, so this list **grew** during the audit. That is the expected dynamic and worth stating
+plainly: **reading generates claims faster than verification consumes them.** Anything here is a
+vendor assertion, and this audit has already found four vendor statements to be wrong.
+
+Verified items move to the "Verified by running it" section of
+[`vendor-doc-audit.md`](vendor-doc-audit.md). Nothing is deleted from here without either a run or
+a reason it cannot be run. **Struck rows are re-runnable via `pixi run vendor-verify`** — that is
+what makes striking one safe across a vendor version bump.
+
+**Two rows turned out to be wrong as written**, not merely unverified. Both are corrected in place
+rather than deleted, so the wrong version does not get re-derived by a later reader.
+
+#### A. Shapes a decision currently in flight
+
+| claim | vendor | status |
+|---|---|---|
+| ~~`--add-dir` grants file access but loads **no** hooks/settings config~~ | claude | ✅ verified |
+| ~~`usage.output_tokens` excludes subagent tokens~~ | claude | ✅ verified — 882 vs 1130 |
+| ~~a hook's `"ask"` forces a prompt in `auto` mode~~ | claude | ✅ verified |
+| ~~explicit `ask` rules force a prompt even in `bypassPermissions`~~ | claude | ✅ verified |
+| ~~`requiresUserInteraction` allow→deny under `--permission-prompt-tool`~~ | claude | ✅ verified |
+| ~~`PostInvocation.terminationBehavior`~~ | agy | ✅ verified on the redo — 7 invocations vs 1 |
+| ~~`PermissionRequest` fires **only** in auto mode~~ — **the row was wrong.** The docs say it fires "when a permission dialog appears"; `PermissionDenied` is the auto-classifier event. **Verified: `PermissionRequest` never fires under `-p`.** | claude | ⚠️ corrected + verified — 0018's notify hook has no event to hang on headless |
+| an API key disables Remote Control, `/schedule`, connectors, notifications | claude | **open** — and it will stay open: AER holds no API key by Rule 4, so establishing this would require provisioning the exact credential the design forbids. Moved to F in spirit. |
+| does `PermissionDenied` fire under `-p`? | claude | **open** — logged zero, but nothing established a denial ever occurred |
+
+#### B. Fan-out
+
+**#503 items 4–5 rested on these. Two are now measured, and one of the two was false.**
+
+| claim | status |
+|---|---|
+| ~~`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` bounds concurrency~~ | ✅ verified — peak overlap tracked the cap (2, 6) with 8 started in both arms |
+| **nested subagents off by default** | ❌ **contradicted** — default permits one level; explicit cap of 1 does not |
+| ~~parent mode overrides every subagent~~ | ✅ verified against a `default` arm |
+| the documented **default of 20** concurrent | **open** — the cap is verified, the default value is not |
+
+`·` Still documented-only: nested teams impossible · a teammate's background work cannot outlive
+the lead · per-teammate modes cannot be set at spawn · workflows `agent()`/`pipeline()`, 16
+concurrent / 1,000 per run, no mid-run input · agent-teams task dependencies and file locking ·
+`attach` / `respawn` (`logs`, `stop`, `rm` and the state vocabulary are verified) ·
+`daemon stop --keep-workers` reconnecting to live workers
+
+#### C. Durability and sessions
+
+| claim | status |
+|---|---|
+| ~~`CLAUDE_CONFIG_DIR` isolating a supervisor instance~~ | ✅ verified — **and a first, wrong conclusion corrected.** The variable is honoured and a *fresh* root is un-logged-in, but credentials live under the config root, so `claude auth login` makes it usable. **Per-worker config roots are an available option**, priced at one interactive sign-in each, and Rule-4-clean because the human signs in, not AER. |
+| ~~`claude auth status` as a readiness probe~~ | ✅ verified — reports per config root, structured, and **spends no subscription usage**; usable before dispatch |
+| whether a second concurrent login on one subscription is permitted | **open** — only a real attempt on the operator's account will tell |
+
+| ~~two processes cannot write one transcript~~ — **not what protects it.** `--session-id` is an existence check, not a lock: sequential reuse is refused, but a concurrent pair races past and **both run**. | ⚠️ corrected + verified twice — `Aer.Daemon` must enforce single-writer itself |
+
+`·` Still documented-only: `--fork-session` starts
+without session grants while `/branch` carries them · credential expiry stalls a long-running
+background session unrecoverably · `cleanupPeriodDays` retention · `--no-session-persistence` ·
+`--session-id`
+
+#### D. `agy`
+
+| claim | status |
+|---|---|
+| ~~three permission scopes (Project / Shared / Global) and their merge order~~ — **the row was wrong.** The docs describe three access *lists* (`deny`/`ask`/`allow`, precedence Deny > Ask > Allow) in **one** global file. | ⚠️ corrected + verified — **permissions are global-only**; no project-scoped location is honoured, so **hooks are the only gate AER can install per-worker for agy** |
+
+`·` Still documented-only: the four `toolPermission` presets (`request-review`,
+`proceed-in-sandbox`, `always-proceed`, `strict`) · "permission rules govern `run_command` across
+**all** execution modes" · subagents starting from a clean slate and being unre-awakenable ·
+AppContainer sandbox on Windows · the daemon↔credential coupling · `/usage` TUI-only · implicit
+read-on-write · Windows path normalisation
+
+#### E. Flags
+
+| claim | status |
+|---|---|
+| ~~`--max-budget-usd`~~ | ✅ verified **enforcing**, not reporting — `subtype: error_max_budget_usd` |
+| ~~`--json-schema`~~ | ✅ verified conforming — and it takes the schema **inline, not a path** |
+| ~~`--allowedTools` / `--disallowedTools` as a toolset bound~~ | ❌ **contradicted in effect** — `--allowedTools` is pre-approval only, and `--disallowedTools` removes the tool while the model **substitutes another and still reaches the goal**. Neither is a boundary. |
+
+`·` Still never exercised: `--tools` · `--include-partial-messages` · `--forward-subagent-text` ·
+`--replay-user-messages` · `--input-format stream-json` queueing (#462) · `Notification` hook
+(`permission_prompt` / `idle_prompt`) · `Elicitation` hooks · 30 s `MCP_TIMEOUT` ·
+`updatedPermissions` / `localSettings` persistence · channels permission relay
+
+#### F. Cannot be established from here — stated so they stop looking pending
+
+| claim | why not |
+|---|---|
+| claude's OS-enforced sandbox | **does not exist on native Windows**; needs macOS or Linux |
+| anything cross-platform | every observation in this repo is Windows-only |
+| managed / org settings, connector `ask` policy | requires an organisation |
+| Remote Control mobile push, Trusted Devices | requires the mobile app and a paired device |
+| `defer`'s single-tool-call limit | three attempts could not make the model batch its calls; **untested, not refuted** |
+| the MCP idle window's upper bound | 200 s survived; the ceiling is unknown |
 
 ### Contradicted or unresolved
 
@@ -208,13 +328,22 @@ These are the ones most likely to be missed, because the audit has been pointed 
 
 ## E. Order of work
 
-Inventory first (this file), then verification, then re-derivation:
+Item 1 is **done** (#527): both indexes found, both corpora mirrored, all 1,110 constraint sentences
+read. The gate-symmetry question it existed to answer is **settled, negatively** — see
+`vendor-doc-audit.md`. Remaining, re-ordered by what the reading changed:
 
-1. **Read Tier 1 on both vendors** — `agy`'s `/docs/hooks` and `/docs/sdk/overview` first, because
-   they decide whether the gate design is symmetric, then `claude`'s `settings`, `hooks`,
-   `permission-modes`, `mcp`, `costs`.
-2. **Verify the "documented but not verified" list** above, in the order that decisions depend on it.
+1. **Depth-read where constraints still cluster** — `sub-agents`, `hooks`, `agent-view`, `mcp`, and
+   `errors`. Then mine `changelog` (200 constraints, 493 KB): the richest and noisiest source, and
+   the one that doubles as a **failure-mode list for AER's own supervisor**.
+2. **Verify the "documented but not verified" list** below, in the order decisions depend on it.
 3. **Audit `src/` against the corrected reality** (#521 found the first defect; sweep the rest).
-4. **Sweep 0001–0028** and record which rest on corrected premises.
-5. **Resolve the two contradictions**, one of which needs an owner decision about safe testing.
-6. **Establish cross-platform coverage**, or state plainly that every claim is Windows-scoped.
+   Now includes: does anything sum top-level `usage.output_tokens` and thereby under-report fan-out?
+4. **Sweep 0001–0028.** 0015 needs rewriting outright — its gate mechanism, its symmetry assumption,
+   and its `defer`-based durability all changed. 0018's notify hook is narrower than assumed.
+5. **Establish cross-platform coverage**, or state plainly that every claim is Windows-scoped.
+   Newly concrete: claude's hooks run through **Git Bash on Windows** and historically failed
+   *silently* there, and Windows is the primary development host.
+6. **Re-run `pixi run vendor-survey` and `pixi run vendor-verify` on every vendor version bump.**
+   The staleness gate already fires on a version change; the survey re-reads the corpus and reports
+   which pages moved, and the verifier re-runs the behaviours the decisions actually rest on. Both
+   exist so re-establishing coverage is a command rather than a fresh manual read.

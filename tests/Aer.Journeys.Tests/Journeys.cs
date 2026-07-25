@@ -110,15 +110,17 @@ public static class Journeys
                 "The broadcast path (#330, #348) is a cross-process/device concern — a real second surface."),
         ], [330, 348, 335]),
 
-        new("J6", "Deny a tool and have it actually blocked", "Partial — automated · safety",
+        new("J6", "Deny a tool and have it actually blocked", "Fails — automated · safety",
         [
             new("engine — Claude grant enforcement at the dispatch boundary", Runner.Engine, Coverage.DrivenGreen,
-                "J6_DeniedToolEnforcementTests: a shell-denied grant produces a dispatch that actively denies the tool. Green since #331 landed --disallowedTools on ClaudeWorkerAdapter (2026-07-23) — this leg's declared status said Fails for a day afterwards, which is the drift #489 wired the reconcile gate into CI to catch."),
+                "J6_DeniedToolEnforcementTests: a shell-denied grant produces a dispatch carrying --disallowedTools. Green since #331 (2026-07-23) — and green is NOT the same as J6 being kept. The vendor audit (#527) measured that --allowedTools/--disallowedTools pre-approve rather than restrict: a model denied Write writes the file through Bash (#529). So this leg asserts the dispatch shape, which holds, and NOT the promise, which does not. It is the reason J6 went Partial -> Fails on 2026-07-25 while its test stayed green."),
+            new("engine — a PreToolUse hook is the actual capability boundary", Runner.Engine, Coverage.Pending,
+                "Decision 0029: a hook is the only measured enforcement point covering vendor tools, exit-2 blocks even against an explicit allow rule, and it is now mandatory on every worker AER spawns. Nothing ships it yet, which is what makes J6 Fails rather than Partial. #530 gates it: hooks may fail SILENTLY on Windows, and a gate that silently does not fire looks exactly like one that works."),
             new("engine — Gemini fails closed when a denial is unenforceable", Runner.Engine, Coverage.Pending,
-                "agy has no deny-list flag, so GeminiWorkerAdapter throws PermissionGrantUnsupportedException rather than running under-enforced — decision 0004's fail-closed floor. Correct and untested: J6's test only exercises ClaudeWorkerAdapter."),
+                "agy has no deny-list flag, so GeminiWorkerAdapter throws PermissionGrantUnsupportedException rather than running under-enforced — decision 0004's fail-closed floor. Correct and untested: J6's test only exercises ClaudeWorkerAdapter. agy's permission rules are also global-only (#527), so a workspace hook is its only per-worker gate."),
             new("live worker actually refuses the tool", Runner.Attest, Coverage.HumanAttested,
-                "The end-to-end refusal (worker attempts the tool, is blocked, it's recorded) needs a live vendor — a smoke check."),
-        ], [331]),
+                "The end-to-end refusal (worker attempts the tool, is blocked, it's recorded) needs a live vendor — a smoke check. Per #529 this must include the substitution route: withhold Write, then confirm the worker cannot write through Bash either."),
+        ], [331, 529, 530]),
 
         new("J7", "Lose the connection and get back to work", "Fails — automated + human",
         [
