@@ -35,16 +35,34 @@ this is what makes re-establishing documentation coverage cheap rather than a fr
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import io
+import json
 import os
 import re
 import subprocess
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 
 CLAUDE_INDEX = "https://code.claude.com/docs/llms.txt"
 AGY_SITEMAP = "https://antigravity.google/sitemap.xml"
+
+# Pages the `/docs/` filter would drop, and the vendor's own release notes. These are not optional
+# extras: claude's `changelog` is the single densest page in the whole corpus (200+ constraints),
+# and agy's equivalents sit OUTSIDE its /docs/ tree, so a docs-only sweep never sees them. `terms`
+# is where the third-party-access clauses live. Release notes on GitHub are a separate surface again
+# -- an open issue there documented an agy hooks bug this audit had misdiagnosed twice.
+EXTRA_SOURCES = [
+    ("agy__changelog.md", "https://antigravity.google/changelog", "html"),
+    ("agy__terms.md", "https://antigravity.google/terms", "html"),
+    ("agy__pricing.md", "https://antigravity.google/pricing", "html"),
+    ("agy__product__antigravity-cli.md", "https://antigravity.google/product/antigravity-cli", "html"),
+    ("agy__product__antigravity-sdk.md", "https://antigravity.google/product/antigravity-sdk", "html"),
+    ("agy__github-CHANGELOG.md",
+     "https://raw.githubusercontent.com/google-antigravity/antigravity-cli/main/CHANGELOG.md", "raw"),
+]
 
 # AER's OPEN questions, deliberately not generic keywords: a page matters in proportion to how much
 # undecided design it touches. Update this when a decision closes or a new one opens.
@@ -167,6 +185,71 @@ def fetch_corpus(out: str, refetch: bool) -> None:
                 "SOURCE: " + u + "\n\n" + html_to_text(io.open(tmp, encoding="utf-8", errors="replace").read()))
             os.remove(tmp)
 
+    print(f"extra sources: {len(EXTRA_SOURCES)}")
+    for name, url, kind in EXTRA_SOURCES:
+        dest = os.path.join(corpus, name)
+        if not refetch and os.path.exists(dest):
+            continue
+        if kind == "raw":
+            tmp = dest + ".tmp"
+            if curl(url, tmp):
+                body = io.open(tmp, encoding="utf-8", errors="replace").read()
+                io.open(dest, "w", encoding="utf-8", newline="").write("SOURCE: " + url + "\n\n" + body)
+                os.remove(tmp)
+        else:
+            tmp = dest + ".html"
+            if curl(url, tmp):
+                io.open(dest, "w", encoding="utf-8", newline="").write(
+                    "SOURCE: " + url + "\n\n" + html_to_text(io.open(tmp, encoding="utf-8", errors="replace").read()))
+                os.remove(tmp)
+
+
+def report_drift(out: str) -> None:
+    """Say which pages appeared, changed, or vanished since the last run.
+
+    Without this the tool is a snapshot: it can tell you what the docs say today but not what
+    changed, so "re-run after a vendor version bump" means re-reading everything. With a content
+    hash per page, a bump becomes a short diff -- and a page that changed is exactly where a
+    previously-verified claim may have quietly stopped being true.
+
+    Most useful with --refetch, since cached pages are not re-downloaded and so cannot change.
+    """
+    corpus = os.path.join(out, "corpus")
+    manifest_path = os.path.join(out, "manifest.json")
+
+    current = {}
+    for fn in sorted(os.listdir(corpus)):
+        p = os.path.join(corpus, fn)
+        if os.path.isfile(p):
+            current[fn] = hashlib.sha256(io.open(p, "rb").read()).hexdigest()[:16]
+
+    previous = {}
+    if os.path.exists(manifest_path):
+        try:
+            previous = json.load(io.open(manifest_path, encoding="utf-8")).get("pages", {})
+        except (ValueError, OSError):
+            previous = {}
+
+    added = sorted(set(current) - set(previous))
+    removed = sorted(set(previous) - set(current))
+    changed = sorted(k for k in set(current) & set(previous) if current[k] != previous[k])
+
+    if not previous:
+        print("\ndrift: no previous manifest — baseline recorded")
+    elif not (added or removed or changed):
+        print("\ndrift: none — every page byte-identical to the last run")
+    else:
+        print(f"\ndrift: {len(added)} added, {len(changed)} changed, {len(removed)} removed")
+        for k in added:
+            print(f"  + {k}")
+        for k in changed:
+            print(f"  ~ {k}   <-- re-read; claims verified against the old text are now unverified")
+        for k in removed:
+            print(f"  - {k}")
+
+    json.dump({"generatedAt": datetime.now(timezone.utc).isoformat(), "pages": current},
+              io.open(manifest_path, "w", encoding="utf-8", newline=""), indent=2, sort_keys=True)
+
 
 def survey(out: str) -> None:
     corpus = os.path.join(out, "corpus")
@@ -262,6 +345,7 @@ def main() -> int:
 
     os.makedirs(args.out, exist_ok=True)
     fetch_corpus(args.out, args.refetch)
+    report_drift(args.out)
     survey(args.out)
     print(f"\nwrote {args.out}/{{corpus,constraints,worklist.md,ledger.tsv}}")
     return 0
