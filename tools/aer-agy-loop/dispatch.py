@@ -30,7 +30,7 @@ to keeping orchestration decisions out of glue code that could quietly grow into
 
 Usage:
     pixi run aer-dispatch -- --prompt-file <path> --output-name <name> \
-        --working-directory <abs path> [--adapter gemini] [--model <name>] \
+        --working-directory <abs path> [--adapter gemini] [--model <name>] [--effort <level>] \
         [--read-files] [--write-files] [--run-shell-commands] [--network-access] \
         [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>]
 
@@ -69,6 +69,7 @@ def build_bindings(
     working_directory: Path,
     timeout_minutes: int,
     model: str | None,
+    effort: str | None,
     read_files: bool,
     write_files: bool,
     run_shell_commands: bool,
@@ -96,6 +97,8 @@ def build_bindings(
     }
     if model:
         entry["Model"] = model
+    if effort:
+        entry["Effort"] = effort
 
     return {worker_name: entry}
 
@@ -125,6 +128,7 @@ def main() -> int:
     parser.add_argument("--adapter", default="gemini", help="Registered adapter name (default: gemini).")
     parser.add_argument("--worker-name", default="worker", help="Worker role name used in the generated workflow/bindings (default: worker).")
     parser.add_argument("--model", default=None, help="Pin a specific model (e.g. a Gemini thinking-tier model). Omit to use the CLI's configured default.")
+    parser.add_argument("--effort", default=None, help="Raw vendor-native effort-level string (e.g. claude: low|medium|high|xhigh|max, agy: low|medium|high). Passed through as-is, no validation.")
     parser.add_argument("--read-files", action="store_true", default=True)
     parser.add_argument("--no-read-files", dest="read_files", action="store_false")
     parser.add_argument("--write-files", action="store_true", default=True)
@@ -169,6 +173,7 @@ def main() -> int:
         working_directory=working_directory,
         timeout_minutes=args.timeout_minutes,
         model=args.model,
+        effort=args.effort,
         read_files=args.read_files,
         write_files=args.write_files,
         run_shell_commands=args.run_shell_commands,

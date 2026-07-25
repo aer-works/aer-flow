@@ -180,6 +180,12 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Model);
         }
 
+        if (invocation.Effort is not null)
+        {
+            args.Add("--effort");
+            args.Add(invocation.Effort);
+        }
+
         return new CoreDispatchTarget(
             "claude", [.. args], invocation.WorkingDirectory, PromptText: prompt,
             Environment:

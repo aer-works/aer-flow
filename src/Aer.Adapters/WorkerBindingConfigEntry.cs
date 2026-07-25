@@ -29,6 +29,7 @@ namespace Aer.Adapters;
 /// portable even though the project directory it points at is not. Null keeps the prior default (no
 /// explicit cwd).
 /// </param>
+/// <param name="Effort">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/>.</param>
 public sealed record WorkerBindingConfigEntry(
     string Adapter,
     WorkerContract Contract,
@@ -41,4 +42,5 @@ public sealed record WorkerBindingConfigEntry(
     string? SessionId = null,
     bool ResumeSession = false,
     bool StreamJson = false,
-    string? LogFilePath = null);
+    string? LogFilePath = null,
+    string? Effort = null);
