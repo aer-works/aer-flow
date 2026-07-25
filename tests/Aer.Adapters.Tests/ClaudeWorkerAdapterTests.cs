@@ -365,6 +365,14 @@ public class ClaudeWorkerAdapterTests
         Assert.EndsWith("Aer.Cli.dll", args[0]);
         Assert.True(File.Exists(args[0]), "the hook's first arg must point at a real, existing Aer.Cli.dll");
         Assert.Equal("hook-check", args[1]);
+
+        // `dotnet <dll>` needs the dll's own .runtimeconfig.json alongside it to run at all -- a
+        // review pass on #543 pointed out that checking only the .dll's existence proves nothing
+        // about whether `dotnet` can actually load it.
+        var runtimeConfigPath = Path.ChangeExtension(args[0], null) + ".runtimeconfig.json";
+        Assert.True(
+            File.Exists(runtimeConfigPath),
+            $"dotnet needs '{runtimeConfigPath}' alongside Aer.Cli.dll to run it at all");
     }
 
     /// <summary>
@@ -398,6 +406,21 @@ public class ClaudeWorkerAdapterTests
 
         Assert.NotNull(target.Environment);
         Assert.Contains((ClaudeWorkerAdapter.DeniedToolsVariable, string.Empty), target.Environment);
+    }
+
+    /// <summary>
+    /// #543, from review: an inherited `CLAUDE_CODE_SIMPLE=1` disables hooks the same way `--bare`
+    /// does (see the doc comment above `SimpleModeVariable`'s declaration), and `AerTask` inherits
+    /// the full parent environment by default -- so this override has to actually be on the argv
+    /// this method returns, not merely exist as an idea in a comment.
+    /// </summary>
+    [Fact]
+    public void An_inherited_CLAUDE_CODE_SIMPLE_is_overridden_in_the_process_environment()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.NotNull(target.Environment);
+        Assert.Contains((ClaudeWorkerAdapter.SimpleModeVariable, "0"), target.Environment);
     }
 
     /// <summary>

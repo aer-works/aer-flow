@@ -69,6 +69,13 @@ public class ReferenceDirectionTests
     // exactly the kind of reference that erodes silently if a future refactor drops it. This is a
     // positive-inclusion check (the graph *must* reach Aer.Cli), the deliberate opposite of every
     // forbidden-reference check above.
+    //
+    // Review pass on #543: a plain Include-only walk stays green even if a reference is retagged
+    // ReferenceOutputAssembly="false" (or the legacy Private="false") -- either stops the dll from
+    // being copied at all while the graph edge, and this test, still "reaches" Aer.Cli. So this
+    // walks the raw <ProjectReference> elements directly rather than reusing ReadReferences (whose
+    // Include-only contract the forbidden-reference tests above still want unchanged), and only
+    // follows an edge that actually copies output.
     [Fact]
     public void Aer_Daemon_transitively_references_Aer_Cli_so_its_own_output_carries_the_hook_target()
     {
@@ -84,23 +91,36 @@ public class ReferenceDirectionTests
                 continue;
             }
 
-            // Aer.Core is a git submodule under external/, not src/ -- ReadReferences resolves the
+            // Aer.Core is a git submodule under external/, not src/ -- resolution below is the
             // src/<project>/<project>.csproj convention only. It has no path back to Aer.Cli, so
             // treating it (and anything else this convention can't resolve) as a leaf is correct,
             // not a silently-swallowed gap: the one project this test needs to reach IS under src/.
-            if (!File.Exists(Path.Combine(RepoRoot(), "src", project, project + ".csproj")))
+            var path = Path.Combine(RepoRoot(), "src", project, project + ".csproj");
+            if (!File.Exists(path))
             {
                 continue;
             }
 
-            var (projectRefs, _) = ReadReferences(project);
-            foreach (var reference in projectRefs)
+            foreach (var reference in ReadOutputCopyingReferences(path))
             {
                 toVisit.Enqueue(reference);
             }
         }
 
         Assert.Contains("Aer.Cli", visited);
+    }
+
+    private static IEnumerable<string> ReadOutputCopyingReferences(string csprojPath)
+    {
+        var doc = XDocument.Load(csprojPath);
+
+        return doc.Descendants("ProjectReference")
+            .Where(element =>
+                !string.Equals((string?)element.Attribute("ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals((string?)element.Attribute("Private"), "false", StringComparison.OrdinalIgnoreCase))
+            .Select(element => (string?)element.Attribute("Include"))
+            .Where(include => !string.IsNullOrWhiteSpace(include))
+            .Select(include => Path.GetFileNameWithoutExtension(include!.Replace('\\', '/')));
     }
 
     private static void AssertNoForbiddenReferences(

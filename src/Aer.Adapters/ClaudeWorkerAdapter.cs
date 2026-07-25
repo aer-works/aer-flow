@@ -186,7 +186,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             [
                 (MaxSubagentSpawnDepthVariable, "1"),
                 (DeniedToolsVariable, disallowed),
-                (SimpleModeVariable, ""),
+                (SimpleModeVariable, "0"),
             ]);
     }
 
@@ -194,12 +194,14 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// Overrides an inherited <c>CLAUDE_CODE_SIMPLE=1</c> (see the comment above on why that
     /// disables hooks the same way <c>--bare</c> does) so an operator's shell cannot silently reach
     /// the spawned <c>claude</c> process and remove the gate. <b>Best-effort, not a measured
-    /// sentinel</b>: the vendor docs state what <c>1</c> triggers but never what a blank value does
-    /// -- an empty string cannot equal the one documented trigger, which defeats both a strict
-    /// string-equality check and a truthiness check, but no live run against the installed CLI has
-    /// confirmed the vendor's own parsing treats it as "off" rather than "on, malformed." Filed as
-    /// the honest scope of what this override actually proves, per 0029/#532's own discipline of
-    /// stating what a check does not prove rather than only what it does.
+    /// sentinel</b>: the vendor docs state what <c>1</c> triggers but never what any other value of
+    /// <i>this specific</i> variable does. <c>"0"</c> is chosen over an empty string because the
+    /// sibling <c>CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT</c> documents <c>0</c>/<c>false</c>/<c>no</c>/
+    /// <c>off</c> as its own recognized opt-out values -- evidence this variable family parses a
+    /// deliberate "off" token, not just proof this exact name does. No live run against the
+    /// installed CLI has confirmed the parsing here. Filed as the honest scope of what this
+    /// override actually proves, per 0029/#532's own discipline of stating what a check does not
+    /// prove rather than only what it does.
     /// </summary>
     public const string SimpleModeVariable = "CLAUDE_CODE_SIMPLE";
 
@@ -368,16 +370,37 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
                 File.Move(tempPath, path, overwrite: true);
                 return;
             }
-            catch (Exception ex) when (attempt < maxAttempts && (ex is IOException or UnauthorizedAccessException))
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                File.Delete(tempPath);
+                // Best-effort: TryDeleteTemp can never throw, so it can never replace or mask the
+                // exception this catch is handling -- a leftover .tmp file is a far smaller problem
+                // than losing the reason a retry was needed.
+                TryDeleteTemp(tempPath);
+                if (attempt >= maxAttempts)
+                {
+                    throw;
+                }
+
                 Thread.Sleep(TimeSpan.FromMilliseconds(10 * attempt));
             }
             catch
             {
-                File.Delete(tempPath);
+                TryDeleteTemp(tempPath);
                 throw;
             }
+        }
+    }
+
+    private static void TryDeleteTemp(string tempPath)
+    {
+        try
+        {
+            File.Delete(tempPath);
+        }
+        catch
+        {
+            // Best-effort cleanup only -- see WriteFileAtomically's own remarks for why a failed
+            // delete here must never surface in place of the real exception.
         }
     }
 
