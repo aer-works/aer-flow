@@ -1880,8 +1880,28 @@ namespace Aer.Daemon
                 await broadcastStateAsync(finalProj, directoryPath).ConfigureAwait(false);
             }
 
-            var establishedThisTurn = assistantResponse != null;
-            var errorMessage = establishedThisTurn ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
+            // #534: recover the answer from the vendor's own structured result when no output file
+            // was produced. A session with no working directory gets an all-deny grant
+            // (InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory, fail-closed per #321),
+            // which becomes `--disallowedTools Edit,Write,NotebookEdit,Bash` -- so the worker CANNOT
+            // write response.md, while its contract declares exactly that output. Both halves are
+            // deliberate; together they discarded every answer. Measured identically on
+            // claude-opus-5 and claude-haiku-4-5, so it is not a model declining a tool it had.
+            var fileResponse = assistantResponse;
+            assistantResponse ??= TryExtractAssistantAnswer(rawStdoutCapture.ToString());
+
+            // Deliberately still keyed to the OUTPUT FILE, not to the recovered answer.
+            //
+            // establishedThisTurn feeds VendorSessionEstablished below, which decides whether the
+            // NEXT turn passes `--resume`. Re-keying it to the recovered answer would silently
+            // change session-continuity behaviour for every directory-less chat -- a different
+            // change from "stop discarding the answer", and not one to make as a side effect.
+            // That the current signal is a file write at all (a permission fact, not a session
+            // fact) is itself suspect: a directory-less chat can never write the file, so it is
+            // never marked established and may never pass `--resume`. Filed as #537 with its
+            // evidence rather than changed here.
+            var establishedThisTurn = fileResponse != null;
+            var errorMessage = assistantResponse != null ? null : TryExtractVendorErrorMessage(rawStdoutCapture.ToString());
 
             var newTurnIndex = metadata.TurnCount + 1;
             var turn = new SessionTurn(
@@ -1965,6 +1985,74 @@ namespace Aer.Daemon
         /// exiting. Falls back to the raw last non-empty line, then a generic message, so a caller
         /// never has to null-check this to render *something*.
         /// </summary>
+        /// <summary>
+        /// The answer a SUCCESSFUL turn put in its structured result, for when no output file was
+        /// written (#534). Returns <c>null</c> when there is no such answer to recover.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The mirror of <see cref="TryExtractVendorErrorMessage"/>, over the same
+        /// <c>{"type":"result",...}</c> line and scanned from the end for the same reason. The two
+        /// are separated by exactly one condition — <c>is_error</c> — and conflating them would
+        /// render a vendor error as though the assistant had said it, which is why
+        /// <c>SessionAnswerWithoutOutputFileTests</c> pins that polarity explicitly.
+        /// </para>
+        /// <para>
+        /// <b>Scope, stated rather than implied:</b> this reads the STRUCTURED result line only, so
+        /// it covers `claude` (dispatched with <c>--output-format stream-json</c>, see
+        /// <c>StreamJson</c> above) and does NOT cover a text-mode vendor such as `agy`, whose
+        /// stdout is prose with no result envelope. Recovering an answer there would mean treating
+        /// arbitrary stdout as the reply, which can put diagnostics and warnings into a chat bubble.
+        /// A text-mode recovery needs a per-vendor rule in <c>Aer.Adapters</c> (Architecture Rule 2),
+        /// not a heuristic here.
+        /// </para>
+        /// <para>
+        /// Reading a declared field of a structured vendor response is not Architecture Rule 1's
+        /// "parse conversation content to make routing decisions" — nothing is routed on it. It is
+        /// the same act as reading the response file, from a different transport.
+        /// </para>
+        /// </remarks>
+        internal static string? TryExtractAssistantAnswer(string rawStdout)
+        {
+            var lines = rawStdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            for (var i = lines.Length - 1; i >= 0; i--)
+            {
+                var line = lines[i];
+                if (line.Length == 0 || line[0] != '{')
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var node = JsonNode.Parse(line);
+                    if (node?["type"]?.GetValue<string>() != "result")
+                    {
+                        continue;
+                    }
+
+                    // A failed turn's text is an ERROR, and belongs in ErrorMessage. Never here.
+                    if (node["is_error"]?.GetValue<bool>() == true)
+                    {
+                        return null;
+                    }
+
+                    if (node["result"] is { } answer)
+                    {
+                        var text = answer.ToString();
+                        return string.IsNullOrWhiteSpace(text) ? null : text;
+                    }
+                }
+                catch (JsonException)
+                {
+                    // Not a JSON result line -- keep scanning backward.
+                }
+            }
+
+            return null;
+        }
+
         internal static string TryExtractVendorErrorMessage(string rawStdout)
         {
             var lines = rawStdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
