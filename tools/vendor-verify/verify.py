@@ -331,6 +331,64 @@ def _subagent_tokens():
         shutil.rmtree(wd, ignore_errors=True)
 
 
+@check("gate.headless-event-surface", "gate",
+       "which hook events actually fire under -p -- the notification surface available to a "
+       "worker AER spawns headless (decision 0018)")
+def _event_surface():
+    """Registers EVERY documented hook event with the same logging command in one settings file
+    and runs one task that exercises several paths, so the whole surface is measured at once
+    rather than one event per session.
+
+    `PreToolUse` and `Stop` are the built-in controls: if neither fires, the settings file was not
+    loaded and every zero below is meaningless.
+
+    This exists because `PermissionRequest` -- the event 0018 assumed it could notify on -- turned
+    out not to fire under `-p` at all. Knowing what does fire is the other half of that finding.
+    """
+    EVENTS = ["SessionStart", "UserPromptSubmit", "UserPromptExpansion", "PreToolUse",
+              "PermissionRequest", "PermissionDenied", "PostToolUse", "PostToolUseFailure",
+              "PostToolBatch", "Notification", "MessageDisplay", "SubagentStart", "SubagentStop",
+              "TaskCreated", "TaskCompleted", "Stop", "StopFailure", "InstructionsLoaded",
+              "ConfigChange", "CwdChanged", "PreCompact", "PostCompact", "Elicitation"]
+    wd = tempfile.mkdtemp(prefix="v-events-")
+    try:
+        hooks, logs = {}, {}
+        for e in EVENTS:
+            logs[e] = os.path.join(wd, f"{e}.log").replace("\\", "/")
+            hk = os.path.join(wd, f"{e}.sh").replace("\\", "/")
+            hook_script(hk, logs[e], "exit 0")
+            hooks[e] = [{"hooks": [{"type": "command", "command": "sh %s" % hk}]}]
+        st = os.path.join(wd, "s.json")
+        json.dump({"hooks": hooks}, open(st, "w"))
+        tgt = os.path.join(wd, "S.txt").replace("\\", "/")
+        run(["claude", "-p",
+             f"Do all of these: create {tgt} containing OK using the Write tool; then read it back; "
+             f"then run the shell command `node --version`; then use the Task tool to launch a "
+             f"subagent that replies with the word SUB. Finally reply DONE.",
+             "--settings", st, "--add-dir", wd, "--output-format", "json",
+             "--permission-mode", "acceptEdits"], timeout=600, cwd=wd)
+        fired_events = {e: fired(p) for e, p in logs.items()}
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+    live = sorted(e for e, n in fired_events.items() if n)
+    dead = sorted(e for e, n in fired_events.items() if not n)
+    # Silence has two causes and this run cannot always tell them apart. Events whose CONDITION was
+    # never created here (no tool failed, no compaction, no slash command, no MCP server) are
+    # untested, not absent. Only events whose condition the task did create -- and which stayed
+    # silent -- are evidence. The positive list is the reliable half.
+    untested = sorted(set(dead) & {"PostToolUseFailure", "PreCompact", "PostCompact", "StopFailure",
+                                   "TaskCreated", "TaskCompleted", "Elicitation", "CwdChanged",
+                                   "ConfigChange", "UserPromptExpansion"})
+    silent_despite_condition = sorted(set(dead) - set(untested))
+    if "PreToolUse" not in live and "Stop" not in live:
+        return INCONCLUSIVE, f"neither built-in control fired; settings not loaded. fired={live}"
+    if "PermissionRequest" in live:
+        return FAIL, (f"PermissionRequest fired under -p, reversing the 2026-07-25 finding; "
+                      f"fired={live}")
+    return PASS, (f"FIRED under -p ({len(live)}): {live} || SILENT despite the condition arising: "
+                  f"{silent_despite_condition} || condition never created here, so untested: {untested}")
+
+
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",
        "--allowedTools pre-approves tools; it does not restrict the toolset, so it cannot bound "
        "what a worker may do")

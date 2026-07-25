@@ -926,8 +926,10 @@ Five statements carry most of the weight below. Everything else is support or de
 3. **Nothing about a fan-out is bounded by default.** Nesting is on, subagents inherit the
    parent's mode, and the top-level token count under-reports the tree. The concurrency cap and
    `--max-budget-usd` are real and are AER's to set.
-4. **Headless removes the notification surface.** `PermissionRequest` does not fire under `-p`.
-   A gate that needs to tell a human something cannot learn about it from that event.
+4. **Headless removes the vendor's notification events — so AER must be its own notifier.** Neither
+   `PermissionRequest` nor `Notification` fires under `-p`. Ten events do, including `PreToolUse`,
+   `Stop` and the `Subagent*` pair. Since AER's gate is its own MCP tool, it already knows a
+   decision is pending and needs no vendor event to tell it. 0018 should be written that way.
 5. **The vendors are asymmetric in opposite directions.** claude has an uncircumventable consent
    primitive and per-project settings; agy has loop control and *only* project-scoped hooks. Neither
    is strictly better, and the design has to use each for what it actually provides.
@@ -1099,8 +1101,37 @@ indistinguishable, which is the same instrument failure that produced the wrong 
 conclusion earlier in this audit.
 
 **Consequence for 0018:** its notification hook cannot be `PermissionRequest` if AER spawns the
-vendor CLI headless, because the event does not exist on that path. The three verified always-fires
+vendor CLI headless, because the event does not exist on that path. The verified always-fires
 primitives below are the surface that *does* fire under `-p`, and the gate has to be built on those.
+
+#### The whole headless event surface, measured in one run
+
+Leaving 0018 with "not `PermissionRequest`, then what?" would have been half a finding. So all 23
+documented hook events were registered with the same logging command in one settings file, against
+one task that writes a file, reads it back, runs a shell command and spawns a subagent.
+`PreToolUse` and `Stop` are the built-in controls — if neither fired, every zero would be
+meaningless.
+
+**Fires under `-p` (10):** `SessionStart` · `UserPromptSubmit` · `InstructionsLoaded` ·
+`PreToolUse` · `PostToolUse` · `PostToolBatch` · `MessageDisplay` · `SubagentStart` ·
+`SubagentStop` · `Stop`
+
+**Silent, and the condition genuinely arose:** `PermissionRequest` · `PermissionDenied` ·
+`Notification`
+
+**Silent only because this task never created the condition** — untested, *not* absent:
+`PostToolUseFailure` (nothing failed) · `PreCompact` / `PostCompact` (no compaction) ·
+`StopFailure` (no API error) · `TaskCreated` / `TaskCompleted` (no `TaskCreate`) · `Elicitation`
+(no MCP server) · `CwdChanged` · `ConfigChange` · `UserPromptExpansion` (no slash command)
+
+That split is the point. A single "did not fire" list would have quietly asserted eleven things the
+run never tested — the same conflation that produced the wrong agy-hooks conclusion.
+
+**`Notification` is silent too**, so **both** obvious notify paths for 0018 are unavailable
+headless. The resolution is architectural rather than a third event: `PreToolUse` fires reliably,
+and AER's gate is *its own MCP tool*. **AER is the notifier.** It does not need the vendor to tell
+it that a decision is pending, because AER is the thing creating the decision. 0018 should be
+written that way rather than hunting for a vendor event that fires headless.
 
 **`PermissionDenied` is still open.** It also logged zero, but nothing established that a denial
 ever occurred — `node --version` may simply have been allowed. That is an unresolved arm, not a
