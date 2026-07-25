@@ -66,6 +66,8 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0026](decisions/0026-running-out-of-plan-is-a-state-not-a-failure.md) | **Running out of plan is a state with a reset time**, not a generic failure — a third `FailureClassification` value carrying the reset instant, per vendor, spending no retry budget. The dominant real failure for a subscription user, undecided since #18 closed silently and the types froze on the interim behaviour. Amends 0018's band for a rate-limited vendor. |
 | [0027](decisions/0027-context-is-per-worker.md) | **Context belongs to the worker, not the room**, and running out is **announced as a choice** rather than compacted silently — automatic compaction survives as a disclosed backstop. Corrects 0011, which landed the counter on the room and so would compact a room while one worker had used almost nothing. |
 | [0028](decisions/0028-no-permissive-control-is-the-default.md) | **Visual rank is a decision** — no permissive control is ever the visual default, and a genuine either/or carries equal weight. Written because the corpus's own permission mockup drew `Allow once` as the accent-filled primary, training the reflex 0022 exists to prevent. Amends 0006. |
+| [0029](decisions/0029-the-gate-is-three-mechanisms.md) | **The gate is three mechanisms with three populations** — a `PreToolUse` hook covers *vendor* tools and is mandatory on every worker (an MCP gate bounds nothing the model can reach through `Bash`, #529); a blocking `tools/call` is the only mechanism that *holds* rather than refuses; `elicitation` is an uncircumventable refusal measured on **both** vendors. A hook's `ask` survives `auto` mode, so an operator's `auto` no longer erases AER's permission surface. Amends 0015's mechanism guidance. |
+| [0030](decisions/0030-aer-is-its-own-notifier.md) | **AER is its own notifier** — `PermissionRequest` and `Notification` are both silent under `-p`, so no vendor event announces a pause. AER hosts the gate, therefore already holds the pause at ask-time and notifies from that act; the notification path is vendor-independent by construction. Supplies the signal source 0018 assumed. |
 
 ## The completion bar: journeys
 
@@ -162,7 +164,50 @@ Presentational work that depends on the rebuilt surfaces existing first. **Nothi
 demonstration**, and everything here is judged against
 [0006](decisions/0006-visual-direction-quiet.md) (Quiet): motion confirms, it never performs.
 
+### What the vendor audit (#527) changes about this sequence
+
+The milestone *order* survives — it is ordered by what a person can do, and nothing measured changes
+what a person does. Four things change **inside** milestones, and they are recorded here because
+each moves work earlier than the sequence above implies.
+
+**M26 acquires the gate, and that is the real change.** [0029](decisions/0029-the-gate-is-three-mechanisms.md)
+makes a `PreToolUse` hook **mandatory on every worker AER spawns**, not only on workers whose flow
+declares a gate — because [#529](https://github.com/aer-works/aer-flow/issues/529) measured that an
+MCP gate bounds nothing the model can reach through `Bash`. So the hook, and the startup self-check
+that proves it fires, belong to "one room, one worker" rather than to M28. This is the audit's
+largest scheduling consequence: **M26 is no longer the milestone with no permission work in it.**
+
+**M26 also acquires a launch constraint.** Hooks load only from the process's own cwd `.claude/`,
+with no parent fallback, and `--add-dir` loads no configuration. AER must control the worker's
+working directory or pass `--settings` — a spawn-path requirement, not a UI one, and cheaper to
+satisfy before three surfaces render against it.
+
+**M27 must set the fan-out depth cap explicitly.** One level of subagent nesting runs with nothing
+configured (the vendor documents the opposite), and a subagent inherits its parent's permission mode
+and cannot be given a stricter one. A second worker in the room is therefore a *tree* of unknown
+depth unless `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` is set. Concurrency, cost attribution and the
+gate all have to hold for that tree.
+
+**M28's dependency is narrower than "#445" and sharper.** The durable gate is the blocking
+`tools/call` and only that — `elicitation` and `requiresUserInteraction` refuse rather than ask, so
+neither can hold a pause while somebody is away. The blocking call is measured to survive **200 s**;
+its upper bound is unknown, and it is reaped without a `timeout` floor or progress notifications.
+Answering a permission on the phone after quitting the desktop app — M28's own demonstration — takes
+longer than 200 s in the ordinary case, so **M28 must persist the gate and release the call rather
+than hold it open**, which is [0015](decisions/0015-three-kinds-of-needs-you.md)'s ask-time
+persistence doing real work rather than being a crash safeguard.
+
+The open interaction the section below names — whether AER's per-session turn lock (#393) tolerates
+a held-open turn — is *reduced* by that, not resolved: releasing the call is what makes it
+tractable, and it still has to be settled before #445 is built.
+
 ### The permission mechanism — what this plan used to say, and what was measured
+
+> **Amended 2026-07-25 by [0029](decisions/0029-the-gate-is-three-mechanisms.md).** What follows is
+> accurate and remains the record of what #472 measured. It is no longer complete: it describes the
+> blocking MCP tool as *the* mechanism, and the gate turned out to be three mechanisms covering three
+> different populations of tools. Read 0029 for the current shape.
+
 
 This section previously asserted that *"`claude -p` surfaces MCP tools and auto-approves them, so
 there is nothing to intercept"*, and that the mechanism *"must end the turn rather than block inside a
