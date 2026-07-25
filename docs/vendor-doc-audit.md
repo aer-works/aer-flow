@@ -937,6 +937,19 @@ An earlier section argued agy's control surface is "on several axes stronger tha
 
 agy's distinctive, working contribution is **loop control**, not permission control.
 
+**Both directions of that loop control are now measured.** The `terminate` redo used a task that
+*cannot* finish in one invocation — three files created one at a time, each proven by its own
+presence on disk — with the identical task under `force_continue` as the control:
+
+| `terminationBehavior` | invocations | files created | reached `FINISHED` |
+|---|---|---|---|
+| `force_continue` | **7** | **3 / 3** | ✅ |
+| `terminate` | **1** | **1 / 3** | ❌ |
+
+So agy can both refuse to let a loop end (`Stop.decision: "continue"`) and cut one short
+mid-task. **claude has no equivalent**, and this is the one axis where agy is genuinely the
+stronger tool — worth remembering, because the permission-surface comparison runs the other way.
+
 ### Other claims that held
 
 | claim | result |
@@ -958,7 +971,7 @@ agy's distinctive, working contribution is **loop control**, not permission cont
 | `--add-dir` grants file access but loads **no** hooks config | ✅ **confirmed** — a hook in the added dir's `.claude/settings.json` fired **0 times** and the write proceeded |
 | an explicit `ask` rule gates even in `bypassPermissions` | ✅ **confirmed** — the tool did not execute |
 | `usage.output_tokens` excludes subagent tokens | ✅ **confirmed** — top level **882** vs `modelUsage` summed **1130** (a 22% shortfall on one subagent) |
-| agy `PostInvocation.terminationBehavior: "terminate"` | ⚠️ **inconclusive** — the task finished inside one invocation, so terminating after it is indistinguishable from normal completion. Needs a multi-invocation task. |
+| agy `PostInvocation.terminationBehavior: "terminate"` | ✅ **confirmed on the redo** — see below. (The first attempt was inconclusive: the task finished inside one invocation, so terminating after it was indistinguishable from normal completion.) |
 | a hook's `permissionDecision: "ask"` forces a prompt in `auto` mode | ✅ **confirmed** — the same hook returning `allow` wrote the file; returning `ask` did not. A **fourth** always-fires path, and the polite one: unlike exit-2 it is a request, not a hard block. |
 | `PermissionRequest` fires **only** in auto mode | ❌ **the claim itself was mis-transcribed, and the corrected version is worse.** See below. |
 

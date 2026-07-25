@@ -652,6 +652,51 @@ def _agy_force_ask():
     return FAIL, f"unexpected: plain ran={ran_plain}, skip ran={ran_skip}"
 
 
+@check("agy.termination-behavior", "agy",
+       "PostInvocation terminationBehavior:terminate ends the loop before the task finishes")
+def _agy_terminate():
+    """A redo. The first attempt used a task that finished inside ONE invocation, so terminating
+    after it was indistinguishable from normal completion -- a non-result recorded as one.
+
+    This task cannot complete in one invocation: three files created one at a time, each proven by
+    its own presence on disk. The control arm runs the identical task with the hook returning
+    force_continue, so a short run in the terminate arm cannot be blamed on the task.
+    """
+    def arm(behavior):
+        wd = tempfile.mkdtemp(prefix="v-agyt-")
+        try:
+            os.makedirs(os.path.join(wd, ".agents"))
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log,
+                        """echo '{"injectSteps":[],"terminationBehavior":"%s"}'""" % behavior)
+            json.dump({"t": {"PostInvocation": [
+                {"type": "command", "command": "sh %s" % hk, "timeout": 25}]}},
+                open(os.path.join(wd, ".agents", "hooks.json"), "w"))
+            names = ["a.txt", "b.txt", "c.txt"]
+            steps = " ".join(f"Step {i+1}: create the file {n} containing the word {n}."
+                             for i, n in enumerate(names))
+            rc, out, err = run(["agy", "-p",
+                                f"Work through these steps ONE AT A TIME, checking each is done "
+                                f"before starting the next. {steps} "
+                                f"When all three files exist, reply with the word FINISHED.",
+                                "--add-dir", wd, "--dangerously-skip-permissions"],
+                               timeout=600, cwd=wd)
+            made = sum(1 for n in names if os.path.exists(os.path.join(wd, n)))
+            return fired(log), made, ("FINISHED" in (out + err))
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    f_cont, made_cont, done_cont = arm("force_continue")
+    f_term, made_term, done_term = arm("terminate")
+    note = (f"force_continue: hook fired {f_cont}x, {made_cont}/3 files, finished={done_cont} | "
+            f"terminate: hook fired {f_term}x, {made_term}/3 files, finished={done_term}")
+    if f_cont == 0 or f_term == 0:
+        return INCONCLUSIVE, f"the PostInvocation hook did not fire in one arm; {note}"
+    if made_cont < 3:
+        return INCONCLUSIVE, f"the control arm did not finish the task either; {note}"
+    return (PASS if made_term < 3 else FAIL), note
+
+
 @check("agy.settings-allow-honoured-headless", "agy",
        "agy permissions.allow is honoured under -p (upstream #548 says otherwise)",
        safety="mutates-config")
