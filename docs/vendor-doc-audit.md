@@ -1009,7 +1009,28 @@ second finding.
 |---|---|
 | the parent's permission mode covers its subagents | ✅ **confirmed** — under `--permission-mode acceptEdits` the subagent's write landed; under `default`, with the prompt, tools and target identical, it did not. The mode reaches the child. |
 | nested subagents are **off by default** | ❌ **contradicted** — see below |
+| `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` bounds concurrent subagents | ✅ **confirmed** — peak overlap tracked the cap exactly (2 and 6) with eight started in both arms. The documented **default of 20 is still unverified**; neither arm ran uncapped. |
 | `--max-budget-usd` stops a session rather than only reporting overrun | ✅ **confirmed** — `$0.001` exits **1** with `subtype: error_max_budget_usd`; the unbudgeted control finished the same task on exit 0 |
+
+#### `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` sets a real ceiling
+
+Measured as **peak overlap**, not subagent count: `SubagentStart` and `SubagentStop` each append a
+timestamp, and the two are interleaved into a timeline. Both arms asked for eight subagents in one
+parallel batch and both **started all eight** — so fan-out pressure was identical and the cap is
+the only variable.
+
+| `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | started | peak concurrent |
+|---|---|---|
+| `2` | 8 | **2** |
+| `6` | 8 | **6** |
+
+Peak tracks the cap exactly. **AER can bound worker fan-out through this variable** rather than
+having to serialise dispatch itself.
+
+**Scope note — the documented default of 20 is NOT verified by this.** Neither arm ran uncapped.
+A first attempt compared cap=2 against no cap and could not conclude anything: the capped arm
+started only two subagents in total, which is equally consistent with the cap holding and with the
+model simply not fanning out. Two capped arms fixed that; the default remains an open row.
 
 #### Nesting is *not* off by default — one level is already allowed
 
@@ -1084,14 +1105,20 @@ position; it is now a measurement.
 | arm | result |
 |---|---|
 | control (variable unset) | ✅ answered, exit 0 |
-| `CLAUDE_CONFIG_DIR=<temp>` | ❌ **exit 1**, no answer, and the failure text names authentication |
+| `CLAUDE_CONFIG_DIR=<fresh temp dir>` | ❌ exit 1, `terminal_reason: api_error`, result **`"Not logged in · Please run /login"`** |
 
-The redirected directory **was populated** — so the variable is honoured, and the CLI really did
-use it. What does not travel with it is the subscription login.
+The variable is fully honoured — the redirected directory was populated with `.claude.json`,
+`sessions/`, `projects/` and `backups/`, so the CLI really did adopt it as its config root. The
+**credentials are what live under that root**, and a fresh root has none.
 
-This is the same shape as `--bare` (#521, #262): a flag that looks like isolation and is actually
-de-authentication. Both now point the same way — **AER can control a worker's working directory
-and pass `--settings`, but it cannot give a worker its own config root.** Rule 4's phrasing "no
+**This is not the same mechanism as `--bare`** (#262, #521), which actively *skips* OAuth and
+keychain reads. Stating it precisely matters, because the two would suggest different workarounds:
+`--bare` has none, whereas a config-dir redirect could "work" if AER copied credentials into the
+new root — and **that is exactly what Architecture Rule 4 forbids.**
+
+So the constraint is not that the flag is broken; it is that **the only way to make it work is the
+one thing AER must never do.** Net effect, and it is unchanged: AER can own a worker's working
+directory and pass `--settings`, but it cannot give a worker its own config root. Rule 4's "no
 redirecting the vendor CLIs' config directories" is load-bearing rather than cautious.
 
 **Consequences.**

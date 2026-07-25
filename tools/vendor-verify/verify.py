@@ -550,8 +550,14 @@ def _config_dir():
     if ok1:
         return FAIL, ("a redirected config dir still authenticated -- Rule 4's rationale needs "
                       f"restating; {note}")
-    auth = bool(re.search(r"auth|login|credential|api key|subscription", blob, re.I))
-    return PASS, f"{note}; denial mentions auth={auth}"
+    # Quote the CLI's own words. An earlier version regexed this and threw it away, which left the
+    # mechanism ambiguous -- "credentials live under the config root" and "the flag disables auth"
+    # are different things and the register briefly claimed the wrong one.
+    try:
+        said = json.loads(blob[blob.index("{"):blob.rindex("}") + 1]).get("result")
+    except Exception:                                                  # noqa: BLE001
+        said = blob.strip()[:160]
+    return PASS, f"{note}; CLI said: {said!r}"
 
 
 # ====================================================================== lifecycle
