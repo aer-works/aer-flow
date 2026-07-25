@@ -47,7 +47,8 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | Extra directories | `--add-dir` | `--add-dir` (repeatable) |
 | MCP | `mcp` subcommand, `--mcp-config`, `--strict-mcp-config` | **config file only** — `~/.gemini/config/mcp_config.json` |
 | Permission modes | `--permission-mode acceptEdits\|auto\|bypassPermissions\|manual\|dontAsk\|plan` | `--mode accept-edits\|plan` |
-| Per-call tool grant | `--allowedTools` / `--disallowedTools` | **none** — grants must be persisted to settings |
+| Per-call tool grant | `--allowedTools` / `--disallowedTools`, **pattern-matched** | **not found on `--help`** — and `--help` is known incomplete (see below). Documented grants persist to settings |
+| Family-shaped ceiling | **yes** — `Bash(git *)` minus `Bash(git push*)`, enforced | **no** — `command(...)` matches the whole line literally |
 | `--permission-prompt-tool` | **honoured** — consults a named MCP tool (undocumented) | **rejected**: `flags provided but not defined` |
 | Bypass permissions | `--permission-mode bypassPermissions`, `--dangerously-skip-permissions` | **`--dangerously-skip-permissions`** |
 | Sandbox | referenced in help only | **`--sandbox`, and it enforces** |
@@ -431,10 +432,89 @@ describe `command(git)` as covering "standard git commands"). Four runs against 
 | `command(node C:/…/escape.js)` (exact, separate run) | **granted** |
 
 **Consequence: AER cannot pre-authorise a *family* of commands on `agy`, only enumerate exact command
-lines.** A ceiling like "this room may run git, but not push" is not expressible as an allow-rule.
-Where a family-shaped grant is needed, the enforceable instrument is `--sandbox` plus targeted
-`unsandboxed(…)` escapes, or the MCP consultation path — not `permissions.allow`. Design the
-permission surface accordingly rather than assuming prefix semantics.
+lines.** A ceiling like "this room may run git, but not push" is not expressible as an `agy`
+allow-rule. Where a family-shaped grant is needed there, the enforceable instrument is `--sandbox`
+plus targeted `unsandboxed(…)` escapes, or the MCP consultation path — not `permissions.allow`.
+Design the permission surface accordingly rather than assuming prefix semantics.
+
+**On `claude` the same ceiling is expressible, and enforced** — see below. The limitation is `agy`'s,
+not a property of the problem, and 0004's framing of the two vendors depends on the difference.
+
+## `agy --help` is not a complete list of its flags, and we cannot yet enumerate them
+
+**Established 2026-07-24, and it invalidates every `agy` negative that rests on `--help` alone.**
+
+`--remote-control` is **accepted** by `agy` (it starts an OAuth login) and appears **nowhere** in
+`agy --help`. So the help output is demonstrably not the full flag surface, and "not in `agy --help`"
+is not a statement that a flag does not exist.
+
+Two attempts to enumerate the real set, and why neither worked:
+
+- **Guessing plausible names is not evidence.** Five invented candidates for a per-call grant flag
+  (`--allowedTools`, `--allowed-tools`, `--allow-tool`, `--permission`, `--tools`) were each rejected
+  exactly as an invented control flag is. That establishes only that those five names are not flags —
+  a vanishing slice of an unbounded namespace. It was briefly written up here as though it firmed up
+  the negative. It does not.
+- **Binary string adjacency does not work either.** `sandbox`, `add-dir` and `project` sit packed
+  together in the binary, which looks like a flag table until you notice `.gemini`, `plugins` and
+  `install` are packed with them — **Go interns strings grouped by length**, so all six are neighbours
+  only because they are seven characters long. Confirmed on the 8-, 12- and 14-character groups.
+  Adjacency to a known flag carries no information.
+
+**What would actually settle it:** vendor documentation, the public Python SDK (which likely mirrors
+the CLI surface), or an exhaustive test of every flag-shaped string in the binary against a control —
+tractable only if the candidate set is first narrowed by something better than shape.
+
+Until then, every `agy` row reading "not found" is scoped to the surfaces named on it, and the flag
+surface specifically is **known to be incompletely enumerated**. Do not design against those absences
+as though they were established.
+
+## `claude --allowedTools` is pattern-matched, and expresses a family ceiling
+
+**Probed 2026-07-24.** `--allowedTools` takes **patterns**, stated in a help example nothing had acted
+on: `Bash(git *) Edit`. Measured with both a control and a negative control, on `git --version`:
+
+| grant | result |
+|---|---|
+| *(none — control)* | **denied** |
+| `Bash(git *)` | **ran** |
+| `Bash(git --version)` | ran |
+| `Bash(npm *)` *(negative control)* | **denied** |
+
+The negative control is what makes this evidence rather than a coincidence: the pattern discriminates
+instead of waving everything through. Then the canonical ceiling, allow-family plus deny-subset —
+`--allowedTools "Bash(git *)" --disallowedTools "Bash(git push*)"`:
+
+| command | result |
+|---|---|
+| `git status` | **ran** |
+| `git push` | **denied** — *"denied by the permission prompt, so nothing was pushed"* |
+
+So the two vendors are **not** "one enforcing, one advisory". They are strong in opposite places:
+
+| | `claude` | `agy` |
+|---|---|---|
+| per-call grant | **yes**, pattern-matched | not found on `--help` (known incomplete) |
+| family ceiling | **yes**, with deny-subsets | no — literal whole-line matching |
+| grant lifetime | **the single run** | **persisted to a global settings file** |
+| sandbox | **yes — OS-enforced, but not on native Windows** (see [the doc audit](vendor-doc-audit.md)) | **yes, and it enforces** |
+
+**The sandbox row was wrong here until 2026-07-24**, and wrong in a way worth remembering: this
+document recorded claude's sandbox as "referenced in help only" because the probe host is **Windows**,
+where it genuinely does not run. Claude Code ships an OS-enforced sandbox (Seatbelt / `bubblewrap`)
+on macOS, Linux and WSL2, documented across two pages. A single-platform observation was generalised
+into a capability claim. **Every row in this document was established on Windows only** — treat any of
+them as platform-scoped until re-checked elsewhere.
+
+So the two vendors are closer than the earlier framing suggested, and differ mainly in *expressiveness*:
+`claude` has per-run, pattern-matched policy that dies with the run; `agy` has literal-only rules that
+persist to a global settings file. Both can contain a process, on the platforms where they run. A
+room's ceiling should compile to whichever instrument the chosen worker actually has on the host it is
+running on.
+
+One asymmetry worth naming because it cuts the other way: **a `claude` grant dies with the run; an
+`agy` grant does not.** Widening `permissions.allow` to complete one task leaves the operator
+permanently wider. AER must never do that silently.
 
 ## `agy --sandbox` genuinely enforces
 
@@ -451,9 +531,16 @@ granted `command(...)` — two independent gates, not one. Internally it is a `s
 policy enforcer, blocked-request handling and OAuth2 credential brokering; vendor docs describe
 `enableTerminalSandbox` as restricting execution to "OS containment rings".
 
-This matters for [0004](decisions/0004-permission-scopes.md): a project-level ceiling is
-*enforceable* on `agy` and only *advisory* on `claude`. Say so honestly when a worker is chosen,
-rather than implying a guarantee we cannot keep.
+This matters for [0004](decisions/0004-permission-scopes.md), though **not in the direction this
+document originally claimed.** The earlier reading here — *"a project-level ceiling is enforceable on
+`agy` and only advisory on `claude`"* — was drawn from the sandbox alone, before anyone tested
+`claude`'s grant patterns. It is wrong as a summary: `claude` expresses and **enforces** a family
+ceiling per run (above), which `agy` cannot express at all; `agy` contains a process, which `claude`
+cannot do.
+
+The honest statement is that each vendor enforces a *different kind* of ceiling, and neither
+subsumes the other. Say which instrument is actually in play when a worker is chosen, rather than
+ranking the two or implying a guarantee we cannot keep. Tracked in #515.
 
 ## Sharp edges
 
