@@ -1,5 +1,11 @@
 # Vendor capabilities — what each worker CLI can actually do
 
+> **Read [`vendor-doc-audit.md`](vendor-doc-audit.md) alongside this (#527, 2026-07-25).** That audit
+> re-measured much of what is here against `claude` 2.1.220 / `agy` 1.1.7 and **changed two readings
+> in this file**: the `--allowedTools` section below is no longer "a family ceiling", and the sandbox
+> row's scope is Windows-only. Rows this file states as measured still hold; what changed is what
+> they *mean*. Behaviours either file relies on are re-runnable with `pixi run vendor-verify`.
+
 **Status: verified reference, with a version split that matters.** Where a claim rests on a live run,
 the observation is quoted. Where it rests on inspecting help text or the shipped binary, it says so —
 and where a row says something is *absent*, it names the surfaces that absence was established on.
@@ -490,7 +496,25 @@ Until then, every `agy` row reading "not found" is scoped to the surfaces named 
 surface specifically is **known to be incompletely enumerated**. Do not design against those absences
 as though they were established.
 
-## `claude --allowedTools` is pattern-matched, and expresses a family ceiling
+## `claude --allowedTools` is pattern-matched — but it is ~~a family ceiling~~ **not a ceiling at all**
+
+> **Corrected 2026-07-25 (#527).** This section was headed *"expresses a family ceiling"*. Every
+> measurement in it still holds, but **"ceiling" was a guarantee word the evidence had not earned**,
+> and this document is where [#529](https://github.com/aer-works/aer-flow/issues/529) came from.
+>
+> What was measured below is that the **pattern discriminates between commands of the same tool**.
+> What was *not* measured is whether the model can reach the same goal through a **different tool** —
+> and it can. With `--disallowedTools Write`, the model wrote the file using `Bash`; with
+> `Edit,Write,NotebookEdit` withheld (the exact string `ClaudeWorkerAdapter` emits) it used `Bash`
+> and `Read`. `Bash` alone defeats withheld writes, withheld reads and withheld network.
+>
+> So the correct reading is: **`--allowedTools`/`--disallowedTools` bound which *tool* runs, never
+> what the worker can *achieve*.** They are a pre-approval and routing mechanism, not a security
+> boundary. The mechanisms measured to bound an *operation* are the four always-fires primitives in
+> [the doc audit](vendor-doc-audit.md).
+>
+> Keeping the original heading struck through rather than deleting it, because the wrong reading is
+> re-derivable from the evidence below if nobody says why it's wrong.
 
 **Probed 2026-07-24.** `--allowedTools` takes **patterns**, stated in a help example nothing had acted
 on: `Bash(git *) Edit`. Measured with both a control and a negative control, on `git --version`:
@@ -510,6 +534,11 @@ instead of waving everything through. Then the canonical ceiling, allow-family p
 |---|---|
 | `git status` | **ran** |
 | `git push` | **denied** — *"denied by the permission prompt, so nothing was pushed"* |
+
+**Read that table for exactly what it says.** `git push` *via `Bash`* was denied. It does not
+establish that the push could not happen — an unrestricted `PowerShell` tool, or a script written and
+then executed, reaches the same outcome. Same-tool discrimination is real; cross-tool containment was
+never tested and, per #527, does not hold.
 
 So the two vendors are **not** "one enforcing, one advisory". They are strong in opposite places:
 

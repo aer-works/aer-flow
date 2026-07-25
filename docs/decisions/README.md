@@ -42,7 +42,36 @@ Date: YYYY-MM-DD
 ```
 
 Then: **Context** (what forced the decision, with evidence), **Decision** (what we chose, stated
-plainly), **Consequences** (what this makes easy, what it makes hard, what it obliges us to do).
+plainly), **Consequences** (what this makes easy, what it makes hard, what it obliges us to do),
+and — **required since 2026-07-25 (#527)** — **Rests on**.
+
+### `Rests on` — the load-bearing facts, and what would falsify them
+
+A list of the specific external facts the decision would not survive losing. Each row names the
+fact, how it is known, and what happens to this decision if it turns out false.
+
+```
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| A `PreToolUse` hook exiting 2 blocks a tool even with an allow rule | measured — `pixi run vendor-verify -- --only gate.hook-exit-2-beats-allow` | the gate has no vendor-independent enforcement point; §3 is void |
+| `--allowedTools` bounds what a worker can do | **assumed** | … |
+```
+
+**Why this is now mandatory.** The vendor audit (#527) falsified four vendor claims this project had
+built on, and the decisions that broke — 0015 and 0018 — had asserted a *mechanism* without recording
+what it rested on. When the mechanism turned out to be wrong there was no way to see what else fell
+with it, so the blast radius had to be recovered by re-reading everything. A decision that names its
+dependencies makes that mechanical instead.
+
+Two rules for the column:
+
+- **Distinguish measured from assumed, always.** An assumed row is not a defect — it is a
+  verification task with a known owner. An assumed row *recorded as measured* is how 0015 broke.
+- **Prefer a fact that a command can re-check.** Where a `pixi run vendor-verify` check exists, cite
+  it by name; that turns "is this still true?" into something a future session runs rather than
+  re-derives. See [`../documentation-lessons.md`](../documentation-lessons.md).
 
 ## Rules
 
