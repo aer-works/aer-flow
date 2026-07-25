@@ -107,10 +107,10 @@ Two rules for the column:
 | [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
 | [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
 | [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph (a step's contents added by 0025; `DependsOn` corrected to engine-only) | accepted |
-| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval | accepted |
+| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval (its **mechanism** guidance amended by 0029) | accepted, except that |
 | [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
 | [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices (its effort-naming clause **corrected by 0023**) | accepted, except that clause |
-| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide (rate-limited band amended by 0026) | accepted |
+| [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide (rate-limited band amended by 0026; notification **source** supplied by 0030) | accepted |
 | [0019](0019-consulting-is-not-deciding.md) | Consulting is not deciding: you can ask anyone, and the gate stays open | accepted |
 | [0020](0020-one-state-machine.md) | One state machine: every surface renders the room's state, none derives its own (carries "errors are content") | accepted |
 | [0021](0021-artifacts-are-files.md) | Artifacts are files: vendor-neutral, versioned, attributed, never silently overwritten | accepted |
@@ -121,3 +121,5 @@ Two rules for the column:
 | [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) | Running out of plan is a state with a reset time, not a generic failure | accepted |
 | [0027](0027-context-is-per-worker.md) | Context belongs to the worker, not the room; running out is a choice (corrects 0011) | accepted |
 | [0028](0028-no-permissive-control-is-the-default.md) | Visual rank is a decision: no permissive control is ever the default (amends 0006) | accepted |
+| [0029](0029-the-gate-is-three-mechanisms.md) | The gate is three mechanisms with three populations, not one (amends 0015) | accepted |
+| [0030](0030-aer-is-its-own-notifier.md) | AER is its own notifier: no vendor event announces a pause (amends 0018) | accepted |

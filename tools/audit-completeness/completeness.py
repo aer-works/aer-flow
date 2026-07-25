@@ -126,11 +126,15 @@ def step3_gaps():
 # answerable -- and makes a decision that got no real look impossible to hide.
 DISPOSITIONS = ("unaffected", "amended", "superseded", "rewritten")
 
-# Decisions the audit's own findings put in question. Each MUST carry its own `Rests on` table,
-# counted per file -- summing across files lets one table satisfy the requirement for two.
+# The records that state CURRENT mechanism where the audit broke the old one. Each MUST carry its
+# own `Rests on` table, counted per file -- summing across files lets one table satisfy two.
+#
+# These are 0029/0030, not the 0015/0018 they amend: the decisions README forbids editing a record
+# to change its meaning, so a falsified mechanism becomes a new numbered record. The `Rests on`
+# obligation follows the live claim, not the file that used to carry it.
 MUST_REST_ON = (
-    "0015-three-kinds-of-needs-you.md",
-    "0018-attention-is-the-primary-signal.md",
+    "0029-the-gate-is-three-mechanisms.md",
+    "0030-aer-is-its-own-notifier.md",
 )
 
 

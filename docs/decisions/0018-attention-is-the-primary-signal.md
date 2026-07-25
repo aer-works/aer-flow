@@ -1,7 +1,14 @@
 # 0018 — Attention is the primary signal: state orders the list, notifications never decide
 
-Status: accepted
+Status: accepted; **notification source supplied by [0030](0030-aer-is-its-own-notifier.md)**
 Date: 2026-07-24
+
+> **Amendment, 2026-07-25 (#527).** This record assumed a vendor hook event would announce that a
+> room needs attention. Both candidates were measured silent under `-p`: `PermissionRequest` fires
+> only when a permission *dialog* appears, and headless none does; `Notification` is silent too.
+> [0030](0030-aer-is-its-own-notifier.md) resolves it architecturally rather than by finding a third
+> event — AER hosts the gate, so AER already holds the pause at ask-time and notifies from that act.
+> Everything below stands unchanged.
 
 > **Amendment, 2026-07-25 (#501).** [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) amends this record's band assignment for a **rate-limited vendor**. Band 4 is right for a background room and wrong for the worker you just addressed — you asked for something and it will not happen, which is an attention state. The discriminator is *did the operator just try to use it*, not *what kind of state is it*: the same correction this record already made for host-unreachable, applied to the case it missed. Everything below stands unchanged.
 
