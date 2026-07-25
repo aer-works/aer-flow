@@ -856,6 +856,12 @@ Also newly on the permanent source list: **the CLI has a public issue tracker an
 
 ### 6. Fan-out limits are now concrete (#503 items 4–5)
 
+> **Two of these were later measured false — read the correction before using this paragraph.**
+> Nesting is **not** off by default (one level runs with nothing configured), and the cap's
+> documented default of 20 remains unverified. See
+> [Group B](#group-b--fan-out-2026-07-25). Kept unedited because it is the record of what the
+> vendor *documents*, which is still what a reader of the vendor's docs will believe.
+
 Concurrent subagents cap **20** (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`); nested subagents **off by
 default**; nested teams **impossible**; per-teammate modes **cannot be set at spawn**; a parent's
 `bypassPermissions`/`acceptEdits`/`auto` **applies to every subagent and cannot be overridden**.
@@ -1331,6 +1337,40 @@ gate design wants. All four were verified **under `-p`** — which matters, beca
 
 **Any cost surface that sums top-level `usage.output_tokens` under-reports every fan-out.** The gap
 was 22% for a single subagent and grows with the tree. `modelUsage` is the whole-tree figure (#479).
+
+### MCP `elicitation` — portable, uncircumventable, and **still not a channel to a human**
+
+`claude` declares the MCP-standard `elicitation` capability (`{'roots': {'listChanged': True},
+'elicitation': {}}`) and honours an `elicitation/create` sent from a server mid-`tools/call`. Three
+arms, one variable — the permission mode:
+
+| arm | client's answer | gated tool body ran |
+|---|---|---|
+| `--allowedTools` (tool pre-approved) | `cancel` | **no** |
+| `--permission-mode bypassPermissions` | `cancel` | **no** |
+| `--dangerously-skip-permissions` | `cancel` | **no** |
+
+`pixi run vendor-verify -- --only gate.elicitation`. The server writes `ELICITED.json` when it
+issues the request and `CALLED_elicit_tool` only if the answer approves, so "the body did not run"
+is a file that does not exist, not the model's account.
+
+**So it is uncircumventable — no permission mode approves it.** That is the property
+`requiresUserInteraction` has, achieved through a mechanism that is in the MCP specification rather
+than a vendor's `_meta` namespace, so it holds for any spec-conformant worker.
+
+**Read the answer column before designing on it.** Every arm answered `cancel` — because under `-p`
+there is no human to ask, and the client says no on their behalf. Elicitation headless is a
+**fail-closed deny**, not a way to reach a person. It is a *stronger deny* than
+`requiresUserInteraction` (structured `action: "cancel"` rather than an error string) and a
+portable one, but it does not by itself carry a gate that a human later opens.
+
+**What this means for 0015, stated plainly so it is not mis-read later:** neither
+`requiresUserInteraction` nor `elicitation` is the durable gate. Both are *refusals* that no mode
+can override. The thing that actually holds a worker while a human decides is the third mechanism —
+**AER's own MCP server declining to respond to `tools/call` until AER's UI returns an answer**,
+which is the one measured to survive 200s and the one that needs a `timeout` floor or progress
+notifications so it is not reaped mid-wait. Elicitation's role is to make the refusal *portable and
+unbypassable*; the blocking response is what makes the gate *durable*.
 
 ### Still not settled — recorded as untested, not refuted
 
