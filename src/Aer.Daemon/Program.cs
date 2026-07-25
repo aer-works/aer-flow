@@ -1649,7 +1649,6 @@ namespace Aer.Daemon
                 WorkingDirectory: InteractiveSessionMaterializer.ResolveRunDirectory(metadata.WorkingDirectory, metadata.TaskDirectoryPath),
                 SessionId: vendorSessionId,
                 ResumeSession: resumeSession,
-                MinimalOverhead: metadata.MinimalOverhead,
                 StreamJson: string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase),
                 LogFilePath: logFilePath);
 

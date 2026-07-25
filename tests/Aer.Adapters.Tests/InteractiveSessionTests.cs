@@ -24,13 +24,19 @@ public sealed class InteractiveSessionTests
             PromptTemplate: "Hello",
             SessionId: "session-123",
             ResumeSession: false,
-            MinimalOverhead: true,
             StreamJson: true);
 
         var target1 = adapter.Resolve(invTurn1, _contract);
         Assert.Contains("--session-id", target1.Args);
         Assert.Contains("session-123", target1.Args);
-        Assert.Contains("--bare", target1.Args);
+        // #521: this used to assert --bare IS emitted. Inverted deliberately, and kept rather than
+        // deleted, because a silent regression here is invisible: --bare suppresses the mandatory
+        // PreToolUse hook (0029/#543) even when the hook is passed explicitly via --settings, and a
+        // worker with no gate looks exactly like a worker with a gate that allowed the call. This
+        // only catches --bare re-added unconditionally -- it says nothing about --safe-mode, an
+        // inherited CLAUDE_CODE_SIMPLE=1, or --bare reintroduced behind a new flag (see the fuller
+        // comment in ClaudeWorkerAdapter.cs).
+        Assert.DoesNotContain("--bare", target1.Args);
         Assert.Contains("stream-json", target1.Args);
         Assert.Contains("--include-partial-messages", target1.Args);
         // --print + --output-format=stream-json refuses to run at all without --verbose (confirmed
@@ -43,7 +49,6 @@ public sealed class InteractiveSessionTests
             PromptTemplate: "Next message",
             SessionId: "session-123",
             ResumeSession: true,
-            MinimalOverhead: true,
             StreamJson: true);
 
         var target2 = adapter.Resolve(invTurn2, _contract);

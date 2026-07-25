@@ -125,11 +125,23 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add("text");
         }
 
-        if (invocation.MinimalOverhead)
-        {
-            args.Add("--bare");
-        }
-
+        // Do not reintroduce `--bare` here, under any flag. It is not a latency optimisation this
+        // product can take, for two independently sufficient reasons, both measured:
+        //
+        //   1. It skips "keychain reads" (its own --help says so) -- which is exactly where
+        //      subscription OAuth login lives. A --bare dispatch against a real subscription login
+        //      fails immediately with "Not logged in", even with valid, unexpired credentials, and
+        //      AER works against subscriptions rather than API keys (Architecture Rule 4).
+        //   2. It suppresses hooks and MCP servers EVEN WHEN PASSED EXPLICITLY via --settings
+        //      (#521): `claude --bare --settings <PreToolUse hook>` does not fire the hook, while
+        //      the same invocation without --bare does. 0029 makes that hook mandatory on every
+        //      worker AER spawns, so --bare is the flag AER passed that removed the gate. It is
+        //      not the only route to the same failure -- `--safe-mode` and CLAUDE_CODE_SIMPLE=1
+        //      (an inherited env var, no flag needed) disable hooks identically; watch for both.
+        //
+        // Reason 2 is the load-bearing one: an auth failure is loud, and a missing hook is silent
+        // for one of two independent reasons -- not loaded at all, or loaded but unable to execute
+        // (#530 measures the second; the first traces to the discovery constraint, not to #530).
         if (invocation.SessionId is not null)
         {
             if (invocation.ResumeSession)

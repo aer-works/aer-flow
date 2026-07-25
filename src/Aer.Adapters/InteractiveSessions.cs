@@ -23,7 +23,6 @@ public sealed record SessionMetadata(
     string? WorkingDirectory,
     int TurnCount,
     int SafetyCeiling,
-    bool MinimalOverhead,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     List<SessionTurn> Turns,
@@ -182,14 +181,6 @@ public static class InteractiveSessionMaterializer
             WorkingDirectory: workingDirectory,
             TurnCount: 0,
             SafetyCeiling: safetyCeiling > 0 ? safetyCeiling : DefaultSafetyCeiling,
-            // Live-verified (retroactive M24 Phase 1 gap-fill, #262): claude --bare's own --help
-            // text documents that it skips "keychain reads" for minimal overhead -- which is exactly
-            // where subscription OAuth login lives. A --bare dispatch against a real subscription
-            // login fails immediately with "Not logged in", even with valid, unexpired credentials.
-            // Since this project's whole point is working against subscriptions rather than API
-            // keys (CLAUDE.md), MinimalOverhead can never default to true -- doing so silently broke
-            // every interactive-session turn for the primary supported auth path.
-            MinimalOverhead: false,
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
             Turns: []);

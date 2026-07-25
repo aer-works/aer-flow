@@ -15,10 +15,12 @@ namespace Aer.Cli.SmokeTests;
 /// <see cref="WorkerAdapterRegistry.Default"/>.
 /// <para>
 /// <b>Deliberately excluded from <c>AerFlow.slnx</c></b>, same as every other test here -- see
-/// <c>docs/runbooks/live-session-smoke.md</c> for the full runbook, including two checks this test
-/// does NOT automate (vendor-handoff-retains-context, and the minimal-overhead latency comparison --
-/// the latter isn't currently possible at all, since <c>MinimalOverhead</c> is hardcoded <c>true</c>
-/// for every interactive session with no API-level override).
+/// <c>docs/runbooks/live-session-smoke.md</c> for the full runbook, including one check this test
+/// does NOT automate (vendor-handoff-retains-context). The minimal-overhead latency comparison this
+/// comment used to name is gone with the flag: <c>MinimalOverhead</c> and <c>--bare</c> were removed
+/// in #521 because <c>--bare</c> suppresses the mandatory permission hook. The comment had also gone
+/// stale in the other direction -- it said the flag was hardcoded <c>true</c> long after the code
+/// set it <c>false</c>.
 /// </para>
 /// </summary>
 public class LiveSessionSmokeTest

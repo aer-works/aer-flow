@@ -69,9 +69,6 @@ namespace Aer.Adapters;
 /// <see langword="true"/> to resume an existing native session (Claude <c>--resume</c>, Gemini <c>--conversation</c>);
 /// <see langword="false"/> to initialize a new native session (Claude <c>--session-id</c>).
 /// </param>
-/// <param name="MinimalOverhead">
-/// <see langword="true"/> to enable minimal-overhead dispatch (e.g. Claude <c>--bare</c>).
-/// </param>
 /// <param name="StreamJson">
 /// <see langword="true"/> to emit real-time stream-json output for live in-turn progress streaming (Claude <c>--output-format stream-json</c>).
 /// </param>
@@ -87,7 +84,6 @@ public sealed record WorkerInvocation(
     string? BindingsFileDirectory = null,
     string? SessionId = null,
     bool ResumeSession = false,
-    bool MinimalOverhead = false,
     bool StreamJson = false,
     string? LogFilePath = null);
 
