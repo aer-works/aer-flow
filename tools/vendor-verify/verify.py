@@ -388,8 +388,9 @@ def _allowedtools_ceiling():
 
 
 # ====================================================================== fanout
-@check("fanout.nesting-off-by-default", "fanout",
-       "nested subagents are off by default (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH); #503 items 4-5")
+@check("fanout.nesting-allowed-by-default", "fanout",
+       "one level of subagent nesting IS permitted by default; an explicit "
+       "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1 prevents it (the docs claim the opposite)")
 def _nesting():
     """The control arm is a ONE-level subagent that writes its own file.
 
@@ -437,9 +438,14 @@ def _nesting():
     if raised <= capped:
         return INCONCLUSIVE, ("raising the cap changed nothing, so this measured subagent count, "
                               f"not nesting depth; {note}")
+    # PASS asserts the MEASURED behaviour, not the documented one. The docs say nesting is off by
+    # default; it is not. Encoding the doc's version would leave this check red forever and make a
+    # genuine change indistinguishable from the known discrepancy.
     if default > capped:
-        return FAIL, f"the default allows deeper nesting than an explicit cap of 1; {note}"
-    return PASS, f"default matches an explicit cap of 1, and the env var raises it; {note}"
+        return PASS, ("nesting is allowed by default and the cap controls it -- still contrary to "
+                      f"the docs; {note}")
+    return FAIL, ("the default now matches a cap of 1: nesting has become off-by-default, "
+                  f"reversing what was measured on 2026-07-25; {note}")
 
 
 @check("fanout.concurrency-cap", "fanout",

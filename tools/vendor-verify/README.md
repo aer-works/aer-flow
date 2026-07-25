@@ -71,6 +71,13 @@ prompted by asking what *else* could produce the same observation.
 | `INCONCLUSIVE` | the control arm didn't establish a baseline; the check proved nothing |
 | `SKIPPED` | needs `--allow-config-writes` |
 
+**Every check asserts the *measured* behaviour, not the documented one.** Where the two disagree —
+`fanout.nesting-allowed-by-default` and `gate.allowedtools-is-preapproval-not-ceiling` both
+contradict their docs — `PASS` means "still contradicting, as recorded". Encoding the vendor's
+version instead would leave those checks permanently red and make a real change indistinguishable
+from the known discrepancy. The check name states what is true, so a `FAIL` always means *something
+moved*.
+
 ## Cost and safety
 
 Every check starts a real CLI session and spends real subscription usage, so this never runs in CI
