@@ -633,6 +633,44 @@ def _json_schema():
 
 
 # ====================================================================== durability
+@check("durability.one-writer-per-transcript", "durability",
+       "two processes cannot write the same session transcript concurrently -- bounds whether "
+       "Aer.Daemon may attach a second worker to a live session")
+def _one_writer():
+    """Two concurrent processes on the SAME --session-id, against a control pair on two different
+    session ids launched the same way. Without the control, a failure could be ordinary
+    concurrency flakiness rather than the session being exclusive.
+    """
+    import uuid
+    from concurrent.futures import ThreadPoolExecutor
+
+    def pair(same):
+        a, b = str(uuid.uuid4()), str(uuid.uuid4())
+        ids = (a, a) if same else (a, b)
+        wd = tempfile.mkdtemp(prefix="v-sess-")
+        try:
+            def go(sid):
+                return run(["claude", "-p", "Reply with exactly the word PONG.",
+                            "--session-id", sid, "--add-dir", wd, "--output-format", "json"],
+                           timeout=300, cwd=wd)
+            with ThreadPoolExecutor(max_workers=2) as ex:
+                r1, r2 = list(ex.map(go, ids))
+            oks = sum(1 for rc, out, err in (r1, r2) if "PONG" in (out + err))
+            blob = (r1[1] + r1[2] + r2[1] + r2[2])
+            return oks, blob
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    ok_diff, _ = pair(same=False)
+    ok_same, blob = pair(same=True)
+    note = f"different session ids: {ok_diff}/2 succeeded | same session id: {ok_same}/2"
+    if ok_diff < 2:
+        return INCONCLUSIVE, f"the control pair did not both succeed, so concurrency itself is flaky; {note}"
+    if ok_same == 2:
+        return FAIL, f"both processes wrote the same session id concurrently; {note}"
+    exclusive = bool(re.search(r"in use|already|lock|conflict|exists", blob, re.I))
+    return PASS, f"{note}; refusal names a conflict={exclusive}"
+
+
 @check("durability.config-dir-redirect-breaks-auth", "durability",
        "CLAUDE_CONFIG_DIR redirects session storage but not the subscription login "
        "(the measured basis for Architecture Rule 4's 'no redirecting config directories')")

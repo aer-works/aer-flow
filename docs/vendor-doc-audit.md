@@ -974,6 +974,33 @@ tell "`Write` was permitted" from "the model used `Bash` instead" — and the su
 finding, not noise. Third time this audit that the instrument, not the vendor, was the thing
 that needed fixing.
 
+#### This is a live defect in `src/`, not a hypothetical — [#529](https://github.com/aer-works/aer-flow/issues/529)
+
+`ClaudeWorkerAdapter.BuildDisallowedTools` maps each withheld grant category to the tools that
+reach it. The categories are independent, so a grant with `WriteFiles = false` and
+`RunShellCommands = true` emits exactly `--disallowedTools Edit,Write,NotebookEdit` and leaves
+`Bash` available. Running **that exact string**:
+
+```
+--permission-mode acceptEdits --disallowedTools "Edit,Write,NotebookEdit"
+  file created : YES
+  tools invoked: Bash, Read
+```
+
+**`Bash` alone defeats three of the four categories** — it writes files, reads files (`cat`), and
+reaches the network (`curl`). The method's own XML doc already warns that denial is "by enumeration,
+not default-deny", but scopes that to tools *outside* the four categories. The hole is **inside**
+them.
+
+`GeminiWorkerAdapter` is **not** affected, and for a reason this audit independently verified:
+`agy -p` fails closed, and the adapter refuses shell and network grants outright rather than
+approximating them — so there is no substitute tool to reach for. The asymmetry the adapter's
+comments describe is real.
+
+**The fix direction follows from the primitives, not from a longer list.** A longer deny list is a
+treadmill: any new filesystem-touching tool reopens it. The four always-fires primitives gate on
+the *operation*, which is exactly why substitution does not defeat them.
+
 ### The vendor asymmetry runs the other way
 
 An earlier section argued agy's control surface is "on several axes stronger than claude's".
