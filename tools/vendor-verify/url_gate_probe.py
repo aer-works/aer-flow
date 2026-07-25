@@ -208,6 +208,94 @@ def arm(flow, answer, seconds, keep=False):
     return out
 
 
+def manual(flow, where):
+    """Set up a workdir, print the command, and wait while a HUMAN runs agy there.
+
+    This exists because the automated arms hit a wall that is NOT a vendor fact. Every elicitation
+    -- including the simplest legal form-mode one, which is the positive control -- comes back
+    `cancel` with latency 0.0 under a pty-driven session, with and without keystrokes, with and
+    without `--dangerously-skip-permissions`. An instant cancel means no UI was ever attempted.
+
+    From inside an agent session there is no way to separate:
+
+        agy declares an elicitation capability it does not surface     (a real vendor finding)
+        a driven pty is not a context where agy will prompt            (a fact about this harness)
+
+    Separating them needs a person watching a real terminal. That is the whole of the remaining
+    human step in #531 -- much narrower than the issue's original "characterise it end to end",
+    and it is only this narrow because the instrument around it was built first.
+
+    RUN form MODE FIRST. It is the control and it decides what every url arm is worth:
+
+        a prompt appears   -> the harness was the problem; agy does elicit, and url mode is
+                              worth re-testing by hand
+        nothing appears    -> agy declares elicitation it never surfaces; a real finding, and
+                              0029's url-mode migration is blocked on the vendor
+    """
+    os.makedirs(os.path.join(where, ".agents"), exist_ok=True)
+    for stale in ("CAPS.json", "ELICITED.json", "URL_HIT.json", "NOTIFIED.json", "RETRIED.json",
+                  "URL.txt", "CALLED_control_tool", "CALLED_elicit_tool"):
+        try:
+            os.remove(os.path.join(where, stale))
+        except OSError:
+            pass
+    cfg = {"mcpServers": {"probe": {
+        "command": sys.executable, "args": [SERVER],
+        "env": {"AER_SENTINEL_DIR": where, "AER_URL_FLOW": flow}}}}
+    json.dump(cfg, open(os.path.join(where, ".agents", "mcp_config.json"), "w"), indent=2)
+
+    bar = "=" * 78
+    print(bar)
+    print("  MANUAL ARM -- flow=%s   agy %s" % (flow, AGY_VERSION))
+    print(bar)
+    print()
+    print("  1. In a REAL terminal (not this session, no winpty), run:")
+    print()
+    print('       cd "%s"' % where)
+    print('       agy -i "Call the MCP tool control_tool, then call elicit_tool. Call both."')
+    print()
+    print("  2. WATCH THE SCREEN. The only question that matters is whether agy ever asks")
+    print("     you anything about the probe tool -- a prompt, a link, a consent dialog.")
+    print()
+    if flow == "form":
+        print("     form mode: expect a yes/no style question. If none appears, agy declares")
+        print("     an elicitation capability it does not surface.")
+    else:
+        print("     url mode: expect a link, or an offer to open one. If it appears, open it")
+        print("     -- that completes the gate out of band and this probe will notice.")
+    print()
+    print("  3. Answer it however you like, or ignore it. Ctrl-C agy when you are done.")
+    print()
+    print("  Watching for sentinels. Ctrl-C HERE when finished.")
+    print()
+
+    seen = set()
+    try:
+        while True:
+            for n in ("CAPS.json", "URL.txt", "ELICITED.json", "URL_HIT.json", "NOTIFIED.json",
+                      "RETRIED.json", "CALLED_control_tool", "CALLED_elicit_tool"):
+                if n not in seen and os.path.exists(os.path.join(where, n)):
+                    seen.add(n)
+                    print("   [%-22s] %s" % (n, json.dumps(_sentinel(where, n), default=str)[:200]),
+                          flush=True)
+            time.sleep(1)
+    except KeyboardInterrupt:
+        el = _sentinel(where, "ELICITED.json") or {}
+        print()
+        print(bar)
+        print("  agy version           :", AGY_VERSION)
+        print("  control tool ran      :", os.path.exists(os.path.join(where, "CALLED_control_tool")))
+        print("  elicitation issued    :", bool(el.get("issued")))
+        print("  client's answer       :", json.dumps(el.get("response")))
+        print("  answered after        :", el.get("latency_s"), "s")
+        print("  url opened out of band:", os.path.exists(os.path.join(where, "URL_HIT.json")))
+        print("  gated tool completed  :", os.path.exists(os.path.join(where, "CALLED_elicit_tool")))
+        print()
+        print("  latency ~0 AND no prompt on screen -> no UI was attempted (a vendor finding).")
+        print("  a prompt you actually saw          -> the automated harness was the problem.")
+        return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -215,7 +303,15 @@ def main() -> int:
                     default="both")
     ap.add_argument("--seconds", type=int, default=150, help="wall clock per arm")
     ap.add_argument("--keep", action="store_true", help="leave the workdir for inspection")
+    ap.add_argument("--manual", metavar="DIR",
+                    help="prepare DIR and wait while a human runs agy there by hand. Use with "
+                         "--flow form first: it is the control that decides what the url arms "
+                         "are worth.")
     args = ap.parse_args()
+
+    if args.manual:
+        return manual(args.flow if args.flow in ("form", "hold", "required") else "form",
+                      os.path.abspath(args.manual))
 
     flows = ({"both": ["hold", "required"],
           "all": ["form", "hold", "required"]}).get(args.flow, [args.flow])
