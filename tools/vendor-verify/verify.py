@@ -79,7 +79,10 @@ def run(cmd, timeout=300, cwd=None, extra_env=None):
     e = env()
     e.update(extra_env or {})
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=e)
+        # stdin must be closed, not inherited: the CLI waits 3s for piped input on every
+        # invocation otherwise, and warns about it.
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=e,
+                           stdin=subprocess.DEVNULL)
         return p.returncode, (p.stdout or ""), (p.stderr or "")
     except subprocess.TimeoutExpired:
         return None, "", "(timeout)"
@@ -569,6 +572,58 @@ def _max_budget():
         return FAIL, f"a $0.001 budget did not stop the session; {note}"
     mentions = bool(re.search(r"budget|cost|limit|exceed", blob, re.I))
     return PASS, f"{note}; stop reason names the budget={mentions}"
+
+
+@check("cost.json-schema-conforms", "cost",
+       "--json-schema constrains the result to a caller-supplied shape, so Flow can route on a "
+       "structured return rather than parsing prose (Architecture Rule 1)")
+def _json_schema():
+    """Rule 1 says Flow must never parse conversation content for routing. That is only viable if
+    a worker can be made to return a structure. This tests whether the vendor will enforce one.
+
+    The control arm runs the same prompt with no schema, so "the output was a bare JSON object"
+    can be attributed to the flag rather than to the model being cooperative.
+    """
+    schema = {"type": "object",
+              "properties": {"verdict": {"type": "string", "enum": ["yes", "no"]},
+                             "confidence": {"type": "integer"}},
+              "required": ["verdict", "confidence"],
+              "additionalProperties": False}
+    PROMPT = "Is the sky blue on a clear day? Answer with your verdict and a confidence 0-100."
+
+    def arm(use_schema):
+        wd = tempfile.mkdtemp(prefix="v-schema-")
+        try:
+            # --json-schema takes the schema INLINE, not a path. Passing a filename fails with
+            # "not valid JSON: Unexpected identifier" -- which reads like a malformed schema
+            # rather than the wrong argument kind.
+            extra = ["--json-schema", json.dumps(schema)] if use_schema else []
+            rc, out, err = run(["claude", "-p", PROMPT, "--add-dir", wd,
+                                "--output-format", "json", *extra], timeout=300, cwd=wd)
+            try:
+                result = json.loads(out or "{}").get("result")
+            except ValueError:
+                return rc, None, "outer payload was not JSON"
+            try:
+                parsed = json.loads(result) if isinstance(result, str) else result
+            except ValueError:
+                return rc, None, f"result was prose: {str(result)[:60]!r}"
+            return rc, parsed, ""
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+    rc_free, free, why_free = arm(False)
+    rc_sch, got, why = arm(True)
+    if rc_sch is None:
+        return INCONCLUSIVE, "the schema arm did not run"
+    if got is None:
+        return FAIL, f"--json-schema did not produce a conforming object ({why})"
+    ok = (isinstance(got, dict) and got.get("verdict") in ("yes", "no")
+          and isinstance(got.get("confidence"), int)
+          and set(got) == {"verdict", "confidence"})
+    note = f"schema arm: {got}; control (no schema) parsed as JSON={free is not None}"
+    if free is not None and set(free or {}) == set(got or {}):
+        return INCONCLUSIVE, f"the control produced the same shape unprompted; {note}"
+    return (PASS if ok else FAIL), note
 
 
 # ====================================================================== durability

@@ -922,6 +922,28 @@ For `requiresUserInteraction`, two tools were exposed that differed *only* in th
 arm where the plain tool executed, the annotated one did not. For exit-2, the same tool and the
 same allow rule were used in both arms, with only the exit code differing.
 
+### `--json-schema` makes Architecture Rule 1 practical
+
+Rule 1 says Flow must never parse conversation content to route. That is only workable if a worker
+can be *made* to return a structure rather than asked nicely.
+
+| arm | result |
+|---|---|
+| `--json-schema '{…verdict, confidence…}'` | ✅ `{"confidence": 99, "verdict": "yes"}` — exactly the declared shape, no extra keys |
+| same prompt, no schema (the control) | prose; not JSON at all |
+
+So the structure is the flag's doing, not the model's cooperation. **A worker's return can be a
+typed record, which is what Rule 1's "explicit tool returns" needs.**
+
+**Implementation note for `Aer.Adapters`:** `--json-schema` takes the schema **inline**, not a file
+path. Passing a filename fails with `--json-schema is not valid JSON: Unexpected identifier "C"` —
+which reads like a malformed schema rather than the wrong *kind* of argument, and cost a
+debugging cycle here.
+
+**Also worth knowing:** the CLI waits **3 seconds for piped stdin** on every invocation that does
+not close it, then warns. Anything spawning it programmatically should redirect stdin from the
+null device — three seconds per worker launch is real latency in a fan-out.
+
 ### Tool restriction is not a capability boundary — the model routes around it
 
 Started as a loose end (a subagent used `Write` when its parent was launched with
