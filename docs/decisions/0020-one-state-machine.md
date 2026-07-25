@@ -42,8 +42,23 @@ wrong answer.
 
 **A room has exactly one state machine. Every surface renders it. No surface derives state.**
 
-The states are the ones the corpus draws — `Idle`, `Working`, `NeedsInput`, `Finished`, `Failed`,
-`Cancelled` — and three rules govern how they are consumed:
+**The canonical set is `design/tokens.json`'s `status` block**, not a list restated here. Nine today:
+`idle`, `working`, `needsInput`, `readyForReview`, `finished`, `failed`, `cancelled`, `queued`,
+`unavailable`.
+
+> **Amendment, 2026-07-24 (#489).** This record originally listed six — `Idle`, `Working`,
+> `NeedsInput`, `Finished`, `Failed`, `Cancelled` — copied from
+> [`01-definition.md`](../design/01-definition.md)'s state diagram. That diagram predates
+> [0015](0015-three-kinds-of-needs-you.md)'s split of the pause kinds and
+> [0018](0018-attention-is-the-primary-signal.md)'s quiet band, so it under-counted:
+> `readyForReview`, `queued` and `unavailable` were already CI-required marks with **no state in this
+> record**, which under rule 1 meant a surface had something to render and no state to render it
+> from. The reverse hole was worse — `idle` was listed here and had **no token at all**, so Avalonia
+> drew `Icon.Dot` for it, Flutter could not draw it, and the drift gate was blind to both because it
+> only walked token → toolkit. Naming the token file as the source rather than duplicating a list is
+> the fix: **one place, machine-checked, in both directions.**
+
+Three rules govern how the states are consumed:
 
 **1. Rendering is a projection, never a computation.** A surface may map a state to a mark, a word, a
 colour, or a layout. It may not *decide* the state. "Is anything running?", "does this have a

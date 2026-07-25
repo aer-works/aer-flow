@@ -25,7 +25,7 @@ artifact issues cite and the target-design spec rewrite is written against.
 
 ## Status today
 
-Baseline **2026-07-24** — **Fails 16 · Partial 2 · Passes 0.** The honest starting line the rebuild
+Baseline **2026-07-24** — **Fails 15 · Partial 3 · Passes 0.** The honest starting line the rebuild
 moves. Written against the target product; today's product fails most of these, which is the point.
 
 **J10–J18 were added 2026-07-24** from the M25 design corpus, whose nine claims it states are
@@ -139,21 +139,26 @@ object, the same state, not two disconnected views.
 
 ## J6 — Deny a tool and have it actually blocked
 
-**Status:** Fails — automated · safety
+**Status:** Partial — automated · safety
 
 When you withhold a capability from a piece of work, the work genuinely cannot use it — the permission
 is enforced, not merely displayed.
 
 - **Spans** — engine · *seam: permission grant ↔ enforcement*
 - **Passes when** — a capability the user has not granted cannot be exercised by the worker; an attempt
-  to use a denied tool is refused at the boundary and recorded — not silently allowed.
+  to use a denied tool is refused at the boundary and recorded — not silently allowed. **On every
+  adapter**, either by an enforcing flag or by refusing to build the dispatch at all.
 - **Path** *(illustrative)* — start work with a tool withheld · the worker attempts to use it · the
   attempt is refused and surfaced · the withheld capability never runs.
-- **Today** — **safety defect.** Grants are unenforced — a shell-denied session ran `hostname` and
-  returned the real value (#331). Arguably gates the rebuild. The same depth/count and turn ceilings
-  that bound worker spawning and worker dialogue (decisions 0001 / 0009) are the other half of this
-  rail.
-- **Serves** — #331, decision 0004
+- **Today** — **the original defect is fixed; the promise is not fully demonstrated.** #331 landed
+  `--disallowedTools` on `ClaudeWorkerAdapter`, so a withheld tool is now actively denied rather than
+  merely omitted from `--allowedTools`, and the engine leg is green. Two gaps remain: `agy` has no
+  deny-list flag, so `GeminiWorkerAdapter` fails closed by throwing
+  `PermissionGrantUnsupportedException` instead — correct per decision 0004, and **untested**; and the
+  end-to-end refusal (a live worker attempting the tool and being blocked) has never been run.
+  *This status was `Fails` for a day after #331 merged, with the engine test passing — the drift the
+  reconcile gate now runs in CI to catch (#489).*
+- **Serves** — #331, decisions 0004, 0022
 
 ## J7 — Lose the connection and get back to work
 

@@ -87,6 +87,12 @@ class _StatusMarkPainter extends CustomPainter {
     final primary = filled ? fill : stroke;
 
     switch (mark) {
+      // Idle: a solid disc — the state a room is created in, and the one it rests in. Filled rather
+      // than stroked on purpose (#489): Icon.Dot is a closed circle and Icon.Ring is a 240-degree
+      // arc, so as outlines the two differ only by a gap, which is not a silhouette difference at
+      // 16px in greyscale. A disc against an open arc is.
+      case 'dot':
+        canvas.drawCircle(at(8, 8), 5 * scale, primary);
       // An open ring — the static frame of a spinner. Matches Icon.Ring's arc: centred at (8,8)
       // with radius 5, starting at the top and sweeping 240 degrees, leaving the gap that stops it
       // reading as a plain circle.

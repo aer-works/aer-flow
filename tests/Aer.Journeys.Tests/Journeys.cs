@@ -110,10 +110,12 @@ public static class Journeys
                 "The broadcast path (#330, #348) is a cross-process/device concern — a real second surface."),
         ], [330, 348, 335]),
 
-        new("J6", "Deny a tool and have it actually blocked", "Fails — automated · safety",
+        new("J6", "Deny a tool and have it actually blocked", "Partial — automated · safety",
         [
-            new("engine — grant enforcement at the dispatch boundary", Runner.Engine, Coverage.DrivenRed,
-                "J6_DeniedToolEnforcementTests: a shell-denied grant must produce a dispatch that actively denies the tool (or fail closed), not merely omit it from --allowedTools. Red per decision 0004 / #331."),
+            new("engine — Claude grant enforcement at the dispatch boundary", Runner.Engine, Coverage.DrivenGreen,
+                "J6_DeniedToolEnforcementTests: a shell-denied grant produces a dispatch that actively denies the tool. Green since #331 landed --disallowedTools on ClaudeWorkerAdapter (2026-07-23) — this leg's declared status said Fails for a day afterwards, which is the drift #489 wired the reconcile gate into CI to catch."),
+            new("engine — Gemini fails closed when a denial is unenforceable", Runner.Engine, Coverage.Pending,
+                "agy has no deny-list flag, so GeminiWorkerAdapter throws PermissionGrantUnsupportedException rather than running under-enforced — decision 0004's fail-closed floor. Correct and untested: J6's test only exercises ClaudeWorkerAdapter."),
             new("live worker actually refuses the tool", Runner.Attest, Coverage.HumanAttested,
                 "The end-to-end refusal (worker attempts the tool, is blocked, it's recorded) needs a live vendor — a smoke check."),
         ], [331]),

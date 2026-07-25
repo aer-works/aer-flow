@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Aer.DesignTokens;
 
 namespace Aer.Architecture.Tests;
@@ -98,6 +99,83 @@ public class DesignTokenDriftTests
                 """);
         }
     }
+
+    /// <summary>
+    /// The inverse of <see cref="EveryStatusMarkIsDrawnByBothToolkits"/> (#489): no toolkit may define
+    /// a status mark the token file does not name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The forward check walks tokens → toolkits, so it can only see marks someone declared. A mark
+    /// that exists in <em>one</em> toolkit and in no token is invisible to it — and that is not
+    /// hypothetical: <c>Icon.Dot</c> was defined in Avalonia and used for the idle/pending state, had
+    /// no Flutter counterpart, and appeared in no token. The desktop drew a mark the phone could not
+    /// draw, for a state <c>0020</c> lists as canonical, and the gate built to prevent exactly this
+    /// class of divergence (#458, #461) could not see it.
+    /// </para>
+    /// <para>
+    /// A toolkit-only mark is how the design system forks: whoever adds it is looking at one platform,
+    /// it renders correctly there, and the other silently falls back or blanks. Requiring every drawn
+    /// mark to be declared in <c>design/tokens.json</c> forces the declaration first, which is what
+    /// makes the forward check meaningful.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoToolkitDefinesAStatusMarkTheTokenFileDoesNotName()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var tokensJson = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.TokensPath));
+        var declared = TokenGenerator.StatusMarks(tokensJson)
+            .Select(m => m.GeometryKey)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(declared);
+
+        var avaloniaIcons = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.AvaloniaIconsPath));
+
+        // Only the status ramp's own marks are in scope. Action glyphs (Icon.Refresh, Icon.Copy, …)
+        // are not statuses and are deliberately not token-driven — the rule is about the accessibility
+        // contract in 0006, which binds states, not controls. The status marks are exactly the keys the
+        // generator emits, so anything matching the same shape but absent from the token file is drift.
+        var drawnStatusKeys = Regex
+            .Matches(avaloniaIcons, "x:Key=\"(Icon\\.[A-Za-z]+)\"")
+            .Select(m => m.Groups[1].Value)
+            .Where(key => !NonStatusGlyphs.Contains(key))
+            .ToList();
+
+        var orphans = drawnStatusKeys.Where(key => !declared.Contains(key)).ToList();
+
+        Assert.True(
+            orphans.Count == 0,
+            $"""
+            {TokenGenerator.AvaloniaIconsPath} defines status geometry the token file does not name:
+              {string.Join("\n  ", orphans)}
+            Every status mark must be declared in {TokenGenerator.TokensPath} so the forward check can
+            require both toolkits to draw it. If one of these is an action glyph rather than a status
+            mark, add it to {nameof(NonStatusGlyphs)} in this test with a note saying why.
+            """);
+    }
+
+    /// <summary>
+    /// Keys in <c>Icons.axaml</c> that are navigation or action glyphs rather than status marks, and so
+    /// are correctly absent from the status ramp.
+    /// </summary>
+    /// <remarks>
+    /// Listed explicitly rather than pattern-matched, and that friction is the point: adding a glyph
+    /// means answering "is this a state or a control?" out loud. #461 is why the question matters — a
+    /// state wearing an action's icon is a trap, and the stale-list state had borrowed
+    /// <c>Icon.Refresh</c>, the Retry <em>action</em>'s glyph, inviting a click that would do nothing.
+    /// </remarks>
+    private static readonly HashSet<string> NonStatusGlyphs = new(StringComparer.Ordinal)
+    {
+        "Icon.Refresh",
+        "Icon.Home",
+        "Icon.Task",
+        "Icon.Author",
+        "Icon.Folder",
+        "Icon.Remote",
+        "Icon.Chat",
+        "Icon.Fleet",
+    };
 
     /// <summary>
     /// The first differing line, both sides. A whole-file diff in an assertion message is unreadable;
