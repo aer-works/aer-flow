@@ -1356,7 +1356,37 @@ is a file that does not exist, not the model's account.
 
 **So it is uncircumventable — no permission mode approves it.** That is the property
 `requiresUserInteraction` has, achieved through a mechanism that is in the MCP specification rather
-than a vendor's `_meta` namespace, so it holds for any spec-conformant worker.
+than a vendor's `_meta` namespace.
+
+#### And it is portable — **measured on agy, not inferred from claude**
+
+Writing "so it holds for any spec-conformant worker" off the claude run would have been an
+inference, and the neighbouring mechanism already falsifies that exact inference: `force_ask`
+survives `--dangerously-skip-permissions` on claude and **collapses** on agy
+(`agy.force-ask-defeated-by-skip`). Two vendors disagreeing about what a bypass flag bypasses is
+the norm in this audit, so portability had to be run.
+
+`pixi run vendor-verify -- --only agy.elicitation`. agy has no `--mcp-config`; the server is
+registered workspace-locally in `.agents/mcp_config.json` (`agy__mcp.md:73`), so nothing global
+was touched.
+
+| arm | client's answer | gated tool body ran |
+|---|---|---|
+| `--dangerously-skip-permissions` | `cancel` | **no** |
+| `--mode accept-edits` + skip-permissions | `cancel` | **no** |
+
+agy declares the capability with *more* sub-structure than claude —
+`'elicitation': {'form': {}, 'url': {}}` against claude's `'elicitation': {}` — and honours it in
+the mode that defeats its own `force_ask`. **Elicitation is the one gate primitive measured
+uncircumventable on both vendors.**
+
+A note on how the first run of this check failed, because it is the same lesson a third time: both
+arms are deliberately *permissive*. A default `agy -p` arm returned INCONCLUSIVE — the control tool
+never ran, because agy auto-denies an ungated tool headless (`agy.fails-closed-headless`). That arm
+would have measured agy's headless deny, which was already known, and said nothing whatever about
+elicitation. `CAPS.json` is what made the difference diagnosable: written at `initialize`, before
+any tool call, it separates *the server never loaded* from *the server loaded and agy declined the
+tool*. Without it the run looks like a broken instrument.
 
 **Read the answer column before designing on it.** Every arm answered `cancel` — because under `-p`
 there is no human to ask, and the client says no on their behalf. Elicitation headless is a

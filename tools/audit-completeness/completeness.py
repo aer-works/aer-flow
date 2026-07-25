@@ -146,16 +146,21 @@ def step6_decisions():
 
     # A row is only a disposition if it names the decision AND one of the vocabulary words AND
     # gives a reason. Mentioning "0015" somewhere in a table is not a disposition.
+    #
+    # The reason is read from a FIXED COLUMN, not from "whatever prose is left in the row".
+    # Measuring the whole row would let any wide column satisfy it -- a title column alone
+    # ("A pause asks for one of three things") clears any length bar while saying nothing about
+    # why the decision survived the audit. Required shape, three columns exactly:
+    #
+    #     | 0015 | rewritten | <why, in the auditor's own words> |
     rows = {}
     for raw in sweep.splitlines():
-        m = re.match(r"^\s*\|\s*\[?(\d{4})\]?", raw)
-        if not m:
+        cells = [c.strip() for c in raw.strip().strip("|").split("|")]
+        if len(cells) < 3 or not re.fullmatch(r"\[?(\d{4})\]?.*", cells[0]):
             continue
-        low = raw.lower()
-        verb = next((v for v in DISPOSITIONS if v in low), None)
-        # reason = prose beyond the number and the verb; a bare "| 0015 | unaffected |" is not one
-        reason = len(re.sub(r"[|\[\]()\d\s-]", "", low).replace(verb or "", "")) >= 20
-        rows[m.group(1)] = (verb, reason)
+        num = re.match(r"\[?(\d{4})", cells[0]).group(1)
+        verb = next((v for v in DISPOSITIONS if v == cells[1].strip("* ").lower()), None)
+        rows[num] = (verb, len(cells[2]) >= 25)
 
     bad = []
     for f in files:
