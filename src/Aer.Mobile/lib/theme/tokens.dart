@@ -30,6 +30,8 @@ class AerTokens {
   static const Color textSecondaryDark = Color(0xFF94A3A8);
   static const Color textMutedLight = Color(0xFF88969C);
   static const Color textMutedDark = Color(0xFF6C7A80);
+  static const Color statusIdleLight = Color(0xFF88969C);
+  static const Color statusIdleDark = Color(0xFF6C7A80);
   static const Color statusWorkingLight = Color(0xFF1F6FA8);
   static const Color statusWorkingDark = Color(0xFF5AB0E0);
   static const Color statusNeedsInputLight = Color(0xFF8F5E0E);
@@ -82,6 +84,7 @@ class AerTokens {
 
 /// The five states from #334's split.
 enum AerStatus {
+  idle,
   working,
   needsInput,
   readyForReview,
@@ -102,6 +105,7 @@ enum AerStatus {
 /// StreamGeometry of the matching name.
 extension AerStatusPresentation on AerStatus {
   String get mark => switch (this) {
+        AerStatus.idle => 'dot',
         AerStatus.working => 'ring',
         AerStatus.needsInput => 'bubble',
         AerStatus.readyForReview => 'eye',
@@ -116,6 +120,7 @@ extension AerStatusPresentation on AerStatus {
   /// both toolkits obey one instruction - Avalonia's call sites once set only Stroke while this
   /// painter filled the same closed path, drawing one status two different ways (#461).
   bool get markFilled => switch (this) {
+        AerStatus.idle => true,
         AerStatus.working => false,
         AerStatus.needsInput => true,
         AerStatus.readyForReview => false,
@@ -127,6 +132,7 @@ extension AerStatusPresentation on AerStatus {
       };
 
   String get label => switch (this) {
+        AerStatus.idle => 'Idle',
         AerStatus.working => 'Working',
         AerStatus.needsInput => 'Needs input',
         AerStatus.readyForReview => 'Ready for review',
@@ -139,6 +145,7 @@ extension AerStatusPresentation on AerStatus {
 
   Color color(Brightness brightness) => brightness == Brightness.dark
       ? switch (this) {
+        AerStatus.idle => AerTokens.statusIdleDark,
         AerStatus.working => AerTokens.statusWorkingDark,
         AerStatus.needsInput => AerTokens.statusNeedsInputDark,
         AerStatus.readyForReview => AerTokens.statusReadyForReviewDark,
@@ -149,6 +156,7 @@ extension AerStatusPresentation on AerStatus {
         AerStatus.unavailable => AerTokens.statusUnavailableDark,
         }
       : switch (this) {
+        AerStatus.idle => AerTokens.statusIdleLight,
         AerStatus.working => AerTokens.statusWorkingLight,
         AerStatus.needsInput => AerTokens.statusNeedsInputLight,
         AerStatus.readyForReview => AerTokens.statusReadyForReviewLight,

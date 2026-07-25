@@ -10,6 +10,7 @@ namespace Aer.Ui.Core;
 /// <summary>The five states from #334's split — the vocabulary every status-rendering surface uses.</summary>
 public enum AerStatus
 {
+    Idle,
     Working,
     NeedsInput,
     ReadyForReview,
@@ -36,6 +37,7 @@ public static class AerStatusPresentation
     /// </summary>
     public static string MarkResourceKey(this AerStatus status) => status switch
     {
+        AerStatus.Idle => "Icon.Dot",
         AerStatus.Working => "Icon.Ring",
         AerStatus.NeedsInput => "Icon.Bubble",
         AerStatus.ReadyForReview => "Icon.Eye",
@@ -50,6 +52,7 @@ public static class AerStatusPresentation
     /// <summary>The status in words — rendered alongside the mark, never replaced by it.</summary>
     public static string Label(this AerStatus status) => status switch
     {
+        AerStatus.Idle => "Idle",
         AerStatus.Working => "Working",
         AerStatus.NeedsInput => "Needs input",
         AerStatus.ReadyForReview => "Ready for review",
@@ -69,6 +72,7 @@ public static class AerStatusPresentation
     /// </summary>
     public static string ColorResourceKey(this AerStatus status) => status switch
     {
+        AerStatus.Idle => "StatusIdleColor",
         AerStatus.Working => "StatusWorkingColor",
         AerStatus.NeedsInput => "StatusNeedsInputColor",
         AerStatus.ReadyForReview => "StatusReadyForReviewColor",
@@ -88,6 +92,7 @@ public static class AerStatusPresentation
     /// </summary>
     public static bool MarkIsFilled(this AerStatus status) => status switch
     {
+        AerStatus.Idle => true,
         AerStatus.Working => false,
         AerStatus.NeedsInput => true,
         AerStatus.ReadyForReview => false,

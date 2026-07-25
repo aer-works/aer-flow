@@ -72,7 +72,7 @@ plainly), **Consequences** (what this makes easy, what it makes hard, what it ob
 | [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
 | [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
 | [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph (a step's contents added by 0025) | accepted |
-| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval | proposed |
+| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval | accepted |
 | [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
 | [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices (its effort-naming clause **corrected by 0023**) | accepted, except that clause |
 | [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide | accepted |
