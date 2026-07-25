@@ -40,6 +40,5 @@ public sealed record WorkerBindingConfigEntry(
     string? WorkingDirectory = null,
     string? SessionId = null,
     bool ResumeSession = false,
-    bool MinimalOverhead = false,
     bool StreamJson = false,
     string? LogFilePath = null);

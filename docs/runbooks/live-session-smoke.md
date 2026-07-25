@@ -25,12 +25,17 @@ of the remaining five that are actually live-verifiable in automated form:
   compact check does. Exercise manually: start a session with `claude`, send one turn, then
   `POST /api/sessions/send` with `Adapter: "gemini"` and confirm the response references turn 1's
   content.
-- **Minimal-overhead (`--bare`) latency comparison** — not currently possible at all, automated or
-  manual, without a code change: `InteractiveSessionMaterializer.Materialize` hardcodes
-  `MinimalOverhead: true` for every interactive session (`InteractiveSessions.cs:115`), and neither
-  `StartSessionRequest` nor `SendSessionMessageRequest` exposes a way to override it. A real
-  comparison needs a temporary adapter-level or request-level toggle added first — flagged here as a
-  known gap in the verification gate itself, not silently worked around.
+- **Minimal-overhead (`--bare`) latency comparison** — **removed, not deferred (#521).** `--bare` and
+  the `MinimalOverhead` flag no longer exist. The flag suppressed hooks and MCP servers even when a
+  hook was passed explicitly via `--settings`, which makes it incompatible with the `PreToolUse` gate
+  0029 requires on every spawned worker; it also skipped the keychain reads subscription OAuth lives
+  in, so it failed with "Not logged in" against the only auth path this product supports. There is
+  no latency comparison to run.
+
+  Worth recording how long this sat wrong: the entry above claimed `Materialize` "hardcodes
+  `MinimalOverhead: true`" while the code set it `false`, and a doc comment on `LiveSessionSmokeTest`
+  said the same. Two places asserting the opposite of one line of code, neither load-bearing enough
+  for anyone to check.
 
 ## Prerequisites
 

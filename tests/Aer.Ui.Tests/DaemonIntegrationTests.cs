@@ -833,7 +833,6 @@ public class DaemonIntegrationTests : IAsyncLifetime
             WorkingDirectory: null,
             TurnCount: 1,
             SafetyCeiling: InteractiveSessionMaterializer.DefaultSafetyCeiling,
-            MinimalOverhead: false,
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
             Turns: [new SessionTurn(0, "claude", "hello", "hi there", DateTimeOffset.UtcNow, false, false)]);

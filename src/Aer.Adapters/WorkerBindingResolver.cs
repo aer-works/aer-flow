@@ -68,7 +68,7 @@ public static class WorkerBindingResolver
             var invocation = new WorkerInvocation(
                 entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant,
                 workingDirectory, bindingsFileDirectory, entry.SessionId, entry.ResumeSession,
-                entry.MinimalOverhead, entry.StreamJson, entry.LogFilePath);
+                entry.StreamJson, entry.LogFilePath);
             var target = adapter.Resolve(invocation, entry.Contract);
 
             if (onWorkerStdoutLine is not null)

@@ -18,7 +18,6 @@ public class ChatViewModelTests
         WorkingDirectory: null,
         TurnCount: turns.Length,
         SafetyCeiling: 100,
-        MinimalOverhead: true,
         CreatedAt: DateTimeOffset.UtcNow,
         UpdatedAt: DateTimeOffset.UtcNow,
         Turns: [.. turns]);
