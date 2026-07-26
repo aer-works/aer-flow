@@ -1,32 +1,22 @@
 # Vendor coverage register — what we have read, what we have verified, what we have not
 
-**Purpose: mark every gap explicitly**, so that "we didn't check" is never mistaken for "it isn't
-there". That mistake produced twelve corrections in a single session; this file exists so the next one
-is visible before it becomes a decision.
+**Purpose: mark every gap explicitly**, so "we didn't check" is never mistaken for "it isn't there."
 
 Companion to [`vendor-doc-audit.md`](vendor-doc-audit.md) (the findings) and
-[`vendor-capabilities.md`](vendor-capabilities.md) (the reference). Started 2026-07-24 against
-`claude` 2.1.220 and `agy` 1.1.7.
+[`vendor-capabilities.md`](vendor-capabilities.md) (the reference), against `claude` 2.1.220 and
+`agy` 1.1.7.
 
-## How coverage is established (2026-07-25)
+## How coverage is established
 
-Page-at-a-time reading could not cover ~250 pages, and the summarizing fetch that a bulk read
-implies is lossy — it is what corrupted the first `defer` reading. **Both vendors publish a
-machine-readable index**, so the corpus is mirrored locally and read from source instead:
+Both vendors publish a machine-readable index, mirrored locally and read from source rather than
+page-at-a-time (a summarizing fetch is lossy — see `documentation-lessons.md` #16):
 
 - **`claude`** — `https://code.claude.com/docs/llms.txt`, **172 pages**, each fetchable as raw `.md`.
-- **`agy`** — `https://antigravity.google/llms.txt` (exists; previously unknown) and
-  `sitemap.xml`, **77 doc pages** — more than the ~60 this register originally assumed. No `.md`
-  variant, but pages are server-rendered, so `<main>` extraction preserves headings, code, tables.
-
-**Breadth and depth are separated rather than traded off.** Every finding that changed a decision
-was one sentence inside a large page ("Bare mode skips OAuth and keychain reads"), and those
-sentences share a grammar — *skips, only, cannot, must, requires, before v, will become*. Harvesting
-that class across the whole corpus gives **100% page coverage at ~1% of the bytes**; depth-reading
-then goes only where they cluster on an open question.
+- **`agy`** — `https://antigravity.google/llms.txt` + `sitemap.xml`, **77 doc pages**, server-rendered
+  (`<main>` extraction preserves headings, code, tables).
 
 `pixi run vendor-survey` (see `tools/vendor-survey/`) rebuilds this: **249 pages / 7.0 MB →
-1,475 unique constraint sentences**, tagged against AER's open questions, with page+line provenance,
+1,475 unique constraint sentences**, tagged against AER's open questions with page+line provenance,
 plus a ledger giving **every page a disposition** so coverage is checkable rather than asserted.
 
 | disposition | pages | meaning |
@@ -35,15 +25,13 @@ plus a ledger giving **every page a disposition** so coverage is checkable rathe
 | `SCAN-ONLY` | 123 | touches an open question but thin; constraints harvested |
 | `NO-SIGNAL` | 7 | no open-question vocabulary at all |
 
-All 1,475 constraint sentences have been read across nine topics. **The per-page `·` tables below are
-superseded by the ledger** and are kept only for the pages whose *contents* are summarized here.
+**The per-page `·` tables below are superseded by the ledger** and are kept only for the pages whose
+*contents* are summarized here.
 
-**A doc page changing is a reason to re-verify, not a reason to believe the new page.** This audit
-found four vendor statements to be wrong and two that contradicted each other, so every **V** below
-rests on a run, not on a sentence. Those runs are no longer disposable: `pixi run vendor-verify`
-(see `tools/vendor-verify/`) re-runs them, each with a control arm and each asserting on a sentinel
-file rather than on a model's account of what it did. A `FAIL` there means a behaviour a decision
-rests on has moved.
+**A doc page changing is a reason to re-verify, not a reason to believe the new page.** Every **V**
+below rests on a run, not on a sentence. Those runs are re-runnable: `pixi run vendor-verify` (see
+`tools/vendor-verify/`) re-runs them, each with a control arm, asserting on a sentinel file rather
+than a model's account of what it did. A `FAIL` means a behaviour a decision rests on has moved.
 
 ## Status legend
 
@@ -58,7 +46,7 @@ rests on has moved.
 
 ## A. `claude` — documentation coverage
 
-Index: `https://code.claude.com/docs/llms.txt` — **172 pages, all mirrored and swept** (`pixi run vendor-survey`). The tier lists below record the ORIGINAL triage and are kept because that triage was itself wrong: **23 of the 53 Tier 3 pages** — dismissed as "probably not relevant" — score `PENDING-DEPTH`, including `authentication` and `changelog`. Trust the ledger, not the tiers.
+Index: `https://code.claude.com/docs/llms.txt` — **172 pages, all mirrored and swept** (`pixi run vendor-survey`). The tier lists below are a manual triage and do not track the ledger's `PENDING-DEPTH` scoring exactly — **trust the ledger, not the tiers**, when the two disagree.
 
 ### Read
 
@@ -133,13 +121,12 @@ Index: `https://antigravity.google/llms.txt` + `sitemap.xml` — **77 doc pages,
 
 ### Not read — Tier 1, load-bearing
 
-`R` **`/docs/hooks`** — **read 2026-07-24.** `agy` documents `PreToolUse` with
-`allow`/`deny`/`ask`/`force_ask`, five events, `hooks.json` in `.agents/` or `~/.gemini/config/`.
-**The gate design may be symmetric after all.** CLI support unverified — a guessed schema did not
-fire; see the audit for the four candidate reasons. **Still needed: the real `hooks.json` schema.**
-`R` **`/docs/sdk/overview`** — **read 2026-07-24.** `pip install google-antigravity`. Per-turn and
-cumulative token usage, streamed structured events, Pydantic-typed results, `deny()`/`allow()`/
-`ask_user()`, headless. **Answers all three of #508's open questions.**
+`R` **`/docs/hooks`** — `agy` documents `PreToolUse` with `allow`/`deny`/`ask`/`force_ask`, five
+events, `hooks.json` in `.agents/` or `~/.gemini/config/`. **The gate is symmetric across vendors**
+(confirmed working, see `vendor-doc-audit.md`).
+`R` **`/docs/sdk/overview`** — `pip install google-antigravity`. Per-turn and cumulative token
+usage, streamed structured events, Pydantic-typed results, `deny()`/`allow()`/`ask_user()`, headless.
+Evaluated and rejected as an integration path — API-key-only, see `vendor-doc-audit.md` § SDK.
 `·` `cli/settings` — full settings reference · `cli/modes` — execution modes ·
 `cli/subagents` · `cli/projects` · `cli/credits` · `cli/conversations` · `cli/artifacts` ·
 `cli/using` · `cli/features` · `docs/permissions` (product-level) · `docs/agent-settings` ·
@@ -182,18 +169,14 @@ side.
 
 ### Documented but **not verified** — the verification backlog
 
-**Updated 2026-07-25 (#527).** The documentation sweep produced roughly 40 new claims while 15 were
-verified, so this list **grew** during the audit. That is the expected dynamic and worth stating
-plainly: **reading generates claims faster than verification consumes them.** Anything here is a
-vendor assertion, and this audit has already found four vendor statements to be wrong.
-
-Verified items move to the "Verified by running it" section of
-[`vendor-doc-audit.md`](vendor-doc-audit.md). Nothing is deleted from here without either a run or
-a reason it cannot be run. **Struck rows are re-runnable via `pixi run vendor-verify`** — that is
-what makes striking one safe across a vendor version bump.
+Reading generates claims faster than verification consumes them — anything here is a vendor
+assertion, not yet run. Verified items move to the "Verified by running it" section of
+[`vendor-doc-audit.md`](vendor-doc-audit.md). Nothing is deleted from here without either a run or a
+reason it cannot be run. **Struck rows are re-runnable via `pixi run vendor-verify`** — that is what
+makes striking one safe across a vendor version bump.
 
 **Two rows turned out to be wrong as written**, not merely unverified. Both are corrected in place
-rather than deleted, so the wrong version does not get re-derived by a later reader.
+rather than deleted, so the wrong version does not get re-derived by a later reader (`documentation-lessons.md` #14).
 
 #### A. Shapes a decision currently in flight
 
@@ -297,53 +280,34 @@ read-on-write · Windows path normalisation
 
 ---
 
-## D. Gaps that are not about the vendors
+## D. Gaps that are not about the vendors — current state, not a snapshot
 
-These are the ones most likely to be missed, because the audit has been pointed outward.
+1. **Every finding here is Windows-only.** AER Flow ships cross-platform, and the sandbox correction
+   is the proof this matters: a platform-scoped observation was generalised into a product claim
+   once already. **Nothing has been verified on macOS or Linux.**
 
-1. **Every finding is Windows-only.** `vendor-capabilities.md` was established entirely on this host.
-   AER Flow ships cross-platform. The sandbox correction is the proof that this matters: a
-   platform-scoped observation was generalised into a product claim. **Nothing has been verified on
-   macOS or Linux.**
+2. **`src/` audit coverage against corrected vendor reality is partial, not swept.** #521, #529 and
+   others were found by looking, each in the first file checked for that specific issue — that is
+   not evidence the rest of `ClaudeWorkerAdapter`/`GeminiWorkerAdapter`/the dialogue worker presets
+   are clean, only that nobody has looked comprehensively.
 
-2. **The code has never been audited against any of this.** Twelve corrections landed in docs and
-   decisions; `src/` was written against the same wrong premises. #521 is the first defect found by
-   looking, and it was found in the first file checked — it should not be assumed to be the only one.
-   Unaudited: `ClaudeWorkerAdapter`, `GeminiWorkerAdapter`, the dialogue worker presets, and anything
-   that encodes a permission or capability assumption.
+3. **Every decision's disposition against measured vendor reality is tracked, and current** — see
+   [`decision-audit.md`](decision-audit.md), which covers all decisions on disk and is enforced by
+   `pixi run audit-completeness` rather than restated here.
 
-3. **The decisions have not been swept.** There are 28 records. This session touched 0004, 0015, 0023
-   and 0026, each reactively. **Nobody has read 0001–0028 against the corrected vendor reality**, so
-   the count of affected decisions is unknown rather than four.
+4. **Vendor drift during a run is unhandled.** Both CLIs have shipped a new version mid-session
+   before (`agy` 1.1.6→1.1.7, `claude` 2.1.219→2.1.220, same day). What AER does when the binary
+   changes under a running room is not designed; `vendor-check` only detects drift between probe
+   runs, not mid-run.
 
-4. **Vendor drift during a run is unhandled.** Both CLIs shipped a new version *inside this session*
-   (`agy` 1.1.6→1.1.7, `claude` 2.1.219→2.1.220). What AER does when the binary changes under a
-   running room is not designed, and `vendor-check` only detects drift between probe runs.
+5. **`agy`'s documentation corpus is thinner than claude's** (77 pages / 310 KB vs 172 pages / 7 MB).
+   Both are now fully swept by `pixi run vendor-survey`, so this is a volume asymmetry in the source
+   material, not a coverage gap on AER's side — but a symmetry claim about the two vendors is weaker
+   evidence on the `agy` side for exactly this reason.
 
-5. **`agy`'s knowledge deficit is a design bias.** 5 pages read versus 9 much deeper ones for claude,
-   and `agy`'s hooks page is unread entirely. Any symmetry claim about the two vendors is currently
-   unsupported.
+## E. Recomputing coverage
 
----
-
-## E. Order of work
-
-Item 1 is **done** (#527): both indexes found, both corpora mirrored, all 1,110 constraint sentences
-read. The gate-symmetry question it existed to answer is **settled, negatively** — see
-`vendor-doc-audit.md`. Remaining, re-ordered by what the reading changed:
-
-1. **Depth-read where constraints still cluster** — `sub-agents`, `hooks`, `agent-view`, `mcp`, and
-   `errors`. Then mine `changelog` (200 constraints, 493 KB): the richest and noisiest source, and
-   the one that doubles as a **failure-mode list for AER's own supervisor**.
-2. **Verify the "documented but not verified" list** below, in the order decisions depend on it.
-3. **Audit `src/` against the corrected reality** (#521 found the first defect; sweep the rest).
-   Now includes: does anything sum top-level `usage.output_tokens` and thereby under-report fan-out?
-4. **Sweep 0001–0028.** 0015 needs rewriting outright — its gate mechanism, its symmetry assumption,
-   and its `defer`-based durability all changed. 0018's notify hook is narrower than assumed.
-5. **Establish cross-platform coverage**, or state plainly that every claim is Windows-scoped.
-   Newly concrete: claude's hooks run through **Git Bash on Windows** and historically failed
-   *silently* there, and Windows is the primary development host.
-6. **Re-run `pixi run vendor-survey` and `pixi run vendor-verify` on every vendor version bump.**
-   The staleness gate already fires on a version change; the survey re-reads the corpus and reports
-   which pages moved, and the verifier re-runs the behaviours the decisions actually rest on. Both
-   exist so re-establishing coverage is a command rather than a fresh manual read.
+`pixi run vendor-survey` re-reads both corpora and reports which pages moved since the last run.
+`pixi run vendor-verify` re-runs the behaviours decisions actually rest on, each with a control arm.
+Both exist so re-establishing coverage is a command, not a fresh manual read — run either on a
+vendor version bump, which `pixi run vendor-check` (free) detects.
