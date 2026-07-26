@@ -10,6 +10,11 @@ Date: 2026-07-22
 > governs the moment a permission is asked, not what a permission bounds. The body is left as
 > written.
 
+> **Amendment, 2026-07-26.** [0034](0034-project-permission-ceiling-lives-in-aers-own-config.md)
+> resolves the "obliges us to" item below about where the project ceiling is stored and first
+> presented: AER's own app-level config, keyed by project path — never a file inside the project's
+> own directory. The body is left as written.
+
 ## Context
 
 Permissions today are a single flat `PermissionGrant` per worker binding, and they are **not

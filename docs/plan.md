@@ -78,6 +78,15 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0028](decisions/0028-no-permissive-control-is-the-default.md) | **Visual rank is a decision** — no permissive control is ever the visual default, and a genuine either/or carries equal weight. Written because the corpus's own permission mockup drew `Allow once` as the accent-filled primary, training the reflex 0022 exists to prevent. Amends 0006. |
 | [0029](decisions/0029-the-gate-is-three-mechanisms.md) | **The gate is three mechanisms with three populations** — a `PreToolUse` hook covers *vendor* tools and is mandatory on every worker (an MCP gate bounds nothing the model can reach through `Bash`, #529); a blocking `tools/call` is the only mechanism that *holds* rather than refuses; `elicitation` is an uncircumventable refusal measured on **both** vendors. A hook's `ask` survives `auto` mode, so an operator's `auto` no longer erases AER's permission surface. Amends 0015's mechanism guidance. |
 | [0030](decisions/0030-aer-is-its-own-notifier.md) | **AER is its own notifier** — `PermissionRequest` and `Notification` are both silent under `-p`, so no vendor event announces a pause. AER hosts the gate, therefore already holds the pause at ask-time and notifies from that act; the notification path is vendor-independent by construction. Supplies the signal source 0018 assumed. |
+| [0031](decisions/0031-skills-are-account-wide.md) | **Skills are account-wide** — one library per person, available in every room regardless of which directory or repo that room's worker is pointed at. No project-level skill store in M27. Resolves an open question 0010 explicitly left for M26. |
+| [0032](decisions/0032-room-orchestrator-is-mandatory.md) | **A room always has exactly one orchestrator** — the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned first. Authority is granted by an auto-bound Skill, the same mechanism 0033 uses for every other worker capability. |
+| [0033](decisions/0033-skills-attach-directly-no-persona.md) | **Skills attach directly to a worker; there is no Persona object** — zero, one, or several at once, with nothing to name, save, or diverge from. Replaces the M27 design pass's Persona proposal, which layered a second object on top of Skill for no capability Skill didn't already provide. |
+| [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) | **A project's permission ceiling lives in AER's own app-level config, keyed by project path** — never a file inside the project's own directory. First presented as a trust prompt on first use of a folder; reachable afterward from a global Settings "Projects" list. Resolves an obligation 0004 explicitly left open. |
+| [0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | **`aer yield` is a structured MCP tool call, not a text sentinel** — replaces `Aer.Workers.Dialogue`'s current substring-match stop condition. Reuses 0029's measured-but-unbuilt MCP mechanism; needs none of 0029's held-open complexity, since nothing here waits on a human. Real, unbuilt infrastructure (`#585`), and the Dialogue shape blocks on it. |
+| [0036](decisions/0036-shape-is-rendering-not-a-second-state-machine.md) | **A room's shape is Flow's existing state, rendered differently — not a second state machine.** "No step running" already is Conversation; a Dialogue collapsing on interruption is the existing `CancellationRequested` mechanism; the one new primitive (a mid-execution gate request) rides on 0035's MCP server, not a separate mechanism. |
+| [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) | **A permission answer must never share the per-session turn lock a pending turn already holds** — the existing `/api/tasks/decide` pattern (correlate by id, bypass the turn lock entirely) already shows how; resolves #393↔#445 as a design constraint, since the component in question isn't built yet to measure. |
+| [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) | **A reviewer's verdict is evidence for a human decision, never the decision itself** — [0019](decisions/0019-consulting-is-not-deciding.md) already forecloses an auto-deciding implementer/reviewer loop; the workflow shape (implement → review, `PausePoint(ReadyForReview)`) needs no new primitive, but the terminal `aer decide` call stays human, always. Corrects a session memory that had concluded otherwise. |
+| [0039](decisions/0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md) | **A dialogue turn resumes the vendor's own session; it does not resend the transcript** — `#581`'s live failure and `#582`'s cost/latency problem trace to the same design (full-history resend forced a file-read instruction both vendors break on). Adopting `Aer.Adapters`' own session-continuation mechanism fixes both and retires the `{PROMPT_FILE}` workaround `#580` shipped. |
 
 ## The completion bar: journeys
 
@@ -133,11 +142,22 @@ single-vendor tool can copy.
 
 **Demonstrated when** two subscriptions act in one room on plan auth with no key configured anywhere;
 two workers of the *same* vendor run at different models and efforts, in AER's own vocabulary
-([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md)); a fact one vendor established is
-used by another later in the same room ([0016](decisions/0016-memory-is-room-owned.md)); a document
-authored by one vendor and edited by another carries a diff between their versions
-([0021](decisions/0021-artifacts-are-files.md)); and one question put to every worker returns answers
-side by side ([0024](decisions/0024-commands-are-namespaced.md)).
+([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md)); two same-vendor workers are each
+addressed unambiguously via a sticky per-vendor instance handle (`@agy-1`/`@agy-2`); a worker attaches
+a skill and behaves accordingly, and the room's one orchestrator can be reassigned but never removed
+without a successor already holding the role
+([0031](decisions/0031-skills-are-account-wide.md)/[0032](decisions/0032-room-orchestrator-is-mandatory.md)/[0033](decisions/0033-skills-attach-directly-no-persona.md));
+a fact one vendor established is used by another later in the same room
+([0016](decisions/0016-memory-is-room-owned.md)); a document authored by one vendor and edited by
+another carries a diff between their versions ([0021](decisions/0021-artifacts-are-files.md)); one
+question put to every worker returns answers side by side
+([0024](decisions/0024-commands-are-namespaced.md)); and two workers debate to a bounded conclusion
+with no human turn in between (0003's Dialogue shape) — this last one is **blocked**, direction now
+decided for all three named prerequisites but none yet built: `#581`/`#582`'s mechanism redesign
+([0039](decisions/0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md),
+session continuation replacing full-history resend) and
+[0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md)'s `aer yield` (`#585`).
+No Dialogue-shape UI ships before all three land.
 
 **Depends on** M26 — a second worker is an escalation from a room that already works.
 
@@ -280,30 +300,31 @@ so.
 
 ## Open questions
 
-Genuinely undecided. Four earlier entries were closed by M25 and are recorded here as closed rather
-than deleted, because "we already answered that" is the cheapest thing for a plan to forget:
-directory-less rooms (#321, #331, #407 — a neutral scratch dir), the typeface (#453/#456 shipped
-Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits), and the claude/agy effort mapping
-(#572/#573 measured and shipped it; #498 is the remaining, still-open UI/adapter work, not a reopening
-of the question).
+Genuinely undecided. Entries closed since M25 are recorded here as closed rather than deleted,
+because "we already answered that" is the cheapest thing for a plan to forget:
 
-- **Does a room live in one folder forever?** Everything designed assumes one directory for life, and
-  work spanning two repositories is normal. `#472` found `--add-dir` on both CLIs, so disjoint folders
-  are feasible at the vendor level — this is a product question, not a capability one. Reopened rather
-  than closed; see #443. It changes the object model, not a screen.
-- **Whether AER's per-session turn lock tolerates a turn held open** while a human answers a
-  permission (#393 ↔ #445). The vendor half is measured; this half is not.
-- **Where a project's permission ceiling is stored and first presented** — 0004 sets the ceiling, not
-  its home; moves with #338.
+- Directory-less rooms (#321, #331, #407 — a neutral scratch dir).
+- The typeface (#453/#456 shipped Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits).
+- The claude/agy effort mapping (#572/#573 measured and shipped it; #498 is the remaining, still-open
+  UI/adapter work, not a reopening of the question).
+- Where a project's permission ceiling is stored (`#338` —
+  [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) settled it: AER's own
+  app-config, keyed by project path).
+- Whether the per-session turn lock tolerates a turn held open while a human answers a permission
+  (`#393` ↔ `#445` — [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) settled
+  it as a design constraint on the not-yet-built answer path, since there is no implementation yet to
+  measure).
+- Whether a delegated implementer/reviewer loop can run without a human calling `aer decide` (it never
+  was open — [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) found 0019 already
+  forecloses it: the workflow shape needs no new primitive, but the terminal
+  `PausePoint(ReadyForReview)` stays a human's own decision, always).
+
+- **A room lives in one directory for the M26–M30 horizon, deliberately.** `#472` found `--add-dir`
+  on both CLIs, so disjoint folders are feasible at the vendor level, and #443 tracks the idea — but
+  this is left out of scope on purpose rather than carried as a pending gap: revisit only on a real
+  demand signal, not as something blocking the current milestone set.
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
   how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
-- **Whether a delegated implementer/reviewer loop can run without a human calling `aer decide`.**
-  `DecisionType` (`Resume`/`Reject`/`RetryWithRevision`/`Supersede`) already exists and is exactly the
-  primitive such a loop needs, resolved via `aer decide` at a step's declared `PausePoint` — but
-  `PausePoint`'s own doc comment records every pause as awaiting *human* review/approval. Nothing in
-  the code enforces that; nothing has tried the alternative either. M27 territory ("more than one
-  model in the room"), not M26 — a second worker reviewing the first is the same escalation the rest
-  of that milestone is built on.
 
 ## Not in scope
 

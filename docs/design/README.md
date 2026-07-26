@@ -42,3 +42,33 @@ Extracted from the local build sources for each artifact (`*_src.html`), not re-
 the text as authored, minus the presentation layer. The artifacts rendered in the product's own Quiet
 palette and real subset fonts, which is why they were built as HTML rather than markdown; that
 styling is deliberately not preserved here, because the words are the part worth keeping.
+
+## Kept current, not frozen (added 2026-07-25; policy corrected 2026-07-26)
+
+The corpus was originally treated as a closed 2026-07-24 snapshot — each document opened with a
+blockquote saying so. That framing assumed implementation would soon overtake it, the way a decision
+record's own text stops changing once it ships. It hasn't: M27 is still design work, nothing here has
+been built, and a second parallel "M27 design corpus" directory turned out to be the wrong container —
+two competing sources of design intent is worse than one that keeps moving.
+
+**So this corpus is maintained in place** as later design passes add to, correct, and remove from it.
+
+**This is a single source of truth for current design intent, not an archive.** When a later pass
+supersedes or removes something, the corpus is rewritten to match — cleanly, not with a dated
+amendment blockquote left in place. A reader opening any of these seven documents should see what is
+currently true and nothing else; they should not have to pick through superseded passages to find it.
+This corrects the original 2026-07-25 version of this policy, which required every passage a decision
+record quotes verbatim to stay in place with an amendment note. That turned out to be unnecessary
+caution: a decision record that quotes corpus text as evidence
+([0028](../decisions/0028-no-permissive-control-is-the-default.md) is the clearest example) carries
+that quote **inside its own file**, permanently, independent of whatever the live corpus says later —
+editing the corpus does not change what the record already quoted. The corpus does not need to also
+preserve it.
+
+**Historical design intent belongs in a decision record, not in this corpus, and only when it's
+needed to explain the decision.** If understanding *why* something changed requires knowing what it
+used to say, that belongs in the record that made the change — write it there, as context, the way
+any other decision record explains what it's correcting. The corpus itself stays current.
+
+**Where a decision record and this corpus disagree, the record still wins** — and now that the corpus
+is expected to be rewritten promptly to match, that should be a transient state, not a standing one.

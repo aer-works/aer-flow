@@ -1,11 +1,12 @@
 # Interaction depth — what a room does under the surface
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> The 2026-07-24 material is unchanged from the artifact of the same name; where a decision
+> record and this document differ, **the record wins** — it is the reviewed extraction. Kept
+> because the records deliberately capture decisions, and this also holds screen
+> specifications, delights and demonstration criteria that are not decision-shaped and would
+> otherwise exist nowhere. See [../README.md](../README.md#kept-current-not-frozen-added-2026-07-25)
+> for why this corpus is maintained in place rather than staying a closed snapshot.
 
 ---
 
@@ -27,7 +28,7 @@ The founding rule: a worker being busy is never a reason you cannot act. Everyth
 
 Desktop · a worker is running and you keep typing
 
-aer-flow claude · working 2m antigravity +
+aer-flow claude · working 2m agy +
 
 you Rework the switcher so a new room shows up immediately.
 
@@ -55,34 +56,34 @@ The feature the room model exists for, and the one most likely to be under-built
 
 Desktop · redirecting a question at a gate
 
-aer-flow claude antigravity +
+aer-flow claude agy +
 
-antigravity · reviewing The picker path is not the only entry point — the CLI still registers a room only on success.
+agy · reviewing The picker path is not the only entry point — the CLI still registers a room only on success.
 
-Needs you ⋯ Apply antigravity's correction before continuing?
+Needs you ⋯ Apply agy's correction before continuing?
 Apply Skip Ask someone…
 
 Ask about this
 
 claude · in this room
 
-antigravity · in this room
+agy · in this room
 
 Bring in
 
-antigravity
+agy
 
 a second claude
 
 Include
 
-✓ antigravity's review
+✓ agy's review
 
 ✓ the diff
 
-claude · answering your question antigravity is right that the CLI path exists, but it registers through the same call — so the correction is unnecessary here and would double-register.
+claude · answering your question agy is right that the CLI path exists, but it registers through the same call — so the correction is unnecessary here and would double-register.
 
-Needs you · still waiting Apply antigravity's correction before continuing?
+Needs you · still waiting Apply agy's correction before continuing?
 Apply Skip Ask someone…
 
 Reply… ⏎
@@ -94,6 +95,13 @@ You choose what the asked worker sees. The turn that raised the question and its
 Bringing someone in is the same gesture as asking. A worker who is not yet in the room appears in the same menu; picking one adds them and puts the question to them in one action. That is how a one-worker room becomes a two-worker room in practice — not by a separate "manage participants" surface.
 
 This is a person's explicit choice, never inference. Nothing in the product reads the conversation to decide who should answer — a rule the engine holds absolutely, and this design honours by making routing a control you operate.
+
+Removing a worker mid-room gets its own control, in the room header rather than a separate
+surface: it runs two guardrails in sequence — stopping any in-flight execution via the real
+`InFlightExecutionRegistry.RequestCancellationAsync`, then refusing (with a clear reason, never a
+silent repair) if an active workflow step still depends on that worker, or if that worker is the
+room's current orchestrator ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)). See
+[02-screens.md](02-screens.md#the-calls-made-here) for the full sequence.
 
 ### Code and executions
 
@@ -126,7 +134,7 @@ Phone · the same three blocks, opened rather than inlined
 
 9:41 ▮▮▮
 
-‹ aer-flow claude + antigravity
+‹ aer-flow claude + agy
 
 claude Both lists now refresh through one call:
 C# · 5 lines Open
@@ -179,12 +187,12 @@ Workers produce files — a plan, a review, a patch. Those files are the product
 
 Desktop · an artifact produced, then handed to a different vendor
 
-aer-flow claude antigravity +
+aer-flow claude agy +
 
 claude Plan written.
 ◆ plan.md 4.1 KB · by claude · 2m ago
 
-you Have antigravity review the plan.
+you Have agy review the plan.
 ◆ plan.md attached
 
 plan.md
@@ -201,20 +209,20 @@ Save a copy…
 
 v3 · claude · 2m ago
 
-v2 · antigravity · 1h ago
+v2 · agy · 1h ago
 
-antigravity Reviewed. Two problems in step 4.
-◆ plan.md v4 · edited by antigravity
+agy Reviewed. Two problems in step 4.
+◆ plan.md v4 · edited by agy
 
-plan.md · what antigravity changed +6 −2
+plan.md · what agy changed +6 −2
 
 Reply… ⏎
 
-An artifact is a file on disk, not a message in a vendor's transcript. That is what makes it portable: claude writes it, antigravity edits it, antigravity reads it, and none of them needs the others' conversation format. The engine already stores artifacts this way per execution — the design work is making them visible objects you can pick up and hand over.
+An artifact is a file on disk, not a message in a vendor's transcript. That is what makes it portable: claude writes it, agy edits it, agy reads it, and none of them needs the others' conversation format. The engine already stores artifacts this way per execution — the design work is making them visible objects you can pick up and hand over.
 
-Versions are first-class and attributed. Every artifact carries who produced each version and when, so "what did antigravity actually change" is one click and a diff rather than a reread. Handing a file to a second vendor is worthless if you cannot see what came back different.
+Versions are first-class and attributed. Every artifact carries who produced each version and when, so "what did agy actually change" is one click and a diff rather than a reread. Handing a file to a second vendor is worthless if you cannot see what came back different.
 
-Attaching is explicit and visible. The message that carries a file shows it as an attachment before it is sent, because "which version of the plan did antigravity actually see" is exactly the question that becomes unanswerable if this is implicit.
+Attaching is explicit and visible. The message that carries a file shows it as an attachment before it is sent, because "which version of the plan did agy actually see" is exactly the question that becomes unanswerable if this is implicit.
 
 On the phone an artifact opens as its own screen , with the same version list and the same "send to a worker" action — reviewing on a phone is realistic, editing is not.
 
@@ -232,7 +240,7 @@ draft claude ⣿
 
 + step
 
-review antigravity ⣿
+review agy ⣿
 
 + step
 
@@ -250,7 +258,7 @@ review
 
 Who runs it
 
-antigravity ›
+agy ›
 
 Before this step
 
@@ -287,8 +295,16 @@ Archived | Out of the default list, still searchable, restorable in one action. 
 Long output | Truncated with an explicit "showing first N lines" and a way to see all of it. Never silently cut. |
 
 Reduced motion | Every animated state degrades to a correct still frame — the working mark is a spinner's static frame by design, not an absence. |
+Gate unverified (added 2026-07-25, per 0029) | A worker whose permission mechanism could not be confirmed working at start says so before any tool runs, rather than silently rendering a gate that might never fire — a broken hook or a disabled callback both look exactly like a working one otherwise. |
 
 Two of these are the defects from the last manual run , promoted from bugs to rules: cancelled reading as finished, and a room that existed but appeared nowhere. Writing them here is what stops them being rediscovered.
+
+> **Added 2026-07-25.** A third promoted rule, from
+> [0029](../decisions/0029-the-gate-is-three-mechanisms.md): a permission gate is enforced by
+> different mechanisms depending on which tool population is at risk, at least one of which fails
+> silently when broken. AER verifies its own gate at every worker's start rather than assuming
+> configuration took effect — the row above is that verification surfacing as a state, not a new
+> mechanism of its own.
 
 ### The inventory
 
@@ -334,7 +350,9 @@ Consulting ≠ deciding Asking another worker about a gate leaves the gate open.
 
 Routing is a control You choose who answers, and what they see. The product never reads the conversation to decide who should respond.
 
-Adding = asking Bringing a new worker in is the same gesture as asking a question. No separate participant-management surface.
+Adding = asking Bringing a new worker in is the same gesture as asking a question. No separate worker-management surface.
+
+Removing gets a control (added 2026-07-25, M27) Unlike adding, removing a worker mid-room is not inferred from asking — it is an explicit room-header action, gated by an in-flight-execution stop and a DAG dependency check that refuses rather than silently repairing. See 02-screens.md.
 
 Artifacts are files Vendor-neutral, versioned, attributed, explicitly attached. What one worker made, any other can be handed.
 

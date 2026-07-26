@@ -1,11 +1,12 @@
 # Stress test — the design at 100 rooms and 100 turns
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> The 2026-07-24 material is unchanged from the artifact of the same name; where a decision
+> record and this document differ, **the record wins** — it is the reviewed extraction. Kept
+> because the records deliberately capture decisions, and this also holds screen
+> specifications, delights and demonstration criteria that are not decision-shaped and would
+> otherwise exist nowhere. See [../README.md](../README.md#kept-current-not-frozen-added-2026-07-25)
+> for why this corpus is maintained in place rather than staying a closed snapshot.
 
 ---
 
@@ -40,7 +41,7 @@ Applies to
 
 every room using this worker
 
-aer-flow claude opus · careful antigravity gemini 3 flash · quick +
+aer-flow claude agy +
 
 claude · thought for 12s The ordering disagreement is in the view model, not the daemon.
 
@@ -53,6 +54,11 @@ Named by behaviour, not by mechanism. Quick / standard / careful / exhaustive, n
 Effort is per worker per room, with an option to make it global — the deep-author / fast-reviewer pattern is exactly a per-room effort choice, and it belongs in templates too, alongside the model.
 
 Thinking time is reported after the fact ("thought for 12s") rather than as a live counter. It sets expectations for the next turn without turning waiting into a spectacle.
+
+"opus · careful" and "opus · quick" are still meaningfully different. Where the distinction is
+shown: the compact chip carries a bare worker's vendor alone, or `vendor · N skills` if any are
+attached, with model and effort one tap away in the picker this section already draws. See
+[04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here).
 
 ### The fourth pass, on a phone
 
@@ -81,7 +87,7 @@ Reply… ↑
 
 Claude signed in · 3 models
 
-Antigravity signed in · 2 models
+agy signed in · 2 models
 
 Codex not installed on your computer
 
@@ -97,7 +103,7 @@ Claude plan
 
 72%
 
-Antigravity plan
+agy plan
 
 18%
 
@@ -117,7 +123,7 @@ Files 6 touched · 2 working documents
 
 Shape draft → review → apply
 
-Usage claude 64% · antigravity 4%
+Usage claude 64% · agy 4%
 
 Workers
 
@@ -153,7 +159,7 @@ Working · 6
 
 ◔ docs-sweep claude · 4m
 
-◔ infra-audit antigravity · 11m
+◔ infra-audit agy · 11m
 
 ⋯ 4 more working
 
@@ -163,7 +169,7 @@ Earlier · 91
 
 ⋯ Show all 91
 
-aer-flow claude opus · careful antigravity gemini 3 pro turn 104
+aer-flow claude agy turn 104
 
 turns 1–96 · summarised Rebuilt the switcher, fixed room registration, renamed the noun. Show anyway
 
@@ -184,7 +190,7 @@ At scale | What breaks | Fix |
 
 Long output | A 5000-line log inside a turn destroys the conversation. | Already collapsed by default; add an explicit line count and a hard cap that opens the full thing in its own view. |
 
-3 subscriptions | Worker chips, model, and effort are a lot of text in a header. | Chips truncate to vendor plus a mark; model and effort appear on hover and in the Actions sheet. The header is a status line, not a control panel. |
+3 subscriptions | Worker chips, model, and effort are a lot of text in a header. | Chips truncate to vendor plus a mark; model and effort appear on hover and in the Actions sheet. The header is a status line, not a control panel. Confirmed as of M27 — 02-screens.md's worker chip does exactly this. |
 
 Complex shapes | A 12-step template is a long list, and the preview graph stops fitting. | The list is fine — it is a list. The preview needs collapsing of completed stages, which is what a stage strip does naturally. |
 
@@ -224,7 +230,7 @@ I showed a worker being brought in mid-room to answer one question. What do they
 
 ##### Two workers editing the same file
 
-The files list shows attribution per file, which implies one writer each. Nothing in the design says what happens when claude and antigravity both edit MainWindow.axaml.cs in the same minute. The engine serialises per room, so it may be impossible — but I have not checked, and the UI makes a promise either way.
+The files list shows attribution per file, which implies one writer each. Nothing in the design says what happens when claude and agy both edit MainWindow.axaml.cs in the same minute. The engine serialises per room, so it may be impossible — but I have not checked, and the UI makes a promise either way.
 
 ##### Queued messages and gates
 
@@ -256,9 +262,9 @@ Issue | Why it matters to the design |
 
 #340 · derived rooms | Starting a review from inside a room — a child that reports back. The room model implies it and no screen shows it. Closest thing designed is the shape panel. |
 
-#385 · advisor participant | A standing cross-vendor critic rather than an ad-hoc "ask someone". Possibly just a saved worker with a role — worth deciding, because it changes whether roles are a concept. |
+#385 · advisor participant | A standing cross-vendor critic rather than an ad-hoc "ask someone". Possibly just a saved worker with a role — worth deciding, because it changes whether roles are a concept. **Resolved** by [0010](../decisions/0010-skills-and-advisor.md), dated before this document: the advisor is exactly a saved skill/role binding. [0033](../decisions/0033-skills-attach-directly-no-persona.md) is the concrete shape that took — an "advisor" skill someone attaches to a worker directly, not a predefined preset shipped by default. |
 
-#386 · canonical skills per vendor | I drew skills as each vendor's own. This proposes app-level skills realised per vendor — a different and stronger model that the command palette design would have to reflect. |
+#386 · canonical skills per vendor | I drew skills as each vendor's own. This proposes app-level skills realised per vendor — a different and stronger model that the command palette design would have to reflect. **Resolved** by [0010](../decisions/0010-skills-and-advisor.md), dated before this document: skills are app-level and canonical, and each adapter realizes them per vendor. This document's "own" framing was already superseded on the day it was written. |
 
 #424 · AER as an MCP context source | Exposing execution state and artifacts so a worker can query the room it is in. Has no UI, but changes what "what does an added worker see" can mean. |
 
@@ -270,6 +276,10 @@ Issue | Why it matters to the design |
 
 #405 · working-status verbs | Cosmetic, but it is the one place the product has a voice. Worth deciding deliberately rather than inheriting. |
 
-#266 · curved DAG edges, hover tracing | Probably obsolete. It describes canvas polish for a canvas we decided not to build. A candidate for closing rather than doing. |
+#266 · curved DAG edges, hover tracing | Closed 2026-07-25 — landed as visual polish; not obsolete after all, contrary to this document's guess. |
 
-Stress test complete. The corrections that change earlier documents — state-first room ordering, effort on the chip, an Actions sheet in place of the phone's command palette — should be folded back into those documents rather than living only here.
+Room orchestrator, M27 · delegated `aer decide` | Every gate in this document assumed a human resolves it. As of M27, a pinned Room orchestrator may call `aer decide` on another worker's gate instead — validated as a real working pattern in a cross-vendor implementer/reviewer loop, and `aer decide`'s own `DecisionType` enum already carries what a delegated caller needs. Still undesigned: the UI for granting/revoking the pin beyond 02-screens.md's reassignment control, and whether a phone's decision inbox distinguishes a human's answer from an orchestrator's. |
+
+0003 · conversational promotion | Everything in this document's shape editor and "Start shaped work" cost row assumes a pre-authored template. [0003](../decisions/0003-templates-collapse-to-three-shapes.md) decided a second path exists — "have Gemini review this" promotes an ad-hoc conversation into a pipeline in place, carrying its history — and this document never draws it. Lineage in the room list (tree, indent, or badge) is still an open question per 0003 itself. What promotion does *not* need to decide: whether the resulting step keeps whatever skills were attached to that worker. It does, trivially — a skill is a property of the worker, not of the conversation shape it happens to be in, so there is no separate "does promotion carry it over" rule to design ([0033](../decisions/0033-skills-attach-directly-no-persona.md)). |
+
+Stress test complete. The corrections that change earlier documents — state-first room ordering, effort on the chip, an Actions sheet in place of the phone's command palette — should be folded back into those documents rather than living only here. ("Effort on the chip" is itself now amended by M27 — see the note under "Effort — the axis I missed" above.)

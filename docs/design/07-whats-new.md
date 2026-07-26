@@ -1,11 +1,12 @@
 # What is actually new
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> The 2026-07-24 material is unchanged from the artifact of the same name; where a decision
+> record and this document differ, **the record wins** — it is the reviewed extraction. Kept
+> because the records deliberately capture decisions, and this also holds screen
+> specifications, delights and demonstration criteria that are not decision-shaped and would
+> otherwise exist nowhere. See [../README.md](../README.md#kept-current-not-frozen-added-2026-07-25)
+> for why this corpus is maintained in place rather than staying a closed snapshot.
 
 ---
 
@@ -43,7 +44,7 @@ Why it's hard to copy: it is an architectural commitment, not a feature — adap
 
 #### 02 One memory, shared across vendors
 
-Today every vendor keeps its own memory file, so what one agent learned is invisible to the next. Here the room owns the memory and every worker in it gets the same document — what claude worked out in turn 12, antigravity knows at turn 104.
+Today every vendor keeps its own memory file, so what one agent learned is invisible to the next. Here the room owns the memory and every worker in it gets the same document — what claude worked out in turn 12, agy knows at turn 104.
 
 It stays visible and editable, and a worker proposes additions for you to accept rather than quietly writing them.
 
@@ -57,7 +58,7 @@ Why it's unusual: tools that model "which model" as a single setting can't expre
 
 #### 04 Files that move between vendors, with receipts
 
-A plan claude wrote, antigravity edits, antigravity reads — vendor-neutral files rather than messages trapped in a transcript format. Every version is attributed and diffable , so "what did antigravity actually change" is one click.
+A plan claude wrote, agy edits, agy reads — vendor-neutral files rather than messages trapped in a transcript format. Every version is attributed and diffable , so "what did agy actually change" is one click.
 
 Why it's a delight: handing work between models stops being copy-paste and starts being a review trail.
 
@@ -137,15 +138,15 @@ Claim | Demonstrated when |
 
 Cross-examination | At a live gate, a model not previously in the room is asked, answers, contradicts the first — and the gate is still open. |
 
-Two subscriptions | A room where claude and antigravity both act, on plan auth, with no key configured anywhere. |
+Two subscriptions | A room where claude and agy both act, on plan auth, with no key configured anywhere. |
 
 Shared memory | A fact established by one vendor is used by a different vendor later in the same room. |
 
-Two of one vendor | Two chips, same vendor, different model and effort, both answering. |
+Two of one vendor | Two chips, same vendor, different model and effort, both answering. The two chips no longer show model/effort directly ([04-workers-commands-control.md](04-workers-commands-control.md)); demonstrate via each chip's popover, or via two workers on the same vendor with different skills attached. |
 
 Files with receipts | One document authored by one vendor and edited by another, with a diff between their versions. |
 
-Work outside the UI | Quit the desktop app mid-run; answer the permission on the phone; reopen and find it continued. |
+Work outside the UI | Quit the desktop app mid-run; answer the permission on the phone; reopen and find it continued. Confirmed 2026-07-25 by a live run behind [0029](../decisions/0029-the-gate-is-three-mechanisms.md): held 162s, answered out of band, worker accepted the late result and continued. The hold has a measured ~200s ceiling, so the design persists the question rather than relying on holding the call open indefinitely. |
 
 Scoped permissions | Grant "allow rm in this room", see it not asked again, find and revoke it in settings. |
 

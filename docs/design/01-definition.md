@@ -1,11 +1,10 @@
 # What AER Flow is
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> This is the *source* the decision records were written from; where a record and this document
+> differ, **the record wins** — it is the reviewed extraction, not the ruling. See
+> [`README.md`](README.md#kept-current-not-frozen-added-2026-07-25-policy-corrected-2026-07-26)
+> for the corpus's current-state policy.
 
 ---
 
@@ -69,13 +68,28 @@ It isn't
 
 Small on purpose. Every noun added here becomes a thing the person has to learn, so each has to earn its place.
 
+> **Amendment, 2026-07-25 — [0013](../decisions/0013-room-is-the-user-facing-noun.md) renamed
+> this noun.** Wherever "Session" appears below as the user-facing noun for a conversation with
+> one or more workers in it, read **Room** — the model (workers, one directory, its own
+> history) is unchanged, only the word moved. "Session" now names something narrower: the vendor
+> CLI's own resumable thread, an adapter concern that is never presented as the thing you opened.
+> The **Settled** section further down states the opposite outcome ("room" never enters the
+> vocabulary) — that specific claim is superseded and is left as written below rather than
+> edited, per [0010](../decisions/0010-skills-and-advisor.md)'s own precedent for a corrected
+> clause. Two new nouns from the same M27 pass — **Skill** and **Room orchestrator** — are
+> appended after Template below.
+
 Session A conversation against a directory, with one or more workers in it . The main noun — what you start, return to, and what the sidebar lists. There is deliberately no second noun for "a session with more than one worker": adding a worker changes who is present, not what kind of thing you have.
 
-Worker One vendor's CLI running under your subscription. Claude, Gemini, Antigravity. Interchangeable by design , and present or absent like a person in a thread.
+Worker One vendor's CLI running under your subscription. `claude`, `agy`. Interchangeable by design , and present or absent like a person in a thread.
 
 Gate Where work stops and asks you — the only thing allowed to block , and the unit the "needs you" list carries and the phone answers. Comes in three kinds, because they ask different things of you: a permission (may I run this command), a decision (which of these), and an action (review this). Two already exist in the engine as ReadyForReview and NeedsInput ; permission is the one genuinely new kind.
 
 Template A saved shape of work — draft→review→gate — defined on a graph and started in one click . The graph is how you author and inspect it, never where you live day to day.
+
+Skill *(added 2026-07-25, M27)* Instructions plus tool requirements plus bundled assets — a capability a worker attaches directly, not a separate preset object over the worker chip. A worker can attach zero, one, or several at once; there is no shipped default set — every skill is user-authored, discovered when needed ([0033](../decisions/0033-skills-attach-directly-no-persona.md)). Realized per-vendor by the adapter ([0010](../decisions/0010-skills-and-advisor.md)); account-wide, one library per person ([0031](../decisions/0031-skills-are-account-wide.md)). See [02-screens.md](02-screens.md) for the attachment UI.
+
+Room orchestrator *(added 2026-07-25, M27)* Which worker in the room is authorized to call `aer decide` on another's gate, standing in for the human. A room always has exactly one; the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned to someone else first ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)). The authority itself is an ordinary attached Skill, auto-bound to whoever holds the role — not a special-cased flag. See [02-screens.md](02-screens.md) for the reassignment control.
 
 ### The one flow that matters
 
@@ -142,13 +156,13 @@ Sessions + New
 
 — spike-cache Cancelled · 1d
 
-aer-flow claude + gemini  ·  + Add worker
+aer-flow claude + agy  ·  + Add worker
 
 you Rework the switcher so a new session shows up immediately.
 
 claude Two causes — the list only refreshed at startup, and a task registered only on a successful run. Patch ready.
 
-Needs you · gemini reviewed Approve the change to the push fan-out?
+Needs you · agy reviewed Approve the change to the push fan-out?
 Approve Changes Reject
 
 Reply… ⏎
@@ -168,6 +182,12 @@ What makes visual workflow definition worth having is that it is easy — so kee
 Consequence: the DAG stops being a destination and becomes two things — an authoring surface and an optional view of a session. A meaningful slice of the backlog is scoped against the old assumption and has to be re-read.
 
 Resolved
+
+> **Superseded, 2026-07-25.** [0013](../decisions/0013-room-is-the-user-facing-noun.md) reversed
+> this specific outcome: the noun is **Room**, not Session. The point underneath it — no second
+> noun for "a session with more than one worker," adding a worker changes who's present, not what
+> kind of thing you have — stands unchanged; only which word won. Left as written below; see the
+> amendment on **The nouns**, above.
 
 #### One noun, not two — a session just has more workers
 
