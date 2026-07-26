@@ -1,12 +1,10 @@
 # What AER Flow is
 
 > **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
-> The 2026-07-24 material below is unchanged; a 2026-07-25 amendment note and two new noun
-> entries for M27 (personas, room orchestration) are marked where they land, not blended in
-> silently. This is the *source* the decision records were written from; where a record and this
-> document differ, **the record wins** — it is the reviewed extraction, not the ruling. See
-> [`README.md`](README.md#kept-current-not-frozen-added-2026-07-25) for why this stopped being a
-> closed snapshot.
+> This is the *source* the decision records were written from; where a record and this document
+> differ, **the record wins** — it is the reviewed extraction, not the ruling. See
+> [`README.md`](README.md#kept-current-not-frozen-added-2026-07-25-policy-corrected-2026-07-26)
+> for the corpus's current-state policy.
 
 ---
 
@@ -78,7 +76,7 @@ Small on purpose. Every noun added here becomes a thing the person has to learn,
 > The **Settled** section further down states the opposite outcome ("room" never enters the
 > vocabulary) — that specific claim is superseded and is left as written below rather than
 > edited, per [0010](../decisions/0010-skills-and-advisor.md)'s own precedent for a corrected
-> clause. Two new nouns from the same M27 pass — **Persona** and **Room orchestrator** — are
+> clause. Two new nouns from the same M27 pass — **Skill** and **Room orchestrator** — are
 > appended after Template below.
 
 Session A conversation against a directory, with one or more workers in it . The main noun — what you start, return to, and what the sidebar lists. There is deliberately no second noun for "a session with more than one worker": adding a worker changes who is present, not what kind of thing you have.
@@ -89,9 +87,9 @@ Gate Where work stops and asks you — the only thing allowed to block , and the
 
 Template A saved shape of work — draft→review→gate — defined on a graph and started in one click . The graph is how you author and inspect it, never where you live day to day.
 
-Persona *(added 2026-07-25, M27)* A named, saved binding of a Skill onto a Worker's vendor/model/effort chip, plus a permission grant and a voice — a preset over the worker chip, not a new axis beside it. Eight predefined (Scout, Courier, Scribe, Artisan, Debugger, Auditor, Advisor, Architect), each pinning a real skill to a model-purpose × effort cell; cloning one and renaming it forks permanently from the built-in default. See [02-screens.md](02-screens.md) for the picker and the creation flow.
+Skill *(added 2026-07-25, M27)* Instructions plus tool requirements plus bundled assets — a capability a worker attaches directly, not a separate preset object over the worker chip. A worker can attach zero, one, or several at once; there is no shipped default set — every skill is user-authored, discovered when needed ([0033](../decisions/0033-skills-attach-directly-no-persona.md)). Realized per-vendor by the adapter ([0010](../decisions/0010-skills-and-advisor.md)); account-wide, one library per person ([0031](../decisions/0031-skills-are-account-wide.md)). See [02-screens.md](02-screens.md) for the attachment UI.
 
-Room orchestrator *(added 2026-07-25, M27)* A pinnable role: which worker in the room is authorized to call `aer decide` on another's gate, standing in for the human. Human-assigned only, blocked while a gate is open, one per room at a time, and never retroactive — a decision already made under the previous holder keeps its attribution. See [02-screens.md](02-screens.md) for the reassignment control.
+Room orchestrator *(added 2026-07-25, M27)* Which worker in the room is authorized to call `aer decide` on another's gate, standing in for the human. A room always has exactly one; the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned to someone else first ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)). The authority itself is an ordinary attached Skill, auto-bound to whoever holds the role — not a special-cased flag. See [02-screens.md](02-screens.md) for the reassignment control.
 
 ### The one flow that matters
 

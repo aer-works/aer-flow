@@ -55,7 +55,10 @@ Effort is per worker per room, with an option to make it global — the deep-aut
 
 Thinking time is reported after the fact ("thought for 12s") rather than as a live counter. It sets expectations for the next turn without turning waiting into a spectacle.
 
-> **Amended 2026-07-25, M27.** "opus · careful" and "opus · quick" are still meaningfully different — that claim stands. What moved is where the distinction is shown: the compact chip now carries a bare worker's vendor alone, or a Persona's name, with model and effort one tap away in the picker this section already draws. See [04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here).
+"opus · careful" and "opus · quick" are still meaningfully different. Where the distinction is
+shown: the compact chip carries a bare worker's vendor alone, or `vendor · N skills` if any are
+attached, with model and effort one tap away in the picker this section already draws. See
+[04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here).
 
 ### The fourth pass, on a phone
 
@@ -187,7 +190,7 @@ At scale | What breaks | Fix |
 
 Long output | A 5000-line log inside a turn destroys the conversation. | Already collapsed by default; add an explicit line count and a hard cap that opens the full thing in its own view. |
 
-3 subscriptions | Worker chips, model, and effort are a lot of text in a header. | Chips truncate to vendor plus a mark; model and effort appear on hover and in the Actions sheet. The header is a status line, not a control panel. Confirmed as of M27 — 02-screens.md's Persona chip does exactly this. |
+3 subscriptions | Worker chips, model, and effort are a lot of text in a header. | Chips truncate to vendor plus a mark; model and effort appear on hover and in the Actions sheet. The header is a status line, not a control panel. Confirmed as of M27 — 02-screens.md's worker chip does exactly this. |
 
 Complex shapes | A 12-step template is a long list, and the preview graph stops fitting. | The list is fine — it is a list. The preview needs collapsing of completed stages, which is what a stage strip does naturally. |
 
@@ -259,7 +262,7 @@ Issue | Why it matters to the design |
 
 #340 · derived rooms | Starting a review from inside a room — a child that reports back. The room model implies it and no screen shows it. Closest thing designed is the shape panel. |
 
-#385 · advisor participant | A standing cross-vendor critic rather than an ad-hoc "ask someone". Possibly just a saved worker with a role — worth deciding, because it changes whether roles are a concept. **Resolved** by [0010](../decisions/0010-skills-and-advisor.md), dated before this document: the advisor is exactly a saved skill/role binding. M27's Persona system is the concrete shape that took — Advisor is one of eight predefined Personas. |
+#385 · advisor participant | A standing cross-vendor critic rather than an ad-hoc "ask someone". Possibly just a saved worker with a role — worth deciding, because it changes whether roles are a concept. **Resolved** by [0010](../decisions/0010-skills-and-advisor.md), dated before this document: the advisor is exactly a saved skill/role binding. [0033](../decisions/0033-skills-attach-directly-no-persona.md) is the concrete shape that took — an "advisor" skill someone attaches to a worker directly, not a predefined preset shipped by default. |
 
 #386 · canonical skills per vendor | I drew skills as each vendor's own. This proposes app-level skills realised per vendor — a different and stronger model that the command palette design would have to reflect. **Resolved** by [0010](../decisions/0010-skills-and-advisor.md), dated before this document: skills are app-level and canonical, and each adapter realizes them per vendor. This document's "own" framing was already superseded on the day it was written. |
 
@@ -277,6 +280,6 @@ Issue | Why it matters to the design |
 
 Room orchestrator, M27 · delegated `aer decide` | Every gate in this document assumed a human resolves it. As of M27, a pinned Room orchestrator may call `aer decide` on another worker's gate instead — validated as a real working pattern in a cross-vendor implementer/reviewer loop, and `aer decide`'s own `DecisionType` enum already carries what a delegated caller needs. Still undesigned: the UI for granting/revoking the pin beyond 02-screens.md's reassignment control, and whether a phone's decision inbox distinguishes a human's answer from an orchestrator's. |
 
-0003 · conversational promotion | Everything in this document's shape editor and "Start shaped work" cost row assumes a pre-authored template. [0003](../decisions/0003-templates-collapse-to-three-shapes.md) decided a second path exists — "have Gemini review this" promotes an ad-hoc conversation into a pipeline in place, carrying its history — and this document never draws it. Lineage in the room list (tree, indent, or badge) is still an open question per 0003 itself. |
+0003 · conversational promotion | Everything in this document's shape editor and "Start shaped work" cost row assumes a pre-authored template. [0003](../decisions/0003-templates-collapse-to-three-shapes.md) decided a second path exists — "have Gemini review this" promotes an ad-hoc conversation into a pipeline in place, carrying its history — and this document never draws it. Lineage in the room list (tree, indent, or badge) is still an open question per 0003 itself. What promotion does *not* need to decide: whether the resulting step keeps whatever skills were attached to that worker. It does, trivially — a skill is a property of the worker, not of the conversation shape it happens to be in, so there is no separate "does promotion carry it over" rule to design ([0033](../decisions/0033-skills-attach-directly-no-persona.md)). |
 
 Stress test complete. The corrections that change earlier documents — state-first room ordering, effort on the chip, an Actions sheet in place of the phone's command palette — should be folded back into those documents rather than living only here. ("Effort on the chip" is itself now amended by M27 — see the note under "Effort — the axis I missed" above.)

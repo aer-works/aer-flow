@@ -31,12 +31,11 @@ Two edits, both mechanical, so these can live in a repo instead of as published 
 
 Nothing else was altered at landing time — no re-layout, no re-wording, no "cleanup".
 
-**Since then, `02-screens.html` has grown.** As of 2026-07-25 it carries four additional sections for
-M27 (the persona picker, persona creation, room-header orchestrator/removal controls, the
-workflow-toggle) — new material, not a rewording of the original seven screens, appended and marked as
-its own dated addition rather than blended into the 2026-07-24 draft. See
-[`../README.md`](../README.md#kept-current-not-frozen-added-2026-07-25) for why this corpus is now
-maintained in place instead of staying a closed snapshot.
+**Since then, `02-screens.html` has grown.** It carries four additional sections for M27 (skill
+attachment, skill creation, room-header orchestrator/removal controls, the workflow-toggle) — new
+material, not a rewording of the original seven screens. See
+[`../README.md`](../README.md#kept-current-not-frozen-added-2026-07-25-policy-corrected-2026-07-26)
+for this corpus's current-state policy.
 
 **Also on 2026-07-25, all seven mockups were brought into compliance with
 [0028](../../decisions/0028-no-permissive-control-is-the-default.md).** 0028's own Context section

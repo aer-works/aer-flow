@@ -96,13 +96,12 @@ Bringing someone in is the same gesture as asking. A worker who is not yet in th
 
 This is a person's explicit choice, never inference. Nothing in the product reads the conversation to decide who should answer — a rule the engine holds absolutely, and this design honours by making routing a control you operate.
 
-> **Added 2026-07-25, M27.** Adding still works exactly this way — a Persona appears in the same
-> "bring someone in" menu as a bare worker, and picking one adds them in the same gesture. Removing
-> a worker mid-room is new since this pass and does get its own control, in the room header
-> rather than a separate surface: it runs two guardrails in sequence — stopping any in-flight
-> execution via the real `InFlightExecutionRegistry.RequestCancellationAsync`, then refusing (with
-> a clear reason, never a silent repair) if an active workflow step still depends on that
-> worker. See [02-screens.md](02-screens.md#the-calls-made-here) for the full sequence.
+Removing a worker mid-room gets its own control, in the room header rather than a separate
+surface: it runs two guardrails in sequence — stopping any in-flight execution via the real
+`InFlightExecutionRegistry.RequestCancellationAsync`, then refusing (with a clear reason, never a
+silent repair) if an active workflow step still depends on that worker, or if that worker is the
+room's current orchestrator ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)). See
+[02-screens.md](02-screens.md#the-calls-made-here) for the full sequence.
 
 ### Code and executions
 

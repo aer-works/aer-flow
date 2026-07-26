@@ -60,6 +60,8 @@ Grouping by kind rather than by room is the point. Four items across three rooms
 
 Only one of the three is genuinely urgent. A permission blocks a worker that is otherwise ready to go, so it sits first. An action often blocks nothing at all — offering "Later" on it is honest, and refusing to treat it as an alarm is what keeps the list credible.
 
+That's about ordering and how insistent a gate looks, not about whether it gets an OS push notification at all — those are two different questions. [0030](../decisions/0030-aer-is-its-own-notifier.md) emits a push from the same durable write that records any pause, regardless of kind; there's no carve-out for actions in that mechanism, and this record doesn't add one. An action still gets pushed — it just doesn't get to *jump the queue* or read as an alarm once you open the app. "Genuinely urgent" describes how it's presented, not whether you're told.
+
 ### Permissions, in detail
 
 The hole in every previous pass, and a safety surface rather than a convenience one. The design problem is not showing the prompt — it is stopping the prompt from becoming a reflex.
@@ -137,19 +139,19 @@ Reply… ⏎
 
 The model is shown on the chip, always. Which model answered is not a detail — it changes what an answer is worth, and a room where one worker is on a fast model and another on a deep one is the normal case, not an edge case.
 
-> **Amended 2026-07-25, M27.** The model still isn't a detail — that claim stands. What moved is
-> *where* it lives: the room-header chip now shows a bare worker's vendor alone (or a Persona's
-> name, if one is bound — see [02-screens.md](02-screens.md#the-calls-made-here)), and the model
-> is one tap away in the same picker shown above. Painting it onto the compact label at all times
-> is what made a bound worker's chip unreadable once a Persona, permission grant and voice were
-> added to the same axes; the picker — not the label — is where the model lives now.
+The model still isn't a detail — that claim stands. Where it lives is the room-header chip
+showing a bare worker's vendor alone, or `claude · 2 skills` if any are attached (see
+[02-screens.md](02-screens.md#the-calls-made-here)), with the model one tap away in the same
+picker shown above. Painting it onto the compact label at all times is what made a worker's chip
+unreadable once skills and a permission grant were added to the same axes; the picker — not the
+label — is where the model lives now.
 
 Two workers may share a vendor. "claude on opus" and "claude on haiku" are two distinct participants in the room. This falls out of separating vendor from model, and it is what makes cheap-reviewer / expensive-author patterns possible on one subscription.
 
-A template names roles and models — or a Persona, where one is bound, per
+A template names roles and models, and whatever skills are attached to that step's worker, per
 [02-screens.md](02-screens.md#the-calls-made-here) — not just vendors. "Draft on a deep model,
-review on a fast one" is exactly the reusable shape templates exist to capture, whichever form
-the binding takes. Each step in the shape editor gets the same two-level picker.
+review on a fast one" is exactly the reusable shape templates exist to capture. Each step in the
+shape editor gets the same two-level picker.
 
 Never a raw model identifier. The picker says what a model is for — deep work, balanced, fast — because nobody should need to know which string the vendor's CLI wants this month.
 
@@ -201,11 +203,10 @@ Skills and commands are shown together and marked , because the distinction is t
 
 Room commands are the discoverable surface for everything else in this document. /files , /usage and /shape open the panels below — which means those surfaces have a keyboard path and do not depend on finding an icon.
 
-> **Added 2026-07-25, M27, corrected 2026-07-25.** Where a worker has a Persona bound, the command
-> group above stays headed by the worker's vendor — `claude`, `agy` — with the Persona's name shown
-> as a qualifier next to it (`claude · Artisan`), the same primary-identity rule the room-header chip
-> follows (see [02-screens.md](02-screens.md#the-calls-made-here)). The namespacing itself is
-> unchanged either way: a Persona's commands are still that vendor's commands, grouped one level up.
+Attached skills don't change this grouping. The command group above stays headed by the worker's
+vendor — `claude`, `agy` — the same primary-identity rule the room-header chip follows (see
+[02-screens.md](02-screens.md#the-calls-made-here)). A skill's own commands, if it has any, are
+still that vendor's commands, grouped one level up.
 
 ### Files — the project's, and the room's
 
@@ -320,7 +321,7 @@ Denial is an answer A refused worker is told and continues. It does not silently
 
 Model on the chip Vendor and model are separate choices, both always visible. Two workers can share a vendor on different models — that is a normal room, not an edge case.
 
-Model in the picker, not the label (added 2026-07-25, M27) Amends the call above: the compact chip shows a bare worker's vendor, or vendor · Persona qualifier if one is bound — the model itself moved into the picker one tap away, for the same reason a Persona's vendor/model/effort/grant/voice all live in its popover rather than its chip label. See 02-screens.md.
+Model in the picker, not the label Amends the call above: the compact chip shows a bare worker's vendor, or `vendor · N skills` if any are attached — the model itself moved into the picker one tap away, for the same reason model/effort/grant all live in a worker's popover rather than its chip label. See 02-screens.md.
 
 Effort is the third axis Vendor, model, and how hard it should think — all three on the chip, all three per room, all three in a template. Named by behaviour (quick / standard / careful / exhaustive), never a token budget or a vendor's flag.
 

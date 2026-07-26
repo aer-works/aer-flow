@@ -142,7 +142,7 @@ Two subscriptions | A room where claude and agy both act, on plan auth, with no 
 
 Shared memory | A fact established by one vendor is used by a different vendor later in the same room. |
 
-Two of one vendor | Two chips, same vendor, different model and effort, both answering. Amended 2026-07-25, M27 — the two chips no longer show model/effort directly ([04-workers-commands-control.md](04-workers-commands-control.md)); demonstrate via each chip's popover, or via two different Persona names bound to the same vendor. |
+Two of one vendor | Two chips, same vendor, different model and effort, both answering. The two chips no longer show model/effort directly ([04-workers-commands-control.md](04-workers-commands-control.md)); demonstrate via each chip's popover, or via two workers on the same vendor with different skills attached. |
 
 Files with receipts | One document authored by one vendor and edited by another, with a diff between their versions. |
 

@@ -165,17 +165,15 @@ Backlog · #385
 
 #### Is an "advisor" a new kind of participant?
 
-No — it is a saved worker preset with a standing instruction. Vendor, model, effort, and a role instruction, saved under a name you pick. Adding "my advisor" to a room is the same gesture as adding any worker.
+No — it is a Skill, a standing instruction a worker attaches directly
+([01-definition.md](01-definition.md), [0033](../decisions/0033-skills-attach-directly-no-persona.md)).
+Adding "my advisor" to a room is attaching that skill to a worker already in it, or to one being
+added — the same gesture as adding any worker. There is no shipped default "advisor" skill; it is
+an example of one someone could author, not something that ships.
 
 Resisting a new participant type matters: every new kind of thing in the room is another concept to explain, and everything an advisor needs is already expressible as a worker with an instruction.
 
-> **Added 2026-07-25, M27.** This call was generalized, not overturned: eight such presets are now
-> named, first-class, and picked from a menu — Persona, see
-> [01-definition.md](01-definition.md) — but each is still explicitly "a preset over the worker
-> chip, not a new axis beside it," the same resistance to a new participant type this passage
-> argued for. Advisor is one of the eight.
-
-Decided: a preset, not a new noun. Roles are instructions.
+Decided: a Skill, not a new noun. Roles are instructions.
 
 Backlog · #386
 
@@ -185,12 +183,10 @@ Two tiers, both visible, clearly marked. Skills that AER defines are realised pe
 
 The palette already namespaces by owner, so this needs no new structure — it needs the room tier to be populated by AER's canonical skills rather than only by built-in commands.
 
-> **Added 2026-07-25, M27, corrected 2026-07-25.** Still true, and one addition since:
-> [04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here) notes that
-> where a worker has a Persona bound, the command group stays headed by the worker's vendor, with
-> the Persona's name shown as a qualifier next to it (`claude · Artisan`) — not the Persona's
-> name in place of the vendor. That's a display label, not a third tier — the two tiers and their
-> ownership rule are unchanged.
+Still true, and one addition since:
+[04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here) notes that
+attached skills don't change this grouping — the command group stays headed by the worker's
+vendor regardless of what's attached to it. The two tiers and their ownership rule are unchanged.
 
 Decided: canonical skills under Room, native skills under their vendor, marked as such.
 
@@ -220,15 +216,15 @@ The rule behind the map: a destructive action never sits on a key you might hit 
 
 Backlog · #405
 
-#### The working-status verb — "Percolating…"
+#### The working-status verb
 
-Both, and the rule is which one you have earned. When the product knows what is happening it says so — "Reading TasksViewModel.cs ", "Running pixi run test ". Specific beats charming, every time, because it is information rather than decoration.
+The specific action whenever it is known — "Reading TasksViewModel.cs ", "Running pixi run test ". Specific beats charming, every time, because it is information rather than decoration.
 
-But when all we honestly know is "it is thinking", that is exactly where the voice belongs. A generic wait is dead air, and dead air is the cheapest place in the whole product to be delightful. Percolating, ruminating, chewing it over — with the elapsed time beside it so the fun never costs you information.
+For the genuinely generic wait, M27 uses a plain deterministic label ("Working", "Needs input", "Executing step 2 "), always with elapsed time beside it — not a curated whimsical set. A playful verb for that wait is real design work (a hand-written string set, a locale story, a per-state mapping) that doesn't exist yet; shipping a plain label now rather than inventing that mid-pass is the M27 scope call
+([#578](https://github.com/aer-works/aer-flow/issues/578) tracks bringing a curated set back once
+that's actually specified).
 
-Curated and themeable, not randomised noise. A small hand-written set, and a switch for anyone who wants plain "Working". The words are a token like any other, so both surfaces say the same thing on the same tick.
-
-Decided: the specific action whenever it is known; a playful verb only for the genuinely generic wait, always with elapsed time, always switchable.
+Decided: the specific action whenever it is known; a plain deterministic label for the genuinely generic wait, always with elapsed time, always switchable — playful verbs are a later, separately-specified addition, not M27's default.
 
 Backlog · #282
 

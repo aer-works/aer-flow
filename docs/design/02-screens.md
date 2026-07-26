@@ -1,12 +1,11 @@
 # Screens — every shape the product needs, both surfaces
 
 > **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
-> The 2026-07-24 material below is unchanged; four new screens for M27 (personas, room
-> orchestration) are appended after **Phone**, marked with when they landed. This is the
-> *source* the decision records were written from; where a record and this document differ,
-> **the record wins** — it is the reviewed extraction, not the ruling. See
-> [`README.md`](README.md#kept-current-not-frozen-added-2026-07-25) for why this stopped being a
-> closed snapshot.
+> Four screens for M27 (skill attachment, room orchestration) are appended after **Phone**. This
+> is the *source* the decision records were written from; where a record and this document
+> differ, **the record wins** — it is the reviewed extraction, not the ruling. See
+> [`README.md`](README.md#kept-current-not-frozen-added-2026-07-25-policy-corrected-2026-07-26)
+> for the corpus's current-state policy.
 
 ---
 
@@ -22,7 +21,7 @@ First run The daily driver Two workers, a gate
 When it fails Starting from a template Drawing a shape
 Settings Phone The calls
 
-M27 addition, 2026-07-25 — The persona picker Persona creation Room-header controls Workflow toggle
+M27 addition — Skill attachment Skill creation Room-header controls Workflow toggle
 
 ### First run
 
@@ -109,11 +108,11 @@ Reply… ⏎
 
 Shape Hide
 
-draft · claude · Artisan
+draft · claude · 2 skills
 
 ↓
 
-review · agy · Auditor
+review · agy · 1 skill
 
 ↓
 
@@ -125,7 +124,7 @@ apply
 
 A gate is answered where it was raised. It renders as a turn in the conversation, because that is where the context is — the argument you are ruling on is directly above it. It also appears on the phone and in the "needs you" filter; same object, several entry points, never several copies of the state. The shape panel is optional , showing where this room is in the template it was started from — dismissible, and absent entirely for a room you just started by talking.
 
-A workflow step's binding can be a bare vendor name or a named Persona (shown as `vendor · Persona`, the same vendor-first rule the room-header chip follows) — the same duality as a room's worker chip. This document shows the Persona-bound case across template and shape views for clarity, though bare vendor bindings remain fully valid.
+A workflow step's binding can be a bare vendor name or a vendor with skills attached (shown as `vendor · N skills`, the same vendor-first rule the room-header chip follows) — the same duality as a room's worker chip. This document shows the skills-attached case across template and shape views for clarity, though bare vendor bindings remain fully valid.
 
 ### When it fails
 
@@ -183,7 +182,7 @@ Folder
 
 Who runs it
 
-draft · claude · Artisan     review · agy · Auditor
+draft · claude · 2 skills     review · agy · 1 skill
 
 Start room Save as my default
 
@@ -209,15 +208,15 @@ Templates + New
 
 draft → review Done
 
-draft claude · Artisan ask me first ○
+draft claude · 2 skills ask me first ○
 
 + step
 
-review agy · Auditor ask me first ●
+review agy · 1 skill ask me first ●
 
 + step
 
-apply claude · Artisan ask me first ○
+apply claude · 2 skills ask me first ○
 
 + step
 
@@ -225,7 +224,7 @@ Each step runs after the one above it. Turn on "ask me first" to put a gate befo
 
 Preview
 
-draft · claude · Artisan
+draft · claude · 2 skills
 
 ↓
 
@@ -233,11 +232,11 @@ gate · you
 
 ↓
 
-review · agy · Auditor
+review · agy · 1 skill
 
 ↓
 
-apply · claude · Artisan
+apply · claude · 2 skills
 
 A list that renders as a graph, not a canvas you drag on. Freeform node editors are the reason visual workflow tools feel like work: you spend your attention on layout — arranging boxes, routing edges — rather than on the actual decision, which is who does what, in what order, and where do I want a say. A vertical list of steps expresses every shape this product realistically needs, is keyboard-navigable, diffs cleanly in version control, and cannot produce an unreadable tangle.
 
@@ -339,84 +338,56 @@ A notification says enough to judge whether it is worth opening, and never decid
 
 The phone's first run is pairing, and nothing else. It has no folders of its own and no CLIs installed, so until it is connected to a computer there is genuinely nothing it can do — pretending otherwise with an empty rooms list would be worse than saying so. Notifications inform, they never decide: one tap opens the gate beside the argument you are ruling on, because approving an agent's work from a lock screen is one mis-tap from approving something you never read. Template authoring is out of scope for the phone's first version , not ruled out — a small-screen shape editor is an interesting problem worth returning to, and the step-list model above is far more portable to a phone than a canvas would have been.
 
-### M27 addition, 2026-07-25 — four new screens for personas and room orchestration
+### M27 addition — screens for skill attachment and room orchestration
 
-Everything below this line is new: personas and the room orchestrator, decided in the M27 design
-pass. Drafted with Gemini (`gemini-3.1-pro-high`, prompt at
-`aer-agy-loop-scratch/design-m27-screens-prompt.md`), then corrected against the real decision
-text — the draft had invented a specific Claude model version string, which is exactly what
-[0023](../decisions/0023-effort-and-models-are-named-by-behaviour.md) says the UI must never do,
-plus a mis-cited decision and an invented permission field. A matching mockup lives in
-[`mockups/02-screens.html`](mockups/02-screens.html), appended the same way.
+Everything below this line is new: skill attachment and the room orchestrator, decided in the M27
+design pass. A worker attaches Skills directly — there is no separate named-preset object
+mediating it ([0033](../decisions/0033-skills-attach-directly-no-persona.md)). A matching mockup
+lives in [`mockups/02-screens.html`](mockups/02-screens.html).
 
 **A bare worker chip — just a vendor name, exactly as drawn in "The daily driver" and "Two workers,
-a gate" above — stays completely valid.** A Persona is an optional named preset over that chip, not
-a replacement for it; adding a worker with no Persona attached looks and works exactly as those
-earlier screens already show. What follows describes the persona-bound case specifically, and — a
-correction made mid-pass, not part of the original draft below — deliberately does **not** repeat
-model tier and effort in the chip's visible label the way an earlier revision of this section did,
-and, corrected again on 2026-07-25, keeps the worker's vendor identity as the primary label rather
-than letting the Persona's name replace it: **`claude · Artisan`, never `Artisan` alone.** "Worker"
-stays the one noun a person has to track in the room header — a Persona qualifies which worker it is
-without becoming a second identity competing with it. The raw axes (model tier, effort, grant,
-voice) live in the popover below, one tap away, not duplicated in the label.
+a gate" above — stays completely valid.** Attaching a skill is optional and additive, not a
+replacement for the chip; adding a worker with nothing attached looks and works exactly as those
+earlier screens already show. What follows describes the skills-attached case specifically, and
+deliberately does **not** repeat model tier and effort in the chip's visible label, and keeps the
+worker's vendor identity as the primary label: **`claude · 2 skills`, never a skill's name standing
+in for the worker.** "Worker" stays the one noun a person has to track in the room header — attached
+skills qualify what that worker can do without becoming a second identity competing with it. The
+raw axes (model tier, effort, grant) live in the popover below, one tap away, not duplicated in the
+label.
 
-### The persona picker on the worker chip
+### Skill attachment on the worker chip
 
-Today's worker chip (0017) is three dependent dropdowns: vendor gates model gates effort. Picking a
-Persona sets all three plus skill plus permissions in one gesture, without destroying the
-underlying worker chip — the chip keeps showing the vendor first (`claude`, `agy`) and adds the
-Persona's name as a short qualifier, so the worker is always identifiable at a glance and the
-Persona reads as what's configured on it, not as a replacement for it.
+Today's worker chip (0017) is three dependent dropdowns: vendor gates model gates effort. Attaching
+a skill sets nothing on those three — it adds a capability alongside them, without destroying the
+underlying worker chip. The chip keeps showing the vendor first (`claude`, `agy`) and adds a count
+of attached skills as a short qualifier, so the worker is always identifiable at a glance and the
+count reads as what's configured on it, not as a replacement for it.
 
-Desktop · worker chip persona popover
+Desktop · worker chip skill-attach popover
 
 ```
 AER Flow · aer-flow
 ▤ ◱ ⚙
 
-Rooms + New            aer-flow  [👑 claude · Artisan ▼]  [+ Add worker]
+Rooms + New            aer-flow  [👑 claude · 2 skills ▼]  [+ Add worker]
                       ┌────────────────────────────────────────────────────────┐
-                      │ Persona Preset                                         │
-                      │ ● Artisan (implementation & refactor)                 │
-                      │ ○ Scout   ○ Courier   ○ Scribe   ○ Debugger            │
-                      │ ○ Auditor ○ Advisor   ○ Architect                      │
+                      │ Attached Skills                                        │
+                      │ [✓] Code & security review                             │
+                      │ [✓] Commit message style                               │
+                      │ [ ] Thorough test coverage                             │
+                      │ [ ] Quick reconnaissance                               │
                       │                                                        │
-                      │ Overrides for this room                                │
-                      │ Skill      [ implementation & refactor               ▼]│
+                      │ + Create new skill…                                    │
+                      │                                                        │
                       │ Vendor     [ claude                                  ▼]│
                       │ Model tier [ balanced                                ▼]│
                       │ Effort     [ careful                                 ▼]│
                       │ Grant      [ Project ∩ Session ∩ Step (Read, Write)  ▼]│
-                      │ Voice      [ Pragmatic implementer, concise code     ]│
-                      │                                                        │
-                      │ Status: Artisan (preset intact)                        │
-                      │ [ Reset to preset ]             [ Save as new Persona ]│
                       └────────────────────────────────────────────────────────┘
 ```
 
-Desktop · worker chip with axis override (modified state)
-
-```
-aer-flow  [👑 claude · Artisan* ▼]
-         ┌────────────────────────────────────────────────────────┐
-         │ Persona Preset                                         │
-         │ ● Artisan (modified)                                   │
-         │                                                        │
-         │ Overrides for this room                                │
-         │ Skill      [ implementation & refactor               ▼]│
-         │ Vendor     [ claude                                  ▼]│
-         │ Model tier [ balanced                                ▼]│
-         │ Effort     [ exhaustive *                            ▼]│
-         │ Grant      [ Project ∩ Session ∩ Step (Read, Write)  ▼]│
-         │ Voice      [ Pragmatic implementer, concise code     ]│
-         │                                                        │
-         │ Status: 1 parameter differs from preset 'Artisan'      │
-         │ [ Reset to preset ]             [ Save as new Persona ]│
-         └────────────────────────────────────────────────────────┘
-```
-
-Phone · persona picker bottom sheet
+Phone · skill-attach bottom sheet
 
 ```
 9:41 ▮▮▮
@@ -424,91 +395,68 @@ Phone · persona picker bottom sheet
 ‹ aer-flow · Workers
 
 Worker 1
-[👑 claude · Artisan* ▼]
+[👑 claude · 2 skills ▼]
 
 ┌────────────────────────────────────────┐
-│ Select Persona                         │
+│ Attach Skills                          │
 │                                        │
-│ ★ Scout — quick reconnaissance         │
-│ ★ Courier — draft & relay              │
-│ ★ Scribe — documentation               │
-│ ★ Artisan — implementation & refactor ✓│
-│ ★ Debugger — root-cause diagnosis      │
-│ ★ Auditor — code & security review     │
-│ ★ Advisor — cross-vendor critique      │
-│ ★ Architect — system design & planning │
+│ [✓] Code & security review             │
+│ [✓] Commit message style               │
+│ [ ] Thorough test coverage             │
+│ [ ] Quick reconnaissance               │
 │                                        │
-│ Overrides: Effort → exhaustive (mod)   │
-│                                        │
-│ [ Reset to preset ] [ Save as new ]    │
+│ + Create new skill…                    │
 └────────────────────────────────────────┘
 ```
 
-The worker chip shows the vendor, plus the active Persona's name as a qualifier — never the Persona's
-name alone, and never the raw axes repeated next to it. The whole point of a named preset is that it
-stands in for its raw axes; the whole point of keeping the vendor primary is that a person tracking a
-room by its worker chips never has to wonder whether they're looking at a worker or something else.
-Clicking the chip opens the picker popover, where vendor, model tier and effort each get their own
-row; that's also where model tier is named by *purpose* (deep/balanced/fast), never a specific
-version string, per 0023. Selecting a built-in or custom Persona (e.g. Artisan) applies five fields
-in one action: Skill binding, vendor/model tier, effort level, permission grant, and
-voice/personality — all visible in the popover, none of them duplicated in the label.
+The worker chip shows the vendor, plus a count of attached skills as a qualifier — never a skill's
+name in place of the vendor, and never the raw axes repeated next to it. Clicking the chip opens
+the popover, where vendor, model tier and effort each get their own row; that's also where model
+tier is named by *purpose* (deep/balanced/fast), never a specific version string, per 0023.
+Toggling a skill on attaches it immediately — no naming, saving, or preset step involved, because
+attaching is not creating an instance of anything; the worker's current set of attached skills *is*
+its current configuration.
 
-The phone picker list follows the same principle: it shows what each Persona *does* (Scout —
-"quick reconnaissance," Auditor — "code & security review") rather than its raw model×effort grid
-coordinate. The grid mapping matters when building or comparing the library, not when picking a
-Persona by what you need it to do — showing `fast × quick` next to every name in a pick-list forces
-someone to decode a coordinate before they can decide, which is exactly the busyness a name-first
-label is supposed to avoid.
+The skill list — desktop and phone alike — is flat and searchable, not organized by a
+model×effort grid: a skill is vendor/model/effort-agnostic content, not a point on that grid
+([0033](../decisions/0033-skills-attach-directly-no-persona.md)). It shows what each skill *does*
+("code & security review," "quick reconnaissance") so a person picks by need, not by decoding a
+coordinate.
 
-When someone opens the popover and changes a single axis (e.g., bumping Effort from `careful` to
-`exhaustive`), **your call, not yet decided**: the chip retains its Persona origin as `claude · Artisan*`
-(modified) rather than immediately severing the link or forcing a new saved Persona to be created.
-An explicit "Reset to preset" reverts all axes to the Persona default; an explicit "Save as new
-Persona…" opens the creation drawer pre-filled with the modified parameters. If the modified
-parameters come back to match the preset, the asterisk clears automatically.
+There is no modified state to track. Attaching or detaching a skill applies immediately to that
+worker's chip in the room — no asterisk, no "reset," no "save as new." The library skill itself is
+untouched by attaching or detaching it anywhere; editing a library skill's own instructions is a
+separate action, reachable from "Create new skill…" on an existing entry.
 
 On phone, the picker expands as a standard bottom sheet covering the worker list.
 
-### The persona-creation flow
+### The skill-creation flow
 
-Creating a Persona's instructions *is* creating a private, unnamed skill by construction (0010).
-Promoting that instruction set into the shared skill library is an explicit step, mirroring 0003's
-"promote into structure only when needed" pattern.
+A skill is account-wide the moment it's created ([0031](../decisions/0031-skills-are-account-wide.md))
+— there is no private/shared distinction and no promotion step, because there is no second,
+narrower place for it to start out living.
 
-Desktop · persona creation drawer (progressive disclosure)
+Desktop · skill creation drawer (progressive disclosure)
 
 ```
-AER Flow · Create Persona
+AER Flow · Create Skill
 ▤ ◱ ⚙
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ Create Persona                                                             ✕ │
+│ Create Skill                                                               ✕ │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│ 1. Skill Instructions                                                        │
-│    ● Pick existing skill from library:                                       │
-│      [ Code & Security Review (Auditor)                                    ▼]│
-│    ○ Write custom instructions from scratch (creates private skill):         │
-│      [                                                                      ]│
+│ 1. Instructions                                                              │
+│    [ Review every diff for OWASP-class issues; flag exploit context for     ]│
+│    [ each finding before approving.                                         ]│
 │                                                                              │
-│ 2. Identity & Voice                                                          │
-│    Name  [ Security Sentinel                                                ]│
-│    Voice [ Stern auditor. Flags OWASP vulnerabilities with exploit context. ]│
+│ 2. Name                                                                      │
+│    [ Security Review Standard                                              ]│
 │                                                                              │
-│ 3. Model Purpose                                                             │
-│    [ Fast ]  [ Balanced ]  [● Deep ]                                         │
+│ 3. Tool Requirements (optional)                                              │
+│    [ ] Run shell commands   [ ] Write files   [✓] Read files                │
+│    Checked against the room's actual grant when attached — never widens it. │
 │                                                                              │
-│ 4. Effort Level                                                              │
-│    [ Quick ]  [ Standard ]  [● Careful ]  [ Exhaustive ]                     │
-│                                                                              │
-│ 5. Permissions                                                               │
-│    [● Inherit room/project default ]  [ Custom grant... ]                    │
-│                                                                              │
-│ 6. Shared Skill Promotion (Optional)                                         │
-│    [✓] Save instructions as a shared skill in your library                  │
-│        Library skill name: [ Security Review Standard                       ]│
-│                                                                              │
-│                                           [ Cancel ]  [ Save Persona ]       │
+│                                            [ Cancel ]  [ Save Skill ]        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -516,27 +464,29 @@ The flow uses progressive disclosure inside a single side drawer rather than a m
 dialog. Multi-step wizards hide full context, break keyboard navigation, and turn simple edits into
 step-through obstacle courses.
 
-Step 1 lets the author select a pre-existing shared skill from the library or type custom markdown
-instructions. Typing custom instructions creates a private, unnamed skill attached solely to this
-Persona. Editing instructions imported from a shared skill automatically forks a private copy for
-this Persona (0021's clone-and-fork rule); changes to the shared library item do not quietly alter
-existing Persona definitions.
+Step 1 is instructions — nothing else. There's no separate identity/voice field: tone and
+personality are just more instructions, so an author who wants a particular voice writes it here
+([0033](../decisions/0033-skills-attach-directly-no-persona.md)). There's no model-purpose or
+effort step either — a skill doesn't bind to either; vendor, model tier and effort stay independent
+worker-chip axes a person sets separately, on any worker, regardless of which skills it carries.
 
-Step 6 makes skill promotion explicit: checking "Save instructions as a shared skill in your
-library" assigns a name and registers the instruction set in the shared skill library. If
-unchecked, the skill remains a private instruction set embedded in the Persona.
+Step 3's declared tool requirements are a request, not a grant. Attaching a skill that wants `Bash`
+to a worker in a read-only room fails to attach, with a clear reason — the room's actual permission
+grant ([0004](../decisions/0004-permission-scopes.md)) is never silently widened by what a skill
+asks for.
 
-"Save Persona" and "Cancel" are a plain create/discard pair, not a safeguard 0028 governs — nothing
-about naming and saving a preset grants, applies, overwrites or dismisses anything by itself (the
-permission grant, if customized, is its own control at step 5). They're drawn with calm, comparable
+"Save Skill" and "Cancel" are a plain create/discard pair, not a safeguard 0028 governs — nothing
+about naming and saving a skill grants, applies, overwrites or dismisses anything by itself (tool
+requirements are checked at attach time, not at save time). They're drawn with calm, comparable
 weight because that's this corpus's general register, not because 0028 specifically requires it
 here.
 
-### Room-header controls: reassigning the orchestrator, and adding/removing a Persona mid-room
+### Room-header controls: reassigning the orchestrator, and adding/removing a worker mid-room
 
-The room orchestrator is a pinnable role held by exactly one worker in the room. Mid-room
-modifications — reassigning the orchestrator or removing a Persona — must preserve room state
-integrity and enforce failure safety.
+The room orchestrator is a role held by exactly one worker in the room, always
+([0032](../decisions/0032-room-orchestrator-is-mandatory.md)) — a room cannot exist without one,
+and the current holder cannot be removed directly. Mid-room modifications — reassigning the
+orchestrator or removing a worker — must preserve room state integrity and enforce failure safety.
 
 Desktop · room header with orchestrator pin & mid-gate blocked state
 
@@ -544,12 +494,12 @@ Desktop · room header with orchestrator pin & mid-gate blocked state
 AER Flow · aer-flow
 ▤ ◱ ⚙
 
-Rooms + New            aer-flow  [👑 claude · Artisan]  [agy · Auditor]  [+ Add]
+Rooms + New            aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]  [+ Add]
                       ┌────────────────────────────────────────────────────────┐
                       │ Room Workers & Orchestrator                            │
                       │                                                        │
-                      │ 👑 claude (Artisan)    [ Active Orchestrator ]         │
-                      │    agy (Auditor)       [ Make Orchestrator ]           │
+                      │ 👑 claude              [ Active Orchestrator ]         │
+                      │    agy                 [ Make Orchestrator ]           │
                       │                                                        │
                       │ 🔒 Reassignment blocked: Decision gate #3 is open.     │
                       │    Resolve or abandon the gate before swapping.        │
@@ -560,22 +510,39 @@ you · gate #3         Needs you · permission requested
                       [ Allow once ]  [ Deny ]
 ```
 
-Desktop · removing a Persona with in-flight work & DAG dependency refusal
+Desktop · removing the current orchestrator is refused outright
 
 ```
 AER Flow · aer-flow
 ▤ ◱ ⚙
 
-Rooms + New            aer-flow  [👑 claude · Artisan]  [agy · Auditor ✕]
+Rooms + New            aer-flow  [👑 claude · 2 skills ✕]  [agy · 1 skill]
                       ┌────────────────────────────────────────────────────────┐
-                      │ Remove Worker 'agy (Auditor)'?                         │
+                      │ ✕ Cannot remove 'claude': it is this room's            │
+                      │    orchestrator, and a room always has one.            │
+                      │    Make another worker the orchestrator first,         │
+                      │    then remove this one.                               │
+                      │                                                        │
+                      │                                          [ OK ]        │
+                      └────────────────────────────────────────────────────────┘
+```
+
+Desktop · removing a non-orchestrator worker with in-flight work & DAG dependency refusal
+
+```
+AER Flow · aer-flow
+▤ ◱ ⚙
+
+Rooms + New            aer-flow  [👑 claude · 2 skills]  [agy · 1 skill ✕]
+                      ┌────────────────────────────────────────────────────────┐
+                      │ Remove Worker 'agy'?                                   │
                       │                                                        │
                       │ ⚡ In-flight work detected: Running security sweep...   │
                       │    Stopping worker via InFlightExecutionRegistry...    │
                       │                                                        │
-                      │ ✕ Cannot remove 'agy (Auditor)':                        │
+                      │ ✕ Cannot remove 'agy':                                  │
                       │    Active workflow step 2 (Security Audit) requires   │
-                      │    this persona. Stop workflow or edit shape first.    │
+                      │    this worker. Stop workflow or edit shape first.     │
                       │                                                        │
                       │ [ Stop Workflow & Remove ]              [ Cancel ]     │
                       └────────────────────────────────────────────────────────┘
@@ -587,13 +554,17 @@ or a permission request) is open, reassignment is **blocked mid-gate** — the l
 that the pending gate must be resolved or abandoned first, so a swap can never orphan a pending
 decision.
 
-Removing a Persona mid-room triggers two sequential guardrails:
-1. **In-flight execution stop.** If the Persona is currently executing a task, AER Flow invokes
+Removing a worker mid-room checks three things, in order:
+1. **Is it the orchestrator?** Refused outright, unconditionally — reassign the role to a
+   different worker first, then remove ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)).
+   There is no override for this one; a room cannot be left without an orchestrator, even
+   momentarily.
+2. **In-flight execution stop.** If the worker is currently executing a task, AER Flow invokes
    `InFlightExecutionRegistry.RequestCancellationAsync` to halt the CLI worker before updating room
    state — the real, already-existing mechanism, not a new one.
-2. **DAG dependency check (v1 refusal).** If the room has an active workflow where a downstream step
-   relies on the targeted Persona, removal is **refused with a clear reason** ("Active workflow step
-   2 requires this persona"). The graph is not silently repaired or mutated. To proceed, the person
+3. **DAG dependency check (v1 refusal).** If the room has an active workflow where a downstream step
+   relies on the targeted worker, removal is **refused with a clear reason** ("Active workflow step
+   2 requires this worker"). The graph is not silently repaired or mutated. To proceed, the person
    can choose "Stop Workflow & Remove" (toggles the workflow off and removes the worker) or
    cancel. This pair genuinely is a 0028 case — "Stop Workflow & Remove" is destructive and carries
    no more visual weight than "Cancel."
@@ -601,8 +572,8 @@ Removing a Persona mid-room triggers two sequential guardrails:
 ### The workflow-toggle-off control
 
 A room does not require a workflow (0001). Toggling a room's workflow off removes the structured
-execution graph while leaving all Persona-bound workers intact in the room as free-form conversation
-partners.
+execution graph while leaving every worker, and whatever skills are attached to it, intact in the
+room as free-form conversation partners.
 
 Desktop · room header with workflow toggle ON vs OFF
 
@@ -612,7 +583,7 @@ Desktop · Workflow ON (shape panel visible)
 AER Flow · aer-flow                                          Workflow [● ON ]
 ▤ ◱ ⚙
 
-aer-flow  [👑 claude · Artisan]  [agy · Auditor]
+aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]
 
 you Fix the auth bug and run security audit.
 
@@ -625,12 +596,12 @@ claude · working Editing auth.ts...                           Shape
 
 ──────────────────────────────────────────────────────────────────────────────
 
-Desktop · Workflow OFF (shape panel hidden, personas remain as free-form workers)
+Desktop · Workflow OFF (shape panel hidden, workers remain as free-form workers)
 
 AER Flow · aer-flow                                          Workflow [○ OFF]
 ▤ ◱ ⚙
 
-aer-flow  [👑 claude · Artisan]  [agy · Auditor]
+aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]
 
 you Fix the auth bug and run security audit.
 
@@ -647,10 +618,10 @@ Toggling the workflow switch in the room header is a visual non-event, not a mod
 right-hand shape panel slides away or fades out, reflecting that step-by-step DAG execution is no
 longer active.
 
-The worker chips in the room header (`[👑 claude · Artisan]`, `[agy · Auditor]`) do **not** change, disconnect,
-or enter an artificial "idle" state. They stay in the room as ordinary free-form workers —
-because a room without an active workflow is already free-form by 0001's own model. Turning off a
-workflow strips away the graph overlay; it does not touch who's present.
+The worker chips in the room header (`[👑 claude · 2 skills]`, `[agy · 1 skill]`) do **not** change,
+disconnect, or enter an artificial "idle" state. They stay in the room as ordinary free-form
+workers — because a room without an active workflow is already free-form by 0001's own model.
+Turning off a workflow strips away the graph overlay; it does not touch who's present.
 
 ### The calls made here
 
@@ -676,32 +647,34 @@ Readiness up front Which CLIs were detected is shown at first run and in Setting
 
 State is one thing Every surface renders the room's state machine and none derives its own — which is what makes "no task open" while running impossible rather than merely fixed.
 
-M27 addition, 2026-07-25 — the calls added with the four new screens above.
+M27 addition — the calls added with the four new screens above.
 
-Preset over chip Picking a Persona sets skill, model tier, effort, and permissions in one gesture on top of the worker chip, without inventing a fourth axis.
+Skills attach, they aren't picked Attaching a skill sets nothing but itself — no model tier, effort, or permission side effects — because it isn't a preset over the other axes, just an addition alongside them.
 
-Bare chips are unchanged A worker with no Persona attached looks exactly like it does in "The daily driver" and "Two workers, a gate" above — just the vendor name. A Persona adds a short qualifier next to that name; it never replaces it or adds a second visual language beside it.
+Bare chips are unchanged A worker with nothing attached looks exactly like it does in "The daily driver" and "Two workers, a gate" above — just the vendor name. Attached skills add a short count next to that name; they never replace it or add a second visual language beside it.
 
-Worker first, Persona as a qualifier, corrected twice An earlier revision of this section put vendor, model tier and effort on the chip itself (`Artisan · claude · balanced · careful`) — busy on desktop, worse on a phone's narrow header. A second revision cut it down to the Persona's name alone, which fixed the busyness but let the chip's primary identity silently become the preset instead of the worker. The chip now shows the vendor first, the Persona's name as a short qualifier (plus the crown, plus an asterisk if modified) — `claude · Artisan` — so a person always knows which worker they're looking at; the raw axes live one tap away in the popover, where model tier is still named by purpose (deep/balanced/fast), never a specific vendor version — 0023's rule, now enforced without also cramming the label.
+Worker first, skill count as a qualifier, no named identity to protect An earlier revision of this design put vendor, model tier and effort on the chip itself — busy on desktop, worse on a phone's narrow header. A later revision introduced a named preset ("Persona") whose name could stand in for the chip's label entirely — which fixed the busyness but let the chip's primary identity silently become the preset instead of the worker. Removing the preset object altogether removes the failure mode at its root: the chip shows the vendor first, a count of attached skills as a short qualifier (plus the crown for the orchestrator) — `claude · 2 skills` — so a person always knows which worker they're looking at, and there is no named thing that could compete with that identity. The raw axes live one tap away in the popover, where model tier is still named by purpose (deep/balanced/fast), never a specific vendor version — 0023's rule.
 
-Pick by what it does, not its coordinate The phone's persona list shows each Persona's skill ("quick reconnaissance," "code & security review"), not its model×effort grid position — the grid matters for building the library, not for choosing who joins a room.
+Pick by what it does, not its coordinate The skill list shows what each skill *does* ("quick reconnaissance," "code & security review"), not a model×effort grid position — there is no grid, because a skill isn't bound to either axis.
 
-Modified state over instant fork Overriding an axis marks the chip as `claude · Persona*` (modified) rather than severing identity; saving as a new Persona is an explicit action (*your call, not yet decided*).
+No modified state to track Attaching or detaching a skill applies immediately to the worker's chip. There's nothing to diverge from and nothing to reset, because a worker's current skill set was never an instance of something else.
 
-Single drawer for creation Persona creation uses progressive disclosure in a single side drawer to keep context visible, rather than a multi-step wizard.
+Single drawer for creation Skill creation uses progressive disclosure in a single side drawer to keep context visible, rather than a multi-step wizard.
 
-Explicit skill promotion Authoring instructions creates a private, unnamed skill by default; promoting it to the shared library is an explicit step-6 checkbox.
+No promotion step A skill is account-wide the moment it's created — there's no private/shared distinction to promote between, so the drawer has no "save to library" checkbox at all.
+
+Orchestrator removal is refused outright, not guarded A room always has exactly one orchestrator. Removing the current holder isn't a guarded destructive action with an override — it's refused unconditionally, with the fix stated (reassign first).
 
 Reassignment blocked mid-gate The orchestrator pin cannot be reassigned while a decision gate is open, so a swap can never orphan a pending decision.
 
-In-flight cancellation on removal Removing an active Persona halts execution via the real `InFlightExecutionRegistry.RequestCancellationAsync` before updating room state.
+In-flight cancellation on removal Removing an active worker halts execution via the real `InFlightExecutionRegistry.RequestCancellationAsync` before updating room state.
 
-DAG removal refused in v1 Removing a Persona required by an active workflow step is refused with an explicit reason; silent DAG repair is deferred, not built.
+DAG removal refused in v1 Removing a worker required by an active workflow step is refused with an explicit reason; silent DAG repair is deferred, not built.
 
-Workflow toggle is a non-event Turning off a room's workflow hides the shape panel while every worker, Persona-bound or not, stays in the room exactly as before.
+Workflow toggle is a non-event Turning off a room's workflow hides the shape panel while every worker, whatever skills it carries, stays in the room exactly as before.
 
 Complete set, draft 3 — the shapes and the calls, not the pixels. Mark it up and I'll take another pass before any of it becomes a decision record or touches the backlog.
 
-M27 addendum, 2026-07-25 — four more screens added for personas and room orchestration; draft 3
+M27 addendum — four more screens added for skill attachment and room orchestration; draft 3
 above is otherwise unchanged. Mark this section up the same way before any of it becomes a
 decision record.
