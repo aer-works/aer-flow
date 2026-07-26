@@ -123,3 +123,6 @@ Two rules for the column:
 | [0028](0028-no-permissive-control-is-the-default.md) | Visual rank is a decision: no permissive control is ever the default (amends 0006) | accepted |
 | [0029](0029-the-gate-is-three-mechanisms.md) | The gate is three mechanisms with three populations, not one (amends 0015) | accepted |
 | [0030](0030-aer-is-its-own-notifier.md) | AER is its own notifier: no vendor event announces a pause (amends 0018) | accepted |
+| [0031](0031-skills-are-account-wide.md) | Skills are account-wide, not project-scoped: one library per person (resolves an open question in 0010) | accepted |
+| [0032](0032-room-orchestrator-is-mandatory.md) | A room always has exactly one orchestrator: first worker added by default, removal refused until reassigned | accepted |
+| [0033](0033-skills-attach-directly-no-persona.md) | Skills attach directly to a worker; there is no Persona object | accepted |
