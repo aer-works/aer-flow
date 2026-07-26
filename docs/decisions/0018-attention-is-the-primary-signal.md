@@ -10,7 +10,14 @@ Date: 2026-07-24
 > event — AER hosts the gate, so AER already holds the pause at ask-time and notifies from that act.
 > Everything below stands unchanged.
 
-> **Amendment, 2026-07-25 (#501).** [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) amends this record's band assignment for a **rate-limited vendor**. Band 4 is right for a background room and wrong for the worker you just addressed — you asked for something and it will not happen, which is an attention state. The discriminator is *did the operator just try to use it*, not *what kind of state is it*: the same correction this record already made for host-unreachable, applied to the case it missed. Everything below stands unchanged.
+> **Amendment, 2026-07-25 (#501).** [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) amends
+> this record's band assignment for a **rate-limited vendor**. Band 4 is right for a background room
+> and wrong for the worker you just addressed — you asked for something and it will not happen, which
+> is an attention state. The discriminator is *did the operator just try to use it*, not *what kind of
+> state is it*: the same correction this record already made for host-unreachable, applied to the case
+> it missed. **The "Two corrections follow" passage below has been updated to state this directly** —
+> it originally said rate-limited is "genuinely quiet — band 4, correct as written" in every case,
+> which is exactly what 0026 corrects.
 
 ## Context
 
@@ -74,10 +81,13 @@ somewhere else.
 
 Two corrections follow.
 
-**"Unavailable" splits by cause, and the halves belong in opposite bands.** One vendor being
-rate-limited while other rooms run is genuinely quiet — band 4, correct as written. The *host being
-unreachable* is the loudest state the product has, because it invalidates every other row on screen
-at once. They share a word today and must not share a band.
+**"Unavailable" splits by cause, and the halves belong in opposite bands.** A vendor rate-limited in a
+*background* room, not the one you are looking at, is genuinely quiet — band 4. **The same vendor,
+exhausted on the worker you just addressed, is band 1** — you asked for something and it will not
+happen ([0026](0026-running-out-of-plan-is-a-state-not-a-failure.md); the discriminator is *did the
+operator just try to use it*, not *what kind of state is it*). The *host being unreachable* is the
+loudest state the product has regardless of which room, because it invalidates every other row on
+screen at once. All three share the word "unavailable" today and must not share a band.
 
 **Freshness is part of the signal.** An empty "needs you" band is only information if the operator
 knows how recently it was true. A room list rendered from a stale cache asserts calm it cannot

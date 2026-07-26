@@ -1,19 +1,7 @@
 # 0017 — Vendor, model and effort are three separate choices
 
-Status: accepted, except the effort-naming clause — **corrected by
-[0023](0023-effort-and-models-are-named-by-behaviour.md)**
+Status: accepted
 Date: 2026-07-24
-
-> **Amendment, 2026-07-24 — this one corrects rather than extends.** The three-axis model below
-> (vendor · model · effort, all on the chip) stands and is the foundation
-> [0023](0023-effort-and-models-are-named-by-behaviour.md) builds on. **One clause is wrong:** where
-> the Decision section says effort's *"allowed values are vendor-named … rather than a fabricated
-> universal scale"*, read 0023 instead. Effort is named by **behaviour** (quick / standard / careful
-> / exhaustive) and models are offered by **purpose** (deep / balanced / fast), with the adapter
-> mapping onto whatever the vendor's CLI wants — because a vendor's flag value reaching the UI is
-> exactly the quirk CLAUDE.md's Adapter Isolation rule requires to stay inside `Aer.Adapters`.
-> The clause is left in place below rather than edited, because the reasoning that was wrong is
-> part of the record.
 
 ## Context
 
@@ -41,18 +29,22 @@ questions that happen to be answered in the same gesture.
 | Axis | The question | Example |
 |---|---|---|
 | **Vendor** | which *tool* drives the work | `claude`, `agy` |
-| **Model** | which model within that vendor's subscription | Opus 4.8, Gemini 3 Pro |
-| **Effort** | how hard it thinks on this run | low / high (vendor-named) |
+| **Model** | which model within that vendor's subscription, offered by purpose | deep / balanced / fast |
+| **Effort** | how hard it thinks on this run, named by behaviour | quick / standard / careful / exhaustive |
 
 - **Vendor is the tool, not the model.** `agy` is the Antigravity CLI, the successor to the Gemini
   CLI; it is invoked as `agy` (`src/Aer.Adapters/GeminiWorkerAdapter.cs`). The vendor names *which
   CLI AER shells out to* — a capability/enforcement question ([0004](0004-permission-scopes.md):
   "vendor is not a scope… it is a capability question"), not a quality one.
-- **Model is chosen within the vendor**, from what that subscription offers. AER does not manage keys
-  or model access; it selects among what the authenticated CLI already exposes.
+- **Model is chosen within the vendor**, from what that subscription offers, presented by purpose
+  (deep/balanced/fast) rather than the vendor's own model identifier.
 - **Effort is per-run and lives on the chip beside the other two** — the answer to the owner's
-  question. Its allowed values are vendor-named (each CLI has its own vocabulary), so the chip renders
-  the options the chosen vendor actually supports rather than a fabricated universal scale.
+  question. It is named by **behaviour** (quick/standard/careful/exhaustive), never a vendor's own
+  flag value or a fabricated universal scale that happens to match one vendor's vocabulary — a
+  vendor's flag value reaching the UI is exactly the quirk CLAUDE.md's Adapter Isolation rule requires
+  to stay inside `Aer.Adapters`. The adapter maps this vocabulary onto whatever the vendor's CLI wants
+  this month; see [0023](0023-effort-and-models-are-named-by-behaviour.md) for the full reasoning and
+  the empirical vendor-scale comparison behind this.
 
 **Effort is genuinely orthogonal**, which is why it gets its own axis rather than folding into model:
 the same model runs at different efforts, and the choice belongs to the work, not the worker. Modeling

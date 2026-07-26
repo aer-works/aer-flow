@@ -1,17 +1,16 @@
-# 0027 — Context belongs to the worker, not the room, and running out is offered as a choice
+# 0027 — The mechanics behind 0011's per-worker unit and announced-choice trigger
 
 Status: accepted
 Date: 2026-07-25
-Amends: [0011](0011-token-based-context-management.md) — **corrects** its unit and its trigger
 
 ## Context
 
-[0011](0011-token-based-context-management.md) replaced a turn-count ceiling with token accounting, and
-it was right to: counting turns is counting the wrong thing, because a turn can be one line or a
-thousand. But it landed the counter on the wrong object, and did so in a way that repeats the very
-error it was written to fix — **one level up.**
+[0011](0011-token-based-context-management.md) states the rule: context is tracked per worker, and
+running out is announced as a choice rather than acted on silently. This record is the mechanics and
+code-level grounding behind that rule — why the unit has to be the worker, not the room, and why the
+trigger has to be an announced choice, not an automatic handoff.
 
-0011 tracks usage *per session* and captures it into `SessionMetadata`. Verified in code, not
+The current code tracks usage *per session*, captured into `SessionMetadata`. Verified in code, not
 inferred: `src/Aer.Adapters/InteractiveSessions.cs` declares
 
 ```csharp
@@ -34,11 +33,11 @@ window. Against a summed counter, a threshold fires for both at once — **the r
 worker has used almost nothing.** Compaction is lossy, so that is not a harmless early trigger; it
 throws away context on a worker that had no reason to lose any.
 
-The second half is a different mistake. 0011 makes running out an **automatic** handoff with a marker
-afterwards. The corpus makes it **a choice, announced at a threshold**, and draws the three options:
-*Summarise now · Start a fresh room from here · Leave it.* The distinction is not cosmetic — losing
-context without having been asked is the kind of surprise that costs trust in the whole product, and
-the operator is the only one who knows whether the older turns still matter.
+The second question is the trigger: an automatic handoff with a marker afterward, or a choice
+announced at a threshold? The corpus draws the three options: *Summarise now · Start a fresh room from
+here · Leave it.* The distinction is not cosmetic — losing context without having been asked is the
+kind of surprise that costs trust in the whole product, and the operator is the only one who knows
+whether the older turns still matter.
 
 ## Decision
 
@@ -87,7 +86,6 @@ threshold rather than acting silently; keep automatic compaction as a disclosed 
 a compaction dropped; and keep this vocabulary distinct from
 [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md)'s.
 
-**Relates to** [0011](0011-token-based-context-management.md), whose token-based accounting stands and
-whose *unit* and *trigger* this corrects. [0017](0017-vendor-model-effort-are-three-choices.md) is what
-makes per-worker windows expressible at all. `#493` is the object-model prerequisite; `#395` is where
-the surface work lives.
+**Relates to** [0011](0011-token-based-context-management.md), the rule this gives its mechanics to.
+[0017](0017-vendor-model-effort-are-three-choices.md) is what makes per-worker windows expressible at
+all. `#493` is the object-model prerequisite; `#395` is where the surface work lives.

@@ -220,7 +220,8 @@ apply claude · 2 skills ask me first ○
 
 + step
 
-Each step runs after the one above it. Turn on "ask me first" to put a gate before a step.
+By default each step runs after the one above it. Turn on "ask me first" to put a gate before a step;
+name a different blocker to fan a step out or in.
 
 Preview
 
@@ -242,7 +243,10 @@ A list that renders as a graph, not a canvas you drag on. Freeform node editors 
 
 A gate is a property of a step, not a node you add. "Ask me first" is the entire mental model for human oversight — one toggle, in the place you are already looking. That is also what makes the shape readable at a glance: the gates are the highlighted rows.
 
-The cost of this choice is that genuinely parallel fan-out — three workers at once on the same input — needs a second affordance later. That is a real limitation and worth paying, because it is rare and the tangle is not.
+**Corrected — fan-out is not rare, and it needs no second affordance.** This originally called
+genuinely parallel fan-out an edge case worth deferring behind a later gesture. [0014](../decisions/0014-shapes-are-a-list-not-a-canvas.md)
+overrides that: naming a step's blocker is already a list operation, the default (blocked by the step
+above) keeps a linear shape free, and the engine already runs anything whose blockers are satisfied.
 
 ### Settings
 
@@ -336,7 +340,7 @@ AER Flow · migration Failed — the worker exited before finishing.
 
 A notification says enough to judge whether it is worth opening, and never decides anything.
 
-The phone's first run is pairing, and nothing else. It has no folders of its own and no CLIs installed, so until it is connected to a computer there is genuinely nothing it can do — pretending otherwise with an empty rooms list would be worse than saying so. Notifications inform, they never decide: one tap opens the gate beside the argument you are ruling on, because approving an agent's work from a lock screen is one mis-tap from approving something you never read. Template authoring is out of scope for the phone's first version , not ruled out — a small-screen shape editor is an interesting problem worth returning to, and the step-list model above is far more portable to a phone than a canvas would have been.
+The phone's first run is pairing, and nothing else. It has no folders of its own and no CLIs installed, so until it is connected to a computer there is genuinely nothing it can do — pretending otherwise with an empty rooms list would be worse than saying so. Notifications inform, they never decide: one tap opens the gate beside the argument you are ruling on, because approving an agent's work from a lock screen is one mis-tap from approving something you never read. Template authoring is out of scope for the phone's *earliest* runs — the pairing/chat-only milestones before shapes exist as a capability at all, not a standing exclusion; see [0041](../decisions/0041-phone-authoring-lands-with-shapes-not-after.md) for exactly when it stops being out of scope. The step-list model above is what makes a small-screen editor tractable where a canvas would not have been.
 
 ### M27 addition — screens for skill attachment and room orchestration
 
@@ -631,7 +635,7 @@ One noun Adding a worker never creates a new object. The header chip changes; th
 
 Gates inline Decisions render in the conversation that produced them , and are also reachable from the "needs you" filter and the phone. Several entry points, one piece of state. The separate decision surface goes away.
 
-Steps, not a canvas Shapes are authored as an ordered list that renders as a graph. Costs genuine parallel fan-out until a later affordance; buys keyboard navigation, clean diffs, and no tangle.
+Steps, not a canvas Shapes are authored as an ordered list that renders as a graph. A step names its blocker to fan out or in — [0014](../decisions/0014-shapes-are-a-list-not-a-canvas.md) — buying keyboard navigation, clean diffs and no tangle without deferring parallelism.
 
 Gate as a toggle "Ask me first" is a property of a step, not a node type. One switch is the entire mental model for human oversight.
 

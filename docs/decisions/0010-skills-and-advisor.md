@@ -3,22 +3,14 @@
 Status: accepted
 Date: 2026-07-23
 
-> **Amendment, 2026-07-24.** [0024](0024-commands-are-namespaced.md) adds how these are *addressed*
-> in a room with more than one worker: commands and skills are **namespaced by owner** — canonical
-> skills under Room, a vendor's native ones under that vendor, both marked — plus `/ask-all` as the
-> broadcast and an Actions sheet in place of the slash palette on a phone. Everything below about
-> what a skill *is* stands unchanged; 0024 governs the palette, not the model. The body is left as
-> written.
->
-> **Amendment, 2026-07-26.** [0031](0031-skills-are-account-wide.md) resolves the one item this
-> record left open — *"where app-level skills are stored and scoped (project vs. app)"* —
-> account-wide, one library per person, no project-level store in M27.
-> [0033](0033-skills-attach-directly-no-persona.md) resolves *"participant behaviour is a named
-> role/skill binding"* concretely: a worker attaches Skills directly, with no separate Persona
-> object mediating the binding. The rest of *Leaves open* — pass-through-first-vs-canonical-first
-> sequencing, and the canonical schema itself — still stands undecided, and is now more load-bearing
-> than when this record was written, since every worker capability routes through it. The body is
-> left as written.
+[0024](0024-commands-are-namespaced.md) adds how these are *addressed* in a room with more than one
+worker — namespaced by owner, plus `/ask-all` as the broadcast. [0031](0031-skills-are-account-wide.md)
+resolves where skills are stored (account-wide, one library per person, no project-level store in M27)
+and [0033](0033-skills-attach-directly-no-persona.md) resolves participant behaviour concretely: a
+worker attaches Skills directly, no separate Persona object. *Leaves open*'s other two items
+(pass-through-first-vs-canonical-first sequencing, and the canonical schema itself) still stand
+undecided, and are now more load-bearing than when this record was written, since every worker
+capability routes through them.
 
 ## Context
 

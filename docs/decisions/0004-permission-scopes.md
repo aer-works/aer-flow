@@ -1,26 +1,14 @@
-# 0004 — Permissions scope by project, session and step
+# 0004 — Permissions scope by project, room and step
 
 Status: accepted
 Date: 2026-07-22
-
-> **Amendment, 2026-07-24.** [0022](0022-permission-ladder-and-denial-is-an-answer.md) adds what this
-> record does not cover: the scope **ladder** is offered at the moment of asking rather than in
-> settings, and **a denial is a real answer** the worker is told about and continues from. Everything
-> below about the scope model — project ∩ session ∩ step, failing closed — stands unchanged; 0022
-> governs the moment a permission is asked, not what a permission bounds. The body is left as
-> written.
-
-> **Amendment, 2026-07-26.** [0034](0034-project-permission-ceiling-lives-in-aers-own-config.md)
-> resolves the "obliges us to" item below about where the project ceiling is stored and first
-> presented: AER's own app-level config, keyed by project path — never a file inside the project's
-> own directory. The body is left as written.
 
 ## Context
 
 Permissions today are a single flat `PermissionGrant` per worker binding, and they are **not
 enforced**.
 
-Verified against the live daemon and the real `claude` CLI (#331): a session materialised with
+Verified against the live daemon and the real `claude` CLI (#331): a room materialised with
 `RunShellCommands: false` was asked to run `hostname` and returned `Compy-2`, this machine's actual
 hostname — a value it could only obtain by executing the command.
 
@@ -43,15 +31,19 @@ binding** and nothing exposes it.
 
 ## Decision
 
-**Three scopes, composing by intersection. Effective grant = project ∩ session ∩ step. Always
+**Three scopes, composing by intersection. Effective grant = project ∩ room ∩ step. Always
 narrowing, never widening.**
 
 **1. Project / directory — the ceiling.** Where trust actually lives, and what a human reasons
 about: *this scratch folder, anything goes; this client's monorepo, no network and no shell, ever.*
-Stable, outlives any session. Completely missing today; this is the new construct.
+Stable, outlives any room. Completely missing today; this is the new construct. Where the ceiling is
+stored and first presented is resolved by
+[0034](0034-project-permission-ceiling-lives-in-aers-own-config.md): AER's own app-level config, keyed
+by project path, never a file inside the project's own directory.
 
-**2. Session — the working grant.** Plan / default / auto, moment to moment. May only narrow the
-project ceiling, never exceed it. Mostly exists already via `/api/sessions/{id}/mode`.
+**2. Room — the working grant.** Plan / default / auto, moment to moment. May only narrow the
+project ceiling, never exceed it. Mostly exists already via `/api/sessions/{id}/mode` (the endpoint's
+own naming predates the room/session split — see [0013](0013-room-is-the-user-facing-noun.md)).
 
 **3. Step — override inside an authored pipeline.** A review step stays read-only even in a
 permissive project. **The engine already supports this**; Author collapses it to one global control.
@@ -74,7 +66,7 @@ why they read as *off* and are not.
 
 ## Consequences
 
-**Easier.** Trust is expressed once per project instead of re-decided per session. A read-only
+**Easier.** Trust is expressed once per project instead of re-decided per room. A read-only
 review step becomes expressible. "Plan mode" becomes true rather than aspirational.
 
 **Harder.** Intersection semantics must be legible — a user who checks a box and sees no change
@@ -83,11 +75,11 @@ scope won.
 
 **Obliges us to.** Fix enforcement **first** (#331). Scopes layered over an unenforced grant produce
 a more elaborate lie, not more safety. Ordering is: enforce and fail closed → add the project ceiling
-→ expose per-step in Author.
-
-**Also obliges us to** decide where a project's ceiling is stored and how it is presented on first
-use of a folder — a trust prompt is the obvious shape, and there is currently no Settings surface to
-host any of it.
+→ expose per-step in Author. The scope **ladder** is offered at the moment of asking, not only in
+settings, and a denial is a real answer the worker is told about and continues from
+([0022](0022-permission-ladder-and-denial-is-an-answer.md)).
 
 Related: #331 (enforcement), #321 (quick-start binds no directory at all — worst case is unenforced
-permissions rooted where nobody chose), #327 (Author's inherit-vs-off checkboxes).
+permissions rooted where nobody chose), #327 (Author's inherit-vs-off checkboxes),
+[0022](0022-permission-ladder-and-denial-is-an-answer.md) (the asking-moment ladder),
+[0034](0034-project-permission-ceiling-lives-in-aers-own-config.md) (where the ceiling lives).

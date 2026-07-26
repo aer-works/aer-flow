@@ -386,13 +386,17 @@ The payoff for choosing a list over a canvas: the authoring surface survives the
 
 - **Spans** — phone → desktop · *decisions 0014 and 0025*
 - **Passes when** — a four-step template is authored **on a phone**, started on the desktop, and runs
-  to completion with its shape legible as it goes.
-- **Path** *(illustrative)* — on the phone, add four steps, reorder by dragging, write each step's
-  instruction, toggle "ask me first" on one · on the desktop, start a room from it · watch the steps
-  advance.
-- **Verify** — each step's **instruction is its body**, previous output flows in implicitly, and there
-  is no template language to learn. A step with no instruction is rejected **at edit time**, not at run
-  time.
+  to completion with its shape legible as it goes. **At least one step names a blocker other than the
+  step above it** (fan-out or fan-in), demonstrating that this is a list operation, not a canvas
+  gesture — 0014 (#503, item 5) treats this as first-class, not a deferred cost.
+- **Path** *(illustrative)* — on the phone, add four steps: step 1, two steps both blocked by step 1
+  (fan-out), a fourth blocked by both (fan-in) · reorder by dragging, write each step's instruction,
+  toggle "ask me first" on one · on the desktop, start a room from it · watch the two parallel steps
+  advance together.
+- **Verify** — each step's **instruction is its body**, its named blocker's output flows in implicitly,
+  and there is no template language to learn. A step with no instruction is rejected **at edit time**,
+  not at run time. Two steps whose blocker is already satisfied run **concurrently**, not one after the
+  other in list order.
 - **Today** — authoring is a desktop canvas behind Advanced with a second vocabulary (#327), and the
   step model has no instruction field at all.
 - **Serves** — #339, #327, #340, decisions 0014, 0025

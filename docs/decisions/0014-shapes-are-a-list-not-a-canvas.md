@@ -3,23 +3,9 @@
 Status: accepted
 Date: 2026-07-24
 
-> **Amendment, 2026-07-24.** [0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) says what a
-> *step* contains, which this record left out: the **instruction is the step's body**, previous
-> output flows in implicitly with **no template language**, and **"ask me first" is a property of a
-> step** rather than a node type. The list-not-a-canvas shape stands unchanged.
->
-> **Correction, 2026-07-25 (#501): `DependsOn` is an engine capability, not an authoring
-> affordance.** As written, the Decision below says *"add a step, reorder, **set a dependency** — all
-> list operations"*, and 0025 says referring to a step other than the immediately previous one *"has
-> **no expression** in this model."* Both were accepted and in force, so the editor's dependency field
-> either existed or did not depending on who built first. **0025 wins**, and the corpus is
-> unambiguous: *"each step runs after the one above it."*
->
-> So: the engine keeps `DependsOn` and keeps running the fan-out it expresses — nothing about
-> `WorkflowDefinition` changes — but **the authoring surface does not offer it.** The "cost we are
-> accepting" section below is therefore stronger than it reads: parallel fan-out is not merely missing
-> a *gesture*, it is not authorable at all, and making it so is a new decision rather than a UI
-> addition. The body is left as written, because the transition is part of the record.
+[0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) says what a *step* contains: the
+instruction is the step's body, previous output flows in implicitly with no template language, and
+"ask me first" is a property of a step rather than a node type.
 
 ## Context
 
@@ -53,22 +39,28 @@ open to polish it. Three things make that the wrong default:
   the list is read top to bottom as the plan in prose, not a diagram you decode. The graph is the
   *picture* of that list, offered for inspection, not the thing you type into.
 - **It is keyboard-navigable and works on a phone**, because a list is. Add a step, reorder, set a
-  dependency — all list operations, all available on both surfaces.
+  dependency — all list operations, available on both surfaces. **Express it GitHub-style: each step
+  declares what blocks it.** Default is blocked by the step above, so a linear shape — the overwhelming
+  majority of authored shapes — needs zero dependency editing. Naming a different (or no) blocker is
+  the one extra list operation that expresses fan-out and fan-in, and parallelism is *emergent*: the
+  engine already runs anything whose blockers are satisfied
+  (`src/Aer.Flow/Scheduling/DependencyResolver.cs`'s `GetReadySteps` returns a set, not a single step).
 - **The graph view is for reading, not building** — inspect a template before starting it, or watch
   a running pipeline light up step by step. Same rendering, live.
 
 This is the concrete form of [0012](0012-what-aer-flow-is.md)'s third commitment ("shapes you can
 draw"): quick, visual, saveable — a *list* you can draw, not a canvas you must lay out.
 
-### The cost we are accepting
+### Fan-out is a first-class requirement, not a deferred cost
 
-**Parallel fan-out has no first-class authoring gesture yet.** A linear list expresses "A then B then
-C" naturally and "A, then B and C in parallel, then D" only through each step's `DependsOn` — legible
-when read, but there is no drag-two-branches-apart gesture the way a canvas has. We accept this: the
-overwhelming majority of authored shapes are short and mostly linear, parallelism is still fully
-*expressible* through dependencies (the engine already runs it), and a later affordance for drawing a
-fan-out is additive. Buying phone-parity, clean diffs, and keyboard authoring is worth a fan-out
-gesture we can add when a real shape needs it.
+**Corrected 2026-07-25 (#503, item 5).** This section originally argued the opposite — that parallel
+fan-out has no first-class authoring gesture and that a linear list only expresses it "legibly," with
+a drawing gesture deferred to later. That was wrong on the fact it rested on: fan-out is not rare.
+This project's own working method — several agents dispatched in parallel on different briefs,
+reporting back — is the multi-model product's most natural shape, not an edge case worth deferring.
+A list does not need a drag-two-branches-apart gesture to express this: naming a step's blocker(s) is
+already a list operation, exactly as ordinary as reordering, and the default (blocked by the step
+above) means a linear shape costs nothing extra. There is no gap here to accept.
 
 ## Consequences
 
@@ -77,14 +69,14 @@ and phone, so there is one authoring model, not two. Watching a run is the same 
 one, which halves the surface to build and learn.
 
 **Harder.** Auto-layout has to be good — a computed graph that tangles its own edges is worse than no
-graph. And the fan-out gap above is a real, named limitation a power user will hit; it must be
-documented, not discovered.
+graph. Composing more than one blocker's output, or reading from a step other than a direct blocker,
+still has no expression in this model ([0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md)) —
+that is the real, named limitation a power user will hit; it must be documented, not discovered.
 
-**Obliges us to** treat the freeform canvas as **out of scope, which likely retires #266** (polish
-for a canvas we will not build — verify against its current body before closing). The authoring
-surface is rebuilt as a list ([0012](0012-what-aer-flow-is.md)'s UI-only rebuild), and the live
-pipeline view reuses the same renderer over
-[0008](0008-runtime-streaming-over-append-log.md)'s stream.
+**Obliges us to** treat the freeform canvas as **out of scope — retired #266**, closed. The authoring
+surface is rebuilt as a list, touched wherever a milestone's own journeys require it (no layer is
+out-of-bounds by default — see plan.md's "Scope of the rebuild"), and the live pipeline view reuses
+the same renderer over [0008](0008-runtime-streaming-over-append-log.md)'s stream.
 
 **Does not change** what the three shapes *are* ([0003](0003-templates-collapse-to-three-shapes.md))
 — only how a pipeline is authored and shown. Conversation and dialogue were never canvases; this

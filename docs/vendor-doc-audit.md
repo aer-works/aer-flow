@@ -1,23 +1,12 @@
 # Vendor documentation audit — every documented capability, and whether we verified it
 
-**Status: in progress.** Started 2026-07-24 against `claude` 2.1.219 and `agy` 1.1.7. **`claude`
-self-updated to 2.1.220 mid-audit**, which the staleness gate caught rather than a person noticing;
-every measurement in *Verified by running it* ran on 2.1.220, and the probe was re-run so the
-recorded attribution matches the installed binary.
+Measured against `claude` 2.1.220 and `agy` 1.1.7. Read the docs, then verify each claim against the
+live CLI — `vendor-capabilities.md` was built the other way (probe binaries and help text first) and
+several rows were wrong as a result, all the same shape: **a capability was recorded as absent
+because the surface checked did not mention it.** The documentation mentions it.
 
-This exists because `docs/vendor-capabilities.md` was built by probing binaries and help text while
-both vendors publish documentation. Several rows were wrong as a result, and the errors were not
-random — they were all the same shape: **a capability was recorded as absent because the surface we
-checked did not mention it.** The documentation mentions it.
-
-## The method, and why it changed
-
-The order is now: **read the docs, then verify each claim against the live CLI.** Previously it was
-probe-first, which produced two rounds of wrong answers and a 166 MB binary scan looking for a flag
-list that was published on a web page.
-
-Claude Code's documentation index is machine-readable and worth knowing about:
-`https://code.claude.com/docs/llms.txt` — ~170 pages, each fetchable as `.md`.
+Claude Code's documentation index is machine-readable: `https://code.claude.com/docs/llms.txt` —
+~170 pages, each fetchable as `.md`.
 
 Every row below carries an **evidence class**, same discipline as `vendor-capabilities.md`:
 
@@ -32,9 +21,8 @@ Every row below carries an **evidence class**, same discipline as `vendor-capabi
 
 ### 1. `claude` HAS an OS-enforced sandbox — but not on Windows
 
-`vendor-capabilities.md` recorded claude's sandbox as *"referenced in help only"*, and
-[0004](decisions/0004-permission-scopes.md) concluded a project ceiling is *enforceable* on `agy` and
-only *advisory* on `claude`. **There are two full documentation pages on Claude Code sandboxing.**
+Not "referenced in help only," as `vendor-capabilities.md` once recorded. **Two full documentation
+pages describe Claude Code sandboxing:**
 
 | | documented |
 |---|---|
@@ -47,28 +35,21 @@ only *advisory* on `claude`. **There are two full documentation pages on Claude 
 | escape hatch | model may retry with `dangerouslyDisableSandbox`; disable via `allowUnsandboxedCommands: false` ("Strict sandbox mode") |
 | org lockdown | `allowManagedDomainsOnly`, `allowManagedReadPathsOnly`; settings files are write-denied inside the sandbox at every scope |
 
-**Why we got it wrong, and it matters for how we test:** *"The sandbox is built into Claude Code and
-runs on macOS, Linux, and WSL2. **Native Windows is not supported.**"* The probe host is Windows 11.
-So the observation "no sandbox here" was true **of this machine** and was generalised into a claim
-about the product. AER Flow ships cross-platform, so the correct statement is that claude's ceiling is
-OS-enforced on macOS/Linux/WSL2 and unavailable on native Windows.
+*"The sandbox is built into Claude Code and runs on macOS, Linux, and WSL2. **Native Windows is not
+supported.**"* The probe host is Windows 11, so claude's sandbox ceiling is OS-enforced on
+macOS/Linux/WSL2 and unavailable on native Windows here. **Every row in `vendor-capabilities.md` is
+established on Windows only** — a single-platform observation is not a cross-platform capability
+claim (`documentation-lessons.md` #1).
 
-**This is the sharpest methodological lesson in this audit: a single-platform observation is not a
-capability claim.** Every row in `vendor-capabilities.md` was established on Windows only.
-
-### 2. `--help` is officially incomplete on `claude` too, and the docs say so outright
+### 2. `--help` is officially incomplete on `claude` too
 
 On channels: *"Neither `--channels` nor `--dangerously-load-development-channels` appears in
 `claude --help` while the feature is in preview. **The flags work even though they aren't listed.**"*
+So "not in `--help`" is not evidence of absence on **either** vendor — the vendor says so directly.
 
-So "not in `--help`" is not evidence of absence on **either** vendor. That is now confirmed by the
-vendor rather than inferred from a single counter-example.
+### 3. `--permission-prompt-tool` is documented in the CLI reference, just absent from `--help`
 
-### 3. `--permission-prompt-tool` was never undocumented
-
-It is in the CLI reference. It is absent from `--help`. Those are different claims, and
-[0015](decisions/0015-three-kinds-of-needs-you.md) and `vendor-capabilities.md` said the wrong one.
-The documentation also states two constraints we had not measured:
+Those are different claims. The documentation states two constraints not otherwise measured:
 
 > "Claude Code waits for that tool's MCP server to connect before running the first turn, up to the
 > `MCP_TIMEOUT` startup timeout of **30 seconds**. The prompt tool **can't approve an MCP tool marked
@@ -168,28 +149,16 @@ Priority, by how much design leans on it:
 Docs live at `https://antigravity.google/docs/cli/...` (`overview`, `reference`, `permissions`,
 `sandbox`, `modes`, `subagents`, `projects`, and `commands/*`). None of it had been read.
 
-### 1. `command(...)` rules are documented as **regex**, and we recorded them as literal
+### 1. `command(...)` rules are documented as **regex**; measured as literal
 
-This is the most consequential conflict in the audit, because
-`vendor-capabilities.md` calls its literal-matching finding *"the single most consequential finding
-for the permission surface"*, and [0004](decisions/0004-permission-scopes.md) carries the consequence
-that a command *family* cannot be pre-authorised on `agy` at all.
-
-The documentation says the opposite:
+`0004`'s consequence — a command *family* cannot be pre-authorised on `agy` at all — depends on
+this. The documentation says the opposite of what was measured:
 
 > "Each whitespace-separated token is evaluated as an **anchored regular expression**."
 > `command(npm run (build|lint|test))` matches `npm run build` and `npm run test`.
 
-Our measurement (against **1.1.6**) was that `command(node)` and `command(node .*)` both **denied**
-`node --version`, while `command(node --version)` ran.
-
-**Partially reconcilable, not fully.** Per-token anchoring explains `command(node)` failing: the rule
-has one token, the command has two, so the extra token is uncovered. It does **not** explain
-`command(node .*)` failing — `.*` anchored should match `--version`.
-
-**RESOLVED 2026-07-24 — matching is literal, and the documentation is wrong.** Re-run against
-**1.1.7** with the operator's explicit authorisation, one rule at a time, restoring the settings file
-byte-exactly after every case:
+Re-run against 1.1.7, one rule at a time, restoring the operator's real settings file byte-exactly
+after every case (SHA-256 verified unchanged before/after):
 
 | rule | if literal | if regex | **observed** |
 |---|---|---|---|
@@ -198,20 +167,11 @@ byte-exactly after every case:
 | `command(node (--version\|--help))` | denied | *granted* | **denied** |
 | `command(node --version)` | granted | granted | **granted** |
 
-Both discriminating rules failed, **including the documentation's own alternation form**. So the
-1.1.6 finding holds on 1.1.7, and 0004's consequence stands: **AER cannot pre-authorise a family of
-commands on `agy`**, only enumerate exact command lines. The asymmetry recorded in #515 is unchanged.
-
-**This is the only row in the entire audit where the documentation is wrong and our measurement was
-right.** Every other correction ran the other way. That asymmetry is worth holding onto: it is why
-documentation carries the evidence class *documented* rather than *verified*. A vendor's claim about
-its own product is still a claim, and the run is what settles it — in both directions.
-
-Method note, since it was the blocking constraint: this could not be tested unattended, because `agy`
-grants live only in the operator's real `~/.gemini/antigravity-cli/settings.json`. The run happened on
-explicit authorisation, with a byte-exact backup taken first, a restore after **every individual
-case**, and the file's SHA-256 verified unchanged afterwards
-(`d6b5507858fb371caa2a4827449fbe291f0032a341fe22ada8af99e73dfbf9df`, before and after).
+Both discriminating rules failed, including the documentation's own alternation form. **Matching is
+literal, and 0004's consequence stands: AER cannot pre-authorise a family of commands on `agy`**,
+only enumerate exact command lines (#515). **The only row in this audit where the documentation is
+wrong and the measurement was right** — every other correction ran the other way, which is why
+documentation is *documented*, never *verified*, until a run settles it.
 
 ### 2. There is an `ask` list, and the precedence is a three-rung ladder
 
@@ -250,27 +210,20 @@ so.
 
 ### 4. `agy` does report quota — just not headlessly
 
-`vendor-capabilities.md` says *"`agy` — nothing"*. Documented:
-
 - **`/usage`** (alias **`/quota`**) — "Display model quota usage"; shows "your usage limits and
   remaining requests/tokens for each supported model (e.g. Gemini 3.5 Flash, Gemini 3.1 Pro)", and
   triggers "a fresh check of your quotas on disk and from the backend service".
 - **`/credits`** — "View remaining G1 credits and purchase links", with a `useG1Credits` setting to
   spend personal credits once quotas are exhausted.
 
-**It opens an interactive TUI panel.** So our observation — `agy -p "/usage"` produces no report — was
-correct, and the *conclusion* ("agy has no usage data") was wrong. The data exists and reaches a
-backend; what is missing is a non-interactive path to it. That reframes #479 from "impossible on agy"
-to "needs a different route" — and the local RPC server (#508) is the obvious candidate.
+**Both open an interactive TUI panel.** `agy -p "/usage"` genuinely produces no report headless, but
+the data exists and reaches a backend — what's missing is a non-interactive path to it. #479 needs a
+different route on `agy`, not a different conclusion.
 
-### 5. `toolPermission` has four values, and the binary strings I guessed at were these
+### 5. `toolPermission` has four values
 
-`toolPermission`: `request-review` (default) · `proceed-in-sandbox` · `always-proceed` · `strict`.
-
-Worth recording as a near-miss: `always-proceed`, `proceed-in-sandbox` and `request-review` were all
-turned up by the binary scan and were about to be tested **as command-line flags**. They are settings
-values. The scan surfaced real strings and my interpretation of them was wrong — which is the whole
-argument for reading the docs first.
+`toolPermission`: `request-review` (default) · `proceed-in-sandbox` · `always-proceed` · `strict` —
+settings values, not command-line flags.
 
 ### 6. Slash commands `agy` has that our records never mentioned
 
@@ -602,21 +555,9 @@ set at spawn, no session resumption with in-process teammates.
 
 ---
 
-## `agy` has hooks, and an SDK — the two pages that change the most
+## `agy` has hooks, and an SDK — documented, then confirmed working
 
-Both were on the unread Tier 1 list in [`vendor-coverage.md`](vendor-coverage.md), flagged as the
-largest hole. They were, and reading them overturns a claim repeated throughout this audit.
-
-> **Superseded in part — read [§5 of the Tier 1 + Tier 2 read](#5-agys-cli-hooks-work--and-the-gate-is-symmetric).**
-> This section's "CLI support is not verified" caveat, and the four candidate explanations below,
-> are resolved: **agy's CLI hooks work.** They load from `<workspace>/.agents/hooks.json` and from
-> `~/.gemini/config/hooks.json`, fire `PreToolUse`, and enforce `deny`. The original negative was an
-> artifact of a broken hook *command*, not of hook support.
-
-### `agy` documents a `PreToolUse` hook that can deny
-
-**Every statement in this audit about the gate being claude-only, or about `agy` having "none of
-these" instruments, was made without reading this page.** `agy` documents five hook events:
+`agy` documents five hook events:
 
 | event | fires |
 |---|---|
@@ -629,37 +570,13 @@ these" instruments, was made without reading this page.** `agy` documents five h
 `PreToolUse` returns a **`decision`** of `allow` · `deny` · `ask` · **`force_ask`**, plus `reason` and
 `permissionOverrides`. `force_ask` is documented as *"always prompts, ignoring cached permissions"* —
 a **stronger** always-fires guarantee than anything claude documents, if it holds. `Stop` can return
-`continue` to prevent termination.
+`continue` to prevent termination. Hooks are configured in `hooks.json` under `.agents/` or
+`~/.gemini/config/`, receive `conversationId`, `workspacePaths`, `transcriptPath` and
+`artifactDirectoryPath` on stdin, and reply on stdout.
 
-Hooks are configured in `hooks.json` under `.agents/` or `~/.gemini/config/`, receive
-`conversationId`, `workspacePaths`, `transcriptPath` and `artifactDirectoryPath` on stdin, and reply
-on stdout.
-
-**So the gate design may be symmetric after all**, which is the opposite of what
-[0015](decisions/0015-three-kinds-of-needs-you.md) and #517 currently assume. That has to be settled
-before either is rewritten.
-
-#### Not verified on the CLI — and this is a negative claim, so it is scoped
-
-A `PreToolUse` hook was placed at `.agents/hooks.json` in a scratch workspace with a guessed schema.
-On an auto-allowed workspace file read — a call that demonstrably reached a tool, since the read
-succeeded — **the hook did not fire**.
-
-That is **not** evidence that `agy`'s CLI lacks hooks. Four candidate explanations, in rough order of
-likelihood:
-
-1. **The schema was guessed.** The documentation summary paraphrased the file as "maps hook names to
-   event configurations" without giving a schema. The most likely explanation is simply that the file
-   was malformed and silently ignored.
-2. **Discovery uses `agy`'s own working directory, not `--add-dir`.** `agy -p` is already recorded as
-   ignoring cwd and running under its install directory — so `.agents/` may never have been looked for
-   where it was written.
-3. `~/.gemini/config/hooks.json` may be the CLI's real location. No such file exists on this host, and
-   creating one means writing to the operator's configuration.
-4. The docs are written for Antigravity 2.0 and hooks may genuinely not be wired into the CLI.
-
-**What would settle it:** the actual `hooks.json` schema from the page itself, then a re-test at both
-locations. Until then this row is *"not observed on the surfaces tried"*, not *"absent"*.
+**Confirmed working, not just documented** — see [§5 below](#5-agys-cli-hooks-work--and-the-gate-is-symmetric):
+they load from `<workspace>/.agents/hooks.json` and from `~/.gemini/config/hooks.json`, fire
+`PreToolUse`, and enforce `deny`. **The gate is symmetric across vendors.**
 
 ### The Python SDK answers all three of #508's open questions
 
@@ -767,22 +684,15 @@ exactly the problem 0015's durable gate and the room store both have.
 
 ---
 
-## The Tier 1 + Tier 2 read (#527) — method, and what it overturned
-
-### Method: breadth and depth stopped competing
-
-Reading ~250 pages one at a time is not repeatable, and a summarizing fetch is lossy — it produced
-the first, wrong reading of `defer`. But **every finding that changed a decision was one sentence**,
-and those sentences share a grammar: *skips, only, cannot, must, requires, before v, will become*.
+## The Tier 1 + Tier 2 read (#527)
 
 `pixi run vendor-survey` mirrors both corpora from their published indexes (claude `llms.txt` → 172
-raw `.md` pages; agy `llms.txt` + `sitemap.xml` → 77 server-rendered pages) and harvests that
-sentence class corpus-wide: **249 pages / 7.0 MB → 1,475 unique constraint sentences**, tagged against
-AER's open questions with page:line provenance, plus a ledger giving **every page a disposition**.
-100% page coverage at ~1% of the bytes.
-
-It justified itself immediately: several findings below come from `glossary`, `channels`, `chrome`,
-`context-window`, and `desktop-scheduled-tasks` — pages no depth-first ranking would have opened.
+raw `.md` pages; agy `llms.txt` + `sitemap.xml` → 77 server-rendered pages) and harvests sentences
+matching a fixed grammar (*skips, only, cannot, must, requires, before v, will become*) corpus-wide:
+**249 pages / 7.0 MB → 1,475 unique constraint sentences**, tagged against AER's open questions with
+page:line provenance, plus a ledger giving **every page a disposition**. 100% page coverage at ~1%
+of the bytes — several findings below come from `glossary`, `channels`, `chrome`, `context-window`
+and `desktop-scheduled-tasks`, pages a depth-first read would not have reached.
 
 ### 1. The strongest gate primitive is one we were not considering
 
@@ -824,8 +734,6 @@ invariant: a stray key does not degrade gracefully, it removes AER's entire remo
 
 ### 5. agy's CLI hooks work — and the gate **is** symmetric
 
-Recorded first as "not observed", then wrongly narrowed to "IDE-only". Both were wrong.
-
 | location | result |
 |---|---|
 | `<workspace>/.agents/hooks.json` (workspace registered via `--add-dir`) | **loads and fires** |
@@ -842,20 +750,13 @@ So agy's control surface is real and CLI-reachable: `allow`/`deny`/`ask`/`force_
 `permissionOverrides`, `PreInvocation.injectSteps`, `PostInvocation.terminationBehavior`,
 `Stop.decision:"continue"`, `Stop.fullyIdle`. **On several axes it is stronger than claude's.**
 
-**Why it was called wrong twice, and the durable fix.** The hook command was `sh "<path>"`; JSON
-quote-escaping added a leading backslash and `sh` exited 127. The hook fired every time. The detector
-("did the side-effect file appear") could not distinguish *never fired* from *fired, command failed*
-— **a negative from an instrument that cannot separate those is not evidence.**
+The root cause (a quote-escaping bug made the hook command exit 127 every time, silently) is the
+"check the vendor's own logs before concluding absence" method rule — see
+`documentation-lessons.md`'s method table. `agy` had written the answer to disk the whole time:
+`hooks_manager.go:53] loaded 0 named hooks from 0 hooks.json file(s)`.
 
-`agy` had been writing the answer to disk the whole time, on every start:
-
-> `hooks_manager.go:53] loaded 0 named hooks from 0 hooks.json file(s)`
-
-**Check the vendor's own logs before concluding absence.** Same lesson as reading the docs before
-reverse-engineering, and as grepping the repo before re-deriving a known finding — third costume.
-
-Also newly on the permanent source list: **the CLI has a public issue tracker and changelog**
-(`google-antigravity/antigravity-cli`) that this audit had never consulted.
+The CLI has a public issue tracker and changelog (`google-antigravity/antigravity-cli`), now on the
+permanent source list.
 
 ### 6. Fan-out limits are now concrete (#503 items 4–5)
 
@@ -1364,9 +1265,12 @@ root. The vendor documents this as the supported pattern: setting `CLAUDE_CONFIG
 instance "run as a separate instance with its own sessions", and the hosting guidance recommends a
 per-tenant config directory.
 
-**Still unknown, and only a real attempt will tell:** whether a second concurrent login against the
-same subscription is permitted, and how it interacts with any parallel-session limit. That is a
-question for the operator's account, not something measurable from here.
+**Resolved below, same day — a real attempt was made.** This was written before the "Worker identity"
+measurement further down this document: a second, interactive login into a fresh `CLAUDE_CONFIG_DIR`
+root did not displace the first (`loggedIn: true` held on both), both roots reported the same account,
+and two concurrent `-p` runs — one per root — both succeeded. A second concurrent login against the
+same subscription **is** permitted, at least under this test's shape. What still isn't established is
+how it interacts with any parallel-session limit at higher concurrency than two.
 
 **`claude auth status` is independently useful to AER**: a structured, non-interactive readiness
 probe that spends no subscription usage, so a worker's root can be checked *before* dispatch rather
@@ -1453,10 +1357,6 @@ unbypassable*; the blocking response is what makes the gate *durable*.
 
 ### SEP-1036 URL-mode elicitation — the non-blocking gate, standardized, and agy honours it
 
-**This finding came from a page the coverage tooling had marked `PENDING-DEPTH` and never read.**
-That is worth stating first, because the disposition was not a lie so much as a word that meant
-something other than what it said — see *How a flagged page went unread* below.
-
 [SEP-1036](https://modelcontextprotocol.io/community/seps/1036-url-mode-elicitation-for-secure-out-of-band-interactions)
 (**Final**, Standards Track) adds `mode: "url"` to elicitation. The server hands the client a URL,
 the user opens it in a browser, and the interaction happens **out of band — bypassing the MCP client
@@ -1506,21 +1406,14 @@ the URL to a person, that `notifications/elicitation/complete` triggers a retry,
 out-of-band round trip works end to end. Those need a human and are the natural next live-smoke
 item — not something an agent session can close.
 
-#### How a flagged page went unread, and what fixed it
+#### How page-read-state is actually computed
 
-`vendor_survey.py` computes each page's ledger disposition from its score: `PENDING-DEPTH` if it
-scored ≥ 10. That value is a **recommendation** — *this page deserves a depth read* — produced by a
-script that runs before anyone reads anything and is regenerated from scratch on every version bump.
-It can never mean *a depth read is outstanding*, because nothing in that script can know.
-
-`tools/audit-completeness` then counted any row with a disposition as a page with a disposition, and
-reported 382/382. Both statements were true and the conclusion drawn from them was wrong — the
-failure mode `docs/documentation-lessons.md` is entirely about, found in this audit's own tooling.
-
-The fix is a join rather than a rename: the read-state is now **computed** in `step2_corpus` by
-checking whether each depth-flagged page is actually cited in the audit prose. 107 of 137 are;
-**30 are not**, and that list is now printed on every run, relevance-ordered. Citation is weaker
-evidence than an attestation, but it is recomputed every time rather than recorded once and trusted.
+`vendor_survey.py`'s `PENDING-DEPTH` disposition is a **recommendation** (score ≥ 10), not an
+attestation that someone read the page — a script that runs before anyone reads anything cannot know
+that. `tools/audit-completeness`'s `step2_corpus` computes the real read-state instead, by checking
+whether each depth-flagged page is actually cited in this audit's prose: currently 107 of 137 are,
+**30 are not**, printed on every run, relevance-ordered. Citation is weaker evidence than an
+attestation, but it is recomputed every time rather than recorded once and trusted.
 
 ### The remaining 30 depth-flagged pages, each with a disposition
 

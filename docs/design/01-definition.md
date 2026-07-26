@@ -66,20 +66,9 @@ It isn't
 
 ### The nouns
 
-Small on purpose. Every noun added here becomes a thing the person has to learn, so each has to earn its place.
+Small on purpose. Every noun added here becomes a thing the person has to learn, so each has to earn its place. Two new nouns from the M27 pass — **Skill** and **Room orchestrator** — are appended after Template below.
 
-> **Amendment, 2026-07-25 — [0013](../decisions/0013-room-is-the-user-facing-noun.md) renamed
-> this noun.** Wherever "Session" appears below as the user-facing noun for a conversation with
-> one or more workers in it, read **Room** — the model (workers, one directory, its own
-> history) is unchanged, only the word moved. "Session" now names something narrower: the vendor
-> CLI's own resumable thread, an adapter concern that is never presented as the thing you opened.
-> The **Settled** section further down states the opposite outcome ("room" never enters the
-> vocabulary) — that specific claim is superseded and is left as written below rather than
-> edited, per [0010](../decisions/0010-skills-and-advisor.md)'s own precedent for a corrected
-> clause. Two new nouns from the same M27 pass — **Skill** and **Room orchestrator** — are
-> appended after Template below.
-
-Session A conversation against a directory, with one or more workers in it . The main noun — what you start, return to, and what the sidebar lists. There is deliberately no second noun for "a session with more than one worker": adding a worker changes who is present, not what kind of thing you have.
+Room A conversation against a directory, with one or more workers in it. The main noun — what you start, return to, and what the sidebar lists. There is deliberately no second noun for "a room with more than one worker": adding a worker changes who is present, not what kind of thing you have. ("Session" names something narrower: the vendor CLI's own resumable thread, an adapter concern never presented as the thing you opened — [0013](../decisions/0013-room-is-the-user-facing-noun.md).)
 
 Worker One vendor's CLI running under your subscription. `claude`, `agy`. Interchangeable by design , and present or absent like a person in a thread.
 
@@ -89,7 +78,7 @@ Template A saved shape of work — draft→review→gate — defined on a graph 
 
 Skill *(added 2026-07-25, M27)* Instructions plus tool requirements plus bundled assets — a capability a worker attaches directly, not a separate preset object over the worker chip. A worker can attach zero, one, or several at once; there is no shipped default set — every skill is user-authored, discovered when needed ([0033](../decisions/0033-skills-attach-directly-no-persona.md)). Realized per-vendor by the adapter ([0010](../decisions/0010-skills-and-advisor.md)); account-wide, one library per person ([0031](../decisions/0031-skills-are-account-wide.md)). See [02-screens.md](02-screens.md) for the attachment UI.
 
-Room orchestrator *(added 2026-07-25, M27)* Which worker in the room is authorized to call `aer decide` on another's gate, standing in for the human. A room always has exactly one; the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned to someone else first ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)). The authority itself is an ordinary attached Skill, auto-bound to whoever holds the role — not a special-cased flag. See [02-screens.md](02-screens.md) for the reassignment control.
+Room orchestrator *(added 2026-07-25, M27)* Which worker in the room is the default addressee — where an otherwise-ambiguous routing choice or an unattributed artifact/action is credited. **Not** a worker authorized to call `aer decide` on another's gate — [0038](../decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) forecloses that for every worker, orchestrator included. A room always has exactly one orchestrator; the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned to someone else first ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)). The authority itself is an ordinary attached Skill, auto-bound to whoever holds the role — not a special-cased flag. See [02-screens.md](02-screens.md) for the reassignment control.
 
 ### The one flow that matters
 
@@ -118,9 +107,9 @@ E --> J["Done"]
 
 Two claims worth testing. The chat is where you stay — escalating to a second worker must not move you to a different screen. And a gate is answerable from whichever surface you happen to be holding, which is why remote can't be bolted on later.
 
-### A session's life
+### A room's life
 
-Written as states because the last run produced two surfaces disagreeing about which state a session was in — the header said "no task open" while the thing was running.
+Written as states because the last run produced two surfaces disagreeing about which state a room was in — the header said "no task open" while the thing was running.
 
 stateDiagram-v2
 [*] --> Idle: created
@@ -134,17 +123,17 @@ Finished --> Working: you send again
 Cancelled --> Working: you send again
 Failed --> Working: retry
 
-One source of truth per session. Every surface — switcher row, header, inbox, phone — renders this state and nothing derived independently. Cancelled and Failed are states, not absences: a stopped session must never read as "Finished."
+One source of truth per room. Every surface — switcher row, header, inbox, phone — renders this state and nothing derived independently. Cancelled and Failed are states, not absences: a stopped room must never read as "Finished."
 
 ### The surface this implies
 
-Not the current app — what the definition above asks for. Sessions always visible, the room in the middle, and a gate answered where you already are.
+Not the current app — what the definition above asks for. Rooms always visible, the current one in the middle, and a gate answered where you already are.
 
 ● AER Flow
 
 ▤ ✎ ◈ ⚙
 
-Sessions + New
+Rooms + New
 
 ◗ aer-flow Needs you · 2 workers
 
@@ -158,7 +147,7 @@ Sessions + New
 
 aer-flow claude + agy  ·  + Add worker
 
-you Rework the switcher so a new session shows up immediately.
+you Rework the switcher so a new room shows up immediately.
 
 claude Two causes — the list only refreshed at startup, and a task registered only on a successful run. Patch ready.
 
@@ -167,7 +156,7 @@ Approve Changes Reject
 
 Reply… ⏎
 
-What changed versus today. The gate is answered inline in the conversation rather than on a separate decision screen; adding a worker is a control in the room's header rather than a different noun to create; and every session's state is legible without leaving the one you're in.
+What changed versus today. The gate is answered inline in the conversation rather than on a separate decision screen; adding a worker is a control in the room's header rather than a different noun to create; and every room's state is legible without leaving the one you're in.
 
 ### Settled
 
@@ -177,31 +166,25 @@ Resolved
 
 #### Graphs author templates; they are not the day job
 
-What makes visual workflow definition worth having is that it is easy — so keep that, and put it where it pays: you draw a shape once, save it as a template , and start a session from it in a click. You can visualise a running session's shape whenever you want, including after it has started. What you don't do is live on a canvas.
+What makes visual workflow definition worth having is that it is easy — so keep that, and put it where it pays: you draw a shape once, save it as a template, and start a room from it in a click. You can visualise a running room's shape whenever you want, including after it has started. What you don't do is live on a canvas.
 
-Consequence: the DAG stops being a destination and becomes two things — an authoring surface and an optional view of a session. A meaningful slice of the backlog is scoped against the old assumption and has to be re-read.
-
-Resolved
-
-> **Superseded, 2026-07-25.** [0013](../decisions/0013-room-is-the-user-facing-noun.md) reversed
-> this specific outcome: the noun is **Room**, not Session. The point underneath it — no second
-> noun for "a session with more than one worker," adding a worker changes who's present, not what
-> kind of thing you have — stands unchanged; only which word won. Left as written below; see the
-> amendment on **The nouns**, above.
-
-#### One noun, not two — a session just has more workers
-
-"Room" is gone. A session with two workers is still a session; adding one changes who is present , not what kind of object you're holding. One fewer concept to teach, and it kills the question "is this a session or a room?" before anyone can ask it.
-
-Consequence: decision 0001's two nouns stay workflow and session , and "room" never enters the vocabulary. Cheaper to drop now than after it's in a UI.
+Consequence: the DAG stops being a destination and becomes two things — an authoring surface and an optional view of a room. A meaningful slice of the backlog is scoped against the old assumption and has to be re-read.
 
 Resolved
 
-#### Rip out the UI layers only
+#### One noun, not two — a room just has more workers
 
-The engine, adapters, daemon and protocol stay — they are tested and were never the thing that failed. Aer.Ui and Aer.Mobile get rebuilt against this definition rather than patched toward it.
+A room with two workers is still a room; adding one changes who is present, not what kind of object you're holding ([0001](../decisions/0001-two-nouns-workflow-and-session.md)/[0013](../decisions/0013-room-is-the-user-facing-noun.md)). One fewer concept to teach, and it kills the question "is this a session or a room?" before anyone can ask it.
 
-Consequence: open UI issues are no longer bug reports against code that will exist. They become requirements on the rebuild, or they get closed.
+Consequence: decision 0001's two nouns are workflow and room.
+
+Resolved
+
+#### The UI layers are rebuilt; the rest is touched wherever a journey needs it
+
+Aer.Ui and Aer.Mobile get rebuilt against this definition rather than patched toward it. The engine, adapters, daemon and protocol are not frozen by that — they're touched wherever a milestone's own required journeys need it (`docs/plan.md`), not walled off by which layer the original five manual-run defects happened to live in.
+
+Consequence: open UI issues are no longer bug reports against code that will exist. They become requirements on the rebuild, or they get closed. An engine/daemon defect blocking a required journey is in scope too, not deferred past this plan.
 
 Resolved
 

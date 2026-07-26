@@ -63,6 +63,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | Structured output | `--output-format stream-json --verbose` | **a local gRPC/HTTP server** — reachable, service surface not yet enumerated |
 | Running-session registry | **`claude agents --json`** | not found on: `--help`, subcommand list |
 | Permission policy engine | **`claude auto-mode`** — allow / soft_deny / hard_deny | not found on: `--help`, subcommand list |
+| Always-fires gate hook | **`PreToolUse` hook — first of six evaluation steps, applies even in `bypassPermissions`** | **`PreToolUse` hook — confirmed working, denies** |
 | Model enumeration | not found on: `--help`, subcommand list | **`agy models`** |
 | Plan usage & reset | **`/usage` (and `/cost`) — works headlessly, see below** | **none** — `/usage` is not a real command |
 | Per-turn cost | **`total_cost_usd` in every `stream-json` result** | none |
@@ -207,6 +208,14 @@ know its gate is dead rather than reporting a permission surface it no longer ha
 [0028](decisions/0028-no-permissive-control-is-the-default.md) question as much as a mechanism one:
 the more convenient mode is the one that removes the control.
 
+**This callback is not the gate's primary mechanism — a `PreToolUse` hook is.** A hook resolves at
+step 1 of `claude`'s six-step permission evaluation order and holds even in `bypassPermissions`;
+`--permission-prompt-tool` is step 6 and is exactly the callback `auto` routes around above. `agy`'s
+own `PreToolUse` hook is confirmed working and denies. The full mechanism table, the measurements
+behind it, and why the hook is mandatory on every spawned worker live in
+[0029](decisions/0029-the-gate-is-three-mechanisms.md) — read that, not this section, before
+building the gate.
+
 ## The subcommand surface — three `claude` subcommands nobody had opened
 
 **Probed 2026-07-24.** Every capability above was probed on `--help` and, where relevant, the slash
@@ -284,7 +293,8 @@ claude-sonnet-4-6         claude-opus-4-6-thinking  gpt-oss-120b-medium
 Two things the design assumed otherwise:
 
 - **Effort is baked into the model name**, *and* `--effort low|medium|high` exists as a separate flag.
-  Two overlapping controls, and the interaction between them is unprobed.
+  Two overlapping controls, and the interaction between them is unprobed — tracked in
+  [#510](https://github.com/aer-works/aer-flow/issues/510), open.
 - **The grid has holes.** `gemini-3.1-pro` has `high` and `low` but **no `medium`**. A UI offering
   model × effort as a matrix would offer combinations the CLI rejects. This sharpens
   [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md): naming by behaviour is right,
@@ -437,13 +447,14 @@ server is there, it is reachable, and the port is discoverable from `--log-file`
 the 166 MB binary for `*.Service` paths found none, so the service surface is likely in the spawned
 language-server process rather than the CLI binary. This is a partial, not an absence.
 
-That matters more than a convenience feature. A typed local RPC stream would let Flow route on
-**structured events instead of parsed stdout** — satisfying Architecture Rule 1 *structurally* rather
-than by discipline. Combined with the public Python SDK (`pip install google-antigravity`, which
-exposes streamed strongly-typed `ToolCall` events), there are now two independent signals pointing at
-the same integration path, and neither has been probed. **This is the highest-value open probe on
-`agy`**, and it is the one that would decide whether the usage/cost asymmetry above is permanent or
-merely unmeasured.
+**Superseded, #508 → #525.** The Python SDK (`pip install google-antigravity`) was read and answers
+what this RPC surface would have: structured events, per-turn usage, and a `deny()`/`allow()` gate.
+But the SDK path — for both vendors — is foreclosed by auth policy, not capability: neither SDK
+supports a subscription login, only API keys, which CLAUDE.md's premise rules out. **The integration
+choice is CLI, both vendors, and the SDK question is closed** — see
+[`vendor-doc-audit.md`](vendor-doc-audit.md#should-aer-drive-sdks-instead-of-clis-no-and-the-reason-is-contractual)
+for the full reasoning. The RPC surface itself remains genuinely unenumerated, but no design decision
+is waiting on it anymore.
 
 ### The design consequence
 
@@ -653,6 +664,16 @@ command lines. Pre-authorisation rules must match what it actually emits.
 cannot scope a grant to one run the way `--allowedTools` does for `claude`, so a per-run ceiling has
 to come from `--sandbox` or from the MCP consultation path, not from flags.
 
+**`agy -p` has its own hardcoded 5-minute print-mode wait timeout, decoupled from anything AER
+configures.** `agy --help`: `--print-timeout  Timeout for print mode wait (default 5m0s)`.
+`GeminiWorkerAdapter` never passes this flag, so a long-running task (a genuinely large read+reason+write
+job — measured with a ~39-file corpus audit dispatched via `Aer.Cli run`) exits 0 with no output and no
+diagnostic pointing at the real cause, regardless of the *step's own* configured `Timeout` being far
+longer. **Not confirmed on `claude`** — its `--help` surfaces no `timeout`-named flag, but `--help` is
+known incomplete (below), so this is scoped to what was actually checked, not asserted as measured
+absence. Fix tracked in `#588` — measure, then have the adapter derive `--print-timeout` from the
+step's own timeout rather than leaving agy's default in effect unconditionally.
+
 ## `--remote-control` — not yet characterised
 
 Present in the binary and undocumented publicly. Static reading only: it flips a **persisted** setting
@@ -684,11 +705,12 @@ phone, and to tell apart from another machine on the same account.
 
 Vendor forum discussion as of the probe date describes no *official* mobile
 remote control, while several third-party clients exist; one reportedly speaks **Connect RPC to the
-Antigravity language server** directly. That, plus the public Python SDK
-(`pip install google-antigravity`) exposing streamed strongly-typed `ToolCall` events, thought deltas
-and read-only-by-default capabilities, suggests a structured local integration path that would beat
-parsing stdout — and would satisfy CLAUDE.md Architecture Rule 1 structurally, since Flow would never
-need to read conversation text to route. Worth a feasibility spike before the adapter shape is fixed.
+Antigravity language server** directly. The public Python SDK (`pip install google-antigravity`)
+exposing streamed strongly-typed `ToolCall` events was evaluated as an alternative integration path
+and rejected — see the RPC section above and
+[`vendor-doc-audit.md`](vendor-doc-audit.md#should-aer-drive-sdks-instead-of-clis-no-and-the-reason-is-contractual):
+the SDK requires an API key, which forecloses it for both vendors regardless of what it exposes. No
+feasibility spike is pending here; the adapter shape (shell out to the CLI) is decided.
 
 ## Keeping this current
 

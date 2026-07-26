@@ -1,13 +1,16 @@
-# Decision audit — every record re-checked against what #527 measured
+# Decision audit — every record's disposition against measured vendor reality
 
-**Date: 2026-07-25.** Population: every numbered record in [`decisions/`](decisions/). Disposition
-vocabulary is fixed — `unaffected`, `amended`, `superseded`, `rewritten` — and enforced by
-`pixi run audit-completeness`, which also requires a reason in its own column.
+**Started 2026-07-25 against #527's findings; kept current since.** Population: every numbered
+record in [`decisions/`](decisions/), currently 41. Disposition vocabulary is fixed —
+`unaffected`, `amended`, `superseded`, `rewritten` — and enforced by `pixi run audit-completeness`,
+which also requires a reason in its own column and fails if any decision on disk has no row.
 
 This exists because the audit falsified vendor claims that several decisions were built on, and
 "which decisions did that break?" had to be recovered by re-reading everything. That recovery is
 what made [`Rests on`](decisions/README.md#rests-on--the-load-bearing-facts-and-what-would-falsify-them)
-mandatory going forward. This sweep is the one-time equivalent for the records written before it.
+mandatory going forward, and what this sweep checks for every record — including ones written well
+after #527, since a new decision can still rest on nothing the audit measured, or on everything it
+did. **Add a row when you add a decision** — the checker will fail the PR otherwise.
 
 ## What "unaffected" means here, and what it does not
 
@@ -56,13 +59,26 @@ that bounds the *documentation*, not reality.
 | 0028 | unaffected | No permissive control is ever the default. The audit supplies a sharp instance — `auto` is the convenient mode that removes the gate — which illustrates the rule rather than amending it. |
 | 0029 | rewritten | New record. States the gate as three mechanisms with three populations, replacing 0015's single-mechanism guidance, and carries its own `Rests on`. |
 | 0030 | rewritten | New record. AER is its own notifier, because both vendor events 0018 assumed are silent under `-p`. Carries its own `Rests on`. |
+| 0031 | unaffected | Skills are account-wide, not project-scoped. Storage-scope decision; no vendor mechanism is load-bearing. |
+| 0032 | unaffected | A room always has exactly one orchestrator. Addressing/object-model rule; 0038 bounds what the role may do, which is an internal authority question, not a vendor fact. |
+| 0033 | unaffected | Skills attach directly to a worker; no Persona object. Object-model decision, no vendor dependency. |
+| 0034 | unaffected | A project's permission ceiling lives in AER's own config. Answers *where the ceiling is stored*, not how it is enforced — 0029 owns enforcement and is what the audit actually changed. |
+| 0035 | unaffected | `aer yield` is a structured MCP tool call. Written after #527, reusing 0029's blocking-`tools/call` mechanism directly rather than inheriting anything the audit later overturned. |
+| 0036 | unaffected | A room's shape is Flow's existing state, rendered differently. Rides on 0035; no independent vendor dependency. |
+| 0037 | unaffected | A permission answer never shares the turn lock. Internal concurrency rule about AER's own dispatch, not a vendor fact. |
+| 0038 | unaffected | A reviewer's verdict never calls `aer decide`. Process/authority rule; no vendor mechanism is load-bearing. |
+| 0039 | unaffected | Dialogue turns resume the vendor's own session. Built on #527's measured session-continuation facts (`--resume`, `-c`/`--continue`, `--session-id` as an existence check rather than a lock) from the start, so nothing in the audit reaches it retroactively — but it has no `Rests on` table of its own to name those facts explicitly. Tracked in #589. |
+| 0040 | unaffected | Within "needs you," gates group by kind. UI-grouping rule, no vendor dependency. |
+| 0041 | unaffected | Phone template authoring ships with the shapes milestone. Scope/timing rule, no vendor dependency. |
 
 ## Decisions whose dependencies are now recorded
 
-0029 and 0030 carry `Rests on` tables. The remaining 28 predate the requirement and are not being
-retrofitted wholesale — that would manufacture dependency tables from memory, which is the failure
-mode the requirement exists to prevent. The rule going forward: **a record acquires a `Rests on`
-table when it is next amended**, written from what is then known rather than reconstructed.
+Only 0029 and 0030 carry `Rests on` tables. 0001–0028 predate the requirement; 0031–0041 postdate
+it and simply never got one — tracked as a gap in [#589](https://github.com/aer-works/aer-flow/issues/589)
+rather than retrofitted wholesale here, which would manufacture dependency tables from memory, the
+failure mode the requirement exists to prevent. The rule going forward: **a record acquires a
+`Rests on` table when it is next amended or created**, written from what is then known rather than
+reconstructed.
 
 Two rows in the new tables are worth surfacing because they are marked **assumed**, not measured:
 

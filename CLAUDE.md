@@ -35,7 +35,8 @@ aer-flow/
 ├── tools/                     ui-harness (UI driving harness), vendor-verify (re-runnable vendor
 │                              checks; `--sentinels` runs only the ones a design rests on),
 │                              vendor-survey, Aer.VendorProbe, smoke-preflight (free gate on the
-│                              smoke tasks), Aer.DesignTokens, audit-completeness (one-time, #527).
+│                              smoke tasks), Aer.DesignTokens, audit-completeness (standing check,
+│                              gate 8 below).
 │                              `ls tools/` is the authority — this line is a map, not a register
 ├── .github/workflows/
 │   ├── ci.yml                 lint + fmt + test on win/linux/mac, plus the mobile job
@@ -101,7 +102,7 @@ tracking issue — don't mark a live-run item done on anything short of an actua
 ## Before you ship — the gates every change runs through
 
 Each was paid for by a specific failure, named so it stays concrete instead of becoming a recitation.
-They are ordered by when they bite: 1 before building, 2–4 while building, 5–7 before shipping.
+They are ordered by when they bite: 1 before building, 2–4 while building, 5–8 before shipping.
 
 **1. Common sense first.** Ask the obvious question before building anything. Does the thing you are
 about to verify or depend on actually exist? Does a helper for this already exist? Is the failure you
@@ -162,10 +163,37 @@ than the operator's to ask for. It is also the deliberate exception to "Delegati
 below: that rule is about saving *effort*, and review buys a second *instrument* instead. Hand the
 reviewer the specific claims to check, not a request for an opinion.
 
-**The question underneath all seven: name the user-visible behaviour this change improves.** If you
+**8. Docs and decisions are one register, not many.** A fact is stated once, in one canonical
+record; every other location links to it with at most a one-clause gloss, never a restatement —
+restating a fact in three places is how a stale one drifts silently in two of them. Before editing
+anything milestone-shaped, check `spec/journeys.md` first: it is the actual list of required
+outcomes, not whichever artifact happened to prompt the edit. Before changing a decision, check it
+against every other decision touching the same object, not only the ones it already cites. Before
+citing an open issue as evidence that something is still unresolved, check its actual state — a
+closed issue cited as "not yet landed" is stale the moment it closes. And before closing a PR
+touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`, run
+`pixi run audit-completeness` and confirm every decision dated on or after 2026-07-25 carries the
+`Rests on` table that folder's own README makes mandatory — a pass that fixes drift while leaving a
+format violation behind has only relocated the problem.
+*M29's criterion was "corrected" to match `02-screens.md` without checking `journeys.md` first,
+directly contradicting J17. Phone-authoring timing was independently restated in three documents,
+one of which went stale while the other two didn't. 0032 was superseded by a new record instead of
+corrected in place, when nothing in `src/` had been built against it yet. Fourteen decisions dated
+on or after `Rests on` became mandatory (0026, 0027, 0028, 0031–0041) shipped without one, tracked in
+#589 — the first count of this, written into this very gate, missed 0027 and undercounted at
+thirteen; caught by an independent reviewer reading the decision files directly rather than trusting
+the tool's hardcoded population.
+`pixi run audit-completeness`, run cold nine days after it was last touched, found 11 decisions and
+2 vendor-verify checks with no disposition anywhere — the exact drift this gate exists to stop,
+caught by a tool whose own header at the time said to retire it rather than keep running it.*
+
+**The question underneath all eight: name the user-visible behaviour this change improves.** If you
 cannot, it may be ceremony — and rigour that is not buying correctness is what this project keeps
-having to cut back out. `tools/audit-completeness` is scoped one-time for exactly that reason, and
-these gates are deliberately not given a checker of their own.
+having to cut back out. `tools/audit-completeness` is a standing check for exactly that reason —
+extend its population when `decisions/` or `tools/vendor-verify/verify.py` grows, never for
+open-ended rigour with no named failure behind it. These other gates stay deliberately without a
+checker of their own; this one earned one because its population (decision files, vendor-verify
+checks) is enumerable and its omissions are otherwise invisible.
 
 ---
 

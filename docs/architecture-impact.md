@@ -32,6 +32,13 @@ This table runs the other direction: from measurement to design.
 | `gate.elicitation-hook-event-fires` | the `Elicitation` hook event **does** fire under `-p` | **No impact, and it is the one positive in the group.** It closes 0030's last untested row — the earlier zero came from a run with no MCP server registered, so no elicitation could occur. For AER's own gate the event is redundant: AER *is* the server and holds the pause already. It would matter for a pause AER did not author, but whether a third-party server can even be loaded alongside `--mcp-config` is unresolved (the run's server list did not read, and `None` is recorded as not-observed rather than folded into "zero servers"). Recorded to the measured scope, not to the scenario that motivated the check. |
 | `gate.permission-denied-fires` | `PermissionDenied` stays silent through **3** real denials | **Turned 0030's last assumed row into a measurement.** The event-surface run had logged a zero nothing could interpret; this supplies the missing half — an allow control that writes, a deny arm that records three denials in `permission_denials` and writes nothing. With `PermissionRequest` and `Notification`, that is the whole permission-notification surface confirmed absent headless, which is why 0030 says AER *is* the notifier rather than a listener. |
 
+## Effort
+
+| check | result | architectural impact |
+|---|---|---|
+| `effort.claude-value-set` | claude's `--effort` accepts exactly `{low, medium, high, xhigh, max}` | **Sentinel, not a finding.** 0023's canonical mapping (`quick`/`standard`/`careful`/`exhaustive`) is decided by the vendor's *documented* value set, not a behavioural distinguishability study — this is the re-runnable guard that the set hasn't moved under it. A `FAIL` means a vendor added, removed or renamed a level and the mapping in `vendor-capabilities.md` needs re-deriving before it's trusted again. |
+| `effort.agy-value-set` | agy's `--effort` accepts exactly `{low, medium, high}` | Same guard, other vendor. Also the sentinel that keeps the disclosed collapse honest — `agy` has no fourth level, so `careful` and `exhaustive` both resolve to `high`; a `FAIL` here is the first sign that collapse needs re-checking too. |
+
 ## Fan-out
 
 | check | result | architectural impact |
