@@ -35,7 +35,8 @@ aer-flow/
 ├── tools/                     ui-harness (UI driving harness), vendor-verify (re-runnable vendor
 │                              checks; `--sentinels` runs only the ones a design rests on),
 │                              vendor-survey, Aer.VendorProbe, smoke-preflight (free gate on the
-│                              smoke tasks), Aer.DesignTokens, audit-completeness (one-time, #527).
+│                              smoke tasks), Aer.DesignTokens, audit-completeness (standing check,
+│                              gate 8 below).
 │                              `ls tools/` is the authority — this line is a map, not a register
 ├── .github/workflows/
 │   ├── ci.yml                 lint + fmt + test on win/linux/mac, plus the mobile job
@@ -177,8 +178,11 @@ format violation behind has only relocated the problem.
 *M29's criterion was "corrected" to match `02-screens.md` without checking `journeys.md` first,
 directly contradicting J17. Phone-authoring timing was independently restated in three documents,
 one of which went stale while the other two didn't. 0032 was superseded by a new record instead of
-corrected in place, when nothing in `src/` had been built against it yet. Thirteen decisions dated
-after `Rests on` became mandatory (0026, 0028, 0031–0041) shipped without one, tracked in #589.
+corrected in place, when nothing in `src/` had been built against it yet. Fourteen decisions dated
+on or after `Rests on` became mandatory (0026, 0027, 0028, 0031–0041) shipped without one, tracked in
+#589 — the first count of this, written into this very gate, missed 0027 and undercounted at
+thirteen; caught by an independent reviewer reading the decision files directly rather than trusting
+the tool's hardcoded population.
 `pixi run audit-completeness`, run cold nine days after it was last touched, found 11 decisions and
 2 vendor-verify checks with no disposition anywhere — the exact drift this gate exists to stop,
 caught by a tool whose own header at the time said to retire it rather than keep running it.*

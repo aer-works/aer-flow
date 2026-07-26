@@ -196,8 +196,10 @@ Attention, permission, and answering from anywhere. The milestone that makes lea
 running / finished, waiting-on-you first, and a failed piece of work reads as failed, never as
 "finished" ([J3](../spec/journeys.md), decision 0018 — the room-list promise this milestone is named
 for, and which nothing above actually tested until now); a desk-started run that pauses at a
-**decision** gate (not just a permission) appears on the paired phone and stays live while the desktop
-remains open, with no manual reload on either side ([J1](../spec/journeys.md)); at a live gate a
+**decision** gate (not just a permission) appears on the paired phone, and approving it there
+**advances the run to completion** with the desktop reflecting the new state, no manual reload on
+either side — [J1's own "Passes when," in `spec/journeys.md`](../spec/journeys.md), not restated in
+full here; at a live gate a
 person asks a worker not previously in the room, gets a contradicting answer, and **the gate is still
 open** ([0019](decisions/0019-consulting-is-not-deciding.md)); granting "allow in this room" means not
 being asked again, and the grant can be found and revoked in settings

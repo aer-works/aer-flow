@@ -225,16 +225,28 @@ def step3_gaps():
 # answerable -- and makes a decision that got no real look impossible to hide.
 DISPOSITIONS = ("unaffected", "amended", "superseded", "rewritten")
 
-# The records that state CURRENT mechanism where the audit broke the old one. Each MUST carry its
-# own `Rests on` table, counted per file -- summing across files lets one table satisfy two.
-#
-# These are 0029/0030, not the 0015/0018 they amend: the decisions README forbids editing a record
-# to change its meaning, so a falsified mechanism becomes a new numbered record. The `Rests on`
-# obligation follows the live claim, not the file that used to carry it.
-MUST_REST_ON = (
-    "0029-the-gate-is-three-mechanisms.md",
-    "0030-aer-is-its-own-notifier.md",
-)
+# `Rests on` became mandatory for every decision dated on or after this day (#527, decisions/README.md).
+# A hardcoded file list here is exactly the bug an independent reviewer found: the first version of
+# this constant named only 0029/0030 (the two records that INTRODUCED the rule), so the checker could
+# never notice a later decision -- 0027, then 0031-0041 -- shipping without one. The population is
+# now derived from each file's own `Date:` header, which is the only source that can't go stale by
+# omission: a new decision either has a date past the cutoff or it doesn't.
+RESTS_ON_CUTOFF = (2026, 7, 25)
+
+
+def decisions_requiring_rests_on():
+    """Every decision file dated on or after RESTS_ON_CUTOFF, by parsing its own Date: header --
+    not a maintained list. A file with no parseable date is treated as requiring it (fail loud, not
+    silently exempt) rather than skipped.
+    """
+    d = os.path.join(ROOT, "docs", "decisions")
+    files = sorted(f for f in os.listdir(d) if re.match(r"^\d{4}-", f)) if os.path.isdir(d) else []
+    required = []
+    for f in files:
+        m = re.search(r"^Date:\s*(\d{4})-(\d{2})-(\d{2})", read(f"docs/decisions/{f}"), re.M)
+        if m is None or tuple(int(x) for x in m.groups()) >= RESTS_ON_CUTOFF:
+            required.append(f)
+    return required
 
 
 def step5_impact():
@@ -321,9 +333,14 @@ def step6_decisions():
         print(f"      INCOMPLETE: {f:<52} {why}")
 
     ok = not bad
-    for name in MUST_REST_ON:
-        n = len(re.findall(r"^## Rests on", read(f"docs/decisions/{name}"), re.M))
-        ok &= line(f"`Rests on` in {name[:4]}", n, 1, "counted per file, never summed")
+    required = decisions_requiring_rests_on()
+    missing_rests_on = [f for f in required
+                        if not re.search(r"^## Rests on", read(f"docs/decisions/{f}"), re.M)]
+    ok &= line("decisions dated >= 2026-07-25 carrying `Rests on`",
+              len(required) - len(missing_rests_on), len(required),
+              "population derived from each file's own Date: header, not a maintained list")
+    for f in missing_rests_on:
+        print(f"      MISSING `Rests on`: {f}")
     return ok
 
 
