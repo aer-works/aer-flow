@@ -653,6 +653,16 @@ command lines. Pre-authorisation rules must match what it actually emits.
 cannot scope a grant to one run the way `--allowedTools` does for `claude`, so a per-run ceiling has
 to come from `--sandbox` or from the MCP consultation path, not from flags.
 
+**`agy -p` has its own hardcoded 5-minute print-mode wait timeout, decoupled from anything AER
+configures.** `agy --help`: `--print-timeout  Timeout for print mode wait (default 5m0s)`.
+`GeminiWorkerAdapter` never passes this flag, so a long-running task (a genuinely large read+reason+write
+job — measured with a ~39-file corpus audit dispatched via `Aer.Cli run`) exits 0 with no output and no
+diagnostic pointing at the real cause, regardless of the *step's own* configured `Timeout` being far
+longer. **Not confirmed on `claude`** — its `--help` surfaces no `timeout`-named flag, but `--help` is
+known incomplete (below), so this is scoped to what was actually checked, not asserted as measured
+absence. Fix tracked in `#588` — measure, then have the adapter derive `--print-timeout` from the
+step's own timeout rather than leaving agy's default in effect unconditionally.
+
 ## `--remote-control` — not yet characterised
 
 Present in the binary and undocumented publicly. Static reading only: it flips a **persisted** setting

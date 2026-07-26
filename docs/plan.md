@@ -343,10 +343,14 @@ because "we already answered that" is the cheapest thing for a plan to forget:
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
   how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
 - **Editing a sent message discards the replies after it** (`docs/design/04-workers-commands-control.md`,
-  drawn UI, no backing decision — `#587`). The engine implication is real and unmeasured: neither
-  vendor CLI has a documented way to rewind its own resumable session, so discarding turns from AER's
-  transcript may not discard them from the vendor's own memory of the conversation without starting a
-  fresh session and replaying the kept turns. Needs investigation before it is decided, not a guess.
+  drawn UI, no backing decision — `#587`). Narrowed, not resolved: `claude`'s flag vocabulary has
+  `--fork-session` (forks a resumed session under a new ID) but nothing suggesting it can fork from an
+  *earlier point* in that session rather than its latest state; `agy` has no equivalent at all. Neither
+  vendor's `--help` suggests a native rewind. Whether the vendor's own on-disk session state can be
+  edited/truncated directly is still genuinely open (would need investigating the session file format,
+  not just flags) — if it can't either, AER would need to reconstruct a post-edit session from scratch
+  rather than ask the vendor to forget tail turns, with real cost/latency/per-worker-context (0027)
+  implications that need designing, not assuming.
 
 ## Not in scope
 
