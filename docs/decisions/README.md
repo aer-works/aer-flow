@@ -130,3 +130,4 @@ Two rules for the column:
 | [0035](0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | `aer yield` is a structured MCP tool call, not a text sentinel — reuses 0029's mechanism, needs none of its held-open complexity | accepted |
 | [0036](0036-shape-is-rendering-not-a-second-state-machine.md) | A room's shape is Flow's existing state, rendered differently — not a second state machine (the one new primitive rides on 0035) | accepted |
 | [0037](0037-permission-answers-never-share-the-turn-lock.md) | A permission answer must never share the per-session turn lock a pending turn already holds (resolves #393↔#445) | accepted |
+| [0038](0038-a-reviewer-verdict-never-calls-aer-decide.md) | A reviewer's verdict is evidence for a human decision, never the decision itself — 0019 already forecloses an auto-deciding implementer/reviewer loop | accepted |

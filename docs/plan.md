@@ -85,6 +85,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | **`aer yield` is a structured MCP tool call, not a text sentinel** — replaces `Aer.Workers.Dialogue`'s current substring-match stop condition. Reuses 0029's measured-but-unbuilt MCP mechanism; needs none of 0029's held-open complexity, since nothing here waits on a human. Real, unbuilt infrastructure (`#585`), and the Dialogue shape blocks on it. |
 | [0036](decisions/0036-shape-is-rendering-not-a-second-state-machine.md) | **A room's shape is Flow's existing state, rendered differently — not a second state machine.** "No step running" already is Conversation; a Dialogue collapsing on interruption is the existing `CancellationRequested` mechanism; the one new primitive (a mid-execution gate request) rides on 0035's MCP server, not a separate mechanism. |
 | [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) | **A permission answer must never share the per-session turn lock a pending turn already holds** — the existing `/api/tasks/decide` pattern (correlate by id, bypass the turn lock entirely) already shows how; resolves #393↔#445 as a design constraint, since the component in question isn't built yet to measure. |
+| [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) | **A reviewer's verdict is evidence for a human decision, never the decision itself** — [0019](decisions/0019-consulting-is-not-deciding.md) already forecloses an auto-deciding implementer/reviewer loop; the workflow shape (implement → review, `PausePoint(ReadyForReview)`) needs no new primitive, but the terminal `aer decide` call stays human, always. Corrects a session memory that had concluded otherwise. |
 
 ## The completion bar: journeys
 
@@ -306,7 +307,11 @@ where a project's permission ceiling is stored (`#338` —
 app-config, keyed by project path), and whether the per-session turn lock tolerates a turn held open
 while a human answers a permission (`#393` ↔ `#445` —
 [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) settled it as a design
-constraint on the not-yet-built answer path, since there is no implementation yet to measure).
+constraint on the not-yet-built answer path, since there is no implementation yet to measure), and
+whether a delegated implementer/reviewer loop can run without a human calling `aer decide` (it never
+was open — [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) found 0019 already
+forecloses it: the workflow shape needs no new primitive, but the terminal `PausePoint(ReadyForReview)`
+stays a human's own decision, always).
 
 - **A room lives in one directory for the M26–M30 horizon, deliberately.** `#472` found `--add-dir`
   on both CLIs, so disjoint folders are feasible at the vendor level, and #443 tracks the idea — but
@@ -314,13 +319,6 @@ constraint on the not-yet-built answer path, since there is no implementation ye
   demand signal, not as something blocking the current milestone set.
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
   how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
-- **Whether a delegated implementer/reviewer loop can run without a human calling `aer decide`.**
-  `DecisionType` (`Resume`/`Reject`/`RetryWithRevision`/`Supersede`) already exists and is exactly the
-  primitive such a loop needs, resolved via `aer decide` at a step's declared `PausePoint` — but
-  `PausePoint`'s own doc comment records every pause as awaiting *human* review/approval. Nothing in
-  the code enforces that; nothing has tried the alternative either. M27 territory ("more than one
-  model in the room"), not M26 — a second worker reviewing the first is the same escalation the rest
-  of that milestone is built on.
 
 ## Not in scope
 
