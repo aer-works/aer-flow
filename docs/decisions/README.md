@@ -129,3 +129,4 @@ Two rules for the column:
 | [0034](0034-project-permission-ceiling-lives-in-aers-own-config.md) | A project's permission ceiling lives in AER's own app-config, keyed by project path (resolves an open obligation in 0004) | accepted |
 | [0035](0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | `aer yield` is a structured MCP tool call, not a text sentinel — reuses 0029's mechanism, needs none of its held-open complexity | accepted |
 | [0036](0036-shape-is-rendering-not-a-second-state-machine.md) | A room's shape is Flow's existing state, rendered differently — not a second state machine (the one new primitive rides on 0035) | accepted |
+| [0037](0037-permission-answers-never-share-the-turn-lock.md) | A permission answer must never share the per-session turn lock a pending turn already holds (resolves #393↔#445) | accepted |

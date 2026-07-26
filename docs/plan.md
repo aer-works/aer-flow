@@ -84,6 +84,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) | **A project's permission ceiling lives in AER's own app-level config, keyed by project path** — never a file inside the project's own directory. First presented as a trust prompt on first use of a folder; reachable afterward from a global Settings "Projects" list. Resolves an obligation 0004 explicitly left open. |
 | [0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | **`aer yield` is a structured MCP tool call, not a text sentinel** — replaces `Aer.Workers.Dialogue`'s current substring-match stop condition. Reuses 0029's measured-but-unbuilt MCP mechanism; needs none of 0029's held-open complexity, since nothing here waits on a human. Real, unbuilt infrastructure (`#585`), and the Dialogue shape blocks on it. |
 | [0036](decisions/0036-shape-is-rendering-not-a-second-state-machine.md) | **A room's shape is Flow's existing state, rendered differently — not a second state machine.** "No step running" already is Conversation; a Dialogue collapsing on interruption is the existing `CancellationRequested` mechanism; the one new primitive (a mid-execution gate request) rides on 0035's MCP server, not a separate mechanism. |
+| [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) | **A permission answer must never share the per-session turn lock a pending turn already holds** — the existing `/api/tasks/decide` pattern (correlate by id, bypass the turn lock entirely) already shows how; resolves #393↔#445 as a design constraint, since the component in question isn't built yet to measure. |
 
 ## The completion bar: journeys
 
@@ -300,16 +301,17 @@ because "we already answered that" is the cheapest thing for a plan to forget: d
 (#321, #331, #407 — a neutral scratch dir), the typeface (#453/#456 shipped Source Sans 3 +
 JetBrains Mono as in-repo assets on both toolkits), the claude/agy effort mapping (#572/#573 measured
 and shipped it; #498 is the remaining, still-open UI/adapter work, not a reopening of the question),
-and where a project's permission ceiling is stored (`#338` —
+where a project's permission ceiling is stored (`#338` —
 [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) settled it: AER's own
-app-config, keyed by project path).
+app-config, keyed by project path), and whether the per-session turn lock tolerates a turn held open
+while a human answers a permission (`#393` ↔ `#445` —
+[0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) settled it as a design
+constraint on the not-yet-built answer path, since there is no implementation yet to measure).
 
 - **A room lives in one directory for the M26–M30 horizon, deliberately.** `#472` found `--add-dir`
   on both CLIs, so disjoint folders are feasible at the vendor level, and #443 tracks the idea — but
   this is left out of scope on purpose rather than carried as a pending gap: revisit only on a real
   demand signal, not as something blocking the current milestone set.
-- **Whether AER's per-session turn lock tolerates a turn held open** while a human answers a
-  permission (#393 ↔ #445). The vendor half is measured; this half is not.
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
   how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
 - **Whether a delegated implementer/reviewer loop can run without a human calling `aer decide`.**
