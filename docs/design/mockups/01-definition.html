@@ -249,7 +249,7 @@ pre.mermaid{background:transparent;margin:0;text-align:center}
   <p class="sub">Small on purpose. Every noun added here becomes a thing the person has to learn, so each has to earn its place.</p>
   <dl class="prims">
     <div class="prim"><dt>Session</dt><dd>A conversation against a directory, with <b>one or more workers in it</b>. The main noun — what you start, return to, and what the sidebar lists. There is deliberately no second noun for "a session with more than one worker": adding a worker changes who is present, not what kind of thing you have.</dd></div>
-    <div class="prim"><dt>Worker</dt><dd>One vendor's CLI running under your subscription. Claude, Gemini, Antigravity. <b>Interchangeable by design</b>, and present or absent like a person in a thread.</dd></div>
+    <div class="prim"><dt>Worker</dt><dd>One vendor's CLI running under your subscription. <code>claude</code>, <code>agy</code>. <b>Interchangeable by design</b>, and present or absent like a person in a thread.</dd></div>
     <div class="prim"><dt>Gate</dt><dd>Where work stops and asks you — <b>the only thing allowed to block</b>, and the unit the "needs you" list carries and the phone answers. Comes in three kinds, because they ask different things of you: a <b>permission</b> (may I run this command), a <b>decision</b> (which of these), and an <b>action</b> (review this). Two already exist in the engine as <span class="mono">ReadyForReview</span> and <span class="mono">NeedsInput</span>; permission is the one genuinely new kind.</dd></div>
     <div class="prim"><dt>Template</dt><dd>A saved shape of work — draft→review→gate — <b>defined on a graph and started in one click</b>. The graph is how you author and inspect it, never where you live day to day.</dd></div>
   </dl>
@@ -267,7 +267,7 @@ flowchart LR
   A["Point at a folder"] --> B["Talk to one agent"]
   B --> C{"Worth more<br/>than one?"}
   C -- no --> B
-  C -- yes --> D["Add a worker<br/>to the room"]
+  C -- yes --> D["Add a participant<br/>to the room"]
   D --> E["They work<br/>you watch"]
   B --> E
   E --> F{"Needs<br/>you?"}
@@ -335,7 +335,7 @@ stateDiagram-v2
           <div class="turn"><span class="who">you</span>Rework the switcher so a new session shows up immediately.</div>
           <div class="turn"><span class="who">claude</span>Two causes — the list only refreshed at startup, and a task registered only on a successful run. Patch ready.</div>
           <div class="turn gate"><span class="who">Needs you · gemini reviewed</span>Approve the change to the push fan-out?
-            <div class="btnrow"><span class="btn pri">Approve</span><span class="btn">Changes</span><span class="btn">Reject</span></div>
+            <div class="btnrow"><span class="btn">Approve</span><span class="btn">Changes</span><span class="btn">Reject</span></div>
           </div>
           <div class="composer"><span>Reply…</span><span>⏎</span></div>
         </div>

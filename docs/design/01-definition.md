@@ -1,11 +1,12 @@
 # What AER Flow is
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> The 2026-07-24 material below is unchanged; a 2026-07-25 amendment note and two new noun
+> entries for M27 (personas, room orchestration) are marked where they land, not blended in
+> silently. This is the *source* the decision records were written from; where a record and this
+> document differ, **the record wins** — it is the reviewed extraction, not the ruling. See
+> [`README.md`](README.md#kept-current-not-frozen-added-2026-07-25) for why this stopped being a
+> closed snapshot.
 
 ---
 
@@ -69,13 +70,28 @@ It isn't
 
 Small on purpose. Every noun added here becomes a thing the person has to learn, so each has to earn its place.
 
+> **Amendment, 2026-07-25 — [0013](../decisions/0013-room-is-the-user-facing-noun.md) renamed
+> this noun.** Wherever "Session" appears below as the user-facing noun for a conversation with
+> one or more workers in it, read **Room** — the model (participants, one directory, its own
+> history) is unchanged, only the word moved. "Session" now names something narrower: the vendor
+> CLI's own resumable thread, an adapter concern that is never presented as the thing you opened.
+> The **Settled** section further down states the opposite outcome ("room" never enters the
+> vocabulary) — that specific claim is superseded and is left as written below rather than
+> edited, per [0010](../decisions/0010-skills-and-advisor.md)'s own precedent for a corrected
+> clause. Two new nouns from the same M27 pass — **Persona** and **Room orchestrator** — are
+> appended after Template below.
+
 Session A conversation against a directory, with one or more workers in it . The main noun — what you start, return to, and what the sidebar lists. There is deliberately no second noun for "a session with more than one worker": adding a worker changes who is present, not what kind of thing you have.
 
-Worker One vendor's CLI running under your subscription. Claude, Gemini, Antigravity. Interchangeable by design , and present or absent like a person in a thread.
+Worker One vendor's CLI running under your subscription. `claude`, `agy`. Interchangeable by design , and present or absent like a person in a thread.
 
 Gate Where work stops and asks you — the only thing allowed to block , and the unit the "needs you" list carries and the phone answers. Comes in three kinds, because they ask different things of you: a permission (may I run this command), a decision (which of these), and an action (review this). Two already exist in the engine as ReadyForReview and NeedsInput ; permission is the one genuinely new kind.
 
 Template A saved shape of work — draft→review→gate — defined on a graph and started in one click . The graph is how you author and inspect it, never where you live day to day.
+
+Persona *(added 2026-07-25, M27)* A named, saved binding of a Skill onto a Worker's vendor/model/effort chip, plus a permission grant and a voice — a preset over the worker chip, not a new axis beside it. Eight predefined (Scout, Courier, Scribe, Artisan, Debugger, Auditor, Advisor, Architect), each pinning a real skill to a model-purpose × effort cell; cloning one and renaming it forks permanently from the built-in default. See [02-screens.md](02-screens.md) for the picker and the creation flow.
+
+Room orchestrator *(added 2026-07-25, M27)* A pinnable role: which participant in the room is authorized to call `aer decide` on another's gate, standing in for the human. Human-assigned only, blocked while a gate is open, one per room at a time, and never retroactive — a decision already made under the previous holder keeps its attribution. See [02-screens.md](02-screens.md) for the reassignment control.
 
 ### The one flow that matters
 
@@ -86,7 +102,7 @@ A["Point at a folder"] --> B["Talk to one agent"]
 B --> C{"Worth more
 than one?"}
 C -- no --> B
-C -- yes --> D["Add a worker
+C -- yes --> D["Add a participant
 to the room"]
 D --> E["They work
 you watch"]
@@ -142,7 +158,7 @@ Sessions + New
 
 — spike-cache Cancelled · 1d
 
-aer-flow claude + gemini  ·  + Add worker
+aer-flow claude + gemini  ·  + Add participant
 
 you Rework the switcher so a new session shows up immediately.
 
@@ -168,6 +184,12 @@ What makes visual workflow definition worth having is that it is easy — so kee
 Consequence: the DAG stops being a destination and becomes two things — an authoring surface and an optional view of a session. A meaningful slice of the backlog is scoped against the old assumption and has to be re-read.
 
 Resolved
+
+> **Superseded, 2026-07-25.** [0013](../decisions/0013-room-is-the-user-facing-noun.md) reversed
+> this specific outcome: the noun is **Room**, not Session. The point underneath it — no second
+> noun for "a session with more than one worker," adding a worker changes who's present, not what
+> kind of thing you have — stands unchanged; only which word won. Left as written below; see the
+> amendment on **The nouns**, above.
 
 #### One noun, not two — a session just has more workers
 

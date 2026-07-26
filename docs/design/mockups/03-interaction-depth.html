@@ -191,7 +191,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 
   <p class="plat">Desktop · a worker is running and you keep typing</p>
   <div class="shot scrollx"><div class="pane">
-    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip on">claude · working 2m</span><span class="chip">antigravity</span><span class="chip add">+</span></span></div>
+    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip on">claude · working 2m</span><span class="chip">agy</span><span class="chip add">+</span></span></div>
     <div class="turn you"><span class="who">you</span>Rework the switcher so a new room shows up immediately.</div>
     <div class="turn"><span class="who">claude · working</span>Reading <code>TasksViewModel.cs</code>…
       <div class="blk exec ok"><div class="bh"><span class="nm">pixi run build</span><span>✓ 41s</span></div></div>
@@ -218,34 +218,34 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 
   <p class="plat">Desktop · redirecting a question at a gate</p>
   <div class="shot scrollx"><div class="pane">
-    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip">claude</span><span class="chip">antigravity</span><span class="chip add">+</span></span></div>
-    <div class="turn gem"><span class="who">antigravity · reviewing</span>The picker path is not the only entry point — the CLI still registers a room only on success.</div>
+    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip">claude</span><span class="chip">agy</span><span class="chip add">+</span></span></div>
+    <div class="turn gem"><span class="who">agy · reviewing</span>The picker path is not the only entry point — the CLI still registers a room only on success.</div>
     <div class="side">
-      <div class="turn gate" style="flex:1;min-width:300px"><span class="who">Needs you</span><span class="more">⋯</span>Apply antigravity's correction before continuing?
-        <div class="btns"><span class="btn pri">Apply</span><span class="btn">Skip</span><span class="btn">Ask someone…</span></div>
+      <div class="turn gate" style="flex:1;min-width:300px"><span class="who">Needs you</span><span class="more">⋯</span>Apply agy's correction before continuing?
+        <div class="btns"><span class="btn">Apply</span><span class="btn">Skip</span><span class="btn">Ask someone…</span></div>
       </div>
       <div class="menu">
         <div class="hd">Ask about this</div>
         <div class="sel">claude · in this room</div>
-        <div>antigravity · in this room</div>
+        <div>agy · in this room</div>
         <div class="hd">Bring in</div>
-        <div>antigravity</div>
+        <div>agy</div>
         <div>a second claude</div>
         <div class="hd">Include</div>
-        <div class="sel">✓ antigravity's review</div>
+        <div class="sel">✓ agy's review</div>
         <div class="sel">✓ the diff</div>
       </div>
     </div>
-    <div class="turn"><span class="who">claude · answering your question</span>antigravity is right that the CLI path exists, but it registers through the same call — so the correction is unnecessary here and would double-register.</div>
-    <div class="turn gate"><span class="who">Needs you · still waiting</span>Apply antigravity's correction before continuing?
-      <div class="btns"><span class="btn pri">Apply</span><span class="btn">Skip</span><span class="btn">Ask someone…</span></div>
+    <div class="turn"><span class="who">claude · answering your question</span>agy is right that the CLI path exists, but it registers through the same call — so the correction is unnecessary here and would double-register.</div>
+    <div class="turn gate"><span class="who">Needs you · still waiting</span>Apply agy's correction before continuing?
+      <div class="btns"><span class="btn">Apply</span><span class="btn">Skip</span><span class="btn">Ask someone…</span></div>
     </div>
     <div class="comp"><span>Reply…</span><span>⏎</span></div>
   </div></div>
   <p class="note"><b>Asking a question does not answer the gate.</b> The gate stays open and visible underneath, because consulting is not deciding — this is the single most important behaviour on this screen. You can ask three workers and still not have applied anything.
   <br><br><b>You choose what the asked worker sees.</b> The turn that raised the question and its attachments are included by default; you can add or drop. This is what makes cross-examination real rather than a game of telephone — the second opinion is formed on the same evidence, not on a summary.
   <br><br><b>Bringing someone in is the same gesture as asking.</b> A worker who is not yet in the room appears in the same menu; picking one adds them and puts the question to them in one action. That is how a one-worker room becomes a two-worker room in practice — not by a separate "manage participants" surface.
-  <br><br><b>This is a person's explicit choice, never inference.</b> Nothing in the product reads the conversation to decide who should answer — a rule the engine holds absolutely, and this design honours by making routing a control you operate.</p>
+  <br><br><b>This is a person's explicit choice, never inference.</b> Nothing in the product reads the conversation to decide who should answer — a rule the engine holds absolutely, and this design honours by making routing a control you operate.<br><br><b>Added 2026-07-25, M27.</b> Adding still works exactly this way — a Persona appears in the same "bring someone in" menu as a bare worker, and picking one adds them in the same gesture. Removing a participant mid-room is new since this pass and does get its own control, in the room header rather than a separate surface: it runs two guardrails in sequence — stopping any in-flight execution via the real <code>InFlightExecutionRegistry.RequestCancellationAsync</code>, then refusing (with a clear reason, never a silent repair) if an active workflow step still depends on that participant. See <a href="02-screens.html">02-screens.html</a> for the full sequence.</p>
 </section>
 
 <hr class="div">
@@ -275,7 +275,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
   <div class="phones">
     <div class="phone">
       <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
-      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">claude + antigravity</span></span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">claude + agy</span></span></div>
       <div class="p-body">
         <div class="turn"><span class="who">claude</span>Both lists now refresh through one call:
           <div class="blk"><div class="bh"><span class="nm">C# · 5 lines</span><span style="color:var(--accent)">Open</span></div>
@@ -298,7 +298,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
    {
 <span class="a">+      await RegisterRoomAsync(path);</span>
    }</pre></div>
-        <div class="btns" style="margin-top:auto"><span class="btn pri">Looks right</span><span class="btn">Ask about this</span></div>
+        <div class="btns" style="margin-top:auto"><span class="btn">Looks right</span><span class="btn">Ask about this</span></div>
       </div>
     </div>
     <div class="phone">
@@ -331,12 +331,12 @@ resolve_to_the_same_row
 
   <p class="plat">Desktop · an artifact produced, then handed to a different vendor</p>
   <div class="shot scrollx"><div class="pane">
-    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip">claude</span><span class="chip">antigravity</span><span class="chip add">+</span></span></div>
+    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip">claude</span><span class="chip">agy</span><span class="chip add">+</span></span></div>
     <div class="turn"><span class="who">claude</span>Plan written.
       <div class="att"><span class="ic">◆</span><span>plan.md</span><span class="by">4.1 KB · by claude · 2m ago</span></div>
     </div>
     <div class="side">
-      <div class="turn you" style="flex:1;min-width:280px"><span class="who">you</span>Have antigravity review the plan.
+      <div class="turn you" style="flex:1;min-width:280px"><span class="who">you</span>Have agy review the plan.
         <div class="att"><span class="ic">◆</span><span>plan.md</span><span class="by">attached</span></div>
       </div>
       <div class="menu">
@@ -347,18 +347,18 @@ resolve_to_the_same_row
         <div>Save a copy…</div>
         <div class="hd">3 versions</div>
         <div>v3 · claude · 2m ago</div>
-        <div>v2 · antigravity · 1h ago</div>
+        <div>v2 · agy · 1h ago</div>
       </div>
     </div>
-    <div class="turn gem"><span class="who">antigravity</span>Reviewed. Two problems in step 4.
-      <div class="att"><span class="ic">◆</span><span>plan.md</span><span class="by">v4 · edited by antigravity</span></div>
-      <div class="blk diff"><div class="bh"><span class="nm">plan.md · what antigravity changed</span><span><span class="a">+6</span> <span class="r">−2</span></span></div></div>
+    <div class="turn gem"><span class="who">agy</span>Reviewed. Two problems in step 4.
+      <div class="att"><span class="ic">◆</span><span>plan.md</span><span class="by">v4 · edited by agy</span></div>
+      <div class="blk diff"><div class="bh"><span class="nm">plan.md · what agy changed</span><span><span class="a">+6</span> <span class="r">−2</span></span></div></div>
     </div>
     <div class="comp"><span>Reply…</span><span>⏎</span></div>
   </div></div>
-  <p class="note"><b>An artifact is a file on disk, not a message in a vendor's transcript.</b> That is what makes it portable: claude writes it, antigravity edits it, antigravity reads it, and none of them needs the others' conversation format. The engine already stores artifacts this way per execution — the design work is making them visible objects you can pick up and hand over.
-  <br><br><b>Versions are first-class and attributed.</b> Every artifact carries who produced each version and when, so "what did antigravity actually change" is one click and a diff rather than a reread. Handing a file to a second vendor is worthless if you cannot see what came back different.
-  <br><br><b>Attaching is explicit and visible.</b> The message that carries a file shows it as an attachment before it is sent, because "which version of the plan did antigravity actually see" is exactly the question that becomes unanswerable if this is implicit.
+  <p class="note"><b>An artifact is a file on disk, not a message in a vendor's transcript.</b> That is what makes it portable: claude writes it, agy edits it, agy reads it, and none of them needs the others' conversation format. The engine already stores artifacts this way per execution — the design work is making them visible objects you can pick up and hand over.
+  <br><br><b>Versions are first-class and attributed.</b> Every artifact carries who produced each version and when, so "what did agy actually change" is one click and a diff rather than a reread. Handing a file to a second vendor is worthless if you cannot see what came back different.
+  <br><br><b>Attaching is explicit and visible.</b> The message that carries a file shows it as an attachment before it is sent, because "which version of the plan did agy actually see" is exactly the question that becomes unanswerable if this is implicit.
   <br><br><b>On the phone an artifact opens as its own screen</b>, with the same version list and the same "send to a worker" action — reviewing on a phone is realistic, editing is not.</p>
 </section>
 
@@ -375,7 +375,7 @@ resolve_to_the_same_row
       <div class="p-body">
         <div class="p-step"><span>draft</span><span style="display:flex;gap:6px;align-items:center"><span class="pill">claude</span><span class="g">⣿</span></span></div>
         <div class="p-ins">+ step</div>
-        <div class="p-step sel"><span>review</span><span style="display:flex;gap:6px;align-items:center"><span class="pill">antigravity</span><span class="g">⣿</span></span></div>
+        <div class="p-step sel"><span>review</span><span style="display:flex;gap:6px;align-items:center"><span class="pill">agy</span><span class="g">⣿</span></span></div>
         <div class="p-ins">+ step</div>
         <div class="p-step"><span>apply</span><span style="display:flex;gap:6px;align-items:center"><span class="pill">claude</span><span class="g">⣿</span></span></div>
         <div class="btns" style="margin-top:auto"><span class="btn">Preview shape</span><span class="btn pri">Done</span></div>
@@ -388,7 +388,7 @@ resolve_to_the_same_row
         <div class="p-step" style="border:0;padding-left:0"><span style="color:var(--text-3)">Name</span></div>
         <div class="p-step"><span style="color:var(--text)">review</span></div>
         <div class="p-step" style="border:0;padding-left:0;padding-top:8px"><span style="color:var(--text-3)">Who runs it</span></div>
-        <div class="p-step"><span style="color:var(--text)">antigravity</span><span class="g">›</span></div>
+        <div class="p-step"><span style="color:var(--text)">agy</span><span class="g">›</span></div>
         <div class="p-step" style="border:0;padding-left:0;padding-top:8px"><span style="color:var(--text-3)">Before this step</span></div>
         <div class="p-step sel"><span style="color:var(--needs)">Ask me first</span><span class="pill on">on</span></div>
         <div class="btns" style="margin-top:auto"><span class="btn" style="color:var(--fail)">Delete step</span><span class="btn pri">Done</span></div>
@@ -418,10 +418,12 @@ resolve_to_the_same_row
         <tr><td><b>Archived</b></td><td>Out of the default list, still searchable, restorable in one action.</td></tr>
         <tr><td><b>Long output</b></td><td>Truncated with an explicit "showing first N lines" and a way to see all of it. Never silently cut.</td></tr>
         <tr><td><b>Reduced motion</b></td><td>Every animated state degrades to a correct still frame — the working mark is a spinner's static frame by design, not an absence.</td></tr>
+        <tr><td><b>Gate unverified</b></td><td>A worker whose permission mechanism could not be confirmed working at start says so before any tool runs, rather than silently rendering a gate that might never fire — a broken hook or a disabled callback both look exactly like a working one otherwise. <span style="color:var(--text-3);font-size:12px">(added 2026-07-25, per 0029)</span></td></tr>
       </tbody>
     </table>
   </div>
   <p class="note" style="margin-top:16px"><b>Two of these are the defects from the last manual run</b>, promoted from bugs to rules: cancelled reading as finished, and a room that existed but appeared nowhere. Writing them here is what stops them being rediscovered.</p>
+  <p class="note" style="margin-top:10px"><b>Added 2026-07-25.</b> A third promoted rule, from <a href="../../decisions/0029-the-gate-is-three-mechanisms.md">0029</a>: a permission gate is enforced by different mechanisms depending on which tool population is at risk, at least one of which fails silently when broken. AER verifies its own gate at every worker's start rather than assuming configuration took effect — the row above is that verification surfacing as a state, not a new mechanism of its own.</p>
 </section>
 
 <hr class="div">
@@ -462,6 +464,7 @@ resolve_to_the_same_row
     <div class="call"><dt>Consulting ≠ deciding</dt><dd><b>Asking another worker about a gate leaves the gate open.</b> You can ask three and still have decided nothing — the single most important behaviour in the room model.</dd></div>
     <div class="call"><dt>Routing is a control</dt><dd><b>You choose who answers, and what they see.</b> The product never reads the conversation to decide who should respond.</dd></div>
     <div class="call"><dt>Adding = asking</dt><dd><b>Bringing a new worker in is the same gesture as asking a question.</b> No separate participant-management surface.</dd></div>
+    <div class="call"><dt>Removing gets a control (added 2026-07-25, M27)</dt><dd>Unlike adding, removing a participant mid-room is not inferred from asking — it is an explicit room-header action, gated by an in-flight-execution stop and a DAG dependency check that refuses rather than silently repairing. See <a href="02-screens.html">02-screens.html</a>.</dd></div>
     <div class="call"><dt>Artifacts are files</dt><dd><b>Vendor-neutral, versioned, attributed, explicitly attached.</b> What one worker made, any other can be handed.</dd></div>
     <div class="call"><dt>Success collapses</dt><dd><b>A command that passed shows one line; one that failed opens itself.</b> Status and duration stay visible either way.</dd></div>
     <div class="call"><dt>Blocks are doors on a phone</dt><dd><b>Diffs and output get their own screens</b>, and each still offers the next action rather than only "back".</dd></div>

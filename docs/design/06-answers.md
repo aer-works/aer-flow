@@ -1,11 +1,12 @@
 # Answers — every open question closed
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> The 2026-07-24 material is unchanged from the artifact of the same name; where a decision
+> record and this document differ, **the record wins** — it is the reviewed extraction. Kept
+> because the records deliberately capture decisions, and this also holds screen
+> specifications, delights and demonstration criteria that are not decision-shaped and would
+> otherwise exist nowhere. See [../README.md](../README.md#kept-current-not-frozen-added-2026-07-25)
+> for why this corpus is maintained in place rather than staying a closed snapshot.
 
 ---
 
@@ -33,8 +34,8 @@ What it is being given is shown before you send. This is the part that makes it 
 
 The escape hatch is #424 — AER exposing the room's own state as a context source the worker can query. That turns "did it have enough context" from a guess into something the worker resolves itself when it needs to.
 
-you · asking antigravity Is claude right that the correction is unnecessary?
-antigravity will receive — a summary of 103 turns · the last 3 turns in full · plan.md · the diff
+you · asking agy Is claude right that the correction is unnecessary?
+agy will receive — a summary of 103 turns · the last 3 turns in full · plan.md · the diff
 
 Change what it sees
 
@@ -44,7 +45,7 @@ Decided: summary + attached evidence in full + queryable state. Always disclosed
 
 Was open
 
-#### What if claude and antigravity edit the same file at once?
+#### What if claude and agy edit the same file at once?
 
 Impossible by construction, and the design should say so rather than defend against it. Checked in the code: the daemon's turn lock is keyed on the directory path ( SessionTurnLockKey → AerPaths.RecordKey ), not on the room. Turns against one folder serialise — including turns from two different rooms pointed at the same folder.
 
@@ -89,11 +90,11 @@ A step receives the previous step's output automatically , so the instruction sa
 
 The row shows the name, who runs it, and whether it gates; the instruction sits underneath as the body. A step with no instruction is invalid and says so at edit time rather than at run time.
 
-draft claude · opus · careful
+draft claude
 
 Write a plan for the change described in the room. Be specific about files and order of work.
 
-review antigravity · gemini 3 pro ask me first
+review agy ask me first
 
 Critique the plan above. Name anything that will not work, and say why. Do not rewrite it.
 
@@ -133,7 +134,7 @@ Backlog · #442
 
 #### Memory falls out of the working directory and splits per vendor
 
-The room owns the memory, not the worker. That single move fixes the split: one memory document, held by the room, given to every worker in it regardless of vendor. What claude learned in turn 12 is available to antigravity in turn 104 — which is the entire premise of putting them in a room together and is impossible while memory lives in per-vendor files.
+The room owns the memory, not the worker. That single move fixes the split: one memory document, held by the room, given to every worker in it regardless of vendor. What claude learned in turn 12 is available to agy in turn 104 — which is the entire premise of putting them in a room together and is impossible while memory lives in per-vendor files.
 
 It is a working document, so it needs no new concept. It appears in the files list, has versions and attribution, can be opened and edited by you, and can be saved into the project if you want it to become a real file. Memory being visible and editable is the difference between a feature and a haunting.
 
@@ -168,6 +169,12 @@ No — it is a saved worker preset with a standing instruction. Vendor, model, e
 
 Resisting a new participant type matters: every new kind of thing in the room is another concept to explain, and everything an advisor needs is already expressible as a worker with an instruction.
 
+> **Added 2026-07-25, M27.** This call was generalized, not overturned: eight such presets are now
+> named, first-class, and picked from a menu — Persona, see
+> [01-definition.md](01-definition.md) — but each is still explicitly "a preset over the worker
+> chip, not a new axis beside it," the same resistance to a new participant type this passage
+> argued for. Advisor is one of the eight.
+
 Decided: a preset, not a new noun. Roles are instructions.
 
 Backlog · #386
@@ -177,6 +184,12 @@ Backlog · #386
 Two tiers, both visible, clearly marked. Skills that AER defines are realised per vendor and appear under "Room" — they work with whoever you address, which is what makes them worth defining once. A vendor's own native skills appear under that vendor and go only to it.
 
 The palette already namespaces by owner, so this needs no new structure — it needs the room tier to be populated by AER's canonical skills rather than only by built-in commands.
+
+> **Added 2026-07-25, M27.** Still true, and one addition since:
+> [04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here) notes that
+> where a worker has a Persona bound, its commands are grouped under the Persona's name rather than
+> the bare vendor. That's a display label, not a third tier — the two tiers and their ownership
+> rule are unchanged.
 
 Decided: canonical skills under Room, native skills under their vendor, marked as such.
 
@@ -256,7 +269,16 @@ Needs a measurement
 
 The whole permission design rests on #445 — AER hosting an MCP server a worker calls to ask the user something mid-turn. The premise of its predecessor was already disproved once by measurement ( claude -p auto-approves MCP tools rather than surfacing them), which is why the seam inverted. Before any of this is built, that mechanism needs a live probe against each vendor CLI — the same discipline that stopped a whole feature being built on a mechanism that did not exist.
 
-Open: verify the mechanism per vendor before building the surface.
+**Resolved 2026-07-25**, by [0029](../decisions/0029-the-gate-is-three-mechanisms.md) and the
+probes it rests on (`#472`, `#529`, `#530`, `#531`). The mechanism exists and is measured, not
+single but threefold — a `PreToolUse` hook, a blocking `tools/call`, and elicitation — each
+covering a different population of tools, on both vendors. It is not simple: at least one
+mechanism fails silently when broken, `agy` has strictly less coverage than `claude`, and the
+non-blocking migration path (SEP-1036) is blocked on a vendor shipping it. This entry's original
+verdict — "verify the mechanism per vendor before building the surface" — is exactly what
+happened. See 0029 for the honest version.
+
+Resolved 2026-07-25: three mechanisms, measured on both vendors, per 0029 — not simple, but no longer unverified.
 
 Needs you
 

@@ -29,7 +29,24 @@ Two edits, both mechanical, so these can live in a repo instead of as published 
 - **The publishing frame's runtime script is stripped.** It was harness plumbing, never part of the
   design.
 
-Nothing else is altered — no re-layout, no re-wording, no "cleanup".
+Nothing else was altered at landing time — no re-layout, no re-wording, no "cleanup".
+
+**Since then, `02-screens.html` has grown.** As of 2026-07-25 it carries four additional sections for
+M27 (the persona picker, persona creation, room-header orchestrator/removal controls, the
+workflow-toggle) — new material, not a rewording of the original seven screens, appended and marked as
+its own dated addition rather than blended into the 2026-07-24 draft. See
+[`../README.md`](../README.md#kept-current-not-frozen-added-2026-07-25) for why this corpus is now
+maintained in place instead of staying a closed snapshot.
+
+**Also on 2026-07-25, all seven mockups were brought into compliance with
+[0028](../../decisions/0028-no-permissive-control-is-the-default.md).** 0028's own Context section
+quotes `04-workers-commands-control.html`'s original `Allow once`/`Deny` markup as evidence that the
+permissive option was drawn as the loud, accent-filled primary — that quote is copy-pasted as static
+text inside 0028's own file, so it still stands as a historical record even though the live markup no
+longer matches it. A reader following 0028's pointer to this file today will find compliant buttons
+(`Allow once`/`Deny`, `Apply`/`Ask someone…`, `Try again`/`Ask claude to fix it`, `Summarise now`/
+`Leave it`, `Add to room memory`/`Edit…`/`No`, and several more found by the same sweep) rather than
+the bug 0028 describes — that is 0028 finally being satisfied, not a discrepancy to chase down.
 
 ## Reading them
 

@@ -42,3 +42,21 @@ Extracted from the local build sources for each artifact (`*_src.html`), not re-
 the text as authored, minus the presentation layer. The artifacts rendered in the product's own Quiet
 palette and real subset fonts, which is why they were built as HTML rather than markdown; that
 styling is deliberately not preserved here, because the words are the part worth keeping.
+
+## Kept current, not frozen (added 2026-07-25)
+
+The corpus was originally treated as a closed 2026-07-24 snapshot — each document opened with a
+blockquote saying so. That framing assumed implementation would soon overtake it, the way a decision
+record's own text stops changing once it ships. It hasn't: M27 is still design work, nothing here has
+been built, and a second parallel "M27 design corpus" directory turned out to be the wrong container —
+two competing sources of design intent is worse than one that keeps moving.
+
+**So this corpus is now maintained in place** as later design passes add to it, the same discipline
+`docs/decisions/` already uses for a record that needs correcting: **new content is additive, and a
+passage a later record quotes verbatim is never silently rewritten** — it gets a dated amendment note
+pointing at what supersedes it, left in place rather than edited, because several existing decisions
+([0028](../decisions/0028-no-permissive-control-is-the-default.md) most directly) quote this corpus's
+exact wording and markup as their evidence. Each addition is marked with when it landed and, where
+relevant, what it was drafted with. Everything above this section is the original 2026-07-24 material,
+unchanged; **where a decision record and this corpus disagree, the record still wins** — that has not
+changed, only whether the corpus itself can grow.

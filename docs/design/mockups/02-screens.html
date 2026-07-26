@@ -200,6 +200,36 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 .menu{box-shadow:var(--el2)}
 .turn,.blk,.step,.p-step,.att,.node,.parent,.prim,.wire,.notif,.calls,.tblwrap,.prims,.parents,.figure,.btn.pri{box-shadow:none}
 .row.sel,.p-row.hi{box-shadow:inset 2px 0 0 var(--accent)}
+
+/* ---- M27 addition, 2026-07-25 — persona picker, creation drawer, orchestrator controls ---- */
+.chip.active{border-color:var(--accent);color:var(--text);background:var(--sunk)}
+.persona-pop{background:var(--raised);border:1px solid var(--rule);border-radius:8px;padding:12px 14px;box-shadow:var(--el2);width:100%;font-family:var(--sans);font-size:12px;display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.pop-sect{color:var(--text-3);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:600;padding-bottom:3px;border-bottom:1px solid var(--rule)}
+.p-presets{display:flex;flex-wrap:wrap;gap:6px 12px;color:var(--text);font-size:12px}
+.p-opt{display:flex;align-items:center;gap:5px;color:var(--text-2)}
+.p-opt.sel{color:var(--text);font-weight:600}
+.p-opt.mod{color:var(--needs)}
+.f-group{display:flex;flex-direction:column;gap:6px}
+.f-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px}
+.f-row .lbl{color:var(--text-2);width:95px;flex:none}
+.f-val{border:1px solid var(--rule);border-radius:5px;background:var(--sunk);padding:3px 8px;color:var(--text);font-family:var(--sans);font-size:11.5px;display:flex;align-items:center;gap:6px;flex:1;justify-content:space-between}
+.f-val.mod{border-color:var(--needs);color:var(--needs)}
+.pop-status{font-size:11px;color:var(--text-3);padding-top:4px;border-top:1px dashed var(--rule)}
+.pop-status.mod{color:var(--needs)}
+.drawer{border:1px solid var(--rule);border-radius:8px;background:var(--raised);padding:16px 20px;max-width:680px;margin:10px auto;display:flex;flex-direction:column;gap:14px;box-shadow:var(--el2);font-family:var(--sans)}
+.drawer-h{display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:15px;border-bottom:1px solid var(--rule);padding-bottom:8px}
+.d-step{display:flex;flex-direction:column;gap:6px;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.d-step:last-child{border-bottom:0}
+.d-step .title{font-weight:600;font-size:12.5px;color:var(--text)}
+.f-input{width:100%;border:1px solid var(--rule);border-radius:5px;background:var(--sunk);padding:5px 9px;color:var(--text);font-family:var(--sans);font-size:12px}
+.f-area{width:100%;border:1px solid var(--rule);border-radius:5px;background:var(--sunk);padding:6px 9px;color:var(--text);font-family:var(--mono);font-size:11.5px;min-height:50px;resize:vertical}
+.chk-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2)}
+.block-banner{background:color-mix(in srgb,var(--needs) 10%,transparent);border:1px solid var(--needs);border-radius:6px;padding:8px 11px;color:var(--text);font-size:12px;line-height:1.45;display:flex;align-items:flex-start;gap:8px}
+.refuse-banner{background:color-mix(in srgb,var(--fail) 10%,transparent);border:1px solid var(--fail);border-radius:6px;padding:8px 11px;color:var(--text);font-size:12px;line-height:1.45;display:flex;flex-direction:column;gap:4px}
+.sw-toggle{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);border-radius:20px;padding:2px 9px;font-size:11.5px;background:var(--sunk);color:var(--text-2)}
+.sw-toggle.on{border-color:var(--accent);color:var(--accent)}
+.sw-toggle .dot-sw{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
+.sw-toggle.on .dot-sw{background:var(--accent)}
 </style>
 
 <div class="wrap">
@@ -212,6 +242,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
     <a href="#first">First run</a><a href="#daily">The daily driver</a><a href="#multi">Two workers, a gate</a>
     <a href="#fail">When it fails</a><a href="#start">Starting from a template</a><a href="#shape">Drawing a shape</a>
     <a href="#settings">Settings</a><a href="#phone">Phone</a><a href="#calls">The calls</a>
+    <a href="#m27-picker">Persona picker</a><a href="#m27-create">Persona creation</a><a href="#m27-header">Room-header controls</a><a href="#m27-toggle">Workflow toggle</a>
   </nav>
 </header>
 
@@ -229,7 +260,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="big">Point AER Flow at a folder</div>
         <div class="sm">A room is a conversation about one folder. Open one and start talking; add a second worker whenever it is worth it.</div>
         <div class="btns" style="justify-content:center"><span class="btn pri">Choose a folder…</span><span class="btn">Start from a template</span></div>
-        <div class="ready"><span>Workers found</span><b>✓ claude</b><b>✓ antigravity</b><s>— antigravity not installed</s></div>
+        <div class="ready"><span>Workers found</span><b>✓ claude</b><b>✓ agy</b><s>— agy not installed</s></div>
       </div>
     </div>
   </div></div>
@@ -254,16 +285,18 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="row"><span class="mk i">—</span><span><span class="nm">spike-cache</span><span class="st">Cancelled · 1d</span></span></div>
       </div>
       <div class="main">
-        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip add">+ Add worker</span></span></div>
-        <div class="turn you"><span class="who">you</span>Why does a new room not show up in the list?</div>
-        <div class="turn"><span class="who">claude</span>Two causes. The list only refreshed at startup, and a room was registered only when its first run returned 2xx — so a refused run left a real folder nothing knew about.</div>
-        <div class="turn you"><span class="who">you</span>Fix both.</div>
-        <div class="turn"><span class="who">claude · working</span>Editing <code>MainWindow.axaml.cs</code>…</div>
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip add">+ Add participant</span></span></div>
+        <div class="conv">
+        <div class="turn me"><span class="who">you</span>Why does a new room not show up in the list?</div>
+        <div class="turn gem"><span class="who">claude</span>Two causes. The list only refreshed at startup, and a room was registered only when its first run returned 2xx — so a refused run left a real folder nothing knew about.</div>
+        <div class="turn me"><span class="who">you</span>Fix both.</div>
+        <div class="turn gem"><span class="who">claude · working</span>Editing <code>MainWindow.axaml.cs</code>…</div>
         <div class="comp"><span>Reply…</span><span>⏎</span></div>
+        </div>
       </div>
     </div>
   </div></div>
-  <p class="note"><b>The sidebar is a presence list, not a file browser.</b> Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. <b>"+ Add worker" is a control in the header</b>, not a new object to create: that is what keeps "room" a single noun.</p>
+  <p class="note"><b>The sidebar is a presence list, not a file browser.</b> Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. <b>"+ Add participant" is a control in the header</b>, not a new object to create: that is what keeps "room" a single noun.</p>
 </section>
 
 <hr class="div">
@@ -283,19 +316,21 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="row"><span class="mk f">✕</span><span><span class="nm">migration</span><span class="st">Failed · 3h</span></span></div>
       </div>
       <div class="main">
-        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip">antigravity</span><span class="chip add">+</span></span></div>
-        <div class="turn"><span class="who">claude</span>Patch ready: refresh both lists through one call, and register a room when it is created.</div>
-        <div class="turn gem"><span class="who">antigravity · reviewing</span>The refresh is right. But the picker path is not the only entry point — the CLI still registers only on success.</div>
-        <div class="turn gate"><span class="who">Needs you</span>Apply antigravity's correction before continuing?
-          <div class="btns"><span class="btn pri">Apply</span><span class="btn">Skip</span><span class="btn">Ask claude to respond</span></div>
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip">agy</span><span class="chip add">+</span></span></div>
+        <div class="conv">
+        <div class="turn gem"><span class="who">claude</span>Patch ready: refresh both lists through one call, and register a room when it is created.</div>
+        <div class="turn gem"><span class="who">agy · reviewing</span>The refresh is right. But the picker path is not the only entry point — the CLI still registers only on success.</div>
+        <div class="turn gate"><span class="who">Needs you</span>Apply agy's correction before continuing?
+          <div class="btns"><span class="btn">Apply</span><span class="btn">Skip</span><span class="btn">Ask claude to respond</span></div>
         </div>
         <div class="comp"><span>Reply…</span><span>⏎</span></div>
+        </div>
       </div>
       <div class="insp">
         <div class="ih"><span>Shape</span><span style="color:var(--accent)">Hide</span></div>
-        <div class="node ok">draft · claude</div>
+        <div class="node ok">draft · Artisan</div>
         <div class="arrow">↓</div>
-        <div class="node ok">review · antigravity</div>
+        <div class="node ok">review · Auditor</div>
         <div class="arrow">↓</div>
         <div class="node wait">gate · you</div>
         <div class="arrow">↓</div>
@@ -327,7 +362,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="turn bad"><span class="who">Failed · claude · 3h ago</span>The worker exited before finishing.
           <div class="err">migrate: connect ECONNREFUSED 127.0.0.1:5432
   at TCPConnectWrap.afterConnect</div>
-          <div class="btns"><span class="btn pri">Try again</span><span class="btn">Ask claude to fix it</span><span class="btn">Show full output</span></div>
+          <div class="btns"><span class="btn">Try again</span><span class="btn">Ask claude to fix it</span><span class="btn">Show full output</span></div>
         </div>
         <div class="comp"><span>Reply…</span><span>⏎</span></div>
       </div>
@@ -357,7 +392,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="turn" style="border:0;padding:0;color:var(--text-3)">Folder</div>
         <div class="turn" style="color:var(--text)">~/source/repos/aer/aer-flow &nbsp;&nbsp;<span style="color:var(--accent)">Choose…</span></div>
         <div class="turn" style="border:0;padding:0;color:var(--text-3);margin-top:4px">Who runs it</div>
-        <div class="turn" style="color:var(--text)">draft <span style="color:var(--text-3)">·</span> claude &nbsp;&nbsp;&nbsp; review <span style="color:var(--text-3)">·</span> antigravity</div>
+        <div class="turn" style="color:var(--text)">draft <span style="color:var(--text-3)">·</span> Artisan &nbsp;&nbsp;&nbsp; review <span style="color:var(--text-3)">·</span> Auditor</div>
         <div class="btns" style="margin-top:12px"><span class="btn pri">Start room</span><span class="btn">Save as my default</span></div>
         <div class="comp" style="margin-top:auto;border:0;color:var(--text-3);padding-left:0">A template names the shape and the roles. It does not name the folder — that is chosen per room.</div>
       </div>
@@ -383,23 +418,23 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
       <div class="ed">
         <div class="mhead" style="margin-bottom:10px"><span class="t">draft → review</span><span class="who-chips"><span class="chip">Done</span></span></div>
-        <div class="step"><span class="l">draft</span><span class="r"><span class="pill">claude</span><span>ask me first ○</span></span></div>
+        <div class="step"><span class="l">draft</span><span class="r"><span class="pill">Artisan</span><span>ask me first ○</span></span></div>
         <div class="ins"><span>+ step</span></div>
-        <div class="step sel"><span class="l">review</span><span class="r"><span class="pill">antigravity</span><span class="pill on">ask me first ●</span></span></div>
+        <div class="step sel"><span class="l">review</span><span class="r"><span class="pill">Auditor</span><span class="pill on">ask me first ●</span></span></div>
         <div class="ins"><span>+ step</span></div>
-        <div class="step"><span class="l">apply</span><span class="r"><span class="pill">claude</span><span>ask me first ○</span></span></div>
+        <div class="step"><span class="l">apply</span><span class="r"><span class="pill">Artisan</span><span>ask me first ○</span></span></div>
         <div class="ins"><span>+ step</span></div>
         <div class="comp" style="border:0;color:var(--text-3);padding-left:0;margin-top:14px">Each step runs after the one above it. Turn on "ask me first" to put a gate before a step.</div>
       </div>
       <div class="insp">
         <div class="ih"><span>Preview</span></div>
-        <div class="node">draft · claude</div>
+        <div class="node">draft · Artisan</div>
         <div class="arrow">↓</div>
         <div class="node wait">gate · you</div>
         <div class="arrow">↓</div>
-        <div class="node">review · antigravity</div>
+        <div class="node">review · Auditor</div>
         <div class="arrow">↓</div>
-        <div class="node">apply · claude</div>
+        <div class="node">apply · Artisan</div>
       </div>
     </div>
   </div></div>
@@ -422,8 +457,8 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="sgroup">
           <div class="gh">Workers</div>
           <div class="sline"><span class="k">claude</span><span>✓ found · signed in</span></div>
-          <div class="sline"><span class="k">antigravity</span><span>✓ found · signed in</span></div>
-          <div class="sline"><span class="k">antigravity</span><span style="color:var(--needs)">not installed · how to add</span></div>
+          <div class="sline"><span class="k">agy</span><span>✓ found · signed in</span></div>
+          <div class="sline"><span class="k">agy</span><span style="color:var(--needs)">not installed · how to add</span></div>
           <div class="sline" style="color:var(--text-3)"><span>AER runs whichever CLI is already signed in on this machine. It never stores keys.</span></div>
         </div>
         <div class="sgroup">
@@ -465,25 +500,25 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
       <div class="p-head"><span><span class="t">Rooms</span><span class="sub2">2 need you · 1 running</span></span></div>
       <div class="p-body">
-        <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">aer-flow</span><span class="st">Needs you · claude + antigravity</span></span></div>
-        <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you · schema change</span></span></div>
-        <div class="p-row"><span class="mk w">◔</span><span><span class="nm">docs-sweep</span><span class="st">Working · 4m</span></span></div>
+        <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">aer-flow</span><span class="st">Needs you · claude + agy</span></span></div>
+        <div class="p-row"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you · schema change</span></span></div>
+        <div class="p-row"><span class="mk r">◔</span><span><span class="nm">docs-sweep</span><span class="st">Working · 4m</span></span></div>
         <div class="p-row"><span class="mk f">✕</span><span><span class="nm">migration</span><span class="st">Failed · 3h</span></span></div>
-        <div class="p-row"><span class="mk i">—</span><span><span class="nm">spike-cache</span><span class="st">Cancelled · 1d</span></span></div>
-        <div class="p-tabs"><span class="on">Rooms</span><span>Needs you</span><span>Settings</span></div>
+        <div class="p-row"><span class="mk c">—</span><span><span class="nm">spike-cache</span><span class="st">Cancelled · 1d</span></span></div>
+        <div class="p-nav"><span>Rooms</span><span class="on">Needs you</span><span>Settings</span></div>
       </div>
     </div>
 
     <div class="phone">
       <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
-      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">claude + antigravity</span></span></div>
-      <div class="p-body">
-        <div class="turn"><span class="who">claude</span>Patch ready: refresh both lists through one call.</div>
-        <div class="turn gem"><span class="who">antigravity</span>The CLI entry point still registers only on success.</div>
-        <div class="turn gate"><span class="who">Needs you</span>Apply antigravity's correction?
-          <div class="btns"><span class="btn pri">Apply</span><span class="btn">Skip</span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">claude + agy</span></span></div>
+      <div class="conv">
+        <div class="turn gem"><span class="who">claude</span>Patch ready: refresh both lists through one call.</div>
+        <div class="turn gem"><span class="who">agy</span>The CLI entry point still registers only on success.</div>
+        <div class="turn gate"><span class="who">Needs you</span>Apply agy's correction?
+          <div class="btns"><span class="btn">Apply</span><span class="btn">Skip</span></div>
         </div>
-        <div class="p-comp"><span>Reply…</span><span>↑</span></div>
+        <div class="comp"><span>Reply…</span><span>↑</span></div>
       </div>
     </div>
 
@@ -491,7 +526,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
       <div class="p-head"><span><span class="t">Locked</span><span class="sub2">Notification</span></span></div>
       <div class="p-body">
-        <div class="notif"><b>AER Flow · aer-flow</b>antigravity corrected claude's patch — a decision is waiting.
+        <div class="notif"><b>AER Flow · aer-flow</b>agy corrected claude's patch — a decision is waiting.
           <div class="btns"><span class="btn pri">Open</span></div>
         </div>
         <div class="notif" style="opacity:.55"><b>AER Flow · migration</b>Failed — the worker exited before finishing.</div>
@@ -501,6 +536,389 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 
   </div>
   <p class="note"><b>The phone's first run is pairing, and nothing else.</b> It has no folders of its own and no CLIs installed, so until it is connected to a computer there is genuinely nothing it can do — pretending otherwise with an empty rooms list would be worse than saying so. <b>Notifications inform, they never decide:</b> one tap opens the gate beside the argument you are ruling on, because approving an agent's work from a lock screen is one mis-tap from approving something you never read. <b>Template authoring is out of scope for the phone's first version</b>, not ruled out — a small-screen shape editor is an interesting problem worth returning to, and the step-list model above is far more portable to a phone than a canvas would have been.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">M27 addition, 2026-07-25 — personas &amp; room orchestration</p>
+  <h2 id="m27-picker">The persona picker on the worker chip</h2>
+  <p class="sub">A bare worker chip — just a vendor name, as drawn in "The daily driver" and "Two workers, a gate" above — stays completely valid; a Persona is an optional preset over that chip, not a different visual language beside it. Picking one sets skill, vendor, model tier, effort level, permission grant, and voice in one gesture — but the chip's visible label shows only the Persona's name, exactly as short as the bare-vendor case it extends. The raw axes live in the popover, one tap away, not repeated next to the name that already stands for them.</p>
+  <p class="plat">Desktop · worker chip persona popover (intact vs modified state)</p>
+
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · aer-flow</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · claude</span></span></div>
+        <div class="row"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead">
+          <span class="t">aer-flow</span>
+          <span class="who-chips">
+            <span class="chip active">👑 Artisan ▼</span>
+            <span class="chip add">+ Add participant</span>
+          </span>
+        </div>
+
+        <div class="persona-pop">
+          <div class="pop-sect">Persona Preset</div>
+          <div class="p-presets">
+            <span class="p-opt sel">● Artisan (implementation &amp; refactor)</span>
+            <span class="p-opt">○ Scout</span>
+            <span class="p-opt">○ Courier</span>
+            <span class="p-opt">○ Scribe</span>
+            <span class="p-opt">○ Debugger</span>
+            <span class="p-opt">○ Auditor</span>
+            <span class="p-opt">○ Advisor</span>
+            <span class="p-opt">○ Architect</span>
+          </div>
+
+          <div class="pop-sect" style="margin-top:4px">Overrides for this room</div>
+          <div class="f-group">
+            <div class="f-row"><span class="lbl">Skill</span><span class="f-val">implementation &amp; refactor <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Vendor</span><span class="f-val">claude <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Model tier</span><span class="f-val">balanced <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Effort</span><span class="f-val">careful <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Grant</span><span class="f-val">Project ∩ Session ∩ Step (Read, Write) <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Voice</span><span class="f-val">Pragmatic implementer, concise code</span></div>
+          </div>
+
+          <div class="pop-status">Status: Artisan (preset intact)</div>
+          <div class="btns" style="margin-top:2px">
+            <span class="btn">Reset to preset</span>
+            <span class="btn">Save as new Persona</span>
+          </div>
+        </div>
+
+        <div class="turn you" style="margin-top:12px"><span class="who">you</span>Refactor the room state listener to support multi-worker notifications.</div>
+        <div class="turn"><span class="who">claude</span>Analyzing MainWindow state handlers…</div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="plat" style="margin-top:28px">Desktop · worker chip with axis override (modified state)</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · aer-flow</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · claude</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead">
+          <span class="t">aer-flow</span>
+          <span class="who-chips">
+            <span class="chip active" style="border-color:var(--needs);color:var(--needs)">👑 Artisan* ▼</span>
+            <span class="chip add">+ Add participant</span>
+          </span>
+        </div>
+
+        <div class="persona-pop" style="border-color:var(--needs)">
+          <div class="pop-sect">Persona Preset</div>
+          <div class="p-presets">
+            <span class="p-opt mod" style="font-weight:600">● Artisan (modified)</span>
+          </div>
+
+          <div class="pop-sect" style="margin-top:4px">Overrides for this room</div>
+          <div class="f-group">
+            <div class="f-row"><span class="lbl">Skill</span><span class="f-val">implementation &amp; refactor <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Vendor</span><span class="f-val">claude <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Model tier</span><span class="f-val">balanced <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Effort</span><span class="f-val mod">exhaustive * <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Grant</span><span class="f-val">Project ∩ Session ∩ Step (Read, Write) <span>▼</span></span></div>
+            <div class="f-row"><span class="lbl">Voice</span><span class="f-val">Pragmatic implementer, concise code</span></div>
+          </div>
+
+          <div class="pop-status mod">Status: 1 parameter differs from preset 'Artisan'</div>
+          <div class="btns" style="margin-top:2px">
+            <span class="btn">Reset to preset</span>
+            <span class="btn">Save as new Persona</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="plat" style="margin-top:28px">Phone · persona picker bottom sheet</p>
+  <div class="phones">
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">Participants</span></span></div>
+      <div class="p-body">
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Worker 1</div>
+        <div class="chip active" style="border-color:var(--needs);color:var(--needs);text-align:center">👑 Artisan* ▼</div>
+
+        <div class="persona-pop" style="margin-top:auto;border-top-left-radius:14px;border-top-right-radius:14px">
+          <div class="pop-sect">Select Persona</div>
+          <div style="display:flex;flex-direction:column;gap:4px;font-size:11.5px">
+            <div style="display:flex;justify-content:space-between;color:var(--text-2)"><span>★ Scout</span><span style="color:var(--text-3)">quick reconnaissance</span></div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-2)"><span>★ Courier</span><span style="color:var(--text-3)">draft &amp; relay</span></div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-2)"><span>★ Scribe</span><span style="color:var(--text-3)">documentation</span></div>
+            <div style="display:flex;justify-content:space-between;color:var(--text);font-weight:600"><span>★ Artisan ✓</span><span style="color:var(--accent)">implementation &amp; refactor</span></div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-2)"><span>★ Debugger</span><span style="color:var(--text-3)">root-cause diagnosis</span></div>
+            <div style="display:flex;justify-content:space-between;color:var(--text-2)"><span>★ Auditor</span><span style="color:var(--text-3)">code &amp; security review</span></div>
+          </div>
+          <div class="pop-status mod">Overrides: Effort → exhaustive (mod)</div>
+          <div class="btns">
+            <span class="btn">Reset to preset</span>
+            <span class="btn">Save as new</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note"><b>The chip shows only the Persona's name</b> — vendor, model tier and effort live in the popover, each its own row, where model tier is always named by purpose (deep, balanced, fast), never a specific vendor string (0023). Bumping a single axis like Effort to <code>exhaustive</code> marks the chip as <code>Artisan*</code> (modified) without severing identity or forcing immediate saving. <b>Reset to preset</b> clears the asterisk, while <b>Save as new Persona</b> opens the creation drawer pre-filled. On the phone picker list, each Persona shows what it <em>does</em> ("code &amp; security review") rather than its model×effort grid position — the grid matters for building the library, not for choosing who joins a room.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">M27 addition, 2026-07-25</p>
+  <h2 id="m27-create">The persona-creation flow</h2>
+  <p class="sub">Creating instructions creates a private skill by default (0010). Promoting that instruction set into the shared skill library is an explicit step-6 checkbox (0003). Progressive disclosure inside a single side drawer replaces multi-step wizards.</p>
+  <p class="plat">Desktop · persona creation drawer</p>
+
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · Create Persona</div>
+    <div class="d-body solo">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="main" style="padding:16px 24px">
+        <div class="drawer">
+          <div class="drawer-h"><span>Create Persona</span><span>✕</span></div>
+
+          <div class="d-step">
+            <div class="title">1. Skill Instructions</div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-2)">
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+                <input type="radio" name="sk" checked> Pick existing skill from library:
+              </label>
+              <div class="f-val" style="margin-left:20px">Code &amp; Security Review (Auditor) <span>▼</span></div>
+              <label style="display:flex;align-items:center;gap:6px;margin-top:4px">
+                <input type="radio" name="sk"> Write custom instructions from scratch (creates private skill):
+              </label>
+              <div class="f-area" style="margin-left:20px;color:var(--text-3)">Audit code changes for OWASP Top 10 vulnerabilities...</div>
+            </div>
+          </div>
+
+          <div class="d-step">
+            <div class="title">2. Identity &amp; Voice</div>
+            <div class="f-row"><span class="lbl">Name</span><input class="f-input" value="Security Sentinel"></div>
+            <div class="f-row" style="margin-top:4px"><span class="lbl">Voice</span><input class="f-input" value="Stern auditor. Flags OWASP vulnerabilities with exploit context."></div>
+          </div>
+
+          <div class="d-step">
+            <div class="title">3. Model Purpose</div>
+            <div class="seg" style="max-width:280px"><span>Fast</span><span>Balanced</span><span class="on">Deep</span></div>
+          </div>
+
+          <div class="d-step">
+            <div class="title">4. Effort Level</div>
+            <div class="seg" style="max-width:360px"><span>Quick</span><span>Standard</span><span class="on">Careful</span><span>Exhaustive</span></div>
+          </div>
+
+          <div class="d-step">
+            <div class="title">5. Permissions</div>
+            <div class="seg" style="max-width:360px"><span class="on">Inherit room/project default</span><span>Custom grant...</span></div>
+          </div>
+
+          <div class="d-step">
+            <div class="title">6. Shared Skill Promotion (Optional)</div>
+            <div class="chk-row">
+              <input type="checkbox" checked>
+              <span>Save instructions as a shared skill in your library</span>
+            </div>
+            <div class="f-row" style="margin-left:22px;margin-top:4px">
+              <span class="lbl">Library skill name</span>
+              <input class="f-input" value="Security Review Standard">
+            </div>
+          </div>
+
+          <div class="btns" style="justify-content:flex-end;margin-top:6px">
+            <span class="btn">Cancel</span>
+            <span class="btn">Save Persona</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="note"><b>Progressive disclosure in a single drawer keeps context visible</b> without step-through wizard friction. Editing instructions imported from a shared skill automatically forks a private copy for this Persona (0021). <b>Save Persona and Cancel are a calm create/discard pair</b> — not a safeguard 0028 governs, so drawn with equal, quiet visual weight.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">M27 addition, 2026-07-25</p>
+  <h2 id="m27-header">Room-header controls: orchestrator &amp; persona removal</h2>
+  <p class="sub">Orchestrator reassignment is human-only and singular. Removing a Persona halts execution via InFlightExecutionRegistry and refuses DAG mutation if required by downstream steps. Safeguard controls carry equal visual weight (0028).</p>
+  <p class="plat">Desktop · orchestrator pin &amp; mid-gate blocked state</p>
+
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · aer-flow</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk n">◗</span><span><span class="nm">aer-flow</span><span class="st">Needs you · gate #3</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead">
+          <span class="t">aer-flow</span>
+          <span class="who-chips">
+            <span class="chip active">👑 Artisan</span>
+            <span class="chip">Auditor</span>
+            <span class="chip add">+ Add</span>
+          </span>
+        </div>
+
+        <div class="persona-pop" style="margin-top:0">
+          <div class="pop-sect">Room Participants &amp; Orchestrator</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span>👑 Artisan <span style="color:var(--text-3)">(claude)</span></span>
+              <span style="color:var(--accent);font-size:11px">Active Orchestrator</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;opacity:.6">
+              <span>Auditor <span style="color:var(--text-3)">(agy)</span></span>
+              <span class="btn" style="padding:1px 7px">Make Orchestrator</span>
+            </div>
+          </div>
+          <div class="block-banner">
+            <span>🔒</span>
+            <div><b>Reassignment blocked:</b> Decision gate #3 is open. Resolve or abandon the gate before swapping orchestrators.</div>
+          </div>
+        </div>
+
+        <div class="turn gate" style="margin-top:12px">
+          <span class="who">you · gate #3 — Needs you · permission requested</span>
+          claude requests execution of <code>rm -rf ./build</code>
+          <div class="btns" style="margin-top:8px">
+            <span class="btn">Allow once</span>
+            <span class="btn">Deny</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="plat" style="margin-top:28px">Desktop · persona removal with DAG refusal &amp; equal-weight prompt</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · aer-flow</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Removing worker</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead">
+          <span class="t">aer-flow</span>
+          <span class="who-chips">
+            <span class="chip">👑 Artisan</span>
+            <span class="chip" style="border-color:var(--fail);color:var(--fail)">Auditor ✕</span>
+          </span>
+        </div>
+
+        <div class="persona-pop" style="border-color:var(--fail);margin-top:0">
+          <div class="pop-sect" style="color:var(--fail)">Remove Participant 'agy (Auditor)'?</div>
+          <div style="font-size:11.5px;color:var(--text-2);line-height:1.4">
+            ⚡ <b>In-flight work detected:</b> Running security sweep…<br>
+            Stopping worker via <code>InFlightExecutionRegistry.RequestCancellationAsync</code>…
+          </div>
+
+          <div class="refuse-banner">
+            <div><b>✕ Cannot remove 'Auditor':</b></div>
+            <div>Active workflow step 2 (Security Audit) requires this persona. Stop workflow or edit shape first.</div>
+          </div>
+
+          <div class="btns" style="margin-top:6px;justify-content:flex-end">
+            <span class="btn">Stop Workflow &amp; Remove</span>
+            <span class="btn">Cancel</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="note"><b>0028 explicitly governs both prompts above.</b> Neither <code>Allow once</code> on a permission request nor <code>Stop Workflow &amp; Remove</code> on a destructive action is rendered as <code>.btn.pri</code>. Equal choices carry equal weight. Orchestrator swapping is locked while a decision gate is open to prevent orphan decisions.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">M27 addition, 2026-07-25</p>
+  <h2 id="m27-toggle">The workflow-toggle-off control</h2>
+  <p class="sub">Toggling a room's workflow off removes the graph panel while retaining all Personas as free-form conversation participants. The persona chips remain visibly identical in both states.</p>
+  <p class="plat">Desktop · Workflow ON vs Workflow OFF (persona chips identical)</p>
+
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · aer-flow</div>
+    <div class="d-body wide">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Workflow ON</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead">
+          <span class="t">aer-flow</span>
+          <span class="who-chips">
+            <span class="chip">👑 Artisan</span>
+            <span class="chip">Auditor</span>
+            <span class="sw-toggle on"><span class="dot-sw"></span> Workflow ON</span>
+          </span>
+        </div>
+        <div class="turn you"><span class="who">you</span>Fix the auth bug and run security audit.</div>
+        <div class="turn"><span class="who">claude · working</span>Editing auth.ts…</div>
+      </div>
+      <div class="insp">
+        <div class="ih"><span>Shape</span><span style="color:var(--accent)">ON</span></div>
+        <div class="node ok">draft · claude</div>
+        <div class="arrow">↓</div>
+        <div class="node on">review · agy</div>
+        <div class="arrow">↓</div>
+        <div class="node wait">gate · you</div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="plat" style="margin-top:28px">Desktop · Workflow OFF (shape panel hidden, personas remain active)</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> AER Flow · aer-flow</div>
+    <div class="d-body wide">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk i"><span>—</span></span><span><span class="nm">aer-flow</span><span class="st">Workflow OFF</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead">
+          <span class="t">aer-flow</span>
+          <span class="who-chips">
+            <span class="chip">👑 Artisan</span>
+            <span class="chip">Auditor</span>
+            <span class="sw-toggle"><span class="dot-sw"></span> Workflow OFF</span>
+          </span>
+        </div>
+        <div class="turn you"><span class="who">you</span>Fix the auth bug and run security audit.</div>
+        <div class="turn"><span class="who">claude</span>Editing auth.ts…</div>
+        <div class="turn you"><span class="who">you</span>@agy review the auth changes in auth.ts.</div>
+        <div class="turn gem"><span class="who">agy</span>Reviewing auth.ts… No issues found.</div>
+      </div>
+      <div class="insp" style="background:var(--sunk);opacity:.65">
+        <div class="ih"><span>Shape</span><span style="color:var(--text-3)">OFF</span></div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.4">Shape panel hidden.<br>Personas remain in room as free-form participants.</div>
+      </div>
+    </div>
+  </div></div>
+
+  <p class="note"><b>The persona chips <code>[👑 Artisan]</code> and <code>[Auditor]</code> are 100% identical in both ON and OFF states.</b> Turning off a room's workflow hides the step-by-step DAG execution panel; it does not disconnect workers or force them into an artificial "idle" mode (0001).</p>
 </section>
 
 <hr class="div">
@@ -519,9 +937,22 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
     <div class="call"><dt>Errors are content</dt><dd><b>A failure shows what broke, in the room.</b> Not a status word with the reason behind a drill-in — and the worker that failed is right there to be asked about it.</dd></div>
     <div class="call"><dt>Readiness up front</dt><dd><b>Which CLIs were detected is shown at first run and in Settings.</b> The most likely first failure is the least self-evident one, so it gets stated rather than discovered.</dd></div>
     <div class="call"><dt>State is one thing</dt><dd><b>Every surface renders the room's state machine</b> and none derives its own — which is what makes "no task open" while running impossible rather than merely fixed.</dd></div>
+    <div class="call"><dt>Preset over chip <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Picking a Persona sets skill, model tier, effort, and permissions in one gesture</b> on top of the worker chip, without inventing a fourth axis.</dd></div>
+    <div class="call"><dt>Bare chips unchanged <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>A worker with no Persona looks exactly like "The daily driver" above</b> — just a vendor name. A Persona replaces that label with its own name, not a second visual language beside it.</dd></div>
+    <div class="call"><dt>Name only on the chip <span style="color:var(--text-3);font-weight:400">· M27, corrected mid-pass</span></dt><dd><b>The chip shows only the Persona's name</b> (plus crown, plus an asterisk if modified) — an earlier revision put vendor/model tier/effort on the chip itself and it was too busy, worse on a phone header. The popover carries the detail, where model tier is still named by purpose (deep/balanced/fast), never a vendor version (0023).</dd></div>
+    <div class="call"><dt>Pick by what it does <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>The phone persona list shows each Persona's skill</b>, not its model×effort grid position — the grid is for building the library, not for choosing who joins a room.</dd></div>
+    <div class="call"><dt>Modified state over fork <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Overriding an axis marks the chip as <code>Persona* (modified)</code></b> rather than severing identity; saving as a new Persona is an explicit action.</dd></div>
+    <div class="call"><dt>Single drawer for creation <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Persona creation uses progressive disclosure in a single side drawer</b> to keep context visible, rather than a multi-step wizard.</dd></div>
+    <div class="call"><dt>Explicit skill promotion <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Authoring instructions creates a private, unnamed skill by default</b>; promoting it to the shared library is an explicit step-6 checkbox.</dd></div>
+    <div class="call"><dt>Reassignment blocked mid-gate <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>The orchestrator pin cannot be reassigned while a decision gate is open</b>, so a swap can never orphan a pending decision.</dd></div>
+    <div class="call"><dt>In-flight cancellation <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Removing an active Persona halts execution via <code>InFlightExecutionRegistry.RequestCancellationAsync</code></b> before updating room state.</dd></div>
+    <div class="call"><dt>DAG removal refused in v1 <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Removing a Persona required by an active workflow step is refused</b> with an explicit reason; silent DAG repair is deferred.</dd></div>
+    <div class="call"><dt>Workflow toggle non-event <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Turning off a room's workflow hides the shape panel</b> while retaining all Personas as free-form room participants.</dd></div>
+    <div class="call"><dt>0028 strictly applied <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Destructive and permissive pairs carry equal visual weight</b> (neither is <code>.btn.pri</code>); standard create/discard pairs remain calm.</dd></div>
   </dl>
 </section>
 
 <p class="foot">Complete set, draft 3 — the shapes and the calls, not the pixels. Mark it up and I'll take another pass before any of it becomes a decision record or touches the backlog.</p>
+<p class="foot">M27 addendum, 2026-07-25 — four more screens added for personas and room orchestration; draft 3 above is otherwise unchanged. Grounded in decision records 0001, 0003, 0010, 0017, 0021, 0023, and 0028.</p>
 
 </div>

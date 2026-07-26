@@ -1,11 +1,12 @@
 # Workers, models, commands and control
 
-> **Design corpus — authored 2026-07-24 during the M25 design pause.**
-> Extracted verbatim from the artifact of the same name. This is the *source* the decision
-> records were written from; where a record and this document differ, **the record wins** —
-> it is the reviewed extraction. Kept because the records deliberately capture decisions, and
-> this also holds screen specifications, delights and demonstration criteria that are not
-> decision-shaped and would otherwise exist nowhere.
+> **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
+> The 2026-07-24 material is unchanged from the artifact of the same name; where a decision
+> record and this document differ, **the record wins** — it is the reviewed extraction. Kept
+> because the records deliberately capture decisions, and this also holds screen
+> specifications, delights and demonstration criteria that are not decision-shaped and would
+> otherwise exist nowhere. See [../README.md](../README.md#kept-current-not-frozen-added-2026-07-25)
+> for why this corpus is maintained in place rather than staying a closed snapshot.
 
 ---
 
@@ -29,7 +30,7 @@ Kind | Example | What it needs from the design |
 
 Permission | claude wants to run rm -rf build/ | Fast, safety-critical, and answered many times a day — so it needs scoping ("allow this command in this room") or it becomes a click-through reflex, which is worse than no prompt at all. |
 
-Decision | Apply antigravity's correction, or keep claude's version? | Wants deliberation. This is the one where "ask someone else" matters, and where the argument being on screen is the whole point. |
+Decision | Apply agy's correction, or keep claude's version? | Wants deliberation. This is the one where "ask someone else" matters, and where the argument being on screen is the whole point. |
 
 Action | Review this diff before it is applied | A task for you rather than a question. Can often be done later; should not feel like a blocking alarm. |
 
@@ -44,7 +45,7 @@ Allow once Always allow in this room Deny
 
 Decisions · 2
 
-aer-flow · antigravity disagreed Apply antigravity's correction before continuing?
+aer-flow · agy disagreed Apply agy's correction before continuing?
 Apply Skip Ask someone…
 
 payments-api · claude Which auth provider should the service wire up?
@@ -65,7 +66,7 @@ The hole in every previous pass, and a safety surface rather than a convenience 
 
 Desktop · a permission request, and its scope
 
-aer-flow claude opus 4.8 +
+aer-flow claude +
 
 claude The stale build output is causing the test failure. I need to clear it.
 
@@ -108,9 +109,9 @@ Keyboard-first. These are answered constantly, so y and n work without reaching 
 
 Desktop · picking a worker
 
-aer-flow claude opus 4.8 antigravity gemini 3 pro + Add worker
+aer-flow claude agy + Add participant
 
-Claude · signed in
+claude · signed in
 
 Opus 4.8 deep work
 
@@ -118,11 +119,11 @@ Sonnet 5 balanced
 
 Haiku 4.5 fast
 
-Antigravity · signed in
+agy · signed in
 
-Antigravity 3 Pro
+Gemini 3 Pro
 
-Antigravity 3 Flash fast
+Gemini 3 Flash fast
 
 Codex
 
@@ -136,9 +137,19 @@ Reply… ⏎
 
 The model is shown on the chip, always. Which model answered is not a detail — it changes what an answer is worth, and a room where one worker is on a fast model and another on a deep one is the normal case, not an edge case.
 
+> **Amended 2026-07-25, M27.** The model still isn't a detail — that claim stands. What moved is
+> *where* it lives: the room-header chip now shows a bare worker's vendor alone (or a Persona's
+> name, if one is bound — see [02-screens.md](02-screens.md#the-calls-made-here)), and the model
+> is one tap away in the same picker shown above. Painting it onto the compact label at all times
+> is what made a bound worker's chip unreadable once a Persona, permission grant and voice were
+> added to the same axes; the picker — not the label — is where the model lives now.
+
 Two workers may share a vendor. "claude on opus" and "claude on haiku" are two distinct participants in the room. This falls out of separating vendor from model, and it is what makes cheap-reviewer / expensive-author patterns possible on one subscription.
 
-A template names roles and models, not just vendors — "draft on a deep model, review on a fast one" is exactly the reusable shape templates exist to capture. Each step in the shape editor gets the same two-level picker.
+A template names roles and models — or a Persona, where one is bound, per
+[02-screens.md](02-screens.md#the-calls-made-here) — not just vendors. "Draft on a deep model,
+review on a fast one" is exactly the reusable shape templates exist to capture, whichever form
+the binding takes. Each step in the shape editor gets the same two-level picker.
 
 Never a raw model identifier. The picker says what a model is for — deep work, balanced, fast — because nobody should need to know which string the vendor's CLI wants this month.
 
@@ -148,7 +159,7 @@ A drop-in replacement has to carry these, and they raise a question single-agent
 
 Desktop · the command palette in a two-worker room
 
-aer-flow claude opus 4.8 antigravity gemini 3 pro
+aer-flow claude agy
 
 Room
 
@@ -166,7 +177,7 @@ claude
 
 /compact command
 
-antigravity
+agy
 
 /explain skill
 
@@ -178,7 +189,7 @@ you /ask-all does this migration look safe to run on production?
 
 claude No — step 4 drops a column before the backfill completes.
 
-antigravity Agreed on step 4. Also the index rebuild will lock writes for minutes.
+agy Agreed on step 4. Also the index rebuild will lock writes for minutes.
 
 / for commands · @ for files ⏎
 
@@ -189,6 +200,11 @@ Commands are namespaced by who owns them. Room commands act on the room and alwa
 Skills and commands are shown together and marked , because the distinction is the vendor's, not the user's. What matters to a person is "what can I type here", not which mechanism implements it.
 
 Room commands are the discoverable surface for everything else in this document. /files , /usage and /shape open the panels below — which means those surfaces have a keyboard path and do not depend on finding an icon.
+
+> **Added 2026-07-25, M27.** Where a worker has a Persona bound, the command groups above are
+> headed by the Persona's name instead of the bare vendor — "Artisan" rather than "claude" —
+> since that is the identity a person is tracking day to day. The underlying namespacing is
+> unchanged: a Persona's commands are still that vendor's commands, grouped one level up.
 
 ### Files — the project's, and the room's
 
@@ -204,18 +220,18 @@ src/Aer.Ui.Core/RoomsViewModel.cs claude · 2m ago in your project
 
 tests/…/RoomsViewModelTests.cs claude · 5m ago in your project
 
-plan.md claude → antigravity · v4 working document
+plan.md claude → agy · v4 working document
 
-review-notes.md antigravity · 1h ago working document
+review-notes.md agy · 1h ago working document
 
-plan.md · v4 Written by claude, edited by antigravity 1h ago. Not part of your project — it lives with this room.
+plan.md · v4 Written by claude, edited by agy 1h ago. Not part of your project — it lives with this room.
 Open Compare v3 → v4 Send to a worker… Save into the project…
 
 Reply… ⏎
 
 One list, one distinction that actually matters: is this in your project, or not? That difference is real and consequential — one is in your git history and the other is not. "Which folder AER stashed it in" never appears anywhere, and neither does an execution number.
 
-Both kinds get the same affordances — versions, attribution, diffs, send-to-a-worker. That uniformity is what makes cross-vendor work feel like one product rather than a pipeline: handing antigravity a source file and handing it a plan are the same gesture.
+Both kinds get the same affordances — versions, attribution, diffs, send-to-a-worker. That uniformity is what makes cross-vendor work feel like one product rather than a pipeline: handing agy a source file and handing it a plan are the same gesture.
 
 "Save into the project" is the one-way door, made explicit. A working document becomes a real file only when you say so. That is the moment something enters your repository, and it should be a decision rather than a side effect.
 
@@ -233,7 +249,7 @@ claude · opus 4.8
 
 of 200k context · 64%
 
-antigravity · gemini 3 pro
+agy · gemini 3 pro
 
 41k
 
@@ -302,6 +318,8 @@ Scoped permissions Allow once / this command here / anything here , visible at t
 Denial is an answer A refused worker is told and continues. It does not silently retry and does not die.
 
 Model on the chip Vendor and model are separate choices, both always visible. Two workers can share a vendor on different models — that is a normal room, not an edge case.
+
+Model in the picker, not the label (added 2026-07-25, M27) Amends the call above: the compact chip shows a bare worker's vendor, or a Persona's name — the model itself moved into the picker one tap away, for the same reason a Persona's vendor/model/effort/grant/voice all live in its popover rather than its chip label. See 02-screens.md.
 
 Effort is the third axis Vendor, model, and how hard it should think — all three on the chip, all three per room, all three in a template. Named by behaviour (quick / standard / careful / exhaustive), never a token budget or a vendor's flag.
 
