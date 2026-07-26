@@ -121,6 +121,12 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 
 
 def main() -> int:
+    # Windows' default console codepage (cp1252) can't represent most Unicode -- a dispatched
+    # worker's own output (a box-drawing table character, an emoji, anything non-Latin-1) crashed
+    # this function's own success-path print, after the workflow itself had already succeeded.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--prompt-file", required=True, type=Path, help="Path to the prompt text sent to the worker.")
     parser.add_argument("--output-name", required=True, help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
