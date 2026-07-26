@@ -131,3 +131,4 @@ Two rules for the column:
 | [0036](0036-shape-is-rendering-not-a-second-state-machine.md) | A room's shape is Flow's existing state, rendered differently — not a second state machine (the one new primitive rides on 0035) | accepted |
 | [0037](0037-permission-answers-never-share-the-turn-lock.md) | A permission answer must never share the per-session turn lock a pending turn already holds (resolves #393↔#445) | accepted |
 | [0038](0038-a-reviewer-verdict-never-calls-aer-decide.md) | A reviewer's verdict is evidence for a human decision, never the decision itself — 0019 already forecloses an auto-deciding implementer/reviewer loop | accepted |
+| [0039](0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md) | A dialogue turn resumes the vendor's own session instead of resending the whole transcript — closes #581 and #582 together, since both trace to the same full-history-resend design | accepted |

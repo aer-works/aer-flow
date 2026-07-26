@@ -86,6 +86,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0036](decisions/0036-shape-is-rendering-not-a-second-state-machine.md) | **A room's shape is Flow's existing state, rendered differently — not a second state machine.** "No step running" already is Conversation; a Dialogue collapsing on interruption is the existing `CancellationRequested` mechanism; the one new primitive (a mid-execution gate request) rides on 0035's MCP server, not a separate mechanism. |
 | [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) | **A permission answer must never share the per-session turn lock a pending turn already holds** — the existing `/api/tasks/decide` pattern (correlate by id, bypass the turn lock entirely) already shows how; resolves #393↔#445 as a design constraint, since the component in question isn't built yet to measure. |
 | [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) | **A reviewer's verdict is evidence for a human decision, never the decision itself** — [0019](decisions/0019-consulting-is-not-deciding.md) already forecloses an auto-deciding implementer/reviewer loop; the workflow shape (implement → review, `PausePoint(ReadyForReview)`) needs no new primitive, but the terminal `aer decide` call stays human, always. Corrects a session memory that had concluded otherwise. |
+| [0039](decisions/0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md) | **A dialogue turn resumes the vendor's own session; it does not resend the transcript** — `#581`'s live failure and `#582`'s cost/latency problem trace to the same design (full-history resend forced a file-read instruction both vendors break on). Adopting `Aer.Adapters`' own session-continuation mechanism fixes both and retires the `{PROMPT_FILE}` workaround `#580` shipped. |
 
 ## The completion bar: journeys
 
@@ -151,10 +152,12 @@ a fact one vendor established is used by another later in the same room
 another carries a diff between their versions ([0021](decisions/0021-artifacts-are-files.md)); one
 question put to every worker returns answers side by side
 ([0024](decisions/0024-commands-are-namespaced.md)); and two workers debate to a bounded conclusion
-with no human turn in between (0003's Dialogue shape) — this last one is **blocked** on `#581`/`#582`
-(the mechanism's live-vendor and cost defects, found running the M27 UX design pass) and on building
-[0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md)'s `aer yield` (`#585`)
-before any Dialogue-shape UI ships.
+with no human turn in between (0003's Dialogue shape) — this last one is **blocked**, direction now
+decided for all three named prerequisites but none yet built: `#581`/`#582`'s mechanism redesign
+([0039](decisions/0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md),
+session continuation replacing full-history resend) and
+[0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md)'s `aer yield` (`#585`).
+No Dialogue-shape UI ships before all three land.
 
 **Depends on** M26 — a second worker is an escalation from a room that already works.
 
