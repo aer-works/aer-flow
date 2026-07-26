@@ -178,8 +178,10 @@ Attention, permission, and answering from anywhere. The milestone that makes lea
 contradicting answer, and **the gate is still open**
 ([0019](decisions/0019-consulting-is-not-deciding.md)); granting "allow in this room" means not being
 asked again, and the grant can be found and revoked in settings
-([0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md)); and quitting the desktop app
-mid-run, answering the permission on the phone, and reopening finds it continued.
+([0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md)); quitting the desktop app
+mid-run, answering the permission on the phone, and reopening finds it continued; and with a
+permission, a decision, and an action all pending at once, the needs-you list groups them by kind —
+only the action offers "Later" ([0040](decisions/0040-needs-you-groups-by-kind-and-actions-alone-defer.md)).
 
 **Depends on** M26 for the surface and M27 for a second worker to consult, and on **#445** for the
 mechanism a permission is raised through — see the note below, which corrects what this plan
