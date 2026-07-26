@@ -93,7 +93,7 @@ Two rules for the column:
 
 | # | Title | Status |
 |---|---|---|
-| [0001](0001-two-nouns-workflow-and-session.md) | Two nouns: workflow and session (the session is a room; user-facing noun now *room*, amended by 0013) | accepted |
+| [0001](0001-two-nouns-workflow-and-session.md) | Two nouns: workflow and room | accepted |
 | [0002](0002-one-vocabulary.md) | One vocabulary, no translation map | accepted |
 | [0003](0003-templates-collapse-to-three-shapes.md) | Templates collapse to three shapes | accepted |
 | [0004](0004-permission-scopes.md) | Permissions scope by project, room and step; the ladder is offered at point of ask and a denial is a real answer (0022) | accepted |
@@ -106,8 +106,8 @@ Two rules for the column:
 | [0011](0011-token-based-context-management.md) | Context management is token-based, per worker; running out is announced as a choice, not acted on silently (mechanics in 0027) | accepted |
 | [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
 | [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
-| [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph (a step's contents added by 0025; `DependsOn` corrected to engine-only) | accepted |
-| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval (its **mechanism** guidance amended by 0029) | accepted, except that |
+| [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph; setting a step's blocker (`DependsOn`) is a list operation, GitHub-style, default blocked-by-previous (a step's contents added by 0025) | accepted |
+| [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval (its **mechanism** guidance amended by 0029) | accepted |
 | [0016](0016-memory-is-room-owned.md) | Memory belongs to the room, not the worker | accepted |
 | [0017](0017-vendor-model-effort-are-three-choices.md) | Vendor, model and effort are three separate choices; effort by behaviour, model by purpose, never a vendor's own flag value (reasoning in 0023) | accepted |
 | [0018](0018-attention-is-the-primary-signal.md) | Attention is the primary signal: state orders the list, notifications never decide (rate-limited band amended by 0026; notification **source** supplied by 0030) | accepted |

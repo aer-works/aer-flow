@@ -40,12 +40,15 @@ example:
 > **review** · antigravity · gemini 3 pro · ask me first
 > *Critique the plan above. Name anything that will not work, and say why. Do not rewrite it.*
 
-**2. Previous output flows in implicitly. There is no template language.** A step receives the
-previous step's output automatically, so the instruction says *what to do with it* rather than
-plumbing it in. **No variables, no interpolation, no expression syntax** — the corpus is explicit
-that this is *"the complexity that makes workflow tools miserable, and the whole reason this is a list
-rather than a canvas."* The same argument that killed the canvas kills the template language: both
-move attention off the actual decision and onto the machinery.
+**2. A step's blocker's output flows in implicitly. There is no template language.** By default that
+blocker is the step above ([0014](0014-shapes-are-a-list-not-a-canvas.md)); when a step names a
+different blocker, *that* step's output is what flows in instead — the rule is unchanged, only which
+step counts as "previous" moves. **No variables, no interpolation, no expression syntax** — the corpus
+is explicit that this is *"the complexity that makes workflow tools miserable, and the whole reason
+this is a list rather than a canvas."* The same argument that killed the canvas kills the template
+language: both move attention off the actual decision and onto the machinery. **Two or more blockers
+have no expression for composing their outputs** — a step with several blockers receives no defined
+combination of their results, which is the real limit 0014 names, not a missing gesture.
 
 **3. A step with no instruction is invalid, and says so at edit time** — not at run time. An
 unauthored step that only fails when it runs is a trap, and the editor already knows.
@@ -70,11 +73,12 @@ portable across vendors, since the instruction carries the intent and nothing ca
 prompt syntax.
 
 **Harder.** Refusing a template language means the cases it would have served need real answers:
-referring to a step other than the immediately previous one, or composing two outputs, has **no
-expression** in this model. That is a deliberate limitation of the same kind 0014 accepted for
-parallel fan-out — worth paying, and it will be argued again the first time someone wants it. Edit-time
-validation is also a new obligation on the editor rather than the engine, and the two must agree
-about what "valid" means or a template can pass one and fail the other.
+composing two outputs together, or writing an instruction that reads from more than one prior step,
+has **no expression** in this model — naming a blocker (0014) says a step waits on another step, not
+how to combine what several of them produced. That is a deliberate limitation, worth paying, and it
+will be argued again the first time someone wants it. Edit-time validation is also a new obligation on
+the editor rather than the engine, and the two must agree about what "valid" means or a template can
+pass one and fail the other.
 
 **Obliges us to** make the instruction the step's visible body on both surfaces; pass previous output
 implicitly with no syntax to learn; reject an instruction-less step at edit time with a message that

@@ -91,16 +91,22 @@ because there is a cliff at the end of it.
 **Harder.** This is a change to `Aer.Flow`'s domain types, which the rebuild otherwise leaves alone —
 so it is the one engine change M26–M30 must make, and it widens a vocabulary that projections, the
 wire protocol and both surfaces all read. Doing it late is worse: every consumer of
-`FailureClassification` written against two values has to be revisited. **What each vendor actually
-reports about remaining quota and reset time is unprobed** — `docs/vendor-capabilities.md` covers
-permissions, effort and MCP, not usage. The classification is right regardless; the *reset instant*
-may be unavailable on one or both vendors, and the design must degrade to "exhausted, reset time
-unknown" without becoming useless.
+`FailureClassification` written against two values has to be revisited.
 
-**Obliges us to** probe both CLIs for what they report on exhaustion before building the surface;
-never spend retry attempts against an exhausted quota; record the reset instant at mutation time and
-never re-read a clock on replay; keep exhaustion per vendor rather than per room; treat it as an
-attention state only where the operator just tried to use it; and never fabricate a reset time.
+**Corrected 2026-07-26 (#503, item 8).** This section originally called what each vendor reports about
+remaining quota and reset time *unprobed*. It has since been measured, asymmetrically:
+`claude -p "/usage"` (and `/cost`) reports percent consumed for session and week, **real reset
+instants**, a per-model breakdown, and request counts, headlessly — the corpus's mockup number,
+*"72% of this week's limit"*, is the shape of a number the CLI already returns, not a placeholder
+(`docs/vendor-capabilities.md`). `agy` reports **none of it**: no built-in usage command, nothing in
+`--log-file`, nothing in its conversation metadata. So the degrade-to-unknown path this record
+requires is not a hedge against an unmeasured gap — it is `agy`'s permanent, measured state, and
+`claude`'s reset instant should be treated as reliably available rather than merely hoped for.
+
+**Obliges us to** never spend retry attempts against an exhausted quota; record the reset instant at
+mutation time and never re-read a clock on replay; keep exhaustion per vendor rather than per room;
+treat it as an attention state only where the operator just tried to use it; and never fabricate a
+reset time — required now for `agy` specifically, not as a generic caution.
 
 **Relates to** [0018](0018-attention-is-the-primary-signal.md), whose band-4 assignment for
 rate-limited this amends. [0008](0008-runtime-streaming-over-append-log.md) — per-turn cost is

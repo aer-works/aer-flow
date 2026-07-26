@@ -101,7 +101,7 @@ tracking issue — don't mark a live-run item done on anything short of an actua
 ## Before you ship — the gates every change runs through
 
 Each was paid for by a specific failure, named so it stays concrete instead of becoming a recitation.
-They are ordered by when they bite: 1 before building, 2–4 while building, 5–7 before shipping.
+They are ordered by when they bite: 1 before building, 2–4 while building, 5–8 before shipping.
 
 **1. Common sense first.** Ask the obvious question before building anything. Does the thing you are
 about to verify or depend on actually exist? Does a helper for this already exist? Is the failure you
@@ -162,7 +162,22 @@ than the operator's to ask for. It is also the deliberate exception to "Delegati
 below: that rule is about saving *effort*, and review buys a second *instrument* instead. Hand the
 reviewer the specific claims to check, not a request for an opinion.
 
-**The question underneath all seven: name the user-visible behaviour this change improves.** If you
+**8. Docs and decisions are one register, not many.** A fact is stated once, in one canonical
+record; every other location links to it with at most a one-clause gloss, never a restatement —
+restating a fact in three places is how a stale one drifts silently in two of them. Before editing
+anything milestone-shaped, check `spec/journeys.md` first: it is the actual list of required
+outcomes, not whichever artifact happened to prompt the edit. Before changing a decision, check it
+against every other decision touching the same object, not only the ones it already cites. And
+before closing a PR touching `docs/decisions/`, confirm every decision dated on or after
+2026-07-25 carries the `Rests on` table that folder's own README makes mandatory — a pass that
+fixes drift while leaving a format violation behind has only relocated the problem.
+*M29's criterion was "corrected" to match `02-screens.md` without checking `journeys.md` first,
+directly contradicting J17. Phone-authoring timing was independently restated in three documents,
+one of which went stale while the other two didn't. 0032 was superseded by a new record instead of
+corrected in place, when nothing in `src/` had been built against it yet. Twelve decisions dated
+after `Rests on` became mandatory (0028, 0031–0041) shipped without one.*
+
+**The question underneath all eight: name the user-visible behaviour this change improves.** If you
 cannot, it may be ceremony — and rigour that is not buying correctness is what this project keeps
 having to cut back out. `tools/audit-completeness` is scoped one-time for exactly that reason, and
 these gates are deliberately not given a checker of their own.

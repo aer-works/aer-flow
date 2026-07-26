@@ -70,7 +70,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0011](decisions/0011-token-based-context-management.md) | **Context management is token-based, per worker** — each participant tracks its own vendor-reported usage against its own model's window; approaching a threshold offers a choice (summarise now / start a fresh room / leave it), with automatic compaction surviving only as a disclosed backstop, never the default trigger. The turn ceiling (`SafetyCeiling`) remains a backstop only (M26). Mechanics in 0027. |
 | [0012](decisions/0012-what-aer-flow-is.md) | **What AER Flow is** — a drop-in Claude Code replacement that puts more than one model in the room and lets you leave without losing it; multi-model is an escalation, never a tax on the simple case. Retires capability-shaped milestones for anything user-facing (#465–#469 were all missing specs, not wrong code). |
 | [0013](decisions/0013-room-is-the-user-facing-noun.md) | **Room is the user-facing noun**; "session" narrows to the vendor CLI's resumable thread — amends 0001, renames without remodelling. One room, one directory (may hold several repos); disjoint folders deferred (#443). |
-| [0014](decisions/0014-shapes-are-a-list-not-a-canvas.md) | **A shape is an ordered list rendered as a graph**, not a freeform canvas — keyboard- and phone-native, diffs like source; parallel fan-out is the accepted cost. Retired the canvas polish in #266 — closed, with the brand marks and motion carried to #476. A step's contents are 0025. |
+| [0014](decisions/0014-shapes-are-a-list-not-a-canvas.md) | **A shape is an ordered list rendered as a graph**, not a freeform canvas — keyboard- and phone-native, diffs like source; a step names its blocker, GitHub-style, default blocked-by-previous, so fan-out is a list operation and parallelism is emergent from the engine's existing scheduler. Retired the canvas polish in #266 — closed, with the brand marks and motion carried to #476. A step's contents are 0025. |
 | [0015](decisions/0015-three-kinds-of-needs-you.md) | **A pause asks for one of three things — permission / decision / approval**: decision→`NeedsInput`, approval→`ReadyForReview`, permission genuinely new. **Accepted** — the probe it was blocked on ran (#472) and found a blocking MCP tool holds a turn open on *both* vendors, so all three kinds have verified mechanism. |
 | [0016](decisions/0016-memory-is-room-owned.md) | **Memory belongs to the room, not the worker** — shared across vendors, a visible and versioned working document; workers propose additions, the product never infers them (#442). |
 | [0017](decisions/0017-vendor-model-effort-are-three-choices.md) | **Vendor, model and effort are three separate choices** on the worker chip — vendor is the tool (`claude`/`agy`); effort is named by behaviour (quick/standard/careful/exhaustive) and model by purpose (deep/balanced/fast), never a vendor's own flag value. The mapping lives in the adapter and is measured and shipped (`#572`/`#573`). Reasoning in 0023. |
@@ -216,10 +216,10 @@ Repeatable work, authored as an ordered list that renders as a graph
 ([0014](decisions/0014-shapes-are-a-list-not-a-canvas.md),
 [0025](decisions/0025-a-step-is-an-instruction-with-a-gate-toggle.md)).
 
-**Demonstrated when** a person authors a four-step template on a phone, starts it on the desktop, and
-watches it run — [J17](../spec/journeys.md) verbatim, not a paraphrase
-([0041](decisions/0041-phone-authoring-lands-with-shapes-not-after.md) — read that record, not this
-line, before touching this criterion again).
+**Demonstrated when** — [J17's own "Passes when," in `spec/journeys.md`](../spec/journeys.md), not
+restated here so this line cannot drift from it the way it already has once
+([0041](decisions/0041-phone-authoring-lands-with-shapes-not-after.md) — read that record for the
+phone-authoring timing question specifically; read J17 itself for what "demonstrated" requires).
 
 **Depends on** M26. It is deliberately late: shapes are the leverage, not the day job, and a shape
 editor built before the room works would be a canvas with better marketing.
