@@ -82,6 +82,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0032](decisions/0032-room-orchestrator-is-mandatory.md) | **A room always has exactly one orchestrator** — the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned first. Authority is granted by an auto-bound Skill, the same mechanism 0033 uses for every other worker capability. |
 | [0033](decisions/0033-skills-attach-directly-no-persona.md) | **Skills attach directly to a worker; there is no Persona object** — zero, one, or several at once, with nothing to name, save, or diverge from. Replaces the M27 design pass's Persona proposal, which layered a second object on top of Skill for no capability Skill didn't already provide. |
 | [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) | **A project's permission ceiling lives in AER's own app-level config, keyed by project path** — never a file inside the project's own directory. First presented as a trust prompt on first use of a folder; reachable afterward from a global Settings "Projects" list. Resolves an obligation 0004 explicitly left open. |
+| [0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | **`aer yield` is a structured MCP tool call, not a text sentinel** — replaces `Aer.Workers.Dialogue`'s current substring-match stop condition. Reuses 0029's measured-but-unbuilt MCP mechanism; needs none of 0029's held-open complexity, since nothing here waits on a human. Real, unbuilt infrastructure (`#585`), and the Dialogue shape blocks on it. |
 
 ## The completion bar: journeys
 
@@ -148,8 +149,9 @@ another carries a diff between their versions ([0021](decisions/0021-artifacts-a
 question put to every worker returns answers side by side
 ([0024](decisions/0024-commands-are-namespaced.md)); and two workers debate to a bounded conclusion
 with no human turn in between (0003's Dialogue shape) — this last one is **blocked** on `#581`/`#582`
-(the mechanism's live-vendor and cost defects, found running the M27 UX design pass) and on designing
-a real, Rule-1-compliant stop signal (`aer yield`) before any Dialogue-shape UI ships.
+(the mechanism's live-vendor and cost defects, found running the M27 UX design pass) and on building
+[0035](decisions/0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md)'s `aer yield` (`#585`)
+before any Dialogue-shape UI ships.
 
 **Depends on** M26 — a second worker is an escalation from a room that already works.
 
