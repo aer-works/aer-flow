@@ -320,7 +320,7 @@ Denial is an answer A refused worker is told and continues. It does not silently
 
 Model on the chip Vendor and model are separate choices, both always visible. Two workers can share a vendor on different models — that is a normal room, not an edge case.
 
-Model in the picker, not the label (added 2026-07-25, M27) Amends the call above: the compact chip shows a bare worker's vendor, or a Persona's name — the model itself moved into the picker one tap away, for the same reason a Persona's vendor/model/effort/grant/voice all live in its popover rather than its chip label. See 02-screens.md.
+Model in the picker, not the label (added 2026-07-25, M27) Amends the call above: the compact chip shows a bare worker's vendor, or vendor · Persona qualifier if one is bound — the model itself moved into the picker one tap away, for the same reason a Persona's vendor/model/effort/grant/voice all live in its popover rather than its chip label. See 02-screens.md.
 
 Effort is the third axis Vendor, model, and how hard it should think — all three on the chip, all three per room, all three in a template. Named by behaviour (quick / standard / careful / exhaustive), never a token budget or a vendor's flag.
 

@@ -573,7 +573,7 @@ Rooms + New            aer-flow  [👑 claude · Artisan]  [agy · Auditor ✕]
                       │ ⚡ In-flight work detected: Running security sweep...   │
                       │    Stopping worker via InFlightExecutionRegistry...    │
                       │                                                        │
-                      │ ✕ Cannot remove 'Auditor':                             │
+                      │ ✕ Cannot remove 'agy (Auditor)':                        │
                       │    Active workflow step 2 (Security Audit) requires   │
                       │    this persona. Stop workflow or edit shape first.    │
                       │                                                        │

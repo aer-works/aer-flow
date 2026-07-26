@@ -158,13 +158,13 @@ Sessions + New
 
 — spike-cache Cancelled · 1d
 
-aer-flow claude + gemini  ·  + Add worker
+aer-flow claude + agy  ·  + Add worker
 
 you Rework the switcher so a new session shows up immediately.
 
 claude Two causes — the list only refreshed at startup, and a task registered only on a successful run. Patch ready.
 
-Needs you · gemini reviewed Approve the change to the push fan-out?
+Needs you · agy reviewed Approve the change to the push fan-out?
 Approve Changes Reject
 
 Reply… ⏎

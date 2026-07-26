@@ -185,11 +185,12 @@ Two tiers, both visible, clearly marked. Skills that AER defines are realised pe
 
 The palette already namespaces by owner, so this needs no new structure — it needs the room tier to be populated by AER's canonical skills rather than only by built-in commands.
 
-> **Added 2026-07-25, M27.** Still true, and one addition since:
+> **Added 2026-07-25, M27, corrected 2026-07-25.** Still true, and one addition since:
 > [04-workers-commands-control.md](04-workers-commands-control.md#the-calls-made-here) notes that
-> where a worker has a Persona bound, its commands are grouped under the Persona's name rather than
-> the bare vendor. That's a display label, not a third tier — the two tiers and their ownership
-> rule are unchanged.
+> where a worker has a Persona bound, the command group stays headed by the worker's vendor, with
+> the Persona's name shown as a qualifier next to it (`claude · Artisan`) — not the Persona's
+> name in place of the vendor. That's a display label, not a third tier — the two tiers and their
+> ownership rule are unchanged.
 
 Decided: canonical skills under Room, native skills under their vendor, marked as such.
 
