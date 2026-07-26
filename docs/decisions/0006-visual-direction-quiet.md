@@ -3,7 +3,9 @@
 Status: accepted
 Date: 2026-07-22
 
-> **Amendment, 2026-07-25 (#501).** [0028](0028-no-permissive-control-is-the-default.md) adds the half this record left out: colour carries **status**, and *emphasis* carries **consequence**. No permissive control is ever the visual default — not accent-filled, not the sole solid among outlines, not focused on open. It was written because the corpus's own permission mockup drew `Allow once` as the accent-filled primary against an outlined `Deny`, training the reflex its prose forbids. Everything below about the Quiet palette and status legibility stands unchanged.
+[0028](0028-no-permissive-control-is-the-default.md) adds the half this record didn't cover: colour
+carries **status**, and *emphasis* carries **consequence** — no permissive control is ever the visual
+default. Not a correction to anything below; a separate rule for a case this record never addressed.
 
 ## Context
 

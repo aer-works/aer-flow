@@ -2,20 +2,14 @@
 
 Status: accepted
 Date: 2026-07-24
-Amends: [0017](0017-vendor-model-effort-are-three-choices.md) — **corrects** its effort-naming clause
 
 ## Context
 
-[0017](0017-vendor-model-effort-are-three-choices.md) established the three axes — vendor, model,
-effort — and that is right and stands. On one point it is **wrong**, and this record corrects it
-rather than extending it.
+[0017](0017-vendor-model-effort-are-three-choices.md) states the rule: vendor, model and effort are
+three separate choices, effort named by behaviour and model by purpose, never a vendor's own flag
+value. This record is the full reasoning and the empirical evidence behind that naming rule.
 
-0017 says:
-
-> Its allowed values are **vendor-named** (each CLI has its own vocabulary), so the chip renders the
-> options the chosen vendor actually supports rather than a fabricated universal scale.
-
-The corpus says the opposite, in [`05-stress-test.md`](../design/05-stress-test.md):
+The design corpus states it plainly, in [`05-stress-test.md`](../design/05-stress-test.md):
 
 > **Named by behaviour, not by mechanism.** Quick / standard / careful / exhaustive, **never a token
 > budget or a vendor's flag name.** Vendors express this completely differently and rename it often;
@@ -26,15 +20,11 @@ and repeats it as a settled call in
 for models: *"Purpose, not identifiers — models are offered as deep / balanced / fast. **Nobody
 should need to know this month's model string.**"*
 
-This is a genuine contradiction, not a gap, and it was mis-classified as an extension in
-[`docs/design/coverage-audit.md`](../design/coverage-audit.md).
-
-**The corpus wins on a repo invariant, not on taste.** CLAUDE.md Architecture Rule 2 (Adapter
-Isolation) requires vendor-specific quirks to be isolated inside `Aer.Adapters`, with the core layer
+**This rests on a repo invariant, not on taste.** CLAUDE.md Architecture Rule 2 (Adapter Isolation)
+requires vendor-specific quirks to be isolated inside `Aer.Adapters`, with the core layer
 understanding only a single unified vocabulary. A chip rendering `xhigh` is exactly that quirk
 reaching the UI: the surface would have to know which vendor is selected in order to know what the
-word means. 0017's own reasoning already gestures at this — it cites Adapter Isolation twice — and
-then makes the one call that violates it.
+word means.
 
 The empirical picture, from `docs/vendor-capabilities.md` (`#472`):
 
@@ -73,20 +63,18 @@ disclosed is honest; a collapse that is silent means two visibly different choic
 runs, which is worse than either naming scheme. Disclosure belongs at the point of choosing, in the
 same spirit as [0022](0022-permission-ladder-and-denial-is-an-answer.md)'s rule about advisory rungs.
 
-**3. The mapping itself is not decided here, and must be measured before it is written.** `#472`
-observed the **flag and its accepted value list**; it did **not** test that each value is accepted in
-a real run or that adjacent values behave distinguishably. Asserting a mapping on that basis would
-repeat the failure that cost this project a whole feature design — `#390` was built on the premise
-that `claude -p` auto-approves MCP tools, which measurement later disproved. **The rule in this record
-stands regardless of how the mapping resolves; the mapping is a probe item.**
+**3. The mapping itself is measured and shipped.** `#472` observed the flag and its accepted value
+list; `#572`/`#573` went further and confirmed each value is accepted in a real run with
+distinguishable behaviour, and shipped the canonical mapping with `vendor-verify` sentinels guarding
+it (`docs/vendor-capabilities.md`). `#498` is the remaining UI/adapter work that consumes it — not a
+reopening of the mapping question.
 
 ## Consequences
 
 **Easier.** The person asks one question — *how hard should this think?* — and gets one answer, in the
 same words, whichever vendor is on the chip. Two workers from different vendors become comparable at a
 glance, which is the whole point of putting them in one room. A template can name *"draft on a deep
-model at careful, review on a fast one at quick"* and remain valid across a vendor's renames, which
-0017's vendor-named values could not.
+model at careful, review on a fast one at quick"* and remain valid across a vendor's renames.
 
 **Harder.** AER now owns a vocabulary and must defend it. Four effort levels and three model purposes
 have to be defensible for every vendor added later, and the first vendor with a genuinely
@@ -103,10 +91,10 @@ vendor level; and show a model's purpose as the basis of choice, with its identi
 never required.
 
 **Relates to** [0017](0017-vendor-model-effort-are-three-choices.md), whose three-axis model this
-keeps and whose naming clause it corrects. [0012](0012-what-aer-flow-is.md) is what it serves —
-multi-model must not become a tax on the simple case, and a person forced to learn two vendors'
-effort vocabularies is paying that tax before they have chosen anything.
+gives its naming reasoning to. [0012](0012-what-aer-flow-is.md) is what it serves — multi-model must
+not become a tax on the simple case, and a person forced to learn two vendors' effort vocabularies is
+paying that tax before they have chosen anything.
 
-Related: `#472` (the capability probe, and the outstanding mapping question), `#391` (show which model
+Related: `#472`/`#572`/`#573` (the capability probe and the shipped mapping), `#391` (show which model
 each agent is running), `#479` (spend against subscription limits — the other number a choice is made
-on).
+on), `#498` (the remaining UI/adapter work consuming the shipped mapping).

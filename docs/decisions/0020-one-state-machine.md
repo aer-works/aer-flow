@@ -16,12 +16,12 @@ from one thing, the runner from another; the tab derived "is there a conversatio
 disagreed with the renderer sitting immediately below it.
 
 The corpus names the general form, in
-[`01-definition.md`](../design/01-definition.md#a-sessions-life) — written, it says, *"because the
-last run produced two surfaces disagreeing about which state a session was in"*:
+[`01-definition.md`](../design/01-definition.md#a-rooms-life) — written, it says, *"because the
+last run produced two surfaces disagreeing about which state a room was in"*:
 
-> One source of truth per session. Every surface — switcher row, header, inbox, phone — renders this
+> One source of truth per room. Every surface — switcher row, header, inbox, phone — renders this
 > state and nothing derived independently. **Cancelled and Failed are states, not absences**: a
-> stopped session must never read as "Finished."
+> stopped room must never read as "Finished."
 
 [`02-screens.md`](../design/02-screens.md) states the consequence as a call: *"Every surface renders
 the room's state machine and none derives its own — which is what makes 'no task open' while running

@@ -3,23 +3,9 @@
 Status: accepted
 Date: 2026-07-24
 
-> **Amendment, 2026-07-24.** [0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) says what a
-> *step* contains, which this record left out: the **instruction is the step's body**, previous
-> output flows in implicitly with **no template language**, and **"ask me first" is a property of a
-> step** rather than a node type. The list-not-a-canvas shape stands unchanged.
->
-> **Correction, 2026-07-25 (#501): `DependsOn` is an engine capability, not an authoring
-> affordance.** As written, the Decision below says *"add a step, reorder, **set a dependency** — all
-> list operations"*, and 0025 says referring to a step other than the immediately previous one *"has
-> **no expression** in this model."* Both were accepted and in force, so the editor's dependency field
-> either existed or did not depending on who built first. **0025 wins**, and the corpus is
-> unambiguous: *"each step runs after the one above it."*
->
-> So: the engine keeps `DependsOn` and keeps running the fan-out it expresses — nothing about
-> `WorkflowDefinition` changes — but **the authoring surface does not offer it.** The "cost we are
-> accepting" section below is therefore stronger than it reads: parallel fan-out is not merely missing
-> a *gesture*, it is not authorable at all, and making it so is a new decision rather than a UI
-> addition. The body is left as written, because the transition is part of the record.
+[0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md) says what a *step* contains: the
+instruction is the step's body, previous output flows in implicitly with no template language, and
+"ask me first" is a property of a step rather than a node type.
 
 ## Context
 
@@ -52,8 +38,13 @@ open to polish it. Three things make that the wrong default:
 - **A step's instruction is its body.** The thing you write into a step is the worker's instruction —
   the list is read top to bottom as the plan in prose, not a diagram you decode. The graph is the
   *picture* of that list, offered for inspection, not the thing you type into.
-- **It is keyboard-navigable and works on a phone**, because a list is. Add a step, reorder, set a
-  dependency — all list operations, all available on both surfaces.
+- **It is keyboard-navigable and works on a phone**, because a list is. Add a step, reorder — list
+  operations, available on both surfaces. **The authoring surface does not offer setting a
+  dependency**: the engine keeps `DependsOn` and runs the fan-out it expresses, but each step runs
+  after the one above it and referring to any other step **has no expression in this authoring model**
+  ([0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md)). Parallel fan-out is not merely
+  missing a gesture — it is not authorable at all, and making it so is a new decision, not a UI
+  addition.
 - **The graph view is for reading, not building** — inspect a template before starting it, or watch
   a running pipeline light up step by step. Same rendering, live.
 

@@ -13,12 +13,13 @@ understand and orchestrate as either standalone product. Any work is judged agai
 directly, not as an isolated screen.
 
 **"Full parity" means no capability is ever surface-exclusive by design — it does not mean an
-identical feature set ships on both surfaces on day one.** A considered, reasoned v1 scope
+identical feature set ships on both surfaces on day one.** A considered, reasoned sequencing
 difference (the phone launches pairing-first with no folders of its own, per
-`docs/design/02-screens.md`; template authoring stays desktop-only for its first version, an
-explicit, revisitable choice, not an oversight) is compatible with the bar. An unexamined gap —
-something missing from mobile because nobody built it there yet, with no reasoning behind the
-absence — is not. The distinction is whether the gap was decided or merely happened.
+`docs/design/02-screens.md`, before any capability needing one exists to offer) is compatible with
+the bar — a milestone not having shipped yet is not the same claim as a capability being permanently
+surface-exclusive. An unexamined gap — something missing from mobile because nobody built it there
+yet, with no reasoning behind the absence, and no journey requiring it eventually close — is not. The
+distinction is whether the gap was decided and has a closing condition, or merely happened.
 
 ## How this plan stays honest
 
@@ -59,30 +60,30 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0001](decisions/0001-two-nouns-workflow-and-session.md) | Two nouns: **workflow** and **session** — "task" is deleted from the product. **A session is a *room*** (amended): a multi-participant conversation that spawns child sessions into a tree. The user-facing noun is now **room** (amended by 0013); "session" narrows to the vendor's resumable thread. |
 | [0002](decisions/0002-one-vocabulary.md) | One vocabulary — retire the translation map, enforce by lint (#315). |
 | [0003](decisions/0003-templates-collapse-to-three-shapes.md) | Templates collapse to **three shapes with presets**. |
-| [0004](decisions/0004-permission-scopes.md) | Permissions scope by **project ∩ session ∩ step**, failing closed. |
+| [0004](decisions/0004-permission-scopes.md) | Permissions scope by **project ∩ room ∩ step**, failing closed. |
 | [0005](decisions/0005-seam-milestones.md) | Capability milestones alternate with **seam milestones**. |
 | [0006](decisions/0006-visual-direction-quiet.md) | Visual direction is **Quiet** — status colour is a ramp separate from the brand accent. |
 | [0007](decisions/0007-background-work-inline-and-dedicated.md) | Background work surfaces at **three levels**: glance inline, expand in place, dedicated surface for depth (#360). |
 | [0008](decisions/0008-runtime-streaming-over-append-log.md) | Runtime is **live streaming over a durable append log** — worker lifetime is a swappable policy (default cold; scoped warmth is #368). Per-turn cost is intrinsic, so a cross-vendor usage view is the real cost lever (J9). |
 | [0009](decisions/0009-session-lifecycle-and-retention.md) | **Count the top of the tree, not the tree** — children ephemeral by default, worker spawning bounded by a depth/count ceiling that doubles as J6's safety rail. |
 | [0010](decisions/0010-skills-and-advisor.md) | **Worker capabilities are skills** — app-level canonical, realized per-vendor by the adapter (native where possible, prompt-injection floor); native skills pass-through; participant behaviour is a role/skill binding. The advisor is the first one (M26). |
-| [0011](decisions/0011-token-based-context-management.md) | **Context management is token-based, per worker** (unit corrected from room by 0027) — each participant tracks its own vendor-reported usage against its own model's window; approaching a threshold offers a choice (summarise now / start a fresh room / leave it), with automatic compaction surviving only as a disclosed backstop, never the default trigger (also 0027). The turn ceiling (`SafetyCeiling`) remains a backstop only (M26). |
+| [0011](decisions/0011-token-based-context-management.md) | **Context management is token-based, per worker** — each participant tracks its own vendor-reported usage against its own model's window; approaching a threshold offers a choice (summarise now / start a fresh room / leave it), with automatic compaction surviving only as a disclosed backstop, never the default trigger. The turn ceiling (`SafetyCeiling`) remains a backstop only (M26). Mechanics in 0027. |
 | [0012](decisions/0012-what-aer-flow-is.md) | **What AER Flow is** — a drop-in Claude Code replacement that puts more than one model in the room and lets you leave without losing it; multi-model is an escalation, never a tax on the simple case. Retires capability-shaped milestones for anything user-facing (#465–#469 were all missing specs, not wrong code). |
 | [0013](decisions/0013-room-is-the-user-facing-noun.md) | **Room is the user-facing noun**; "session" narrows to the vendor CLI's resumable thread — amends 0001, renames without remodelling. One room, one directory (may hold several repos); disjoint folders deferred (#443). |
 | [0014](decisions/0014-shapes-are-a-list-not-a-canvas.md) | **A shape is an ordered list rendered as a graph**, not a freeform canvas — keyboard- and phone-native, diffs like source; parallel fan-out is the accepted cost. Retired the canvas polish in #266 — closed, with the brand marks and motion carried to #476. A step's contents are 0025. |
 | [0015](decisions/0015-three-kinds-of-needs-you.md) | **A pause asks for one of three things — permission / decision / approval**: decision→`NeedsInput`, approval→`ReadyForReview`, permission genuinely new. **Accepted** — the probe it was blocked on ran (#472) and found a blocking MCP tool holds a turn open on *both* vendors, so all three kinds have verified mechanism. |
 | [0016](decisions/0016-memory-is-room-owned.md) | **Memory belongs to the room, not the worker** — shared across vendors, a visible and versioned working document; workers propose additions, the product never infers them (#442). |
-| [0017](decisions/0017-vendor-model-effort-are-three-choices.md) | **Vendor, model and effort are three separate choices** on the worker chip — vendor is the tool (`claude`/`agy`); effort is named by behaviour (quick/standard/careful/exhaustive) and model by purpose (deep/balanced/fast), never a vendor's own flag value (corrected from vendor-named values by 0023). The mapping lives in the adapter and is measured and shipped (`#572`/`#573`). |
+| [0017](decisions/0017-vendor-model-effort-are-three-choices.md) | **Vendor, model and effort are three separate choices** on the worker chip — vendor is the tool (`claude`/`agy`); effort is named by behaviour (quick/standard/careful/exhaustive) and model by purpose (deep/balanced/fast), never a vendor's own flag value. The mapping lives in the adapter and is measured and shipped (`#572`/`#573`). Reasoning in 0023. |
 | [0018](decisions/0018-attention-is-the-primary-signal.md) | **Attention orders the list; notifications never decide** — rooms sort by state (needs-you → working → idle → quiet) then recency, surviving a hundred rooms; a notification informs and links into the room, never carries the verdict (#282). |
 | [0019](decisions/0019-consulting-is-not-deciding.md) | **Consulting is not deciding** — put a question to anyone, including a worker not yet in the room, and the gate stays open until *you* answer it; the consulted worker gets the room summary plus the raising turn verbatim, disclosed and editable before sending, and the responder is always chosen, never inferred (Rule 1). The corpus's centrepiece, absent from the repo until #474. |
 | [0020](decisions/0020-one-state-machine.md) | **One state machine** — every surface renders the room's state, none derives its own, which makes #467/#468 impossible rather than merely fixed. Absence is not a state; a failure's reason is content in the room, not a status word with a drill-in. |
 | [0021](decisions/0021-artifacts-are-files.md) | **Artifacts are files** — vendor-neutral, versioned, attributed, explicitly attached. One file list; the only distinction is "in your project" or not, and execution directories are never surfaced. Saving into a project is diff-and-choose, never a default overwrite. |
 | [0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md) | **The permission ladder is offered where the question is asked**, never only in settings, and **a denial is a real answer** the worker is told about and continues from. `y`/`n` never on `Enter`; a pending permission dies with its turn everywhere at once. Amends 0004. |
-| [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) | **Effort is named by behaviour** (quick/standard/careful/exhaustive) and **models are offered by purpose** (deep/balanced/fast), mapped in the adapter per Rule 2 — never a vendor's own flag value in the UI. Corrects 0017's naming clause; the mapping is now measured and shipped (`#572`/`#573`, `docs/vendor-capabilities.md`'s canonical effort mapping section, guarded by `vendor-verify` sentinels) — `#498` is the remaining UI/adapter work that consumes it. |
+| [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) | **The reasoning behind 0017's naming rule** — Adapter Isolation (Rule 2) and the empirical vendor-scale comparison. The mapping is measured and shipped (`#572`/`#573`, `docs/vendor-capabilities.md`'s canonical effort mapping section, guarded by `vendor-verify` sentinels) — `#498` is the remaining UI/adapter work that consumes it. |
 | [0024](decisions/0024-commands-are-namespaced.md) | **Commands are namespaced by owner** — Room, then each vendor, plus `/ask-all` for everyone; canonical skills under Room and native ones under their vendor, both marked. No slash palette on a phone: the same set becomes an Actions sheet. Amends 0010. |
 | [0025](decisions/0025-a-step-is-an-instruction-with-a-gate-toggle.md) | **A step's instruction is its body**, previous output flows in implicitly and there is **no template language**; **"ask me first" is a property of a step**, not a node type. Amends 0014. |
 | [0026](decisions/0026-running-out-of-plan-is-a-state-not-a-failure.md) | **Running out of plan is a state with a reset time**, not a generic failure — a third `FailureClassification` value carrying the reset instant, per vendor, spending no retry budget. The dominant real failure for a subscription user, undecided since #18 closed silently and the types froze on the interim behaviour. Amends 0018's band for a rate-limited vendor. |
-| [0027](decisions/0027-context-is-per-worker.md) | **Context belongs to the worker, not the room**, and running out is **announced as a choice** rather than compacted silently — automatic compaction survives as a disclosed backstop. Corrects 0011, which landed the counter on the room and so would compact a room while one worker had used almost nothing. |
+| [0027](decisions/0027-context-is-per-worker.md) | **The mechanics behind 0011** — why the unit must be the worker (a room-wide sum would compact one worker while another has barely used any context) and the trigger an announced choice, not silent compaction; the `SessionMetadata` object-model gap this needs (`#493`). |
 | [0028](decisions/0028-no-permissive-control-is-the-default.md) | **Visual rank is a decision** — no permissive control is ever the visual default, and a genuine either/or carries equal weight. Written because the corpus's own permission mockup drew `Allow once` as the accent-filled primary, training the reflex 0022 exists to prevent. Amends 0006. |
 | [0029](decisions/0029-the-gate-is-three-mechanisms.md) | **The gate is three mechanisms with three populations** — a `PreToolUse` hook covers *vendor* tools and is mandatory on every worker (an MCP gate bounds nothing the model can reach through `Bash`, #529); a blocking `tools/call` is the only mechanism that *holds* rather than refuses; `elicitation` is an uncircumventable refusal measured on **both** vendors. A hook's `ask` survives `auto` mode, so an operator's `auto` no longer erases AER's permission surface. Amends 0015's mechanism guidance. |
 | [0030](decisions/0030-aer-is-its-own-notifier.md) | **AER is its own notifier** — `PermissionRequest` and `Notification` are both silent under `-p`, so no vendor event announces a pause. AER hosts the gate, therefore already holds the pause at ask-time and notifies from that act; the notification path is vendor-independent by construction. Supplies the signal source 0018 assumed. |
@@ -96,6 +97,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) | **A reviewer's verdict is evidence for a human decision, never the decision itself** — [0019](decisions/0019-consulting-is-not-deciding.md) already forecloses an auto-deciding implementer/reviewer loop; the workflow shape (implement → review, `PausePoint(ReadyForReview)`) needs no new primitive, but the terminal `aer decide` call stays human, always. Corrects a session memory that had concluded otherwise. |
 | [0039](decisions/0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md) | **A dialogue turn resumes the vendor's own session; it does not resend the transcript** — `#581`'s live failure and `#582`'s cost/latency problem trace to the same design (full-history resend forced a file-read instruction both vendors break on). Adopting `Aer.Adapters`' own session-continuation mechanism fixes both and retires the `{PROMPT_FILE}` workaround `#580` shipped. |
 | [0040](decisions/0040-needs-you-groups-by-kind-and-actions-alone-defer.md) | **Within "needs you," gates group by kind and each gets its own affordance; only an action may say "Later"** — a permission blocks and sits first, a decision offers "ask someone", an action alone can defer without reading as urgent. Push behaviour (0030) is unaffected. Promotes already-drawn design corpus content to a record. |
+| [0041](decisions/0041-phone-authoring-lands-with-shapes-not-after.md) | **Phone template authoring ships with the shapes milestone (M29/J17), not deferred past it** — `02-screens.md`'s "out of scope for the phone's first version" describes the pre-shapes phone (M26–M28), not a standing exclusion. The single place this fact lives; M29's criterion and the Bar's parity note both reference it rather than restating it. |
 
 ## The completion bar: journeys
 
@@ -121,13 +123,15 @@ that ships a capability can be complete while the thing a person does with it do
 milestone below therefore ends on a **demonstration**, not a checklist. Per-issue state lives on the
 board; this is the structure and the reasoning, which change rarely.
 
-**Scope of the rebuild: the UI layers are rebuilt, the rest stays.** The 2026-07-24 design pass
-confirmed what the five manual-run defects already implied — the engine, adapters, daemon and protocol
-were never what failed; every defect was a missing specification surfacing at a UI seam. So the
-rebuild **rips out and rebuilds** `Aer.Ui`, `Aer.Ui.Core` and `Aer.Mobile` against the decisions
-above, and leaves `Aer.Flow`, `Aer.Adapters`, `Aer.Daemon` and the wire protocol in place. This is a
-delivery decision, not a product one, which is why it lives here rather than in a numbered record; it
-bounds what every milestone below may touch.
+**This plan covers everything a milestone's own journeys need, not only the UI.** The 2026-07-24
+design pass found that the five manual-run defects it was scoped to explain were all missing UI
+specifications, not engine defects — true as far as it went, but this plan is no longer only that UI
+overhaul: it is the plan for finishing the product, gated on the journeys above. `Aer.Ui`,
+`Aer.Ui.Core` and `Aer.Mobile` are rebuilt against the decisions above; `Aer.Flow`, `Aer.Adapters`,
+`Aer.Daemon` and the wire protocol are touched wherever a milestone's own journeys require it (J6's
+`PreToolUse` hook and J4/J7's pairing/reconnection work are exactly this — engine and daemon work a UI
+rebuild alone could never satisfy). No layer is out of bounds by default; a milestone's demonstration
+criteria decide what it touches, not a boundary drawn here in advance.
 
 ### M26 — The room works
 
@@ -137,12 +141,21 @@ multi-model as an escalation and never a tax on the simple case, so if M26 is no
 it matters.
 
 **Demonstrated when** a person can talk to one agent about one folder with nothing in the way; every
-surface renders the room's own state, so "no room open" while running is impossible rather than merely
-fixed ([0020](decisions/0020-one-state-machine.md)); a failure shows what broke *in the room*, with the
-worker that failed there to be asked; and first run states which vendor CLIs were found.
+surface renders the room's own state for **every kind of work, not just chat**
+([0020](decisions/0020-one-state-machine.md), [J5](../spec/journeys.md)), so "no room open" while
+running is impossible rather than merely fixed; a failure shows what broke *in the room*, with the
+worker that failed there to be asked; first run gives each surface a real first action — open a
+folder or start work on desktop, pair to a machine on phone, not an empty list
+([J8](../spec/journeys.md)); a fresh phone on an ordinary LAN (not a tailnet) pairs and completes a
+first authenticated round-trip, and a daemon port change doesn't strand it ([J4](../spec/journeys.md));
+a dropped connection shows a truthful state and a recovery action that actually restores service,
+never a raw exception ([J7](../spec/journeys.md)); and a tool withheld from a worker is refused **by
+any route it might reach the same effect through**, not just the one flag that names it
+([0029](decisions/0029-the-gate-is-three-mechanisms.md), [J6](../spec/journeys.md) — journeys.md's own
+framing: first-class, not an edge-condition inside the happy path).
 
 **Depends on** nothing but the seam work M25 already landed. It is first because every other milestone
-renders inside it.
+renders inside it — including, now, whether the room can be trusted and reached at all.
 
 ### M27 — More than one model in the room
 
@@ -160,7 +173,12 @@ a fact one vendor established is used by another later in the same room
 ([0016](decisions/0016-memory-is-room-owned.md)); a document authored by one vendor and edited by
 another carries a diff between their versions ([0021](decisions/0021-artifacts-are-files.md)); one
 question put to every worker returns answers side by side
-([0024](decisions/0024-commands-are-namespaced.md)); and two workers debate to a bounded conclusion
+([0024](decisions/0024-commands-are-namespaced.md)); from a live chat a person spins off a
+clearly-marked child (draft→review→gate) that reports its result back into the chat, which stays live
+throughout ([J2](../spec/journeys.md), decisions 0001/0008/0009); a single view shows usage across
+every vendor a room is spending against, best-effort per what each CLI exposes
+([J9](../spec/journeys.md), decision 0008 — only meaningful once this milestone puts more than one
+vendor in the room at all); and two workers debate to a bounded conclusion
 with no human turn in between (0003's Dialogue shape) — this last one is **blocked**, direction now
 decided for all three named prerequisites but none yet built: `#581`/`#582`'s mechanism redesign
 ([0039](decisions/0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md),
@@ -174,10 +192,15 @@ No Dialogue-shape UI ships before all three land.
 
 Attention, permission, and answering from anywhere. The milestone that makes leaving the room safe.
 
-**Demonstrated when** at a live gate a person asks a worker not previously in the room, gets a
-contradicting answer, and **the gate is still open**
-([0019](decisions/0019-consulting-is-not-deciding.md)); granting "allow in this room" means not being
-asked again, and the grant can be found and revoked in settings
+**Demonstrated when** on reopening either surface, work is legibly separated into waiting-on-you /
+running / finished, waiting-on-you first, and a failed piece of work reads as failed, never as
+"finished" ([J3](../spec/journeys.md), decision 0018 — the room-list promise this milestone is named
+for, and which nothing above actually tested until now); a desk-started run that pauses at a
+**decision** gate (not just a permission) appears on the paired phone and stays live while the desktop
+remains open, with no manual reload on either side ([J1](../spec/journeys.md)); at a live gate a
+person asks a worker not previously in the room, gets a contradicting answer, and **the gate is still
+open** ([0019](decisions/0019-consulting-is-not-deciding.md)); granting "allow in this room" means not
+being asked again, and the grant can be found and revoked in settings
 ([0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md)); quitting the desktop app
 mid-run, answering the permission on the phone, and reopening finds it continued; and with a
 permission, a decision, and an action all pending at once, the needs-you list groups them by kind —
@@ -193,11 +216,10 @@ Repeatable work, authored as an ordered list that renders as a graph
 ([0014](decisions/0014-shapes-are-a-list-not-a-canvas.md),
 [0025](decisions/0025-a-step-is-an-instruction-with-a-gate-toggle.md)).
 
-**Demonstrated when** a person authors a four-step template on the desktop, starts it from the phone,
-and watches it run on either surface. Template *authoring* is desktop-only for the phone's first
-version by design (`docs/design/02-screens.md`) — a small-screen shape editor is deliberately
-deferred, not part of this milestone's criterion; *starting and watching* a shape run from the phone
-is what M29 actually demonstrates on that surface.
+**Demonstrated when** a person authors a four-step template on a phone, starts it on the desktop, and
+watches it run — [J17](../spec/journeys.md) verbatim, not a paraphrase
+([0041](decisions/0041-phone-authoring-lands-with-shapes-not-after.md) — read that record, not this
+line, before touching this criterion again).
 
 **Depends on** M26. It is deliberately late: shapes are the leverage, not the day job, and a shape
 editor built before the room works would be a canvas with better marketing.
@@ -210,6 +232,23 @@ M26–M29. Its completion gate is a design review against
 [0006](decisions/0006-visual-direction-quiet.md) (Quiet) and the motion question `docs/plan.md`'s
 open questions already name: does every surface read as *confirming*, never *performing*, with no
 regression in what M26–M29 already demonstrated.
+
+### What an exhaustive journey audit found and closed (2026-07-26)
+
+An earlier pass checked design/plan/decisions against each other but never against
+[`spec/journeys.md`](../spec/journeys.md) — the actual promises, not just internal consistency. A
+full journey-by-journey check (walking each journey's own `Serves` list against the milestone meant
+to demonstrate it, not sampling) found that **J10–J18 (added with the M27 design pass) all matched
+their milestone's criteria correctly, but roughly half of J1–J9 (the original journeys) had no
+milestone criterion covering them at all** — including J6, which `spec/journeys.md` itself calls
+"first-class, not an edge-condition." The milestone criteria above now fold in J1, J3, J4, J5, J6, J7,
+J8, J9 and the missing half of J2, each attributed to whichever milestone's own stated identity fits
+it (M26 for the foundational/safety ones, M27 for the multi-vendor ones, M28 for the ones about
+attention and cross-surface gates). This is why M26 in particular reads larger than its original
+"one room, one worker, nothing in the way" framing suggested — a room that can't be reached, trusted,
+or safely denied isn't actually working, so those bars belong in the milestone everything else
+renders inside of, not deferred past it. No new milestone was needed; every gap had a defensible home
+in the existing five.
 
 ### What the vendor audit (#527) changes about this sequence
 
