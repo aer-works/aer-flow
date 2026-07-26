@@ -72,7 +72,7 @@ Small on purpose. Every noun added here becomes a thing the person has to learn,
 
 > **Amendment, 2026-07-25 — [0013](../decisions/0013-room-is-the-user-facing-noun.md) renamed
 > this noun.** Wherever "Session" appears below as the user-facing noun for a conversation with
-> one or more workers in it, read **Room** — the model (participants, one directory, its own
+> one or more workers in it, read **Room** — the model (workers, one directory, its own
 > history) is unchanged, only the word moved. "Session" now names something narrower: the vendor
 > CLI's own resumable thread, an adapter concern that is never presented as the thing you opened.
 > The **Settled** section further down states the opposite outcome ("room" never enters the
@@ -91,7 +91,7 @@ Template A saved shape of work — draft→review→gate — defined on a graph 
 
 Persona *(added 2026-07-25, M27)* A named, saved binding of a Skill onto a Worker's vendor/model/effort chip, plus a permission grant and a voice — a preset over the worker chip, not a new axis beside it. Eight predefined (Scout, Courier, Scribe, Artisan, Debugger, Auditor, Advisor, Architect), each pinning a real skill to a model-purpose × effort cell; cloning one and renaming it forks permanently from the built-in default. See [02-screens.md](02-screens.md) for the picker and the creation flow.
 
-Room orchestrator *(added 2026-07-25, M27)* A pinnable role: which participant in the room is authorized to call `aer decide` on another's gate, standing in for the human. Human-assigned only, blocked while a gate is open, one per room at a time, and never retroactive — a decision already made under the previous holder keeps its attribution. See [02-screens.md](02-screens.md) for the reassignment control.
+Room orchestrator *(added 2026-07-25, M27)* A pinnable role: which worker in the room is authorized to call `aer decide` on another's gate, standing in for the human. Human-assigned only, blocked while a gate is open, one per room at a time, and never retroactive — a decision already made under the previous holder keeps its attribution. See [02-screens.md](02-screens.md) for the reassignment control.
 
 ### The one flow that matters
 
@@ -102,7 +102,7 @@ A["Point at a folder"] --> B["Talk to one agent"]
 B --> C{"Worth more
 than one?"}
 C -- no --> B
-C -- yes --> D["Add a participant
+C -- yes --> D["Add a worker
 to the room"]
 D --> E["They work
 you watch"]
@@ -158,7 +158,7 @@ Sessions + New
 
 — spike-cache Cancelled · 1d
 
-aer-flow claude + gemini  ·  + Add participant
+aer-flow claude + gemini  ·  + Add worker
 
 you Rework the switcher so a new session shows up immediately.
 

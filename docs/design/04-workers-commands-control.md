@@ -109,7 +109,7 @@ Keyboard-first. These are answered constantly, so y and n work without reaching 
 
 Desktop · picking a worker
 
-aer-flow claude agy + Add participant
+aer-flow claude agy + Add worker
 
 claude · signed in
 
@@ -201,10 +201,11 @@ Skills and commands are shown together and marked , because the distinction is t
 
 Room commands are the discoverable surface for everything else in this document. /files , /usage and /shape open the panels below — which means those surfaces have a keyboard path and do not depend on finding an icon.
 
-> **Added 2026-07-25, M27.** Where a worker has a Persona bound, the command groups above are
-> headed by the Persona's name instead of the bare vendor — "Artisan" rather than "claude" —
-> since that is the identity a person is tracking day to day. The underlying namespacing is
-> unchanged: a Persona's commands are still that vendor's commands, grouped one level up.
+> **Added 2026-07-25, M27, corrected 2026-07-25.** Where a worker has a Persona bound, the command
+> group above stays headed by the worker's vendor — `claude`, `agy` — with the Persona's name shown
+> as a qualifier next to it (`claude · Artisan`), the same primary-identity rule the room-header chip
+> follows (see [02-screens.md](02-screens.md#the-calls-made-here)). The namespacing itself is
+> unchanged either way: a Persona's commands are still that vendor's commands, grouped one level up.
 
 ### Files — the project's, and the room's
 

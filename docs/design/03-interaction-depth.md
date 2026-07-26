@@ -98,11 +98,11 @@ This is a person's explicit choice, never inference. Nothing in the product read
 
 > **Added 2026-07-25, M27.** Adding still works exactly this way — a Persona appears in the same
 > "bring someone in" menu as a bare worker, and picking one adds them in the same gesture. Removing
-> a participant mid-room is new since this pass and does get its own control, in the room header
+> a worker mid-room is new since this pass and does get its own control, in the room header
 > rather than a separate surface: it runs two guardrails in sequence — stopping any in-flight
 > execution via the real `InFlightExecutionRegistry.RequestCancellationAsync`, then refusing (with
 > a clear reason, never a silent repair) if an active workflow step still depends on that
-> participant. See [02-screens.md](02-screens.md#the-calls-made-here) for the full sequence.
+> worker. See [02-screens.md](02-screens.md#the-calls-made-here) for the full sequence.
 
 ### Code and executions
 
@@ -351,9 +351,9 @@ Consulting ≠ deciding Asking another worker about a gate leaves the gate open.
 
 Routing is a control You choose who answers, and what they see. The product never reads the conversation to decide who should respond.
 
-Adding = asking Bringing a new worker in is the same gesture as asking a question. No separate participant-management surface.
+Adding = asking Bringing a new worker in is the same gesture as asking a question. No separate worker-management surface.
 
-Removing gets a control (added 2026-07-25, M27) Unlike adding, removing a participant mid-room is not inferred from asking — it is an explicit room-header action, gated by an in-flight-execution stop and a DAG dependency check that refuses rather than silently repairing. See 02-screens.md.
+Removing gets a control (added 2026-07-25, M27) Unlike adding, removing a worker mid-room is not inferred from asking — it is an explicit room-header action, gated by an in-flight-execution stop and a DAG dependency check that refuses rather than silently repairing. See 02-screens.md.
 
 Artifacts are files Vendor-neutral, versioned, attributed, explicitly attached. What one worker made, any other can be handed.
 

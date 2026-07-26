@@ -197,7 +197,7 @@ code{background:var(--codebg);padding:.12em .38em;border-radius:3px}
 
     <div class="phone">
       <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
-      <div class="p-head"><span class="back">‹</span><span><span class="t">Add a participant</span><span class="sub2">Step 1 of 2 · vendor</span></span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">Add a worker</span><span class="sub2">Step 1 of 2 · vendor</span></span></div>
       <div class="p-body">
         <div class="p-row hi" style="border-color:var(--accent)"><span><span class="nm">Claude</span><span class="st">signed in · 3 models</span></span></div>
         <div class="p-row"><span><span class="nm">agy</span><span class="st">signed in · 2 models</span></span></div>
@@ -365,7 +365,7 @@ code{background:var(--codebg);padding:.12em .38em;border-radius:3px}
         <tr><td><b>#268 · keyboard-first triage</b></td><td>Keyboard shows up piecemeal (⌘K, y/n, ⌘↑). There is no coherent keyboard model across the whole shell, and at a hundred rooms that is the difference between fast and unusable.</td></tr>
         <tr><td><b>#405 · working-status verbs</b></td><td>Cosmetic, but it is the one place the product has a voice. Worth deciding deliberately rather than inheriting.</td></tr>
         <tr><td><b>#266 · curved DAG edges, hover tracing</b></td><td>Closed 2026-07-25 — landed as visual polish; not obsolete after all, contrary to this document's guess.</td></tr>
-        <tr><td><b>Room orchestrator, M27 · delegated <code>aer decide</code></b></td><td>Every gate in this document assumed a human resolves it. As of M27, a pinned Room orchestrator may call <code>aer decide</code> on another participant's gate instead — validated as a real working pattern in a cross-vendor implementer/reviewer loop, and <code>aer decide</code>'s own <code>DecisionType</code> enum already carries what a delegated caller needs. Still undesigned: the UI for granting/revoking the pin beyond 02-screens.html's reassignment control, and whether a phone's decision inbox distinguishes a human's answer from an orchestrator's.</td></tr>
+        <tr><td><b>Room orchestrator, M27 · delegated <code>aer decide</code></b></td><td>Every gate in this document assumed a human resolves it. As of M27, a pinned Room orchestrator may call <code>aer decide</code> on another worker's gate instead — validated as a real working pattern in a cross-vendor implementer/reviewer loop, and <code>aer decide</code>'s own <code>DecisionType</code> enum already carries what a delegated caller needs. Still undesigned: the UI for granting/revoking the pin beyond 02-screens.html's reassignment control, and whether a phone's decision inbox distinguishes a human's answer from an orchestrator's.</td></tr>
         <tr><td><b>0003 · conversational promotion</b></td><td>Everything in this document's shape editor and "Start shaped work" cost row assumes a pre-authored template. <a href="../../decisions/0003-templates-collapse-to-three-shapes.md">0003</a> decided a second path exists — "have Gemini review this" promotes an ad-hoc conversation into a pipeline in place, carrying its history — and this document never draws it. Lineage in the room list (tree, indent, or badge) is still an open question per 0003 itself.</td></tr>
       </tbody>
     </table>

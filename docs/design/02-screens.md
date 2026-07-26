@@ -64,7 +64,7 @@ Rooms + New
 
 — spike-cache Cancelled · 1d
 
-aer-flow claude + Add participant
+aer-flow claude + Add worker
 
 you Why does a new room not show up in the list?
 
@@ -76,7 +76,7 @@ claude · working Editing MainWindow.axaml.cs …
 
 Reply… ⏎
 
-The sidebar is a presence list, not a file browser. Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. "+ Add participant" is a control in the header , not a new object to create: that is what keeps "room" a single noun.
+The sidebar is a presence list, not a file browser. Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. "+ Add worker" is a control in the header , not a new object to create: that is what keeps "room" a single noun.
 
 ### Desktop · two workers and a gate
 
@@ -109,11 +109,11 @@ Reply… ⏎
 
 Shape Hide
 
-draft · Artisan
+draft · claude · Artisan
 
 ↓
 
-review · Auditor
+review · agy · Auditor
 
 ↓
 
@@ -125,7 +125,7 @@ apply
 
 A gate is answered where it was raised. It renders as a turn in the conversation, because that is where the context is — the argument you are ruling on is directly above it. It also appears on the phone and in the "needs you" filter; same object, several entry points, never several copies of the state. The shape panel is optional , showing where this room is in the template it was started from — dismissible, and absent entirely for a room you just started by talking.
 
-A workflow step's binding can be a bare vendor name or a named Persona — the same duality as a room's worker chip. This document shows the Persona-bound case across template and shape views for clarity, though bare vendor bindings remain fully valid.
+A workflow step's binding can be a bare vendor name or a named Persona (shown as `vendor · Persona`, the same vendor-first rule the room-header chip follows) — the same duality as a room's worker chip. This document shows the Persona-bound case across template and shape views for clarity, though bare vendor bindings remain fully valid.
 
 ### When it fails
 
@@ -183,7 +183,7 @@ Folder
 
 Who runs it
 
-draft · Artisan     review · Auditor
+draft · claude · Artisan     review · agy · Auditor
 
 Start room Save as my default
 
@@ -209,15 +209,15 @@ Templates + New
 
 draft → review Done
 
-draft Artisan ask me first ○
+draft claude · Artisan ask me first ○
 
 + step
 
-review Auditor ask me first ●
+review agy · Auditor ask me first ●
 
 + step
 
-apply Artisan ask me first ○
+apply claude · Artisan ask me first ○
 
 + step
 
@@ -225,7 +225,7 @@ Each step runs after the one above it. Turn on "ask me first" to put a gate befo
 
 Preview
 
-draft · Artisan
+draft · claude · Artisan
 
 ↓
 
@@ -233,11 +233,11 @@ gate · you
 
 ↓
 
-review · Auditor
+review · agy · Auditor
 
 ↓
 
-apply · Artisan
+apply · claude · Artisan
 
 A list that renders as a graph, not a canvas you drag on. Freeform node editors are the reason visual workflow tools feel like work: you spend your attention on layout — arranging boxes, routing edges — rather than on the actual decision, which is who does what, in what order, and where do I want a say. A vertical list of steps expresses every shape this product realistically needs, is keyboard-navigable, diffs cleanly in version control, and cannot produce an unreadable tangle.
 
@@ -354,18 +354,20 @@ a gate" above — stays completely valid.** A Persona is an optional named prese
 a replacement for it; adding a worker with no Persona attached looks and works exactly as those
 earlier screens already show. What follows describes the persona-bound case specifically, and — a
 correction made mid-pass, not part of the original draft below — deliberately does **not** repeat
-vendor, model tier and effort in the chip's visible label the way an earlier revision of this
-section did. A named preset exists precisely so a person doesn't have to re-read its raw axes every
-time they see it; showing `Artisan` and showing `Artisan · claude · balanced · careful` in the same
-breath defeats the point of naming it. The raw axes live in the popover below, one tap away, not
-duplicated in the label.
+model tier and effort in the chip's visible label the way an earlier revision of this section did,
+and, corrected again on 2026-07-25, keeps the worker's vendor identity as the primary label rather
+than letting the Persona's name replace it: **`claude · Artisan`, never `Artisan` alone.** "Worker"
+stays the one noun a person has to track in the room header — a Persona qualifies which worker it is
+without becoming a second identity competing with it. The raw axes (model tier, effort, grant,
+voice) live in the popover below, one tap away, not duplicated in the label.
 
 ### The persona picker on the worker chip
 
 Today's worker chip (0017) is three dependent dropdowns: vendor gates model gates effort. Picking a
 Persona sets all three plus skill plus permissions in one gesture, without destroying the
-underlying worker chip — and the chip's visible label stays as short as the bare-vendor case it
-extends: the Persona's name, nothing else, until you open it.
+underlying worker chip — the chip keeps showing the vendor first (`claude`, `agy`) and adds the
+Persona's name as a short qualifier, so the worker is always identifiable at a glance and the
+Persona reads as what's configured on it, not as a replacement for it.
 
 Desktop · worker chip persona popover
 
@@ -373,7 +375,7 @@ Desktop · worker chip persona popover
 AER Flow · aer-flow
 ▤ ◱ ⚙
 
-Rooms + New            aer-flow  [👑 Artisan ▼]  [+ Add participant]
+Rooms + New            aer-flow  [👑 claude · Artisan ▼]  [+ Add worker]
                       ┌────────────────────────────────────────────────────────┐
                       │ Persona Preset                                         │
                       │ ● Artisan (implementation & refactor)                 │
@@ -396,7 +398,7 @@ Rooms + New            aer-flow  [👑 Artisan ▼]  [+ Add participant]
 Desktop · worker chip with axis override (modified state)
 
 ```
-aer-flow  [👑 Artisan* ▼]
+aer-flow  [👑 claude · Artisan* ▼]
          ┌────────────────────────────────────────────────────────┐
          │ Persona Preset                                         │
          │ ● Artisan (modified)                                   │
@@ -419,10 +421,10 @@ Phone · persona picker bottom sheet
 ```
 9:41 ▮▮▮
 
-‹ aer-flow · Participants
+‹ aer-flow · Workers
 
 Worker 1
-[👑 Artisan* ▼]
+[👑 claude · Artisan* ▼]
 
 ┌────────────────────────────────────────┐
 │ Select Persona                         │
@@ -442,8 +444,10 @@ Worker 1
 └────────────────────────────────────────┘
 ```
 
-The worker chip shows only the active Persona's name — nothing else — because the whole point of a
-named preset is that it stands in for its raw axes, not that it repeats them next to itself.
+The worker chip shows the vendor, plus the active Persona's name as a qualifier — never the Persona's
+name alone, and never the raw axes repeated next to it. The whole point of a named preset is that it
+stands in for its raw axes; the whole point of keeping the vendor primary is that a person tracking a
+room by its worker chips never has to wonder whether they're looking at a worker or something else.
 Clicking the chip opens the picker popover, where vendor, model tier and effort each get their own
 row; that's also where model tier is named by *purpose* (deep/balanced/fast), never a specific
 version string, per 0023. Selecting a built-in or custom Persona (e.g. Artisan) applies five fields
@@ -458,13 +462,13 @@ someone to decode a coordinate before they can decide, which is exactly the busy
 label is supposed to avoid.
 
 When someone opens the popover and changes a single axis (e.g., bumping Effort from `careful` to
-`exhaustive`), **your call, not yet decided**: the chip retains its Persona origin as `Artisan*`
+`exhaustive`), **your call, not yet decided**: the chip retains its Persona origin as `claude · Artisan*`
 (modified) rather than immediately severing the link or forcing a new saved Persona to be created.
 An explicit "Reset to preset" reverts all axes to the Persona default; an explicit "Save as new
 Persona…" opens the creation drawer pre-filled with the modified parameters. If the modified
 parameters come back to match the preset, the asterisk clears automatically.
 
-On phone, the picker expands as a standard bottom sheet covering the participant list.
+On phone, the picker expands as a standard bottom sheet covering the worker list.
 
 ### The persona-creation flow
 
@@ -530,7 +534,7 @@ here.
 
 ### Room-header controls: reassigning the orchestrator, and adding/removing a Persona mid-room
 
-The room orchestrator is a pinnable role held by exactly one participant in the room. Mid-room
+The room orchestrator is a pinnable role held by exactly one worker in the room. Mid-room
 modifications — reassigning the orchestrator or removing a Persona — must preserve room state
 integrity and enforce failure safety.
 
@@ -540,12 +544,12 @@ Desktop · room header with orchestrator pin & mid-gate blocked state
 AER Flow · aer-flow
 ▤ ◱ ⚙
 
-Rooms + New            aer-flow  [👑 Artisan]  [Auditor]  [+ Add]
+Rooms + New            aer-flow  [👑 claude · Artisan]  [agy · Auditor]  [+ Add]
                       ┌────────────────────────────────────────────────────────┐
-                      │ Room Participants & Orchestrator                       │
+                      │ Room Workers & Orchestrator                            │
                       │                                                        │
-                      │ 👑 Artisan (claude)    [ Active Orchestrator ]         │
-                      │    Auditor (agy)       [ Make Orchestrator ]           │
+                      │ 👑 claude (Artisan)    [ Active Orchestrator ]         │
+                      │    agy (Auditor)       [ Make Orchestrator ]           │
                       │                                                        │
                       │ 🔒 Reassignment blocked: Decision gate #3 is open.     │
                       │    Resolve or abandon the gate before swapping.        │
@@ -562,9 +566,9 @@ Desktop · removing a Persona with in-flight work & DAG dependency refusal
 AER Flow · aer-flow
 ▤ ◱ ⚙
 
-Rooms + New            aer-flow  [👑 Artisan]  [Auditor ✕]
+Rooms + New            aer-flow  [👑 claude · Artisan]  [agy · Auditor ✕]
                       ┌────────────────────────────────────────────────────────┐
-                      │ Remove Participant 'agy (Auditor)'?                    │
+                      │ Remove Worker 'agy (Auditor)'?                         │
                       │                                                        │
                       │ ⚡ In-flight work detected: Running security sweep...   │
                       │    Stopping worker via InFlightExecutionRegistry...    │
@@ -578,7 +582,7 @@ Rooms + New            aer-flow  [👑 Artisan]  [Auditor ✕]
 ```
 
 Orchestrator reassignment is human-only and singular. A human clicks the orchestrator pin (`👑`)
-next to any participant chip to hand off the role. If a decision gate (an `aer decide` pause point,
+next to any worker chip to hand off the role. If a decision gate (an `aer decide` pause point,
 or a permission request) is open, reassignment is **blocked mid-gate** — the lock badge explains
 that the pending gate must be resolved or abandoned first, so a swap can never orphan a pending
 decision.
@@ -590,14 +594,14 @@ Removing a Persona mid-room triggers two sequential guardrails:
 2. **DAG dependency check (v1 refusal).** If the room has an active workflow where a downstream step
    relies on the targeted Persona, removal is **refused with a clear reason** ("Active workflow step
    2 requires this persona"). The graph is not silently repaired or mutated. To proceed, the person
-   can choose "Stop Workflow & Remove" (toggles the workflow off and removes the participant) or
+   can choose "Stop Workflow & Remove" (toggles the workflow off and removes the worker) or
    cancel. This pair genuinely is a 0028 case — "Stop Workflow & Remove" is destructive and carries
    no more visual weight than "Cancel."
 
 ### The workflow-toggle-off control
 
 A room does not require a workflow (0001). Toggling a room's workflow off removes the structured
-execution graph while leaving all Persona participants intact in the room as free-form conversation
+execution graph while leaving all Persona-bound workers intact in the room as free-form conversation
 partners.
 
 Desktop · room header with workflow toggle ON vs OFF
@@ -608,7 +612,7 @@ Desktop · Workflow ON (shape panel visible)
 AER Flow · aer-flow                                          Workflow [● ON ]
 ▤ ◱ ⚙
 
-aer-flow  [👑 Artisan]  [Auditor]
+aer-flow  [👑 claude · Artisan]  [agy · Auditor]
 
 you Fix the auth bug and run security audit.
 
@@ -621,12 +625,12 @@ claude · working Editing auth.ts...                           Shape
 
 ──────────────────────────────────────────────────────────────────────────────
 
-Desktop · Workflow OFF (shape panel hidden, personas remain as free-form participants)
+Desktop · Workflow OFF (shape panel hidden, personas remain as free-form workers)
 
 AER Flow · aer-flow                                          Workflow [○ OFF]
 ▤ ◱ ⚙
 
-aer-flow  [👑 Artisan]  [Auditor]
+aer-flow  [👑 claude · Artisan]  [agy · Auditor]
 
 you Fix the auth bug and run security audit.
 
@@ -643,8 +647,8 @@ Toggling the workflow switch in the room header is a visual non-event, not a mod
 right-hand shape panel slides away or fades out, reflecting that step-by-step DAG execution is no
 longer active.
 
-The Persona chips in the room header (`[👑 Artisan]`, `[Auditor]`) do **not** change, disconnect,
-or enter an artificial "idle" state. They stay in the room as ordinary free-form participants —
+The worker chips in the room header (`[👑 claude · Artisan]`, `[agy · Auditor]`) do **not** change, disconnect,
+or enter an artificial "idle" state. They stay in the room as ordinary free-form workers —
 because a room without an active workflow is already free-form by 0001's own model. Turning off a
 workflow strips away the graph overlay; it does not touch who's present.
 
@@ -676,13 +680,13 @@ M27 addition, 2026-07-25 — the calls added with the four new screens above.
 
 Preset over chip Picking a Persona sets skill, model tier, effort, and permissions in one gesture on top of the worker chip, without inventing a fourth axis.
 
-Bare chips are unchanged A worker with no Persona attached looks exactly like it does in "The daily driver" and "Two workers, a gate" above — just the vendor name. A Persona replaces that label with its own name; it doesn't add a second visual language beside it.
+Bare chips are unchanged A worker with no Persona attached looks exactly like it does in "The daily driver" and "Two workers, a gate" above — just the vendor name. A Persona adds a short qualifier next to that name; it never replaces it or adds a second visual language beside it.
 
-Name only on the chip, corrected mid-pass An earlier revision of this section put vendor, model tier and effort on the chip itself (`Artisan · claude · balanced · careful`) — busy on desktop, worse on a phone's narrow header. The chip now shows only the Persona's name (plus the crown, plus an asterisk if modified); the raw axes live one tap away in the popover, where model tier is still named by purpose (deep/balanced/fast), never a specific vendor version — 0023's rule, now enforced without also cramming the label.
+Worker first, Persona as a qualifier, corrected twice An earlier revision of this section put vendor, model tier and effort on the chip itself (`Artisan · claude · balanced · careful`) — busy on desktop, worse on a phone's narrow header. A second revision cut it down to the Persona's name alone, which fixed the busyness but let the chip's primary identity silently become the preset instead of the worker. The chip now shows the vendor first, the Persona's name as a short qualifier (plus the crown, plus an asterisk if modified) — `claude · Artisan` — so a person always knows which worker they're looking at; the raw axes live one tap away in the popover, where model tier is still named by purpose (deep/balanced/fast), never a specific vendor version — 0023's rule, now enforced without also cramming the label.
 
 Pick by what it does, not its coordinate The phone's persona list shows each Persona's skill ("quick reconnaissance," "code & security review"), not its model×effort grid position — the grid matters for building the library, not for choosing who joins a room.
 
-Modified state over instant fork Overriding an axis marks the chip as `Persona* (modified)` rather than severing identity; saving as a new Persona is an explicit action (*your call, not yet decided*).
+Modified state over instant fork Overriding an axis marks the chip as `claude · Persona*` (modified) rather than severing identity; saving as a new Persona is an explicit action (*your call, not yet decided*).
 
 Single drawer for creation Persona creation uses progressive disclosure in a single side drawer to keep context visible, rather than a multi-step wizard.
 
@@ -694,7 +698,7 @@ In-flight cancellation on removal Removing an active Persona halts execution via
 
 DAG removal refused in v1 Removing a Persona required by an active workflow step is refused with an explicit reason; silent DAG repair is deferred, not built.
 
-Workflow toggle is a non-event Turning off a room's workflow hides the shape panel while retaining all Personas as free-form room participants.
+Workflow toggle is a non-event Turning off a room's workflow hides the shape panel while every worker, Persona-bound or not, stays in the room exactly as before.
 
 Complete set, draft 3 — the shapes and the calls, not the pixels. Mark it up and I'll take another pass before any of it becomes a decision record or touches the backlog.
 

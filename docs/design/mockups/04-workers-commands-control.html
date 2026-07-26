@@ -228,7 +228,7 @@ code{background:var(--codebg);padding:.12em .38em;border-radius:3px}
 
   <p class="plat">Desktop · picking a worker</p>
   <div class="shot scrollx"><div class="pane">
-    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip">claude</span><span class="chip">agy</span><span class="chip add">+ Add participant</span></span></div>
+    <div class="mhead"><span class="t">aer-flow</span><span class="chips"><span class="chip">claude</span><span class="chip">agy</span><span class="chip add">+ Add worker</span></span></div>
     <div class="side">
       <div class="menu">
         <div class="hd">claude · signed in</div>
@@ -291,7 +291,7 @@ code{background:var(--codebg);padding:.12em .38em;border-radius:3px}
   <br><br><b><span class="m">/ask-all</span> is the broadcast gesture</b>, and it is the cheapest way to get value from a multi-worker room: one question, every worker answers, you compare. It is deliberately a command rather than a mode — you drop into it for one message and out again.
   <br><br><b>Skills and commands are shown together and marked</b>, because the distinction is the vendor's, not the user's. What matters to a person is "what can I type here", not which mechanism implements it.
   <br><br><b>Room commands are the discoverable surface for everything else in this document.</b> <span class="m">/files</span>, <span class="m">/usage</span> and <span class="m">/shape</span> open the panels below — which means those surfaces have a keyboard path and do not depend on finding an icon.
-  <br><br><b>Added 2026-07-25, M27.</b> Where a worker has a Persona bound, the command groups above are headed by the Persona's name instead of the bare vendor — "Artisan" rather than "claude" — since that is the identity a person is tracking day to day. The underlying namespacing is unchanged: a Persona's commands are still that vendor's commands, grouped one level up.</p>
+  <br><br><b>Added 2026-07-25, M27, corrected 2026-07-25.</b> Where a worker has a Persona bound, the command group above stays headed by the worker's vendor — <span class="m">claude</span>, <span class="m">agy</span> — with the Persona's name shown as a qualifier next to it (<span class="m">claude &middot; Artisan</span>), the same primary-identity rule the room-header chip follows (see <a href="02-screens.html">02-screens.html</a>). The namespacing itself is unchanged either way: a Persona's commands are still that vendor's commands, grouped one level up.</p>
 </section>
 
 <hr class="div">

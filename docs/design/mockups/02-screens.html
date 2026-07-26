@@ -285,7 +285,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="row"><span class="mk i">—</span><span><span class="nm">spike-cache</span><span class="st">Cancelled · 1d</span></span></div>
       </div>
       <div class="main">
-        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip add">+ Add participant</span></span></div>
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">claude</span><span class="chip add">+ Add worker</span></span></div>
         <div class="conv">
         <div class="turn me"><span class="who">you</span>Why does a new room not show up in the list?</div>
         <div class="turn gem"><span class="who">claude</span>Two causes. The list only refreshed at startup, and a room was registered only when its first run returned 2xx — so a refused run left a real folder nothing knew about.</div>
@@ -296,7 +296,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
     </div>
   </div></div>
-  <p class="note"><b>The sidebar is a presence list, not a file browser.</b> Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. <b>"+ Add participant" is a control in the header</b>, not a new object to create: that is what keeps "room" a single noun.</p>
+  <p class="note"><b>The sidebar is a presence list, not a file browser.</b> Name, state mark, and what that worker is doing right now — the three things that let you decide whether to switch. It is always there, so a room you are not watching is never invisible. <b>"+ Add worker" is a control in the header</b>, not a new object to create: that is what keeps "room" a single noun.</p>
 </section>
 
 <hr class="div">
@@ -328,9 +328,9 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
       <div class="insp">
         <div class="ih"><span>Shape</span><span style="color:var(--accent)">Hide</span></div>
-        <div class="node ok">draft · Artisan</div>
+        <div class="node ok">draft · claude · Artisan</div>
         <div class="arrow">↓</div>
-        <div class="node ok">review · Auditor</div>
+        <div class="node ok">review · agy · Auditor</div>
         <div class="arrow">↓</div>
         <div class="node wait">gate · you</div>
         <div class="arrow">↓</div>
@@ -392,7 +392,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="turn" style="border:0;padding:0;color:var(--text-3)">Folder</div>
         <div class="turn" style="color:var(--text)">~/source/repos/aer/aer-flow &nbsp;&nbsp;<span style="color:var(--accent)">Choose…</span></div>
         <div class="turn" style="border:0;padding:0;color:var(--text-3);margin-top:4px">Who runs it</div>
-        <div class="turn" style="color:var(--text)">draft <span style="color:var(--text-3)">·</span> Artisan &nbsp;&nbsp;&nbsp; review <span style="color:var(--text-3)">·</span> Auditor</div>
+        <div class="turn" style="color:var(--text)">draft <span style="color:var(--text-3)">·</span> claude · Artisan &nbsp;&nbsp;&nbsp; review <span style="color:var(--text-3)">·</span> agy · Auditor</div>
         <div class="btns" style="margin-top:12px"><span class="btn pri">Start room</span><span class="btn">Save as my default</span></div>
         <div class="comp" style="margin-top:auto;border:0;color:var(--text-3);padding-left:0">A template names the shape and the roles. It does not name the folder — that is chosen per room.</div>
       </div>
@@ -418,23 +418,23 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
       <div class="ed">
         <div class="mhead" style="margin-bottom:10px"><span class="t">draft → review</span><span class="who-chips"><span class="chip">Done</span></span></div>
-        <div class="step"><span class="l">draft</span><span class="r"><span class="pill">Artisan</span><span>ask me first ○</span></span></div>
+        <div class="step"><span class="l">draft</span><span class="r"><span class="pill">claude · Artisan</span><span>ask me first ○</span></span></div>
         <div class="ins"><span>+ step</span></div>
-        <div class="step sel"><span class="l">review</span><span class="r"><span class="pill">Auditor</span><span class="pill on">ask me first ●</span></span></div>
+        <div class="step sel"><span class="l">review</span><span class="r"><span class="pill">agy · Auditor</span><span class="pill on">ask me first ●</span></span></div>
         <div class="ins"><span>+ step</span></div>
-        <div class="step"><span class="l">apply</span><span class="r"><span class="pill">Artisan</span><span>ask me first ○</span></span></div>
+        <div class="step"><span class="l">apply</span><span class="r"><span class="pill">claude · Artisan</span><span>ask me first ○</span></span></div>
         <div class="ins"><span>+ step</span></div>
         <div class="comp" style="border:0;color:var(--text-3);padding-left:0;margin-top:14px">Each step runs after the one above it. Turn on "ask me first" to put a gate before a step.</div>
       </div>
       <div class="insp">
         <div class="ih"><span>Preview</span></div>
-        <div class="node">draft · Artisan</div>
+        <div class="node">draft · claude · Artisan</div>
         <div class="arrow">↓</div>
         <div class="node wait">gate · you</div>
         <div class="arrow">↓</div>
-        <div class="node">review · Auditor</div>
+        <div class="node">review · agy · Auditor</div>
         <div class="arrow">↓</div>
-        <div class="node">apply · Artisan</div>
+        <div class="node">apply · claude · Artisan</div>
       </div>
     </div>
   </div></div>
@@ -543,7 +543,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 <section>
   <p class="eyebrow">M27 addition, 2026-07-25 — personas &amp; room orchestration</p>
   <h2 id="m27-picker">The persona picker on the worker chip</h2>
-  <p class="sub">A bare worker chip — just a vendor name, as drawn in "The daily driver" and "Two workers, a gate" above — stays completely valid; a Persona is an optional preset over that chip, not a different visual language beside it. Picking one sets skill, vendor, model tier, effort level, permission grant, and voice in one gesture — but the chip's visible label shows only the Persona's name, exactly as short as the bare-vendor case it extends. The raw axes live in the popover, one tap away, not repeated next to the name that already stands for them.</p>
+  <p class="sub">A bare worker chip — just a vendor name, as drawn in "The daily driver" and "Two workers, a gate" above — stays completely valid; a Persona is an optional preset over that chip, not a different visual language beside it. Picking one sets skill, vendor, model tier, effort level, permission grant, and voice in one gesture — but the chip's visible label always keeps the vendor first (<code>claude</code>, <code>agy</code>) and adds the Persona's name as a short qualifier next to it, never in place of it. The raw axes live in the popover, one tap away, not repeated next to the name that already stands for them.</p>
   <p class="plat">Desktop · worker chip persona popover (intact vs modified state)</p>
 
   <div class="shot scrollx"><div class="d-inner">
@@ -559,8 +559,8 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="mhead">
           <span class="t">aer-flow</span>
           <span class="who-chips">
-            <span class="chip active">👑 Artisan ▼</span>
-            <span class="chip add">+ Add participant</span>
+            <span class="chip active">👑 claude · Artisan ▼</span>
+            <span class="chip add">+ Add worker</span>
           </span>
         </div>
 
@@ -613,8 +613,8 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="mhead">
           <span class="t">aer-flow</span>
           <span class="who-chips">
-            <span class="chip active" style="border-color:var(--needs);color:var(--needs)">👑 Artisan* ▼</span>
-            <span class="chip add">+ Add participant</span>
+            <span class="chip active" style="border-color:var(--needs);color:var(--needs)">👑 claude · Artisan* ▼</span>
+            <span class="chip add">+ Add worker</span>
           </span>
         </div>
 
@@ -648,10 +648,10 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
   <div class="phones">
     <div class="phone">
       <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
-      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">Participants</span></span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">Workers</span></span></div>
       <div class="p-body">
         <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Worker 1</div>
-        <div class="chip active" style="border-color:var(--needs);color:var(--needs);text-align:center">👑 Artisan* ▼</div>
+        <div class="chip active" style="border-color:var(--needs);color:var(--needs);text-align:center">👑 claude · Artisan* ▼</div>
 
         <div class="persona-pop" style="margin-top:auto;border-top-left-radius:14px;border-top-right-radius:14px">
           <div class="pop-sect">Select Persona</div>
@@ -673,7 +673,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
     </div>
   </div>
 
-  <p class="note"><b>The chip shows only the Persona's name</b> — vendor, model tier and effort live in the popover, each its own row, where model tier is always named by purpose (deep, balanced, fast), never a specific vendor string (0023). Bumping a single axis like Effort to <code>exhaustive</code> marks the chip as <code>Artisan*</code> (modified) without severing identity or forcing immediate saving. <b>Reset to preset</b> clears the asterisk, while <b>Save as new Persona</b> opens the creation drawer pre-filled. On the phone picker list, each Persona shows what it <em>does</em> ("code &amp; security review") rather than its model×effort grid position — the grid matters for building the library, not for choosing who joins a room.</p>
+  <p class="note"><b>The chip always shows the vendor first, with the Persona's name as a qualifier</b> — <code>claude · Artisan</code>, never <code>Artisan</code> alone. Model tier and effort live in the popover, each its own row, where model tier is always named by purpose (deep, balanced, fast), never a specific vendor string (0023). Bumping a single axis like Effort to <code>exhaustive</code> marks the chip as <code>claude · Artisan*</code> (modified) without severing identity or forcing immediate saving. <b>Reset to preset</b> clears the asterisk, while <b>Save as new Persona</b> opens the creation drawer pre-filled. On the phone picker list, each Persona shows what it <em>does</em> ("code &amp; security review") rather than its model×effort grid position — the grid matters for building the library, not for choosing who joins a room.</p>
 </section>
 
 <hr class="div">
@@ -771,21 +771,21 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="mhead">
           <span class="t">aer-flow</span>
           <span class="who-chips">
-            <span class="chip active">👑 Artisan</span>
-            <span class="chip">Auditor</span>
+            <span class="chip active">👑 claude · Artisan</span>
+            <span class="chip">agy · Auditor</span>
             <span class="chip add">+ Add</span>
           </span>
         </div>
 
         <div class="persona-pop" style="margin-top:0">
-          <div class="pop-sect">Room Participants &amp; Orchestrator</div>
+          <div class="pop-sect">Room Workers &amp; Orchestrator</div>
           <div style="display:flex;flex-direction:column;gap:6px">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span>👑 Artisan <span style="color:var(--text-3)">(claude)</span></span>
+              <span>👑 claude <span style="color:var(--text-3)">(Artisan)</span></span>
               <span style="color:var(--accent);font-size:11px">Active Orchestrator</span>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;opacity:.6">
-              <span>Auditor <span style="color:var(--text-3)">(agy)</span></span>
+              <span>agy <span style="color:var(--text-3)">(Auditor)</span></span>
               <span class="btn" style="padding:1px 7px">Make Orchestrator</span>
             </div>
           </div>
@@ -820,13 +820,13 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="mhead">
           <span class="t">aer-flow</span>
           <span class="who-chips">
-            <span class="chip">👑 Artisan</span>
-            <span class="chip" style="border-color:var(--fail);color:var(--fail)">Auditor ✕</span>
+            <span class="chip">👑 claude · Artisan</span>
+            <span class="chip" style="border-color:var(--fail);color:var(--fail)">agy · Auditor ✕</span>
           </span>
         </div>
 
         <div class="persona-pop" style="border-color:var(--fail);margin-top:0">
-          <div class="pop-sect" style="color:var(--fail)">Remove Participant 'agy (Auditor)'?</div>
+          <div class="pop-sect" style="color:var(--fail)">Remove Worker 'agy (Auditor)'?</div>
           <div style="font-size:11.5px;color:var(--text-2);line-height:1.4">
             ⚡ <b>In-flight work detected:</b> Running security sweep…<br>
             Stopping worker via <code>InFlightExecutionRegistry.RequestCancellationAsync</code>…
@@ -854,7 +854,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 <section>
   <p class="eyebrow">M27 addition, 2026-07-25</p>
   <h2 id="m27-toggle">The workflow-toggle-off control</h2>
-  <p class="sub">Toggling a room's workflow off removes the graph panel while retaining all Personas as free-form conversation participants. The persona chips remain visibly identical in both states.</p>
+  <p class="sub">Toggling a room's workflow off removes the graph panel while every worker, Persona-bound or not, stays exactly as it was. The chips remain visibly identical in both states.</p>
   <p class="plat">Desktop · Workflow ON vs Workflow OFF (persona chips identical)</p>
 
   <div class="shot scrollx"><div class="d-inner">
@@ -869,8 +869,8 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="mhead">
           <span class="t">aer-flow</span>
           <span class="who-chips">
-            <span class="chip">👑 Artisan</span>
-            <span class="chip">Auditor</span>
+            <span class="chip">👑 claude · Artisan</span>
+            <span class="chip">agy · Auditor</span>
             <span class="sw-toggle on"><span class="dot-sw"></span> Workflow ON</span>
           </span>
         </div>
@@ -901,8 +901,8 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
         <div class="mhead">
           <span class="t">aer-flow</span>
           <span class="who-chips">
-            <span class="chip">👑 Artisan</span>
-            <span class="chip">Auditor</span>
+            <span class="chip">👑 claude · Artisan</span>
+            <span class="chip">agy · Auditor</span>
             <span class="sw-toggle"><span class="dot-sw"></span> Workflow OFF</span>
           </span>
         </div>
@@ -913,12 +913,12 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
       <div class="insp" style="background:var(--sunk);opacity:.65">
         <div class="ih"><span>Shape</span><span style="color:var(--text-3)">OFF</span></div>
-        <div style="font-size:11px;color:var(--text-3);line-height:1.4">Shape panel hidden.<br>Personas remain in room as free-form participants.</div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.4">Shape panel hidden.<br>Personas remain in room as free-form workers.</div>
       </div>
     </div>
   </div></div>
 
-  <p class="note"><b>The persona chips <code>[👑 Artisan]</code> and <code>[Auditor]</code> are 100% identical in both ON and OFF states.</b> Turning off a room's workflow hides the step-by-step DAG execution panel; it does not disconnect workers or force them into an artificial "idle" mode (0001).</p>
+  <p class="note"><b>The worker chips <code>[👑 claude · Artisan]</code> and <code>[agy · Auditor]</code> are 100% identical in both ON and OFF states.</b> Turning off a room's workflow hides the step-by-step DAG execution panel; it does not disconnect workers or force them into an artificial "idle" mode (0001).</p>
 </section>
 
 <hr class="div">
@@ -947,7 +947,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
     <div class="call"><dt>Reassignment blocked mid-gate <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>The orchestrator pin cannot be reassigned while a decision gate is open</b>, so a swap can never orphan a pending decision.</dd></div>
     <div class="call"><dt>In-flight cancellation <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Removing an active Persona halts execution via <code>InFlightExecutionRegistry.RequestCancellationAsync</code></b> before updating room state.</dd></div>
     <div class="call"><dt>DAG removal refused in v1 <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Removing a Persona required by an active workflow step is refused</b> with an explicit reason; silent DAG repair is deferred.</dd></div>
-    <div class="call"><dt>Workflow toggle non-event <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Turning off a room's workflow hides the shape panel</b> while retaining all Personas as free-form room participants.</dd></div>
+    <div class="call"><dt>Workflow toggle non-event <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Turning off a room's workflow hides the shape panel</b> while retaining all Personas as free-form workers.</dd></div>
     <div class="call"><dt>0028 strictly applied <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Destructive and permissive pairs carry equal visual weight</b> (neither is <code>.btn.pri</code>); standard create/discard pairs remain calm.</dd></div>
   </dl>
 </section>

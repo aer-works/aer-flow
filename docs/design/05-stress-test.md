@@ -80,7 +80,7 @@ Reply… ↑
 
 9:41 ▮▮▮
 
-‹ Add a participant Step 1 of 2 · vendor
+‹ Add a worker Step 1 of 2 · vendor
 
 Claude signed in · 3 models
 
@@ -275,7 +275,7 @@ Issue | Why it matters to the design |
 
 #266 · curved DAG edges, hover tracing | Closed 2026-07-25 — landed as visual polish; not obsolete after all, contrary to this document's guess. |
 
-Room orchestrator, M27 · delegated `aer decide` | Every gate in this document assumed a human resolves it. As of M27, a pinned Room orchestrator may call `aer decide` on another participant's gate instead — validated as a real working pattern in a cross-vendor implementer/reviewer loop, and `aer decide`'s own `DecisionType` enum already carries what a delegated caller needs. Still undesigned: the UI for granting/revoking the pin beyond 02-screens.md's reassignment control, and whether a phone's decision inbox distinguishes a human's answer from an orchestrator's. |
+Room orchestrator, M27 · delegated `aer decide` | Every gate in this document assumed a human resolves it. As of M27, a pinned Room orchestrator may call `aer decide` on another worker's gate instead — validated as a real working pattern in a cross-vendor implementer/reviewer loop, and `aer decide`'s own `DecisionType` enum already carries what a delegated caller needs. Still undesigned: the UI for granting/revoking the pin beyond 02-screens.md's reassignment control, and whether a phone's decision inbox distinguishes a human's answer from an orchestrator's. |
 
 0003 · conversational promotion | Everything in this document's shape editor and "Start shaped work" cost row assumes a pre-authored template. [0003](../decisions/0003-templates-collapse-to-three-shapes.md) decided a second path exists — "have Gemini review this" promotes an ad-hoc conversation into a pipeline in place, carrying its history — and this document never draws it. Lineage in the room list (tree, indent, or badge) is still an open question per 0003 itself. |
 
