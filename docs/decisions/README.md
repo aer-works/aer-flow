@@ -126,3 +126,4 @@ Two rules for the column:
 | [0031](0031-skills-are-account-wide.md) | Skills are account-wide, not project-scoped: one library per person (resolves an open question in 0010) | accepted |
 | [0032](0032-room-orchestrator-is-mandatory.md) | A room always has exactly one orchestrator: first worker added by default, removal refused until reassigned | accepted |
 | [0033](0033-skills-attach-directly-no-persona.md) | Skills attach directly to a worker; there is no Persona object | accepted |
+| [0034](0034-project-permission-ceiling-lives-in-aers-own-config.md) | A project's permission ceiling lives in AER's own app-config, keyed by project path (resolves an open obligation in 0004) | accepted |

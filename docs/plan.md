@@ -81,6 +81,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0031](decisions/0031-skills-are-account-wide.md) | **Skills are account-wide** — one library per person, available in every room regardless of which directory or repo that room's worker is pointed at. No project-level skill store in M27. Resolves an open question 0010 explicitly left for M26. |
 | [0032](decisions/0032-room-orchestrator-is-mandatory.md) | **A room always has exactly one orchestrator** — the first worker added becomes it by default, and removing the current holder is refused until the role is reassigned first. Authority is granted by an auto-bound Skill, the same mechanism 0033 uses for every other worker capability. |
 | [0033](decisions/0033-skills-attach-directly-no-persona.md) | **Skills attach directly to a worker; there is no Persona object** — zero, one, or several at once, with nothing to name, save, or diverge from. Replaces the M27 design pass's Persona proposal, which layered a second object on top of Skill for no capability Skill didn't already provide. |
+| [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) | **A project's permission ceiling lives in AER's own app-level config, keyed by project path** — never a file inside the project's own directory. First presented as a trust prompt on first use of a folder; reachable afterward from a global Settings "Projects" list. Resolves an obligation 0004 explicitly left open. |
 
 ## The completion bar: journeys
 
@@ -136,11 +137,19 @@ single-vendor tool can copy.
 
 **Demonstrated when** two subscriptions act in one room on plan auth with no key configured anywhere;
 two workers of the *same* vendor run at different models and efforts, in AER's own vocabulary
-([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md)); a fact one vendor established is
-used by another later in the same room ([0016](decisions/0016-memory-is-room-owned.md)); a document
-authored by one vendor and edited by another carries a diff between their versions
-([0021](decisions/0021-artifacts-are-files.md)); and one question put to every worker returns answers
-side by side ([0024](decisions/0024-commands-are-namespaced.md)).
+([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md)); two same-vendor workers are each
+addressed unambiguously via a sticky per-vendor instance handle (`@agy-1`/`@agy-2`); a worker attaches
+a skill and behaves accordingly, and the room's one orchestrator can be reassigned but never removed
+without a successor already holding the role
+([0031](decisions/0031-skills-are-account-wide.md)/[0032](decisions/0032-room-orchestrator-is-mandatory.md)/[0033](decisions/0033-skills-attach-directly-no-persona.md));
+a fact one vendor established is used by another later in the same room
+([0016](decisions/0016-memory-is-room-owned.md)); a document authored by one vendor and edited by
+another carries a diff between their versions ([0021](decisions/0021-artifacts-are-files.md)); one
+question put to every worker returns answers side by side
+([0024](decisions/0024-commands-are-namespaced.md)); and two workers debate to a bounded conclusion
+with no human turn in between (0003's Dialogue shape) — this last one is **blocked** on `#581`/`#582`
+(the mechanism's live-vendor and cost defects, found running the M27 UX design pass) and on designing
+a real, Rule-1-compliant stop signal (`aer yield`) before any Dialogue-shape UI ships.
 
 **Depends on** M26 — a second worker is an escalation from a room that already works.
 
@@ -283,21 +292,21 @@ so.
 
 ## Open questions
 
-Genuinely undecided. Four earlier entries were closed by M25 and are recorded here as closed rather
-than deleted, because "we already answered that" is the cheapest thing for a plan to forget:
-directory-less rooms (#321, #331, #407 — a neutral scratch dir), the typeface (#453/#456 shipped
-Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits), and the claude/agy effort mapping
-(#572/#573 measured and shipped it; #498 is the remaining, still-open UI/adapter work, not a reopening
-of the question).
+Genuinely undecided. Entries closed since M25 are recorded here as closed rather than deleted,
+because "we already answered that" is the cheapest thing for a plan to forget: directory-less rooms
+(#321, #331, #407 — a neutral scratch dir), the typeface (#453/#456 shipped Source Sans 3 +
+JetBrains Mono as in-repo assets on both toolkits), the claude/agy effort mapping (#572/#573 measured
+and shipped it; #498 is the remaining, still-open UI/adapter work, not a reopening of the question),
+and where a project's permission ceiling is stored (`#338` —
+[0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) settled it: AER's own
+app-config, keyed by project path).
 
-- **Does a room live in one folder forever?** Everything designed assumes one directory for life, and
-  work spanning two repositories is normal. `#472` found `--add-dir` on both CLIs, so disjoint folders
-  are feasible at the vendor level — this is a product question, not a capability one. Reopened rather
-  than closed; see #443. It changes the object model, not a screen.
+- **A room lives in one directory for the M26–M30 horizon, deliberately.** `#472` found `--add-dir`
+  on both CLIs, so disjoint folders are feasible at the vendor level, and #443 tracks the idea — but
+  this is left out of scope on purpose rather than carried as a pending gap: revisit only on a real
+  demand signal, not as something blocking the current milestone set.
 - **Whether AER's per-session turn lock tolerates a turn held open** while a human answers a
   permission (#393 ↔ #445). The vendor half is measured; this half is not.
-- **Where a project's permission ceiling is stored and first presented** — 0004 sets the ceiling, not
-  its home; moves with #338.
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
   how much things move is not, and it is deliberately deferred to M30 rather than decided per screen.
 - **Whether a delegated implementer/reviewer loop can run without a human calling `aer decide`.**
