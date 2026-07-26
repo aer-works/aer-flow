@@ -1364,9 +1364,12 @@ root. The vendor documents this as the supported pattern: setting `CLAUDE_CONFIG
 instance "run as a separate instance with its own sessions", and the hosting guidance recommends a
 per-tenant config directory.
 
-**Still unknown, and only a real attempt will tell:** whether a second concurrent login against the
-same subscription is permitted, and how it interacts with any parallel-session limit. That is a
-question for the operator's account, not something measurable from here.
+**Resolved below, same day — a real attempt was made.** This was written before the "Worker identity"
+measurement further down this document: a second, interactive login into a fresh `CLAUDE_CONFIG_DIR`
+root did not displace the first (`loggedIn: true` held on both), both roots reported the same account,
+and two concurrent `-p` runs — one per root — both succeeded. A second concurrent login against the
+same subscription **is** permitted, at least under this test's shape. What still isn't established is
+how it interacts with any parallel-session limit at higher concurrency than two.
 
 **`claude auth status` is independently useful to AER**: a structured, non-interactive readiness
 probe that spends no subscription usage, so a worker's root can be checked *before* dispatch rather

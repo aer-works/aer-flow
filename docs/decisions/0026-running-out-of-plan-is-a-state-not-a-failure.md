@@ -51,6 +51,13 @@ explicit *unknown*, which is a different and honest thing from a guess. `RetryPo
 attempts against an exhausted quota; an `ExhaustedUntil` outcome consumes no retry budget, because
 retrying is not what is wrong.
 
+**1a. `claude` gives the detection signal a name: `errorCode: "credits_required"`.** A dispatched
+turn that fails on subscription quota reports this typed error code, distinct from an ordinary
+`is_error` failure — that is what `ClaudeWorkerAdapter` matches to route into `ExhaustedUntil` rather
+than `Retryable`, not string-matching the model's own account of what went wrong. `agy` has no
+documented equivalent; on that vendor the classification still applies, but the trigger has to come
+from a different, currently unmeasured signal (or fall back to *unknown* on every occurrence).
+
 The spec offered two candidate resolutions — a third classification value, or treating quota as a
 pause. **We take the classification**, because a pause implies someone can answer it and nobody can:
 the only thing that resolves this is time passing or a different subscription. Modelling it as a pause

@@ -232,7 +232,7 @@ concurrent / 1,000 per run, no mid-run input · agent-teams task dependencies an
 |---|---|
 | ~~`CLAUDE_CONFIG_DIR` isolating a supervisor instance~~ | ✅ verified — **and a first, wrong conclusion corrected.** The variable is honoured and a *fresh* root is un-logged-in, but credentials live under the config root, so `claude auth login` makes it usable. **Per-worker config roots are an available option**, priced at one interactive sign-in each, and Rule-4-clean because the human signs in, not AER. |
 | ~~`claude auth status` as a readiness probe~~ | ✅ verified — reports per config root, structured, and **spends no subscription usage**; usable before dispatch |
-| whether a second concurrent login on one subscription is permitted | **open** — only a real attempt on the operator's account will tell |
+| ~~whether a second concurrent login on one subscription is permitted~~ | ✅ verified — a fresh root's interactive login did not displace the pre-existing root's, both reported the same account, and two concurrent `-p` runs (one per root) both succeeded (`vendor-doc-audit.md` § Worker identity; 0029's Rests-on table). Not yet tested above two concurrent roots. |
 
 | ~~two processes cannot write one transcript~~ — **not what protects it.** `--session-id` is an existence check, not a lock: sequential reuse is refused, but a concurrent pair races past and **both run**. | ⚠️ corrected + verified twice — `Aer.Daemon` must enforce single-writer itself |
 

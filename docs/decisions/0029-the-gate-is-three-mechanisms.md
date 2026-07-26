@@ -120,7 +120,16 @@ with no parent-directory fallback, and `--add-dir` grants file access but loads 
 (`--bare` disables hooks even via `--settings`) the viable combinations are narrow. On `agy` this is
 sharper still: permission rules are global-only (`agy.permissions-are-global-only`), so a hook in
 the workspace's `.agents/hooks.json` is the *only* way to gate an agy worker without writing to the
-operator's own settings file.
+operator's own settings file — and it will not load without `--add-dir` pointed at the workspace
+either, on either mechanism: an `agy` worker spawned without it has no gate loaded and says nothing
+about it, the same shape as the constraint below.
+
+**The MCP gate server must never be registered via project scope.** `claude` prompts for interactive
+approval before loading a project-scoped `.mcp.json` server — a headless worker would start with
+that server sitting at `⏸ Pending approval` forever, which is 0015's "configured, running, never
+consulted" failure in its purest form. **AER must register its gate server with `--mcp-config` at
+spawn time**, which loads without approval and touches no file the operator owns — never `.mcp.json`,
+never the `user`-scope `~/.claude.json` entry either, since neither is per-spawn.
 
 **Which makes the self-check below strictly more load-bearing on `agy` than on `claude`.** A broken
 hook fails **open** on both (`gate.broken-hook-fails-open`, `agy.broken-hook-fails-open` — measured
