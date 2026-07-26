@@ -182,9 +182,11 @@ vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 # It also prints what it CANNOT check, since a completeness checker that hides its own blind spots
 # is precisely the failure it exists to prevent.
 #
-# ONE-TIME INSTRUMENT for #527, not a standing gate -- see the SCOPE note in the script. It verifies
-# that a reason was written down, never that the reason is good, so it should retire with the audit
-# rather than be extended to later milestones.
+# STANDING CHECK (re-scoped 2026-07-26 -- see the SCOPE note in the script; it was run cold nine
+# days after #527 and caught 11 undispositioned decisions and 2 orphaned vendor-verify checks).
+# Run before a PR touching docs/decisions/, docs/vendor-*.md, or tools/vendor-verify/verify.py
+# ships -- CLAUDE.md gate 8. Free except step 4 (closed-issue citation check), which needs `gh` and
+# the network and skips loudly rather than failing when neither is available.
 audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's

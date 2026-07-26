@@ -11,11 +11,13 @@ that must exist for every member:
   1 sources        every source considered -> included, or excluded with a reason
   2 corpus read    every mirrored page    -> a ledger disposition
   3 gaps verified  every backlog row      -> a vendor-verify check, or a stated reason it cannot run
-  4 fixed/filed    every defect found     -> a commit or an issue number
+  4 citations live every #NNN cited near staleness language -> that issue is not actually CLOSED
+                     (needs `gh`; SKIPPED, not failed, when it is unavailable -- see step4_stale_citations)
   5 what changed   every measured finding -> an architectural implication, or "no impact" + why
-  6 design         every decision 0001-28 -> reviewed, amended, superseded, or unaffected + why
+  6 design         every decision on disk -> reviewed, amended, superseded, or unaffected + why
   7 milestones     every open milestone   -> re-checked against the changes
-  8 build plan     every design decision  -> a sequenced piece of work
+  8 build plan     every design decision  -> a sequenced piece of work (not implemented -- judgement,
+                     not a join; see main())
 
 This script recomputes what is mechanically recomputable (populations, and which members carry a
 disposition) and prints what it CANNOT check, because a completeness checker that hides its own
@@ -23,20 +25,26 @@ blind spots is the thing it exists to prevent.
 
     pixi run audit-completeness
 
-SCOPE -- READ THIS BEFORE EXTENDING IT
---------------------------------------
-**This is a one-time instrument for #527, not a standing gate**, and it is deliberately not wired
-into CI. It exists so the audit's completeness claim can be checked by someone who does not trust
-it; once the audit is closed, its job is done and it should be left alone rather than grown.
+SCOPE
+-----
+**Corrected 2026-07-26.** This used to say "one-time instrument for #527, retire it if it ever
+fails, do not extend it." It was run cold nine days later and failed: 11 decisions (0031-0041) and
+2 vendor-verify checks (effort.claude-value-set, effort.agy-value-set) had accumulated with no
+disposition, invisible because nothing was re-running the check. That is the exact failure this
+project's docs/decisions/README.md gate exists to catch, caught by this tool instead, which is
+direct evidence the "let it die" instruction was wrong -- a completeness check whose population
+keeps growing (decisions/, vendor-verify checks) needs to keep running, not be frozen at the
+population it was born with.
 
-The distinction is worth stating because the thing it guards against is easy to become. Every check
-here verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any good. That is genuinely
-useful for catching a claim of "all N considered" when N-137 were unread, which is what it caught.
-It is worthless for catching a wrong judgement, and a gate that keeps running past its purpose
-starts costing maintenance while buying only the appearance of rigour.
+**It is now a standing check.** Still not wired into CI (steps 2/3/5 read local docs, cheap and
+fine there, but step 1's population is a judgement call nobody should make unattended) -- run it
+before a PR touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`
+ships, per CLAUDE.md gate 8.
 
-So: no new steps, no adoption for later milestones, and if a future change makes it fail, prefer
-retiring it over extending it. Rigour that is not buying correctness is ceremony.
+Every check here still verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any
+good. That limit is real and stays true whether this runs once or every PR: it catches an omission,
+not a wrong judgement. Extend it when a population grows (a new decision file, a new vendor-verify
+check, a new step worth enumerating) -- not for open-ended rigour with no named failure behind it.
 """
 from __future__ import annotations
 
@@ -319,6 +327,80 @@ def step6_decisions():
     return ok
 
 
+# Multi-word phrases only, and matched with word boundaries -- a first version used bare "open" and
+# "unknown" and got 43 hits, nearly all false: "reopened", "opened", milestone-history.md's routine
+# "M25 (closed)... which opened..." prose. A single word is too common in ordinary English to signal
+# staleness; these phrases are specific enough that a false hit is itself worth a look.
+STALENESS_PHRASES = (
+    "still open", "still unknown", "remains open", "not yet landed", "not yet resolved",
+    "not yet probed", "unprobed", "highest-value open", "no issue owns", "TODO",
+)
+# Excluded: archive/ is explicitly superseded material (docs/archive/README.md); milestone-history.md
+# is explicitly provenance ("what a past milestone did," README.md) and routinely narrates closed
+# issues in prose that legitimately contains words like "open" -- neither is drift.
+CITATION_DIRS = ("docs", "spec")
+CITATION_EXCLUDE = ("docs/archive/", "docs/decisions/README.md", "docs/milestone-history.md")
+ISSUE_RE = re.compile(r"#(\d{2,5})\b")
+
+
+def step4_stale_citations():
+    rule("STEP 4 -- no doc cites a closed issue as though it were still open")
+    gh = _shutil_which("gh")
+    if gh is None:
+        print("    SKIPPED -- `gh` not on PATH. This step needs it; it does not fail without it.")
+        return None
+    try:
+        out = subprocess.run(
+            ["gh", "issue", "list", "--repo", "aer-works/aer-flow", "--state", "all",
+             "--limit", "1000", "--json", "number,state"],
+            capture_output=True, text=True, cwd=ROOT, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        print("    SKIPPED -- `gh` did not respond (offline, or not authenticated).")
+        return None
+    if out.returncode != 0:
+        print(f"    SKIPPED -- `gh issue list` failed: {out.stderr.strip()[:200]}")
+        return None
+    import json
+    try:
+        issues = {i["number"]: i["state"] for i in json.loads(out.stdout)}
+    except (ValueError, KeyError):
+        print("    SKIPPED -- could not parse `gh issue list` output.")
+        return None
+    if not issues:
+        print("    SKIPPED -- `gh` returned zero issues; treating as not-actually-queryable.")
+        return None
+
+    findings = []
+    for base in CITATION_DIRS:
+        for dirpath, _, filenames in os.walk(os.path.join(ROOT, base)):
+            for fn in filenames:
+                if not fn.endswith(".md"):
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, fn), ROOT).replace("\\", "/")
+                if any(rel.startswith(x) or rel == x for x in CITATION_EXCLUDE):
+                    continue
+                for lineno, text in enumerate(read(rel).splitlines(), start=1):
+                    lowered = text.lower()
+                    if not any(re.search(r"\b" + re.escape(w) + r"\b", lowered)
+                               for w in STALENESS_PHRASES):
+                        continue
+                    for m in ISSUE_RE.finditer(text):
+                        n = int(m.group(1))
+                        if issues.get(n) == "CLOSED":
+                            findings.append((rel, lineno, n, text.strip()[:100]))
+
+    ok = line("closed issues cited as open/unresolved", len(findings), 0,
+              "each is a doc that has not caught up with GitHub")
+    for rel, lineno, n, snippet in findings:
+        print(f"      {rel}:{lineno}  cites #{n} (CLOSED)  -- {snippet}")
+    return ok
+
+
+def _shutil_which(name):
+    import shutil
+    return shutil.which(name)
+
+
 def git_state():
     rule("REPO STATE")
     for label, cmd in [("branch", ["git", "rev-parse", "--abbrev-ref", "HEAD"]),
@@ -335,22 +417,26 @@ def git_state():
 
 def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
-    results = [step1_sources(), step2_corpus(), step3_gaps(), step5_impact(),
-               step6_decisions(), step7_milestones()]
+    results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
+               step5_impact(), step6_decisions(), step7_milestones()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
         "That a finding's architectural implication is CORRECT -- only that one was recorded.",
-        "Steps 4 and 8. Step 4's population is GitHub issues, which needs the network; step 8's",
-        "  is the build plan, whose completeness is a judgement rather than a join.",
+        "Step 8's population is the build plan, whose completeness is a judgement, not a join.",
         "That the vendor-verify checks still pass -- run `pixi run vendor-verify` for that.",
         "Whether a source nobody thought of exists. Enumeration cannot find its own blind spot.",
         "Whether a 'no impact' or 'unaffected' call was the RIGHT call. It checks that a reason",
         "  was given, never that the reason is good.",
+        "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
+        "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
     ]:
         print(f"    - {x}")
     print()
-    return 0 if all(results) else 1
+    # step4 returns None when `gh` is unavailable -- that is "not checked", not "passed", so it
+    # is excluded from the pass/fail roll-up rather than counted either way.
+    checked = [r for r in results if r is not None]
+    return 0 if all(checked) else 1
 
 
 if __name__ == "__main__":

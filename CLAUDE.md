@@ -167,20 +167,29 @@ record; every other location links to it with at most a one-clause gloss, never 
 restating a fact in three places is how a stale one drifts silently in two of them. Before editing
 anything milestone-shaped, check `spec/journeys.md` first: it is the actual list of required
 outcomes, not whichever artifact happened to prompt the edit. Before changing a decision, check it
-against every other decision touching the same object, not only the ones it already cites. And
-before closing a PR touching `docs/decisions/`, confirm every decision dated on or after
-2026-07-25 carries the `Rests on` table that folder's own README makes mandatory — a pass that
-fixes drift while leaving a format violation behind has only relocated the problem.
+against every other decision touching the same object, not only the ones it already cites. Before
+citing an open issue as evidence that something is still unresolved, check its actual state — a
+closed issue cited as "not yet landed" is stale the moment it closes. And before closing a PR
+touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`, run
+`pixi run audit-completeness` and confirm every decision dated on or after 2026-07-25 carries the
+`Rests on` table that folder's own README makes mandatory — a pass that fixes drift while leaving a
+format violation behind has only relocated the problem.
 *M29's criterion was "corrected" to match `02-screens.md` without checking `journeys.md` first,
 directly contradicting J17. Phone-authoring timing was independently restated in three documents,
 one of which went stale while the other two didn't. 0032 was superseded by a new record instead of
-corrected in place, when nothing in `src/` had been built against it yet. Twelve decisions dated
-after `Rests on` became mandatory (0028, 0031–0041) shipped without one.*
+corrected in place, when nothing in `src/` had been built against it yet. Thirteen decisions dated
+after `Rests on` became mandatory (0026, 0028, 0031–0041) shipped without one, tracked in #589.
+`pixi run audit-completeness`, run cold nine days after it was last touched, found 11 decisions and
+2 vendor-verify checks with no disposition anywhere — the exact drift this gate exists to stop,
+caught by a tool whose own header at the time said to retire it rather than keep running it.*
 
 **The question underneath all eight: name the user-visible behaviour this change improves.** If you
 cannot, it may be ceremony — and rigour that is not buying correctness is what this project keeps
-having to cut back out. `tools/audit-completeness` is scoped one-time for exactly that reason, and
-these gates are deliberately not given a checker of their own.
+having to cut back out. `tools/audit-completeness` is a standing check for exactly that reason —
+extend its population when `decisions/` or `tools/vendor-verify/verify.py` grows, never for
+open-ended rigour with no named failure behind it. These other gates stay deliberately without a
+checker of their own; this one earned one because its population (decision files, vendor-verify
+checks) is enumerable and its omissions are otherwise invisible.
 
 ---
 
