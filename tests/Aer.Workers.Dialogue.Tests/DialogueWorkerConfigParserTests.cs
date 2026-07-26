@@ -81,6 +81,51 @@ public class DialogueWorkerConfigParserTests
         Assert.Contains("{PROMPT}", ex.Message);
     }
 
+    /// <summary>
+    /// #579 regression: DialogueParticipantPresets.For builds participants with
+    /// DialogueParticipant.PromptFilePlaceholder embedded inside a longer instruction string, not the
+    /// exact-match DialogueParticipant.PromptPlaceholder this class's other tests use. A config built
+    /// this way — the shape aer-dialogue actually loads for any preset-based participant — must parse.
+    /// </summary>
+    [Fact]
+    public void A_participant_using_the_prompt_file_placeholder_parses()
+    {
+        var config = new DialogueWorkerConfig(
+            SeedPrompt: "Propose a design.",
+            TurnBudget: 4,
+            FinalOutputName: "transcript-summary.md",
+            StopSentinel: null,
+            Participants:
+            [
+                DialogueParticipantPresets.For("claude", "initiator", "You are the architect.", model: null),
+                DialogueParticipantPresets.For("gemini", "responder", "You are the critic.", model: null),
+            ]);
+        var json = System.Text.Json.JsonSerializer.Serialize(config);
+
+        var parsed = DialogueWorkerConfigParser.Parse(json);
+
+        Assert.Contains(
+            parsed.Participants[0].Args,
+            a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
+        Assert.Contains(
+            parsed.Participants[1].Args,
+            a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The negative arm of the above: a participant with neither placeholder — not even embedded in a
+    /// longer string — must still be rejected. Guards against loosening the {PROMPT_FILE} check to
+    /// substring-match without keeping this failure mode covered.
+    /// </summary>
+    [Fact]
+    public void A_participant_with_neither_placeholder_throws()
+    {
+        var json = ValidJson.Replace("""["-p", "{PROMPT}"]""", """["-p", "no placeholder here"]""");
+
+        var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
+        Assert.Contains("{PROMPT}", ex.Message);
+    }
+
     [Fact]
     public void A_participant_missing_its_command_throws()
     {

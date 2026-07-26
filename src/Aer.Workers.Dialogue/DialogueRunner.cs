@@ -17,12 +17,18 @@ namespace Aer.Workers.Dialogue;
 /// is its speaker's <see cref="DialogueParticipant.Preamble"/>, the exchange's
 /// <see cref="DialogueWorkerConfig.SeedPrompt"/>, and every prior turn's role and text in order.
 /// <see cref="DialogueWorkerConfig.TurnBudget"/> is this worker's own config, and deliberately small
-/// (the phase plan's "bounded" exchange) — bounding it is what keeps the full transcript's size a
-/// non-issue for spike #21's CLI-argument-length realities without this worker inventing a
-/// token-budget or summarization scheme of its own. A model reasoning about the exchange needs the
-/// whole conversation to stay coherent across turns, not just the immediately preceding message —
-/// the same reason a human relaying every round by hand (§17.5, what this milestone automates) would
-/// naturally carry the whole thread forward, not just the last reply.
+/// (the phase plan's "bounded" exchange) — bounding it is what keeps cost and wall-clock time
+/// predictable without this worker inventing a token-budget or summarization scheme of its own. A
+/// model reasoning about the exchange needs the whole conversation to stay coherent across turns,
+/// not just the immediately preceding message — the same reason a human relaying every round by hand
+/// (§17.5, what this milestone automates) would naturally carry the whole thread forward, not just
+/// the last reply. This does <b>not</b> bound the size of what reaches the vendor CLI's own
+/// command-line, which would otherwise grow every turn: each turn's full prompt (preamble + seed +
+/// every prior turn) is written to a file in <paramref name="outputDirectory"/> and only that file's
+/// short path crosses the process boundary (see <see cref="ProcessVendorTurnClient"/> and
+/// <see cref="DialogueParticipant.PromptFilePlaceholder"/>) — issue #579 was a real crash from
+/// threading the whole transcript directly into argv on Windows, whose ~32,767-character
+/// command-line ceiling a long exchange eventually exceeded.
 /// </para>
 /// <para>
 /// <b>The stop signal is a literal substring of the turn's own text</b>, not a structured per-turn
@@ -54,8 +60,10 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
             {
                 var speaker = config.Participants[(sequence - 1) % config.Participants.Count];
                 var prompt = BuildPrompt(speaker, config.SeedPrompt, turns);
+                var promptPath = Path.Combine(outputDirectory, $"prompt-turn-{sequence}.txt");
+                await File.WriteAllTextAsync(promptPath, prompt, cancellationToken).ConfigureAwait(false);
 
-                var result = await turnClient.SendTurnAsync(speaker, prompt, cancellationToken).ConfigureAwait(false);
+                var result = await turnClient.SendTurnAsync(speaker, promptPath, cancellationToken).ConfigureAwait(false);
 
                 if (result.ExitCode != 0)
                 {
