@@ -30,8 +30,9 @@ namespace Aer.Workers.Dialogue;
 /// </param>
 /// <param name="Command">The executable to spawn for this participant's turns (e.g. <c>claude</c>, <c>agy</c>, or a test stub binary/script).</param>
 /// <param name="Args">
-/// The literal argument list passed to <see cref="Command"/>, with exactly one element equal to
-/// the literal token <c>"{PROMPT}"</c> substituted with the turn's actual prompt text at spawn
+/// The literal argument list passed to <see cref="Command"/>, with elements containing
+/// <see cref="PromptPlaceholder"/> (<c>"{PROMPT}"</c>) substituted with prompt text or
+/// <see cref="PromptFilePlaceholder"/> (<c>"{PROMPT_FILE}"</c>) substituted with a prompt file path at spawn
 /// time (see <see cref="ProcessVendorTurnClient"/>). Every element is its own process argument —
 /// no shell is involved, so no quoting/escaping question exists for this skeleton the way it does
 /// for <c>Aer.Adapters</c>'s shell-wrapped invocations.
@@ -46,4 +47,7 @@ public sealed record DialogueParticipant(
 {
     /// <summary>The literal <see cref="Args"/> token <see cref="ProcessVendorTurnClient"/> substitutes with the actual prompt text.</summary>
     public const string PromptPlaceholder = "{PROMPT}";
+
+    /// <summary>The literal <see cref="Args"/> token <see cref="ProcessVendorTurnClient"/> substitutes with the path to a prompt file on disk.</summary>
+    public const string PromptFilePlaceholder = "{PROMPT_FILE}";
 }

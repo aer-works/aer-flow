@@ -165,4 +165,37 @@ public class ProcessVendorTurnClientEndToEndTests
             }
         }
     }
+
+    [Fact]
+    public async Task A_long_prompt_exceeding_win32_command_line_limit_succeeds_without_crashing()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-{Guid.NewGuid():N}");
+        var scriptDirectory = Path.Combine(root, "scripts");
+        var outputDirectory = Path.Combine(root, "output");
+        try
+        {
+            var largePreamble = new string('x', 40000);
+            var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", largePreamble, " [drafted]");
+            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "Responder preamble", " [reviewed]");
+            var config = new DialogueWorkerConfig(
+                SeedPrompt: "Design a cache.",
+                TurnBudget: 1,
+                FinalOutputName: "transcript-summary.md",
+                StopSentinel: null,
+                Participants: [initiator, responder]);
+
+            var runner = new DialogueRunner(new ProcessVendorTurnClient());
+            var turns = await runner.RunAsync(config, outputDirectory);
+
+            Assert.Single(turns);
+            Assert.Contains(largePreamble, turns[0].Text);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                DirectoryCleanup.DeleteRecursively(root);
+            }
+        }
+    }
 }

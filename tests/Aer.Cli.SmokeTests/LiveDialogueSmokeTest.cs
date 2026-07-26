@@ -84,10 +84,12 @@ public class LiveDialogueSmokeTest
     /// side) — this is a smoke test proving the wiring, not a real debate, so it stays cheap and fast
     /// exactly like <c>LiveClaudeRunSmokeTest</c>'s single-sentence draft prompt does for the same
     /// reason. Each participant spawns the real CLI directly (<see cref="DialogueParticipant.Command"/>/
-    /// <see cref="DialogueParticipant.Args"/>, substituted by <see cref="ProcessVendorTurnClient"/> —
-    /// no shell involved, so no quoting question the way <see cref="ClaudeWorkerAdapter"/>/
-    /// <see cref="GeminiWorkerAdapter"/>'s top-level dispatch has), using the same flags those two
-    /// adapters build for a one-shot text turn with no file I/O of its own.
+    /// <see cref="DialogueParticipant.Args"/>, built by <see cref="DialogueParticipantPresets"/> and
+    /// substituted by <see cref="ProcessVendorTurnClient"/> — no shell involved, so no quoting question
+    /// the way <see cref="ClaudeWorkerAdapter"/>/<see cref="GeminiWorkerAdapter"/>'s top-level dispatch
+    /// has), reading its per-turn prompt from a file <see cref="DialogueRunner"/> writes rather than
+    /// receiving it on argv (#579) — the same mechanism <see cref="ProcessVendorTurnClientEndToEndTests"/>
+    /// proves against stub CLIs, this test proves against the real ones.
     /// </summary>
     private static async Task<string> WriteDialogueBindingsAsync(string directory)
     {
@@ -109,14 +111,14 @@ public class LiveDialogueSmokeTest
             // cost real money while this line still read as cheap.
             Participants:
             [
-                new DialogueParticipant(
-                    "initiator", "claude", "claude-haiku-4-5-20251001",
+                DialogueParticipantPresets.For(
+                    "claude", "initiator",
                     "You are debating in favor of the position. Respond in one sentence.",
-                    "claude", ["-p", DialogueParticipant.PromptPlaceholder, "--allowedTools", "Write", "--output-format", "text", "--model", "claude-haiku-4-5-20251001"]),
-                new DialogueParticipant(
-                    "responder", "gemini", "gemini-3.6-flash-low",
+                    "claude-haiku-4-5-20251001"),
+                DialogueParticipantPresets.For(
+                    "gemini", "responder",
                     "You are debating against the position. Respond in one sentence.",
-                    "agy", ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits", "--model", "gemini-3.6-flash-low"]),
+                    "gemini-3.6-flash-low"),
             ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");

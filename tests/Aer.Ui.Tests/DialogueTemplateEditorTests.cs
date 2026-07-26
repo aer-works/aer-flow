@@ -92,7 +92,7 @@ public class DialogueTemplateEditorTests
             Assert.Equal(["architect", "critic", "arbiter"], sidecarConfig.Participants.Select(p => p.Role));
             Assert.Equal(["claude", "gemini", "claude"], sidecarConfig.Participants.Select(p => p.Vendor));
             Assert.Equal("claude-haiku-4-5", sidecarConfig.Participants[2].Model);
-            Assert.Contains(DialogueParticipant.PromptPlaceholder, sidecarConfig.Participants[0].Args);
+            Assert.Contains(sidecarConfig.Participants[0].Args, a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
 
             // Reopening loads the sidecar's content back into structured fields — never re-parsed by
             // the test itself, and the reopened session isn't dirty (true round-trip fidelity).
