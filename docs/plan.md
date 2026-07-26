@@ -25,12 +25,22 @@ to the sources that already keep it, each with its own gate:
 | what the *engine* does | [`spec/`](../spec/) behavioural specs | the test suite |
 | an issue's live state | the **[milestones](https://github.com/aer-works/aer-flow/milestones)** (M26–M30) / project board | GitHub |
 | what a *past* milestone shipped | [`docs/milestone-history.md`](milestone-history.md) | append-only; provenance, never authority |
+| whether a specific vendor fact is still measured/current | [`docs/vendor-capabilities.md`](vendor-capabilities.md) / `docs/vendor-*.md` | `pixi run vendor-verify` sentinels, re-runnable on demand |
 
 **The gate.** `tests/Aer.Plan.Tests` runs in default CI and fails the build if this file drifts from
 those sources — every decision it names must exist in `docs/decisions/` and match the index, and
 every journey it references must exist in `spec/journeys.md`. A plan that can lie about a decision or
 a promise is a plan that rots; this is the check that stops it, the same way #314 stops the
 journeys' statuses from rotting.
+
+**The last row has no test behind it, deliberately.** "Is this vendor fact still true" is a claim
+about prose, not a reference that resolves or fails to — the same reason this project doesn't build
+a checker for the gates themselves (`CLAUDE.md`, "Cost and reversibility are the operator's call").
+A decision-table row or open question that restates a *measured* status (rather than citing the
+`vendor-verify` sentinel or doc section that carries it) is exactly how `#583` went stale: 0023's row
+said "the mapping itself is unmeasured and gated on a probe" long after `#572`/`#573` shipped it,
+and nothing caught that because nothing here transcribes a fact that could rot — it should have
+pointed at the sentinel instead. Write every row in this file the second way, not the first.
 
 ## Decisions in force
 
@@ -60,7 +70,7 @@ Recorded in [`docs/decisions/`](decisions/) (#316), never edited to change meani
 | [0020](decisions/0020-one-state-machine.md) | **One state machine** — every surface renders the room's state, none derives its own, which makes #467/#468 impossible rather than merely fixed. Absence is not a state; a failure's reason is content in the room, not a status word with a drill-in. |
 | [0021](decisions/0021-artifacts-are-files.md) | **Artifacts are files** — vendor-neutral, versioned, attributed, explicitly attached. One file list; the only distinction is "in your project" or not, and execution directories are never surfaced. Saving into a project is diff-and-choose, never a default overwrite. |
 | [0022](decisions/0022-permission-ladder-and-denial-is-an-answer.md) | **The permission ladder is offered where the question is asked**, never only in settings, and **a denial is a real answer** the worker is told about and continues from. `y`/`n` never on `Enter`; a pending permission dies with its turn everywhere at once. Amends 0004. |
-| [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) | **Effort is named by behaviour** (quick/standard/careful/exhaustive) and **models are offered by purpose** (deep/balanced/fast), mapped in the adapter per Rule 2 — never a vendor's own flag value in the UI. Corrects 0017's naming clause; the mapping itself is unmeasured and gated on a probe. |
+| [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) | **Effort is named by behaviour** (quick/standard/careful/exhaustive) and **models are offered by purpose** (deep/balanced/fast), mapped in the adapter per Rule 2 — never a vendor's own flag value in the UI. Corrects 0017's naming clause; the mapping is now measured and shipped (`#572`/`#573`, `docs/vendor-capabilities.md`'s canonical effort mapping section, guarded by `vendor-verify` sentinels) — `#498` is the remaining UI/adapter work that consumes it. |
 | [0024](decisions/0024-commands-are-namespaced.md) | **Commands are namespaced by owner** — Room, then each vendor, plus `/ask-all` for everyone; canonical skills under Room and native ones under their vendor, both marked. No slash palette on a phone: the same set becomes an Actions sheet. Amends 0010. |
 | [0025](decisions/0025-a-step-is-an-instruction-with-a-gate-toggle.md) | **A step's instruction is its body**, previous output flows in implicitly and there is **no template language**; **"ask me first" is a property of a step**, not a node type. Amends 0014. |
 | [0026](decisions/0026-running-out-of-plan-is-a-state-not-a-failure.md) | **Running out of plan is a state with a reset time**, not a generic failure — a third `FailureClassification` value carrying the reset instant, per vendor, spending no retry budget. The dominant real failure for a subscription user, undecided since #18 closed silently and the types froze on the interim behaviour. Amends 0018's band for a rate-limited vendor. |
@@ -272,8 +282,10 @@ so.
 
 Genuinely undecided. Four earlier entries were closed by M25 and are recorded here as closed rather
 than deleted, because "we already answered that" is the cheapest thing for a plan to forget:
-directory-less rooms (#321, #331, #407 — a neutral scratch dir), and the typeface (#453/#456 shipped
-Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits).
+directory-less rooms (#321, #331, #407 — a neutral scratch dir), the typeface (#453/#456 shipped
+Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits), and the claude/agy effort mapping
+(#572/#573 measured and shipped it; #498 is the remaining, still-open UI/adapter work, not a reopening
+of the question).
 
 - **Does a room live in one folder forever?** Everything designed assumes one directory for life, and
   work spanning two repositories is normal. `#472` found `--add-dir` on both CLIs, so disjoint folders
@@ -281,9 +293,6 @@ Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits).
   than closed; see #443. It changes the object model, not a screen.
 - **Whether AER's per-session turn lock tolerates a turn held open** while a human answers a
   permission (#393 ↔ #445). The vendor half is measured; this half is not.
-- **How AER's canonical effort levels map onto each vendor's**, given `claude` exposes five and `agy`
-  three ([0023](decisions/0023-effort-and-models-are-named-by-behaviour.md) sets the rule and
-  deliberately leaves the mapping to a probe).
 - **Where a project's permission ceiling is stored and first presented** — 0004 sets the ceiling, not
   its home; moves with #338.
 - **Motion.** The visual direction is settled (**Quiet**, [0006](decisions/0006-visual-direction-quiet.md));
