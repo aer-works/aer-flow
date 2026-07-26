@@ -301,20 +301,23 @@ so.
 ## Open questions
 
 Genuinely undecided. Entries closed since M25 are recorded here as closed rather than deleted,
-because "we already answered that" is the cheapest thing for a plan to forget: directory-less rooms
-(#321, #331, #407 — a neutral scratch dir), the typeface (#453/#456 shipped Source Sans 3 +
-JetBrains Mono as in-repo assets on both toolkits), the claude/agy effort mapping (#572/#573 measured
-and shipped it; #498 is the remaining, still-open UI/adapter work, not a reopening of the question),
-where a project's permission ceiling is stored (`#338` —
-[0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) settled it: AER's own
-app-config, keyed by project path), and whether the per-session turn lock tolerates a turn held open
-while a human answers a permission (`#393` ↔ `#445` —
-[0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) settled it as a design
-constraint on the not-yet-built answer path, since there is no implementation yet to measure), and
-whether a delegated implementer/reviewer loop can run without a human calling `aer decide` (it never
-was open — [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) found 0019 already
-forecloses it: the workflow shape needs no new primitive, but the terminal `PausePoint(ReadyForReview)`
-stays a human's own decision, always).
+because "we already answered that" is the cheapest thing for a plan to forget:
+
+- Directory-less rooms (#321, #331, #407 — a neutral scratch dir).
+- The typeface (#453/#456 shipped Source Sans 3 + JetBrains Mono as in-repo assets on both toolkits).
+- The claude/agy effort mapping (#572/#573 measured and shipped it; #498 is the remaining, still-open
+  UI/adapter work, not a reopening of the question).
+- Where a project's permission ceiling is stored (`#338` —
+  [0034](decisions/0034-project-permission-ceiling-lives-in-aers-own-config.md) settled it: AER's own
+  app-config, keyed by project path).
+- Whether the per-session turn lock tolerates a turn held open while a human answers a permission
+  (`#393` ↔ `#445` — [0037](decisions/0037-permission-answers-never-share-the-turn-lock.md) settled
+  it as a design constraint on the not-yet-built answer path, since there is no implementation yet to
+  measure).
+- Whether a delegated implementer/reviewer loop can run without a human calling `aer decide` (it never
+  was open — [0038](decisions/0038-a-reviewer-verdict-never-calls-aer-decide.md) found 0019 already
+  forecloses it: the workflow shape needs no new primitive, but the terminal
+  `PausePoint(ReadyForReview)` stays a human's own decision, always).
 
 - **A room lives in one directory for the M26–M30 horizon, deliberately.** `#472` found `--add-dir`
   on both CLIs, so disjoint folders are feasible at the vendor level, and #443 tracks the idea — but
