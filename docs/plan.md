@@ -25,12 +25,22 @@ to the sources that already keep it, each with its own gate:
 | what the *engine* does | [`spec/`](../spec/) behavioural specs | the test suite |
 | an issue's live state | the **[milestones](https://github.com/aer-works/aer-flow/milestones)** (M26–M30) / project board | GitHub |
 | what a *past* milestone shipped | [`docs/milestone-history.md`](milestone-history.md) | append-only; provenance, never authority |
+| whether a specific vendor fact is still measured/current | [`docs/vendor-capabilities.md`](vendor-capabilities.md) / `docs/vendor-*.md` | `pixi run vendor-verify` sentinels, re-runnable on demand |
 
 **The gate.** `tests/Aer.Plan.Tests` runs in default CI and fails the build if this file drifts from
 those sources — every decision it names must exist in `docs/decisions/` and match the index, and
 every journey it references must exist in `spec/journeys.md`. A plan that can lie about a decision or
 a promise is a plan that rots; this is the check that stops it, the same way #314 stops the
 journeys' statuses from rotting.
+
+**The last row has no test behind it, deliberately.** "Is this vendor fact still true" is a claim
+about prose, not a reference that resolves or fails to — the same reason this project doesn't build
+a checker for the gates themselves (`CLAUDE.md`, "Cost and reversibility are the operator's call").
+A decision-table row or open question that restates a *measured* status (rather than citing the
+`vendor-verify` sentinel or doc section that carries it) is exactly how `#583` went stale: 0023's row
+said "the mapping itself is unmeasured and gated on a probe" long after `#572`/`#573` shipped it,
+and nothing caught that because nothing here transcribes a fact that could rot — it should have
+pointed at the sentinel instead. Write every row in this file the second way, not the first.
 
 ## Decisions in force
 
