@@ -5,21 +5,31 @@ Date: 2026-07-26
 
 ## Context
 
-`docs/design/01-definition.md` defines the room orchestrator as *"a pinnable role: which worker in
-the room is authorized to call `aer decide` on another's gate, standing in for the human.
-Human-assigned only, blocked while a gate is open, one per room at a time, and never retroactive."*
+An earlier draft of `docs/design/01-definition.md` defined the room orchestrator as *"a pinnable
+role: which worker in the room is authorized to call `aer decide` on another's gate, standing in for
+the human."* That framing does not survive contact with
+[0038](0038-a-reviewer-verdict-never-calls-aer-decide.md), written the same design pass: `aer decide`
+is called by a human, always, for every gate kind, with no orchestrator exception — a structured
+verdict from any worker is evidence a human weighs, never authority to close a gate itself
+([0019](0019-consulting-is-not-deciding.md)). Caught before either idea left this design pass, so
+this record states the corrected role directly rather than carrying the wrong one forward with a
+footnote.
 
-That covers *reassigning* the role in detail, but a design-readiness audit of the full M27 corpus
-found it silent on two adjacent questions: how the *first* orchestrator gets assigned when a room
-is created, and what happens if the current orchestrator is *removed from the room* (not
-reassigned). Both are real gaps — an engineer implementing room creation or worker removal has
-nothing to build against.
+Separately, the corrected role definition covered *reassigning* the role in detail but was silent on
+two adjacent questions: how the *first* orchestrator gets assigned when a room is created, and what
+happens if the current orchestrator is *removed from the room* (not reassigned). Both are real gaps
+— an engineer implementing room creation or worker removal needs an answer to build against.
 
 ## Decision
 
-**A room cannot exist without an orchestrator, and the current orchestrator cannot be removed
-directly.**
+**A room always has exactly one orchestrator. Its authority is a default addressing/attribution
+role, not a decision authority — it never calls `aer decide` on anyone's behalf.**
 
+- **What the role actually grants.** The orchestrator is where an otherwise-ambiguous routing choice
+  or an unattributed artifact/action is credited — a structural, Flow-routing fact
+  (Architecture Rule 1's "explicit tool return"), never a human-facing gate. It does **not** resolve
+  another worker's `PausePoint`, standing in for a human or otherwise; [0038](0038-a-reviewer-verdict-never-calls-aer-decide.md)
+  forecloses that for every worker, orchestrator included.
 - **First assignment.** A room requires at least one worker to exist at all. That first worker
   becomes the orchestrator by default the moment the room is created — there is no separate
   "assign an orchestrator" gesture at creation time, because there is no one else to choose from.
@@ -31,23 +41,23 @@ directly.**
   then removes the one that held it. This is one existing gesture applied twice, not a new
   mechanism.
 - **Authority is granted by an auto-bound Skill, not a special-cased field.** Being the
-  orchestrator means having the orchestrator Skill attached — "you may call `aer decide` on
-  another worker's gate, standing in for the human" — which AER attaches automatically to whichever
-  worker currently holds the role, and detaches on reassignment. This is the same skill-attachment
-  mechanism [0033](0033-skills-attach-directly-no-persona.md) uses for every other worker
-  capability, not a bespoke pinned-role flag. A worker can hold the orchestrator skill alongside any
-  others it has attached. Nothing about it depends on which vendor or model that worker is running.
+  orchestrator means having the orchestrator Skill attached, which AER attaches automatically to
+  whichever worker currently holds the role, and detaches on reassignment. This is the same
+  skill-attachment mechanism [0033](0033-skills-attach-directly-no-persona.md) uses for every other
+  worker capability, not a bespoke pinned-role flag. A worker can hold the orchestrator skill
+  alongside any others it has attached. Nothing about it depends on which vendor or model that
+  worker is running.
 
 ## Consequences
 
-**Easier.** Removes an entire class of "what if there's no orchestrator" questions — a gate
-awaiting orchestrator sign-off, a notification routing decision, an empty-state screen — none of
-them need to exist, because the state they'd handle can't occur.
+**Easier.** Removes an entire class of "what if there's no orchestrator" questions — a notification
+routing decision, an empty-state screen — none of them need to exist, because the state they'd
+handle can't occur.
 
 **Harder.** Removing a worker now sometimes requires a second step (reassign, then remove) instead
-of one. This is a deliberate trade — a silently-orphaned room with no one authorized to act on
-gates is worse than one extra click on the uncommon path of removing the specific worker who
-currently holds the role.
+of one. This is a deliberate trade — a silently-orphaned room with no default addressee is worse
+than one extra click on the uncommon path of removing the specific worker who currently holds the
+role.
 
 **Obliges us to.** Update `docs/design/01-definition.md`'s orchestrator entry and
 `docs/design/02-screens.md`'s reassignment/removal sections to state the invariant explicitly,

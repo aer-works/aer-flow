@@ -124,7 +124,7 @@ Two rules for the column:
 | [0029](0029-the-gate-is-three-mechanisms.md) | The gate is three mechanisms with three populations, not one (amends 0015) | accepted |
 | [0030](0030-aer-is-its-own-notifier.md) | AER is its own notifier: no vendor event announces a pause (amends 0018) | accepted |
 | [0031](0031-skills-are-account-wide.md) | Skills are account-wide, not project-scoped: one library per person (resolves an open question in 0010) | accepted |
-| [0032](0032-room-orchestrator-is-mandatory.md) | A room always has exactly one orchestrator: first worker added by default, removal refused until reassigned | accepted |
+| [0032](0032-room-orchestrator-is-mandatory.md) | A room always has exactly one orchestrator: first worker added by default, removal refused until reassigned; authority is a default addressing role, never a decision authority | accepted |
 | [0033](0033-skills-attach-directly-no-persona.md) | Skills attach directly to a worker; there is no Persona object | accepted |
 | [0034](0034-project-permission-ceiling-lives-in-aers-own-config.md) | A project's permission ceiling lives in AER's own app-config, keyed by project path (resolves an open obligation in 0004) | accepted |
 | [0035](0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) | `aer yield` is a structured MCP tool call, not a text sentinel — reuses 0029's mechanism, needs none of its held-open complexity | accepted |
@@ -132,3 +132,4 @@ Two rules for the column:
 | [0037](0037-permission-answers-never-share-the-turn-lock.md) | A permission answer must never share the per-session turn lock a pending turn already holds (resolves #393↔#445) | accepted |
 | [0038](0038-a-reviewer-verdict-never-calls-aer-decide.md) | A reviewer's verdict is evidence for a human decision, never the decision itself — 0019 already forecloses an auto-deciding implementer/reviewer loop | accepted |
 | [0039](0039-dialogue-turns-use-vendor-session-continuation-not-full-history-resend.md) | A dialogue turn resumes the vendor's own session instead of resending the whole transcript — closes #581 and #582 together, since both trace to the same full-history-resend design | accepted |
+| [0040](0040-needs-you-groups-by-kind-and-actions-alone-defer.md) | Within "needs you," gates group by kind (0015's three) and each gets its own affordance; only an action may say "Later" | accepted |
