@@ -1718,6 +1718,69 @@ def _agy_allow():
             print(f"  !! RESTORE MISMATCH -- backup kept at {backup}", file=sys.stderr)
 
 
+# ==================================================================== effort
+# 0023 requires the canonical (quick/standard/careful/exhaustive) -> vendor effort mapping to rest
+# on the vendor's OWN documented set, not a measured behavioural study -- but that only stays true
+# if a vendor changing its set gets caught, so this is the sentinel that makes the "we'll know when
+# it changes" claim actually true rather than assumed.
+#
+# Neither vendor's --help was trusted for this (vendor-doc-audit.md already found --help incomplete
+# on other flags), so both checks below force the CLI to state its own valid set by deliberately
+# passing a value that will never be real. The two vendors do not fail the same way for an unknown
+# value -- a real divergence, not a shared mechanism: claude falls back to its default effort with a
+# stderr WARNING and still answers (exit 0); agy hard-errors (exit 1). Both messages happen to name
+# the current valid set, which is what each check parses back.
+EFFORT_VALUES = {
+    "claude": {"low", "medium", "high", "xhigh", "max"},
+    "agy": {"low", "medium", "high"},
+}
+
+
+def _parse_effort_set(text, pattern):
+    m = re.search(pattern, text)
+    if not m:
+        return None
+    return {v.strip() for v in m.group(1).split(",") if v.strip()}
+
+
+def _effort_set_result(found, expected):
+    if found is None:
+        return INCONCLUSIVE, "could not parse a valid-value list out of the CLI's own output -- " \
+                              "its error/warning format for an unknown --effort value moved"
+    if found == expected:
+        return PASS, f"unchanged: {sorted(found)}"
+    added, removed = sorted(found - expected), sorted(expected - found)
+    return FAIL, f"value set changed -- added={added or 'none'}, removed={removed or 'none'} " \
+                 f"(now: {sorted(found)}, was: {sorted(expected)})"
+
+
+@check("effort.claude-value-set", "effort",
+       "claude's --effort accepts exactly {low, medium, high, xhigh, max} -- no fewer, no more",
+       sentinel=True)
+def _effort_claude_set():
+    """An explicit --model is passed so the harness's own cheap-tier injection (which would add a
+    second, conflicting --effort) is skipped -- see model_flags()/run(). claude does not error on
+    an unknown value; it warns on stderr and still answers (measured: exit 0, PONG still printed).
+    """
+    rc, out, err = run(["claude", "-p", "reply with exactly the word PONG",
+                        "--model", "haiku", "--effort", "__aer-sentinel-probe__"])
+    found = _parse_effort_set(out + err, r"Valid values:\s*([a-z, ]+)\.")
+    return _effort_set_result(found, EFFORT_VALUES["claude"])
+
+
+@check("effort.agy-value-set", "effort",
+       "agy's --effort accepts exactly {low, medium, high} -- no fewer, no more",
+       sentinel=True)
+def _effort_agy_set():
+    """agy hard-errors on an unknown --effort value (measured: exit 1) -- unlike claude's silent
+    fallback above, a genuine vendor divergence on the identical input class, not a shared mechanism.
+    """
+    rc, out, err = run(["agy", "-p", "reply with exactly the word PONG",
+                        "--model", "gemini-3.6-flash-low", "--effort", "__aer-sentinel-probe__"])
+    found = _parse_effort_set(out + err, r"\(valid:\s*([a-z, ]+)\)")
+    return _effort_set_result(found, EFFORT_VALUES["agy"])
+
+
 def project_slug_root():
     """Claude records a transcript per working directory under the config root.
 
@@ -1753,7 +1816,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--only", help="a group (gate | fanout | cost | lifecycle | agy) or a check-name prefix")
+    ap.add_argument("--only", help="a group (gate | fanout | cost | lifecycle | agy | effort) or a check-name prefix")
     ap.add_argument("--sentinels", action="store_true",
                     help="run ONLY the checks whose result a design already depends on, so a "
                          "vendor change there would break AER silently. This is the set worth "

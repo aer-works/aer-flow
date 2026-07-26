@@ -292,6 +292,48 @@ Two things the design assumed otherwise:
 - `agy` serves **Anthropic and OpenAI models too**, not only Gemini. "The Gemini worker" is the wrong
   mental model for it.
 
+## The canonical effort mapping (`quick`/`standard`/`careful`/`exhaustive`)
+
+**Decided 2026-07-25, resting on the vendor's own documented value set, not a behavioural
+distinguishability study.** 0023 requires this mapping to be measured before it is written; this
+record deliberately narrows *what* gets measured. Whether `high` and `xhigh` produce a
+distinguishably different run was judged not worth a live measurement campaign to answer — instead,
+[`tools/vendor-verify`](../tools/vendor-verify/verify.py)'s two new sentinels
+(`effort.claude-value-set`, `effort.agy-value-set`, `--sentinels`-covered) guard the one thing this
+mapping actually depends on: that each vendor's *set* of accepted values hasn't moved. If a vendor
+adds, removes, or renames a level, the sentinel fails the next time it's re-run — the "we'll know
+when it changes" property is now real, not assumed.
+
+| canonical | `claude` | `agy` |
+|---|---|---|
+| `quick` | `low` | `low` |
+| `standard` | `medium` | `medium` |
+| `careful` | `high` | `high` |
+| `exhaustive` | `max` | `high` *(collapsed)* |
+
+**Disclosed collapse, per 0023's own rule.** `agy` has no fourth level — `careful` and `exhaustive`
+both resolve to `agy`'s `high`, and the UI must say so at the point of choosing rather than let two
+visibly different canonical choices silently produce the same run. `claude`'s `xhigh` is not reached
+by any canonical level; it remains available only as a raw, unvalidated escape hatch (the same path
+`#566` already threads through `WorkerInvocation.Effort`), not through the canonical picker.
+
+**A genuine vendor divergence, measured while building the sentinel above, worth its own line: the
+two vendors fail an unknown `--effort` value in opposite directions.** `agy` hard-errors (exit 1) and
+refuses to run. `claude` does not error at all — it silently falls back to its **default** effort,
+prints a warning on stderr, and still executes the turn (exit 0):
+
+```
+$ claude -p "..." --effort __not-a-real-value__
+Warning: Unknown --effort value '__not-a-real-value__' — ignoring it and using the default effort. Valid values: low, medium, high, xhigh, max.
+```
+
+This matters operationally, not just as trivia: if a malformed or mismapped effort string ever
+reached `claude` through the raw passthrough (`#566`), the run would **not** fail — it would quietly
+run at a different effort than requested, with the only signal being a stderr line AER does not
+currently surface anywhere. `agy` would at least abort loudly. Worth a defensive check wherever
+`#566`'s raw string is consumed, so a typo degrades to a visible failure on `claude` too rather than
+a silent, wrong-effort success.
+
 ## A blocking MCP tool holds a turn open — on both vendors
 
 The mechanism [0015](decisions/0015-three-kinds-of-needs-you.md) depends on. A dependency-free stdio
