@@ -42,7 +42,11 @@ read off Flow's existing projection. No second state machine is built for it.**
   structured way to reach Flow *while running* — the same shape of problem
   [0035](0035-aer-yield-is-a-structured-mcp-tool-not-a-sentinel.md) already solves for `aer yield`.
   **This rides on the same MCP server `#585` builds**, as a second tool (a gate-request signal)
-  alongside `yield`, not a separate mechanism.
+  alongside `yield`, not a separate mechanism. **Which orchestrator a gate-request escalates to is
+  read fresh at the moment the request is processed, never cached from when the Dialogue started** —
+  consistent with 0032's own framing that orchestrator authority is bound to whoever currently holds
+  the role, not to whoever held it at some earlier point. A reassignment mid-Dialogue therefore needs
+  no special handling: the next gate-request simply reaches the current holder.
 - **Budget extension is a new execution, not a resumed one.** Extending a completed Dialogue's turn
   budget starts a fresh dialogue-shaped step carrying the prior transcript as context (the same shape
   `Supersede`/`RetryWithRevision` already give a pipeline step), not a paused workflow waiting to be
