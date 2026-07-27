@@ -52,10 +52,17 @@ Two things worth knowing before reaching for one:
 - **Precedence is explicit flag > template > built-in default**, so `--template review --model haiku`
   does what it says. That is intentional: the templates are a starting point you can override, not a
   lock.
-- **There are two permission shapes, not four.** `advise`, `review` and `fact-check` share one
-  read-only grant; only `implement` reaches write/shell/network, which is the path #596, #611, #623
-  and #624 all came from. So a session that only ever dispatches reviews never exercises that half of
-  AER — the value is in reaching for `implement` sometimes, not in the set being varied.
+- **Every template grants write, including the reviewing ones.** A worker satisfies its
+  `ProducedOutputs` contract only by writing the artifact into `AER_OUTPUT_DIR`, and a read-only
+  grant withholds the `Write` tool — so a read-only dispatch cannot succeed whatever it is asked to
+  do. Measured both ways on the cheap model: read-only → `Contract not satisfied`; `--write-files` →
+  `Succeeded`. A read-only dispatch is now refused here before it can spend; AER accepting the
+  unsatisfiable combination is [#629](https://github.com/aer-works/aer-flow/issues/629). **"Read-only
+  reviewer" is not currently expressible.**
+- **So the spread is one axis, not four shapes.** All four sit at read + write; only `implement` adds
+  shell + network, which is the path #596, #611, #623 and #624 all came from. A session that only
+  ever dispatches reviews never exercises that half of AER — the value is in reaching for `implement`
+  sometimes, not in the set being varied.
 
 A pinned `agy` model name is checked against `agy models` (as recorded in
 `docs/vendor-capabilities.md`) by STEP 9 of `pixi run audit-completeness` — the first draft of these

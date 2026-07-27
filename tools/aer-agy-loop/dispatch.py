@@ -135,20 +135,26 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 # reason having nothing to do with the thing under review? Yes -> a `-strong` template. No -> a cheap
 # one. That is why `fact-check` and `review` are different templates rather than one with a knob.
 #
-# WHY THE PERMISSION SHAPES DIFFER
-# The set spans TWO permission shapes, not four -- `advise`, `review` and `fact-check` all carry the
-# same read-only grant, and only `implement` reaches write/shell/network. Stated exactly rather than
-# as "a coverage matrix", which is what an earlier draft of this comment claimed while the dict
-# directly below it showed three identical rows.
-#   * read-only, no shell  (3 templates) -> the plainest grant; the control the other shape is read
-#                                           against
-#   * write + shell + network (implement) -> agy's `--dangerously-skip-permissions` translation, which
-#                                           is where #596, #611, #623 and #624 all live. Its 40-minute
-#                                           timeout also exercises `--print-timeout` derivation
-#                                           (#588), which silently truncated at 5 minutes before that
-#                                           landed.
-# So the value is real but narrower than "four distinct shapes": routinely dispatching the second
-# shape is what has surfaced AER defects, and a session that only ever reviews never touches it.
+# WHY THE PERMISSION SHAPES DIFFER -- AND HOW SMALL THAT DIFFERENCE ACTUALLY IS
+# Corrected twice, both times downward, so read this rather than the shape you expect.
+#
+# EVERY template grants WriteFiles, including the review and fact-check ones. Not an oversight: a
+# worker satisfies its ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and
+# `WriteFiles: false` withholds the Write tool, so a read-only dispatch CANNOT succeed no matter what
+# it is asked to do. Measured on the cheap model, both arms: read-only -> "Contract not satisfied";
+# --write-files -> "Succeeded". The three "read-only" templates shipped broken in this file's first
+# draft and one of them wasted a 9-minute opus run proving it. `dispatch.py` now refuses a read-only
+# dispatch outright; AER accepting the unsatisfiable combination is #629.
+#
+# So the real spread is ONE axis, not four shapes:
+#   * read + write            (advise, review, fact-check) -- the floor; anything less cannot report
+#   * + shell + network       (implement) -> agy's `--dangerously-skip-permissions` translation, which
+#                                is where #596, #611, #623 and #624 all live. Its 40-minute timeout
+#                                also exercises `--print-timeout` derivation (#588), which silently
+#                                truncated at 5 minutes before that landed.
+# The value is narrower than "a coverage matrix" -- an earlier draft claimed that while the dict below
+# showed three identical rows -- but it is not zero: a session that only ever reviews never touches
+# the shell/network path at all, and that path is where the AER defects have been.
 TEMPLATES = {
     "advise": {
         "_use": "Open design question with real options to weigh, BEFORE building. Cross-vendor on "
@@ -162,7 +168,7 @@ TEMPLATES = {
         # does not list at all -- #547's exact failure, committed by the file meant to prevent it.
         # STEP 9 of `pixi run audit-completeness` now checks these names against that register.
         "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
-        "read_files": True, "write_files": False,
+        "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
     },
@@ -180,7 +186,7 @@ TEMPLATES = {
                 "rationale asserts something. The default for any PR touching src/ or making a claim "
                 "in docs/. This is the tier that has actually caught the defects.",
         "adapter": "claude", "model": "opus", "effort": "xhigh",
-        "read_files": True, "write_files": False,
+        "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
     },
@@ -189,7 +195,7 @@ TEMPLATES = {
                 "list determines the work and a cheap model runs it. NOT for anything where noticing "
                 "something absent from the list is the point.",
         "adapter": "claude", "model": "haiku", "effort": "low",
-        "read_files": True, "write_files": False,
+        "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 15,
     },
@@ -274,6 +280,29 @@ def main() -> int:
             "as of this writing (--dangerously-skip-permissions is the only non-interactive shell "
             "unlock, and it unlocks network too) -- the adapter refuses this combination rather "
             "than over-granting. Pass --network-access too, or drop --run-shell-commands.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not args.write_files:
+        # Measured, not reasoned: dispatched the same prompt twice on the cheap model, changing only
+        # this flag. Read-only -> `Contract not satisfied: 'probe-out' is missing`. With
+        # --write-files -> `Succeeded`, and the file contained what was asked for.
+        #
+        # Every dispatch declares a ProducedOutputs contract, and the only way a worker satisfies one
+        # is by WRITING the artifact into AER_OUTPUT_DIR. `WriteFiles: false` resolves to
+        # `--disallowedTools Write,Edit` on claude (ClaudeWorkerAdapter's BuildDisallowedTools), so a
+        # read-only worker is structurally incapable of satisfying any contract -- it runs to
+        # completion, exits 0 naturally, and fails at the contract check with the whole run paid for.
+        #
+        # This bit the review dispatch for this very change: a 9-minute opus run produced nothing.
+        # Refused here, before spend, for the same reason the shell/network combination above is --
+        # AER itself accepting the unsatisfiable combination is #629.
+        print(
+            "error: WriteFiles is required. A worker satisfies its ProducedOutputs contract by "
+            "writing the artifact into AER_OUTPUT_DIR, and a read-only grant withholds the Write "
+            "tool -- so the run would burn its full budget and then fail the contract check. "
+            "Pass --write-files. 'Read-only' is not expressible here; see #629.",
             file=sys.stderr,
         )
         return 2
