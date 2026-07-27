@@ -57,7 +57,7 @@ Picking the instrument is most of the work. Three are in use here, in increasing
 | **hook fire count** + a discovery control on `PreToolUse` | the event occurred, and the config was loaded | nothing, *provided* the control arm fires |
 | **`SubagentStart`/`SubagentStop` timeline** | how many agents the CLI actually started, and their overlap | nothing the model can fake |
 
-`fanout.nesting-off-by-default` went through all three. Prose first (worthless — a model will
+`fanout.nesting-allowed-by-default` went through all three. Prose first (worthless — a model will
 describe a nested spawn it never performed), then a sentinel file (ambiguous — the middle subagent
 can just write the file itself, byte-identically), and finally counting spawns. Each redo was
 prompted by asking what *else* could produce the same observation.

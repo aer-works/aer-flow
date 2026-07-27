@@ -278,6 +278,75 @@ def step5_impact():
     return ok
 
 
+def step8_cited_checks_exist():
+    """Every vendor-verify check name cited anywhere in the tree is actually registered.
+
+    STEP 5 runs registered -> documented. This runs the inverse, citation -> registered, and the
+    inverse is the one that had never been checked.
+
+    Paid for by #554: a doc comment cited `agy.add-dir-grants-files-not-config` three times as the
+    measurement the agy permission gate rested on. No such check exists. The real neighbouring check
+    (`gate.add-dir-loads-no-config`) is claude-scoped and states the OPPOSITE. Nothing caught it --
+    not the build, not the tests, not this script, not the author re-reading his own diff. An
+    independent reviewer found it by running a grep nobody had thought to automate.
+
+    A fabricated citation is worse than an uncited claim: it reads as evidence, it survives review by
+    looking exactly like the real names around it, and the next person to trust it inherits a
+    conclusion that was never measured. Note the ordering that makes this non-optional -- CLAUDE.md
+    gate 1 had ALREADY been extended that same day with "run `verify.py --list` before claiming a
+    vendor fact is unmeasured", by the same author who then fabricated the name hours later. Prose
+    did not hold. This is the population gate 8 describes as earning a checker: enumerable, and
+    invisible when omitted.
+    """
+    rule("STEP 8 -- every cited vendor-verify check name actually exists")
+    verify = read("tools/vendor-verify/verify.py")
+    registered = set(re.findall(r'^@check\("([^"]+)"', verify, re.M))
+    if not registered:
+        print("    !! no @check registrations found -- cannot judge citations")
+        return False
+
+    # Derive the prefixes from the registrations rather than hardcoding them, so a new check group
+    # is covered the day it is added rather than the day someone remembers to update this list.
+    prefixes = sorted({name.split(".", 1)[0] for name in registered if "." in name})
+    # Every real check name carries at least one hyphen in its suffix; requiring that keeps prose
+    # like "the agy.hook family" and identifiers like `System.Text` out of the population.
+    pattern = re.compile(
+        r"\b(?:" + "|".join(re.escape(p) for p in prefixes) + r")\.[a-z0-9]+(?:-[a-z0-9]+)+\b")
+
+    # Names deliberately written down BECAUSE they do not resolve -- prose describing the #554
+    # fabrication. Kept as an explicit list with a reason rather than a looser regex, so the escape
+    # hatch is enumerable too: anything added here is a claim that a name is meant to dangle, and a
+    # reader can check that claim. Never add a name here to silence a real citation.
+    INTENTIONALLY_UNRESOLVED = {
+        "agy.add-dir-grants-files-not-config":
+            "the #554 fabrication itself, named in the prose that records it",
+    }
+
+    roots = ["src", "tools", "docs", "tests", "spec", "CLAUDE.md"]
+    exts = {".cs", ".py", ".md", ".json", ".ps1", ".sh"}
+    bad = {}
+    for root in roots:
+        if os.path.isfile(root):
+            paths = [root]
+        else:
+            paths = [os.path.join(d, f)
+                     for d, _, fs in os.walk(root) for f in fs
+                     if os.path.splitext(f)[1] in exts
+                     and "bin" not in d.split(os.sep) and "obj" not in d.split(os.sep)]
+        for path in paths:
+            for cited in set(pattern.findall(read(path))):
+                if cited not in registered and cited not in INTENTIONALLY_UNRESOLVED:
+                    bad.setdefault(cited, []).append(path.replace("\\", "/"))
+
+    ok = line("cited check names that resolve", "all" if not bad else f"{len(bad)} DO NOT",
+              "all", "a citation naming nothing reads as evidence and is not")
+    for cited, where in sorted(bad.items()):
+        print(f"      NOT REGISTERED: {cited}")
+        for w in sorted(where)[:4]:
+            print(f"          cited in {w}")
+    return ok
+
+
 def step7_milestones():
     rule("STEP 7 -- the milestone approach re-verified against the audit")
     plan = read("docs/plan.md")
@@ -435,7 +504,7 @@ def git_state():
 def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
-               step5_impact(), step6_decisions(), step7_milestones()]
+               step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 
@@ -77,12 +78,37 @@ public class GeminiWorkerAdapterTests
     }
 
     /// <summary>A directory-less room (#407's neutral-scratch case) must not emit an empty --add-dir.</summary>
+    /// <remarks>
+    /// <para>
+    /// Rewritten twice by #554. It originally counted <c>--add-dir</c> occurrences as a proxy for "no
+    /// empty value was emitted", which broke when the gate workspace added a second one. The first
+    /// rewrite asserted only that no value was blank — and an independent reviewer showed that was
+    /// weaker than the original in a way that mattered: changing the adapter to
+    /// <c>invocation.WorkingDirectory ?? Directory.GetCurrentDirectory()</c> would still pass, while
+    /// regressing #407 by binding the daemon's own cwd as the worker's workspace.
+    /// </para>
+    /// <para>
+    /// So it now pins the <b>exact set</b>. A future third <c>--add-dir</c> on a directory-less room
+    /// has to come through this test deliberately — which is the test doing its job, not failing for
+    /// the wrong reason.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void No_directory_add_dir_is_emitted_when_the_room_has_no_working_directory()
     {
         var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
-        Assert.Single(target.Args, arg => arg == "--add-dir");
+        var addDirValues = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .ToList();
+
+        var artifactsRootVar = OperatingSystem.IsWindows() ? "%AER_ARTIFACTS_ROOT%" : "$AER_ARTIFACTS_ROOT";
+
+        Assert.Equal(2, addDirValues.Count);
+        Assert.Equal(artifactsRootVar, addDirValues[0]);
+        Assert.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, addDirValues[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -107,14 +133,19 @@ public class GeminiWorkerAdapterTests
         return null;
     }
 
+    /// <remarks>
+    /// De-positioned by #554: this asserted <c>Args[6]</c>/<c>Args[7]</c>, which shifted when the
+    /// gate workspace added a second <c>--add-dir</c> pair. The claim was always "the model is
+    /// passed through", never "it sits at index 6" — <see cref="ArgValue"/> already existed for
+    /// exactly this and is what the neighbouring effort test uses.
+    /// </remarks>
     [Fact]
     public void A_model_is_passed_through_when_set()
     {
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Model: "gemini-3-pro"), ArchitectContract);
 
-        Assert.Equal("--model", target.Args[6]);
-        Assert.Equal("gemini-3-pro", target.Args[7]);
+        Assert.Equal("gemini-3-pro", ArgValue(target, "--model"));
     }
 
     [Fact]
@@ -309,5 +340,251 @@ public class GeminiWorkerAdapterTests
         Assert.Equal("--dangerously-skip-permissions", target.Args[2]);
         Assert.DoesNotContain("--mode", target.Args);
         Assert.Equal("--add-dir", target.Args[3]);
+    }
+
+    // ---------------------------------------------------------------- #554: the PreToolUse gate
+    //
+    // Decision 0029 makes the hook mandatory on every spawned worker. The tests below assert the
+    // three things that have to hold for it to actually gate anything: the workspace is handed to
+    // --add-dir (agy loads hooks from nowhere else, #538), the denied-tool list reaches the hook
+    // process (via the environment -- measured by the `agy.hook-env-inherited` sentinel), and the
+    // mapping covers the tools that would otherwise leak the withheld category.
+
+    private static string EnvValue(CoreDispatchTarget target, string name) =>
+        target.Environment!.Single(pair => pair.Name == name).Value;
+
+    [Fact]
+    public void Every_invocation_carries_the_agy_workspace_on_add_dir_so_the_gate_is_loaded()
+    {
+        // Unconditional, like #543's claude side: not only when a flow declares a gate. A hook
+        // installed only sometimes cannot be relied on by anything downstream.
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        var addDirValues = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .ToList();
+
+        Assert.Contains(addDirValues, dir =>
+            dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_gate_workspace_holds_a_hooks_file_naming_the_agy_hook_check_command()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        var workspace = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .Single(dir => dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+
+        var hooksPath = Path.Combine(workspace, ".agents", "hooks.json");
+        Assert.True(File.Exists(hooksPath), $"no hooks.json was written to '{hooksPath}'");
+
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(hooksPath));
+        var handler = doc.RootElement
+            .EnumerateObject().Single().Value      // hooks are keyed by an arbitrary NAME at the root
+            .GetProperty("PreToolUse")[0];
+        Assert.Equal("*", handler.GetProperty("matcher").GetString());
+
+        var command = handler.GetProperty("hooks")[0].GetProperty("command").GetString()!;
+        Assert.Contains("agy-hook-check", command, StringComparison.Ordinal);
+        // Shell-parsed, with no exec form available on this vendor: a raw Windows path's \U and \t
+        // would be read as escapes, so the path must be forward-slashed inside its quotes.
+        Assert.DoesNotContain('\\', command);
+    }
+
+    [Fact]
+    public void A_withheld_category_reaches_the_hook_through_the_environment()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false,
+                                        RunShellCommands: true, NetworkAccess: true);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("write_to_file", denied);
+        Assert.Contains("replace_file_content", denied);
+        Assert.Contains("multi_replace_file_content", denied);
+        // Polarity: the granted categories must NOT be withheld, or a gate that denies everything
+        // would pass the assertions above while breaking every worker.
+        Assert.DoesNotContain("view_file", denied);
+        Assert.DoesNotContain("run_command", denied);
+        Assert.DoesNotContain("search_web", denied);
+    }
+
+    [Fact]
+    public void Withholding_reads_also_withholds_the_tools_that_return_file_contents()
+    {
+        // grep_search returns file CONTENT, and list_dir/find_by_name disclose structure -- mapping
+        // ReadFiles to view_file alone leaves the withheld category reachable. Found by the
+        // implementation advisor reading agy's tool list against the first draft of this mapping.
+        var grant = new PermissionGrant(ReadFiles: false, WriteFiles: true,
+                                        RunShellCommands: true, NetworkAccess: true);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("view_file", denied);
+        Assert.Contains("grep_search", denied);
+        Assert.Contains("list_dir", denied);
+        Assert.Contains("find_by_name", denied);
+        Assert.DoesNotContain("write_to_file", denied);
+    }
+
+    [Fact]
+    public void Withholding_the_shell_also_withholds_control_of_background_shell_processes()
+    {
+        // manage_task sends stdin to and kills background commands, so withholding run_command
+        // alone leaves shell control reachable.
+        //
+        // Network is withheld here too, and not by choice: TryTranslatePermissionGrant refuses
+        // shell-without-network and network-without-shell outright, because the only agy flag that
+        // grants either grants both. So the two categories are expressible only together, and a
+        // shell-withheld grant is always also a network-withheld one on this vendor.
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true,
+                                        RunShellCommands: false, NetworkAccess: false);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("run_command", denied);
+        Assert.Contains("manage_task", denied);
+        Assert.DoesNotContain("view_file", denied);
+    }
+
+    [Fact]
+    public void An_invocation_with_no_grant_sets_the_variable_to_empty_rather_than_omitting_it()
+    {
+        // Always present so the value is AER's own rather than an inherited one. This does NOT
+        // make absent distinguishable from empty -- agy-hook-check collapses both to allow, see
+        // #600 -- so this asserts only what it can: the variable is set, and set to empty.
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.Equal(string.Empty, EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable));
+    }
+
+    [Fact]
+    public void The_denied_tools_variable_matches_the_cli_side_contract()
+    {
+        // Aer.Adapters cannot reference Aer.Cli, so this name is a plain string contract asserted
+        // on both sides. If they drift the hook reads an empty list and allows everything.
+        Assert.Equal("AER_HOOK_DENIED_TOOLS", GeminiWorkerAdapter.DeniedToolsVariable);
+    }
+
+    // Everything above asserts against the C# objects Resolve() builds and the JSON it writes --
+    // all of which would pass equally against a hook command that looks correct on paper and fails
+    // the instant agy spawns it. These spawn the command string out of the written hooks.json as a
+    // real child process, fed a real agy payload and the real environment variable.
+    //
+    // This matters more here than on the claude side, where the equivalent pair already exists
+    // (ClaudeWorkerAdapterTests.RunResolvedHookCommand). agy's handler has no exec form -- only a
+    // single shell-parsed `command` string -- and a hook that cannot start produces no stdout, which
+    // `agy.hook-malformed-stdout-fails-open` measured as an ALLOW. So on this vendor a hook that
+    // fails to launch is an ungated worker, silently, with no --disallowedTools backstop
+    // (`agy.permissions-are-global-only`). The `File.Exists` guard in BuildHooksJson checks the
+    // unquoted path and proves nothing about whether the assembled command can actually run.
+
+    [Fact]
+    public void The_written_hook_command_actually_denies_a_withheld_tool_when_spawned_for_real()
+    {
+        var (decision, reason) = RunWrittenHookCommand(
+            new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false),
+            """{"toolCall":{"name":"run_command","args":{"CommandLine":"ls"}},"stepIdx":1}""");
+
+        Assert.Equal("deny", decision);
+        Assert.Contains("run_command", reason);
+    }
+
+    [Fact]
+    public void The_written_hook_command_actually_allows_a_granted_tool_when_spawned_for_real()
+    {
+        // Same grant, same payload shape, different tool -- so neither verdict can come from a
+        // command that answers unconditionally.
+        var (decision, _) = RunWrittenHookCommand(
+            new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false),
+            """{"toolCall":{"name":"view_file","args":{"AbsolutePath":"x"}},"stepIdx":1}""");
+
+        Assert.Equal("allow", decision);
+    }
+
+    [Fact]
+    public void The_hook_assembly_carries_its_runtimeconfig_so_dotnet_can_load_it()
+    {
+        // Added on the claude side by #543's own review pass, for the same reason: asserting the
+        // .dll exists proves nothing about whether `dotnet <dll>` can start it. A missing
+        // .runtimeconfig.json makes the hook fail to launch -- which on agy reads as an allow.
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, "Aer.Cli.dll");
+        var runtimeConfigPath = Path.ChangeExtension(assemblyPath, ".runtimeconfig.json");
+
+        Assert.True(File.Exists(runtimeConfigPath),
+            $"'{runtimeConfigPath}' is missing, so `dotnet \"{assemblyPath}\"` cannot start the hook");
+    }
+
+    /// <summary>
+    /// Spawns the <c>command</c> string out of the written <c>hooks.json</c> and returns the parsed
+    /// verdict. Parsed, not substring-matched: agy parses this stream, and output that merely
+    /// contains "deny" while being invalid JSON is an allow.
+    /// </summary>
+    private static (string Decision, string Reason) RunWrittenHookCommand(
+        PermissionGrant grant, string stdin)
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var workspace = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .Single(dir => dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(workspace, ".agents", "hooks.json")));
+        var command = doc.RootElement
+            .EnumerateObject().Single().Value
+            .GetProperty("PreToolUse")[0]
+            .GetProperty("hooks")[0]
+            .GetProperty("command").GetString()!;
+
+        // agy hands this string to a shell. Which shell is not established anywhere in the repo
+        // (see the note in BuildHooksJson), so this splits the documented shape --
+        // `dotnet "<path>" agy-hook-check` -- rather than pretending to know. That means this test
+        // proves the *assembly and arguments* launch and behave, not that any particular shell
+        // parses the quoting correctly; the quoting itself is tracked separately.
+        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+)\s+""([^""]+)""\s+(\S+)$");
+        Assert.True(match.Success, $"hook command is not the expected `exe \"path\" arg` shape: {command}");
+
+        var startInfo = new ProcessStartInfo(match.Groups[1].Value)
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add(match.Groups[2].Value);
+        startInfo.ArgumentList.Add(match.Groups[3].Value);
+
+        var deniedVar = target.Environment!.First(e => e.Name == GeminiWorkerAdapter.DeniedToolsVariable);
+        startInfo.Environment[deniedVar.Name] = deniedVar.Value;
+
+        using var process = Process.Start(startInfo)!;
+        process.StandardInput.Write(stdin);
+        process.StandardInput.Close();
+        var stdout = process.StandardOutput.ReadToEnd();
+        var exited = process.WaitForExit(TimeSpan.FromSeconds(30));
+        Assert.True(exited, "agy-hook-check did not exit within 30s");
+
+        using var verdict = System.Text.Json.JsonDocument.Parse(stdout);
+        return (verdict.RootElement.GetProperty("decision").GetString()!,
+                verdict.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "");
     }
 }

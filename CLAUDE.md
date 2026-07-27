@@ -111,6 +111,19 @@ are theorising the one that was actually measured?
 finding that first is what the gate buys, whether or not you end up sharing the code. #532 was scoped
 to self-check a `PreToolUse` hook AER does not ship; the issue is real, its stated mechanism was not.*
 
+**Before claiming any vendor fact is unmeasured or undocumented, run both of these.** They are the
+two registers, and knowing one exists is not knowing the other does — every rediscovery so far has
+been someone checking one and concluding from silence:
+- `python tools/vendor-verify/verify.py --list` — every check, its claim, and whether it is a
+  sentinel. This is what "we measured that" looks like.
+- `docs/vendor-doc-audit.md` — doc-vs-reality findings, including behaviour verified by running it
+  that no check guards. This is what "we found that out" looks like.
+*Both were skipped in one afternoon on #554. Its body asserted agy's hooks had "no measured sentinel"
+when `--list` shows two, and an undocumented `modelName` field was announced as a new finding when
+`vendor-doc-audit.md` already recorded it twice — more thoroughly, across three hook events rather
+than the one measured. An issue body is a claim about the registers as they were the day it was
+written, never evidence about them today.*
+
 **2. V&V that actually verifies.** Red before green, *proven* — never a test written against
 already-fixed code. A **control arm that discriminates**, read first: if the control fails, the result
 is about the harness, not the product. Assert **polarity in both directions** when two behaviours are

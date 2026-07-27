@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 
@@ -34,6 +35,137 @@ namespace Aer.Adapters;
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
     private const string DefaultPermissionScope = "accept-edits";
+
+    /// <summary>
+    /// The environment variable carrying this invocation's denied-tool list to the
+    /// <c>PreToolUse</c> hook's own process (#554) — the agy-side counterpart of
+    /// <see cref="ClaudeWorkerAdapter.DeniedToolsVariable"/>, and deliberately the same variable
+    /// name: a worker is only ever one vendor, so the values differ while the channel need not.
+    /// Mirrored as a plain string on <c>AgyHookCheckCommand.DeniedToolsEnvironmentVariable</c>
+    /// because <c>Aer.Adapters</c> cannot reference <c>Aer.Cli</c>; both sides assert the literal
+    /// value in their own suite.
+    /// </summary>
+    /// <remarks>
+    /// That an agy hook subprocess inherits this at all is <b>measured, not assumed</b>:
+    /// <c>agy.hook-env-inherited</c> (a sentinel) confirms it. agy's own hook documentation says
+    /// nothing about environment inheritance where claude's states it explicitly, so reusing
+    /// claude's answer without measuring would have been the population-scope mistake gate 4 names.
+    /// </remarks>
+    public const string DeniedToolsVariable = ClaudeWorkerAdapter.DeniedToolsVariable;
+
+    /// <summary>
+    /// The name of the workspace directory AER owns and points every agy worker at, holding the
+    /// <c>.agents/hooks.json</c> carrying decision 0029's mandatory <c>PreToolUse</c> gate.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="AerPaths.WorkerLaunchConfig"/>'s root rather than sharing it: agy
+    /// discovers hooks only from a directory handed to <c>--add-dir</c>
+    /// (<c>agy.hooks-load-from-add-dir-not-only-cwd</c>), and <c>--add-dir</c> also grants the
+    /// worker <em>file access</em> to whatever it names. Pointing it at the launch-config root would
+    /// hand every worker read/write access to AER's other launch files; a dedicated leaf directory
+    /// keeps that blast radius to the hook file itself.
+    /// <para>
+    /// The worker can still write to that file, which sounds worse than it is:
+    /// <c>agy.hooks-json-cached-at-startup</c> (a sentinel) measures that agy reads the file once at
+    /// startup, so a worker cannot disable its own gate mid-run by deleting or rewriting it. Because
+    /// <see cref="EnsureAgyWorkspace"/> rewrites the file on every resolve, a tampered file cannot
+    /// survive into the next spawn either. What remains is untidiness, not a live bypass.
+    /// </para>
+    /// </remarks>
+    public const string AgyWorkspaceDirectoryName = "agy-workspace";
+
+    /// <summary>
+    /// agy's own tool names for each permission category — an entirely separate vocabulary from
+    /// claude's, not a renaming of it, which is why this cannot share
+    /// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c>.
+    /// </summary>
+    /// <remarks>
+    /// Taken from the tool list in <c>.vendor-survey/corpus/agy__hooks.md</c>. Two entries exist
+    /// because a narrower mapping leaks the category it withholds: <c>grep_search</c> returns file
+    /// <em>contents</em>, so withholding only <c>view_file</c> leaves reads reachable; and
+    /// <c>manage_task</c> sends stdin to and kills background shell processes, so withholding only
+    /// <c>run_command</c> leaves shell control reachable. <c>list_dir</c> and <c>find_by_name</c>
+    /// disclose directory structure rather than contents and are withheld with reads on the same
+    /// reasoning 0004's "fail closed" applies elsewhere.
+    /// </remarks>
+    private static readonly IReadOnlyList<string> ReadTools =
+        ["view_file", "list_dir", "find_by_name", "grep_search"];
+
+    /// <remarks>
+    /// <c>generate_image</c> is here because the corpus describes it as "Create or edit images" with
+    /// an <c>ImageName</c> and <c>ImagePaths</c> — a file creation and modification path, not a
+    /// rendering-only one.
+    /// </remarks>
+    private static readonly IReadOnlyList<string> WriteTools =
+        ["write_to_file", "replace_file_content", "multi_replace_file_content", "generate_image"];
+
+    /// <remarks>
+    /// <para>
+    /// The subagent trio is withheld with the shell because it is agy's closest analogue to claude's
+    /// <c>Task</c>, and because of a bypass an independent reviewer found in the first draft:
+    /// <c>define_subagent</c> takes <c>enable_write_tools</c> as an argument and
+    /// <c>invoke_subagent</c> takes an optional <c>Workspace</c>. A write-withheld worker could
+    /// therefore define a subagent with write tools enabled and invoke it — possibly under a
+    /// different workspace root than the one this hook was loaded from.
+    /// </para>
+    /// <para>
+    /// <b>Whether a subagent's own tool calls re-enter this hook is unmeasured on agy</b>, so this
+    /// withholds the spawn rather than relying on the gate reaching the child. Decision 0029 requires
+    /// exactly that posture — "never assume a subagent is more constrained than the session that
+    /// spawned it" — and agy exposes no depth-cap equivalent to
+    /// <see cref="ClaudeWorkerAdapter.MaxSubagentSpawnDepthVariable"/>, so withholding is the only
+    /// lever available here. Tracked in #601.
+    /// </para>
+    /// </remarks>
+    private static readonly IReadOnlyList<string> ShellTools =
+        ["run_command", "manage_task", "invoke_subagent", "define_subagent", "manage_subagents"];
+
+    /// <remarks>
+    /// <c>browser_*</c> is a prefix entry (see <c>AgyHookCheckCommand</c>'s prefix support). The
+    /// corpus's matcher section offers <c>"browser_.*"</c> as an example — "Match any tool starting
+    /// with <c>browser_</c>" — while its Supported Tools list enumerates none of them, so the exact
+    /// names cannot be written down. A browser tool reaches the network, and the corpus contradicting
+    /// itself is not a reason to withhold nothing.
+    /// </remarks>
+    private static readonly IReadOnlyList<string> NetworkTools =
+        ["search_web", "read_url_content", "browser_*"];
+
+    /// <summary>
+    /// The agy tool names this invocation's grant withholds, comma-joined for
+    /// <see cref="DeniedToolsVariable"/>. Empty when nothing is withheld, which
+    /// <c>AgyHookCheckCommand</c> reads as "allow everything" — a known-empty grant, distinct from
+    /// the failure paths it denies on.
+    /// </summary>
+    internal static string BuildDeniedTools(PermissionGrant? grant)
+    {
+        if (grant is null)
+        {
+            return string.Empty;
+        }
+
+        List<string> denied = [];
+        if (!grant.ReadFiles)
+        {
+            denied.AddRange(ReadTools);
+        }
+
+        if (!grant.WriteFiles)
+        {
+            denied.AddRange(WriteTools);
+        }
+
+        if (!grant.RunShellCommands)
+        {
+            denied.AddRange(ShellTools);
+        }
+
+        if (!grant.NetworkAccess)
+        {
+            denied.AddRange(NetworkTools);
+        }
+
+        return string.Join(',', denied);
+    }
 
     public bool TryTranslatePermissionGrant(PermissionGrant grant, out string? resolvedValue, out string? gapReason)
     {
@@ -78,6 +210,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         var prompt = BuildPrompt(invocation.PromptTemplate, contract, isWindows);
         var permissionScope = ResolvePermissionScope(invocation);
         var artifactsRoot = EnvironmentReference("AER_ARTIFACTS_ROOT", isWindows);
+        var agyWorkspace = EnsureAgyWorkspace();
 
         List<string> args = ["-p", prompt];
 
@@ -93,6 +226,16 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         args.Add("--add-dir");
         args.Add(artifactsRoot);
+
+        // #554: decision 0029's mandatory PreToolUse gate. agy discovers hooks ONLY from a directory
+        // named by --add-dir -- measured by `agy.hooks-load-from-add-dir-not-only-cwd` in the
+        // arrangement AER actually ships (hook directory != cwd), where the cwd arm loaded
+        // NOTHING. So this flag is what
+        // loads the gate -- not a convenience. Unconditional, matching #543's claude side: the hook
+        // ships on every worker, not only on workers whose flows declare a gate, because a gate that
+        // is only sometimes installed cannot be relied upon by anything.
+        args.Add("--add-dir");
+        args.Add(agyWorkspace);
 
         // #491: bind the room's own directory explicitly. `agy -p` **ignores the process working
         // directory** — measured in #472 and recorded in docs/vendor-capabilities.md: launched from
@@ -136,8 +279,122 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Effort);
         }
 
-        return new CoreDispatchTarget("agy", [.. args], invocation.WorkingDirectory, PromptText: prompt);
+        return new CoreDispatchTarget(
+            "agy", [.. args], invocation.WorkingDirectory, PromptText: prompt,
+            Environment:
+            [
+                // Read by `aer agy-hook-check` inside the hook subprocess. Always set, even when
+                // empty, so the value is AER's rather than whatever the operator's environment
+                // happened to carry. It does NOT currently make "nothing withheld" distinguishable
+                // from "the list never arrived" -- the command collapses absent and empty to the
+                // same allow. See #600.
+                (DeniedToolsVariable, BuildDeniedTools(invocation.PermissionGrant)),
+            ]);
     }
+
+    /// <summary>
+    /// Creates the AER-owned agy workspace and rewrites its <c>.agents/hooks.json</c> with canonical
+    /// content, returning the directory to hand to <c>--add-dir</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Rewritten every resolve, never merely created-if-absent</b>, for the reason #543 gives on
+    /// the claude side: a stale file left by an earlier build would silently disable the gate for
+    /// good on any machine that ran that build once. It also means a worker that tampered with the
+    /// file cannot carry that into the next spawn. The directory is entirely AER-owned, so there is
+    /// no operator content for the rewrite to destroy.
+    /// </para>
+    /// <para>
+    /// <b>Never the operator's own <c>~/.gemini/config/</c></b>, which is agy's other documented
+    /// hooks location. Writing there would put AER's configuration inside the user's own vendor
+    /// config — the boundary CLAUDE.md's Credential Isolation rule draws, and the same reason
+    /// <c>agy.permissions-are-global-only</c> is recorded as a limitation rather than used as a
+    /// mechanism.
+    /// </para>
+    /// </remarks>
+    private static string EnsureAgyWorkspace()
+    {
+        var workspace = Path.Combine(AerPaths.WorkerLaunchConfig, AgyWorkspaceDirectoryName);
+        Directory.CreateDirectory(Path.Combine(workspace, ".agents"));
+        AtomicLaunchConfigWriter.Write(Path.Combine(workspace, ".agents", "hooks.json"), BuildHooksJson());
+        return workspace;
+    }
+
+    /// <summary>
+    /// The <c>.agents/hooks.json</c> content #554 ships: one <c>PreToolUse</c> handler matching
+    /// every tool, invoking <c>aer agy-hook-check</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three shape details that are each a measured or documented constraint rather than a style
+    /// choice. <b>Hooks are keyed by an arbitrary name at the root</b> — unlike claude's settings
+    /// file, which nests them under a <c>hooks</c> key. <b>The matcher is a regex over agy's own
+    /// tool names</b>, so <c>"*"</c> here means every tool, and a claude tool name would match
+    /// nothing. <b>There is no exec form</b>: agy documents only a single <c>command</c> string
+    /// (<c>.vendor-survey/corpus/agy__hooks.md</c>), where claude's handler accepts an <c>args</c>
+    /// array that bypasses shell parsing entirely. That last one is why the path is quoted and
+    /// forward-slashed below.
+    /// </para>
+    /// <para>
+    /// <b>Backslashes are normalised to forward slashes</b> because the command string is
+    /// shell-parsed and a Windows path's <c>\U</c>, <c>\t</c> and friends are escape sequences to a
+    /// shell — the same reason <c>tools/vendor-verify/verify.py</c> normalises every hook path it
+    /// writes. Forward slashes were confirmed working on Windows by
+    /// <c>agy.hook-env-inherited</c>, which spawns its hook this way.
+    /// </para>
+    /// <para>
+    /// Invoked as <c>dotnet &lt;Aer.Cli.dll&gt;</c> rather than a native apphost, for the deployment
+    /// reason <see cref="ClaudeWorkerAdapter"/> documents at length: a packed <c>dotnet tool</c> has
+    /// no apphost, and naming one would write a dangling command into every worker's hook. On agy
+    /// that failure is worse than on claude — an unparseable or absent hook response is read as an
+    /// <em>allow</em> (<c>agy.hook-malformed-stdout-fails-open</c>), so a hook that cannot start
+    /// does not fail loudly, it fails open. Hence the explicit existence guard.
+    /// </para>
+    /// </remarks>
+    private static string BuildHooksJson()
+    {
+        var hookAssemblyPath = Path.Combine(AppContext.BaseDirectory, "Aer.Cli.dll");
+        if (!File.Exists(hookAssemblyPath))
+        {
+            throw new InvalidOperationException(
+                $"Cannot write the mandatory PreToolUse hook (decision 0029): '{hookAssemblyPath}' " +
+                "does not exist. Every deployment of aer/Aer.Daemon must carry Aer.Cli.dll alongside " +
+                "its own binary -- on agy a hook that cannot start is read as an ALLOW rather than " +
+                "an error (agy.hook-malformed-stdout-fails-open), so this fails loudly here instead, " +
+                "before any worker is dispatched.");
+        }
+
+        var command = $"dotnet \"{hookAssemblyPath.Replace('\\', '/')}\" agy-hook-check";
+        var hooks = new Dictionary<string, object>
+        {
+            ["aer-permission-gate"] = new
+            {
+                PreToolUse = new[]
+                {
+                    new
+                    {
+                        matcher = "*",
+                        hooks = new[]
+                        {
+                            new { type = "command", command, timeout = HookTimeoutSeconds },
+                        },
+                    },
+                },
+            },
+        };
+
+        return JsonSerializer.Serialize(hooks);
+    }
+
+    /// <summary>
+    /// Seconds agy waits for the hook before giving up. agy's documented default is 30; this is set
+    /// explicitly rather than inherited so the value is visible next to the reasoning. Generous for
+    /// what the command does (parse stdin, compare a name, print an object) because the cost of
+    /// overrunning is asymmetric: a timeout produces no stdout, and no stdout is an
+    /// <em>allow</em> on this vendor.
+    /// </summary>
+    private const int HookTimeoutSeconds = 30;
+
 
     /// <summary>
     /// A structured <see cref="WorkerInvocation.PermissionGrant"/> always wins over the raw

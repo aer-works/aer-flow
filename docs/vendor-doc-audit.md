@@ -1390,7 +1390,7 @@ This retro-explains a difference recorded earlier in this document as agy having
 sub-structure". It is not richer decoration; it is a different capability set, and the earlier
 phrasing under-described it.
 
-**Measured, because declaring is not honouring** — `pixi run vendor-verify -- --only agy.url-mode`:
+**Measured, because declaring is not honouring** — `pixi run vendor-verify -- --only agy.url-mode-elicitation`:
 
 | what | result |
 |---|---|
@@ -1466,7 +1466,7 @@ table carried this as **assumed**: *hooks on Windows run through Git Bash and ha
 failed silently there.* It is now **measured**, and the answer is the unwanted one — though not for
 the documented reason.
 
-`pixi run vendor-verify -- --only gate.broken-hook`. Six arms, one variable each, same allow rule
+`pixi run vendor-verify -- --only gate.broken-hook-fails-open`. Six arms, one variable each, same allow rule
 and same target throughout. The two working-hook arms are the discovery control: without them, a
 broken arm's result cannot be told from a settings file that never loaded.
 
