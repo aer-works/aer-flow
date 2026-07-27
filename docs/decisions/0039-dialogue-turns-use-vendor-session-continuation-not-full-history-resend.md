@@ -62,6 +62,15 @@ reply — and resumes the vendor's own session for everything before that.** Con
   [[feedback-rebase-and-defense-in-depth]] already named: a structural fix that happens to avoid the
   common case still wants a guard for the case it didn't anticipate.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| `DialogueRunner.BuildPrompt` threads the entire transcript into every turn | **measured** — read directly, plus 13KB→58KB over ten turns in a live run | there is no growth to fix and #582 is not a real defect |
+| A long enough transcript overflows Windows' argv limit | **measured** — #579, and #598 reproduced `os error 206` on the aer-core path; `CoreDispatcher` now refuses above 32,000 characters before spawning | the `{PROMPT_FILE}` workaround was unnecessary, and #581's breakage was self-inflicted rather than forced |
+| Told to read a file, `agy` reliably invokes an unrequested `Bash` call, soft-denied headless with zero output | **measured** — #581, against the real CLI under both `--mode accept-edits` and `--mode plan` | `{PROMPT_FILE}` works, and continuation becomes an optimisation rather than the fix for a live breakage |
+| Both vendors can resume a native session and retain prior context (claude `--resume`, gemini `--conversation`) | **assumed — and this is the row that would kill the record.** The flags are recorded in `docs/vendor-capabilities.md`, but **no `vendor-verify` check proves a resumed session retains the earlier turns** | the whole mechanism is unavailable, full-history resend is the only option, and #582's quadratic growth becomes structural rather than a bug |
+
 ## Consequences
 
 **Easier.** One redesign closes both issues: `#582`'s cost/latency problem (no more quadratic

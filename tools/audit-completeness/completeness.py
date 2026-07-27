@@ -111,15 +111,29 @@ def step2_corpus():
         return False
     rows = [r for r in ledger.splitlines()[1:] if r.strip()]
     corpus_dir = os.path.join(ROOT, ".vendor-survey", "corpus")
-    pages = len([f for f in os.listdir(corpus_dir)]) if os.path.isdir(corpus_dir) else 0
+    corpus_present = os.path.isdir(corpus_dir)
+    pages = len([f for f in os.listdir(corpus_dir)]) if corpus_present else 0
     dispositions = {}
     for r in rows:
         parts = r.split("\t")
         if len(parts) >= 2:
             dispositions[parts[-1].strip()] = dispositions.get(parts[-1].strip(), 0) + 1
-    ok = line("pages mirrored", pages)
-    ok &= line("pages with a ledger row", len(rows), pages,
-               "every page must have a disposition")
+    # Two environments, deliberately two different claims (#589). Locally the mirrored corpus sits
+    # beside the ledger, so the strongest check available is a cross-check: every file on disk has a
+    # row. In CI only ledger.tsv is committed -- the 11MB corpus stays ignored -- so that cross-check
+    # is IMPOSSIBLE rather than merely inconvenient, and reporting it as passing anyway would be the
+    # "green means verified" failure this tool exists to catch. There the ledger is treated as the
+    # snapshot it is and the check narrows to one it can actually make: every row carries a
+    # disposition. Both arms still fail loudly; the CI arm just claims less.
+    if corpus_present:
+        ok = line("pages mirrored", pages)
+        ok &= line("pages with a ledger row", len(rows), pages,
+                   "every page must have a disposition")
+    else:
+        dispositioned = [r for r in rows if r.split("	")[-1].strip()]
+        ok = line("ledger rows carrying a disposition", len(dispositioned), len(rows),
+                  "corpus not mirrored here, so the file-count cross-check cannot run -- "
+                  "a local run with the corpus present is what does that")
 
     # `PENDING-DEPTH` in the ledger is the HARVEST's recommendation ("worth a depth read"), not an
     # outcome -- vendor_survey.py runs before anyone reads anything. Counting it as a disposition

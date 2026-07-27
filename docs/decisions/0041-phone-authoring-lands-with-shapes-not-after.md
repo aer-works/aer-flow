@@ -38,6 +38,14 @@ phone-authorable."**
   a legitimate day-one scope difference — it isn't one; it's a sequencing fact (arrives at M29, not
   M26), which is a different kind of claim than a permanent surface-exclusive gap.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| J17 requires authoring a shape on a phone and starting it on the desktop | **measured** — [J17](../../spec/journeys.md), which `journey-reconcile` keeps in step with the spec in CI | the timing is free, "out of scope for the first version" can stand indefinitely, and the M29 criterion that was rewritten to match it was correct after all |
+| 0014's justification for a step-list over a canvas is phone-nativeness | **measured** — [0014](0014-shapes-are-a-list-not-a-canvas.md) | authoring on a phone is not this model's payoff, and deferring it costs nothing the shape decision was buying |
+| `02-screens.md`'s "the phone's first version" means the pairing/chat-only milestones before shapes exist | **measured** — read in context, and the misreading it corrects is recorded in this session's history | the ambiguity survives, and the M29 criterion can drift back to contradicting J17 exactly as it did once already |
+
 ## Consequences
 
 **Easier.** One place to check "does the phone get template authoring, and when" — a future session

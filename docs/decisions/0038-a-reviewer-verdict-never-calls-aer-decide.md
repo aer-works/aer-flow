@@ -54,6 +54,14 @@ answered it.
   template, per 0003 — "implement → review" is already exactly `05-stress-test.md`'s own worked
   example), not removing the human from its terminal gate.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| `DecisionType` carries `Resume`/`Reject`/`RetryWithRevision`/`Supersede`, and `PausePoint` documents every pause as awaiting human review | **measured** — `src/Aer.Flow/Domain/DecisionType.cs`, with the ordinals pinned by `FlowEventLogJsonTests` (#604) | the primitive is not what this record says it is, and the "already exists" half of the argument fails |
+| Nothing in code enforces the human half of that documentation | **measured** — read directly; no caller-side check exists | the constraint is already structural, and this record restates an invariant rather than deciding one |
+| A delegated implementer→reviewer loop is runnable with a human at the decision point | **measured** — run by hand for #579, and again across #563/#588/#598/#604 | the loop's feasibility is theoretical, and the record decides against an option nobody has shown works |
+
 ## Consequences
 
 **Easier.** Nothing to build to close this — the primitive (`DecisionType`/`PausePoint`) already

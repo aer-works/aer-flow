@@ -71,6 +71,13 @@ it cannot be drawn as the afterthought.
 wins — the same precedence `docs/design/README.md` already sets for words. Rank is now something a
 record can be about.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| The mockup draws `Allow once` with the primary-accent class while `Deny` carries the danger class | **measured** — `docs/design/mockups/04-workers-commands-control.html`, read directly | the contradiction this record was written to correct is not present, and it is fixing nothing |
+| Visual rank is expressible in the token system rather than needing a per-control override | **measured** — `design/tokens.json` is the canonical set (#489), and `DesignTokenDriftTests` fails when generated tokens drift from it | the rule is stated but unenforceable in the shipped UI, and needs a mechanism rather than a record |
+
 ## Consequences
 
 **Easier.** The Quiet direction gets its missing half. [0006](0006-visual-direction-quiet.md) settled

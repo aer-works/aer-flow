@@ -314,8 +314,34 @@ jobs:
   # check stuck at "Expected" forever. Passes when nothing that ran FAILED -- a path-skipped job
   # counts as fine; only a real failure or cancellation fails the gate. `pack` is deliberately not
   # aggregated here: it is a main-only, post-merge packaging check, not part of PR mergeability.
+  # The register meta-check (#589, #620). Deliberately its own job rather than a step in `test`:
+  # it is OS-independent, so running it on all three matrix legs would triple the cost for one
+  # answer, and it must run even when a PR touches no .NET file at all -- a decisions-only or
+  # docs-only change is exactly the kind this catches.
+  #
+  # It is wired in only now that it exits 0. It had been failing for days while nobody noticed,
+  # because it ran when someone remembered and was then read by eye: its failure prefix is `!!`,
+  # a session filtered the output for `OK`/`FAIL`, and the red run was reported as passing 16/16
+  # in a merged PR body. Adding a red check to CI would have blocked every unrelated PR on
+  # pre-existing debt, which is why #589 landed first.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Same setup the test and pack jobs use, for the reason recorded there: pinning a pixi version
+      # pinned one too old to read this repo's lock file (version 7), and setup-pixi's own install
+      # step fails hard on an empty environment. Let `pixi run` do the implicit install.
+      - uses: prefix-dev/setup-pixi@v0.8.0
+        with:
+          run-install: false
+          cache: false
+      # No submodule, no .NET, no build: this reads docs/, decisions/ and the vendor-verify
+      # registry as text. The exit code is the verdict -- never the output.
+      - name: Audit register completeness
+        run: pixi run audit-completeness
+
   ci:
-    needs: [changes, test, mobile]
+    needs: [changes, test, mobile, audit]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -324,9 +350,10 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           TEST: ${{ needs.test.result }}
           MOBILE: ${{ needs.mobile.result }}
+          AUDIT: ${{ needs.audit.result }}
         run: |
-          echo "results: changes=$CHANGES test=$TEST mobile=$MOBILE"
-          for r in "$CHANGES" "$TEST" "$MOBILE"; do
+          echo "results: changes=$CHANGES test=$TEST mobile=$MOBILE audit=$AUDIT"
+          for r in "$CHANGES" "$TEST" "$MOBILE" "$AUDIT"; do
             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
               echo "::error::A required CI job reported '$r'."
               exit 1

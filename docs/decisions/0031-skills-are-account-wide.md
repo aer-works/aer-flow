@@ -22,6 +22,14 @@ namespacing question between "this repo's skills" and "my skills." A skill built
 one project is immediately usable the next time a different room is opened, which is the point of
 building one at all.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| 0010 left skill storage and scoping explicitly open rather than deciding it | **measured** — [0010](0010-skills-and-advisor.md)'s own text | this record re-decides something already settled, and must be reconciled against 0010 instead of extending it |
+| A worker attaches skills directly, with no Persona object for them to be scoped to | **measured** — [0033](0033-skills-attach-directly-no-persona.md) | "account-wide" is scoped to the wrong object, and skills would inherit a preset's scope instead of a person's |
+| Neither vendor CLI requires a skill to be project-local | **assumed** — no check probes skill storage scope on either vendor | account-wide is undeliverable on a vendor that scopes per project, and the one-library-per-person promise degrades to per-folder |
+
 ## Consequences
 
 **Easier.** One flat, personal skill library — no new storage model beyond "belongs to the

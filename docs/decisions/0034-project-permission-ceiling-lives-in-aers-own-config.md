@@ -32,6 +32,14 @@ committed inside the project's own directory.**
   policy the moment it was checked in, applying to teammates who never set it and may not agree with
   it. The ceiling is personal to whoever is running AER, not a team convention.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| AER never writes a credential into a directory a vendor owns | **measured** — Architecture Rule 4, enforced by `VendorCredentialIsolationTests` | storing the ceiling in a vendor-owned file would be permissible, and this record's central placement argument dissolves |
+| `CLAUDE_CONFIG_DIR` redirects session storage but **not** the subscription login | **measured** — `durability.config-dir-redirect-breaks-auth` | per-worker config roots behave differently than assumed, and the "never a file the vendor owns" boundary needs re-deriving |
+| `--allowedTools` is pre-approval and routing, not a security ceiling | **measured** — `gate.allowedtools-is-preapproval-not-ceiling` (#529) | a vendor flag could express the ceiling directly, and AER-side storage is redundant rather than necessary |
+
 ## Consequences
 
 **Easier.** The project's own directory stays untouched by AER's own bookkeeping — nothing to

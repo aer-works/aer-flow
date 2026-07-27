@@ -41,6 +41,14 @@ would be waiting on a lock the turn will not release until it finishes.
 yet.** There is no current implementation to check for a genuine held-open turn — the resolution is a
 constraint on the one that gets built, verifiable by code review against this record once it does.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| A live permission gate holds the vendor CLI's turn open for as long as a human takes to answer — measured at 162 seconds | **measured** — [0029](0029-the-gate-is-three-mechanisms.md) | the lock contention this record designs around never arises, and the separation it mandates is unnecessary |
+| The turn lock is a per-session-directory `SemaphoreSlim(1, 1)`, acquired in exactly one place and held for the whole spawned process | **measured** — `Aer.Daemon.Program.SessionTurnLocks` and `ExecuteSessionTurnAsync`, read directly | the serialization shape differs, and the answer path may not in fact be blocked by the pending turn |
+| `--session-id` is guarded by an existence check, not a lock — two concurrent processes both win | **measured** — `durability.session-id-guard-is-not-a-lock` (sentinel) | the vendor already serializes concurrent access, and AER's own lock is doing less work than this record assumes |
+
 ## Consequences
 
 **Easier.** The pattern to follow already exists and is already tested (`/api/tasks/decide`) — this

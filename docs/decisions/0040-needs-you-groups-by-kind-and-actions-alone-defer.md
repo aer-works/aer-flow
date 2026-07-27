@@ -40,6 +40,14 @@ resolution affordance. Only an action may be deferred without being treated as u
   action still gets pushed, it just doesn't jump the queue or read as an alarm once the app is open.
   "Genuinely urgent" describes presentation, not whether the operator is told.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| 0018 governs between-room ordering and says nothing about presentation *within* the "needs you" band | **measured** — [0018](0018-attention-is-the-primary-signal.md)'s own text, checked directly rather than assumed from the audit that raised this | the gap this record fills is already decided elsewhere, and the two records must be reconciled instead of layered |
+| 0015's three kinds are the right axis to group by | **measured** — [0015](0015-three-kinds-of-needs-you.md) | the grouping is arbitrary, and the screen needs an axis this record has not identified |
+| `docs/design/04-workers-commands-control.md` draws the three-section screen with a kind-specific deferral | **measured** — read directly | the record decides something no artifact asked for |
+
 ## Consequences
 
 **Easier.** The "needs you" band stays legible as it grows — a person can triage by kind (answer the

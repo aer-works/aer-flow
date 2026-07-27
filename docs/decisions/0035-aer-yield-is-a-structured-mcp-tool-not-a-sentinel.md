@@ -50,6 +50,14 @@ using the same per-vendor wiring 0029 already measured — and it does not need 
   implementation will also need, per 0029), not a bespoke mechanism scoped to
   `Aer.Workers.Dialogue` alone.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| The current stop condition is a substring match on a turn's own output text | **measured** — `DialogueRunner.TryStripStopSentinel`, read directly | there is no fragility to replace, and this record is solving a problem that does not exist |
+| Both vendors declare MCP `elicitation` and honour it under `-p` | **measured, and this is the load-bearing one** — `gate.elicitation-capability` (claude) and `agy.elicitation-capability` (agy); `gate.elicitation-hook-event-fires` remains the untested row 0030 already flags | a structured tool return is not portable, the mechanism is claude-only, and `aer yield` cannot be the vendor-neutral primitive this record makes it |
+| AER can host its own MCP server | **assumed** — the server is unbuilt, tracked as #585 | `aer yield` has no host, and the decision is unimplementable as written until that lands |
+
 ## Consequences
 
 **Easier.** Termination becomes a fact AER's own code observes directly (a tool call arrived, with

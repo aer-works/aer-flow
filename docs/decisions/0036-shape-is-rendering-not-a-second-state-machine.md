@@ -52,6 +52,13 @@ read off Flow's existing projection. No second state machine is built for it.**
   `Supersede`/`RetryWithRevision` already give a pipeline step), not a paused workflow waiting to be
   unfrozen.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| `FlowState`/`WorkflowStatus`/`StepStatus` already model `Running`/`Paused`/`Terminal` at both workflow and step level | **measured** — `src/Aer.Flow/Domain/FlowState.cs`, read directly rather than taken from the design dialogue's own text | shape genuinely needs new state, and this record's central claim — that it is rendering, not a second machine — fails |
+| Every surface renders the room's state and none derives its own | **measured as a rule** — [0020](0020-one-state-machine.md). **Not yet true in code**: 41 computed view-model predicates remain, tracked in #615 | shape rendering inherits the per-surface derivation this record avoids by construction, and becomes a second machine in practice regardless of what the record says |
+
 ## Consequences
 
 **Easier.** Nothing new to build for the state model itself — 0020's "one state machine" requirement

@@ -70,6 +70,14 @@ conflating them would be a real error: **context filling up is per worker and re
 compaction; plan exhaustion is per vendor and recoverable only by time.** A worker at 90% context and a
 vendor at 100% of its weekly cap need different words, different affordances, and different bands.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| `SessionMetadata` carries exactly one `TurnCount`, `SafetyCeiling`, `CurrentAdapter` and `Model`, with no participant dimension | **measured** — `src/Aer.Adapters/InteractiveSessions.cs`, read directly rather than inferred | the gap this record closes does not exist, and its mechanics section describes code that has already moved |
+| A vendor CLI surfaces per-turn token usage AER can attribute to one worker | **measured for claude** — `cost.subagent-tokens-excluded` (`usage.output_tokens` excludes subagent tokens; `modelUsage` is whole-tree, #479). **Not measured for agy.** | headroom cannot be computed per worker on the unmeasured vendor, and the announced-choice trigger has nothing to fire on there |
+| Two models in one room can have materially different context windows | **assumed** — per-vendor documentation in `docs/vendor-capabilities.md`; no check probes window size | per-worker tracking stays correct but the asymmetry that motivates it weakens to a rounding difference |
+
 ## Consequences
 
 **Easier.** The deep-author / fast-reviewer pattern stops being quietly penalised — the expensive

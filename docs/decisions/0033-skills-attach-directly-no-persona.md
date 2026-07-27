@@ -75,6 +75,13 @@ underlying capability needed:
 idea that was tried, found to cost more than it bought, and replaced — not a synonym still worth
 using informally.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| Claude Code ships zero predefined subagents | **assumed** — observed in the vendor corpus; no check probes it | the "imposes an identity taxonomy before validation" argument loses its baseline, though the second-object cost argument stands without it |
+| A worker's vendor identity is renderable alongside a skill count, without a preset name replacing it | **measured** — this record's own chip rule, against `design/tokens.json`'s status roles | the chip has to carry a name after all, which is precisely the failure this record exists to prevent |
+
 ## Consequences
 
 **Easier.** One object (Skill) instead of two (Skill + Persona). No picker that implies shipped
