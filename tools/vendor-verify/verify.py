@@ -1572,6 +1572,221 @@ def _agy_force_ask():
     return FAIL, f"unexpected: plain ran={ran_plain}, skip ran={ran_skip}"
 
 
+def _agy_hook_json(wd, command, event="PreToolUse", matcher="run_command"):
+    """Write a workspace `.agents/hooks.json` naming one handler. Factored out because #554's
+    checks below each need the same shape and the schema is easy to get subtly wrong: hooks are
+    keyed by an arbitrary NAME at the root (not under a `hooks` key as claude's settings file is),
+    and the matcher is a regex over agy's own tool names -- `run_command`, not `Bash`.
+    """
+    os.makedirs(os.path.join(wd, ".agents"), exist_ok=True)
+    body = ({"PreToolUse": [{"matcher": matcher, "hooks": [
+        {"type": "command", "command": command, "timeout": 25}]}]}
+        if event == "PreToolUse" else
+        {event: [{"type": "command", "command": command, "timeout": 25}]})
+    json.dump({"aer": body}, open(os.path.join(wd, ".agents", "hooks.json"), "w"))
+
+
+@check("agy.hook-env-inherited", "agy",
+       "an agy PreToolUse hook subprocess INHERITS the environment agy itself was spawned with -- "
+       "the channel #543's design uses to tell the hook which tools this invocation withholds",
+       sentinel=True)
+def _agy_hook_env():
+    """#554 needs this and agy's own documentation does not answer it.
+
+    `.vendor-survey/corpus/claude__hooks.md` states plainly that "a hook process inherits the parent
+    environment", which is what lets `ClaudeWorkerAdapter` ship ONE static settings file and pass
+    per-invocation data (the denied-tool list) through `AER_HOOK_DENIED_TOOLS`.
+    `.vendor-survey/corpus/agy__hooks.md` documents the stdin payload in detail and says **nothing**
+    about environment inheritance, so carrying claude's answer across would be exactly the
+    population-scope mistake CLAUDE.md gate 4 names.
+
+    Sentinel because the failure is silent and total: if a future agy stops inheriting, the hook
+    reads an empty denied list, treats it as "nothing withheld", allows every tool -- and looks
+    identical to a working gate from the outside. Nothing else in AER would notice.
+
+    The absent arm is the control. Without it, a `present` reading cannot be distinguished from a
+    variable reaching the hook by some route other than inheritance (a shell profile, a leaked
+    parent, agy injecting its own environment): a detector that reports `present` when the variable
+    was never set is not measuring inheritance at all.
+    """
+    SENTINEL = "aer-probe-env-9f3e"
+
+    def arm(set_var):
+        wd = tempfile.mkdtemp(prefix="v-agye-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            with open(os.path.join(wd, "h.sh"), "w", newline="\n") as f:
+                f.write("#!/bin/sh\n")
+                f.write('echo "SEEN=[${AER_PROBE_ENV:-UNSET}]" >> "%s"\n' % log)
+                f.write('cat >> "%s"\n' % log)
+                f.write('printf "\\n" >> "%s"\n' % log)
+                # Allow explicitly. This check is about the environment channel, not about gating,
+                # and an implicit allow would confound it with `agy.hook-malformed-stdout-fails-open`.
+                f.write("""echo '{"decision":"allow"}'\n""")
+            os.chmod(os.path.join(wd, "h.sh"), 0o755)
+            _agy_hook_json(wd, "sh %s" % hk)
+            run(["agy", "-p", "Run this shell command: node --version",
+                 "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd,
+                extra_env={"AER_PROBE_ENV": SENTINEL} if set_var else None)
+            if not os.path.exists(os.path.join(wd, "h.log")):
+                return None, ""
+            blob = open(os.path.join(wd, "h.log"), encoding="utf-8", errors="replace").read()
+            return (SENTINEL in blob), blob
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    seen_set, blob = arm(True)
+    seen_absent, _ = arm(False)
+    if seen_set is None or seen_absent is None:
+        return INCONCLUSIVE, "hook never fired in one arm -- discovery problem, not an env problem"
+    if seen_absent:
+        return INCONCLUSIVE, ("the control saw the sentinel with the variable UNSET, so a `present` "
+                              "reading proves nothing about inheritance")
+    if not seen_set:
+        return FAIL, ("agy hook subprocesses do NOT inherit the parent environment -- "
+                      "AER_HOOK_DENIED_TOOLS cannot reach the hook and the gate reads as empty")
+    # Reported, never gated on: the payload FIELD SHAPE the hook's own parser depends on, and one
+    # field agy's documentation omits. Same discipline as `agy.hook-deny-honoured`'s reason note --
+    # a fact worth recording in the result is not automatically a fact worth failing on.
+    nested = '"toolCall"' in blob and '"name"' in blob
+    undocumented = "modelName" in blob
+    return PASS, (f"inherited (absent-control correctly saw UNSET) | toolCall.name present="
+                  f"{nested} | undocumented modelName field present={undocumented} "
+                  f"(reported, not claimed)")
+
+
+@check("agy.hook-malformed-stdout-fails-open", "agy",
+       "agy ALLOWS when PreToolUse hook stdout is unparseable or empty, but DENIES an unrecognised "
+       "`decision` VALUE -- so a crashed or silent gate is an open one while a merely wrong verdict "
+       "is a closed one. The dangerous case is absent/unparseable output, not a bad value")
+def _agy_hook_malformed():
+    """Not a sentinel, deliberately. The design conclusion this produces -- always print an explicit
+    `{"decision":"deny"}` and never rely on printing nothing -- is correct whichever way a future agy
+    resolves this. If a later version started failing CLOSED on garbage too, AER's explicit deny
+    still denies and nothing built on this rots. `agy.hook-deny-honoured` is the sentinel that guards
+    the channel this depends on.
+
+    It matters more here than the equivalent would on claude: `HookCheckCommand`'s fail-open is
+    argued as "no worse than --disallowedTools, which covers the same names". agy has no such flag
+    (`agy.permissions-are-global-only`, decision 0029), so on this vendor the hook is the only
+    per-worker gate and a fail-open is a total one.
+
+    **The two failure modes are NOT the same, which is the finding.** A hand-run version of this
+    probe reported all three malformed arms as fail-open and was wrong: its `unknown-decision` arm
+    had a shell-escaping bug that emitted literal backslashes, so it was a second garbage arm
+    wearing an unknown-value label. Separating "agy could not parse this" from "agy parsed this and
+    did not recognise the verdict" reverses the answer for one of them -- which is the whole reason
+    a measurement belongs in here as a check rather than staying a shell script someone ran once.
+
+    The two explicit arms are the controls: if a real deny does not block and a real allow does not
+    run, the malformed arms are measuring the harness rather than the vendor.
+    """
+    def arm(body):
+        wd = tempfile.mkdtemp(prefix="v-agym-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, body)
+            _agy_hook_json(wd, "sh %s" % hk)
+            rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
+                                "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
+            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+            return ran, fired(log)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    ARMS = {
+        "control-deny": """echo '{"decision":"deny","reason":"AER control"}'""",
+        "control-allow": """echo '{"decision":"allow"}'""",
+        "garbage": """echo 'this is not json at all'""",
+        "unknown-decision": """echo '{"decision":"aer-not-a-real-decision"}'""",
+        "empty": "exit 0",
+    }
+    # Encodes what was OBSERVED on agy 1.1.7, not what would be preferable. Note
+    # unknown-decision=False: valid JSON carrying a verdict agy does not recognise is treated as a
+    # DENY, unlike unparseable or absent output. See the docstring on why that asymmetry is the point.
+    BASELINE = {"control-deny": False, "control-allow": True,
+                "garbage": True, "unknown-decision": False, "empty": True}
+
+    results, detail = {}, []
+    for kind, body in ARMS.items():
+        ran, n = arm(body)
+        results[kind] = ran
+        detail.append(f"{kind}: ran={ran}" + (f" fired={n}" if n else " NEVER-FIRED"))
+    if results["control-deny"] or not results["control-allow"]:
+        return INCONCLUSIVE, ("the explicit-decision controls did not discriminate, so every "
+                              "malformed arm is meaningless: " + "; ".join(detail))
+    drift = [k for k, want in BASELINE.items() if results[k] != want]
+    if drift:
+        return FAIL, f"baseline moved for {drift}: " + "; ".join(detail)
+    return PASS, ("unparseable and EMPTY stdout ALLOW (a crashed or silent gate is open); an "
+                  "unrecognised decision VALUE denies | " + "; ".join(detail))
+
+
+@check("agy.hooks-json-cached-at-startup", "agy",
+       "agy reads .agents/hooks.json ONCE at startup, so a worker cannot disable its own gate "
+       "mid-run by deleting or rewriting the file",
+       sentinel=True)
+def _agy_hooks_cached():
+    """#554 must load its hook from a directory passed via `--add-dir`, and `--add-dir` grants the
+    worker file access to that directory (`agy.add-dir-grants-files-not-config`). So the worker can
+    reach the very file that gates it. Whether that is a live gate-defeat or merely poor hygiene
+    depends entirely on when agy reads the file.
+
+    Sentinel because a future agy that re-read per call would silently turn a hygiene wart into a
+    gate bypass: a worker with shell access could delete the file and proceed ungated, and nothing
+    in AER's own logs would show a difference.
+
+    The no-delete control carries the whole check. A single firing in the delete arm is otherwise
+    ambiguous between "agy re-read the file and found it gone" and "the model only ever made one
+    tool call" -- and the second is entirely plausible, since nothing forces a model to run the
+    same command twice. The control runs the identical prompt with the hook leaving the file alone,
+    establishing that this prompt does reach a second tool call at all.
+    """
+    def arm(delete_after_first):
+        wd = tempfile.mkdtemp(prefix="v-agyc-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            gate = os.path.join(wd, ".agents", "hooks.json").replace("\\", "/")
+            with open(os.path.join(wd, "h.sh"), "w", newline="\n") as f:
+                f.write("#!/bin/sh\n")
+                f.write('printf "FIRED\\n" >> "%s"\n' % log)
+                if delete_after_first:
+                    f.write('if [ "$(grep -c FIRED "%s")" = "1" ]; then rm -f "%s"; fi\n'
+                            % (log, gate))
+                f.write("""echo '{"decision":"allow"}'\n""")
+            os.chmod(os.path.join(wd, "h.sh"), 0o755)
+            _agy_hook_json(wd, "sh %s" % hk)
+            run(["agy", "-p",
+                 "Run these two shell commands as two separate tool calls, one after the other: "
+                 "first `node --version`, then `node --version` a second time.",
+                 "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
+            return fired(log), os.path.exists(os.path.join(wd, ".agents", "hooks.json"))
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    control_fires, control_present = arm(False)
+    if control_fires < 2:
+        return INCONCLUSIVE, (f"the control reached only {control_fires} tool call(s), so the delete "
+                              "arm cannot distinguish a re-read from a model that never called twice")
+    if not control_present:
+        return INCONCLUSIVE, "the control deleted the gate file it was supposed to leave alone"
+
+    fires, still_there = arm(True)
+    if still_there:
+        return INCONCLUSIVE, ("the delete arm did not actually remove the gate file, so nothing "
+                              f"was tested (fired={fires})")
+    if fires >= 2:
+        return PASS, (f"cached at startup: hook fired {fires}x with the gate file deleted after the "
+                      f"first (control reached {control_fires}) -- mid-run tampering does not "
+                      "disable the gate")
+    return FAIL, (f"agy appears to RE-READ hooks.json per call: only {fires} firing(s) once the file "
+                  f"was deleted, against {control_fires} in the control -- a worker with write "
+                  "access to the hook directory can disable its own gate mid-run")
+
+
 @check("agy.termination-behavior", "agy",
        "PostInvocation terminationBehavior:terminate ends the loop before the task finishes")
 def _agy_terminate():
