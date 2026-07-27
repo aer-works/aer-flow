@@ -45,6 +45,16 @@ bld/
 # the derived index. Regenerate with `pixi run vendor-survey`; never commit ~7MB of vendor text.
 .vendor-survey/
 
+# ...except the derived index itself, which is 19KB rather than 7MB and is the one file
+# `audit-completeness` reads (#589). Its own header states its purpose -- "EVERY page with a
+# disposition, so coverage is checkable not asserted" -- and that is exactly what CI does with it;
+# without it committed, the audit cannot run anywhere but a machine that has already run the survey.
+#
+# It is a SNAPSHOT: re-running `pixi run vendor-survey` regenerates it, and the regenerated file must
+# be committed with that change or CI validates a stale index while the real corpus has moved.
+# Nothing flags that today -- tracked in #620 alongside the rest of the check-that-a-check-runs work.
+!.vendor-survey/ledger.tsv
+
 # tools/aer-agy-loop/dispatch.py's generated workflow/bindings/task-dir per run -- transient
 # per-invocation scaffolding, never the deliverable.
 /aer-agy-loop-scratch/

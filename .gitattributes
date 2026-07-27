@@ -21,3 +21,7 @@ src/Aer.Sidecar/go.sum text eol=lf
 # reasoning as the LF pins above, which were both added after a line-ending difference broke a
 # build that passed locally.
 *.ps1 text eol=crlf
+
+# The committed vendor-survey index (#589). Generated on whichever machine ran the survey and
+# read by `audit-completeness` in CI on Linux -- pin LF so the file does not churn per platform.
+.vendor-survey/ledger.tsv text eol=lf
