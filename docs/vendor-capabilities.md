@@ -293,8 +293,24 @@ claude-sonnet-4-6         claude-opus-4-6-thinking  gpt-oss-120b-medium
 Two things the design assumed otherwise:
 
 - **Effort is baked into the model name**, *and* `--effort low|medium|high` exists as a separate flag.
-  Two overlapping controls, and the interaction between them is unprobed — tracked in
-  [#510](https://github.com/aer-works/aer-flow/issues/510), open.
+  Two overlapping controls. What is now known, split from what is not:
+  - **Acceptance, measured.** `agy` accepts both together on a suffixed model — a real dispatch of
+    `gemini-3.1-pro-high --effort high` ran and answered
+    ([`tools/aer-agy-loop/README.md`](../tools/aer-agy-loop/README.md), "Using this for an advisor
+    consult").
+  - **Rejection is per-model and LOUD, measured.** A real dispatch failed with `Error: invalid model
+    selection (--model "gemini-3-pro" --effort "high"): --effort is not supported for model
+    "gemini-3-pro"` — recorded in
+    [`OutcomeClassifierTests`](../tests/Aer.Flow.Tests/Outcomes/OutcomeClassifierTests.cs), which
+    pins it as the stderr AER must surface. So some models refuse `--effort` outright rather than
+    ignoring it. **Precision guard:** `gemini-3-pro` is not in the catalogue above at all, so this
+    licenses nothing about whether a *suffixed* model would reject the flag.
+  - **Precedence is unprobed** — when both are given and both accepted, which one wins is unknown.
+    That, and only that, is what [#510](https://github.com/aer-works/aer-flow/issues/510) tracks.
+
+  Corrected 2026-07-27: this bullet previously said the whole "interaction" was unprobed, while the
+  rejection datum sat measured in a test's doc comment with no route back here — a fact with no
+  canonical home, which is the drift gate `record-once` exists to stop.
 - **The grid has holes.** `gemini-3.1-pro` has `high` and `low` but **no `medium`**. A UI offering
   model × effort as a matrix would offer combinations the CLI rejects. This sharpens
   [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md): naming by behaviour is right,

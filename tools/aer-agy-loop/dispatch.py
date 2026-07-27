@@ -29,9 +29,12 @@ discipline, workers carry intelligence, and nothing here is Flow -- but the same
 to keeping orchestration decisions out of glue code that could quietly grow into a shadow engine.
 
 Usage:
-    pixi run aer-dispatch -- --prompt-file <path> --output-name <name> \
+    pixi run aer-dispatch -- --list-templates
+    pixi run aer-dispatch -- [--template advise|implement|review|fact-check] \
+        --prompt-file <path> --output-name <name> \
         --working-directory <abs path> [--adapter gemini] [--model <name>] [--effort <level>] \
-        [--read-files] [--write-files] [--run-shell-commands] [--network-access] \
+        [--read-files|--no-read-files] [--write-files|--no-write-files] \
+        [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
         [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>]
 
 Prints the produced output file's content to stdout on success. On failure, prints whatever
@@ -141,17 +144,20 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 # EVERY template grants WriteFiles, including the review and fact-check ones. Not an oversight: a
 # worker satisfies its ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and
 # `WriteFiles: false` withholds the Write tool, so a read-only dispatch CANNOT succeed no matter what
-# it is asked to do. Measured on the cheap model, both arms: read-only -> "Contract not satisfied";
-# --write-files -> "Succeeded". The three "read-only" templates shipped broken in this file's first
+# it is asked to do. Measured on claude/haiku, both arms: read-only -> "Contract not satisfied";
+# --write-files -> "Succeeded". Gemini reaches the same place by a different mechanism (`--mode plan`
+# rather than a deny-list) and that path is UNMEASURED -- see the guard in main() for the full
+# scoping. The three "read-only" templates shipped broken in this file's first
 # draft and one of them wasted a 9-minute opus run proving it. `dispatch.py` now refuses a read-only
 # dispatch outright; AER accepting the unsatisfiable combination is #629.
 #
 # So the real spread is ONE axis, not four shapes:
 #   * read + write            (advise, review, fact-check) -- the floor; anything less cannot report
 #   * + shell + network       (implement) -> agy's `--dangerously-skip-permissions` translation, which
-#                                is where #596, #611, #623 and #624 all live. Its 40-minute timeout
-#                                also exercises `--print-timeout` derivation (#588), which silently
-#                                truncated at 5 minutes before that landed.
+#                                is where #596, #611, #623 and #624 all live.
+# (`--print-timeout` derivation (#588) is NOT a reason to reach for `implement`: the adapter adds it
+# for any invocation carrying a timeout, with no branch on magnitude, so `advise` at 25 minutes and
+# the 20-minute default exercise it identically. An earlier draft sold the 40 minutes as buying that.)
 # The value is narrower than "a coverage matrix" -- an earlier draft claimed that while the dict below
 # showed three identical rows -- but it is not zero: a session that only ever reviews never touches
 # the shell/network path at all, and that path is where the AER defects have been.
@@ -161,9 +167,12 @@ TEMPLATES = {
                 "purpose: a second opinion from the same family that wrote the code is one instrument "
                 "twice.",
         # The effort is IN the model name, and `effort` is deliberately left unset rather than also
-        # passed: `agy` has both controls and, per docs/vendor-capabilities.md's `agy models` section,
-        # the interaction between them is unprobed (#510). Pinning the probed one and leaving the
-        # unprobed one alone is the honest setting; `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
+        # passed. Precisely: `agy` ACCEPTS both controls together on a suffixed model (this tool's
+        # README records such a run), and it hard-errors when a model does not take `--effort` at all
+        # (`OutcomeClassifierTests` records agy refusing `--effort` for `gemini-3-pro` outright). What
+        # is unprobed is which control WINS when both are given and both are accepted -- #510. So the
+        # honest phrasing is not "the interaction is unprobed" but "precedence is unprobed"; pinning
+        # the effort in the model name and sending no flag avoids the question entirely; `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
         # the same way. The first draft of this template said `gemini-3.1-pro`, which `agy models`
         # does not list at all -- #547's exact failure, committed by the file meant to prevent it.
         # STEP 9 of `pixi run audit-completeness` now checks these names against that register.
@@ -229,7 +238,15 @@ def main() -> int:
     parser.add_argument("--write-files", action="store_true", default=None)
     parser.add_argument("--no-write-files", dest="write_files", action="store_false")
     parser.add_argument("--run-shell-commands", action="store_true", default=None)
+    # The `--no-` arms exist so a template can actually be overridden DOWNWARD. Without them
+    # `--template implement` was a lock on exactly the two flags that resolve to
+    # `--dangerously-skip-permissions`: an operator wanting implement's model and 40-minute timeout
+    # without the skip-permissions grant had to abandon the template and respell every setting.
+    # Reviewer-found, and it contradicted both the README's "not a lock" and the comment below that
+    # names turning a permission off as "the direction that matters for a permission grant".
+    parser.add_argument("--no-run-shell-commands", dest="run_shell_commands", action="store_false")
     parser.add_argument("--network-access", action="store_true", default=None)
+    parser.add_argument("--no-network-access", dest="network_access", action="store_false")
     parser.add_argument("--timeout-minutes", type=int, default=None)
     parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
     parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: <repo>/src/Aer.Cli/bin/Debug/net10.0/Aer.Cli.exe.")
@@ -285,13 +302,21 @@ def main() -> int:
         return 2
 
     if not args.write_files:
-        # Measured, not reasoned: dispatched the same prompt twice on the cheap model, changing only
-        # this flag. Read-only -> `Contract not satisfied: 'probe-out' is missing`. With
-        # --write-files -> `Succeeded`, and the file contained what was asked for.
+        # Measured, not reasoned -- but measured on ONE vendor, so read the scope: dispatched the
+        # same prompt twice on claude/haiku, changing only this flag. Read-only -> `Contract not
+        # satisfied: 'probe-out' is missing`. With --write-files -> `Succeeded`, and the file
+        # contained what was asked for.
+        #
+        # This guard refuses the combination for EVERY adapter, which is wider than that measurement.
+        # On gemini the mechanism is not a deny-list at all: `WriteFiles:false, ReadFiles:true`
+        # resolves to `--mode plan` (GeminiWorkerAdapter's PermissionMode translation). The
+        # conclusion is probably the same there -- headless agy auto-denies what it cannot prompt for
+        # -- but that path is UNMEASURED, and the refusal is deliberately conservative rather than
+        # evidenced on both vendors.
         #
         # Every dispatch declares a ProducedOutputs contract, and the only way a worker satisfies one
         # is by WRITING the artifact into AER_OUTPUT_DIR. `WriteFiles: false` resolves to
-        # `--disallowedTools Write,Edit` on claude (ClaudeWorkerAdapter's BuildDisallowedTools), so a
+        # `--disallowedTools Edit,Write,NotebookEdit` on claude (ClaudeWorkerAdapter's BuildDisallowedTools), so a
         # read-only worker is structurally incapable of satisfying any contract -- it runs to
         # completion, exits 0 naturally, and fails at the contract check with the whole run paid for.
         #
@@ -370,6 +395,13 @@ def main() -> int:
     # to a different task entirely, which reads as "AER ran the wrong workflow" rather than "AER
     # never got far enough to write anything".
     log_path = task_dir / "flow.jsonl"
+    # Both the mtime AND the byte length. flow.jsonl is APPEND-only -- `FlowEventLogWriter` appends
+    # lines and nothing truncates (the daemon has to DELETE the file to reset a task directory) -- so
+    # an mtime check alone only catches the zero-event case. If `aer run` writes even one event into a
+    # reused task-dir, the mtime moves, and printing the file hands over BOTH runs' events
+    # interleaved, with the prior run's PID and exit reason reading as this run's. The length lets the
+    # stale prefix be sliced off and labelled instead of silently prepended.
+    log_bytes_before = log_path.stat().st_size if log_path.exists() else None
     log_mtime_before = log_path.stat().st_mtime if log_path.exists() else None
 
     result = subprocess.run(
@@ -392,6 +424,16 @@ def main() -> int:
         print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
         if not log_path.exists():
             print("(not written -- `aer run` failed before recording anything)", file=sys.stderr)
+        elif log_bytes_before and log_path.stat().st_size > log_bytes_before:
+            # Grew: this run wrote something, but the file still opens with another run's events.
+            # Show only the bytes this run appended, and say what was withheld and why.
+            with open(log_path, encoding="utf-8") as fh:
+                fh.seek(log_bytes_before)
+                fresh = fh.read()
+            print(f"(the first {log_bytes_before} bytes belong to an EARLIER run in this reused"
+                  " task-dir and are withheld -- flow.jsonl is append-only, so they would read as"
+                  " this run's events. Only what this run appended is shown.)", file=sys.stderr)
+            print(fresh, file=sys.stderr)
         elif log_mtime_before is not None and log_path.stat().st_mtime == log_mtime_before:
             # Untouched by this run. Say that instead of the contents: a stale log is worse than no
             # log, because it looks like evidence.
