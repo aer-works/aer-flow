@@ -48,6 +48,13 @@ role, not a decision authority — it never calls `aer decide` on anyone's behal
   alongside any others it has attached. Nothing about it depends on which vendor or model that
   worker is running.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| `aer decide` is called by a human for every gate kind, with no orchestrator exception | **measured** — [0038](0038-a-reviewer-verdict-never-calls-aer-decide.md) and [0019](0019-consulting-is-not-deciding.md); `DecisionType`/`PausePoint` exist in `src/Aer.Flow/Domain` and nothing in code enforces the human half | the orchestrator could hold decision authority after all, and this record's central limit — an addressing and attribution default, never authority — is unnecessary |
+| A room can hold more than one worker | **measured** — M27's whole premise, and the room model in `src/Aer.Flow` | the role is vacuous: a single worker is trivially its own orchestrator |
+
 ## Consequences
 
 **Easier.** Removes an entire class of "what if there's no orchestrator" questions — a notification

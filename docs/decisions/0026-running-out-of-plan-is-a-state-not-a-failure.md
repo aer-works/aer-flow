@@ -87,6 +87,14 @@ the vendor did not give is displayed as unknown; a fabricated estimate is worse 
 for the same reason [0023](0023-effort-and-models-are-named-by-behaviour.md) refuses to invent an
 effort mapping.
 
+## Rests on
+
+| fact | how we know | if false |
+|---|---|---|
+| Plan/quota exhaustion is distinguishable at the CLI boundary from an ordinary worker failure | **assumed** — no `vendor-verify` check probes an exhausted plan, and exhausting one to measure it spends a real plan window | the state cannot be entered reliably, and exhaustion degrades back to the `Retryable` misclassification this record exists to replace |
+| A reset time is recoverable from what the vendor prints when it refuses | **assumed** — same reason; never observed under a real cap here | the state exists but carries no reset time, so "nothing wakes up when the window resets" stays true and only the manual path remains |
+| `FailureClassification` is `{ Retryable, Permanent }` and nothing else | **measured** — `src/Aer.Flow/Domain/FailureClassification.cs`, with the ordinals pinned by `FlowEventLogJsonTests` (#604) | the premise that the types froze on the spec's stopgap is wrong, and this record's framing needs re-deriving even if its conclusion survives |
+
 ## Consequences
 
 **Easier.** The most common real failure stops being indistinguishable from a crash. *"I'm out of
