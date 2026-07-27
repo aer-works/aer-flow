@@ -123,6 +123,80 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------------------------
+# Dispatch templates
+# ---------------------------------------------------------------------------------------------
+# Named role presets, so "which vendor, which model, which effort, and how much review" is a flag
+# rather than something the caller re-decides (and re-gets-wrong) every time. CLAUDE.md's
+# `second-reader` gate states the RULE for picking a tier; this is the concrete recipe, and the two
+# are deliberately in different places -- the gate is the principle, these are the settings.
+#
+# The tier question the gate asks: would a weaker model plausibly reach the OPPOSITE conclusion for a
+# reason having nothing to do with the thing under review? Yes -> a `-strong` template. No -> a cheap
+# one. That is why `fact-check` and `review` are different templates rather than one with a knob.
+#
+# WHY THE PERMISSION SHAPES DIFFER, AND WHY THAT IS DELIBERATE
+# Each template also pins a distinct permission grant, so the set doubles as a coverage matrix over
+# AER's own dispatch surface rather than four copies of one call. That is not decoration: every AER
+# defect found by this loop so far came from a path some template exercises and the others do not.
+#   * read-only, no shell    -> the plainest grant; a control for the others
+#   * write-files            -> the artifact-writing path an implementer needs
+#   * shell + network        -> agy's `--dangerously-skip-permissions` translation, which is where
+#                               #596, #611, #623 and #624 all live
+#   * a long timeout         -> `--print-timeout` derivation (#588), which silently truncated at 5
+#                               minutes before that landed
+# Running the same shape every time would have found none of them.
+TEMPLATES = {
+    "advise": {
+        "_use": "Open design question with real options to weigh, BEFORE building. Cross-vendor on "
+                "purpose: a second opinion from the same family that wrote the code is one instrument "
+                "twice.",
+        # The effort is IN the model name, and `effort` is deliberately left unset rather than also
+        # passed: `agy` has both controls and, per docs/vendor-capabilities.md's `agy models` section,
+        # the interaction between them is unprobed (#510). Pinning the probed one and leaving the
+        # unprobed one alone is the honest setting; `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
+        # the same way. The first draft of this template said `gemini-3.1-pro`, which `agy models`
+        # does not list at all -- #547's exact failure, committed by the file meant to prevent it.
+        # STEP 9 of `pixi run audit-completeness` now checks these names against that register.
+        "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
+        "read_files": True, "write_files": False,
+        "run_shell_commands": False, "network_access": False,
+        "timeout_minutes": 25,
+    },
+    "implement": {
+        "_use": "A bounded change with the approach already decided. Exercises the write path and "
+                "agy's skip-permissions translation, which is the half of AER that review-only "
+                "dispatches never touch.",
+        "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
+        "read_files": True, "write_files": True,
+        "run_shell_commands": True, "network_access": True,
+        "timeout_minutes": 40,
+    },
+    "review": {
+        "_use": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose "
+                "rationale asserts something. The default for any PR touching src/ or making a claim "
+                "in docs/. This is the tier that has actually caught the defects.",
+        "adapter": "claude", "model": "opus", "effort": "xhigh",
+        "read_files": True, "write_files": False,
+        "run_shell_commands": False, "network_access": False,
+        "timeout_minutes": 25,
+    },
+    "fact-check": {
+        "_use": "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the "
+                "list determines the work and a cheap model runs it. NOT for anything where noticing "
+                "something absent from the list is the point.",
+        "adapter": "claude", "model": "haiku", "effort": "low",
+        "read_files": True, "write_files": False,
+        "run_shell_commands": False, "network_access": False,
+        "timeout_minutes": 15,
+    },
+}
+
+# Below the gate's own floor -- a typo, a version bump, a comment fix asserting nothing -- dispatch
+# NOTHING. There is deliberately no template for that case: running a cheap reviewer out of habit is
+# the ceremony the gates exist to cut, and a template would make it look sanctioned.
+
+
 def main() -> int:
     # Windows' default console codepage (cp1252) can't represent most Unicode -- a dispatched
     # worker's own output (a box-drawing table character, an emoji, anything non-Latin-1) crashed
@@ -131,23 +205,59 @@ def main() -> int:
         stream.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--prompt-file", required=True, type=Path, help="Path to the prompt text sent to the worker.")
-    parser.add_argument("--output-name", required=True, help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
-    parser.add_argument("--working-directory", required=True, type=Path, help="Absolute path the dispatched worker treats as its project root.")
-    parser.add_argument("--adapter", default="gemini", help="Registered adapter name (default: gemini).")
+    parser.add_argument("--prompt-file", required=("--list-templates" not in sys.argv), type=Path, help="Path to the prompt text sent to the worker.")
+    parser.add_argument("--output-name", required=("--list-templates" not in sys.argv), help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
+    parser.add_argument("--working-directory", required=("--list-templates" not in sys.argv), type=Path, help="Absolute path the dispatched worker treats as its project root.")
+    parser.add_argument("--template", choices=sorted(TEMPLATES), default=None,
+                        help="Role preset supplying adapter/model/effort/permissions/timeout. Explicit flags still win. See --list-templates.")
+    parser.add_argument("--list-templates", action="store_true", help="Print each template, what it is for, and what it resolves to, then exit.")
+    parser.add_argument("--adapter", default=None, help="Registered adapter name (default: gemini, or the template's).")
     parser.add_argument("--worker-name", default="worker", help="Worker role name used in the generated workflow/bindings (default: worker).")
     parser.add_argument("--model", default=None, help="Pin a specific model (e.g. a Gemini thinking-tier model). Omit and no --model flag is sent at all, leaving the vendor CLI's own default in effect -- AER pins nothing.")
     parser.add_argument("--effort", default=None, help="Raw vendor-native effort-level string (e.g. claude: low|medium|high|xhigh|max, agy: low|medium|high). Passed through as-is, no validation.")
-    parser.add_argument("--read-files", action="store_true", default=True)
+    parser.add_argument("--read-files", action="store_true", default=None)
     parser.add_argument("--no-read-files", dest="read_files", action="store_false")
-    parser.add_argument("--write-files", action="store_true", default=True)
+    parser.add_argument("--write-files", action="store_true", default=None)
     parser.add_argument("--no-write-files", dest="write_files", action="store_false")
-    parser.add_argument("--run-shell-commands", action="store_true", default=False)
-    parser.add_argument("--network-access", action="store_true", default=False)
-    parser.add_argument("--timeout-minutes", type=int, default=20)
+    parser.add_argument("--run-shell-commands", action="store_true", default=None)
+    parser.add_argument("--network-access", action="store_true", default=None)
+    parser.add_argument("--timeout-minutes", type=int, default=None)
     parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
     parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: <repo>/src/Aer.Cli/bin/Debug/net10.0/Aer.Cli.exe.")
     args = parser.parse_args()
+
+    if args.list_templates:
+        for name in sorted(TEMPLATES):
+            t = TEMPLATES[name]
+            # `effort=None` is the one setting whose bare repr misleads: it reads as "nobody thought
+            # about effort" when it is a deliberate choice not to pass a control whose interaction
+            # with the model name is unprobed (#510). Say which it is, the same way the dispatch
+            # banner spells out an unpinned model rather than printing an empty string.
+            settings = " ".join(
+                f"{k}=" + ("<unset -- see the comment on this template>" if v is None else str(v))
+                for k, v in t.items() if not k.startswith("_"))
+            print(name)
+            print(f"    {t['_use']}")
+            print(f"    {settings}")
+            print()
+        print("Below the gate's floor -- a typo, a version bump, a comment fix asserting nothing --")
+        print("dispatch nothing. There is no template for that, deliberately.")
+        return 0
+
+    # Precedence: an explicit flag beats the template, the template beats the built-in default.
+    # The tri-state defaults above (None rather than True/False) are what make "was this passed?"
+    # answerable at all -- with `default=True` a template could never turn a permission OFF, which is
+    # exactly the direction that matters for a permission grant.
+    BUILT_IN = {
+        "adapter": "gemini", "model": None, "effort": None,
+        "read_files": True, "write_files": True,
+        "run_shell_commands": False, "network_access": False,
+        "timeout_minutes": 20,
+    }
+    template = TEMPLATES.get(args.template, {})
+    for key, fallback in BUILT_IN.items():
+        if getattr(args, key) is None:
+            setattr(args, key, template.get(key, fallback))
 
     repo_root = Path(__file__).resolve().parents[2]
     cli_path = args.cli_path or _default_cli_path(repo_root)

@@ -361,6 +361,83 @@ def step8_cited_checks_exist():
     return ok
 
 
+def step9_pinned_models_exist():
+    """Every `agy` model name pinned in a tool is one `agy models` actually lists.
+
+    Paid for the same day this step was written. `dispatch.py`'s new template set -- written partly
+    to STOP stale pins -- shipped its first draft pinning `gemini-3.1-pro`. `agy models` lists
+    `gemini-3.1-pro-high` and `gemini-3.1-pro-low`; the bare name is not an accepted value, so the
+    template would have failed at dispatch, after the operator had already paid for a run. That is
+    #547's failure class ("nothing guards a stale model pin reaching the product on agy") reproduced
+    inside the file meant to prevent it, by an author who had read the register hours earlier.
+
+    Prose could not have caught it: `gemini-3.1-pro` reads exactly like a real model name, appears as
+    a substring of two real ones, and is used correctly in surrounding prose about the grid's holes.
+    Only a join against the enumerated set separates it from the valid names -- which is precisely the
+    population CLAUDE.md gate `record-once` describes as earning a checker.
+
+    Scope, stated because it is narrower than the step's title suggests: this checks the AGY side. The
+    `claude` pins (`opus`, `haiku`) are CLI aliases with no equivalent enumerated register in this
+    repo, so nothing here validates them.
+    """
+    rule("STEP 9 -- every pinned agy model name is one `agy models` lists")
+    caps = read("docs/vendor-capabilities.md")
+
+    # The register records the CLI's own output verbatim in a fenced block. Parse that block rather
+    # than a hand-maintained list here, so re-running `agy models` into the register is the single
+    # act that updates this check -- record once, per the gate.
+    m = re.search(r"##\s+`agy models`[^\n]*\n(.*?)```\n(.*?)```", caps, re.S)
+    if not m:
+        print("    !! could not locate the `agy models` fenced block in docs/vendor-capabilities.md")
+        return False
+    accepted = set(m.group(2).split())
+    if not accepted:
+        print("    !! the `agy models` block parsed empty")
+        return False
+    line("model names enumerated by the register", len(accepted))
+
+    pins = []  # (where, model)
+
+    # dispatch.py is import-safe (its main() sits behind an `if __name__` guard), so read the real
+    # dict rather than regexing a copy of it -- a regex would go stale against the literal it parses.
+    disp_path = os.path.join(ROOT, "tools", "aer-agy-loop", "dispatch.py")
+    if os.path.exists(disp_path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_aer_dispatch_audit", disp_path)
+        mod = importlib.util.module_from_spec(spec)
+        # Importing writes `tools/aer-agy-loop/__pycache__/` otherwise. A read-only audit that dirties
+        # `git status` teaches everyone who runs it to ignore its output's neighbours, so suppress the
+        # bytecode write rather than adding a .gitignore line for a directory that need not exist.
+        prior, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+        try:
+            spec.loader.exec_module(mod)
+        finally:
+            sys.dont_write_bytecode = prior
+        for name, tpl in getattr(mod, "TEMPLATES", {}).items():
+            if tpl.get("adapter") == "gemini" and tpl.get("model"):
+                pins.append((f"dispatch.py TEMPLATES[{name!r}]", tpl["model"]))
+
+    # verify.py's CHEAP carries the same kind of pin and goes stale the same way. Regexed rather than
+    # imported: verify.py does work at import time that this script has no business triggering.
+    cheap = re.search(r'"agy":\s*\[([^\]]*)\]', read("tools/vendor-verify/verify.py"))
+    if cheap:
+        for tok in re.findall(r'"([^"]+)"', cheap.group(1)):
+            if tok.startswith("gemini-") or tok.startswith("claude-") or tok.startswith("gpt-"):
+                pins.append(("verify.py CHEAP['agy']", tok))
+
+    if not pins:
+        print("    !! no agy model pins found -- the population is empty, which is itself suspicious")
+        return False
+
+    ok = True
+    for where, model in pins:
+        good = model in accepted
+        ok &= good
+        print(f" {'OK' if good else '!!'} {where:<46} {model}"
+              f"{'' if good else '  -- not listed by `agy models`'}")
+    return bool(ok)
+
+
 def step7_milestones():
     rule("STEP 7 -- the milestone approach re-verified against the audit")
     plan = read("docs/plan.md")
@@ -518,7 +595,8 @@ def git_state():
 def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
-               step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist()]
+               step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
+               step9_pinned_models_exist()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
@@ -528,6 +606,10 @@ def main() -> int:
         "Whether a source nobody thought of exists. Enumeration cannot find its own blind spot.",
         "Whether a 'no impact' or 'unaffected' call was the RIGHT call. It checks that a reason",
         "  was given, never that the reason is good.",
+        "Step 9 checks the AGY pins only. `opus`/`haiku` are claude CLI aliases with no",
+        "  enumerated register here, so nothing validates those names.",
+        "Step 9 proves a name is one the CLI LISTS, never that the CLI still lists it --",
+        "  the register is a recording, and re-running `agy models` is what refreshes it.",
         "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
         "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
     ]:

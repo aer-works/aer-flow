@@ -40,11 +40,31 @@ same shape of mistake Architecture Rule 1 already forbids inside the engine itse
 parse conversation content to make routing decisions) — this just names that the same discipline
 applies one layer up, in tooling that could otherwise grow into a shadow engine.
 
+## Templates — pick the role, not the settings
+
+`--template advise|implement|review|fact-check` pins vendor, model, effort, permission grant and
+timeout as a set. Run `python tools/aer-agy-loop/dispatch.py --list-templates` for what each one is
+for and what it resolves to; the definitions and the reasoning behind each setting live next to the
+`TEMPLATES` dict in `dispatch.py`, and are deliberately not restated here.
+
+Two things worth knowing before reaching for one:
+
+- **Precedence is explicit flag > template > built-in default**, so `--template review --model haiku`
+  does what it says. That is intentional: the templates are a starting point you can override, not a
+  lock.
+- **The permission grants differ on purpose.** Each template exercises a different part of AER's own
+  dispatch surface, so routinely varying them is what has actually surfaced AER defects. Overriding a
+  grant to make every dispatch look the same is safe, but it narrows the instrument.
+
+A pinned `agy` model name is checked against `agy models` (as recorded in
+`docs/vendor-capabilities.md`) by STEP 9 of `pixi run audit-completeness` — the first draft of these
+templates shipped a name the CLI does not accept, and prose did not catch it.
+
 ## Using this for an advisor consult
 
-`--model gemini-3.1-pro-high` (agy's Pro tier, high reasoning effort — see `agy models` for the
-full catalogue) is a reasonable default when dispatching a consult rather than an implementation or
-review task.
+The `advise` template is this, pinned. `--model gemini-3.1-pro-high` (agy's Pro tier, high reasoning
+effort — see `agy models` for the full catalogue) is a reasonable default when dispatching a consult
+rather than an implementation or review task.
 
 **Ground it — don't ask it cold.** A bare knowledge question about a fast-moving CLI is a
 training-data-staleness risk, not just a style preference: asked "what CLI flag does agy use to
