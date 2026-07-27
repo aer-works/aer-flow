@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Aer.Flow.Dispatch;
@@ -61,7 +60,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// <remarks>
     /// Separate from <see cref="AerPaths.WorkerLaunchConfig"/>'s root rather than sharing it: agy
     /// discovers hooks only from a directory handed to <c>--add-dir</c>
-    /// (<c>agy.add-dir-grants-files-not-config</c>, #538), and <c>--add-dir</c> also grants the
+    /// (<c>agy.hooks-load-from-add-dir-not-only-cwd</c>), and <c>--add-dir</c> also grants the
     /// worker <em>file access</em> to whatever it names. Pointing it at the launch-config root would
     /// hand every worker read/write access to AER's other launch files; a dedicated leaf directory
     /// keeps that blast radius to the hook file itself.
@@ -92,12 +91,44 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     private static readonly IReadOnlyList<string> ReadTools =
         ["view_file", "list_dir", "find_by_name", "grep_search"];
 
+    /// <remarks>
+    /// <c>generate_image</c> is here because the corpus describes it as "Create or edit images" with
+    /// an <c>ImageName</c> and <c>ImagePaths</c> — a file creation and modification path, not a
+    /// rendering-only one.
+    /// </remarks>
     private static readonly IReadOnlyList<string> WriteTools =
-        ["write_to_file", "replace_file_content", "multi_replace_file_content"];
+        ["write_to_file", "replace_file_content", "multi_replace_file_content", "generate_image"];
 
-    private static readonly IReadOnlyList<string> ShellTools = ["run_command", "manage_task"];
+    /// <remarks>
+    /// <para>
+    /// The subagent trio is withheld with the shell because it is agy's closest analogue to claude's
+    /// <c>Task</c>, and because of a bypass an independent reviewer found in the first draft:
+    /// <c>define_subagent</c> takes <c>enable_write_tools</c> as an argument and
+    /// <c>invoke_subagent</c> takes an optional <c>Workspace</c>. A write-withheld worker could
+    /// therefore define a subagent with write tools enabled and invoke it — possibly under a
+    /// different workspace root than the one this hook was loaded from.
+    /// </para>
+    /// <para>
+    /// <b>Whether a subagent's own tool calls re-enter this hook is unmeasured on agy</b>, so this
+    /// withholds the spawn rather than relying on the gate reaching the child. Decision 0029 requires
+    /// exactly that posture — "never assume a subagent is more constrained than the session that
+    /// spawned it" — and agy exposes no depth-cap equivalent to
+    /// <see cref="ClaudeWorkerAdapter.MaxSubagentSpawnDepthVariable"/>, so withholding is the only
+    /// lever available here. Tracked in #601.
+    /// </para>
+    /// </remarks>
+    private static readonly IReadOnlyList<string> ShellTools =
+        ["run_command", "manage_task", "invoke_subagent", "define_subagent", "manage_subagents"];
 
-    private static readonly IReadOnlyList<string> NetworkTools = ["search_web", "read_url_content"];
+    /// <remarks>
+    /// <c>browser_*</c> is a prefix entry (see <c>AgyHookCheckCommand</c>'s prefix support). The
+    /// corpus's matcher section offers <c>"browser_.*"</c> as an example — "Match any tool starting
+    /// with <c>browser_</c>" — while its Supported Tools list enumerates none of them, so the exact
+    /// names cannot be written down. A browser tool reaches the network, and the corpus contradicting
+    /// itself is not a reason to withhold nothing.
+    /// </remarks>
+    private static readonly IReadOnlyList<string> NetworkTools =
+        ["search_web", "read_url_content", "browser_*"];
 
     /// <summary>
     /// The agy tool names this invocation's grant withholds, comma-joined for
@@ -197,7 +228,9 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         args.Add(artifactsRoot);
 
         // #554: decision 0029's mandatory PreToolUse gate. agy discovers hooks ONLY from a directory
-        // named by --add-dir (#538, `agy.add-dir-grants-files-not-config`), so this flag is what
+        // named by --add-dir -- measured by `agy.hooks-load-from-add-dir-not-only-cwd` in the
+        // arrangement AER actually ships (hook directory != cwd), where the cwd arm loaded
+        // NOTHING. So this flag is what
         // loads the gate -- not a convenience. Unconditional, matching #543's claude side: the hook
         // ships on every worker, not only on workers whose flows declare a gate, because a gate that
         // is only sometimes installed cannot be relied upon by anything.
@@ -250,9 +283,11 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             "agy", [.. args], invocation.WorkingDirectory, PromptText: prompt,
             Environment:
             [
-                // Read by `aer agy-hook-check` inside the hook subprocess. Set even when empty --
-                // the command distinguishes "nothing withheld" (allow) from "could not determine
-                // what is withheld" (deny), and an absent variable must land on the first.
+                // Read by `aer agy-hook-check` inside the hook subprocess. Always set, even when
+                // empty, so the value is AER's rather than whatever the operator's environment
+                // happened to carry. It does NOT currently make "nothing withheld" distinguishable
+                // from "the list never arrived" -- the command collapses absent and empty to the
+                // same allow. See #600.
                 (DeniedToolsVariable, BuildDeniedTools(invocation.PermissionGrant)),
             ]);
     }
@@ -281,7 +316,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     {
         var workspace = Path.Combine(AerPaths.WorkerLaunchConfig, AgyWorkspaceDirectoryName);
         Directory.CreateDirectory(Path.Combine(workspace, ".agents"));
-        WriteFileAtomically(Path.Combine(workspace, ".agents", "hooks.json"), BuildHooksJson());
+        AtomicLaunchConfigWriter.Write(Path.Combine(workspace, ".agents", "hooks.json"), BuildHooksJson());
         return workspace;
     }
 
@@ -360,17 +395,6 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// </summary>
     private const int HookTimeoutSeconds = 30;
 
-    /// <summary>
-    /// Writes via a temp file plus an atomic same-volume rename, so a worker starting mid-write
-    /// never reads a torn hooks file — which, being unparseable, agy would treat as an allow.
-    /// Mirrors <see cref="ClaudeWorkerAdapter"/>'s own writer.
-    /// </summary>
-    private static void WriteFileAtomically(string path, string content)
-    {
-        var tempPath = path + ".tmp" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
-        File.WriteAllText(tempPath, content);
-        File.Move(tempPath, path, overwrite: true);
-    }
 
     /// <summary>
     /// A structured <see cref="WorkerInvocation.PermissionGrant"/> always wins over the raw

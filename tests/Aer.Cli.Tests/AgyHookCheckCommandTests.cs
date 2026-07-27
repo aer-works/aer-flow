@@ -128,6 +128,29 @@ public class AgyHookCheckCommandTests
         Assert.Equal("deny", doc.RootElement.GetProperty("decision").GetString());
     }
 
+    [Theory]
+    [InlineData("browser_navigate", "deny")]
+    [InlineData("browser_click", "deny")]
+    [InlineData("browser", "allow")]          // the bare prefix without the separator is not a match
+    [InlineData("view_file", "allow")]
+    public void A_trailing_star_entry_withholds_a_whole_tool_family(string toolName, string expected)
+    {
+        // agy's corpus offers `browser_.*` as a matcher example -- "Match any tool starting with
+        // browser_" -- while enumerating no such tools, so the family cannot be listed by name. The
+        // allow rows are the polarity control: a prefix matcher that matched everything would pass
+        // the deny rows alone.
+        Assert.Equal(expected, Decide(Payload(toolName), "browser_*,search_web"));
+    }
+
+    [Fact]
+    public void A_bare_star_does_not_deny_everything_by_accident()
+    {
+        // Guards the prefix implementation's edge: `entry.Length > 1` means a lone "*" is not
+        // treated as a match-all prefix. If it ever were, an adapter bug emitting "*" would silently
+        // withhold every tool and break every worker -- loudly, but for a baffling reason.
+        Assert.Equal("allow", Decide(Payload("view_file"), "*"));
+    }
+
     [Fact]
     public void The_denied_tools_variable_matches_the_adapter_side_contract()
     {

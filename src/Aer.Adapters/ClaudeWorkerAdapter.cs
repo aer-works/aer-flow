@@ -363,52 +363,8 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// retrying is correct rather than papering over a real disagreement: whichever attempt
     /// eventually wins, the file ends up holding the one content every writer wanted anyway.
     /// </remarks>
-    private static void WriteFileAtomically(string path, string content)
-    {
-        const int maxAttempts = 5;
-
-        for (var attempt = 1; ; attempt++)
-        {
-            var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
-            File.WriteAllText(tempPath, content);
-            try
-            {
-                File.Move(tempPath, path, overwrite: true);
-                return;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Best-effort: TryDeleteTemp can never throw, so it can never replace or mask the
-                // exception this catch is handling -- a leftover .tmp file is a far smaller problem
-                // than losing the reason a retry was needed.
-                TryDeleteTemp(tempPath);
-                if (attempt >= maxAttempts)
-                {
-                    throw;
-                }
-
-                Thread.Sleep(TimeSpan.FromMilliseconds(10 * attempt));
-            }
-            catch
-            {
-                TryDeleteTemp(tempPath);
-                throw;
-            }
-        }
-    }
-
-    private static void TryDeleteTemp(string tempPath)
-    {
-        try
-        {
-            File.Delete(tempPath);
-        }
-        catch
-        {
-            // Best-effort cleanup only -- see WriteFileAtomically's own remarks for why a failed
-            // delete here must never surface in place of the real exception.
-        }
-    }
+    private static void WriteFileAtomically(string path, string content) =>
+        AtomicLaunchConfigWriter.Write(path, content);
 
     /// <summary>
     /// Writes <paramref name="content"/> to <paramref name="path"/> only if it does not already

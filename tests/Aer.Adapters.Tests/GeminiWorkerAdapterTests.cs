@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 
@@ -78,10 +79,19 @@ public class GeminiWorkerAdapterTests
 
     /// <summary>A directory-less room (#407's neutral-scratch case) must not emit an empty --add-dir.</summary>
     /// <remarks>
-    /// Rewritten by #554, which added a second, unconditional <c>--add-dir</c> for the gate
-    /// workspace. Counting occurrences was a proxy for "no empty value was emitted" that only held
-    /// while exactly one <c>--add-dir</c> existed; it now asserts the actual claim directly, so a
-    /// future third <c>--add-dir</c> does not fail this test for the wrong reason.
+    /// <para>
+    /// Rewritten twice by #554. It originally counted <c>--add-dir</c> occurrences as a proxy for "no
+    /// empty value was emitted", which broke when the gate workspace added a second one. The first
+    /// rewrite asserted only that no value was blank — and an independent reviewer showed that was
+    /// weaker than the original in a way that mattered: changing the adapter to
+    /// <c>invocation.WorkingDirectory ?? Directory.GetCurrentDirectory()</c> would still pass, while
+    /// regressing #407 by binding the daemon's own cwd as the worker's workspace.
+    /// </para>
+    /// <para>
+    /// So it now pins the <b>exact set</b>. A future third <c>--add-dir</c> on a directory-less room
+    /// has to come through this test deliberately — which is the test doing its job, not failing for
+    /// the wrong reason.
+    /// </para>
     /// </remarks>
     [Fact]
     public void No_directory_add_dir_is_emitted_when_the_room_has_no_working_directory()
@@ -94,8 +104,11 @@ public class GeminiWorkerAdapterTests
             .Select(pair => target.Args[pair.i + 1])
             .ToList();
 
-        Assert.NotEmpty(addDirValues);
-        Assert.All(addDirValues, value => Assert.False(string.IsNullOrWhiteSpace(value)));
+        var artifactsRootVar = OperatingSystem.IsWindows() ? "%AER_ARTIFACTS_ROOT%" : "$AER_ARTIFACTS_ROOT";
+
+        Assert.Equal(2, addDirValues.Count);
+        Assert.Equal(artifactsRootVar, addDirValues[0]);
+        Assert.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, addDirValues[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -451,9 +464,9 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void An_invocation_with_no_grant_sets_the_variable_to_empty_rather_than_omitting_it()
     {
-        // agy-hook-check reads an absent/empty value as "nothing withheld" and allows; it denies
-        // when it cannot determine what is withheld. Those must stay distinguishable, so the
-        // variable is always present.
+        // Always present so the value is AER's own rather than an inherited one. This does NOT
+        // make absent distinguishable from empty -- agy-hook-check collapses both to allow, see
+        // #600 -- so this asserts only what it can: the variable is set, and set to empty.
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan."), ArchitectContract);
 
@@ -466,5 +479,112 @@ public class GeminiWorkerAdapterTests
         // Aer.Adapters cannot reference Aer.Cli, so this name is a plain string contract asserted
         // on both sides. If they drift the hook reads an empty list and allows everything.
         Assert.Equal("AER_HOOK_DENIED_TOOLS", GeminiWorkerAdapter.DeniedToolsVariable);
+    }
+
+    // Everything above asserts against the C# objects Resolve() builds and the JSON it writes --
+    // all of which would pass equally against a hook command that looks correct on paper and fails
+    // the instant agy spawns it. These spawn the command string out of the written hooks.json as a
+    // real child process, fed a real agy payload and the real environment variable.
+    //
+    // This matters more here than on the claude side, where the equivalent pair already exists
+    // (ClaudeWorkerAdapterTests.RunResolvedHookCommand). agy's handler has no exec form -- only a
+    // single shell-parsed `command` string -- and a hook that cannot start produces no stdout, which
+    // `agy.hook-malformed-stdout-fails-open` measured as an ALLOW. So on this vendor a hook that
+    // fails to launch is an ungated worker, silently, with no --disallowedTools backstop
+    // (`agy.permissions-are-global-only`). The `File.Exists` guard in BuildHooksJson checks the
+    // unquoted path and proves nothing about whether the assembled command can actually run.
+
+    [Fact]
+    public void The_written_hook_command_actually_denies_a_withheld_tool_when_spawned_for_real()
+    {
+        var (decision, reason) = RunWrittenHookCommand(
+            new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false),
+            """{"toolCall":{"name":"run_command","args":{"CommandLine":"ls"}},"stepIdx":1}""");
+
+        Assert.Equal("deny", decision);
+        Assert.Contains("run_command", reason);
+    }
+
+    [Fact]
+    public void The_written_hook_command_actually_allows_a_granted_tool_when_spawned_for_real()
+    {
+        // Same grant, same payload shape, different tool -- so neither verdict can come from a
+        // command that answers unconditionally.
+        var (decision, _) = RunWrittenHookCommand(
+            new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false),
+            """{"toolCall":{"name":"view_file","args":{"AbsolutePath":"x"}},"stepIdx":1}""");
+
+        Assert.Equal("allow", decision);
+    }
+
+    [Fact]
+    public void The_hook_assembly_carries_its_runtimeconfig_so_dotnet_can_load_it()
+    {
+        // Added on the claude side by #543's own review pass, for the same reason: asserting the
+        // .dll exists proves nothing about whether `dotnet <dll>` can start it. A missing
+        // .runtimeconfig.json makes the hook fail to launch -- which on agy reads as an allow.
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, "Aer.Cli.dll");
+        var runtimeConfigPath = Path.ChangeExtension(assemblyPath, ".runtimeconfig.json");
+
+        Assert.True(File.Exists(runtimeConfigPath),
+            $"'{runtimeConfigPath}' is missing, so `dotnet \"{assemblyPath}\"` cannot start the hook");
+    }
+
+    /// <summary>
+    /// Spawns the <c>command</c> string out of the written <c>hooks.json</c> and returns the parsed
+    /// verdict. Parsed, not substring-matched: agy parses this stream, and output that merely
+    /// contains "deny" while being invalid JSON is an allow.
+    /// </summary>
+    private static (string Decision, string Reason) RunWrittenHookCommand(
+        PermissionGrant grant, string stdin)
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var workspace = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .Single(dir => dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(workspace, ".agents", "hooks.json")));
+        var command = doc.RootElement
+            .EnumerateObject().Single().Value
+            .GetProperty("PreToolUse")[0]
+            .GetProperty("hooks")[0]
+            .GetProperty("command").GetString()!;
+
+        // agy hands this string to a shell. Which shell is not established anywhere in the repo
+        // (see the note in BuildHooksJson), so this splits the documented shape --
+        // `dotnet "<path>" agy-hook-check` -- rather than pretending to know. That means this test
+        // proves the *assembly and arguments* launch and behave, not that any particular shell
+        // parses the quoting correctly; the quoting itself is tracked separately.
+        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+)\s+""([^""]+)""\s+(\S+)$");
+        Assert.True(match.Success, $"hook command is not the expected `exe \"path\" arg` shape: {command}");
+
+        var startInfo = new ProcessStartInfo(match.Groups[1].Value)
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add(match.Groups[2].Value);
+        startInfo.ArgumentList.Add(match.Groups[3].Value);
+
+        var deniedVar = target.Environment!.First(e => e.Name == GeminiWorkerAdapter.DeniedToolsVariable);
+        startInfo.Environment[deniedVar.Name] = deniedVar.Value;
+
+        using var process = Process.Start(startInfo)!;
+        process.StandardInput.Write(stdin);
+        process.StandardInput.Close();
+        var stdout = process.StandardOutput.ReadToEnd();
+        var exited = process.WaitForExit(TimeSpan.FromSeconds(30));
+        Assert.True(exited, "agy-hook-check did not exit within 30s");
+
+        using var verdict = System.Text.Json.JsonDocument.Parse(stdout);
+        return (verdict.RootElement.GetProperty("decision").GetString()!,
+                verdict.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "");
     }
 }

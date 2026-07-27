@@ -1586,6 +1586,91 @@ def _agy_hook_json(wd, command, event="PreToolUse", matcher="run_command"):
     json.dump({"aer": body}, open(os.path.join(wd, ".agents", "hooks.json"), "w"))
 
 
+@check("agy.hooks-load-from-add-dir-not-only-cwd", "agy",
+       "agy loads a workspace `.agents/hooks.json` from a directory named by --add-dir even when "
+       "that directory is NOT the process cwd -- the arrangement AER actually ships, and the single "
+       "claim #554's gate rests on",
+       sentinel=True)
+def _agy_hooks_add_dir_vs_cwd():
+    """**The claim every other agy hook check silently assumed.** All six of them -- the three
+    pre-existing and the three #554 added -- run `--add-dir wd` with `cwd=wd`, so not one of them can
+    tell "the hook loaded because --add-dir named its directory" from "the hook loaded because that
+    directory happened to be the cwd".
+
+    Production is the second arrangement and never the first: `GeminiWorkerAdapter.Resolve` passes
+    `--add-dir <AER's own agy-workspace>` while the cwd is the room's working directory, or null.
+
+    The stakes are total rather than partial. `gate.add-dir-loads-no-config` measured the *claude*
+    answer and it runs the opposite way -- `--add-dir` there grants file access and loads **no** hooks
+    configuration. If agy matches claude, every agy worker AER spawns carries no gate at all, and per
+    `agy.broken-hook-fails-open` that failure is open, with its silence half explicitly unmeasured on
+    this vendor. Decision 0029's "configured, running, and never consulted" failure, on the vendor
+    where the hook is the only gate.
+
+    Three arms, because two of the three possible answers are indistinguishable without them:
+
+    - `both` reproduces the existing checks' arrangement. It is the harness control: if the hook does
+      not fire here, nothing else in this check means anything.
+    - `add-dir-only` is the production arrangement and the actual question.
+    - `cwd-only` is the discriminator. If `add-dir-only` fails while this fires, hooks load from cwd
+      and AER's launch path is wrong. Without it, a silent `add-dir-only` could equally mean agy
+      loads hooks from nowhere in this configuration for some unrelated reason.
+    """
+    def arm(kind):
+        # Two sibling directories, so "the cwd" and "the --add-dir target" can differ.
+        root = tempfile.mkdtemp(prefix="v-agyad-")
+        extra = os.path.join(root, "extra")
+        cwd = os.path.join(root, "cwd")
+        os.makedirs(extra)
+        os.makedirs(cwd)
+        try:
+            log = os.path.join(root, "h.log").replace("\\", "/")
+            hk = os.path.join(root, "h.sh").replace("\\", "/")
+            hook_script(hk, log, """echo '{"decision":"deny","reason":"AER_ADDDIR_PROBE"}'""")
+
+            if kind == "both":
+                _agy_hook_json(extra, "sh %s" % hk)
+                run_cwd, add_dir = extra, extra
+            elif kind == "add-dir-only":
+                _agy_hook_json(extra, "sh %s" % hk)
+                run_cwd, add_dir = cwd, extra
+            else:  # cwd-only -- hooks live in the cwd, --add-dir points somewhere without them
+                _agy_hook_json(cwd, "sh %s" % hk)
+                run_cwd, add_dir = cwd, extra
+
+            rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
+                                "--add-dir", add_dir, "--dangerously-skip-permissions"], cwd=run_cwd)
+            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+            # `fired` is the load signal; `ran` is the gate signal. A hook that fires and blocks is
+            # loaded AND effective, which is the only outcome that supports AER's launch path.
+            return fired(log), ran
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+    both_fired, both_ran = arm("both")
+    if both_fired == 0:
+        return INCONCLUSIVE, ("the harness control did not fire, so neither other arm is "
+                              f"interpretable (control ran={both_ran})")
+
+    add_fired, add_ran = arm("add-dir-only")
+    cwd_fired, cwd_ran = arm("cwd-only")
+    detail = (f"both: fired={both_fired} ran={both_ran}; add-dir-only: fired={add_fired} "
+              f"ran={add_ran}; cwd-only: fired={cwd_fired} ran={cwd_ran}")
+
+    if add_fired and not add_ran:
+        return PASS, ("--add-dir loads hooks from a non-cwd directory and the deny holds -- AER's "
+                      "launch path is sound | " + detail)
+    if add_fired and add_ran:
+        return FAIL, ("the hook LOADED from --add-dir but its deny did not block, so the gate is "
+                      "decorative in the shipped arrangement | " + detail)
+    if cwd_fired:
+        return FAIL, ("HOOKS LOAD FROM CWD, NOT --add-dir: AER points --add-dir at its own workspace "
+                      "while the cwd is the room's directory, so every agy worker runs UNGATED and "
+                      "fails open silently. #554's launch path needs redesigning | " + detail)
+    return INCONCLUSIVE, ("the hook fired in the both-arm but in neither single-source arm, so this "
+                          "check cannot say where agy looks | " + detail)
+
+
 @check("agy.hook-env-inherited", "agy",
        "an agy PreToolUse hook subprocess INHERITS the environment agy itself was spawned with -- "
        "the channel #543's design uses to tell the hook which tools this invocation withholds",
@@ -1730,7 +1815,8 @@ def _agy_hook_malformed():
        sentinel=True)
 def _agy_hooks_cached():
     """#554 must load its hook from a directory passed via `--add-dir`, and `--add-dir` grants the
-    worker file access to that directory (`agy.add-dir-grants-files-not-config`). So the worker can
+    worker file access to that directory (`gate.add-dir-loads-no-config` measured that grant on
+    claude; `agy.hooks-load-from-add-dir-not-only-cwd` measures agy's hook discovery). So the worker can
     reach the very file that gates it. Whether that is a live gate-defeat or merely poor hygiene
     depends entirely on when agy reads the file.
 

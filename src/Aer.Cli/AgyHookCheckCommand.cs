@@ -30,8 +30,10 @@ namespace Aer.Cli;
 /// absent, and <i>denies</i> when it parses but carries an unrecognised <c>decision</c> value. So a
 /// crash, an unhandled exception writing a stack trace, or a silent exit is an <b>allow</b> — while
 /// merely getting the verdict string wrong is safe. Everything here is therefore arranged so that a
-/// syntactically valid JSON object reaches stdout on <i>every</i> path including the catch-all
-/// handler, and nothing else is ever written to stdout.
+/// syntactically valid JSON object reaches stdout on every path this process can control, including
+/// the catch-all handler, and nothing else is ever written to stdout. <b>The honest exception:</b>
+/// <see cref="StackOverflowException"/> cannot be caught in .NET, so that one path dies with empty
+/// stdout and agy allows. Unavoidable in-process, and stated rather than papered over.
 /// </para>
 /// <para>
 /// Like its claude sibling this enforces category denial by tool name only. It does not inspect tool
@@ -69,6 +71,23 @@ public static class AgyHookCheckCommand
     private const string AllowJson = """{"decision":"allow"}""";
 
     /// <summary>
+    /// The catch-all denial, preallocated as a constant so the handler that writes it performs no
+    /// allocation, no serialization, and no string formatting.
+    /// </summary>
+    /// <remarks>
+    /// An earlier version serialized a fresh object here, including the exception type name. An
+    /// independent reviewer pointed out the two ways that defeats itself: under
+    /// <see cref="OutOfMemoryException"/> — which <c>catch (Exception)</c> does catch — the
+    /// serialization allocates and is liable to rethrow from inside the handler, leaving stdout
+    /// empty; and if the first write had already emitted part of an object, a second serialized
+    /// object concatenates onto it into invalid JSON. Both outcomes are an
+    /// <b>allow</b> on this vendor (<c>agy.hook-malformed-stdout-fails-open</c>). Losing the
+    /// exception type from the reason is worth that.
+    /// </remarks>
+    private const string FallbackDenyJson =
+        """{"decision":"deny","reason":"AER: the permission gate failed internally and denied this call rather than allowing it unchecked."}""";
+
+    /// <summary>
     /// Runs the check, writing exactly one JSON object to <paramref name="stdout"/>. Takes its
     /// streams and the raw env value as parameters rather than touching <see cref="Console"/> or
     /// <see cref="Environment"/> directly, so the decision logic is testable without a subprocess.
@@ -82,17 +101,18 @@ public static class AgyHookCheckCommand
         {
             stdout.Write(Decide(stdin, deniedToolsRaw));
         }
-        catch (Exception ex)
+        catch
         {
-            // Deny, and say why in the reason agy shows the model. Reaching here means a defect in
-            // Decide -- but an exception escaping this method would print a .NET stack trace to
-            // stderr, leave stdout empty, and be read by agy as an ALLOW
+            // Reaching here means a defect in Decide -- but an exception escaping this method would
+            // print a .NET stack trace to stderr, leave stdout empty, and be read by agy as an ALLOW
             // (`agy.hook-malformed-stdout-fails-open`). On the vendor where this hook is the only
-            // gate, a bug must not silently widen the grant it was installed to narrow. Serialized
-            // rather than interpolated so a quote or newline in the message cannot produce the
-            // unparseable output this handler exists to prevent.
-            stdout.Write(DenyJson($"AER: the permission gate failed internally ({ex.GetType().Name}) " +
-                                  "and denied this call rather than allowing it unchecked."));
+            // gate, a bug must not silently widen the grant it was installed to narrow.
+            //
+            // A preallocated constant, and the exception is deliberately not inspected: see
+            // FallbackDenyJson's own remarks. Under memory pressure, formatting a message here is
+            // the thing most likely to rethrow and leave stdout empty -- the failure this handler
+            // exists to prevent.
+            stdout.Write(FallbackDenyJson);
         }
 
         return ExitCode;
@@ -120,7 +140,17 @@ public static class AgyHookCheckCommand
         if (denied.Count == 0)
         {
             // Nothing is withheld for this invocation, so there is nothing this gate can object to.
-            // Distinct from the failure paths above: this is a known-empty grant, not an unknown one.
+            //
+            // NOTE this is reached identically for an absent variable and a present-but-empty one --
+            // ParseDeniedTools collapses null, "" and "   " to the same empty set, and this check
+            // runs BEFORE any payload validation. So AER cannot currently tell "nothing is withheld"
+            // from "the denied list never arrived". The allow is still right: BuildDeniedTools
+            // returns empty whenever PermissionGrant is null (the raw PermissionScope escape hatch,
+            // which carries no categories), and denying there would break every raw-scope worker.
+            // But if agy ever stopped inheriting the environment -- the failure
+            // `agy.hook-env-inherited` is a sentinel for -- this degrades to a silent total allow.
+            // Making the two distinguishable needs a vendor-tagged sentinel value from both
+            // adapters; tracked in #600.
             return AllowJson;
         }
 
@@ -157,7 +187,7 @@ public static class AgyHookCheckCommand
                             "and denied this call rather than allowing it unchecked.");
         }
 
-        return denied.Contains(toolName)
+        return IsWithheld(denied, toolName)
             ? DenyJson($"AER: the '{toolName}' tool is withheld by this session's permission grant.")
             : AllowJson;
     }
@@ -175,4 +205,35 @@ public static class AgyHookCheckCommand
             ? []
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// True when <paramref name="toolName"/> is withheld: either named exactly, or matched by an
+    /// entry ending in <c>*</c> as a prefix.
+    /// </summary>
+    /// <remarks>
+    /// Prefix support exists for one measured-shaped reason. agy's corpus offers
+    /// <c>"browser_.*"</c> as a matcher example — "Match any tool starting with <c>browser_</c>" —
+    /// while enumerating no such tools in its Supported Tools list, so a family exists whose members
+    /// cannot be written down. Exact-match-only would silently withhold none of them. Deliberately a
+    /// trailing <c>*</c> rather than full regex: the input is AER's own adapter output, not operator
+    /// text, and a regex engine here would be a larger surface than the problem.
+    /// </remarks>
+    private static bool IsWithheld(HashSet<string> denied, string toolName)
+    {
+        if (denied.Contains(toolName))
+        {
+            return true;
+        }
+
+        foreach (var entry in denied)
+        {
+            if (entry.Length > 1 && entry[^1] == '*' &&
+                toolName.StartsWith(entry[..^1], StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
