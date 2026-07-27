@@ -298,15 +298,35 @@ Two things the design assumed otherwise:
     `gemini-3.1-pro-high --effort high` ran and answered
     ([`tools/aer-agy-loop/README.md`](../tools/aer-agy-loop/README.md), "Using this for an advisor
     consult").
-  - **Rejection is per-model and LOUD, measured.** A real dispatch failed with `Error: invalid model
-    selection (--model "gemini-3-pro" --effort "high"): --effort is not supported for model
-    "gemini-3-pro"` — recorded in
+  - **Rejection is LOUD, measured. Whether it is *per-model* is an inference, not measured.** A real
+    dispatch failed with `Error: invalid model selection (--model "gemini-3-pro" --effort "high"):
+    --effort is not supported for model "gemini-3-pro"` — recorded in
     [`OutcomeClassifierTests`](../tests/Aer.Flow.Tests/Outcomes/OutcomeClassifierTests.cs), which
-    pins it as the stderr AER must surface. So some models refuse `--effort` outright rather than
-    ignoring it. **Precision guard:** `gemini-3-pro` is not in the catalogue above at all, so this
-    licenses nothing about whether a *suffixed* model would reject the flag.
+    pins it as the stderr AER must surface. What that establishes is the *failure shape*: agy errors
+    out rather than ignoring the flag.
+
+    It does **not** isolate "this model does not support `--effort`" from "this model is not valid".
+    `gemini-3-pro` is absent from the catalogue above, and this document says that catalogue
+    "enumerates what the CLI will actually accept" — so the run may have failed on the model, with
+    `--effort` merely along for the ride. **The missing control is one dispatch:** `agy --model
+    gemini-3-pro` with *no* `--effort`. If it runs, rejection is genuinely per-model. If it fails,
+    the datum was never about `--effort` at all.
+
+    An earlier version of this bullet asserted "per-model and LOUD, **measured**" — the inference
+    labelled as the measurement, which is the `claim-scope` failure this register exists to prevent.
   - **Precedence is unprobed** — when both are given and both accepted, which one wins is unknown.
     That, and only that, is what [#510](https://github.com/aer-works/aer-flow/issues/510) tracks.
+  - **A stronger acceptance datum may already exist, unread.** The `effort.agy-value-set` sentinel
+    cited further down this page probes `agy -p --model gemini-3.6-flash-low --effort
+    __aer-sentinel-probe__` and parses a `(valid: …)` list from the output. Its design *presupposes*
+    that agy reaches `--effort` value-validation on a suffixed model — so a recorded `PASS` would be
+    a re-runnable acceptance datum on a second suffixed model, stronger than the single README run
+    cited above. **No run of it is recorded anywhere**, and `_parse_effort_set` returns
+    `INCONCLUSIVE` on any output lacking `(valid: …)`, which is where an `invalid model selection`
+    stderr would also land. Run `pixi run vendor-verify -- --only effort.agy-value-set` and record
+    the result before anyone treats acceptance as settled. Noted because this check sits twenty
+    lines below the bullet and was not reached for when the bullet was written — the `common-sense`
+    gate's own instruction to run `verify.py --list` before claiming a vendor fact is unmeasured.
 
   Corrected 2026-07-27: this bullet previously said the whole "interaction" was unprobed, while the
   rejection datum sat measured in a test's doc comment with no route back here — a fact with no

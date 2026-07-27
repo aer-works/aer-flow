@@ -1,12 +1,16 @@
 # `aer-agy-loop` — dispatch one AER workflow step, read back its output
 
 ```
+pixi run aer-dispatch -- --list-templates
+
 pixi run aer-dispatch -- \
+    [--template advise|implement|review|fact-check] \
     --prompt-file <path> \
     --output-name <name> \
     --working-directory <absolute path> \
     [--adapter gemini] [--model <name>] [--effort <level>] \
-    [--read-files] [--write-files] [--run-shell-commands] [--network-access] \
+    [--read-files|--no-read-files] [--write-files|--no-write-files] \
+    [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
     [--timeout-minutes 20]
 ```
 
@@ -53,12 +57,19 @@ Two things worth knowing before reaching for one:
   does what it says. That is intentional: the templates are a starting point you can override, not a
   lock.
 - **Every template grants write, including the reviewing ones.** A worker satisfies its
-  `ProducedOutputs` contract only by writing the artifact into `AER_OUTPUT_DIR`, and a read-only
-  grant withholds the `Write` tool — so a read-only dispatch cannot succeed whatever it is asked to
-  do. Measured both ways on the cheap model: read-only → `Contract not satisfied`; `--write-files` →
-  `Succeeded`. A read-only dispatch is now refused here before it can spend; AER accepting the
-  unsatisfiable combination is [#629](https://github.com/aer-works/aer-flow/issues/629). **"Read-only
-  reviewer" is not currently expressible.**
+  `ProducedOutputs` contract only by writing the artifact into `AER_OUTPUT_DIR`. With writes *and*
+  the shell both withheld, nothing can produce that file — measured on **claude/haiku**, both arms:
+  withheld → `Contract not satisfied`; `--write-files` → `Succeeded`. That combination is refused
+  here before it can spend. The gemini equivalent is **unmeasured** — there is no deny-list on that
+  path, `WriteFiles:false` resolves to `--mode plan` — so the refusal is conservative there rather
+  than evidenced.
+- **Withholding writes while granting the shell does *not* stop a worker writing.**
+  [#529](https://github.com/aer-works/aer-flow/issues/529) measured the file being created anyway by
+  `Bash`, and on gemini `--dangerously-skip-permissions` hands over the writes outright. So that
+  combination is allowed through here — it is satisfiable, and pretending otherwise would be a claim
+  wider than the evidence. **"Read-only reviewer" is still not expressible**
+  ([#629](https://github.com/aer-works/aer-flow/issues/629)); what is expressible is "no writes and
+  no shell", which cannot report.
 - **So the spread is one axis, not four shapes.** All four sit at read + write; only `implement` adds
   shell + network, which is the path #596, #611, #623 and #624 all came from. A session that only
   ever dispatches reviews never exercises that half of AER — the value is in reaching for `implement`

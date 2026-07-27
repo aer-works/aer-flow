@@ -429,12 +429,21 @@ def step9_pinned_models_exist():
     # The register records the CLI's own output verbatim in a fenced block. Parse that block rather
     # than a hand-maintained list here, so re-running `agy models` into the register is the single
     # act that updates this check -- record once, per the gate.
-    # Anchored to the SECTION, and tolerant of a language tag on the fence. The earlier pattern
-    # required ``` immediately followed by a newline, with re.S and no section bound, and mis-parsed
-    # SILENTLY in three ways: a second fenced block added before the models block, a tagged opener
-    # like ```text, and the fence moving out of the section -- in each case the non-greedy group
-    # reached forward and captured the wrong prose. The tagged-fence case is the sharp one, because
-    # adding a tag is part of exactly the act the comment below calls the way to maintain this check.
+    # Anchored to the SECTION, and tolerant of a language tag on the fence. Precisely what that
+    # bought, because an earlier version of this comment credited it with more:
+    #   * tagged opener (```text)        -> FIXED here; `[a-zA-Z]*` matches it.
+    #   * fence moves out of the section -> caught LOUDLY here; `fence` is None.
+    #   * heading text changes           -> caught LOUDLY here; `section` is None.
+    #   * a second fence added BEFORE the models block, in the SAME section -> NOT fixed here.
+    #     `re.search` still takes the first fence in the section. What catches that is the shape
+    #     guard below, and only when the wrong block's tokens fail it -- a fence holding some OTHER
+    #     model list would still parse silently wrong.
+    # Known bound laxity: `(?=
+##\s|\Z)` does not terminate on a `###` subheading -- `
+##` matches
+    # the first two hashes and `\s` then fails on the third -- so adding a `### ` subsection above
+    # the fence reopens the search window. Left as-is with the shape guard as the backstop rather
+    # than tightened blind; recorded so the next reader does not have to rediscover it.
     section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
     if not section:
         print("    !! could not locate the `agy models` section in docs/vendor-capabilities.md")
@@ -451,9 +460,20 @@ def step9_pinned_models_exist():
     # with no `expected` prints no marker and returns True, so the printed count could never have
     # caught this on its own.
     shaped = {n for n in accepted if MODEL_NAME_SHAPE.fullmatch(n)}
-    if accepted != shaped or not 5 <= len(accepted) <= 40:
-        print(f"    !! the `agy models` block parsed to {len(accepted)} token(s) that do not all look"
-              f" like model names -- the PARSE is wrong, not the pins. Got: {sorted(accepted)[:8]}")
+    # Two arms, two different messages, because they support two different conclusions. Tokens that
+    # are not model-shaped DO establish a bad parse. A surprising COUNT does not -- a catalogue that
+    # legitimately shrinks to 4 or grows past 40 would trip it, and blaming the parse there would be
+    # the right verdict for the wrong reason, which is the failure this guard exists to prevent.
+    if accepted != shaped:
+        print(f"    !! the `agy models` block parsed to token(s) that are not model names -- the"
+              f" PARSE is wrong, not the pins. Got: {sorted(accepted - shaped)[:8]}")
+        return False
+    # Bounds are a smoke alarm, not a diagnosis: wide enough that only a wild parse trips them
+    # (today: 12), and the message says to go look rather than naming a culprit.
+    if not 5 <= len(accepted) <= 40:
+        print(f"    !! the `agy models` block parsed to {len(accepted)} names, outside the expected"
+              " 5..40. Either the catalogue changed dramatically or the parse drifted -- check which"
+              " before trusting any verdict below.")
         return False
     line("model names enumerated by the register", len(accepted))
 
@@ -519,7 +539,11 @@ def step9_pinned_models_exist():
     for dirpath, _, filenames in os.walk(os.path.join(ROOT, "tools")):
         # Build artefacts are not source. Walking them made the audit's runtime depend on
         # whether someone had built, and a hit would have been reported with a bin/ path.
-        if any(x in dirpath for x in ("__pycache__", os.sep + "obj", os.sep + "bin")):
+        parts = dirpath.split(os.sep)
+        # Component test, matching how step 8 does it. `os.sep + "bin"` was a SUBSTRING test, so it
+        # also excluded `tools/binaries/` and `tools/binding-probe/` -- one file spelling the same
+        # exclusion two ways, and the looser spelling silently narrowing the population.
+        if "__pycache__" in parts or "obj" in parts or "bin" in parts:
             continue
         for fn in filenames:
             if not fn.endswith((".py", ".md", ".toml", ".json")):

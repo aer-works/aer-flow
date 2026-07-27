@@ -167,12 +167,11 @@ TEMPLATES = {
                 "purpose: a second opinion from the same family that wrote the code is one instrument "
                 "twice.",
         # The effort is IN the model name, and `effort` is deliberately left unset rather than also
-        # passed. Precisely: `agy` ACCEPTS both controls together on a suffixed model (this tool's
-        # README records such a run), and it hard-errors when a model does not take `--effort` at all
-        # (`OutcomeClassifierTests` records agy refusing `--effort` for `gemini-3-pro` outright). What
-        # is unprobed is which control WINS when both are given and both are accepted -- #510. So the
-        # honest phrasing is not "the interaction is unprobed" but "precedence is unprobed"; pinning
-        # the effort in the model name and sending no flag avoids the question entirely; `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
+        # passed: which of the two controls wins is unprobed -- see `docs/vendor-capabilities.md`'s
+        # `agy models` section for what is and is not measured, and #510. Sending no flag avoids the
+        # question entirely. (This was briefly a full restatement of that section's three-way split,
+        # which is the drift `record-once` forbids -- committed in the very change that moved the
+        # fact INTO the register.) `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
         # the same way. The first draft of this template said `gemini-3.1-pro`, which `agy models`
         # does not list at all -- #547's exact failure, committed by the file meant to prevent it.
         # STEP 9 of `pixi run audit-completeness` now checks these names against that register.
@@ -301,33 +300,32 @@ def main() -> int:
         )
         return 2
 
-    if not args.write_files:
-        # Measured, not reasoned -- but measured on ONE vendor, so read the scope: dispatched the
-        # same prompt twice on claude/haiku, changing only this flag. Read-only -> `Contract not
-        # satisfied: 'probe-out' is missing`. With --write-files -> `Succeeded`, and the file
-        # contained what was asked for.
+    if not args.write_files and not args.run_shell_commands:
+        # BOTH conditions, and the second one is the whole point. An earlier version refused on
+        # `not write_files` alone and told the operator a read-only worker was "structurally incapable
+        # of satisfying any contract". `ClaudeWorkerAdapter`'s own doc (#529, measured 2026-07-25)
+        # says the opposite for the shell-granted case: with the exact deny string a withheld-write
+        # grant emits, "the file was created anyway, by Bash". On gemini it is worse --
+        # `--dangerously-skip-permissions` "would hand the worker the writes the operator declined,
+        # purely from the flag". So write-withheld-plus-shell-granted is measurably SATISFIABLE on
+        # both vendors, and refusing it was a claim wider than its evidence, contradicted by two doc
+        # comments in this repo.
         #
-        # This guard refuses the combination for EVERY adapter, which is wider than that measurement.
-        # On gemini the mechanism is not a deny-list at all: `WriteFiles:false, ReadFiles:true`
-        # resolves to `--mode plan` (GeminiWorkerAdapter's PermissionMode translation). The
-        # conclusion is probably the same there -- headless agy auto-denies what it cannot prompt for
-        # -- but that path is UNMEASURED, and the refusal is deliberately conservative rather than
-        # evidenced on both vendors.
-        #
-        # Every dispatch declares a ProducedOutputs contract, and the only way a worker satisfies one
-        # is by WRITING the artifact into AER_OUTPUT_DIR. `WriteFiles: false` resolves to
-        # `--disallowedTools Edit,Write,NotebookEdit` on claude (ClaudeWorkerAdapter's BuildDisallowedTools), so a
-        # read-only worker is structurally incapable of satisfying any contract -- it runs to
-        # completion, exits 0 naturally, and fails at the contract check with the whole run paid for.
+        # What is measured, and all that is: on claude/haiku, the same prompt dispatched twice with
+        # only this flag changed. Write and shell both withheld -> `Contract not satisfied:
+        # 'probe-out' is missing`. With --write-files -> `Succeeded`. The gemini equivalent of that
+        # arm is UNMEASURED (`WriteFiles:false, ReadFiles:true` resolves to `--mode plan` there, not
+        # a deny-list), so the refusal is conservative on that vendor rather than evidenced.
         #
         # This bit the review dispatch for this very change: a 9-minute opus run produced nothing.
-        # Refused here, before spend, for the same reason the shell/network combination above is --
-        # AER itself accepting the unsatisfiable combination is #629.
+        # AER accepting the unsatisfiable combination rather than refusing it at bind time is #629;
+        # that shell defeats a withheld write at all is #529.
         print(
-            "error: WriteFiles is required. A worker satisfies its ProducedOutputs contract by "
-            "writing the artifact into AER_OUTPUT_DIR, and a read-only grant withholds the Write "
-            "tool -- so the run would burn its full budget and then fail the contract check. "
-            "Pass --write-files. 'Read-only' is not expressible here; see #629.",
+            "error: nothing here can write the output. A worker satisfies its ProducedOutputs "
+            "contract by writing the artifact into AER_OUTPUT_DIR, and this grant withholds both "
+            "the write tools and the shell -- so the run would burn its full budget and then fail "
+            "the contract check. Pass --write-files (or --run-shell-commands, which #529 measured "
+            "as defeating a withheld write anyway). See #629.",
             file=sys.stderr,
         )
         return 2
