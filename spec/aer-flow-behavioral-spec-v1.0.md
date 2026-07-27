@@ -223,6 +223,32 @@ recovery — carry a `Reason` on the same terms.
 `Reason` is a diagnostic for humans, never an input to routing: nothing in Flow parses it or branches
 on it, for the same reason §8.1's vocabulary is closed rather than freeform.
 
+#### What the worker wrote to stderr
+
+Where the failing worker was a process that wrote to stderr, `Reason` also carries a bounded tail of
+that output. It is the *tail* rather than the head because a CLI's actionable line is the last thing
+it prints, and it is flattened to a single line because every surface that renders a `Reason` is
+line-oriented. A worker that wrote nothing to stderr produces exactly the reason it would have
+produced without this clause — never an empty label implying it spoke and said nothing.
+
+This is Flow-observed, so it belongs to `Reason` and not to §8.1: it is what Flow saw the process
+emit, not a claim the worker made about itself in a metadata file.
+
+Stderr is available only where Flow observed the process exit itself. A classification derived from a
+stored exit record after a restart (§7) carries no stderr, because stderr is not written to the Event
+Store as it arrives — only the retained tail of a live dispatch reaches the outcome. Absent stderr in
+a `Reason` therefore means "not recorded", never "the worker was silent", exactly as for the field as
+a whole.
+
+Two consequences an implementation must not treat as incidental. First, the bound is enforced twice —
+once when retaining and once when rendering — and the rendering bound is the tighter of the two, so
+that any output long enough to be silently dropped by the first is necessarily marked as truncated by
+the second. A truncation an operator cannot see is worse than a shorter diagnostic. Second, whatever
+the worker wrote is recorded in the Event Store, which §3 establishes is immutable and durable: a
+vendor CLI that prints a credential in an error message therefore records it permanently. AER cannot
+prevent this by redaction — §3's pass-through variables are carried by name only, so AER never holds
+the values that would be needed to recognise one.
+
 ---
 
 ## 9. Cancellation
