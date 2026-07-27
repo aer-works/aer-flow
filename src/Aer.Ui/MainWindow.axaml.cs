@@ -1385,10 +1385,19 @@ public partial class MainWindow : Window
                     : string.Empty;
                 var nonProcessSuffix = attempt.IsNonProcess ? " [non-process]" : string.Empty;
 
+                // #597: same diagnostic as the plain-language step list, on the raw history panel.
+                // Wrapped because a contract-failure reason names every unsatisfied output and runs
+                // to 500 characters, which would otherwise widen the panel off-screen.
+                var reasonSuffix = string.IsNullOrWhiteSpace(attempt.Reason)
+                    ? string.Empty
+                    : $" — {attempt.Reason}";
+
                 HistoryPanel.Children.Add(new TextBlock
                 {
                     Text = $"{stepState.StepId} attempt {index + 1}/{attempts.Count}: " +
-                           $"{attempt.ExecutionId} -> {attempt.Status}{classificationSuffix}{nonProcessSuffix}",
+                           $"{attempt.ExecutionId} -> {attempt.Status}{classificationSuffix}{nonProcessSuffix}" +
+                           reasonSuffix,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 });
             }
 

@@ -166,6 +166,12 @@ public class MutationInterfaceTests
 
             var stepState = Assert.Single(finalState.Steps);
             Assert.Equal(StepStatus.Failed, stepState.Status);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var failedEvent = events.OfType<FlowEvent.ExecutionFailed>().Single();
+            Assert.Null(failedEvent.FailureClassification);
+            Assert.NotNull(failedEvent.Reason);
+            Assert.Contains("output.txt", failedEvent.Reason);
         }
         finally
         {
@@ -173,3 +179,4 @@ public class MutationInterfaceTests
         }
     }
 }
+

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Aer.Flow.Domain;
 
@@ -15,31 +16,50 @@ public static class ContractValidator
     /// <summary>
     /// True when every entry in <paramref name="contract"/>'s <c>ProducedOutputs</c> exists at
     /// <paramref name="outputDirectory"/> and satisfies its declared <see cref="OutputCondition"/>,
-    /// if any.
+    /// if any. A thin projection of <see cref="Validate"/> for callers that only need the bool.
     /// </summary>
-    public static bool IsSatisfied(WorkerContract contract, string outputDirectory)
+    public static bool IsSatisfied(WorkerContract contract, string outputDirectory) =>
+        Validate(contract, outputDirectory).IsSatisfied;
+
+    /// <summary>
+    /// Same check as <see cref="IsSatisfied"/>, but reports which outputs are unsatisfied and why —
+    /// missing, unparseable JSON, or a condition that didn't hold — instead of collapsing all three
+    /// into a single <c>false</c>.
+    /// </summary>
+    public static ContractValidationResult Validate(WorkerContract contract, string outputDirectory)
     {
         ArgumentNullException.ThrowIfNull(contract);
         ArgumentException.ThrowIfNullOrEmpty(outputDirectory);
+
+        List<UnsatisfiedOutput>? unsatisfied = null;
 
         foreach (var output in contract.ProducedOutputs)
         {
             var path = Path.Combine(outputDirectory, output.Name);
             if (!File.Exists(path))
             {
-                return false;
+                (unsatisfied ??= []).Add(new UnsatisfiedOutput(output.Name, UnsatisfiedOutputReason.Missing));
+                continue;
             }
 
-            if (output.Condition is not null && !IsConditionSatisfied(output.Condition, path))
+            if (output.Condition is null)
             {
-                return false;
+                continue;
+            }
+
+            var conditionFailure = TryGetUnsatisfiedCondition(output.Name, output.Condition, path);
+            if (conditionFailure is not null)
+            {
+                (unsatisfied ??= []).Add(conditionFailure);
             }
         }
 
-        return true;
+        return unsatisfied is null
+            ? ContractValidationResult.Satisfied
+            : new ContractValidationResult(false, unsatisfied);
     }
 
-    private static bool IsConditionSatisfied(OutputCondition condition, string path)
+    private static UnsatisfiedOutput? TryGetUnsatisfiedCondition(string outputName, OutputCondition condition, string path)
     {
         JsonDocument document;
         try
@@ -49,14 +69,35 @@ public static class ContractValidator
         catch (JsonException)
         {
             // §4.1 clause 2: a condition may only be declared on a JSON output. A file that fails
-            // to parse as JSON fails the condition, exactly like a missing file.
-            return false;
+            // to parse as JSON fails the condition, exactly like a missing file — but distinguishably so.
+            return new UnsatisfiedOutput(outputName, UnsatisfiedOutputReason.NotJson);
         }
 
         using (document)
         {
-            return TryResolvePointer(document.RootElement, condition.Path, out var resolved)
-                && ScalarEquals(resolved, condition.EqualsValue);
+            var expected = DescribeScalar(condition.EqualsValue);
+
+            if (!TryResolvePointer(document.RootElement, condition.Path, out var resolved))
+            {
+                return new UnsatisfiedOutput(
+                    outputName,
+                    UnsatisfiedOutputReason.ConditionFailed,
+                    condition.Path,
+                    ActualValue: null,
+                    ExpectedValue: expected);
+            }
+
+            if (ScalarEquals(resolved, condition.EqualsValue))
+            {
+                return null;
+            }
+
+            return new UnsatisfiedOutput(
+                outputName,
+                UnsatisfiedOutputReason.ConditionFailed,
+                condition.Path,
+                ActualValue: DescribeElement(resolved),
+                ExpectedValue: expected);
         }
     }
 
@@ -109,4 +150,56 @@ public static class ContractValidator
         JsonScalar.Null => resolved.ValueKind == JsonValueKind.Null,
         _ => throw new ArgumentOutOfRangeException(nameof(expected), expected, "Unknown JsonScalar case."),
     };
+
+    /// <summary>Renders a condition's expected literal for a human-readable diagnostic.</summary>
+    private static string DescribeScalar(JsonScalar scalar) => scalar switch
+    {
+        JsonScalar.String s => $"\"{s.Value}\"",
+        JsonScalar.Number n => n.Value.ToString(CultureInfo.InvariantCulture),
+        JsonScalar.Boolean b => b.Value ? "true" : "false",
+        JsonScalar.Null => "null",
+        _ => throw new ArgumentOutOfRangeException(nameof(scalar), scalar, "Unknown JsonScalar case."),
+    };
+
+    /// <summary>Renders a resolved JSON Pointer target for a human-readable diagnostic.</summary>
+    private static string DescribeElement(JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.String => $"\"{element.GetString()}\"",
+        _ => element.GetRawText(),
+    };
 }
+
+/// <summary>
+/// Which of a <see cref="WorkerContract"/>'s <c>ProducedOutputs</c> failed <see cref="ContractValidator.Validate"/>,
+/// and why — the detail <see cref="ContractValidator.IsSatisfied"/> discards by collapsing to <c>bool</c>.
+/// </summary>
+public sealed record ContractValidationResult(bool IsSatisfied, IReadOnlyList<UnsatisfiedOutput> UnsatisfiedOutputs)
+{
+    public static readonly ContractValidationResult Satisfied = new(true, []);
+}
+
+/// <summary>The three genuinely different ways a declared <see cref="ProducedOutput"/> can go unsatisfied.</summary>
+public enum UnsatisfiedOutputReason
+{
+    /// <summary>No file exists at the output's declared path.</summary>
+    Missing,
+
+    /// <summary>The file exists but does not parse as JSON, so its <see cref="OutputCondition"/> (if any) cannot be evaluated.</summary>
+    NotJson,
+
+    /// <summary>The file parsed as JSON, but its <see cref="OutputCondition"/>'s JSON Pointer either did not resolve or resolved to a value other than the expected one.</summary>
+    ConditionFailed,
+}
+
+/// <summary>
+/// One <see cref="ProducedOutput"/> that failed validation. <see cref="ConditionPath"/>,
+/// <see cref="ActualValue"/>, and <see cref="ExpectedValue"/> are populated only for
+/// <see cref="UnsatisfiedOutputReason.ConditionFailed"/>; <see cref="ActualValue"/> is null within
+/// that case when the pointer didn't resolve at all, as distinct from resolving to a mismatched value.
+/// </summary>
+public sealed record UnsatisfiedOutput(
+    string Name,
+    UnsatisfiedOutputReason Reason,
+    string? ConditionPath = null,
+    string? ActualValue = null,
+    string? ExpectedValue = null);

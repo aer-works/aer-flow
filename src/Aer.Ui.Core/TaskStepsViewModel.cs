@@ -236,9 +236,21 @@ public static class StepItemProjector
                     FailureClassification.Permanent => " — not retryable",
                     _ => string.Empty,
                 };
+
+                // #597: the diagnostic OutcomeClassifier computed at classification time, shown to
+                // the person reading the step rather than stopping at the event. Without this the
+                // commonest failure shape — a worker that exits 0 having written none of its
+                // declared outputs — reads here as a bare "Failed", which is the whole defect:
+                // Flow knew which output was missing and said so nowhere a user looks. Null for
+                // attempts recorded before the field existed, and for non-failures.
+                var reasonSuffix = string.IsNullOrWhiteSpace(attempt.Reason)
+                    ? string.Empty
+                    : $" — {attempt.Reason}";
+
                 attemptLines.Add(
                     $"Attempt {index + 1} of {attempts.Count}: " +
-                    $"{PlainLanguage.ForStep(attempt.Status)}{classificationSuffix} ({PlainLanguage.ShortId(attempt.ExecutionId.ToString())})");
+                    $"{PlainLanguage.ForStep(attempt.Status)}{classificationSuffix} ({PlainLanguage.ShortId(attempt.ExecutionId.ToString())})" +
+                    reasonSuffix);
             }
 
             var outputFiles = new List<ArtifactFileViewModel>();

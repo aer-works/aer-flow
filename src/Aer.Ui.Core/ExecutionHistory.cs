@@ -27,12 +27,18 @@ public sealed record ExecutionHistory(
 /// Core process, so nothing can time out). The only durable fact that distinguishes a human/non-process
 /// execution from an ordinary one once bindings are no longer in scope.
 /// </param>
+/// <param name="Reason">
+/// The diagnostic recorded on the terminal <see cref="FlowEvent.ExecutionFailed"/>, if this attempt
+/// failed and the event carries one — null for any non-failed status, and also for a failure
+/// recorded before this field existed.
+/// </param>
 public sealed record ExecutionAttempt(
     ExecutionId ExecutionId,
     string Worker,
     StepStatus Status,
     FailureClassification? FailureClassification,
-    bool IsNonProcess);
+    bool IsNonProcess,
+    string? Reason = null);
 
 /// <summary>
 /// An externally recorded decision (spec §17.2), paired with whether it has since been resolved by

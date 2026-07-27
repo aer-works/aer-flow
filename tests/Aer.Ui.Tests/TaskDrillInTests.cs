@@ -70,7 +70,10 @@ public class TaskDrillInTests
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
-                new FlowEvent.ExecutionFailed(new ExecutionId("a-1"), FailureClassification.Retryable),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.Retryable,
+                    "Contract not satisfied: 'plan' is missing"),
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-2"), Architect)),
                 new FlowEvent.ExecutionSucceeded(new ExecutionId("a-2")),
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("c-1"), Critic)),
@@ -106,9 +109,12 @@ public class TaskDrillInTests
                 {
                     Assert.Equal("architect", architect.StepId);
                     Assert.Equal("Done", architect.PlainStatusText);
+                    // #597's polarity pair, on one surface: the failed attempt carries the reason
+                    // Flow computed, the succeeded one carries none. A renderer that appended the
+                    // suffix unconditionally, or dropped it entirely, fails one row or the other.
                     Assert.Equal(
                         [
-                            "Attempt 1 of 2: Failed — can be retried (a-1)",
+                            "Attempt 1 of 2: Failed — can be retried (a-1) — Contract not satisfied: 'plan' is missing",
                             "Attempt 2 of 2: Done (a-2)",
                         ],
                         architect.AttemptLines);

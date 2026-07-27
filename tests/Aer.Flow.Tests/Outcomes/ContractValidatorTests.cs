@@ -1,4 +1,5 @@
 using Aer.Flow.Tests.TestSupport;
+using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Outcomes;
 
@@ -155,6 +156,53 @@ public class ContractValidatorTests
         }
     }
 
+    [Fact]
+    public void ContractValidator_distinguishes_missing_file_invalid_json_and_pointer_mismatch()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var missingFileContract = new WorkerContract("worker", [], [new ProducedOutput("missing.json")], []);
+
+            File.WriteAllText(Path.Combine(directory, "invalid.json"), "not json");
+            var invalidJsonCondition = new OutputCondition("/status", new JsonScalar.String("approved"));
+            var invalidJsonContract = new WorkerContract("worker", [], [new ProducedOutput("invalid.json", invalidJsonCondition)], []);
+
+            File.WriteAllText(Path.Combine(directory, "mismatch.json"), """{"status": "needs_revision"}""");
+            var mismatchCondition = new OutputCondition("/status", new JsonScalar.String("approved"));
+            var mismatchContract = new WorkerContract("worker", [], [new ProducedOutput("mismatch.json", mismatchCondition)], []);
+
+            File.WriteAllText(Path.Combine(directory, "unresolvable.json"), """{"other": "value"}""");
+            var unresolvableCondition = new OutputCondition("/status", new JsonScalar.String("approved"));
+            var unresolvableContract = new WorkerContract("worker", [], [new ProducedOutput("unresolvable.json", unresolvableCondition)], []);
+
+            var classificationMissing = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), missingFileContract, directory);
+            var classificationInvalid = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), invalidJsonContract, directory);
+            var classificationMismatch = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), mismatchContract, directory);
+            var classificationUnresolvable = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), unresolvableContract, directory);
+
+            Assert.NotNull(classificationMissing.Reason);
+            Assert.NotNull(classificationInvalid.Reason);
+            Assert.NotNull(classificationMismatch.Reason);
+            Assert.NotNull(classificationUnresolvable.Reason);
+
+            // Gate 2: Control arm that discriminates - pairwise non-equality proves failure kinds are not collapsed
+            Assert.NotEqual(classificationMissing.Reason, classificationInvalid.Reason);
+            Assert.NotEqual(classificationInvalid.Reason, classificationMismatch.Reason);
+            Assert.NotEqual(classificationMissing.Reason, classificationMismatch.Reason);
+
+            // Assert specific polarity for each failure kind
+            Assert.Contains("missing.json", classificationMissing.Reason);
+            Assert.Contains("invalid.json", classificationInvalid.Reason);
+            Assert.Contains("mismatch.json", classificationMismatch.Reason);
+            Assert.Contains("unresolvable.json", classificationUnresolvable.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"contract-validator-{Guid.NewGuid():N}");
@@ -162,3 +210,4 @@ public class ContractValidatorTests
         return directory;
     }
 }
+

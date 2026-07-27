@@ -16,7 +16,20 @@ public enum OutcomeVerdict
 /// The classified result of a completed dispatch — the input to whichever
 /// <see cref="Domain.FlowEvent"/> terminal case the <c>MutationInterface</c> appends to the log.
 /// </summary>
-public sealed record OutcomeClassification(OutcomeVerdict Verdict, FailureClassification? FailureClassification = null);
+/// <param name="Reason">
+/// A human-readable diagnostic for a <see cref="OutcomeVerdict.Failed"/> verdict — why exit code,
+/// exit reason, and contract state add up to a failure, computed once here from data available at
+/// classification time. Distinct from <paramref name="FailureClassification"/>, which is the
+/// worker's own self-reported retry hint, not a diagnostic Flow derives. Null only for
+/// <see cref="OutcomeVerdict.Succeeded"/> and <see cref="OutcomeVerdict.Cancelled"/>, never for a
+/// failure — every failure path below sets it, so a null <c>Reason</c> on a stored
+/// <see cref="Domain.FlowEvent.ExecutionFailed"/> unambiguously means "written before this field
+/// existed," not "a failure type we chose not to describe."
+/// </param>
+public sealed record OutcomeClassification(
+    OutcomeVerdict Verdict,
+    FailureClassification? FailureClassification = null,
+    string? Reason = null);
 
 /// <summary>
 /// Maps a <see cref="CoreDispatchResult"/> plus a step's <see cref="WorkerContract"/> into one of
@@ -25,6 +38,8 @@ public sealed record OutcomeClassification(OutcomeVerdict Verdict, FailureClassi
 /// </summary>
 public static class OutcomeClassifier
 {
+    private const int MaxReasonLength = 500;
+
     /// <summary>
     /// Classifies <paramref name="result"/> per spec §8's table:
     /// <c>NaturalExit + code 0 + all ProducedOutputs satisfied</c> → Succeeded;
@@ -46,14 +61,67 @@ public static class OutcomeClassifier
             return new OutcomeClassification(OutcomeVerdict.Cancelled);
         }
 
-        if (result.Reason == CoreExitReason.Natural &&
-            result.ExitCode == 0 &&
-            ContractValidator.IsSatisfied(contract, outputDirectory))
+        if (result.Reason == CoreExitReason.TimedOut)
+        {
+            return new OutcomeClassification(
+                OutcomeVerdict.Failed,
+                ReadFailureClassification(contract, outputDirectory),
+                "Execution timed out.");
+        }
+
+        // Only CoreExitReason.Natural remains.
+        if (result.ExitCode != 0)
+        {
+            return new OutcomeClassification(
+                OutcomeVerdict.Failed,
+                ReadFailureClassification(contract, outputDirectory),
+                $"Worker exited with non-zero code {result.ExitCode}.");
+        }
+
+        var validation = ContractValidator.Validate(contract, outputDirectory);
+        if (validation.IsSatisfied)
         {
             return new OutcomeClassification(OutcomeVerdict.Succeeded);
         }
 
-        return new OutcomeClassification(OutcomeVerdict.Failed, ReadFailureClassification(contract, outputDirectory));
+        return new OutcomeClassification(
+            OutcomeVerdict.Failed,
+            ReadFailureClassification(contract, outputDirectory),
+            BuildContractFailureReason(validation.UnsatisfiedOutputs));
+    }
+
+    /// <summary>
+    /// Assembles the diagnostic for a natural, exit-0 completion whose contract still isn't
+    /// satisfied — the exact signature (worker exited 0, wrote none of its declared outputs) that
+    /// previously surfaced as a bare <c>ExecutionFailed</c> with no reason. Names every unsatisfied
+    /// output, not just the first, and is capped at <see cref="MaxReasonLength"/> so one
+    /// pathological contract can't bloat every line of <c>flow.jsonl</c>.
+    /// </summary>
+    private static string BuildContractFailureReason(IReadOnlyList<UnsatisfiedOutput> unsatisfiedOutputs)
+    {
+        var reason = "Contract not satisfied: " + string.Join("; ", unsatisfiedOutputs.Select(DescribeUnsatisfiedOutput));
+        return Truncate(reason, MaxReasonLength);
+    }
+
+    private static string DescribeUnsatisfiedOutput(UnsatisfiedOutput output) => output.Reason switch
+    {
+        UnsatisfiedOutputReason.Missing => $"'{output.Name}' is missing",
+        UnsatisfiedOutputReason.NotJson => $"'{output.Name}' is not valid JSON",
+        UnsatisfiedOutputReason.ConditionFailed => output.ActualValue is null
+            ? $"'{output.Name}': JSON Pointer '{output.ConditionPath}' did not resolve (expected {output.ExpectedValue})"
+            : $"'{output.Name}': JSON Pointer '{output.ConditionPath}' resolved to {output.ActualValue}, expected {output.ExpectedValue}",
+        _ => throw new ArgumentOutOfRangeException(nameof(output), output.Reason, "Unknown UnsatisfiedOutputReason."),
+    };
+
+    private static string Truncate(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        const string ellipsis = "...";
+        return value[..(maxLength - ellipsis.Length)] + ellipsis;
     }
 
     /// <summary>
