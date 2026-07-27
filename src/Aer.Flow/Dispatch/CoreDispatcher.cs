@@ -350,7 +350,10 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         // Cutting from the front is the mirror of ContractValidator.TrimWithoutSplittingSurrogatePair,
         // which cuts from the back: if the first surviving char is a low surrogate, its high half is
         // among the ones being removed, so drop the orphan too rather than leaving a lone half-pair.
-        if (char.IsLowSurrogate(buffer[excess]))
+        // The bounds guard is unreachable while MaxRetainedStderrLength is positive, and is here for
+        // the same reason its counterpart there is: this runs inside a native callback, where an
+        // IndexOutOfRangeException would surface far from the edit that lowered the cap.
+        if (excess < buffer.Length && char.IsLowSurrogate(buffer[excess]))
         {
             excess++;
         }

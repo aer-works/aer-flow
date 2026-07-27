@@ -268,8 +268,12 @@ public static class ContractValidator
         var start = value.Length - length;
 
         // If the first surviving char is a low surrogate, its high half is inside the removed
-        // prefix — drop the orphan rather than emitting half a pair.
-        if (char.IsLowSurrogate(value[start]))
+        // prefix — drop the orphan rather than emitting half a pair. The `start < value.Length`
+        // guard mirrors the `cut > 0` guard in TrimWithoutSplittingSurrogatePair and exists for the
+        // same reason: it is unreachable while the callers' caps are positive, but lowering a
+        // display cap to zero is an ordinary later edit and an unguarded index would throw out of
+        // outcome classification — while recording a failure, which is the worst place to throw.
+        if (start < value.Length && char.IsLowSurrogate(value[start]))
         {
             start++;
         }
