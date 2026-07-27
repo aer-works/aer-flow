@@ -93,7 +93,7 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
             LogEntry? entry;
             try
             {
-                entry = JsonSerializer.Deserialize<LogEntry>(line);
+                entry = JsonSerializer.Deserialize<LogEntry>(line, FlowEventLogJson.Options);
             }
             catch (JsonException ex)
             {

@@ -128,7 +128,7 @@ public class CoreDispatcherTests
             }
 
             var entries = (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken))
-                .Select(line => JsonSerializer.Deserialize<LogEntry>(line))
+                .Select(line => JsonSerializer.Deserialize<LogEntry>(line, FlowEventLogJson.Options))
                 .Cast<LogEntry.CoreLogEntry>()
                 .Select(e => e.Event)
                 .ToList();

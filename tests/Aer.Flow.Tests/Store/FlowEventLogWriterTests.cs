@@ -74,7 +74,7 @@ public class FlowEventLogWriterTests
     public async Task A_torn_write_never_leaves_a_partial_event_observable_as_a_complete_line()
     {
         using var buffer = new MemoryStream();
-        var firstEventJson = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry));
+        var firstEventJson = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry), FlowEventLogJson.Options);
 
         await using var faulting = new TornWriteStream(buffer, callsBeforeFault: 1, truncateToBytes: 5);
         await using var writer = new FlowEventLogWriter(faulting, leaveOpen: true);
@@ -143,16 +143,16 @@ public class FlowEventLogWriterTests
         var lines = Encoding.UTF8.GetString(buffer.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal(2, lines.Length);
-        var flowEntry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[0]));
+        var flowEntry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[0], FlowEventLogJson.Options));
         Assert.IsType<FlowEvent.ExecutionSucceeded>(flowEntry.Event);
-        var coreEntry = Assert.IsType<LogEntry.CoreLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[1]));
+        var coreEntry = Assert.IsType<LogEntry.CoreLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[1], FlowEventLogJson.Options));
         var started = Assert.IsType<CoreEvent.ExecutionStarted>(coreEntry.Event);
         Assert.Equal(123u, started.Pid);
     }
 
     private static FlowEvent.ExecutionSucceeded DeserializeExecutionSucceeded(string line)
     {
-        var entry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(line));
+        var entry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(line, FlowEventLogJson.Options));
         return Assert.IsType<FlowEvent.ExecutionSucceeded>(entry.Event);
     }
 

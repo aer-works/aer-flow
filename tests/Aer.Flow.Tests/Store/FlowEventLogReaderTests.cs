@@ -50,8 +50,8 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         try
         {
-            var completeLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry));
-            var tornLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-2")), typeof(LogEntry))[..5];
+            var completeLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry), FlowEventLogJson.Options);
+            var tornLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-2")), typeof(LogEntry), FlowEventLogJson.Options)[..5];
             await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8, TestContext.Current.CancellationToken);
 
             var events = await new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken);
@@ -154,8 +154,8 @@ public class FlowEventLogReaderTests
         {
             var startedEvent = new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42);
             var exitedEvent = new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural);
-            var completeLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(startedEvent), typeof(LogEntry));
-            var tornLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(exitedEvent), typeof(LogEntry))[..5];
+            var completeLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(startedEvent), typeof(LogEntry), FlowEventLogJson.Options);
+            var tornLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(exitedEvent), typeof(LogEntry), FlowEventLogJson.Options)[..5];
             await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8, TestContext.Current.CancellationToken);
 
             var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync(TestContext.Current.CancellationToken);

@@ -34,6 +34,20 @@ public abstract record CoreEvent
 /// binding's enum directly — this is the boundary spec §8's failure model (<c>NaturalExit</c> |
 /// <c>TimedOut</c> | <c>CancelRequested</c>) is defined against, and it must serialize stably in
 /// <c>flow.jsonl</c> independent of however aer-core's own ABI numbering evolves.
+/// <para>
+/// That independence is delivered by <see cref="Aer.Flow.Store.FlowEventLogJson"/> persisting this
+/// by <i>name</i>, and it was not delivered before #604. Mirroring the enum decoupled the journal
+/// from aer-core's numbering, but storing the mirror as an ordinal re-coupled it to a numbering
+/// again — the declaration order immediately below. Inserting a member above <c>TimedOut</c> or
+/// swapping two would have silently reinterpreted every line already on disk, which is precisely
+/// what this mirror exists to prevent. The claim above now describes the code rather than the
+/// intention behind it; <c>FlowEventLogJsonTests</c> asserts it so the two cannot part company again.
+/// </para>
+/// <para>
+/// The member order is still load-bearing for journals written before #604, which carry ordinals the
+/// reader still accepts — see that test class's ordinal-meaning arm. Reorder these and those lines
+/// change meaning, name-persistence notwithstanding.
+/// </para>
 /// </summary>
 public enum CoreExitReason
 {

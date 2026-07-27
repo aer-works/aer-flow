@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
 
+using Aer.Flow.Store;
+
 namespace Aer.Flow.Tests.Domain;
 
 public class FlowEventSerializationTests
@@ -64,12 +66,12 @@ public class FlowEventSerializationTests
     [MemberData(nameof(AllEventVariants))]
     public void RoundTrips_through_the_FlowEvent_base_type_without_data_loss(FlowEvent original)
     {
-        var json = JsonSerializer.Serialize(original, typeof(FlowEvent));
+        var json = JsonSerializer.Serialize(original, typeof(FlowEvent), FlowEventLogJson.Options);
 
-        var deserialized = JsonSerializer.Deserialize<FlowEvent>(json);
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(json, FlowEventLogJson.Options);
         Assert.NotNull(deserialized);
 
-        var reserialized = JsonSerializer.Serialize(deserialized, typeof(FlowEvent));
+        var reserialized = JsonSerializer.Serialize(deserialized, typeof(FlowEvent), FlowEventLogJson.Options);
         Assert.Equal(json, reserialized);
         Assert.Equal(original.GetType(), deserialized.GetType());
     }
@@ -79,7 +81,7 @@ public class FlowEventSerializationTests
     {
         const string json = """{"eventType":"somethingElse"}""";
 
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FlowEvent>(json));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FlowEvent>(json, FlowEventLogJson.Options));
     }
 
     /// <summary>
@@ -120,7 +122,8 @@ public class FlowEventSerializationTests
         // #597 added Reason as a trailing defaulted member specifically so lines already on disk
         // stay readable. A journal that stopped deserializing after an upgrade is unrecoverable
         // state, which is why this is asserted rather than assumed.
-        var deserialized = JsonSerializer.Deserialize<FlowEvent>(LegacyExecutionFailedJson(classification));
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(
+            LegacyExecutionFailedJson(classification), FlowEventLogJson.Options);
 
         var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
         Assert.Equal(ExecutionId, failed.ExecutionId);
@@ -140,7 +143,7 @@ public class FlowEventSerializationTests
             (FlowEvent)new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification.Retryable, reason),
             typeof(FlowEvent));
 
-        var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson);
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson, FlowEventLogJson.Options);
 
         var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
         Assert.Equal(reason, failed.Reason);
