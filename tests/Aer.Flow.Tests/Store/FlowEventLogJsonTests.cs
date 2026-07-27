@@ -208,6 +208,88 @@ public class FlowEventLogJsonTests
         Assert.Equal(0, (int)CoreExitReason.Natural);
         Assert.Equal(1, (int)CoreExitReason.TimedOut);
         Assert.Equal(2, (int)CoreExitReason.CancelRequested);
+
+        // Reordering these silently reinterprets any pre-#604 externalDecisionRecorded line, exactly
+        // as it would for the two above. Review of #604 found this enum was the one of the three with
+        // neither arm — no ordinal pin and no by-name assertion — so nothing failed if it moved.
+        Assert.Equal(0, (int)DecisionType.Resume);
+        Assert.Equal(1, (int)DecisionType.Reject);
+        Assert.Equal(2, (int)DecisionType.RetryWithRevision);
+        Assert.Equal(3, (int)DecisionType.Supersede);
+    }
+
+    /// <summary>
+    /// What made <c>DecisionType</c>'s gap invisible: the variant population is policed
+    /// (<see cref="Every_FlowEvent_variant_is_covered_by_these_tests"/>) but the *enum* population was
+    /// not, so a journal-reachable enum could carry no arm at all and nothing would notice. This walks
+    /// the constructor graph of every persisted event and fails when it finds an enum the pins above
+    /// do not name.
+    /// </summary>
+    [Fact]
+    public void Every_enum_reachable_from_a_journal_line_is_pinned_by_these_tests()
+    {
+        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType) };
+
+        var reachable = new HashSet<Type>();
+        var seen = new HashSet<Type>();
+        var queue = new Queue<Type>(
+            new[] { typeof(FlowEvent), typeof(CoreEvent) }
+                .SelectMany(root => root
+                    .GetCustomAttributes(typeof(JsonDerivedTypeAttribute), inherit: false)
+                    .Cast<JsonDerivedTypeAttribute>()
+                    .Select(a => a.DerivedType)));
+
+        while (queue.Count > 0)
+        {
+            var type = queue.Dequeue();
+            if (!seen.Add(type))
+            {
+                continue;
+            }
+
+            foreach (var parameter in type.GetConstructors().SelectMany(c => c.GetParameters()))
+            {
+                foreach (var candidate in Unwrap(parameter.ParameterType))
+                {
+                    if (candidate.IsEnum)
+                    {
+                        reachable.Add(candidate);
+                    }
+                    else if (candidate.Namespace?.StartsWith("Aer.Flow", StringComparison.Ordinal) == true)
+                    {
+                        queue.Enqueue(candidate);
+                    }
+                }
+            }
+        }
+
+        Assert.Equal(pinned.OrderBy(t => t.Name), reachable.OrderBy(t => t.Name));
+    }
+
+    /// <summary>Peels nullable and collection wrappers so the enum inside either is still seen.</summary>
+    private static IEnumerable<Type> Unwrap(Type type)
+    {
+        var underlying = Nullable.GetUnderlyingType(type);
+        if (underlying is not null)
+        {
+            yield return underlying;
+            yield break;
+        }
+
+        if (type.IsGenericType)
+        {
+            foreach (var argument in type.GetGenericArguments())
+            {
+                foreach (var inner in Unwrap(argument))
+                {
+                    yield return inner;
+                }
+            }
+
+            yield break;
+        }
+
+        yield return type;
     }
 
     private static bool IsOptional(Type eventType, string memberName) =>

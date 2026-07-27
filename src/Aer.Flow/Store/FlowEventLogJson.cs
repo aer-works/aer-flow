@@ -46,6 +46,16 @@ namespace Aer.Flow.Store;
 /// now rejected while a line omitting <c>Reason</c> is not. Adding a member is safe; removing or
 /// renaming one is not; those were the same code path before #604 and neither threw.
 /// </para>
+/// <para>
+/// <b>Do not set <see cref="JsonSerializerOptions.DefaultIgnoreCondition"/> on these options.</b> It
+/// is left at <c>Never</c>, and that is the only reason a null required member is written at all —
+/// <c>"FailureClassification":null</c> is emitted rather than omitted. Setting
+/// <c>WhenWritingNull</c> here would stop the writer emitting it and the reader would immediately
+/// reject the lines it had just written: a store that cannot read its own output. This is a live
+/// copy-paste hazard rather than a hypothetical, because the daemon's own options legitimately do set
+/// it (<c>DaemonBroadcast.cs</c>, <c>Aer.Daemon/Program.cs</c>) — that is correct for a wire frame,
+/// where absence and null mean the same thing, and wrong here, where absence means damage.
+/// </para>
 /// </remarks>
 public static class FlowEventLogJson
 {

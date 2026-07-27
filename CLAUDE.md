@@ -36,7 +36,7 @@ aer-flow/
 │                              checks; `--sentinels` runs only the ones a design rests on),
 │                              vendor-survey, Aer.VendorProbe, smoke-preflight (free gate on the
 │                              smoke tasks), Aer.DesignTokens, audit-completeness (standing check,
-│                              gate 8 below).
+│                              gate `record-once` below).
 │                              `ls tools/` is the authority — this line is a map, not a register
 ├── .github/workflows/
 │   ├── ci.yml                 lint + fmt + test on win/linux/mac, plus the mobile job
@@ -102,9 +102,14 @@ tracking issue — don't mark a live-run item done on anything short of an actua
 ## Before you ship — the gates every change runs through
 
 Each was paid for by a specific failure, named so it stays concrete instead of becoming a recitation.
-They are ordered by when they bite: 1 before building, 2–4 while building, 5–8 before shipping.
+Roughly ordered by when they first bite, but several bite continuously — treat the order as a reading
+aid, not a schedule.
 
-**1. Common sense first.** Ask the obvious question before building anything. Does the thing you are
+**Cite a gate by its slug, never its number.** Every heading carries one (`common-sense`,
+`right-instrument`, …). Numbers are positional: merging two gates once already invalidated every
+citation elsewhere in the repo, and the slug is what survives the next restructure.
+
+**1. Common sense first — `common-sense`.** Ask the obvious question before building anything. Does the thing you are
 about to verify or depend on actually exist? Does a helper for this already exist? Is the failure you
 are theorising the one that was actually measured?
 *#534's fix was one condition away from a parser already in the file — the shape was there, and
@@ -124,7 +129,20 @@ when `--list` shows two, and an undocumented `modelName` field was announced as 
 than the one measured. An issue body is a claim about the registers as they were the day it was
 written, never evidence about them today.*
 
-**2. V&V that actually verifies.** Red before green, *proven* — never a test written against
+**2. The instrument has to fit the claim — `right-instrument`.** Before asking whether a test passes,
+ask whether a test is what answers this at all. A change to what a *person sees* is not verified by
+tests, however green; a claim about a *vendor* is not verified by that vendor's documentation; a claim
+about *durability* is not verified by a happy-path unit test. Name the kind of claim, then pick the
+instrument that can falsify it — and if the honest instrument is unavailable, say what was not
+verified rather than substituting a cheaper one and reporting it as coverage.
+*Three times all-green meant broken: 195 passing UI tests and a clean build with the feature invisible
+on the primary path; then a milestone green **including a live vendor smoke test** whose chat was
+fundamentally unusable when a person actually drove it. Both suites were written by the same reasoning
+that produced the gap, and both asked "does this do what I designed" rather than "did I design the
+right thing". `spec/journeys.md` is the structural answer for product claims, and its red is the
+status.*
+
+**3. V&V that actually verifies — `v-and-v`.** Red before green, *proven* — never a test written against
 already-fixed code. A **control arm that discriminates**, read first: if the control fails, the result
 is about the harness, not the product. Assert **polarity in both directions** when two behaviours are
 one condition apart. A test double that can fail the same way as the thing under test cannot
@@ -132,37 +150,49 @@ discriminate.
 *All four happened during #527 and the fixes after it — including a green check certifying that `agy`
 surfaces a deny reason it does not.*
 
-**3. Blast radius.** Trace every consumer of what you are changing *before* editing. A second defect
+**4. Blast radius — `blast-radius`.** Trace every consumer of what you are changing *before* editing. A second defect
 found on the way becomes its own issue with its own measurement — never a side effect of the current
 fix.
 *`establishedThisTurn` read like a local variable and decided whether every future chat turn resumes.*
 
-**4. The scope of the claim.** A claim about a *population* — both vendors, every platform, all
+**5. The scope of the claim — `claim-scope`.** A claim about a *population* — both vendors, every platform, all
 workers — is measured across that population or scoped to what was measured. Not the same as blast
 radius: that asks what your change touches, this asks what your **claim** covers.
 *A `claude`-only measurement justified an `agy` sentence: `agy.broken-hook-fails-open` claimed the
 failure was **silent** when no positive control for silence exists on that vendor. A Windows-only
 sandbox observation became a product-wide capability claim.*
 
-**5. Record once, reference everywhere.** Anything discovered that outlives the change gets a durable
-home *before* the change ships — an issue, `vendor-doc-audit.md`, a decision record. A comment saying
-"tracked separately" with no issue behind it is not a record. And never transcribe a value that lives
-somewhere authoritative — cite the command that computes it. A comment that describes code is a claim
-about that code: when the code changes, the comment is part of the change.
-*`gemini-3-flash` sat wrong in four files while pinning nothing; `audit-completeness.md` carried three
-different check counts in one afternoon because the number was copied into a file whose own script
-computes it; a test's doc comment claimed the opposite of its code.*
+**6. One register — record once, reference everywhere — `record-once`.** A fact is stated once, in one
+canonical record; every other location links to it with at most a one-clause gloss, never a
+restatement — restating a fact in three places is how a stale one drifts silently in two of them.
+Anything discovered that outlives the change gets a durable home *before* the change ships — an
+issue, `vendor-doc-audit.md`, a decision record. A comment saying "tracked separately" with no issue
+behind it is not a record. Never transcribe a value that lives somewhere authoritative — cite the
+command that computes it. A comment that describes code is a claim about that code: when the code
+changes, the comment is part of the change.
 
-**6. Cost and reversibility are the operator's call.** Say what a live run spends and what an
-irreversible step could break, then let them decide. Before calling something a human action item,
-separate *"only a person can do this"* from *"this needs a better instrument."* One exception, already
-settled: the live-vendor smoke gates above are the first kind. Do not relitigate them, and never
-install an alternate auth path to make one closable by an agent.
-*One smoke test spent top-tier model budget per run — the per-turn figure is in
-`tests/Aer.Cli.SmokeTests/LiveSessionSmokeTest.cs`, not here. Two issues were filed as permanently
-human when one needed a browser for a single question and the other needed a better probe.*
+Before editing anything milestone-shaped, check `spec/journeys.md` first: it is the actual list of
+required outcomes, not whichever artifact happened to prompt the edit. Before changing a decision,
+check it against every other decision touching the same object, not only the ones it already cites.
+Before citing an open issue as evidence that something is still unresolved, check its actual state —
+a closed issue cited as "not yet landed" is stale the moment it closes. And before closing a PR
+touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`, run
+`pixi run audit-completeness` **and read its exit code, not its output** — a pass that fixes drift
+while leaving a format violation behind has only relocated the problem.
+*This gate was itself two gates saying one thing — "record once" and "docs and decisions are one
+register" — which is the drift it exists to stop, in the file that defines it. `gemini-3-flash` sat
+wrong in four files while pinning nothing; `audit-completeness.md` carried three different check
+counts in one afternoon because the number was copied into a file whose own script computes it; a
+test's doc comment claimed the opposite of its code. M29's criterion was "corrected" to match
+`02-screens.md` without checking `journeys.md` first, directly contradicting J17. Phone-authoring
+timing was independently restated in three documents, one of which went stale while the other two
+didn't. Fourteen decisions shipped with no `Rests on` table (#589) — and the first count of it,
+written into this very gate, undercounted at thirteen. Then `audit-completeness` was reported as
+passing 16/16 while it was exiting 1, because its output was filtered for `OK`/`FAIL` and its failure
+prefix is `!!`; the false claim shipped in a merged PR body. The check was correct, pointed at the
+right thing, and read instead of run.*
 
-**7. A second reader before a PR is called ready.** A PR touching `src/`, or making a claim in
+**7. A second reader before a PR is called ready — `second-reader`.** A PR touching `src/`, or making a claim in
 `docs/`, is not ready on the author's own say-so. Run it past a **reviewer agent** — one that did not
 write the change — and act on what it finds before declaring the work done. Report what the review
 said, including "nothing", rather than silently absorbing it. A typo, a version bump, or a comment fix
@@ -191,43 +221,35 @@ fix asserting nothing — skip the reviewer rather than run a cheap one out of h
 Note the test keys on the *pass*, not on the change: "I handed it a specific list" cannot be the
 trigger for the cheap tier, because handing over a specific list is already mandatory above.
 
-Say what a pass will spend before spending it, the same way gate 6 requires for a live run: it is the
+Say what a pass will spend before spending it, the same way the cost-and-reversibility policy below requires for a live run: it is the
 operator's budget either way. `tools/aer-agy-loop/dispatch.py` announces the tier before it dispatches,
 so that path says it without being asked; every other way of launching a reviewer does not.
 *Four reviewer passes in one session all inherited the parent's model because none was ever named, so
 the frontier rate was paid for the grep half too (#548).*
 
-**8. Docs and decisions are one register, not many.** A fact is stated once, in one canonical
-record; every other location links to it with at most a one-clause gloss, never a restatement —
-restating a fact in three places is how a stale one drifts silently in two of them. Before editing
-anything milestone-shaped, check `spec/journeys.md` first: it is the actual list of required
-outcomes, not whichever artifact happened to prompt the edit. Before changing a decision, check it
-against every other decision touching the same object, not only the ones it already cites. Before
-citing an open issue as evidence that something is still unresolved, check its actual state — a
-closed issue cited as "not yet landed" is stale the moment it closes. And before closing a PR
-touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`, run
-`pixi run audit-completeness` and confirm every decision dated on or after 2026-07-25 carries the
-`Rests on` table that folder's own README makes mandatory — a pass that fixes drift while leaving a
-format violation behind has only relocated the problem.
-*M29's criterion was "corrected" to match `02-screens.md` without checking `journeys.md` first,
-directly contradicting J17. Phone-authoring timing was independently restated in three documents,
-one of which went stale while the other two didn't. 0032 was superseded by a new record instead of
-corrected in place, when nothing in `src/` had been built against it yet. Fourteen decisions dated
-on or after `Rests on` became mandatory (0026, 0027, 0028, 0031–0041) shipped without one, tracked in
-#589 — the first count of this, written into this very gate, missed 0027 and undercounted at
-thirteen; caught by an independent reviewer reading the decision files directly rather than trusting
-the tool's hardcoded population.
-`pixi run audit-completeness`, run cold nine days after it was last touched, found 11 decisions and
-2 vendor-verify checks with no disposition anywhere — the exact drift this gate exists to stop,
-caught by a tool whose own header at the time said to retire it rather than keep running it.*
-
-**The question underneath all eight: name the user-visible behaviour this change improves.** If you
+**The question underneath all seven: name the user-visible behaviour this change improves.** If you
 cannot, it may be ceremony — and rigour that is not buying correctness is what this project keeps
 having to cut back out. `tools/audit-completeness` is a standing check for exactly that reason —
 extend its population when `decisions/` or `tools/vendor-verify/verify.py` grows, never for
 open-ended rigour with no named failure behind it. These other gates stay deliberately without a
 checker of their own; this one earned one because its population (decision files, vendor-verify
 checks) is enumerable and its omissions are otherwise invisible.
+
+---
+
+## Cost and reversibility are the operator's call
+
+Not a gate — a rule about who decides, which is why it sits outside the shipping checklist rather
+than inside it.
+
+Say what a live run spends and what an
+irreversible step could break, then let them decide. Before calling something a human action item,
+separate *"only a person can do this"* from *"this needs a better instrument."* One exception, already
+settled: the live-vendor smoke gates above are the first kind. Do not relitigate them, and never
+install an alternate auth path to make one closable by an agent.
+*One smoke test spent top-tier model budget per run — the per-turn figure is in
+`tests/Aer.Cli.SmokeTests/LiveSessionSmokeTest.cs`, not here. Two issues were filed as permanently
+human when one needed a browser for a single question and the other needed a better probe.*
 
 ---
 

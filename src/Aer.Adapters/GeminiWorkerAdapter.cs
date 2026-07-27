@@ -49,7 +49,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// That an agy hook subprocess inherits this at all is <b>measured, not assumed</b>:
     /// <c>agy.hook-env-inherited</c> (a sentinel) confirms it. agy's own hook documentation says
     /// nothing about environment inheritance where claude's states it explicitly, so reusing
-    /// claude's answer without measuring would have been the population-scope mistake gate 4 names.
+    /// claude's answer without measuring would have been the population-scope mistake gate `claim-scope` names.
     /// </remarks>
     public const string DeniedToolsVariable = ClaudeWorkerAdapter.DeniedToolsVariable;
 

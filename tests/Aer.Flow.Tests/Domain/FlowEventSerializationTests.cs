@@ -94,7 +94,16 @@ public class FlowEventSerializationTests
     /// serializer emits members in PascalCase and only the discriminator in camelCase, so every
     /// property silently missed and deserialized to its default. The tests failed for a reason that
     /// had nothing to do with what they were written to check. Derived this way, the fixture tracks
-    /// the wire format automatically and cannot drift away from it again.
+    /// the wire format automatically rather than being hand-typed.
+    /// <para>
+    /// It derives from the <i>default</i> serializer deliberately, not from
+    /// <see cref="Aer.Flow.Store.FlowEventLogJson.Options"/>: the default emits the ordinal enum shape
+    /// (<c>"FailureClassification":0</c>) a genuinely historical line carries, which is precisely what
+    /// this fixture exists to reproduce. The read side uses the journal's real options, so the test
+    /// still drives production's reader against a pre-#604 line. The earlier claim here — that the
+    /// fixture "cannot drift away from the wire format again" — stopped being true when the two
+    /// diverged in #604, and is not restated.
+    /// </para>
     /// </remarks>
     private static string LegacyExecutionFailedJson(FailureClassification? classification)
     {
