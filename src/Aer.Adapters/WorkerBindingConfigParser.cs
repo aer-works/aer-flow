@@ -60,6 +60,22 @@ public static class WorkerBindingConfigParser
                 throw new WorkerBindingConfigException(
                     $"Worker-binding config entry for '{workerName}' has a blank 'WorkingDirectory' — omit the field entirely instead.");
             }
+
+            // A non-positive Timeout is not a slow worker, it is an unrunnable one, and nothing
+            // downstream treats it as an error: it reaches AerTask.WithTimeout as
+            // Duration::from_millis(0), whose monitor thread kills the process tree immediately. An
+            // *omitted* Timeout deserializes to default(TimeSpan) and lands in the same place, so the
+            // most likely way to hit this is forgetting the field rather than typing a silly value.
+            // Rejecting here also bounds what GeminiWorkerAdapter's --print-timeout can be derived
+            // from (#588): a negative timeout would otherwise floor that flag at 1s while AER's own
+            // limit misbehaves, inverting the very ordering that flag exists to establish.
+            if (entry.Timeout <= TimeSpan.Zero)
+            {
+                throw new WorkerBindingConfigException(
+                    $"Worker-binding config entry for '{workerName}' has a 'Timeout' of "
+                    + $"'{entry.Timeout}' — it must be positive. Omitting the field leaves it zero, "
+                    + "which would kill the worker the moment it starts.");
+            }
         }
 
         return entries;

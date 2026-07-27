@@ -1,4 +1,5 @@
 using Aer.Adapters.Tests.TestSupport;
+using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 
@@ -271,6 +272,44 @@ public class WorkerBindingResolverTests
         else
         {
             Assert.Contains($"\"{expected}\"", binding.Target.Args[1]);
+        }
+    }
+
+    /// <summary>
+    /// #588: the binding entry's <c>Timeout</c> must reach the adapter, not just
+    /// <c>WorkerBinding.Process</c>. <c>agy -p</c> applies its own hardcoded 5-minute print-mode wait
+    /// unless told otherwise, so an adapter that cannot see AER's timeout silently caps every long
+    /// task at 5 minutes regardless of what the operator configured.
+    /// </summary>
+    [Fact]
+    public void Resolve_hands_the_entrys_Timeout_to_the_adapter_as_well_as_to_the_binding()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "capture", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(20)),
+        };
+        var adapter = new CapturingWorkerAdapter();
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["capture"] = adapter };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters);
+
+        // Both halves, because they are separately wrong-able: the binding carrying it while the
+        // adapter does not is exactly the pre-#588 state, and that state looked entirely correct
+        // from Aer.Flow's side.
+        Assert.Equal(TimeSpan.FromMinutes(20), adapter.LastInvocation!.Timeout);
+        Assert.Equal(TimeSpan.FromMinutes(20), Assert.IsType<WorkerBinding.Process>(bindings["architect"]).Timeout);
+    }
+
+    /// <summary>Records the <see cref="WorkerInvocation"/> it was handed, and nothing else.</summary>
+    private sealed class CapturingWorkerAdapter : IWorkerAdapter
+    {
+        public WorkerInvocation? LastInvocation { get; private set; }
+
+        public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
+        {
+            LastInvocation = invocation;
+            return new CoreDispatchTarget("echo", []);
         }
     }
 }

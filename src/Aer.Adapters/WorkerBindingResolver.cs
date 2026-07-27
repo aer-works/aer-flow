@@ -68,7 +68,12 @@ public static class WorkerBindingResolver
             var invocation = new WorkerInvocation(
                 entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant,
                 workingDirectory, bindingsFileDirectory, entry.SessionId, entry.ResumeSession,
-                entry.StreamJson, entry.LogFilePath, entry.Effort);
+                entry.StreamJson, entry.LogFilePath, entry.Effort,
+                // #588: the same entry.Timeout that becomes ExecutionRequest.Timeout on line below,
+                // handed to the adapter so a vendor CLI with its own internal wait limit can be told
+                // about AER's. Passing it here rather than plumbing a per-execution value is what
+                // keeps Resolve's "once per binding entry" contract intact — both come off `entry`.
+                entry.Timeout);
             var target = adapter.Resolve(invocation, entry.Contract);
 
             if (onWorkerStdoutLine is not null)

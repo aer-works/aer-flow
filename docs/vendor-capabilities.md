@@ -664,15 +664,53 @@ command lines. Pre-authorisation rules must match what it actually emits.
 cannot scope a grant to one run the way `--allowedTools` does for `claude`, so a per-run ceiling has
 to come from `--sandbox` or from the MCP consultation path, not from flags.
 
-**`agy -p` has its own hardcoded 5-minute print-mode wait timeout, decoupled from anything AER
-configures.** `agy --help`: `--print-timeout  Timeout for print mode wait (default 5m0s)`.
-`GeminiWorkerAdapter` never passes this flag, so a long-running task (a genuinely large read+reason+write
-job — measured with a ~39-file corpus audit dispatched via `Aer.Cli run`) exits 0 with no output and no
-diagnostic pointing at the real cause, regardless of the *step's own* configured `Timeout` being far
-longer. **Not confirmed on `claude`** — its `--help` surfaces no `timeout`-named flag, but `--help` is
-known incomplete (below), so this is scoped to what was actually checked, not asserted as measured
-absence. Fix tracked in `#588` — measure, then have the adapter derive `--print-timeout` from the
-step's own timeout rather than leaving agy's default in effect unconditionally.
+**`agy -p` has its own print-mode wait timeout, decoupled from anything AER configures unless the
+flag is passed.** `agy --help`: `--print-timeout  Timeout for print mode wait (default 5m0s)`. Until
+`#588`, `GeminiWorkerAdapter` never passed it, so a long read+reason+write job (measured with a
+~39-file corpus audit dispatched via `Aer.Cli run`) exited 0 with no output file and no diagnostic
+*from agy*, regardless of AER's own configured `Timeout` being far longer.
+
+The operator was not told nothing — they were told the **wrong thing**. A clean exit 0 with the
+contract unsatisfied classifies as a contract failure, so the reported reason named the missing output
+(`'plan.md' is missing`) and pointed at the worker's prompt, when the actual cause was a five-minute
+wall. That is the real argument for the margin direction below: it converts a *misclassification* into
+a correct one (`"Execution timed out."`), which is stronger than "a better message".
+
+**Fixed in `#588`:** the adapter now emits `--print-timeout` derived from the worker binding's own
+`Timeout`, set deliberately *past* it so AER's enforcement is the binding constraint. That direction is
+the point — whichever limit expires first decides the failure mode, and they are not equally good:
+AER's yields `CoreExitReason.TimedOut` and a real diagnostic, agy's yields a clean exit 0 with no
+output. agy's limit is left as a backstop that should never fire.
+
+**The accepted duration syntax is a Go duration, and one obvious rendering is rejected.** Measured by
+running each against the live CLI: `1200s` ✓, `20m0s` ✓, `20m` ✓, and `00:20:00` ✗ — the last exits **2**
+with `invalid value "00:20:00" for flag -print-timeout: time: unknown unit ":" in duration`. That
+rejected form is exactly what .NET's `TimeSpan.ToString()` produces, so interpolating a `TimeSpan`
+directly breaks every dispatch at argument parsing rather than degrading quietly. The adapter emits
+whole seconds.
+
+**`claude` has no `--print-timeout` — measured, not inferred from `--help`.** Using the control-flag
+instrument this file records above for `--permission-prompt-tool`, since `--help` is not authoritative
+here:
+
+| invocation | exit | output |
+|---|---|---|
+| `claude --definitely-not-a-real-flag-xyz -p hi` | **1** | `error: unknown option '--definitely-not-a-real-flag-xyz'` |
+| `claude --print-timeout 60s -p hi` | **1** | `error: unknown option '--print-timeout'` |
+
+The control is what makes the second row mean something: an accepted flag exits 0 and runs the turn, so
+identical rejections prove the flag genuinely does not exist rather than that the probe was blind.
+Scoped precisely: this settles that **flag**. Whether `claude` applies an internal print-mode limit
+under some other name, or none at all, is still unmeasured — nothing here establishes an absence of
+timeouts in general.
+
+**The fix covers adapter-dispatched workers only — a dialogue participant is still exposed (`#609`).**
+`Aer.Workers.Dialogue` spawns its vendor CLIs from `DialogueParticipant.Command`/`Args`, an
+operator-authored literal argument list that the worker deliberately does no flag-shaping on. There is
+no timeout anywhere in that config to derive a value from, so `#588`'s fix cannot reach it and does
+not try. **If you configure an `agy` dialogue participant for turns that may run past five minutes,
+put `--print-timeout` in its `Args` yourself** — otherwise that turn hits agy's default, returns
+empty on a clean exit 0, and is recorded as a turn the model simply had nothing to say for.
 
 ## `--remote-control` — not yet characterised
 
