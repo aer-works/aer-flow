@@ -194,7 +194,7 @@ def main() -> int:
     workflow_path.write_text(json.dumps(workflow, indent=2), encoding="utf-8")
     bindings_path.write_text(json.dumps(bindings, indent=2), encoding="utf-8")
 
-    # CLAUDE.md gate 7 ("name the model; don't inherit it") and gate 6 ("say what it spends before
+    # CLAUDE.md gate `second-reader` ("name the model; don't inherit it") and the cost-and-reversibility policy ("say what it spends before
     # spending it") are both prose an agent has to remember at the moment it dispatches, which is
     # exactly when it is thinking about something else. Announcing the tier here makes the tool say it
     # instead. This fires for every dispatch, not only a reviewer one -- an implementer or an advisor

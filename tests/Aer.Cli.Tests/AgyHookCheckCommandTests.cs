@@ -16,7 +16,7 @@ namespace Aer.Cli.Tests;
 /// at all — is read as an <b>allow</b>. A test asserting on an exit code would pass while the gate
 /// silently let everything through, which is the failure this suite exists to catch.
 /// <para>
-/// The polarity pairs are deliberate (gate 2): a denied tool blocked and a granted tool allowed, on
+/// The polarity pairs are deliberate (gate `v-and-v`): a denied tool blocked and a granted tool allowed, on
 /// the same payload shape and the same denied list, so a mechanism that denies (or allows)
 /// unconditionally cannot pass both.
 /// </para>

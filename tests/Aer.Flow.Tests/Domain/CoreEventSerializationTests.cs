@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
 
+using Aer.Flow.Store;
+
 namespace Aer.Flow.Tests.Domain;
 
 public class CoreEventSerializationTests
@@ -19,12 +21,12 @@ public class CoreEventSerializationTests
     [MemberData(nameof(AllEventVariants))]
     public void RoundTrips_through_the_CoreEvent_base_type_without_data_loss(CoreEvent original)
     {
-        var json = JsonSerializer.Serialize(original, typeof(CoreEvent));
+        var json = JsonSerializer.Serialize(original, typeof(CoreEvent), FlowEventLogJson.Options);
 
-        var deserialized = JsonSerializer.Deserialize<CoreEvent>(json);
+        var deserialized = JsonSerializer.Deserialize<CoreEvent>(json, FlowEventLogJson.Options);
         Assert.NotNull(deserialized);
 
-        var reserialized = JsonSerializer.Serialize(deserialized, typeof(CoreEvent));
+        var reserialized = JsonSerializer.Serialize(deserialized, typeof(CoreEvent), FlowEventLogJson.Options);
         Assert.Equal(json, reserialized);
         Assert.Equal(original.GetType(), deserialized.GetType());
     }
@@ -34,6 +36,6 @@ public class CoreEventSerializationTests
     {
         const string json = """{"eventType":"somethingElse"}""";
 
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CoreEvent>(json));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CoreEvent>(json, FlowEventLogJson.Options));
     }
 }

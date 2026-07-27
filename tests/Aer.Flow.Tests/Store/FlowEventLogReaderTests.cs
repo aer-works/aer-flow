@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 
@@ -50,14 +51,60 @@ public class FlowEventLogReaderTests
         var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
         try
         {
-            var completeLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry));
-            var tornLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-2")), typeof(LogEntry))[..5];
+            var completeLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry), FlowEventLogJson.Options);
+            var tornLine = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-2")), typeof(LogEntry), FlowEventLogJson.Options)[..5];
             await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8, TestContext.Current.CancellationToken);
 
             var events = await new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken);
 
             var succeeded = Assert.Single(events);
             Assert.Equal("exec-1", Assert.IsType<FlowEvent.ExecutionSucceeded>(succeeded).ExecutionId.Value);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// #604's user-visible behaviour, at the layer production actually reads. The test below uses
+    /// syntactically broken JSON, which threw before #604 too and so discriminates nothing about this
+    /// change; every other #604 test deserializes <c>FlowEvent</c> directly, while
+    /// <see cref="FlowEventLogReader"/> deserializes <c>LogEntry</c> — a different layer, not just a
+    /// different wrapper. This is the arm that proves a real journal whose second line lost a required
+    /// member fails loudly, and names the offending line rather than replaying it as an event for
+    /// execution <c>""</c>.
+    /// </summary>
+    [Fact]
+    public async Task ReadAllAsync_names_the_line_when_a_journal_line_has_lost_a_required_member()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var intact = JsonSerializer.Serialize(
+                (LogEntry)new LogEntry.FlowLogEntry(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-1"))),
+                typeof(LogEntry),
+                FlowEventLogJson.Options);
+
+            var damagedEvent = JsonNode.Parse(JsonSerializer.Serialize(
+                (FlowEvent)new FlowEvent.ExecutionFailed(new ExecutionId("exec-2"), FailureClassification.Permanent, "boom"),
+                typeof(FlowEvent),
+                FlowEventLogJson.Options))!.AsObject();
+            Assert.True(damagedEvent.Remove(nameof(FlowEvent.ExecutionFailed.ExecutionId)));
+
+            var damagedLine = JsonNode.Parse(intact)!.AsObject();
+            damagedLine["Event"] = damagedEvent;
+
+            await File.WriteAllTextAsync(
+                path, intact + "\n" + damagedLine.ToJsonString() + "\n", Encoding.UTF8,
+                TestContext.Current.CancellationToken);
+
+            var exception = await Assert.ThrowsAsync<FlowEventLogReadException>(
+                () => new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken));
+
+            // Naming the line is the whole recoverability argument: a bad line an operator can see is
+            // fixable, a silently-bound one is not.
+            Assert.Contains("executionFailed", exception.Message, StringComparison.Ordinal);
         }
         finally
         {
@@ -154,8 +201,8 @@ public class FlowEventLogReaderTests
         {
             var startedEvent = new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 42);
             var exitedEvent = new CoreEvent.ExecutionExited(new ExecutionId("exec-1"), ExitCode: 0, CoreExitReason.Natural);
-            var completeLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(startedEvent), typeof(LogEntry));
-            var tornLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(exitedEvent), typeof(LogEntry))[..5];
+            var completeLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(startedEvent), typeof(LogEntry), FlowEventLogJson.Options);
+            var tornLine = JsonSerializer.Serialize(new LogEntry.CoreLogEntry(exitedEvent), typeof(LogEntry), FlowEventLogJson.Options)[..5];
             await File.WriteAllTextAsync(path, $"{completeLine}\n{tornLine}", Encoding.UTF8, TestContext.Current.CancellationToken);
 
             var events = await new FlowEventLogReader(path).ReadAllCoreEventsAsync(TestContext.Current.CancellationToken);

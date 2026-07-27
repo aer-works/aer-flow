@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
 
+using Aer.Flow.Store;
+
 namespace Aer.Flow.Tests.Domain;
 
 public class FlowEventSerializationTests
@@ -64,12 +66,12 @@ public class FlowEventSerializationTests
     [MemberData(nameof(AllEventVariants))]
     public void RoundTrips_through_the_FlowEvent_base_type_without_data_loss(FlowEvent original)
     {
-        var json = JsonSerializer.Serialize(original, typeof(FlowEvent));
+        var json = JsonSerializer.Serialize(original, typeof(FlowEvent), FlowEventLogJson.Options);
 
-        var deserialized = JsonSerializer.Deserialize<FlowEvent>(json);
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(json, FlowEventLogJson.Options);
         Assert.NotNull(deserialized);
 
-        var reserialized = JsonSerializer.Serialize(deserialized, typeof(FlowEvent));
+        var reserialized = JsonSerializer.Serialize(deserialized, typeof(FlowEvent), FlowEventLogJson.Options);
         Assert.Equal(json, reserialized);
         Assert.Equal(original.GetType(), deserialized.GetType());
     }
@@ -79,7 +81,7 @@ public class FlowEventSerializationTests
     {
         const string json = """{"eventType":"somethingElse"}""";
 
-        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FlowEvent>(json));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FlowEvent>(json, FlowEventLogJson.Options));
     }
 
     /// <summary>
@@ -92,7 +94,16 @@ public class FlowEventSerializationTests
     /// serializer emits members in PascalCase and only the discriminator in camelCase, so every
     /// property silently missed and deserialized to its default. The tests failed for a reason that
     /// had nothing to do with what they were written to check. Derived this way, the fixture tracks
-    /// the wire format automatically and cannot drift away from it again.
+    /// the wire format automatically rather than being hand-typed.
+    /// <para>
+    /// It derives from the <i>default</i> serializer deliberately, not from
+    /// <see cref="Aer.Flow.Store.FlowEventLogJson.Options"/>: the default emits the ordinal enum shape
+    /// (<c>"FailureClassification":0</c>) a genuinely historical line carries, which is precisely what
+    /// this fixture exists to reproduce. The read side uses the journal's real options, so the test
+    /// still drives production's reader against a pre-#604 line. The earlier claim here — that the
+    /// fixture "cannot drift away from the wire format again" — stopped being true when the two
+    /// diverged in #604, and is not restated.
+    /// </para>
     /// </remarks>
     private static string LegacyExecutionFailedJson(FailureClassification? classification)
     {
@@ -120,7 +131,8 @@ public class FlowEventSerializationTests
         // #597 added Reason as a trailing defaulted member specifically so lines already on disk
         // stay readable. A journal that stopped deserializing after an upgrade is unrecoverable
         // state, which is why this is asserted rather than assumed.
-        var deserialized = JsonSerializer.Deserialize<FlowEvent>(LegacyExecutionFailedJson(classification));
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(
+            LegacyExecutionFailedJson(classification), FlowEventLogJson.Options);
 
         var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
         Assert.Equal(ExecutionId, failed.ExecutionId);
@@ -140,7 +152,7 @@ public class FlowEventSerializationTests
             (FlowEvent)new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification.Retryable, reason),
             typeof(FlowEvent));
 
-        var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson);
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson, FlowEventLogJson.Options);
 
         var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
         Assert.Equal(reason, failed.Reason);

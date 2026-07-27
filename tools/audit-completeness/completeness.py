@@ -39,7 +39,7 @@ population it was born with.
 **It is now a standing check.** Still not wired into CI (steps 2/3/5 read local docs, cheap and
 fine there, but step 1's population is a judgement call nobody should make unattended) -- run it
 before a PR touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`
-ships, per CLAUDE.md gate 8.
+ships, per CLAUDE.md gate `record-once`.
 
 Every check here still verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any
 good. That limit is real and stays true whether this runs once or every PR: it catches an omission,
@@ -293,9 +293,9 @@ def step8_cited_checks_exist():
     A fabricated citation is worse than an uncited claim: it reads as evidence, it survives review by
     looking exactly like the real names around it, and the next person to trust it inherits a
     conclusion that was never measured. Note the ordering that makes this non-optional -- CLAUDE.md
-    gate 1 had ALREADY been extended that same day with "run `verify.py --list` before claiming a
+    gate `common-sense` had ALREADY been extended that same day with "run `verify.py --list` before claiming a
     vendor fact is unmeasured", by the same author who then fabricated the name hours later. Prose
-    did not hold. This is the population gate 8 describes as earning a checker: enumerable, and
+    did not hold. This is the population gate `record-once` describes as earning a checker: enumerable, and
     invisible when omitted.
     """
     rule("STEP 8 -- every cited vendor-verify check name actually exists")

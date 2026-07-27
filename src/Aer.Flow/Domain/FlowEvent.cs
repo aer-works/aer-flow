@@ -37,11 +37,17 @@ public abstract record FlowEvent
     /// <param name="Reason">
     /// A human-readable diagnostic computed once at classification time (see
     /// <see cref="Aer.Flow.Outcomes.OutcomeClassifier"/>), distinct from <paramref name="FailureClassification"/>'s
-    /// self-reported retry hint. Nullable because history predates the field: System.Text.Json binds
-    /// constructor parameters by name and supplies a value for an absent property, so an older
-    /// <c>flow.jsonl</c> line deserializes with it null. Neither the trailing position nor the
-    /// default is what makes that work — the default only spares call sites that mean null from
-    /// saying so.
+    /// self-reported retry hint. Nullable because history predates the field (#597): an older
+    /// <c>flow.jsonl</c> line written before it existed still replays, with this null.
+    /// <para>
+    /// <b>The <c>= null</c> default is what makes that work, and it is load-bearing — do not remove
+    /// it, and do not add a member here without one.</b> Since #604 the journal is read with
+    /// <see cref="Aer.Flow.Store.FlowEventLogJson.Options"/>, under which a constructor parameter
+    /// carrying no default is genuinely required and an absent one fails replay. That is deliberate:
+    /// it is what makes a lost or renamed member loud instead of silent. See that type's remarks for
+    /// the whole rule — this doc deliberately does not restate it, because an earlier version did and
+    /// went on asserting the opposite after the behaviour changed.
+    /// </para>
     /// </param>
     public sealed record ExecutionFailed(
         ExecutionId ExecutionId,

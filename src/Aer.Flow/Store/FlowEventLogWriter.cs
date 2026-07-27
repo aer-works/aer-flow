@@ -71,7 +71,7 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
 
     private async Task AppendEntryAsync(LogEntry entry, CancellationToken cancellationToken)
     {
-        var line = JsonSerializer.Serialize(entry, typeof(LogEntry));
+        var line = JsonSerializer.Serialize(entry, typeof(LogEntry), FlowEventLogJson.Options);
         var bytes = Encoding.UTF8.GetBytes(line + "\n");
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
