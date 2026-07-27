@@ -245,6 +245,118 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     public const int MaxRetainedStderrLength = 2000;
 
     /// <summary>
+    /// The assembled-command-line ceiling <see cref="DispatchAsync"/> guards against on Windows
+    /// (#598), held below <c>CreateProcessW</c>'s documented 32,767-character <c>lpCommandLine</c>
+    /// maximum. <see cref="MeasureCommandLineLength"/> is an upper bound, so this margin is not load
+    /// bearing the way it was when the measure could under-count; it covers the terminating NUL that
+    /// bound omits, and leaves room for the bound to be tightened later without moving the ceiling.
+    /// </summary>
+    internal const int WindowsCommandLineCeiling = 32_000;
+
+    /// <summary>
+    /// The command-line ceiling for the running OS, or <see langword="null"/> where this guard claims
+    /// no limit. Windows is the only platform carrying a number because it is the only one whose
+    /// limit was measured here against a real failure (#579's <c>Win32Exception (206)</c>). POSIX
+    /// limits both exist and differ in shape — a per-argument <c>MAX_ARG_STRLEN</c> alongside a total
+    /// <c>ARG_MAX</c>, queryable rather than constant — so putting a number here for them would be a
+    /// claim about platforms nothing in this repo has measured. An over-long command line still fails
+    /// on those platforms exactly as it does today — and worse than it does on Windows, because
+    /// aer-core's <c>AerException</c> is not an <c>AerFlowException</c> and so escapes <c>Aer.Cli</c>'s
+    /// top-level handler as a raw stack trace. Measuring those limits is #612, not guessed at here.
+    /// </summary>
+    internal static int? PlatformCommandLineCeiling =>
+        OperatingSystem.IsWindows() ? WindowsCommandLineCeiling : null;
+
+    /// <summary>
+    /// An upper bound on the command line <c>std::process::Command</c> assembles from
+    /// <paramref name="program"/> and <paramref name="args"/> inside aer-core: each argument
+    /// contributes its own characters, a separating space, a surrounding quote pair, and the worst
+    /// case of std's escaping.
+    /// </summary>
+    /// <remarks>
+    /// A bound rather than an exact reproduction, deliberately: being exact would mean reimplementing
+    /// rustc's Windows argument-quoting rules here and holding them in step with a toolchain this repo
+    /// does not pin — a claim about someone else's internals no test of ours could keep honest. But a
+    /// bound only has to be an over-estimate to be sound, which needs far less than the real rules.
+    /// <para>
+    /// Escaping never adds more than one character per <c>"</c> plus one per <c>\</c> in an argument:
+    /// std emits <c>2n+1</c> backslashes for an interior quote preceded by <c>n</c> of them (<c>n+1</c>
+    /// beyond what the raw characters already contribute) and doubles a trailing backslash run
+    /// (<c>n</c> beyond). Counting one for each of those characters therefore cannot under-shoot.
+    /// </para>
+    /// <para>
+    /// This started as <c>Length + 3</c> with no escape term, on the reasoning that under-counting only
+    /// reproduces today's OS-level failure rather than regressing it. True, but it made the guard miss
+    /// an ordinary case: review of #598 pointed out that roughly 768 quote characters in a near-ceiling
+    /// argument exhaust the whole margin below 32,767, and a prompt quoting JSON, a schema, or a file's
+    /// contents reaches that easily. So the bound is exact enough to not need the margin — the margin
+    /// now covers only <see cref="string.Length"/> counting UTF-16 code units, which is what
+    /// <c>CreateProcessW</c> counts too, and the terminating NUL that is not counted here.
+    /// </para>
+    /// </remarks>
+    internal static int MeasureCommandLineLength(string program, IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        ArgumentNullException.ThrowIfNull(args);
+
+        // The program is quoted but not preceded by a separator; every argument after it is.
+        var length = EscapedLength(program) + 2;
+        foreach (var arg in args)
+        {
+            length += EscapedLength(arg) + 3;
+        }
+
+        return length;
+    }
+
+    /// <summary>
+    /// One value's characters plus the most std's Windows escaping can add to them — see
+    /// <see cref="MeasureCommandLineLength"/>'s remarks for why one per <c>"</c> and one per <c>\</c>
+    /// is an over-estimate rather than a reproduction of the real rules.
+    /// </summary>
+    private static int EscapedLength(string value)
+    {
+        var length = value.Length;
+        foreach (var character in value)
+        {
+            if (character is '"' or '\\')
+            {
+                length++;
+            }
+        }
+
+        return length;
+    }
+
+    /// <summary>
+    /// Throws <see cref="CommandLineTooLongException"/> when <paramref name="program"/> and
+    /// <paramref name="args"/> would assemble past <paramref name="ceiling"/> (#598). Takes the
+    /// ceiling as an argument rather than reading <see cref="PlatformCommandLineCeiling"/> itself, so
+    /// that the boundary is exercisable on every OS the test suite runs on and not only the one whose
+    /// limit is being enforced.
+    /// </summary>
+    internal static void GuardCommandLineLength(string program, IReadOnlyList<string> args, int ceiling)
+    {
+        var length = MeasureCommandLineLength(program, args);
+        if (length <= ceiling)
+        {
+            return;
+        }
+
+        // Report the longest single argument alongside the total rather than naming a cause. Both
+        // adapters embed the whole prompt as one argument, so that figure is the prompt nearly every
+        // time — but not always: a long PermissionScope or several --add-dir paths contribute too, and
+        // an operator whose longest argument turns out to be small needs to see that rather than be
+        // sent to shorten a prompt that was never the problem.
+        var longest = args.Count == 0 ? 0 : args.Max(arg => arg.Length);
+        throw new CommandLineTooLongException(
+            $"Cannot dispatch '{program}': its command line assembles to about {length} characters, "
+            + $"past the {ceiling} this platform is guarded at. Its longest single argument is "
+            + $"{longest} characters — a worker's prompt is passed inline as one argument, so that is "
+            + "usually the one to shorten.");
+    }
+
+    /// <summary>
     /// Spawns <paramref name="target"/> with <paramref name="request"/>'s AER-computed environment
     /// variables and timeout, and returns once the process has exited, timed out, or been
     /// cancelled. Never throws for any of those three outcomes — each is a normal result §8 must
@@ -279,6 +391,17 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
             await File.WriteAllTextAsync(promptFilePath, ExpandVariables(promptText, pathVariables), CancellationToken.None)
                 .ConfigureAwait(false);
+        }
+
+        // #598: measured here, on the expanded arguments, because this is the only place the real
+        // command line exists — an adapter builds `%AER_OUTPUT_DIR%`, not the absolute path that
+        // placeholder becomes above, so a guard living in an adapter would measure the wrong string.
+        // Deliberately after the prompt capture: a command line long enough to trip this is a prompt
+        // problem, and prompt.txt is the artifact an operator needs in order to see how it got that
+        // big — throwing before writing it would withhold the evidence for the very failure reported.
+        if (PlatformCommandLineCeiling is { } ceiling)
+        {
+            GuardCommandLineLength(target.Program, expandedArgs, ceiling);
         }
 
         // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a
