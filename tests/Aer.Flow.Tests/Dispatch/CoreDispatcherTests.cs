@@ -641,6 +641,58 @@ public class CoreDispatcherTests
     }
 
     /// <summary>
+    /// The escape term is what makes the measure an upper bound rather than an approximation, and it
+    /// is the whole reason a quote-dense prompt cannot slip past the ceiling into an OS-level failure.
+    /// Without it every assertion here would be two characters short per escaped character.
+    /// </summary>
+    [Fact]
+    public void MeasureCommandLineLength_charges_for_what_Windows_escaping_can_add()
+    {
+        // Same raw length in every case; only the escapable characters differ.
+        Assert.Equal(11, CoreDispatcher.MeasureCommandLineLength("prog", ["ab"]));
+        Assert.Equal(12, CoreDispatcher.MeasureCommandLineLength("prog", ["a\""]));
+        Assert.Equal(12, CoreDispatcher.MeasureCommandLineLength("prog", ["a\\"]));
+        Assert.Equal(13, CoreDispatcher.MeasureCommandLineLength("prog", ["\"\""]));
+
+        // The program is charged the same way, not just the arguments.
+        Assert.Equal(7, CoreDispatcher.MeasureCommandLineLength("pro\"", []));
+    }
+
+    /// <summary>
+    /// The case review of #598 found: an argument whose raw characters sit comfortably under the
+    /// ceiling but whose escaping pushes it past. Before the measure charged for escaping this was
+    /// waved through and failed at the OS instead — a prompt quoting JSON, a schema, or a file's
+    /// contents reaches this easily, so it is an ordinary case rather than a pathological one.
+    /// </summary>
+    [Fact]
+    public void GuardCommandLineLength_refuses_an_argument_only_its_escaping_pushes_over()
+    {
+        const int ceiling = 100;
+        var quoteDense = new string('"', 60);
+
+        // Under the ceiling on raw characters alone (60 + 6 == 66), over it once escaping is charged.
+        Assert.True(quoteDense.Length + 6 <= ceiling);
+        Assert.True(CoreDispatcher.MeasureCommandLineLength("p", [quoteDense]) > ceiling);
+
+        Assert.Throws<CommandLineTooLongException>(
+            () => CoreDispatcher.GuardCommandLineLength("p", [quoteDense], ceiling));
+    }
+
+    /// <summary>
+    /// The ceiling's own doc justifies the number as sitting below <c>CreateProcessW</c>'s documented
+    /// maximum. Asserted rather than left to the comment, so raising it past the real limit fails here
+    /// instead of silently turning the guard into a formality.
+    /// </summary>
+    [Fact]
+    public void WindowsCommandLineCeiling_stays_below_the_documented_CreateProcessW_maximum()
+    {
+        Assert.True(
+            CoreDispatcher.WindowsCommandLineCeiling < 32_767,
+            $"The ceiling ({CoreDispatcher.WindowsCommandLineCeiling}) must stay below CreateProcessW's "
+            + "documented 32,767-character lpCommandLine maximum.");
+    }
+
+    /// <summary>
     /// The two arms of the boundary, one character apart, which is the pair that makes either arm
     /// mean anything: a guard that throws on everything would pass the first assertion alone, and one
     /// that throws on nothing would pass the second alone.
@@ -674,13 +726,15 @@ public class CoreDispatcherTests
         var exception = Assert.Throws<CommandLineTooLongException>(
             () => CoreDispatcher.GuardCommandLineLength("agy", ["-p", longest], ceiling));
 
-        Assert.Contains("agy", exception.Message, StringComparison.Ordinal);
+        // Anchored to the surrounding words, not bare numbers: three Contains on "213"/"100"/"200"
+        // alone would still pass if the message printed the same figures in swapped roles.
+        var measured = CoreDispatcher.MeasureCommandLineLength("agy", ["-p", longest])
+            .ToString(CultureInfo.InvariantCulture);
+        Assert.Contains("'agy'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"about {measured} characters", exception.Message, StringComparison.Ordinal);
         Assert.Contains(
-            CoreDispatcher.MeasureCommandLineLength("agy", ["-p", longest]).ToString(CultureInfo.InvariantCulture),
-            exception.Message,
-            StringComparison.Ordinal);
-        Assert.Contains(ceiling.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
-        Assert.Contains("200", exception.Message, StringComparison.Ordinal);
+            $"past the {ceiling.ToString(CultureInfo.InvariantCulture)}", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("longest single argument is 200 characters", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
