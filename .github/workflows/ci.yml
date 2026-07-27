@@ -328,10 +328,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: prefix-dev/setup-pixi@v0.8.14
+      # Same setup the test and pack jobs use, for the reason recorded there: pinning a pixi version
+      # pinned one too old to read this repo's lock file (version 7), and setup-pixi's own install
+      # step fails hard on an empty environment. Let `pixi run` do the implicit install.
+      - uses: prefix-dev/setup-pixi@v0.8.0
         with:
-          pixi-version: v0.42.1
-          cache: true
+          run-install: false
+          cache: false
       # No submodule, no .NET, no build: this reads docs/, decisions/ and the vendor-verify
       # registry as text. The exit code is the verdict -- never the output.
       - name: Audit register completeness
