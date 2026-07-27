@@ -238,6 +238,60 @@ public class OutcomeClassifierTests
         }
     }
 
+    /// <summary>
+    /// The 500-character cap cuts at a fixed index, and a non-BMP character occupies two UTF-16
+    /// chars, so a cut can land between them and leave a lone high surrogate — malformed UTF-16
+    /// written into an append-only journal. Reachable rather than theoretical: a contract-failure
+    /// reason renders values from the worker's own JSON output.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The offsets place a single emoji at, on either side of, and across the cut, so exactly one
+    /// row lands mid-pair and the neighbours are its controls. An earlier version of this test built
+    /// the overlong reason from 35 emoji-laden names and <b>passed with the fix removed</b> — the
+    /// per-name padding shifted the cut by a multiple of itself rather than by one char, so no row
+    /// ever straddled a pair. Computing the boundary rather than hoping to hit it is the difference
+    /// between this test and that one.
+    /// </para>
+    /// <para>
+    /// Asserted as a UTF-8 round trip rather than by inspecting chars, because that is the actual
+    /// harm: encoding a lone surrogate substitutes U+FFFD, so a reason that survives the round trip
+    /// unchanged is exactly one that reaches <c>flow.jsonl</c> intact.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(469)]
+    [InlineData(470)]
+    [InlineData(471)]
+    [InlineData(472)]
+    public void Classify_never_truncates_Reason_through_the_middle_of_a_surrogate_pair(int emojiOffset)
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            // "Contract not satisfied: '" is 25 chars, so name index k sits at reason index 25 + k,
+            // and the cut is at 500 - "...".Length = 497. Offset 471 therefore puts the pair's high
+            // surrogate at 496 and its low surrogate at 497 — straddling the cut exactly.
+            var name = new string('a', emojiOffset) + "\U0001F600" + new string('a', 100);
+            var contract = new WorkerContract("worker", [], [new ProducedOutput(name)], []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural), contract, directory);
+
+            Assert.NotNull(classification.Reason);
+            Assert.True(classification.Reason.Length <= 500);
+
+            var roundTripped = System.Text.Encoding.UTF8.GetString(
+                System.Text.Encoding.UTF8.GetBytes(classification.Reason));
+
+            Assert.Equal(classification.Reason, roundTripped);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
     [Fact]
     public void Classify_truncates_Reason_to_500_characters_with_ellipsis_when_pathological()
     {

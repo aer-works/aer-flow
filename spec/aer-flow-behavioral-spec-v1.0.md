@@ -193,6 +193,30 @@ This is the *only* vocabulary Flow itself understands for this purpose — two f
 - `Retryable` (the default if the field is absent or unrecognized): standard `RetryPolicy` behavior is unaffected — see §10.
 - `Permanent`: Flow transitions the step directly to terminal failure, regardless of remaining attempts under `RetryPolicy`. This exists so a worker that knows with certainty that retrying is pointless (e.g. an expired credential no amount of re-running will fix) doesn't have to exhaust a multi-attempt policy purely to rediscover, on every attempt, what it already knew on the first one.
 
+### 8.2 Flow-Derived Failure Reason
+
+Every `ExecutionFailed` also carries a `Reason`: a human-readable diagnostic Flow derives from the
+facts in §8's table — which condition of that table was not met, and for a contract failure, which
+declared outputs were unsatisfied and whether each was missing, unparseable, or resolved a JSON
+Pointer to the wrong value (§4.1).
+
+This is the opposite direction of travel from §8.1 and the two must not be conflated. §8.1 is the
+*worker's* claim about itself, absent whenever the worker wrote no metadata — so a worker that
+produced nothing legitimately reports nothing. `Reason` is *Flow's* own account, derived from what
+Flow observed, and is therefore present on every failure without depending on the worker having
+survived to describe it. That is precisely the case it exists for: a worker that exits `0` having
+written none of its declared outputs is the classification §8's table already fully determines, and
+before this field Flow recorded that verdict while discarding the reasoning behind it.
+
+Consistent with §8's evaluate-exactly-once rule, `Reason` is composed at outcome-classification time
+and stored in the event. Replay reads it; replay never recomputes it, so a diagnostic can never
+disagree with the classification it explains, and neither depends on the state of the filesystem at
+replay time. Flow-originated classifications that never consult Core's exit report — §7's orphan
+recovery — carry a `Reason` on the same terms.
+
+`Reason` is a diagnostic for humans, never an input to routing: nothing in Flow parses it or branches
+on it, for the same reason §8.1's vocabulary is closed rather than freeform.
+
 ---
 
 ## 9. Cancellation

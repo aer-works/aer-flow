@@ -121,7 +121,18 @@ public static class OutcomeClassifier
         }
 
         const string ellipsis = "...";
-        return value[..(maxLength - ellipsis.Length)] + ellipsis;
+        var cut = maxLength - ellipsis.Length;
+
+        // A non-BMP character is two UTF-16 chars, and cutting between them leaves a lone high
+        // surrogate — malformed UTF-16, written into an append-only journal. Reachable rather than
+        // theoretical: ActualValue below is rendered from the worker's own JSON output, so any
+        // worker whose mismatched value contains an emoji can land a surrogate pair on the boundary.
+        if (char.IsHighSurrogate(value[cut - 1]))
+        {
+            cut--;
+        }
+
+        return value[..cut] + ellipsis;
     }
 
     /// <summary>
