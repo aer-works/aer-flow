@@ -136,7 +136,7 @@ def main() -> int:
     parser.add_argument("--working-directory", required=True, type=Path, help="Absolute path the dispatched worker treats as its project root.")
     parser.add_argument("--adapter", default="gemini", help="Registered adapter name (default: gemini).")
     parser.add_argument("--worker-name", default="worker", help="Worker role name used in the generated workflow/bindings (default: worker).")
-    parser.add_argument("--model", default=None, help="Pin a specific model (e.g. a Gemini thinking-tier model). Omit to use the CLI's configured default.")
+    parser.add_argument("--model", default=None, help="Pin a specific model (e.g. a Gemini thinking-tier model). Omit and no --model flag is sent at all, leaving the vendor CLI's own default in effect -- AER pins nothing.")
     parser.add_argument("--effort", default=None, help="Raw vendor-native effort-level string (e.g. claude: low|medium|high|xhigh|max, agy: low|medium|high). Passed through as-is, no validation.")
     parser.add_argument("--read-files", action="store_true", default=True)
     parser.add_argument("--no-read-files", dest="read_files", action="store_false")
@@ -197,14 +197,20 @@ def main() -> int:
     # CLAUDE.md gate 7 ("name the model; don't inherit it") and gate 6 ("say what it spends before
     # spending it") are both prose an agent has to remember at the moment it dispatches, which is
     # exactly when it is thinking about something else. Announcing the tier here makes the tool say it
-    # instead. An omitted --model is called out rather than left blank: silently inheriting the CLI's
-    # configured default is the specific failure gate 7 names, and a blank field reads like a choice.
+    # instead. This fires for every dispatch, not only a reviewer one -- an implementer or an advisor
+    # consult is spent from the same budget.
+    #
+    # An omitted --model is named rather than left blank, because a blank field reads like a choice.
+    # It resolves to the *vendor* CLI's own default: with no Model in the bindings the adapter adds no
+    # --model flag at all (GeminiWorkerAdapter's `if (invocation.Model is not null)`), so nothing on
+    # AER's side picked it. Saying that precisely matters here -- `gemini-3-flash` once sat in fixtures
+    # and runbooks pinning nothing while the repo read as though a model had been chosen.
     print(
-        "[dispatch.py] about to spend: adapter={adapter} model={model} effort={effort} "
+        "[dispatch.py] about to dispatch: adapter={adapter} model={model} effort={effort} "
         "timeout={timeout}m".format(
             adapter=args.adapter,
-            model=args.model if args.model else "<inherited from the CLI's configured default>",
-            effort=args.effort if args.effort else "<vendor default>",
+            model=args.model if args.model else "<none pinned -- the vendor CLI's own default>",
+            effort=args.effort if args.effort else "<none pinned -- the vendor CLI's own default>",
             timeout=args.timeout_minutes,
         ),
         file=sys.stderr,

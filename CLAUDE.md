@@ -178,20 +178,24 @@ reviewer the specific claims to check, not a request for an opinion.
 
 **Name the model; don't inherit it.** A reviewer left unspecified runs on the parent session's model,
 which silently makes the most expensive option the default for every pass regardless of what the pass
-is doing. Match it to the work instead:
-- **Adversarial review of claims** — a decision record, a measured finding, or any change whose
-  rationale asserts something — gets the strong model. That is where the defects have actually turned
-  up: claims broader than their measurement, and a fix that introduced the very defect it illustrated.
-- **Mechanical verification** — "confirm these specific facts against the repo" — gets a cheap one.
-  Handed the list, it does not have to work out what to check, and that half is most of the tool calls
-  and none of the insight.
-- **Below this gate's own floor** — a typo, a version bump, a comment fix asserting nothing — skip the
-  reviewer rather than running a cheap one out of habit.
+is doing. Pick the tier with the membership test `tools/vendor-verify/README.md` §"The model tier, and
+why it is not a blanket downgrade" already applies to its own checks: **would a weaker model plausibly
+reach the opposite conclusion, for a reason that has nothing to do with the thing under review?** If
+yes — the pass has to notice something that is not on the list it was handed — it needs the strong
+model, which is where the defects have actually turned up: claims broader than their measurement, and
+a fix that introduced the very defect it illustrated. If no, the list fully determines the work and a
+cheap model runs it; `verify.py`'s `CHEAP` is what "cheap" resolves to. A pass that splits gets the
+strong model, or gets split into two. Below this gate's own floor — a typo, a version bump, a comment
+fix asserting nothing — skip the reviewer rather than run a cheap one out of habit.
+
+Note the test keys on the *pass*, not on the change: "I handed it a specific list" cannot be the
+trigger for the cheap tier, because handing over a specific list is already mandatory above.
 
 Say what a pass will spend before spending it, the same way gate 6 requires for a live run: it is the
-operator's budget either way.
-*Four reviewer passes in one session all inherited the parent's model because none was ever named,
-so the frontier rate was paid for the grep half too.*
+operator's budget either way. `tools/aer-agy-loop/dispatch.py` announces the tier before it dispatches,
+so that path says it without being asked; every other way of launching a reviewer does not.
+*Four reviewer passes in one session all inherited the parent's model because none was ever named, so
+the frontier rate was paid for the grep half too (#548).*
 
 **8. Docs and decisions are one register, not many.** A fact is stated once, in one canonical
 record; every other location links to it with at most a one-clause gloss, never a restatement —
