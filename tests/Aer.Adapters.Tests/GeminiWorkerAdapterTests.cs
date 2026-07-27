@@ -588,6 +588,73 @@ public class GeminiWorkerAdapterTests
         Assert.DoesNotContain("view_file", denied);
     }
 
+    /// <summary>
+    /// The fourth category, which had no arm at all until #596 — reads, writes and the shell each had
+    /// one, and <c>search_web</c> appeared in this file exactly once, as a polarity assertion inside
+    /// another test. Deleting the <c>NetworkAccess</c> branch from <c>BuildDeniedTools</c> failed
+    /// nothing, which matters more than usual here: under <c>--dangerously-skip-permissions</c> the
+    /// denied-tools list is the entire enforcement boundary, so an unguarded category is an unguarded
+    /// capability.
+    /// </summary>
+    /// <remarks>
+    /// Withheld alongside the shell rather than alone, because it cannot be isolated: a grant with
+    /// network withheld and the shell granted is refused outright by
+    /// <c>TryTranslatePermissionGrant</c> (agy has no flag expressing that pair). The polarity arm is
+    /// what keeps the test honest under that constraint — a gate denying everything would fail it.
+    /// </remarks>
+    [Fact]
+    public void Withholding_network_access_also_withholds_the_tools_that_reach_the_network()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true,
+                                        RunShellCommands: false, NetworkAccess: false);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("search_web", denied);
+        Assert.Contains("read_url_content", denied);
+        // A prefix entry, not a tool name: agy's corpus offers `browser_.*` as a matcher example
+        // while enumerating none of the actual names, so the family is withheld by prefix.
+        Assert.Contains("browser_*", denied);
+        Assert.DoesNotContain("view_file", denied);
+        Assert.DoesNotContain("write_to_file", denied);
+    }
+
+    /// <summary>
+    /// Guards the population rather than any one category. Each of the four is covered by a
+    /// withholding test above, but nothing stopped a fifth being added to
+    /// <see cref="PermissionGrant"/> and silently contributing no denied tools — under
+    /// <c>--dangerously-skip-permissions</c> that is a capability granted with no arm to catch it.
+    /// This fails until the new category is covered, which is the point: it is a prompt to write the
+    /// test, not a substitute for one.
+    /// </summary>
+    [Fact]
+    public void Every_permission_category_has_a_withholding_arm_in_this_suite()
+    {
+        var categories = typeof(PermissionGrant)
+            .GetConstructors()
+            .SelectMany(c => c.GetParameters())
+            .Where(p => p.ParameterType == typeof(bool))
+            .Select(p => p.Name!)
+            .ToHashSet();
+
+        // Each name here is asserted by a test in this file: reads and writes by the two
+        // skip-permissions arms, the shell by the background-process arm, the network by the arm
+        // directly above.
+        var covered = new HashSet<string>
+        {
+            nameof(PermissionGrant.ReadFiles),
+            nameof(PermissionGrant.WriteFiles),
+            nameof(PermissionGrant.RunShellCommands),
+            nameof(PermissionGrant.NetworkAccess),
+        };
+
+        Assert.Equal(
+            categories.OrderBy(n => n, StringComparer.Ordinal),
+            covered.OrderBy(n => n, StringComparer.Ordinal));
+    }
+
     [Fact]
     public void An_invocation_with_no_grant_sets_the_variable_to_empty_rather_than_omitting_it()
     {

@@ -31,6 +31,31 @@ namespace Aer.Adapters;
 /// <c>docs/runbooks/live-claude-smoke.md</c>'s J6 section). Its default is fail-closed — the opposite
 /// of Claude Code's headless auto-<em>approve</em>, which is exactly what made #331 possible there.
 /// </para>
+/// <para>
+/// <b>That argument does not reach the <c>--dangerously-skip-permissions</c> branch, and #596 exists
+/// because it reads as though it does.</b> Note which modes the paragraph above was verified across:
+/// <c>default</c>/<c>plan</c>/<c>accept-edits</c> — every mode <em>except</em> the one that turns
+/// auto-denial off. Under that flag <c>agy</c> stops refusing what it cannot prompt for, so a grant
+/// of shell + network with <see cref="PermissionGrant.WriteFiles"/> withheld would hand the worker
+/// the writes the operator declined, purely from the flag.
+/// </para>
+/// <para>
+/// What actually withholds them there is the <c>PreToolUse</c> hook (#554), not the vendor's own
+/// default: <see cref="BuildDeniedTools"/> derives denied tools from <b>all four</b> grant categories
+/// — reads and writes included, not only the two the flag encodes — and every invocation carries that
+/// list in <see cref="DeniedToolsVariable"/>, this branch included. A hook deny blocking a call
+/// <em>while running under <c>--dangerously-skip-permissions</c></em> is measured, not inferred from
+/// the <c>--mode</c> case: <c>agy.hook-deny-honoured</c> spawns with that exact flag. So the flag
+/// over-grants and the hook takes it back, which is a materially different safety story from
+/// "the vendor is fail-closed" and is why it is written down separately.
+/// </para>
+/// <para>
+/// <b>The consequence for anyone editing this class:</b> under that branch the tool-name lists
+/// (<c>ReadTools</c>, <c>WriteTools</c>, <c>ShellTools</c>, <c>NetworkTools</c>) are the entire
+/// enforcement boundary — a write-capable <c>agy</c> tool missing from <c>WriteTools</c> is simply
+/// not denied. Removing a category from <see cref="BuildDeniedTools"/> as "redundant with the flag"
+/// is the specific edit that would make #596's over-grant real.
+/// </para>
 /// </summary>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
