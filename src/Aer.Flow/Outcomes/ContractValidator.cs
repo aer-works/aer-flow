@@ -246,11 +246,6 @@ public static class ContractValidator
     }
 
     /// <summary>
-    /// Cuts to at most <paramref name="length"/> chars without leaving a lone high surrogate — a
-    /// non-BMP character is two UTF-16 chars and splitting one produces malformed UTF-16, which here
-    /// would be written into an append-only journal. Worker-controlled JSON reaches this.
-    /// </summary>
-    /// <summary>
     /// Keeps the last <paramref name="length"/> characters of <paramref name="value"/>, cutting from
     /// the front. The mirror of <see cref="TrimWithoutSplittingSurrogatePair"/>, and here for the
     /// reason that one's own doc gives: the surrogate-safe truncation rule lives in one file so two
@@ -281,6 +276,11 @@ public static class ContractValidator
         return value[start..];
     }
 
+    /// <summary>
+    /// Cuts to at most <paramref name="length"/> chars without leaving a lone high surrogate — a
+    /// non-BMP character is two UTF-16 chars and splitting one produces malformed UTF-16, which here
+    /// would be written into an append-only journal. Worker-controlled JSON reaches this.
+    /// </summary>
     internal static string TrimWithoutSplittingSurrogatePair(string value, int length)
     {
         if (value.Length <= length)

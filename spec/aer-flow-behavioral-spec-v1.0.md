@@ -113,7 +113,7 @@ Append-only, source of truth for system state reconstruction. Storage backend (J
 
 | Log                            | Owner             | Contains                                                                                                                                                                                                                              |
 | ------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `events.jsonl` (or equivalent) | Core, exclusively | `ExecutionStarted`, `ExecutionExited`, `StdoutChunk`/`StderrChunk` (if `CaptureOutput` is enabled)                                                                                                                                    |
+| `events.jsonl` (or equivalent) | Core, exclusively | `ExecutionStarted`, `ExecutionExited`. Core also raises `StdoutChunk`/`StderrChunk` while `CaptureOutput` is enabled — which Flow now enables for every dispatch, so it can surface a failing worker's stderr (§8.2) — but Flow records **no chunk events here**; it consumes them in memory and writes only the two lifecycle events. This is why a classification rebuilt from this log after a restart has no stderr available to it                                                                                                                                    |
 | `flow.jsonl` (or equivalent)   | Flow, exclusively | `ExecutionRequestAccepted`, `ExecutionRequestRejected`, `ExecutionSucceeded`, `ExecutionFailed`, `ExecutionCancelled`, `CancellationRequested`, `WorkflowPaused`, `ExternalDecisionRecorded`, `WorkflowResumed` |
 
 **Rule:** each log has exactly one writer role. Core never writes to the Flow log; Flow never writes to the Core log. This holds regardless of file format or count — if the two are later merged into one store, the ownership rule still applies per event type.
@@ -240,14 +240,25 @@ Store as it arrives — only the retained tail of a live dispatch reaches the ou
 a `Reason` therefore means "not recorded", never "the worker was silent", exactly as for the field as
 a whole.
 
-Two consequences an implementation must not treat as incidental. First, the bound is enforced twice —
-once when retaining and once when rendering — and the rendering bound is the tighter of the two, so
-that any output long enough to be silently dropped by the first is necessarily marked as truncated by
-the second. A truncation an operator cannot see is worse than a shorter diagnostic. Second, whatever
-the worker wrote is recorded in the Event Store, which §3 establishes is immutable and durable: a
-vendor CLI that prints a credential in an error message therefore records it permanently. AER cannot
-prevent this by redaction — §3's pass-through variables are carried by name only, so AER never holds
-the values that would be needed to recognise one.
+Two consequences an implementation must not treat as incidental.
+
+First, the bound is enforced twice — once when retaining and once when rendering — and the rendering
+bound is the tighter of the two, so that any output long enough to be silently dropped by the first is
+necessarily marked as truncated by the second. A truncation an operator cannot see is worse than a
+shorter diagnostic. That argument holds **only because both bounds count the same characters**:
+flattening happens when the output is captured, before either bound applies. An implementation that
+flattens between the two bounds breaks the guarantee while appearing to satisfy it, because
+whitespace-heavy output can then pass the second bound having already lost content to the first.
+
+Second, whatever the worker wrote is recorded in the Event Store, which §3 establishes is immutable
+and durable, and it also reaches every surface a projection reaches — including any paired remote
+client. A vendor CLI that prints a credential in an error message therefore records it permanently and
+transmits it. AER does not redact: **as the system is built today** no component holds a pass-through
+variable's value — §3 carries them by name only — so there is nothing to match against. This is a
+property of the current implementation and not a principle. §3 also describes those values being
+resolved and injected at dispatch time, and it forbids *recording* a value rather than *holding* one
+transiently; if that resolution is ever built, redaction becomes possible and this paragraph must be
+revisited rather than cited as settled.
 
 ---
 

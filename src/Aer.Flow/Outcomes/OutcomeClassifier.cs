@@ -57,6 +57,7 @@ public static class OutcomeClassifier
     /// How much of <see cref="CoreDispatchResult.StderrTail"/> a reason renders (#563).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Must stay strictly below <see cref="CoreDispatcher.MaxRetainedStderrLength"/>, and that is
     /// load-bearing rather than incidental. Two caps sit in series — the dispatcher's buffer cap and
     /// this one — but only this one emits a marker. Keeping this the tighter of the two means any
@@ -64,6 +65,15 @@ public static class OutcomeClassifier
     /// as well, so an operator is never shown a tail that had content dropped without an ellipsis
     /// saying so. Raise this above that constant and truncation becomes invisible again.
     /// Asserted by <c>OutcomeClassifierTests</c> rather than left to this comment.
+    /// </para>
+    /// <para>
+    /// That argument requires both caps to count the <i>same</i> characters, which is why
+    /// <see cref="StderrTailBuffer"/> collapses whitespace at capture time rather than this class
+    /// doing it on the way out. While the collapse sat between the two caps the comparison was
+    /// between different units and the guarantee was simply false — mostly-whitespace stderr could
+    /// lose thousands of characters silently and still fit under this cap unmarked. Moving a
+    /// collapse back downstream of the retention cap reintroduces that, whatever the two numbers say.
+    /// </para>
     /// </remarks>
     internal const int MaxStderrTailInReason = 350;
 
@@ -125,11 +135,21 @@ public static class OutcomeClassifier
     /// reason (#563), or returns <paramref name="reason"/> untouched when the worker wrote nothing.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The base reason is assembled and bounded first, then this is appended with its own separate
     /// budget, rather than both sharing one cap. That is the same split
     /// <see cref="BuildContractFailureReason"/> already documents: a single shared cap lets whichever
     /// part happens to be longer starve the other, and here that would mean a verbose worker's
     /// stderr silently swallowing the contract diagnostic, or vice versa.
+    /// </para>
+    /// <para>
+    /// The <c>stderr:</c> separator deliberately matches <c>DialogueRunner</c>'s, which has appended a
+    /// failed vendor turn's stderr to its own message the same way since M17 Phase 3 (#166), on the
+    /// same reasoning. That is one layer down — the dialogue worker's inner vendor calls, versus
+    /// Flow's outer worker dispatch — so the two are genuinely separate mechanisms rather than a
+    /// duplicated one; keeping the rendering identical is what stops an operator having to learn two
+    /// spellings of the same fact. Change one and change both.
+    /// </para>
     /// </remarks>
     private static string WithStderr(string reason, string? stderrTail)
     {
@@ -140,6 +160,11 @@ public static class OutcomeClassifier
             return reason;
         }
 
+        // Idempotent on anything CoreDispatcher produced — StderrTailBuffer already collapsed it, and
+        // collapsing is what makes the two caps comparable. Repeated here because CoreDispatchResult
+        // is a public record any caller may construct (a test double, a future dispatcher), and a raw
+        // multi-line value reaching a line-oriented surface is the failure this prevents. It is not
+        // where the guarantee comes from; see MaxStderrTailInReason.
         var collapsed = CollapseWhitespace(stderrTail);
         if (collapsed.Length == 0)
         {

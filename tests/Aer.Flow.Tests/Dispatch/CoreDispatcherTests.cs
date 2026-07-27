@@ -488,28 +488,29 @@ public class CoreDispatcherTests
     /// is written to exclude. Splitting the sequence by hand is what makes the test discriminate.
     /// </remarks>
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void Stderr_decoding_survives_a_multi_byte_sequence_split_across_two_chunks(int splitWithinCharacter)
+    // One offset interior to each of the three sequence lengths present, named by what it splits
+    // rather than derived from the end of the array. The first version of this test computed all
+    // three offsets from `bytes.Length - 4`, which put every one of them inside the same 4-byte
+    // sequence while the comment claimed it covered three different lengths.
+    [InlineData(1, "inside the 2-byte é")]
+    [InlineData(3, "inside the 3-byte —")]
+    [InlineData(6, "inside the 4-byte 🚨")]
+    [InlineData(7, "inside the 4-byte 🚨, one byte later")]
+    public void Stderr_decoding_survives_a_multi_byte_sequence_split_across_two_chunks(int splitAt, string what)
     {
-        // U+1F6A8 (surrogate pair in UTF-16, 4 bytes in UTF-8) preceded by a 2-byte and a 3-byte
-        // character, so the split offsets below land inside sequences of three different lengths.
+        Assert.NotEmpty(what);
+
+        // 9 UTF-8 bytes: é at [0,2), — at [2,5), 🚨 at [5,9).
         const string payload = "é—🚨";
         var bytes = System.Text.Encoding.UTF8.GetBytes(payload);
+        Assert.Equal(9, bytes.Length);
 
-        // Split inside the final 4-byte sequence, at each of its three interior offsets.
-        var splitAt = bytes.Length - 4 + splitWithinCharacter;
+        var tail = new StderrTailBuffer();
+        tail.Append(bytes[..splitAt]);
+        tail.Append(bytes[splitAt..]);
 
-        var buffer = new System.Text.StringBuilder();
-        var decoder = System.Text.Encoding.UTF8.GetDecoder();
-
-        CoreDispatcher.AppendBoundedTail(buffer, decoder, bytes[..splitAt]);
-        CoreDispatcher.AppendBoundedTail(buffer, decoder, bytes[splitAt..]);
-        CoreDispatcher.FlushDecoder(buffer, decoder);
-
-        Assert.Equal(payload, buffer.ToString());
-        Assert.DoesNotContain('�', buffer.ToString());
+        Assert.Equal(payload, tail.ToTailOrNull());
+        Assert.DoesNotContain('�', tail.ToTailOrNull()!);
     }
 
     /// <summary>
@@ -521,12 +522,20 @@ public class CoreDispatcherTests
     [Fact]
     public void Trimming_stderr_to_the_tail_never_leaves_an_orphaned_low_surrogate()
     {
-        // Non-BMP characters only, so every char in the builder is half of a pair and the cut is
-        // forced to land mid-pair for one of the two parities regardless of the exact cap.
+        // The trailing "x" is what makes this test discriminate, and it is not cosmetic. Without it
+        // the buffer is 4000 chars of surrogate pairs, so `excess` is 4000 - 2000 = 2000 — an EVEN
+        // index, which in a run of pairs is always the HIGH half. The guard tests for a LOW
+        // surrogate, so it never fired and the test passed with the guard deleted. Nor is that fixable
+        // by choosing a different repeat count: for a run of pairs the parity of `excess` follows the
+        // parity of the cap, so an even cap always cuts on a high surrogate. One BMP character makes
+        // the length odd, `excess` 2001, and the cut land on a low surrogate — the case the guard exists for.
         var buffer = new System.Text.StringBuilder(
-            string.Concat(Enumerable.Repeat("🚨", CoreDispatcher.MaxRetainedStderrLength)));
+            string.Concat(Enumerable.Repeat("🚨", CoreDispatcher.MaxRetainedStderrLength)) + "x");
 
-        CoreDispatcher.TrimToTail(buffer);
+        Assert.True(char.IsLowSurrogate(buffer[buffer.Length - CoreDispatcher.MaxRetainedStderrLength]),
+            "payload does not put a low surrogate at the cut index, so the guard under test is never reached");
+
+        StderrTailBuffer.TrimToTail(buffer);
 
         var trimmed = buffer.ToString();
         Assert.True(trimmed.Length <= CoreDispatcher.MaxRetainedStderrLength);
@@ -536,6 +545,77 @@ public class CoreDispatcherTests
         // comparison fails on any implementation that leaves one behind.
         var roundTripped = System.Text.Encoding.UTF8.GetString(System.Text.Encoding.UTF8.GetBytes(trimmed));
         Assert.Equal(trimmed, roundTripped);
+    }
+
+    /// <summary>
+    /// The regression test for the reason whitespace is collapsed at capture time rather than at
+    /// render time. A worker that prints its diagnostic and then clears a progress display on the way
+    /// out — enough trailing blank lines to fill the retention buffer — used to have its entire
+    /// retained tail be whitespace, which then collapsed to nothing and produced the bare pre-#563
+    /// reason. The feature silently did not fire in its own headline use case.
+    /// </summary>
+    [Fact]
+    public void A_diagnostic_followed_by_enough_blank_lines_to_fill_the_buffer_still_survives()
+    {
+        var tail = new StderrTailBuffer();
+        tail.Append(System.Text.Encoding.UTF8.GetBytes("Error: model not found"));
+
+        // Comfortably more than MaxRetainedStderrLength, so a buffer that retained whitespace would
+        // hold nothing else by the end.
+        tail.Append(System.Text.Encoding.UTF8.GetBytes(new string('\n', CoreDispatcher.MaxRetainedStderrLength * 2)));
+
+        Assert.Equal("Error: model not found", tail.ToTailOrNull());
+    }
+
+    /// <summary>
+    /// The other half of the same defect. Whitespace collapsing used to run <i>between</i> the
+    /// retention cap and the display cap, so the two caps measured different units: mostly-whitespace
+    /// stderr could lose thousands of characters to the silent cap and still collapse to under the
+    /// marked cap, showing a truncated tail with no ellipsis. Collapsing at capture time means the
+    /// retained length is already in the units the display cap compares against.
+    /// </summary>
+    [Fact]
+    public void Mostly_whitespace_stderr_is_retained_in_the_same_units_the_display_cap_measures()
+    {
+        var tail = new StderrTailBuffer();
+
+        // Each line is one visible token in a wide field of padding — the shape of an indented stack
+        // trace or a column-padded table. Raw length is far past the cap; collapsed length is not.
+        for (var i = 0; i < 400; i++)
+        {
+            tail.Append(System.Text.Encoding.UTF8.GetBytes(new string(' ', 40) + $"line{i}\n"));
+        }
+
+        var captured = tail.ToTailOrNull();
+        Assert.NotNull(captured);
+
+        // No run of whitespace survives, so every retained character counts toward the same budget
+        // the classifier's display cap will apply.
+        Assert.DoesNotContain("  ", captured);
+        Assert.True(
+            captured.Length <= CoreDispatcher.MaxRetainedStderrLength,
+            $"retained {captured.Length}, cap {CoreDispatcher.MaxRetainedStderrLength}");
+
+        // And the retained content is long enough to reach the display cap, which is what makes the
+        // truncation visible rather than silent.
+        Assert.True(
+            captured.Length > Aer.Flow.Outcomes.OutcomeClassifier.MaxStderrTailInReason,
+            "collapsed tail must still exceed the display cap, or the marker never fires");
+        Assert.EndsWith("line399", captured);
+    }
+
+    /// <summary>
+    /// A whitespace run split across a chunk boundary must still collapse to one space. This is the
+    /// reason <c>pendingSpace</c> is instance state rather than a local inside the per-chunk decode.
+    /// </summary>
+    [Fact]
+    public void A_whitespace_run_split_across_chunks_collapses_to_a_single_space()
+    {
+        var tail = new StderrTailBuffer();
+        tail.Append(System.Text.Encoding.UTF8.GetBytes("before  "));
+        tail.Append(System.Text.Encoding.UTF8.GetBytes("  after"));
+
+        Assert.Equal("before after", tail.ToTailOrNull());
     }
 
     private static CoreDispatchTarget WriteToStderrAndExit(string message, int exitCode) =>
