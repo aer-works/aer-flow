@@ -176,6 +176,23 @@ than the operator's to ask for. It is also the deliberate exception to "Delegati
 below: that rule is about saving *effort*, and review buys a second *instrument* instead. Hand the
 reviewer the specific claims to check, not a request for an opinion.
 
+**Name the model; don't inherit it.** A reviewer left unspecified runs on the parent session's model,
+which silently makes the most expensive option the default for every pass regardless of what the pass
+is doing. Match it to the work instead:
+- **Adversarial review of claims** — a decision record, a measured finding, or any change whose
+  rationale asserts something — gets the strong model. That is where the defects have actually turned
+  up: claims broader than their measurement, and a fix that introduced the very defect it illustrated.
+- **Mechanical verification** — "confirm these specific facts against the repo" — gets a cheap one.
+  Handed the list, it does not have to work out what to check, and that half is most of the tool calls
+  and none of the insight.
+- **Below this gate's own floor** — a typo, a version bump, a comment fix asserting nothing — skip the
+  reviewer rather than running a cheap one out of habit.
+
+Say what a pass will spend before spending it, the same way gate 6 requires for a live run: it is the
+operator's budget either way.
+*Four reviewer passes in one session all inherited the parent's model because none was ever named,
+so the frontier rate was paid for the grep half too.*
+
 **8. Docs and decisions are one register, not many.** A fact is stated once, in one canonical
 record; every other location links to it with at most a one-clause gloss, never a restatement —
 restating a fact in three places is how a stale one drifts silently in two of them. Before editing

@@ -194,6 +194,22 @@ def main() -> int:
     workflow_path.write_text(json.dumps(workflow, indent=2), encoding="utf-8")
     bindings_path.write_text(json.dumps(bindings, indent=2), encoding="utf-8")
 
+    # CLAUDE.md gate 7 ("name the model; don't inherit it") and gate 6 ("say what it spends before
+    # spending it") are both prose an agent has to remember at the moment it dispatches, which is
+    # exactly when it is thinking about something else. Announcing the tier here makes the tool say it
+    # instead. An omitted --model is called out rather than left blank: silently inheriting the CLI's
+    # configured default is the specific failure gate 7 names, and a blank field reads like a choice.
+    print(
+        "[dispatch.py] about to spend: adapter={adapter} model={model} effort={effort} "
+        "timeout={timeout}m".format(
+            adapter=args.adapter,
+            model=args.model if args.model else "<inherited from the CLI's configured default>",
+            effort=args.effort if args.effort else "<vendor default>",
+            timeout=args.timeout_minutes,
+        ),
+        file=sys.stderr,
+    )
+
     result = subprocess.run(
         [
             str(cli_path),
