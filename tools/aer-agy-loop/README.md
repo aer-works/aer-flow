@@ -43,7 +43,7 @@ applies one layer up, in tooling that could otherwise grow into a shadow engine.
 ## Templates — pick the role, not the settings
 
 `--template advise|implement|review|fact-check` pins vendor, model, effort, permission grant and
-timeout as a set. Run `python tools/aer-agy-loop/dispatch.py --list-templates` for what each one is
+timeout as a set. Run `pixi run aer-dispatch -- --list-templates` for what each one is
 for and what it resolves to; the definitions and the reasoning behind each setting live next to the
 `TEMPLATES` dict in `dispatch.py`, and are deliberately not restated here.
 
@@ -52,9 +52,10 @@ Two things worth knowing before reaching for one:
 - **Precedence is explicit flag > template > built-in default**, so `--template review --model haiku`
   does what it says. That is intentional: the templates are a starting point you can override, not a
   lock.
-- **The permission grants differ on purpose.** Each template exercises a different part of AER's own
-  dispatch surface, so routinely varying them is what has actually surfaced AER defects. Overriding a
-  grant to make every dispatch look the same is safe, but it narrows the instrument.
+- **There are two permission shapes, not four.** `advise`, `review` and `fact-check` share one
+  read-only grant; only `implement` reaches write/shell/network, which is the path #596, #611, #623
+  and #624 all came from. So a session that only ever dispatches reviews never exercises that half of
+  AER — the value is in reaching for `implement` sometimes, not in the set being varied.
 
 A pinned `agy` model name is checked against `agy models` (as recorded in
 `docs/vendor-capabilities.md`) by STEP 9 of `pixi run audit-completeness` — the first draft of these

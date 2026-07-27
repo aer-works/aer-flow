@@ -135,17 +135,20 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 # reason having nothing to do with the thing under review? Yes -> a `-strong` template. No -> a cheap
 # one. That is why `fact-check` and `review` are different templates rather than one with a knob.
 #
-# WHY THE PERMISSION SHAPES DIFFER, AND WHY THAT IS DELIBERATE
-# Each template also pins a distinct permission grant, so the set doubles as a coverage matrix over
-# AER's own dispatch surface rather than four copies of one call. That is not decoration: every AER
-# defect found by this loop so far came from a path some template exercises and the others do not.
-#   * read-only, no shell    -> the plainest grant; a control for the others
-#   * write-files            -> the artifact-writing path an implementer needs
-#   * shell + network        -> agy's `--dangerously-skip-permissions` translation, which is where
-#                               #596, #611, #623 and #624 all live
-#   * a long timeout         -> `--print-timeout` derivation (#588), which silently truncated at 5
-#                               minutes before that landed
-# Running the same shape every time would have found none of them.
+# WHY THE PERMISSION SHAPES DIFFER
+# The set spans TWO permission shapes, not four -- `advise`, `review` and `fact-check` all carry the
+# same read-only grant, and only `implement` reaches write/shell/network. Stated exactly rather than
+# as "a coverage matrix", which is what an earlier draft of this comment claimed while the dict
+# directly below it showed three identical rows.
+#   * read-only, no shell  (3 templates) -> the plainest grant; the control the other shape is read
+#                                           against
+#   * write + shell + network (implement) -> agy's `--dangerously-skip-permissions` translation, which
+#                                           is where #596, #611, #623 and #624 all live. Its 40-minute
+#                                           timeout also exercises `--print-timeout` derivation
+#                                           (#588), which silently truncated at 5 minutes before that
+#                                           landed.
+# So the value is real but narrower than "four distinct shapes": routinely dispatching the second
+# shape is what has surfaced AER defects, and a session that only ever reviews never touches it.
 TEMPLATES = {
     "advise": {
         "_use": "Open design question with real options to weigh, BEFORE building. Cross-vendor on "
@@ -320,7 +323,12 @@ def main() -> int:
         "timeout={timeout}m".format(
             adapter=args.adapter,
             model=args.model if args.model else "<none pinned -- the vendor CLI's own default>",
-            effort=args.effort if args.effort else "<none pinned -- the vendor CLI's own default>",
+            # Deliberately says what is SENT, not what the vendor will do with the absence. For an
+            # agy template the effort already sits in the model name, and whether an unpassed
+            # `--effort` then defaults, is ignored, or is overridden by the suffix is exactly the
+            # unprobed interaction in #510 -- so a banner promising "the vendor CLI's own default"
+            # would assert the thing nobody has measured, on the line an operator reads before spend.
+            effort=args.effort if args.effort else "<no --effort flag sent>",
             timeout=args.timeout_minutes,
         ),
         file=sys.stderr,

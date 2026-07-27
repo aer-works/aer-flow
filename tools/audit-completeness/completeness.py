@@ -401,32 +401,46 @@ def step9_pinned_models_exist():
     # dispatch.py is import-safe (its main() sits behind an `if __name__` guard), so read the real
     # dict rather than regexing a copy of it -- a regex would go stale against the literal it parses.
     disp_path = os.path.join(ROOT, "tools", "aer-agy-loop", "dispatch.py")
-    if os.path.exists(disp_path):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("_aer_dispatch_audit", disp_path)
-        mod = importlib.util.module_from_spec(spec)
-        # Importing writes `tools/aer-agy-loop/__pycache__/` otherwise. A read-only audit that dirties
-        # `git status` teaches everyone who runs it to ignore its output's neighbours, so suppress the
-        # bytecode write rather than adding a .gitignore line for a directory that need not exist.
-        prior, sys.dont_write_bytecode = sys.dont_write_bytecode, True
-        try:
-            spec.loader.exec_module(mod)
-        finally:
-            sys.dont_write_bytecode = prior
-        for name, tpl in getattr(mod, "TEMPLATES", {}).items():
-            if tpl.get("adapter") == "gemini" and tpl.get("model"):
-                pins.append((f"dispatch.py TEMPLATES[{name!r}]", tpl["model"]))
+    if not os.path.exists(disp_path):
+        # A missing source is a HARD failure, not a quiet skip. Skipping would let a rename drop the
+        # template pins from the population while `verify.py`'s pin kept the step green -- a check
+        # that passes because it stopped looking, which is the exact defect step 2's comment names.
+        print(f"    !! {disp_path} not found -- the template pins cannot be checked, so this step"
+              " cannot make its claim")
+        return False
+
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_aer_dispatch_audit", disp_path)
+    mod = importlib.util.module_from_spec(spec)
+    # Importing writes `tools/aer-agy-loop/__pycache__/` otherwise. A read-only audit that dirties
+    # `git status` teaches everyone who runs it to ignore its output's neighbours, so suppress the
+    # bytecode write rather than adding a .gitignore line for a directory that need not exist.
+    prior, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.dont_write_bytecode = prior
+    for name, tpl in getattr(mod, "TEMPLATES", {}).items():
+        if tpl.get("adapter") == "gemini" and tpl.get("model"):
+            pins.append((f"dispatch.py TEMPLATES[{name!r}]", tpl["model"]))
+    if not pins:
+        print("    !! dispatch.py loaded but contributed no agy model pin -- TEMPLATES has been"
+              " emptied, renamed, or restructured, so this step is no longer checking it")
+        return False
 
     # verify.py's CHEAP carries the same kind of pin and goes stale the same way. Regexed rather than
     # imported: verify.py does work at import time that this script has no business triggering.
+    # Each source is required to contribute, for the same reason the missing-file arm above is a hard
+    # failure: a population that silently shrinks is how a check keeps printing OK about less and less.
+    before_cheap = len(pins)
     cheap = re.search(r'"agy":\s*\[([^\]]*)\]', read("tools/vendor-verify/verify.py"))
     if cheap:
         for tok in re.findall(r'"([^"]+)"', cheap.group(1)):
             if tok.startswith("gemini-") or tok.startswith("claude-") or tok.startswith("gpt-"):
                 pins.append(("verify.py CHEAP['agy']", tok))
-
-    if not pins:
-        print("    !! no agy model pins found -- the population is empty, which is itself suspicious")
+    if len(pins) == before_cheap:
+        print("    !! verify.py's CHEAP['agy'] no longer yields a model pin -- if that is deliberate,"
+              " remove this arm rather than letting it silently check nothing")
         return False
 
     ok = True
