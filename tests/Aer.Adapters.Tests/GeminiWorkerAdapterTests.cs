@@ -77,12 +77,25 @@ public class GeminiWorkerAdapterTests
     }
 
     /// <summary>A directory-less room (#407's neutral-scratch case) must not emit an empty --add-dir.</summary>
+    /// <remarks>
+    /// Rewritten by #554, which added a second, unconditional <c>--add-dir</c> for the gate
+    /// workspace. Counting occurrences was a proxy for "no empty value was emitted" that only held
+    /// while exactly one <c>--add-dir</c> existed; it now asserts the actual claim directly, so a
+    /// future third <c>--add-dir</c> does not fail this test for the wrong reason.
+    /// </remarks>
     [Fact]
     public void No_directory_add_dir_is_emitted_when_the_room_has_no_working_directory()
     {
         var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
-        Assert.Single(target.Args, arg => arg == "--add-dir");
+        var addDirValues = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .ToList();
+
+        Assert.NotEmpty(addDirValues);
+        Assert.All(addDirValues, value => Assert.False(string.IsNullOrWhiteSpace(value)));
     }
 
     [Fact]
@@ -107,14 +120,19 @@ public class GeminiWorkerAdapterTests
         return null;
     }
 
+    /// <remarks>
+    /// De-positioned by #554: this asserted <c>Args[6]</c>/<c>Args[7]</c>, which shifted when the
+    /// gate workspace added a second <c>--add-dir</c> pair. The claim was always "the model is
+    /// passed through", never "it sits at index 6" — <see cref="ArgValue"/> already existed for
+    /// exactly this and is what the neighbouring effort test uses.
+    /// </remarks>
     [Fact]
     public void A_model_is_passed_through_when_set()
     {
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Model: "gemini-3-pro"), ArchitectContract);
 
-        Assert.Equal("--model", target.Args[6]);
-        Assert.Equal("gemini-3-pro", target.Args[7]);
+        Assert.Equal("gemini-3-pro", ArgValue(target, "--model"));
     }
 
     [Fact]
@@ -309,5 +327,144 @@ public class GeminiWorkerAdapterTests
         Assert.Equal("--dangerously-skip-permissions", target.Args[2]);
         Assert.DoesNotContain("--mode", target.Args);
         Assert.Equal("--add-dir", target.Args[3]);
+    }
+
+    // ---------------------------------------------------------------- #554: the PreToolUse gate
+    //
+    // Decision 0029 makes the hook mandatory on every spawned worker. The tests below assert the
+    // three things that have to hold for it to actually gate anything: the workspace is handed to
+    // --add-dir (agy loads hooks from nowhere else, #538), the denied-tool list reaches the hook
+    // process (via the environment -- measured by the `agy.hook-env-inherited` sentinel), and the
+    // mapping covers the tools that would otherwise leak the withheld category.
+
+    private static string EnvValue(CoreDispatchTarget target, string name) =>
+        target.Environment!.Single(pair => pair.Name == name).Value;
+
+    [Fact]
+    public void Every_invocation_carries_the_agy_workspace_on_add_dir_so_the_gate_is_loaded()
+    {
+        // Unconditional, like #543's claude side: not only when a flow declares a gate. A hook
+        // installed only sometimes cannot be relied on by anything downstream.
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        var addDirValues = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .ToList();
+
+        Assert.Contains(addDirValues, dir =>
+            dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_gate_workspace_holds_a_hooks_file_naming_the_agy_hook_check_command()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        var workspace = target.Args
+            .Select((arg, i) => (arg, i))
+            .Where(pair => pair.arg == "--add-dir")
+            .Select(pair => target.Args[pair.i + 1])
+            .Single(dir => dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+
+        var hooksPath = Path.Combine(workspace, ".agents", "hooks.json");
+        Assert.True(File.Exists(hooksPath), $"no hooks.json was written to '{hooksPath}'");
+
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(hooksPath));
+        var handler = doc.RootElement
+            .EnumerateObject().Single().Value      // hooks are keyed by an arbitrary NAME at the root
+            .GetProperty("PreToolUse")[0];
+        Assert.Equal("*", handler.GetProperty("matcher").GetString());
+
+        var command = handler.GetProperty("hooks")[0].GetProperty("command").GetString()!;
+        Assert.Contains("agy-hook-check", command, StringComparison.Ordinal);
+        // Shell-parsed, with no exec form available on this vendor: a raw Windows path's \U and \t
+        // would be read as escapes, so the path must be forward-slashed inside its quotes.
+        Assert.DoesNotContain('\\', command);
+    }
+
+    [Fact]
+    public void A_withheld_category_reaches_the_hook_through_the_environment()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false,
+                                        RunShellCommands: true, NetworkAccess: true);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("write_to_file", denied);
+        Assert.Contains("replace_file_content", denied);
+        Assert.Contains("multi_replace_file_content", denied);
+        // Polarity: the granted categories must NOT be withheld, or a gate that denies everything
+        // would pass the assertions above while breaking every worker.
+        Assert.DoesNotContain("view_file", denied);
+        Assert.DoesNotContain("run_command", denied);
+        Assert.DoesNotContain("search_web", denied);
+    }
+
+    [Fact]
+    public void Withholding_reads_also_withholds_the_tools_that_return_file_contents()
+    {
+        // grep_search returns file CONTENT, and list_dir/find_by_name disclose structure -- mapping
+        // ReadFiles to view_file alone leaves the withheld category reachable. Found by the
+        // implementation advisor reading agy's tool list against the first draft of this mapping.
+        var grant = new PermissionGrant(ReadFiles: false, WriteFiles: true,
+                                        RunShellCommands: true, NetworkAccess: true);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("view_file", denied);
+        Assert.Contains("grep_search", denied);
+        Assert.Contains("list_dir", denied);
+        Assert.Contains("find_by_name", denied);
+        Assert.DoesNotContain("write_to_file", denied);
+    }
+
+    [Fact]
+    public void Withholding_the_shell_also_withholds_control_of_background_shell_processes()
+    {
+        // manage_task sends stdin to and kills background commands, so withholding run_command
+        // alone leaves shell control reachable.
+        //
+        // Network is withheld here too, and not by choice: TryTranslatePermissionGrant refuses
+        // shell-without-network and network-without-shell outright, because the only agy flag that
+        // grants either grants both. So the two categories are expressible only together, and a
+        // shell-withheld grant is always also a network-withheld one on this vendor.
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true,
+                                        RunShellCommands: false, NetworkAccess: false);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+
+        Assert.Contains("run_command", denied);
+        Assert.Contains("manage_task", denied);
+        Assert.DoesNotContain("view_file", denied);
+    }
+
+    [Fact]
+    public void An_invocation_with_no_grant_sets_the_variable_to_empty_rather_than_omitting_it()
+    {
+        // agy-hook-check reads an absent/empty value as "nothing withheld" and allows; it denies
+        // when it cannot determine what is withheld. Those must stay distinguishable, so the
+        // variable is always present.
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        Assert.Equal(string.Empty, EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable));
+    }
+
+    [Fact]
+    public void The_denied_tools_variable_matches_the_cli_side_contract()
+    {
+        // Aer.Adapters cannot reference Aer.Cli, so this name is a plain string contract asserted
+        // on both sides. If they drift the hook reads an empty list and allows everything.
+        Assert.Equal("AER_HOOK_DENIED_TOOLS", GeminiWorkerAdapter.DeniedToolsVariable);
     }
 }

@@ -22,6 +22,17 @@ if (args.Length >= 1 && args[0] == "hook-check")
     return HookCheckCommand.Execute(Console.In, Console.Error, deniedTools);
 }
 
+// #554: the same idea for agy, and a separate command because the two vendors share none of the
+// mechanics -- agy nests the tool name at `toolCall.name` and reads its verdict from a `decision`
+// field on STDOUT, where claude uses a root-level `tool_name` and signals denial by exiting 2.
+// Note `Console.Out`, not `Console.Error`: on this vendor stdout carries the verdict, and anything
+// else written there would be unparseable output that agy reads as an allow.
+if (args.Length >= 1 && args[0] == "agy-hook-check")
+{
+    var deniedTools = Environment.GetEnvironmentVariable(AgyHookCheckCommand.DeniedToolsEnvironmentVariable);
+    return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools);
+}
+
 var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
