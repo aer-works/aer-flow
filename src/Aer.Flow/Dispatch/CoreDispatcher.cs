@@ -56,7 +56,19 @@ public sealed record CoreDispatchTarget(
 /// classification — mapping this into <c>ExecutionSucceeded</c>/<c>ExecutionFailed</c>/
 /// <c>ExecutionCancelled</c> is the Outcome Classifier's job (Phase 7, spec §8).
 /// </summary>
-public sealed record CoreDispatchResult(int ExitCode, CoreExitReason Reason);
+/// <param name="StderrTail">
+/// The last <see cref="CoreDispatcher.MaxRetainedStderrLength"/> characters the worker wrote to
+/// stderr, or <see langword="null"/> if it wrote nothing (#563). The <i>tail</i> specifically: a
+/// vendor CLI's actionable line is the last thing it prints, so head-first truncation would discard
+/// exactly the message this field exists to carry.
+/// <para>
+/// Null also on the crash-recovery path, where <c>MutationInterface</c> rebuilds a result from a
+/// stored <c>CoreEvent.ExecutionExited</c> after a restart — stderr was never written to the Event
+/// Store, so it genuinely does not survive a crash. Read a null as "not recorded", never as "the
+/// worker was silent".
+/// </para>
+/// </param>
+public sealed record CoreDispatchResult(int ExitCode, CoreExitReason Reason, string? StderrTail = null);
 
 /// <summary>
 /// What <c>MutationInterface</c> needs from a dispatcher (spec §12's "Flow never executes a
@@ -75,6 +87,144 @@ public interface ICoreDispatcher
 }
 
 /// <summary>
+/// Accumulates the tail of a worker's stderr as chunks arrive from the native callback (#563):
+/// decodes, collapses whitespace, and keeps at most
+/// <see cref="CoreDispatcher.MaxRetainedStderrLength"/> characters.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The three pieces of state are one object rather than three parallel locals because they are only
+/// correct together: the decoder must be stateful across chunks, and so must
+/// <see cref="pendingSpace"/>, or a whitespace run split across a chunk boundary collapses to two
+/// spaces instead of one.
+/// </para>
+/// <para>
+/// <b>Whitespace is collapsed here, at capture time, and that placement is the fix for a real
+/// defect rather than a tidiness choice.</b> It used to happen in <c>OutcomeClassifier</c>, i.e.
+/// <i>between</i> the retention cap below and the display cap there — so the two caps measured
+/// different units and the "a silent drop always implies a marked drop" guarantee did not hold. Two
+/// concrete failures came out of that ordering: stderr that was mostly indentation could lose
+/// thousands of characters to the silent cap and still collapse to under the display cap, showing an
+/// operator a truncated tail with no ellipsis; and a worker that printed a diagnostic followed by
+/// enough blank lines to fill the buffer had its tail retained as pure whitespace, which collapsed to
+/// nothing and restored the exact bare reason this issue exists to replace. Collapsing first makes
+/// both caps count the same characters, so the ordering argument is sound and both failures are
+/// impossible rather than merely reported.
+/// </para>
+/// </remarks>
+internal sealed class StderrTailBuffer
+{
+    private readonly System.Text.StringBuilder buffer = new();
+    private readonly System.Text.Decoder decoder = System.Text.Encoding.UTF8.GetDecoder();
+
+    /// <summary>
+    /// Whether a whitespace run has been seen whose space has not been emitted yet. Deferred rather
+    /// than emitted on sight, so runs collapse to one space and neither a leading nor a trailing one
+    /// is ever written.
+    /// </summary>
+    private bool pendingSpace;
+
+    /// <summary>Decodes one chunk of stderr bytes and folds it into the retained tail.</summary>
+    public void Append(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        // Stateful decode, not one GetString per chunk: a pipe splits at arbitrary byte offsets, so a
+        // multi-byte UTF-8 sequence routinely straddles two chunks. Decoding each chunk independently
+        // emits a replacement character at every such boundary, corrupting exactly the non-ASCII
+        // diagnostics this exists to carry.
+        // GetChars runs even when the count is zero, and skipping it was a real bug rather than an
+        // optimisation. GetCharCount is a pure calculation — it does NOT hand the bytes to the
+        // decoder — so returning early on a zero count discarded them: the decoder never saw the
+        // partial sequence it was supposed to be holding, and the next chunk then began with a
+        // continuation byte it could only render as U+FFFD. It shows up solely when a chunk decodes
+        // to nothing at all, i.e. when the very first bytes of the stream are a split multi-byte
+        // character, which is why only the 2-byte split case in the theory catches it.
+        var maxChars = decoder.GetCharCount(data, 0, data.Length, flush: false);
+        var chars = new char[maxChars];
+        var written = decoder.GetChars(data, 0, data.Length, chars, 0, flush: false);
+        if (written > 0)
+        {
+            AppendCollapsed(chars.AsSpan(0, written));
+        }
+    }
+
+    /// <summary>
+    /// Returns the retained tail, or <see langword="null"/> if the worker wrote nothing that survived
+    /// collapsing — which must stay distinguishable from "wrote something", since a caller renders an
+    /// empty tail as no tail at all rather than as an empty label.
+    /// </summary>
+    public string? ToTailOrNull()
+    {
+        // Flushing emits U+FFFD for a trailing sequence the worker cut short (it died mid-write).
+        // Better a visible replacement character than silently dropping the final character of the
+        // very line being diagnosed.
+        var maxChars = decoder.GetCharCount([], 0, 0, flush: true);
+        if (maxChars > 0)
+        {
+            var chars = new char[maxChars];
+            var written = decoder.GetChars([], 0, 0, chars, 0, flush: true);
+            AppendCollapsed(chars.AsSpan(0, written));
+        }
+
+        return buffer.Length > 0 ? buffer.ToString() : null;
+    }
+
+    private void AppendCollapsed(ReadOnlySpan<char> chars)
+    {
+        foreach (var ch in chars)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                // Suppressed while the buffer is empty, so a leading run never emits anything.
+                pendingSpace = buffer.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                buffer.Append(' ');
+                pendingSpace = false;
+            }
+
+            buffer.Append(ch);
+        }
+
+        TrimToTail(buffer);
+    }
+
+    /// <summary>
+    /// Drops the oldest characters so <paramref name="target"/> holds at most
+    /// <see cref="CoreDispatcher.MaxRetainedStderrLength"/> — keeping the <i>end</i>, which is where
+    /// a vendor CLI puts the line worth reading.
+    /// </summary>
+    internal static void TrimToTail(System.Text.StringBuilder target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (target.Length <= CoreDispatcher.MaxRetainedStderrLength)
+        {
+            return;
+        }
+
+        var excess = target.Length - CoreDispatcher.MaxRetainedStderrLength;
+
+        // Cutting from the front is the mirror of ContractValidator.TrimWithoutSplittingSurrogatePair,
+        // which cuts from the back: if the first surviving char is a low surrogate, its high half is
+        // among the ones being removed, so drop the orphan too rather than leaving a lone half-pair.
+        // The bounds guard is unreachable while MaxRetainedStderrLength is positive, and is here for
+        // the same reason its counterpart there is: this runs inside a native callback, where an
+        // IndexOutOfRangeException would surface far from the edit that lowered the cap.
+        if (excess < target.Length && char.IsLowSurrogate(target[excess]))
+        {
+            excess++;
+        }
+
+        target.Remove(0, excess);
+    }
+}
+
+/// <summary>
 /// Calls the aer-core M5 <c>AerTask</c> binding with an <see cref="ExecutionRequest"/> and records
 /// Core's lifecycle events to the combined log (M7 Phase 6). This is the P/Invoke Layer
 /// <c>CLAUDE.md</c> requires: the only place in <c>Aer.Flow</c> that touches <c>Aer.Core</c>
@@ -82,6 +232,18 @@ public interface ICoreDispatcher
 /// </summary>
 public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICoreDispatcher
 {
+    /// <summary>
+    /// How many characters of a worker's stderr are retained for
+    /// <see cref="CoreDispatchResult.StderrTail"/> (#563).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately larger than <c>OutcomeClassifier</c>'s own display cap. This bound exists to stop
+    /// a chatty worker from growing an unbounded buffer in a native callback; deciding how much of it
+    /// an operator actually reads is the classifier's job, and pre-truncating here to the display
+    /// size would take that choice away from it.
+    /// </remarks>
+    public const int MaxRetainedStderrLength = 2000;
+
     /// <summary>
     /// Spawns <paramref name="target"/> with <paramref name="request"/>'s AER-computed environment
     /// variables and timeout, and returns once the process has exited, timed out, or been
@@ -128,10 +290,26 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             task.WithCwd(workingDirectory);
         }
 
-        if (target.OnStdoutLine is not null)
-        {
-            task.WithCaptureOutput(true);
-        }
+        // Unconditional since #563. This used to be gated on `target.OnStdoutLine is not null`, i.e.
+        // the dialogue/chat path only, which meant an ordinary `aer run` never captured — and
+        // aer-core's no-sink drain runs `io::copy(&mut reader, &mut io::sink())` (os/mod.rs:121), so
+        // every byte the worker wrote explaining its own failure was read and thrown away.
+        //
+        // Nothing visible regresses by turning this on: both platforms already spawn the child with
+        // `.stderr(Stdio::piped())` unconditionally and explicitly never `Stdio::inherit`
+        // (os/unix.rs:26, os/windows.rs:78), so this output has never reached the operator's terminal
+        // and there is no inherited stream to take away.
+        //
+        // aer-core has no stderr-only capture mode — one bool covers both streams — so this also
+        // starts delivering StdoutChunk for non-chat dispatches. That case is a no-op below, and the
+        // guard there is *decode-free*, not allocation-free: by the time it runs, the binding has
+        // already copied the chunk into a managed array (CallbackBridge.cs:36-37, unconditional for
+        // any chunk event with DataLen > 0) and allocated an AerEventArgs. Those allocations are a
+        // layer below anything this file can suppress. Chunks are 8 KiB, and a `-p` style adapter
+        // produces tens of KB, so it is a handful of short-lived arrays per dispatch — gen0 churn,
+        // not a leak. Stated precisely because the earlier wording here claimed the non-chat path
+        // cost nothing, which would have been read as "we checked".
+        task.WithCaptureOutput(true);
 
         foreach (var environmentVariable in request.Environment)
         {
@@ -157,6 +335,10 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         var pendingLogWrites = new List<Task>();
         var stdoutBuffer = new System.Text.StringBuilder();
         var stdoutLock = new object();
+
+        // #563.
+        var stderrTail = new StderrTailBuffer();
+        var stderrLock = new object();
 
         task.EventRaised += (_, e) =>
         {
@@ -190,6 +372,16 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                             }
                             stdoutBuffer.Clear();
                             stdoutBuffer.Append(content);
+                        }
+                    }
+                    break;
+
+                case AerTaskEventKind.StderrChunk:
+                    if (e.Data is { Length: > 0 })
+                    {
+                        lock (stderrLock)
+                        {
+                            stderrTail.Append(e.Data);
                         }
                     }
                     break;
@@ -230,8 +422,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             }
         }
 
-        return new CoreDispatchResult(exitCode, reason);
+        string? capturedStderr;
+        lock (stderrLock)
+        {
+            capturedStderr = stderrTail.ToTailOrNull();
+        }
+
+        return new CoreDispatchResult(exitCode, reason, capturedStderr);
     }
+
 
     private static CoreExitReason ToCoreExitReason(AerExitReason reason) => reason switch
     {

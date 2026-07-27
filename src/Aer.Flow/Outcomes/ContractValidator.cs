@@ -246,6 +246,37 @@ public static class ContractValidator
     }
 
     /// <summary>
+    /// Keeps the last <paramref name="length"/> characters of <paramref name="value"/>, cutting from
+    /// the front. The mirror of <see cref="TrimWithoutSplittingSurrogatePair"/>, and here for the
+    /// reason that one's own doc gives: the surrogate-safe truncation rule lives in one file so two
+    /// copies cannot drift.
+    /// </summary>
+    internal static string KeepLastWithoutSplittingSurrogatePair(string value, int length)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (value.Length <= length)
+        {
+            return value;
+        }
+
+        var start = value.Length - length;
+
+        // If the first surviving char is a low surrogate, its high half is inside the removed
+        // prefix — drop the orphan rather than emitting half a pair. The `start < value.Length`
+        // guard mirrors the `cut > 0` guard in TrimWithoutSplittingSurrogatePair and exists for the
+        // same reason: it is unreachable while the callers' caps are positive, but lowering a
+        // display cap to zero is an ordinary later edit and an unguarded index would throw out of
+        // outcome classification — while recording a failure, which is the worst place to throw.
+        if (start < value.Length && char.IsLowSurrogate(value[start]))
+        {
+            start++;
+        }
+
+        return value[start..];
+    }
+
+    /// <summary>
     /// Cuts to at most <paramref name="length"/> chars without leaving a lone high surrogate — a
     /// non-BMP character is two UTF-16 chars and splitting one produces malformed UTF-16, which here
     /// would be written into an append-only journal. Worker-controlled JSON reaches this.

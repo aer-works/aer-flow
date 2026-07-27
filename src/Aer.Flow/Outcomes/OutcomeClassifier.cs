@@ -54,6 +54,30 @@ public static class OutcomeClassifier
     private const int MaxListedOutputs = 8;
 
     /// <summary>
+    /// How much of <see cref="CoreDispatchResult.StderrTail"/> a reason renders (#563).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Must stay strictly below <see cref="CoreDispatcher.MaxRetainedStderrLength"/>, and that is
+    /// load-bearing rather than incidental. Two caps sit in series — the dispatcher's buffer cap and
+    /// this one — but only this one emits a marker. Keeping this the tighter of the two means any
+    /// stderr long enough to hit the *silent* cap is necessarily long enough to hit the *marked* one
+    /// as well, so an operator is never shown a tail that had content dropped without an ellipsis
+    /// saying so. Raise this above that constant and truncation becomes invisible again.
+    /// Asserted by <c>OutcomeClassifierTests</c> rather than left to this comment.
+    /// </para>
+    /// <para>
+    /// That argument requires both caps to count the <i>same</i> characters, which is why
+    /// <see cref="StderrTailBuffer"/> collapses whitespace at capture time rather than this class
+    /// doing it on the way out. While the collapse sat between the two caps the comparison was
+    /// between different units and the guarantee was simply false — mostly-whitespace stderr could
+    /// lose thousands of characters silently and still fit under this cap unmarked. Moving a
+    /// collapse back downstream of the retention cap reintroduces that, whatever the two numbers say.
+    /// </para>
+    /// </remarks>
+    internal const int MaxStderrTailInReason = 350;
+
+    /// <summary>
     /// Classifies <paramref name="result"/> per spec §8's table:
     /// <c>NaturalExit + code 0 + all ProducedOutputs satisfied</c> → Succeeded;
     /// <c>NaturalExit</c> otherwise, or <c>TimedOut</c> → Failed;
@@ -79,7 +103,7 @@ public static class OutcomeClassifier
             return new OutcomeClassification(
                 OutcomeVerdict.Failed,
                 ReadFailureClassification(contract, outputDirectory),
-                "Execution timed out.");
+                WithStderr("Execution timed out.", result.StderrTail));
         }
 
         // Only CoreExitReason.Natural remains.
@@ -88,7 +112,7 @@ public static class OutcomeClassifier
             return new OutcomeClassification(
                 OutcomeVerdict.Failed,
                 ReadFailureClassification(contract, outputDirectory),
-                $"Worker exited with non-zero code {result.ExitCode}.");
+                WithStderr($"Worker exited with non-zero code {result.ExitCode}.", result.StderrTail));
         }
 
         var validation = ContractValidator.Validate(contract, outputDirectory);
@@ -97,10 +121,95 @@ public static class OutcomeClassifier
             return new OutcomeClassification(OutcomeVerdict.Succeeded);
         }
 
+        // Stderr is appended here too, not just on the non-zero-exit path. The exit-0-but-no-output
+        // worker is #597's case, and a worker that decided it had nothing to write very often says
+        // why on stderr on its way out — that is precisely the failure with the least other evidence.
         return new OutcomeClassification(
             OutcomeVerdict.Failed,
             ReadFailureClassification(contract, outputDirectory),
-            BuildContractFailureReason(validation.UnsatisfiedOutputs));
+            WithStderr(BuildContractFailureReason(validation.UnsatisfiedOutputs), result.StderrTail));
+    }
+
+    /// <summary>
+    /// Appends a bounded, single-line rendering of the worker's stderr to an already-assembled
+    /// reason (#563), or returns <paramref name="reason"/> untouched when the worker wrote nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The base reason is assembled and bounded first, then this is appended with its own separate
+    /// budget, rather than both sharing one cap. That is the same split
+    /// <see cref="BuildContractFailureReason"/> already documents: a single shared cap lets whichever
+    /// part happens to be longer starve the other, and here that would mean a verbose worker's
+    /// stderr silently swallowing the contract diagnostic, or vice versa.
+    /// </para>
+    /// <para>
+    /// The <c>stderr:</c> separator deliberately matches <c>DialogueRunner</c>'s, which has appended a
+    /// failed vendor turn's stderr to its own message the same way since M17 Phase 3 (#166), on the
+    /// same reasoning. That is one layer down — the dialogue worker's inner vendor calls, versus
+    /// Flow's outer worker dispatch — so the two are genuinely separate mechanisms rather than a
+    /// duplicated one; keeping the rendering identical is what stops an operator having to learn two
+    /// spellings of the same fact. Change one and change both.
+    /// </para>
+    /// </remarks>
+    private static string WithStderr(string reason, string? stderrTail)
+    {
+        if (string.IsNullOrWhiteSpace(stderrTail))
+        {
+            // A worker that was genuinely silent must produce the byte-for-byte pre-#563 reason —
+            // no empty "stderr:" label, which would read as though it had spoken and said nothing.
+            return reason;
+        }
+
+        // Idempotent on anything CoreDispatcher produced — StderrTailBuffer already collapsed it, and
+        // collapsing is what makes the two caps comparable. Repeated here because CoreDispatchResult
+        // is a public record any caller may construct (a test double, a future dispatcher), and a raw
+        // multi-line value reaching a line-oriented surface is the failure this prevents. It is not
+        // where the guarantee comes from; see MaxStderrTailInReason.
+        var collapsed = CollapseWhitespace(stderrTail);
+        if (collapsed.Length == 0)
+        {
+            return reason;
+        }
+
+        var kept = ContractValidator.KeepLastWithoutSplittingSurrogatePair(collapsed, MaxStderrTailInReason);
+
+        // The ellipsis goes on the front because the cut is on the front: this is a tail, so what was
+        // dropped precedes what is shown. Marking the wrong end would claim the opposite.
+        var marker = kept.Length < collapsed.Length ? "…" : string.Empty;
+
+        return $"{reason} stderr: {marker}{kept}";
+    }
+
+    /// <summary>
+    /// Flattens stderr to a single line. Every consumer of <c>Reason</c> is line-oriented — the CLI's
+    /// <c>FlowStateReporter</c> writes one <c>"  {StepId}: {Status} — {Reason}"</c> line per step —
+    /// so an embedded newline would not merely look untidy, it would break that format into rows
+    /// that no longer parse as step lines. Vendor CLIs routinely write multi-line errors.
+    /// </summary>
+    private static string CollapseWhitespace(string value)
+    {
+        var builder = new System.Text.StringBuilder(value.Length);
+        var pendingSpace = false;
+
+        foreach (var ch in value)
+        {
+            if (char.IsWhiteSpace(ch))
+            {
+                // Deferred rather than emitted, so runs collapse and leading/trailing space never lands.
+                pendingSpace = builder.Length > 0;
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                builder.Append(' ');
+                pendingSpace = false;
+            }
+
+            builder.Append(ch);
+        }
+
+        return builder.ToString();
     }
 
     /// <summary>

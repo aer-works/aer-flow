@@ -389,5 +389,213 @@ public class OutcomeClassifierTests
             DirectoryCleanup.DeleteRecursively(directory);
         }
     }
+
+    // #563: what the worker wrote to stderr reaches Reason, which #597 already carries to the CLI,
+    // both desktop surfaces and the daemon's wire payload.
+
+    /// <summary>
+    /// The exact case measured on this host: a real <c>agy</c> dispatch failed with
+    /// <c>Error: invalid model selection (--model "gemini-3-pro" --effort "high"): --effort is not
+    /// supported for model "gemini-3-pro"</c> on stderr, and AER reported only
+    /// <c>Worker exited with non-zero code 1.</c>
+    /// </summary>
+    [Fact]
+    public void Classify_carries_the_workers_stderr_into_the_reason_for_a_non_zero_exit()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            const string stderr =
+                "Error: invalid model selection (--model \"gemini-3-pro\" --effort \"high\"): "
+                + "--effort is not supported for model \"gemini-3-pro\"";
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, stderr),
+                new WorkerContract("worker", [], [], []),
+                directory);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.NotNull(classification.Reason);
+            Assert.Contains("Worker exited with non-zero code 1.", classification.Reason);
+            Assert.Contains("--effort is not supported for model", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// The polarity control for every stderr test here, and the regression guard for the three
+    /// reason strings that shipped in #597: a worker that wrote nothing must produce the
+    /// byte-for-byte pre-#563 reason. An implementation that appended an empty <c>stderr:</c> label
+    /// would pass every <c>Contains</c> assertion above while telling an operator the worker had
+    /// spoken and said nothing.
+    /// </summary>
+    [Fact]
+    public void Classify_leaves_the_reason_byte_for_byte_unchanged_when_the_worker_wrote_no_stderr()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var emptyContract = new WorkerContract("worker", [], [], []);
+
+            Assert.Equal(
+                "Worker exited with non-zero code 1.",
+                OutcomeClassifier.Classify(
+                    new CoreDispatchResult(1, CoreExitReason.Natural, StderrTail: null), emptyContract, directory).Reason);
+
+            Assert.Equal(
+                "Execution timed out.",
+                OutcomeClassifier.Classify(
+                    new CoreDispatchResult(0, CoreExitReason.TimedOut, StderrTail: null), emptyContract, directory).Reason);
+
+            Assert.Equal(
+                "Contract not satisfied: 'plan' is missing",
+                OutcomeClassifier.Classify(
+                    new CoreDispatchResult(0, CoreExitReason.Natural, StderrTail: null),
+                    new WorkerContract("worker", [], [new ProducedOutput("plan")], []),
+                    directory).Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// Whitespace-only stderr takes the same path as none at all. A worker that writes a stray
+    /// newline has not diagnosed anything, and a dangling <c>stderr:</c> label would imply it had.
+    /// </summary>
+    [Fact]
+    public void Classify_treats_whitespace_only_stderr_as_no_stderr()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, "  \r\n\t  "),
+                new WorkerContract("worker", [], [], []),
+                directory);
+
+            Assert.Equal("Worker exited with non-zero code 1.", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// Every consumer of <c>Reason</c> is line-oriented — <c>FlowStateReporter</c> writes one
+    /// <c>"  {StepId}: {Status} — {Reason}"</c> line per step — so an embedded newline from a
+    /// multi-line vendor error would split one step's row into rows that no longer parse as steps.
+    /// </summary>
+    [Fact]
+    public void Classify_flattens_multi_line_stderr_to_a_single_line()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, "first line\nsecond line\r\n\r\nthird line\n"),
+                new WorkerContract("worker", [], [], []),
+                directory);
+
+            Assert.NotNull(classification.Reason);
+            Assert.DoesNotContain('\n', classification.Reason);
+            Assert.DoesNotContain('\r', classification.Reason);
+
+            // Collapsed, not deleted: the words must survive, separated by single spaces, and the
+            // trailing newline must not leave the reason ending in a space.
+            Assert.Contains("first line second line third line", classification.Reason);
+            Assert.Equal(classification.Reason.TrimEnd(), classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// Bounded, keeping the end, and marked when anything was dropped — the three properties that
+    /// are each one mistake apart from a diagnostic that lies about its own completeness.
+    /// </summary>
+    [Fact]
+    public void Classify_bounds_a_long_stderr_tail_keeps_its_end_and_marks_the_truncation()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var stderr = "OPENING-BANNER " + new string('x', 5000) + " CLOSING-DIAGNOSTIC";
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, stderr),
+                new WorkerContract("worker", [], [], []),
+                directory);
+
+            Assert.NotNull(classification.Reason);
+            Assert.Contains("CLOSING-DIAGNOSTIC", classification.Reason);
+            Assert.DoesNotContain("OPENING-BANNER", classification.Reason);
+
+            // The ellipsis sits at the front of the rendered tail, because the front is where the
+            // cut was made — marking the other end would claim the opposite about what is missing.
+            Assert.Contains("stderr: …", classification.Reason);
+
+            // Polarity: a tail short enough to survive intact carries no marker at all.
+            var shortClassification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, "brief failure"),
+                new WorkerContract("worker", [], [], []),
+                directory);
+
+            Assert.Equal("Worker exited with non-zero code 1. stderr: brief failure", shortClassification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// Two caps sit in series and only the classifier's emits a marker, so the classifier's must be
+    /// the tighter one — otherwise stderr long enough to hit the dispatcher's silent cap could be
+    /// rendered whole, and an operator would see a tail that had content dropped with nothing
+    /// saying so. Asserted rather than left to the comment on <c>MaxStderrTailInReason</c>.
+    /// </summary>
+    [Fact]
+    public void The_marked_display_cap_is_tighter_than_the_silent_retention_cap()
+    {
+        Assert.True(
+            OutcomeClassifier.MaxStderrTailInReason < CoreDispatcher.MaxRetainedStderrLength,
+            $"display cap {OutcomeClassifier.MaxStderrTailInReason} must stay below retention cap "
+            + $"{CoreDispatcher.MaxRetainedStderrLength}, or truncation becomes invisible.");
+    }
+
+    /// <summary>
+    /// The contract-failure path gets stderr too. This is #597's exit-0-no-output case, which has
+    /// the least other evidence available — a worker that decided it had nothing to write very often
+    /// says why on its way out.
+    /// </summary>
+    [Fact]
+    public void Classify_carries_stderr_into_the_reason_for_a_contract_failure_after_a_clean_exit()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural, "warning: no changes were required"),
+                new WorkerContract("worker", [], [new ProducedOutput("plan")], []),
+                directory);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.Equal(
+                "Contract not satisfied: 'plan' is missing stderr: warning: no changes were required",
+                classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
 }
 
