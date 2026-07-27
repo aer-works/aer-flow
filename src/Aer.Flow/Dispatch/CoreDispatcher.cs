@@ -245,6 +245,83 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     public const int MaxRetainedStderrLength = 2000;
 
     /// <summary>
+    /// The assembled-command-line ceiling <see cref="DispatchAsync"/> guards against on Windows
+    /// (#598), held below <c>CreateProcessW</c>'s documented 32,767-character <c>lpCommandLine</c>
+    /// maximum so the approximate measure in <see cref="MeasureCommandLineLength"/> has room to be
+    /// wrong in the direction that still spawns.
+    /// </summary>
+    internal const int WindowsCommandLineCeiling = 32_000;
+
+    /// <summary>
+    /// The command-line ceiling for the running OS, or <see langword="null"/> where this guard claims
+    /// no limit. Windows is the only platform carrying a number because it is the only one whose
+    /// limit was measured here against a real failure (#579's <c>Win32Exception (206)</c>). POSIX
+    /// limits both exist and differ in shape — a per-argument <c>MAX_ARG_STRLEN</c> alongside a total
+    /// <c>ARG_MAX</c>, queryable rather than constant — so putting a number here for them would be a
+    /// claim about platforms nothing in this repo has measured. An over-long command line still fails
+    /// on those platforms exactly as it does today; tracked separately rather than guessed at.
+    /// </summary>
+    internal static int? PlatformCommandLineCeiling =>
+        OperatingSystem.IsWindows() ? WindowsCommandLineCeiling : null;
+
+    /// <summary>
+    /// Approximates the command line <c>std::process::Command</c> assembles from
+    /// <paramref name="program"/> and <paramref name="args"/> inside aer-core: each argument
+    /// contributes its own characters plus a separating space and a surrounding quote pair.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately approximate, and the approximation is the point: being exact would mean
+    /// reimplementing rustc's Windows argument-quoting rules here and holding them in step with a
+    /// toolchain this repo does not pin — a claim about someone else's internals that no test of ours
+    /// could keep honest. Both directions of error are survivable, which is what makes approximating
+    /// acceptable. Over-counting (an argument that needed no quoting at all) can refuse a command line
+    /// the OS would have accepted, and says exactly why it did. Under-counting (an argument with dense
+    /// backslash-before-quote runs, where escaping adds more than the two quotes assumed here) spawns
+    /// and fails at the OS — which is precisely today's behaviour, so it is a gap left open, never a
+    /// regression introduced. The margin below the real 32,767 absorbs the ordinary cases.
+    /// </remarks>
+    internal static int MeasureCommandLineLength(string program, IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        ArgumentNullException.ThrowIfNull(args);
+
+        // The program is quoted but not preceded by a separator; every argument after it is.
+        var length = program.Length + 2;
+        foreach (var arg in args)
+        {
+            length += arg.Length + 3;
+        }
+
+        return length;
+    }
+
+    /// <summary>
+    /// Throws <see cref="CommandLineTooLongException"/> when <paramref name="program"/> and
+    /// <paramref name="args"/> would assemble past <paramref name="ceiling"/> (#598). Takes the
+    /// ceiling as an argument rather than reading <see cref="PlatformCommandLineCeiling"/> itself, so
+    /// that the boundary is exercisable on every OS the test suite runs on and not only the one whose
+    /// limit is being enforced.
+    /// </summary>
+    internal static void GuardCommandLineLength(string program, IReadOnlyList<string> args, int ceiling)
+    {
+        var length = MeasureCommandLineLength(program, args);
+        if (length <= ceiling)
+        {
+            return;
+        }
+
+        // Name the longest single argument, not only the total: both adapters embed the whole prompt
+        // as one argument, so that figure is the prompt nearly every time, and an operator told only
+        // that "the total is too large" is left guessing which argument to shorten.
+        var longest = args.Count == 0 ? 0 : args.Max(arg => arg.Length);
+        throw new CommandLineTooLongException(
+            $"Cannot dispatch '{program}': its command line assembles to about {length} characters, "
+            + $"past the {ceiling} this platform is guarded at. The longest single argument is "
+            + $"{longest} characters — a worker's prompt is passed inline as one argument, so this is "
+            + "far more likely a prompt that needs shortening than a misconfigured command.");
+    }
+
+    /// <summary>
     /// Spawns <paramref name="target"/> with <paramref name="request"/>'s AER-computed environment
     /// variables and timeout, and returns once the process has exited, timed out, or been
     /// cancelled. Never throws for any of those three outcomes — each is a normal result §8 must
@@ -279,6 +356,17 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
             await File.WriteAllTextAsync(promptFilePath, ExpandVariables(promptText, pathVariables), CancellationToken.None)
                 .ConfigureAwait(false);
+        }
+
+        // #598: measured here, on the expanded arguments, because this is the only place the real
+        // command line exists — an adapter builds `%AER_OUTPUT_DIR%`, not the absolute path that
+        // placeholder becomes above, so a guard living in an adapter would measure the wrong string.
+        // Deliberately after the prompt capture: a command line long enough to trip this is a prompt
+        // problem, and prompt.md is the artifact an operator needs in order to see how it got that
+        // big — throwing before writing it would withhold the evidence for the very failure reported.
+        if (PlatformCommandLineCeiling is { } ceiling)
+        {
+            GuardCommandLineLength(target.Program, expandedArgs, ceiling);
         }
 
         // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a

@@ -1,4 +1,5 @@
 using Aer.Flow.Tests.TestSupport;
+using System.Globalization;
 using System.Text.Json;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Dispatch;
@@ -622,4 +623,199 @@ public class CoreDispatcherTests
         OperatingSystem.IsWindows()
             ? new CoreDispatchTarget("cmd", ["/c", $"echo {message} 1>&2 & exit {exitCode}"])
             : new CoreDispatchTarget("sh", ["-c", $"echo {message} >&2; exit {exitCode}"]);
+
+    // Issue #598: an over-long command line is refused by AER, naming its size and the limit, rather
+    // than reaching aer-core and coming back as an OS-authored complaint about a filename.
+
+    /// <summary>
+    /// Pins the arithmetic the ceiling is compared against, so that a change to the accounting has to
+    /// be a deliberate edit here rather than a silent shift in where the guard fires.
+    /// </summary>
+    [Fact]
+    public void MeasureCommandLineLength_counts_the_program_its_arguments_and_their_separators()
+    {
+        // "prog" quoted (6) + " " + "ab" quoted (4) => 6 + 1 + 4 = 11, and again for the second arg.
+        Assert.Equal(6, CoreDispatcher.MeasureCommandLineLength("prog", []));
+        Assert.Equal(11, CoreDispatcher.MeasureCommandLineLength("prog", ["ab"]));
+        Assert.Equal(16, CoreDispatcher.MeasureCommandLineLength("prog", ["ab", "cd"]));
+    }
+
+    /// <summary>
+    /// The two arms of the boundary, one character apart, which is the pair that makes either arm
+    /// mean anything: a guard that throws on everything would pass the first assertion alone, and one
+    /// that throws on nothing would pass the second alone.
+    /// </summary>
+    [Fact]
+    public void GuardCommandLineLength_fires_one_character_past_the_ceiling_and_not_at_it()
+    {
+        const int ceiling = 100;
+
+        // MeasureCommandLineLength("p", [arg]) == arg.Length + 6, so this lands exactly on the ceiling.
+        var exactlyAtCeiling = new string('x', ceiling - 6);
+        Assert.Equal(ceiling, CoreDispatcher.MeasureCommandLineLength("p", [exactlyAtCeiling]));
+        CoreDispatcher.GuardCommandLineLength("p", [exactlyAtCeiling], ceiling);
+
+        var oneOver = exactlyAtCeiling + "x";
+        Assert.Equal(ceiling + 1, CoreDispatcher.MeasureCommandLineLength("p", [oneOver]));
+        Assert.Throws<CommandLineTooLongException>(
+            () => CoreDispatcher.GuardCommandLineLength("p", [oneOver], ceiling));
+    }
+
+    /// <summary>
+    /// The whole point of the issue is the message, not the throw: an operator who cannot see how big
+    /// the prompt was, and how big it was allowed to be, is no better off than with the OS error.
+    /// </summary>
+    [Fact]
+    public void GuardCommandLineLength_names_the_program_the_measured_size_the_ceiling_and_the_longest_argument()
+    {
+        const int ceiling = 100;
+        var longest = new string('x', 200);
+
+        var exception = Assert.Throws<CommandLineTooLongException>(
+            () => CoreDispatcher.GuardCommandLineLength("agy", ["-p", longest], ceiling));
+
+        Assert.Contains("agy", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            CoreDispatcher.MeasureCommandLineLength("agy", ["-p", longest]).ToString(CultureInfo.InvariantCulture),
+            exception.Message,
+            StringComparison.Ordinal);
+        Assert.Contains(ceiling.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("200", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The guard claims a limit only where one was measured (#579's <c>Win32Exception (206)</c>).
+    /// Asserted in both directions so that quietly giving POSIX an invented number, or quietly
+    /// dropping Windows' real one, both fail here.
+    /// </summary>
+    [Fact]
+    public void PlatformCommandLineCeiling_carries_a_number_on_Windows_and_none_elsewhere()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(CoreDispatcher.WindowsCommandLineCeiling, CoreDispatcher.PlatformCommandLineCeiling);
+        }
+        else
+        {
+            Assert.Null(CoreDispatcher.PlatformCommandLineCeiling);
+        }
+    }
+
+    /// <summary>
+    /// The end-to-end arm: the guard is actually wired into <see cref="CoreDispatcher.DispatchAsync"/>
+    /// and refuses before aer-core is reached. Windows-only because it is the only platform
+    /// <see cref="CoreDispatcher.PlatformCommandLineCeiling"/> claims a limit for -- the boundary
+    /// itself is covered on every platform by the tests above, which pass their own ceiling in.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_refuses_an_over_long_command_line_before_spawning()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("No command-line ceiling is claimed off Windows; the boundary is covered by the guard tests.");
+        }
+
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var oversizedPrompt = new string('x', CoreDispatcher.WindowsCommandLineCeiling + 1_000);
+
+            // "exit 0" would succeed if it ever ran, so a passing assertion here cannot come from the
+            // command failing for some unrelated reason of its own.
+            var target = new CoreDispatchTarget("cmd", ["/c", "exit 0", oversizedPrompt]);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            var exception = await Assert.ThrowsAsync<CommandLineTooLongException>(
+                () => dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken));
+            Assert.Contains(
+                CoreDispatcher.WindowsCommandLineCeiling.ToString(CultureInfo.InvariantCulture),
+                exception.Message,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
+    /// The control for the test above: the identical target with an ordinary-sized argument dispatches
+    /// normally. Without this, a guard that refused every dispatch outright would still look correct.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_dispatches_normally_when_the_command_line_is_within_the_ceiling()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var ordinaryPrompt = new string('x', 1_000);
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "exit 0", ordinaryPrompt])
+                : new CoreDispatchTarget("sh", ["-c", "exit 0", ordinaryPrompt]);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer)
+                .DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(CoreExitReason.Natural, result.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
+    /// Pins the deliberate ordering: the guard is measured after #292's prompt capture, so the
+    /// artifact showing how the prompt got that large survives the refusal. Reversing the two would
+    /// withhold the evidence for precisely the failure being reported, and nothing else would notice.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_still_captures_the_prompt_when_the_command_line_guard_fires()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("No command-line ceiling is claimed off Windows, so the guard never fires here.");
+        }
+
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var oversizedPrompt = new string('x', CoreDispatcher.WindowsCommandLineCeiling + 1_000);
+            var target = new CoreDispatchTarget("cmd", ["/c", "exit 0", oversizedPrompt])
+                with
+            { PromptText = oversizedPrompt };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            await Assert.ThrowsAsync<CommandLineTooLongException>(
+                () => dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken));
+
+            var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
+            Assert.True(File.Exists(promptFilePath));
+            Assert.Equal(
+                oversizedPrompt.Length,
+                (await File.ReadAllTextAsync(promptFilePath, TestContext.Current.CancellationToken)).Length);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
 }
