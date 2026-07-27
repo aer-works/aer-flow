@@ -279,6 +279,12 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Effort);
         }
 
+        if (invocation.Timeout is { } timeout)
+        {
+            args.Add("--print-timeout");
+            args.Add(FormatPrintTimeout(timeout));
+        }
+
         return new CoreDispatchTarget(
             "agy", [.. args], invocation.WorkingDirectory, PromptText: prompt,
             Environment:
@@ -550,5 +556,46 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             // for this subcommand rather than fabricating a result.
             return null;
         }
+    }
+
+    /// <summary>
+    /// How far past AER's own timeout <c>--print-timeout</c> is set (#588).
+    /// </summary>
+    /// <remarks>
+    /// The point of the flag is not to impose a limit — it is to stop <c>agy</c> imposing <i>its</i>
+    /// default one first. Whichever limit expires first decides the failure mode, and the two are not
+    /// equally good: AER's produces <c>CoreExitReason.TimedOut</c> and the reason
+    /// <c>"Execution timed out."</c>, whereas agy's print-mode wait expiring produces a clean exit 0
+    /// with no output file — the silent failure #588 was filed for. So agy's limit is pushed strictly
+    /// beyond AER's and left as a backstop that should never fire.
+    /// <para>
+    /// Fixed rather than proportional. A proportional margin is dangerously tight at the short end —
+    /// 25% of a 30-second timeout is under 8 seconds, well inside process-teardown jitter on a loaded
+    /// machine — while at the long end the size of the backstop is irrelevant, because AER terminates
+    /// the tree at its own deadline regardless. A margin too small does not fail loudly; it
+    /// reintroduces the original silent exit-0 as a race.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan PrintTimeoutMargin = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Renders a timeout as a Go duration literal, which is what <c>agy</c>'s flag parser accepts.
+    /// </summary>
+    /// <remarks>
+    /// Total seconds, never <see cref="TimeSpan.ToString()"/>. Measured on this host: <c>1200s</c>,
+    /// <c>20m0s</c> and <c>20m</c> are all accepted, while <c>00:20:00</c> — precisely what
+    /// <c>TimeSpan.ToString()</c> produces — is rejected with
+    /// <c>invalid value "00:20:00" for flag -print-timeout: time: unknown unit ":" in duration</c> and
+    /// exit code 2. A default interpolation of the TimeSpan would therefore have broken every gemini
+    /// dispatch outright rather than degrading quietly.
+    /// <para>
+    /// Rounded up, so the emitted backstop is never a fraction of a second tighter than intended, and
+    /// floored at one second because a zero or negative duration is not a value the flag accepts.
+    /// </para>
+    /// </remarks>
+    private static string FormatPrintTimeout(TimeSpan timeout)
+    {
+        var seconds = (long)Math.Ceiling((timeout + PrintTimeoutMargin).TotalSeconds);
+        return $"{Math.Max(seconds, 1)}s";
     }
 }

@@ -76,6 +76,22 @@ namespace Aer.Adapters;
 /// The path to a log file where the vendor CLI writes side-channel logs (e.g. Gemini <c>--log-file</c> for capturing conversation id).
 /// </param>
 /// <param name="Effort">The vendor's raw effort-level string to configure reasoning/thinking effort (e.g. Claude's <c>--effort low|medium|high|xhigh|max</c>, Gemini's <c>--effort low|medium|high</c>; see <c>docs/vendor-capabilities.md</c>). Null when not applicable or not set.</param>
+/// <param name="Timeout">
+/// The timeout AER will itself enforce on this worker's executions — the same
+/// <c>WorkerBindingConfigEntry.Timeout</c> that becomes <c>ExecutionRequest.Timeout</c> (#588).
+/// Supplied so an adapter can tell its vendor CLI about a limit the CLI would otherwise apply its own
+/// default to; <c>GeminiWorkerAdapter</c> is the one that needs it today, because <c>agy -p</c> has an
+/// internal 5-minute print-mode wait that is otherwise completely decoupled from AER's timeout.
+/// <para>
+/// This is per <i>binding entry</i>, not per execution, which is what makes it legitimate here at all:
+/// <see cref="IWorkerAdapter.Resolve"/> runs once per binding-config entry, and the timeout is
+/// declared on that same entry (deliberately kept off the step — see
+/// <c>WorkerBindingConfigEntry</c>). So this carries no execution-specific value, exactly like every
+/// other member of this record.
+/// </para>
+/// Null when the caller has no timeout to declare; adapters must treat that as "say nothing and leave
+/// the vendor's own default in effect".
+/// </param>
 public sealed record WorkerInvocation(
     string PromptTemplate,
     string? Model = null,
@@ -87,5 +103,6 @@ public sealed record WorkerInvocation(
     bool ResumeSession = false,
     bool StreamJson = false,
     string? LogFilePath = null,
-    string? Effort = null);
+    string? Effort = null,
+    TimeSpan? Timeout = null);
 

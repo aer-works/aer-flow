@@ -664,15 +664,28 @@ command lines. Pre-authorisation rules must match what it actually emits.
 cannot scope a grant to one run the way `--allowedTools` does for `claude`, so a per-run ceiling has
 to come from `--sandbox` or from the MCP consultation path, not from flags.
 
-**`agy -p` has its own hardcoded 5-minute print-mode wait timeout, decoupled from anything AER
-configures.** `agy --help`: `--print-timeout  Timeout for print mode wait (default 5m0s)`.
-`GeminiWorkerAdapter` never passes this flag, so a long-running task (a genuinely large read+reason+write
-job — measured with a ~39-file corpus audit dispatched via `Aer.Cli run`) exits 0 with no output and no
-diagnostic pointing at the real cause, regardless of the *step's own* configured `Timeout` being far
-longer. **Not confirmed on `claude`** — its `--help` surfaces no `timeout`-named flag, but `--help` is
-known incomplete (below), so this is scoped to what was actually checked, not asserted as measured
-absence. Fix tracked in `#588` — measure, then have the adapter derive `--print-timeout` from the
-step's own timeout rather than leaving agy's default in effect unconditionally.
+**`agy -p` has its own print-mode wait timeout, decoupled from anything AER configures unless the
+flag is passed.** `agy --help`: `--print-timeout  Timeout for print mode wait (default 5m0s)`. Until
+`#588`, `GeminiWorkerAdapter` never passed it, so a long read+reason+write job (measured with a
+~39-file corpus audit dispatched via `Aer.Cli run`) exited 0 with no output and no diagnostic,
+regardless of AER's own configured `Timeout` being far longer.
+
+**Fixed in `#588`:** the adapter now emits `--print-timeout` derived from the worker binding's own
+`Timeout`, set deliberately *past* it so AER's enforcement is the binding constraint. That direction is
+the point — whichever limit expires first decides the failure mode, and they are not equally good:
+AER's yields `CoreExitReason.TimedOut` and a real diagnostic, agy's yields a clean exit 0 with no
+output. agy's limit is left as a backstop that should never fire.
+
+**The accepted duration syntax is a Go duration, and one obvious rendering is rejected.** Measured by
+running each against the live CLI: `1200s` ✓, `20m0s` ✓, `20m` ✓, and `00:20:00` ✗ — the last exits **2**
+with `invalid value "00:20:00" for flag -print-timeout: time: unknown unit ":" in duration`. That
+rejected form is exactly what .NET's `TimeSpan.ToString()` produces, so interpolating a `TimeSpan`
+directly breaks every dispatch at argument parsing rather than degrading quietly. The adapter emits
+whole seconds.
+
+**Not confirmed on `claude`** — `claude --help` surfaces no `timeout`-named flag (re-scanned on this
+host during `#588`, zero matches), but `--help` is known incomplete (below), so this stays scoped to
+what was checked rather than asserted as a measured absence.
 
 ## `--remote-control` — not yet characterised
 

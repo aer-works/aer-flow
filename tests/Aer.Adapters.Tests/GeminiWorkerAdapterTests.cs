@@ -120,6 +120,111 @@ public class GeminiWorkerAdapterTests
         Assert.Equal("yolo", target.Args[3]);
     }
 
+    // #588: agy -p has its own 5-minute print-mode wait, decoupled from anything AER configures, so
+    // a long task under a 20-minute AER timeout died at 5 minutes with exit 0 and no output.
+
+    [Fact]
+    public void Resolve_passes_print_timeout_derived_from_the_invocations_own_timeout()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromMinutes(20)), ArchitectContract);
+
+        // 20 minutes + the 60s margin, as whole seconds.
+        Assert.Equal("1260s", ArgValue(target, "--print-timeout"));
+    }
+
+    /// <summary>
+    /// The polarity control. Without it, an adapter that emitted a hardcoded <c>--print-timeout</c>
+    /// regardless of the invocation would pass the test above — and would then be overriding the
+    /// vendor default in cases where AER has no timeout to declare.
+    /// </summary>
+    [Fact]
+    public void Resolve_omits_print_timeout_entirely_when_the_invocation_declares_no_timeout()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: null), ArchitectContract);
+
+        Assert.DoesNotContain("--print-timeout", target.Args);
+    }
+
+    /// <summary>
+    /// agy's limit must expire strictly after AER's, never at the same moment. Whichever fires first
+    /// decides the failure mode, and they are not equally good: AER's yields
+    /// <c>CoreExitReason.TimedOut</c> and a real diagnostic, agy's yields a clean exit 0 with no
+    /// output — the silent failure this issue was filed for. Equality would make that a race.
+    /// </summary>
+    [Theory]
+    [InlineData(30)]
+    [InlineData(300)]
+    [InlineData(1200)]
+    public void The_print_timeout_always_expires_strictly_after_AERs_own_timeout(int aerTimeoutSeconds)
+    {
+        var aerTimeout = TimeSpan.FromSeconds(aerTimeoutSeconds);
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: aerTimeout), ArchitectContract);
+
+        var emitted = ArgValue(target, "--print-timeout");
+        Assert.NotNull(emitted);
+
+        var emittedSeconds = int.Parse(emitted.TrimEnd('s'), System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(
+            emittedSeconds > aerTimeoutSeconds,
+            $"print-timeout {emittedSeconds}s must exceed AER's own {aerTimeoutSeconds}s, or agy can give up first");
+    }
+
+    /// <summary>
+    /// Guards the exact formatting trap this was measured into. <c>agy</c> parses Go durations:
+    /// <c>1200s</c>, <c>20m0s</c> and <c>20m</c> are accepted, but <c>00:20:00</c> — which is
+    /// precisely what <see cref="TimeSpan.ToString()"/> produces — is rejected with
+    /// <c>time: unknown unit ":" in duration</c> and exit code 2. Interpolating the TimeSpan directly
+    /// would have broken every gemini dispatch outright.
+    /// </summary>
+    [Theory]
+    [InlineData(30)]
+    [InlineData(1200)]
+    [InlineData(7200)]
+    public void The_print_timeout_is_a_Go_duration_never_a_dotnet_TimeSpan_rendering(int seconds)
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(seconds)), ArchitectContract);
+
+        var emitted = ArgValue(target, "--print-timeout");
+        Assert.NotNull(emitted);
+        Assert.Matches(@"^\d+s$", emitted);
+        Assert.DoesNotMatch(@"^\d{2}:\d{2}:\d{2}", emitted);
+    }
+
+    /// <summary>
+    /// A fractional duration must round up, never down: rounding down would emit a backstop fractionally
+    /// tighter than intended, which is the direction that reintroduces the race. Zero is floored to a
+    /// value the flag will actually parse.
+    /// </summary>
+    [Theory]
+    [InlineData(0.5, "61s")]
+    [InlineData(90.4, "151s")]
+    [InlineData(0, "60s")]
+    public void The_print_timeout_rounds_up_and_never_emits_a_non_positive_duration(
+        double seconds, string expected)
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(seconds)), ArchitectContract);
+
+        Assert.Equal(expected, ArgValue(target, "--print-timeout"));
+    }
+
+    [Fact]
+    public void A_negative_timeout_still_yields_a_duration_agys_parser_accepts()
+    {
+        // Not reachable through the config today (WorkerBindingConfigEntry.Timeout is a non-nullable
+        // TimeSpan, and a negative one is a config error AER's own timeout would reject first), but an
+        // unparseable flag value fails the dispatch at argument parsing with exit 2 — a worse failure
+        // than the one being fixed, so the floor is asserted rather than assumed.
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(-9999)), ArchitectContract);
+
+        Assert.Matches(@"^\d+s$", ArgValue(target, "--print-timeout"));
+    }
+
     private static string? ArgValue(CoreDispatchTarget target, string flag)
     {
         for (var i = 0; i < target.Args.Count - 1; i++)
