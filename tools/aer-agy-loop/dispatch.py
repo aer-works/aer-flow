@@ -334,6 +334,15 @@ def main() -> int:
         file=sys.stderr,
     )
 
+    # Remember whether a log already existed, and how stale it was, BEFORE running. A reused
+    # --scratch-root carries a previous dispatch's `flow.jsonl`, and printing that on failure hands
+    # the operator another run's PID, exit reason and step name as this run's diagnostics. That
+    # happened: a failed dispatch printed a six-hour-old log whose `Outputs` and `Timeout` belonged
+    # to a different task entirely, which reads as "AER ran the wrong workflow" rather than "AER
+    # never got far enough to write anything".
+    log_path = task_dir / "flow.jsonl"
+    log_mtime_before = log_path.stat().st_mtime if log_path.exists() else None
+
     result = subprocess.run(
         [
             str(cli_path),
@@ -351,12 +360,19 @@ def main() -> int:
     print(result.stdout, end="")
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
-        print(f"\n--- flow.jsonl ({task_dir / 'flow.jsonl'}) ---", file=sys.stderr)
-        log_path = task_dir / "flow.jsonl"
-        if log_path.exists():
-            print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
+        print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
+        if not log_path.exists():
+            print("(not written -- `aer run` failed before recording anything)", file=sys.stderr)
+        elif log_mtime_before is not None and log_path.stat().st_mtime == log_mtime_before:
+            # Untouched by this run. Say that instead of the contents: a stale log is worse than no
+            # log, because it looks like evidence.
+            print("(NOT THIS RUN -- this log predates the dispatch and was not touched by it.", file=sys.stderr)
+            print(" `aer run` failed before writing any event, so there are no diagnostics for this", file=sys.stderr)
+            print(" run. The stale contents are withheld deliberately; they describe other work.", file=sys.stderr)
+            print(f" Cause is almost always a reused --scratch-root: {task_dir} already existed.", file=sys.stderr)
+            print(" Omit --scratch-root to get a fresh runs/<uuid> directory.)", file=sys.stderr)
         else:
-            print("(not written)", file=sys.stderr)
+            print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
         return result.returncode
 
     artifacts_dir = task_dir / "artifacts"
