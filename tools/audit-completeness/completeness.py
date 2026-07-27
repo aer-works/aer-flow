@@ -364,6 +364,22 @@ def step8_cited_checks_exist():
     return ok
 
 
+# What a vendor model identifier looks like: lowercase, hyphenated, and carrying at least one DIGIT.
+# The digit is the whole load-bearing part and it is asserted, not described -- an earlier version of
+# this said "carrying a digit" in a comment over `[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+`, which requires no
+# digit at all and happily matches `read-only`, `fail-closed`, `cross-vendor` and `skip-permissions`.
+# Those words are everywhere in this repo; the check passed only because none of them sits in a
+# `--model` pin position today. Absence of a trigger is not a working filter, and that was the
+# comment-vs-code defect this step exists to catch, committed inside the fix for it.
+#
+# Defined ONCE and used by both the register sanity check and the tools/ walk. Those were two
+# near-identical regexes for one concept in one function, differing by a single `.`.
+#
+# Declared cost: a real pin with no digit in its name is invisible to the walk. Every name `agy
+# models` lists has one.
+MODEL_NAME_SHAPE = re.compile(r"(?=.*[0-9])[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
+
+
 def step9_pinned_models_exist():
     """Every `agy` model name pinned in a tool is one `agy models` actually lists.
 
@@ -434,7 +450,7 @@ def step9_pinned_models_exist():
     # is the right verdict for the wrong reason and points at the wrong file. Note `line()` called
     # with no `expected` prints no marker and returns True, so the printed count could never have
     # caught this on its own.
-    shaped = {n for n in accepted if re.fullmatch(r"[a-z][a-z0-9]*(-[a-z0-9.]+)+", n)}
+    shaped = {n for n in accepted if MODEL_NAME_SHAPE.fullmatch(n)}
     if accepted != shaped or not 5 <= len(accepted) <= 40:
         print(f"    !! the `agy models` block parsed to {len(accepted)} token(s) that do not all look"
               f" like model names -- the PARSE is wrong, not the pins. Got: {sorted(accepted)[:8]}")
@@ -445,9 +461,6 @@ def step9_pinned_models_exist():
     # `smoke-preflight/preflight.py`'s CLAUDE_ALIASES rather than inventing a second list; that file
     # records that `haiku` was verified to resolve via `modelUsage` rather than assumed.
     CLAUDE_CLI_ALIASES = {"opus", "sonnet", "haiku", "fable"}
-    # Hyphenated and containing a digit -- true of every name in the register, false of every English
-    # word that can follow `--model` in a sentence.
-    MODEL_NAME_SHAPE = re.compile(r"[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
 
     pins = []  # (where, model)
 
