@@ -195,8 +195,8 @@ This is the *only* vocabulary Flow itself understands for this purpose — two f
 
 ### 8.2 Flow-Derived Failure Reason
 
-Every `ExecutionFailed` also carries a `Reason`: a human-readable diagnostic Flow derives from the
-facts in §8's table — which condition of that table was not met, and for a contract failure, which
+Every `ExecutionFailed` Flow writes also carries a `Reason`: a human-readable diagnostic Flow derives
+from the facts in §8's table — which condition of that table was not met, and for a contract failure, which
 declared outputs were unsatisfied and whether each was missing, unparseable, or resolved a JSON
 Pointer to the wrong value (§4.1).
 
@@ -208,7 +208,11 @@ survived to describe it. That is precisely the case it exists for: a worker that
 written none of its declared outputs is the classification §8's table already fully determines, and
 before this field Flow recorded that verdict while discarding the reasoning behind it.
 
-Consistent with §8's evaluate-exactly-once rule, `Reason` is composed at outcome-classification time
+A `Reason` is absent on any `ExecutionFailed` recorded before this field existed, and absent means
+"not recorded" — never "no reason was derivable". An implementation reading a journal must treat the
+field as optional; only one it *writes* is guaranteed to carry it.
+
+Consistent with §4.1's evaluate-exactly-once rule, `Reason` is composed at outcome-classification time
 and stored in the event. Replay reads it; replay never recomputes it, so a diagnostic can never
 disagree with the classification it explains, and neither depends on the state of the filesystem at
 replay time. Flow-originated classifications that never consult Core's exit report — §7's orphan

@@ -73,7 +73,7 @@ public class ExecutionHistoryProjectorTests
         var events = new FlowEvent[]
         {
             new FlowEvent.ExecutionRequestAccepted(MakeRequest(first, Architect)),
-            new FlowEvent.ExecutionFailed(first, FailureClassification.Retryable),
+            new FlowEvent.ExecutionFailed(first, FailureClassification.Retryable, "Contract not satisfied: 'plan' is missing"),
             new FlowEvent.ExecutionRequestAccepted(MakeRequest(second, Architect)),
             new FlowEvent.ExecutionSucceeded(second),
         };
@@ -82,6 +82,14 @@ public class ExecutionHistoryProjectorTests
 
         var attempts = history.AttemptsByStepId[Architect];
         Assert.Equal(2, attempts.Count);
+
+        // #597: the projector line carrying Reason end-to-end was otherwise covered only through an
+        // [AvaloniaFact] needing a real window, a real event log and a temp directory. Same polarity
+        // pair, without the Avalonia dependency: the reason lands on the attempt that failed and on
+        // no other.
+        Assert.Equal("Contract not satisfied: 'plan' is missing", attempts[0].Reason);
+        Assert.Null(attempts[1].Reason);
+
         Assert.Equal(first, attempts[0].ExecutionId);
         Assert.Equal(StepStatus.Failed, attempts[0].Status);
         Assert.Equal(FailureClassification.Retryable, attempts[0].FailureClassification);

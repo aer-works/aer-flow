@@ -1421,7 +1421,13 @@ public partial class MainWindow : Window
                 summary += ", pending supersede dispatch";
             }
 
-            HistoryPanel.Children.Add(new TextBlock { Text = summary });
+            // Wraps for the same reason the attempt rows above do — a half-wrapped panel is worse
+            // than either choice made consistently.
+            HistoryPanel.Children.Add(new TextBlock
+            {
+                Text = summary,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            });
         }
     }
 

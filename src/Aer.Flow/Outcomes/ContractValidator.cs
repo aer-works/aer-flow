@@ -14,19 +14,45 @@ namespace Aer.Flow.Outcomes;
 public static class ContractValidator
 {
     /// <summary>
+    /// How much of a single resolved JSON Pointer target a diagnostic will render. Small on purpose:
+    /// the point is which output failed and roughly how, not the value's full text — that is in the
+    /// artifact, which the diagnostic names.
+    /// </summary>
+    private const int MaxRenderedValueLength = 60;
+
+
+    /// <summary>
     /// True when every entry in <paramref name="contract"/>'s <c>ProducedOutputs</c> exists at
     /// <paramref name="outputDirectory"/> and satisfies its declared <see cref="OutputCondition"/>,
-    /// if any. A thin projection of <see cref="Validate"/> for callers that only need the bool.
+    /// if any.
     /// </summary>
+    /// <remarks>
+    /// Stops at the first unsatisfied output, which <see cref="Validate"/> deliberately does not.
+    /// That is not an optimisation, it is the pre-existing contract of this method and dropping it
+    /// changed behaviour: <c>NonProcessCompletionDetector</c> calls this on every scheduling round
+    /// for every unfinalized non-process execution, so evaluating outputs past the first failure
+    /// both re-reads and re-parses files needlessly and — the real defect — reaches
+    /// <c>TryResolvePointer</c> on outputs it never used to touch, which <b>throws</b>
+    /// <see cref="FormatException"/> for a pointer not starting with <c>/</c>. A malformed pointer on
+    /// a later output would have escaped into the pump on every round. Caught by an independent
+    /// reviewer, who flagged it as unverifiable without the pre-change file and was right.
+    /// </remarks>
     public static bool IsSatisfied(WorkerContract contract, string outputDirectory) =>
-        Validate(contract, outputDirectory).IsSatisfied;
+        Validate(contract, outputDirectory, stopAtFirstFailure: true).IsSatisfied;
 
     /// <summary>
     /// Same check as <see cref="IsSatisfied"/>, but reports which outputs are unsatisfied and why —
     /// missing, unparseable JSON, or a condition that didn't hold — instead of collapsing all three
-    /// into a single <c>false</c>.
+    /// into a single <c>false</c>. Reports every unsatisfied output, since the delta is the
+    /// diagnostic value.
     /// </summary>
-    public static ContractValidationResult Validate(WorkerContract contract, string outputDirectory)
+    public static ContractValidationResult Validate(WorkerContract contract, string outputDirectory) =>
+        Validate(contract, outputDirectory, stopAtFirstFailure: false);
+
+    private static ContractValidationResult Validate(
+        WorkerContract contract,
+        string outputDirectory,
+        bool stopAtFirstFailure)
     {
         ArgumentNullException.ThrowIfNull(contract);
         ArgumentException.ThrowIfNullOrEmpty(outputDirectory);
@@ -39,6 +65,11 @@ public static class ContractValidator
             if (!File.Exists(path))
             {
                 (unsatisfied ??= []).Add(new UnsatisfiedOutput(output.Name, UnsatisfiedOutputReason.Missing));
+                if (stopAtFirstFailure)
+                {
+                    break;
+                }
+
                 continue;
             }
 
@@ -51,12 +82,16 @@ public static class ContractValidator
             if (conditionFailure is not null)
             {
                 (unsatisfied ??= []).Add(conditionFailure);
+                if (stopAtFirstFailure)
+                {
+                    break;
+                }
             }
         }
 
         return unsatisfied is null
             ? ContractValidationResult.Satisfied
-            : new ContractValidationResult(false, unsatisfied);
+            : new ContractValidationResult(unsatisfied);
     }
 
     private static UnsatisfiedOutput? TryGetUnsatisfiedCondition(string outputName, OutputCondition condition, string path)
@@ -161,21 +196,67 @@ public static class ContractValidator
         _ => throw new ArgumentOutOfRangeException(nameof(scalar), scalar, "Unknown JsonScalar case."),
     };
 
-    /// <summary>Renders a resolved JSON Pointer target for a human-readable diagnostic.</summary>
-    private static string DescribeElement(JsonElement element) => element.ValueKind switch
+    /// <summary>
+    /// Renders a resolved JSON Pointer target for a human-readable diagnostic, clamped so that one
+    /// value cannot consume the whole reason.
+    /// </summary>
+    /// <remarks>
+    /// A JSON Pointer may resolve to an object or array, and <see cref="JsonElement.GetRawText"/> on
+    /// one is unbounded. Clamping <b>here</b>, per value, rather than only on the assembled reason is
+    /// what keeps the diagnostic honest: a single 5 KB value truncated at the end would silently drop
+    /// every other unsatisfied output from the list, and would render <c>123456789012</c> as
+    /// <c>1234</c> — a confident wrong answer where there used to be no answer. The marker is
+    /// attached to the value it belongs to, so a shortened value can never read as a complete one.
+    /// </remarks>
+    private static string DescribeElement(JsonElement element)
     {
-        JsonValueKind.String => $"\"{element.GetString()}\"",
-        _ => element.GetRawText(),
-    };
+        var rendered = element.ValueKind switch
+        {
+            JsonValueKind.String => $"\"{element.GetString()}\"",
+            _ => element.GetRawText(),
+        };
+
+        return rendered.Length <= MaxRenderedValueLength
+            ? rendered
+            : string.Concat(TrimWithoutSplittingSurrogatePair(rendered, MaxRenderedValueLength), "…(truncated)");
+    }
+
+    /// <summary>
+    /// Cuts to at most <paramref name="length"/> chars without leaving a lone high surrogate — a
+    /// non-BMP character is two UTF-16 chars and splitting one produces malformed UTF-16, which here
+    /// would be written into an append-only journal. Worker-controlled JSON reaches this.
+    /// </summary>
+    internal static string TrimWithoutSplittingSurrogatePair(string value, int length)
+    {
+        if (value.Length <= length)
+        {
+            return value;
+        }
+
+        var cut = length;
+        if (cut > 0 && char.IsHighSurrogate(value[cut - 1]))
+        {
+            cut--;
+        }
+
+        return value[..cut];
+    }
 }
 
 /// <summary>
 /// Which of a <see cref="WorkerContract"/>'s <c>ProducedOutputs</c> failed <see cref="ContractValidator.Validate"/>,
 /// and why — the detail <see cref="ContractValidator.IsSatisfied"/> discards by collapsing to <c>bool</c>.
 /// </summary>
-public sealed record ContractValidationResult(bool IsSatisfied, IReadOnlyList<UnsatisfiedOutput> UnsatisfiedOutputs)
+/// <remarks>
+/// <see cref="IsSatisfied"/> is derived rather than a constructor parameter so the two cannot
+/// disagree. As a parameter, <c>new ContractValidationResult(true, [somethingUnsatisfied])</c>
+/// compiled and lied — on a public type, where a caller outside this assembly could build it.
+/// </remarks>
+public sealed record ContractValidationResult(IReadOnlyList<UnsatisfiedOutput> UnsatisfiedOutputs)
 {
-    public static readonly ContractValidationResult Satisfied = new(true, []);
+    public static readonly ContractValidationResult Satisfied = new([]);
+
+    public bool IsSatisfied => UnsatisfiedOutputs.Count == 0;
 }
 
 /// <summary>The three genuinely different ways a declared <see cref="ProducedOutput"/> can go unsatisfied.</summary>

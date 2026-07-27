@@ -156,50 +156,76 @@ public class ContractValidatorTests
         }
     }
 
+    /// <summary>
+    /// The four ways an output goes unsatisfied must be told apart in the reason, since collapsing
+    /// them into one <c>false</c> is the defect #597 exists to fix.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every arm uses the same output name, in its own directory.</b> The first version of this
+    /// test gave each arm a different filename — <c>missing.json</c>, <c>invalid.json</c>,
+    /// <c>mismatch.json</c> — which made its pairwise <c>NotEqual</c> assertions satisfiable by the
+    /// filename alone: an implementation rendering all four cases as <c>'X' is missing</c> passed it
+    /// in full, which is exactly the collapse the test is named for. Holding the name constant is
+    /// what forces the strings to differ by *kind*. Caught by an independent reviewer.
+    /// <para>
+    /// The resolved-to-wrong-value and pointer-did-not-resolve arms share a
+    /// <see cref="UnsatisfiedOutputReason"/> value, so they are the pair most likely to collapse and
+    /// the one the earlier version never compared. They are compared here.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void ContractValidator_distinguishes_missing_file_invalid_json_and_pointer_mismatch()
+    public void ContractValidator_distinguishes_missing_file_invalid_json_and_both_condition_failures()
     {
-        var directory = CreateTempDirectory();
+        const string outputName = "result.json";
+        var condition = new OutputCondition("/status", new JsonScalar.String("approved"));
+        var contract = new WorkerContract("worker", [], [new ProducedOutput(outputName, condition)], []);
+        var missingContract = new WorkerContract("worker", [], [new ProducedOutput(outputName)], []);
+
+        var directories = new List<string>();
         try
         {
-            var missingFileContract = new WorkerContract("worker", [], [new ProducedOutput("missing.json")], []);
+            string ClassifyIn(WorkerContract usedContract, string? fileContent)
+            {
+                var directory = CreateTempDirectory();
+                directories.Add(directory);
+                if (fileContent is not null)
+                {
+                    File.WriteAllText(Path.Combine(directory, outputName), fileContent);
+                }
 
-            File.WriteAllText(Path.Combine(directory, "invalid.json"), "not json");
-            var invalidJsonCondition = new OutputCondition("/status", new JsonScalar.String("approved"));
-            var invalidJsonContract = new WorkerContract("worker", [], [new ProducedOutput("invalid.json", invalidJsonCondition)], []);
+                var classification = OutcomeClassifier.Classify(
+                    new CoreDispatchResult(0, CoreExitReason.Natural), usedContract, directory);
 
-            File.WriteAllText(Path.Combine(directory, "mismatch.json"), """{"status": "needs_revision"}""");
-            var mismatchCondition = new OutputCondition("/status", new JsonScalar.String("approved"));
-            var mismatchContract = new WorkerContract("worker", [], [new ProducedOutput("mismatch.json", mismatchCondition)], []);
+                Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+                Assert.NotNull(classification.Reason);
+                Assert.Contains(outputName, classification.Reason);
+                return classification.Reason;
+            }
 
-            File.WriteAllText(Path.Combine(directory, "unresolvable.json"), """{"other": "value"}""");
-            var unresolvableCondition = new OutputCondition("/status", new JsonScalar.String("approved"));
-            var unresolvableContract = new WorkerContract("worker", [], [new ProducedOutput("unresolvable.json", unresolvableCondition)], []);
+            var missing = ClassifyIn(missingContract, null);
+            var notJson = ClassifyIn(contract, "not json");
+            var wrongValue = ClassifyIn(contract, """{"status": "needs_revision"}""");
+            var didNotResolve = ClassifyIn(contract, """{"other": "value"}""");
 
-            var classificationMissing = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), missingFileContract, directory);
-            var classificationInvalid = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), invalidJsonContract, directory);
-            var classificationMismatch = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), mismatchContract, directory);
-            var classificationUnresolvable = OutcomeClassifier.Classify(new CoreDispatchResult(0, CoreExitReason.Natural), unresolvableContract, directory);
+            // Each kind says its own thing. These are what make the NotEqual assertions below mean
+            // "distinguished by kind" rather than "distinguished by some incidental difference".
+            Assert.Contains("is missing", missing);
+            Assert.Contains("is not valid JSON", notJson);
+            Assert.Contains("resolved to", wrongValue);
+            Assert.Contains("did not resolve", didNotResolve);
 
-            Assert.NotNull(classificationMissing.Reason);
-            Assert.NotNull(classificationInvalid.Reason);
-            Assert.NotNull(classificationMismatch.Reason);
-            Assert.NotNull(classificationUnresolvable.Reason);
+            // The mismatch arm names both sides of the comparison — the delta is the diagnostic.
+            Assert.Contains("needs_revision", wrongValue);
+            Assert.Contains("approved", wrongValue);
 
-            // Gate 2: Control arm that discriminates - pairwise non-equality proves failure kinds are not collapsed
-            Assert.NotEqual(classificationMissing.Reason, classificationInvalid.Reason);
-            Assert.NotEqual(classificationInvalid.Reason, classificationMismatch.Reason);
-            Assert.NotEqual(classificationMissing.Reason, classificationMismatch.Reason);
-
-            // Assert specific polarity for each failure kind
-            Assert.Contains("missing.json", classificationMissing.Reason);
-            Assert.Contains("invalid.json", classificationInvalid.Reason);
-            Assert.Contains("mismatch.json", classificationMismatch.Reason);
-            Assert.Contains("unresolvable.json", classificationUnresolvable.Reason);
+            Assert.Equal(4, new HashSet<string> { missing, notJson, wrongValue, didNotResolve }.Count);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(directory);
+            foreach (var directory in directories)
+            {
+                DirectoryCleanup.DeleteRecursively(directory);
+            }
         }
     }
 

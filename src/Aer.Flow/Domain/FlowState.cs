@@ -101,6 +101,14 @@ public enum StepStatus
 /// reported no classification, which every consumer treats as <see cref="Domain.FailureClassification.Retryable"/>
 /// (spec §8.1).
 /// </param>
+/// <param name="LatestFailureReason">
+/// The Flow-derived diagnostic carried on the latest attempt's <see cref="FlowEvent.ExecutionFailed"/>
+/// event (spec §8.2) — which condition of §8's table was not met, and for a contract failure which
+/// declared outputs were unsatisfied. Distinct from <paramref name="LatestFailureClassification"/>,
+/// which is the worker's own retry hint rather than an account of what went wrong. <c>null</c> when
+/// the latest attempt did not fail, or when it failed before this field existed; absent means "not
+/// recorded", never "no reason was derivable".
+/// </param>
 /// <param name="PauseRecordedForLatestExecution">
 /// Whether a <see cref="FlowEvent.WorkflowPaused"/> was ever appended for <paramref name="LatestExecutionId"/>
 /// — distinct from <see cref="StepStatus.Paused"/>, which <see cref="FlowEvent.WorkflowResumed"/> clears
@@ -138,6 +146,7 @@ public sealed record StepState(
     IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds,
     int ConsecutiveFailureCount = 0,
     FailureClassification? LatestFailureClassification = null,
+    string? LatestFailureReason = null,
     bool PauseRecordedForLatestExecution = false,
     StepStatus? PausedOutcome = null,
     ExecutionId? PendingSupplementaryExecutionId = null,

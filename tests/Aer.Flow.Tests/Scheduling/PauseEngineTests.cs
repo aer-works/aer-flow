@@ -25,7 +25,18 @@ public class PauseEngineTests
     private static StepState Terminal(
         StepId stepId, StepStatus status, ExecutionId executionId, int consecutiveFailureCount = 0,
         FailureClassification? classification = null, bool pauseRecorded = false) =>
-        new(stepId, status, executionId, NoUpstream, consecutiveFailureCount, classification, pauseRecorded);
+        // Named from ConsecutiveFailureCount onward: StepState's tail is a run of defaulted
+        // parameters, so a positional call silently shifts when one is inserted. #597 inserted
+        // LatestFailureReason between the classification and the flag, and `pauseRecorded` bound to
+        // it — caught here only because bool and string? don't convert. Had the neighbours shared a
+        // type this would have compiled and quietly tested the wrong thing.
+        new(stepId,
+            status,
+            executionId,
+            NoUpstream,
+            ConsecutiveFailureCount: consecutiveFailureCount,
+            LatestFailureClassification: classification,
+            PauseRecordedForLatestExecution: pauseRecorded);
 
     private static StepState Pending(StepId stepId) => new(stepId, StepStatus.Pending, LatestExecutionId: null, NoUpstream);
 

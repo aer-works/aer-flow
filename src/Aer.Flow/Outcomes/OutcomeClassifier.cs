@@ -20,11 +20,17 @@ public enum OutcomeVerdict
 /// A human-readable diagnostic for a <see cref="OutcomeVerdict.Failed"/> verdict — why exit code,
 /// exit reason, and contract state add up to a failure, computed once here from data available at
 /// classification time. Distinct from <paramref name="FailureClassification"/>, which is the
-/// worker's own self-reported retry hint, not a diagnostic Flow derives. Null only for
-/// <see cref="OutcomeVerdict.Succeeded"/> and <see cref="OutcomeVerdict.Cancelled"/>, never for a
-/// failure — every failure path below sets it, so a null <c>Reason</c> on a stored
-/// <see cref="Domain.FlowEvent.ExecutionFailed"/> unambiguously means "written before this field
-/// existed," not "a failure type we chose not to describe."
+/// worker's own self-reported retry hint, not a diagnostic Flow derives. Every failure path
+/// <i>in this class</i> sets it, and it is null for
+/// <see cref="OutcomeVerdict.Succeeded"/> and <see cref="OutcomeVerdict.Cancelled"/>.
+/// <para>
+/// That is deliberately a claim about this class and not about stored events. An earlier version of
+/// this comment inferred that a null <c>Reason</c> on a persisted
+/// <see cref="Domain.FlowEvent.ExecutionFailed"/> therefore means "written before this field
+/// existed" — which nothing enforces, since <c>Reason</c> is an optional parameter any call site may
+/// omit in silence, and several test fixtures already write real <c>flow.jsonl</c> lines that do.
+/// Treat a null on a stored event as "no reason recorded", never as evidence of when it was written.
+/// </para>
 /// </param>
 public sealed record OutcomeClassification(
     OutcomeVerdict Verdict,
@@ -39,6 +45,13 @@ public sealed record OutcomeClassification(
 public static class OutcomeClassifier
 {
     private const int MaxReasonLength = 500;
+
+    /// <summary>
+    /// How many unsatisfied outputs a reason names before summarising the rest as "(+N more)".
+    /// A contract with more failures than this has a problem the count communicates better than
+    /// the list would.
+    /// </summary>
+    private const int MaxListedOutputs = 8;
 
     /// <summary>
     /// Classifies <paramref name="result"/> per spec §8's table:
@@ -93,13 +106,29 @@ public static class OutcomeClassifier
     /// <summary>
     /// Assembles the diagnostic for a natural, exit-0 completion whose contract still isn't
     /// satisfied — the exact signature (worker exited 0, wrote none of its declared outputs) that
-    /// previously surfaced as a bare <c>ExecutionFailed</c> with no reason. Names every unsatisfied
-    /// output, not just the first, and is capped at <see cref="MaxReasonLength"/> so one
-    /// pathological contract can't bloat every line of <c>flow.jsonl</c>.
+    /// previously surfaced as a bare <c>ExecutionFailed</c> with no reason.
     /// </summary>
+    /// <remarks>
+    /// Bounded in two places, and the split matters. Each output's <i>count</i> is capped here and
+    /// each rendered <i>value</i> is capped in <see cref="ContractValidator"/>, both with their own
+    /// explicit marker; only then is <see cref="Truncate"/> applied to the whole. Capping solely at
+    /// the end was wrong: one large value would eat the entire budget and silently drop every other
+    /// unsatisfied output, so a reason that promised to name them all named one. With the per-item
+    /// bounds in place the final <see cref="Truncate"/> is a backstop that should not normally fire.
+    /// </remarks>
     private static string BuildContractFailureReason(IReadOnlyList<UnsatisfiedOutput> unsatisfiedOutputs)
     {
-        var reason = "Contract not satisfied: " + string.Join("; ", unsatisfiedOutputs.Select(DescribeUnsatisfiedOutput));
+        var listed = unsatisfiedOutputs.Count <= MaxListedOutputs
+            ? unsatisfiedOutputs
+            : unsatisfiedOutputs.Take(MaxListedOutputs).ToList();
+
+        var reason = "Contract not satisfied: " + string.Join("; ", listed.Select(DescribeUnsatisfiedOutput));
+
+        if (unsatisfiedOutputs.Count > listed.Count)
+        {
+            reason += $" (+{unsatisfiedOutputs.Count - listed.Count} more)";
+        }
+
         return Truncate(reason, MaxReasonLength);
     }
 
@@ -113,6 +142,15 @@ public static class OutcomeClassifier
         _ => throw new ArgumentOutOfRangeException(nameof(output), output.Reason, "Unknown UnsatisfiedOutputReason."),
     };
 
+    /// <summary>
+    /// Backstop cap on the assembled reason. Delegates the cut to
+    /// <see cref="ContractValidator.TrimWithoutSplittingSurrogatePair"/> so there is one
+    /// surrogate-safe truncation in the codebase rather than two that can drift — the per-value cap
+    /// needs the identical rule, and a second copy of it is the shape that goes wrong quietly.
+    /// The <c>cut &gt; 0</c> guard lives there: it is unreachable while
+    /// <see cref="MaxReasonLength"/> is 500, but lowering a display cap is an ordinary later edit and
+    /// an unguarded index would throw out of <see cref="Classify"/> while recording an outcome.
+    /// </summary>
     private static string Truncate(string value, int maxLength)
     {
         if (value.Length <= maxLength)
@@ -121,18 +159,7 @@ public static class OutcomeClassifier
         }
 
         const string ellipsis = "...";
-        var cut = maxLength - ellipsis.Length;
-
-        // A non-BMP character is two UTF-16 chars, and cutting between them leaves a lone high
-        // surrogate — malformed UTF-16, written into an append-only journal. Reachable rather than
-        // theoretical: ActualValue below is rendered from the worker's own JSON output, so any
-        // worker whose mismatched value contains an emoji can land a surrogate pair on the boundary.
-        if (char.IsHighSurrogate(value[cut - 1]))
-        {
-            cut--;
-        }
-
-        return value[..cut] + ellipsis;
+        return ContractValidator.TrimWithoutSplittingSurrogatePair(value, maxLength - ellipsis.Length) + ellipsis;
     }
 
     /// <summary>

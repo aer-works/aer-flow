@@ -35,6 +35,7 @@ public static class StateProjector
         var stepIdByExecutionId = new Dictionary<ExecutionId, StepId>();
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
+        var latestFailureReasonByStepId = new Dictionary<StepId, string?>();
         var cancellationRequestedExecutionIds = new HashSet<ExecutionId>();
 
         // Step-less executions (spec §17.3) never associate with any StepId — tracked separately,
@@ -78,6 +79,7 @@ public static class StateProjector
                     {
                         consecutiveFailureCountByStepId[succeededStepId] = 0;
                         latestFailureClassificationByStepId[succeededStepId] = null;
+                        latestFailureReasonByStepId[succeededStepId] = null;
                     }
 
                     break;
@@ -89,6 +91,7 @@ public static class StateProjector
                         consecutiveFailureCountByStepId[failedStepId] =
                             consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
                         latestFailureClassificationByStepId[failedStepId] = failed.FailureClassification;
+                        latestFailureReasonByStepId[failedStepId] = failed.Reason;
                     }
 
                     break;
@@ -213,6 +216,7 @@ public static class StateProjector
                 upstreamExecutionIdsByStepId[stepDefinition.StepId],
                 consecutiveFailureCountByStepId.GetValueOrDefault(stepDefinition.StepId),
                 latestFailureClassificationByStepId.GetValueOrDefault(stepDefinition.StepId),
+                latestFailureReasonByStepId.GetValueOrDefault(stepDefinition.StepId),
                 everPausedExecutionIds.Contains(latestExecutionId),
                 isPaused ? rawStatus : null,
                 pendingSupplementaryExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var pendingSupplement)
