@@ -91,7 +91,10 @@ def build_bindings(
             "OptionalMetadata": [],
         },
         "PromptTemplate": prompt_text,
-        "Timeout": f"00:{timeout_minutes:02d}:00",
+        # Split into hours: "00:90:00" is not 90 minutes under .NET's [-][d.]hh:mm:ss, it is
+        # malformed. Everything below 60 was correct, which is why the default of 20 never showed it —
+        # and #588 makes a larger number the natural next thing an operator reaches for.
+        "Timeout": "{:02d}:{:02d}:00".format(*divmod(timeout_minutes, 60)),
         "PermissionGrant": permission_grant,
         "WorkingDirectory": _forward_slashes(working_directory),
     }

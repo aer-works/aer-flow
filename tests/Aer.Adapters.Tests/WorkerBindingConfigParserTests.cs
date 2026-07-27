@@ -186,4 +186,85 @@ public class WorkerBindingConfigParserTests
             File.Delete(path);
         }
     }
+
+    /// <summary>
+    /// A non-positive <c>Timeout</c> is not a slow worker, it is an unrunnable one: it reaches
+    /// <c>AerTask.WithTimeout</c> as <c>Duration::from_millis(0)</c>, and
+    /// <c>external/aer-core/src/task.rs:265-269</c> arms a monitor thread that kills the process tree
+    /// as soon as <c>recv_timeout</c> returns. Before this check the file parsed happily and the
+    /// worker died on startup with nothing naming the cause.
+    /// </summary>
+    [Theory]
+    [InlineData("00:00:00")]
+    [InlineData("-00:05:00")]
+    public void Parse_rejects_a_non_positive_Timeout(string timeout)
+    {
+        var json = $$"""
+            {
+              "architect": {
+                "Adapter": "claude",
+                "PromptTemplate": "Draft a plan.",
+                "Timeout": "{{timeout}}",
+                "Contract": {
+                  "WorkerName": "architect",
+                  "RequiredInputs": [],
+                  "ProducedOutputs": [{ "Name": "plan.md" }],
+                  "OptionalMetadata": []
+                }
+              }
+            }
+            """;
+
+        var ex = Assert.Throws<WorkerBindingConfigException>(() => WorkerBindingConfigParser.Parse(json));
+        Assert.Contains("Timeout", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The omission case specifically, because it is the likely one: a missing <c>Timeout</c>
+    /// deserializes to <c>default(TimeSpan)</c> and lands in exactly the same place as an explicit
+    /// zero, so forgetting the field used to be indistinguishable from asking for an instant kill.
+    /// </summary>
+    [Fact]
+    public void Parse_rejects_an_entry_that_omits_Timeout_entirely()
+    {
+        const string json = """
+            {
+              "architect": {
+                "Adapter": "claude",
+                "PromptTemplate": "Draft a plan.",
+                "Contract": {
+                  "WorkerName": "architect",
+                  "RequiredInputs": [],
+                  "ProducedOutputs": [{ "Name": "plan.md" }],
+                  "OptionalMetadata": []
+                }
+              }
+            }
+            """;
+
+        Assert.Throws<WorkerBindingConfigException>(() => WorkerBindingConfigParser.Parse(json));
+    }
+
+    /// <summary>The polarity control: a positive Timeout still parses, and round-trips its value.</summary>
+    [Fact]
+    public void Parse_accepts_a_positive_Timeout()
+    {
+        const string json = """
+            {
+              "architect": {
+                "Adapter": "claude",
+                "PromptTemplate": "Draft a plan.",
+                "Timeout": "00:20:00",
+                "Contract": {
+                  "WorkerName": "architect",
+                  "RequiredInputs": [],
+                  "ProducedOutputs": [{ "Name": "plan.md" }],
+                  "OptionalMetadata": []
+                }
+              }
+            }
+            """;
+
+        Assert.Equal(TimeSpan.FromMinutes(20), WorkerBindingConfigParser.Parse(json)["architect"].Timeout);
+    }
 }

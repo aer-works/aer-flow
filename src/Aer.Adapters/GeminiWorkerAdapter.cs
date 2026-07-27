@@ -595,7 +595,16 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// </remarks>
     private static string FormatPrintTimeout(TimeSpan timeout)
     {
-        var seconds = (long)Math.Ceiling((timeout + PrintTimeoutMargin).TotalSeconds);
+        // Saturate rather than add blindly: TimeSpan addition *throws* on overflow instead of
+        // clamping, and a binding's Timeout is operator-authored — any parseable TimeSpan is accepted,
+        // including ones within a minute of TimeSpan.MaxValue. That throw would escape binding
+        // resolution, so one absurd value in a bindings file would take down every worker in it
+        // rather than only its own.
+        var withMargin = timeout > TimeSpan.MaxValue - PrintTimeoutMargin
+            ? TimeSpan.MaxValue
+            : timeout + PrintTimeoutMargin;
+
+        var seconds = (long)Math.Ceiling(withMargin.TotalSeconds);
         return $"{Math.Max(seconds, 1)}s";
     }
 }

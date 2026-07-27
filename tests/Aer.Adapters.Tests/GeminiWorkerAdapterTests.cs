@@ -215,12 +215,34 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void A_negative_timeout_still_yields_a_duration_agys_parser_accepts()
     {
-        // Not reachable through the config today (WorkerBindingConfigEntry.Timeout is a non-nullable
-        // TimeSpan, and a negative one is a config error AER's own timeout would reject first), but an
-        // unparseable flag value fails the dispatch at argument parsing with exit 2 — a worse failure
-        // than the one being fixed, so the floor is asserted rather than assumed.
+        // The first version of this comment claimed a negative timeout was "a config error AER's own
+        // timeout would reject first". Nothing rejected it: WorkerBindingConfigParser validated
+        // Adapter, Contract, PromptTemplate and WorkingDirectory and never Timeout, so the value went
+        // straight through to AerTask.WithTimeout. A Timeout > TimeSpan.Zero check now exists there
+        // (WorkerBindingConfigParser.Parse) and is what makes this unreachable in practice.
+        //
+        // The floor stays regardless, because it guards a different thing: an unparseable flag value
+        // fails the whole dispatch at argument parsing with exit 2, which is a worse failure than the
+        // one being fixed. This asserts the rendering stays parseable even for input the parser should
+        // now never hand over.
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(-9999)), ArchitectContract);
+
+        Assert.Matches(@"^\d+s$", ArgValue(target, "--print-timeout"));
+    }
+
+    /// <summary>
+    /// Adding the margin to a near-maximum <see cref="TimeSpan"/> overflows, and
+    /// <see cref="TimeSpan"/> addition throws on overflow rather than saturating. A binding config is
+    /// operator-authored and any parseable TimeSpan is accepted, so this is reachable — and it would
+    /// throw out of binding <i>resolution</i>, taking down every worker in the file rather than the
+    /// one with the silly value.
+    /// </summary>
+    [Fact]
+    public void An_enormous_timeout_does_not_overflow_while_adding_the_margin()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.MaxValue), ArchitectContract);
 
         Assert.Matches(@"^\d+s$", ArgValue(target, "--print-timeout"));
     }

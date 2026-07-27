@@ -106,6 +106,7 @@ public class SessionMetadataSchemaToleranceTests
               "chat-worker": {
                 "Adapter": "claude",
                 "PromptTemplate": "Hello",
+                "Timeout": "00:10:00",
                 "MinimalOverhead": true,
                 "AerNotARealField": 42,
                 "Contract": {
