@@ -26,6 +26,7 @@ public static class ExecutionHistoryProjector
         var orderedStepLessExecutionIds = new List<ExecutionId>();
         var terminalStatusByExecutionId = new Dictionary<ExecutionId, StepStatus>();
         var failureClassificationByExecutionId = new Dictionary<ExecutionId, FailureClassification?>();
+        var reasonByExecutionId = new Dictionary<ExecutionId, string?>();
         var pausedExecutionIds = new HashSet<ExecutionId>();
         var decisions = new List<DecisionRecord>();
         var decisionIndexByDecisionId = new Dictionary<DecisionId, int>();
@@ -64,6 +65,7 @@ public static class ExecutionHistoryProjector
                 case FlowEvent.ExecutionFailed failed:
                     terminalStatusByExecutionId[failed.ExecutionId] = StepStatus.Failed;
                     failureClassificationByExecutionId[failed.ExecutionId] = failed.FailureClassification;
+                    reasonByExecutionId[failed.ExecutionId] = failed.Reason;
                     break;
 
                 case FlowEvent.ExecutionCancelled cancelled:
@@ -121,7 +123,8 @@ public static class ExecutionHistoryProjector
                 workerByExecutionId[executionId],
                 status,
                 failureClassificationByExecutionId.GetValueOrDefault(executionId),
-                isNonProcessByExecutionId[executionId]);
+                isNonProcessByExecutionId[executionId],
+                reasonByExecutionId.GetValueOrDefault(executionId));
         }
 
         var attemptsByStepId = snapshot.Steps.ToDictionary(

@@ -283,7 +283,10 @@ public class WorkflowEndToEndTests
             // self-reported classification — only the condition, not the worker, drove the retry.
             var firstAttemptOutcome = events.OfType<FlowEvent.ExecutionFailed>().Single(e => e.ExecutionId == executionIds[0]);
             Assert.Null(firstAttemptOutcome.FailureClassification);
+            Assert.NotNull(firstAttemptOutcome.Reason);
+            Assert.Contains("verdict", firstAttemptOutcome.Reason);
         }
+
         finally
         {
             DirectoryCleanup.DeleteRecursively(taskDirectory);

@@ -34,9 +34,19 @@ public abstract record FlowEvent
     public sealed record ExecutionSucceeded(ExecutionId ExecutionId) : FlowEvent;
 
     /// <summary>Flow has classified a completed execution as failed (spec §8).</summary>
+    /// <param name="Reason">
+    /// A human-readable diagnostic computed once at classification time (see
+    /// <see cref="Aer.Flow.Outcomes.OutcomeClassifier"/>), distinct from <paramref name="FailureClassification"/>'s
+    /// self-reported retry hint. Nullable because history predates the field: System.Text.Json binds
+    /// constructor parameters by name and supplies a value for an absent property, so an older
+    /// <c>flow.jsonl</c> line deserializes with it null. Neither the trailing position nor the
+    /// default is what makes that work — the default only spares call sites that mean null from
+    /// saying so.
+    /// </param>
     public sealed record ExecutionFailed(
         ExecutionId ExecutionId,
-        FailureClassification? FailureClassification) : FlowEvent;
+        FailureClassification? FailureClassification,
+        string? Reason = null) : FlowEvent;
 
     /// <summary>Flow has classified a completed execution as cancelled (spec §8, §9).</summary>
     public sealed record ExecutionCancelled(ExecutionId ExecutionId) : FlowEvent;

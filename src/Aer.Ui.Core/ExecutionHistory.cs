@@ -27,12 +27,26 @@ public sealed record ExecutionHistory(
 /// Core process, so nothing can time out). The only durable fact that distinguishes a human/non-process
 /// execution from an ordinary one once bindings are no longer in scope.
 /// </param>
+/// <param name="Reason">
+/// The diagnostic recorded on the terminal <see cref="FlowEvent.ExecutionFailed"/>, if this attempt
+/// failed and the event carries one — null for an attempt with no recorded failure, and for a
+/// failure recorded before this field existed.
+/// <para>
+/// Deliberately not "null for any non-failed status": the reason is keyed by execution, while a
+/// later decision or a standing pause overrides that execution's <i>status</i> without clearing it.
+/// A step that exhausts its retries is paused by the Pause Engine while already
+/// <see cref="StepStatus.Failed"/>, so a <see cref="StepStatus.Paused"/> or
+/// <see cref="StepStatus.Rejected"/> attempt carrying the reason it failed for is ordinary rather
+/// than anomalous — and is the case where a person is being asked to decide and most needs it.
+/// </para>
+/// </param>
 public sealed record ExecutionAttempt(
     ExecutionId ExecutionId,
     string Worker,
     StepStatus Status,
     FailureClassification? FailureClassification,
-    bool IsNonProcess);
+    bool IsNonProcess,
+    string? Reason = null);
 
 /// <summary>
 /// An externally recorded decision (spec §17.2), paired with whether it has since been resolved by

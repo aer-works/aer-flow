@@ -97,6 +97,8 @@ A `ProducedOutputs` entry may optionally declare one `OutputCondition`, extendin
 
 Failure of any clause makes the output unsatisfied — classified exactly like a missing required output (§8): `ExecutionFailed`, even on a clean exit 0. When a step declares conditions on multiple outputs, all must hold (implicit AND).
 
+A condition that cannot be *evaluated* at all — a `Path` that is not a well-formed JSON Pointer — is also an unsatisfied output rather than an error escaping classification. That is a workflow-authoring fault, not a worker fault, and the distinction is reported in the failure's `Reason` (§8.2) so it names itself. Classification never throws on it: an execution's outcome must be recordable from whatever facts exist, since a throw between a process exiting and its outcome being appended leaves precisely the orphan §7 has to recover from.
+
 **Evaluation happens exactly once.** Flow evaluates conditions at outcome-classification time (§8), reading the artifact from disk, and records the verdict as the durable `ExecutionSucceeded`/`ExecutionFailed` event. Replay never re-evaluates a condition — artifacts are not part of the Event Store, and the projection (§12, §13) trusts the recorded classification. A later mutation of an artifact on disk cannot retroactively change history.
 
 **Deliberate exclusions.** No comparison operators beyond equality, no boolean composition, no regex, no numeric ranges, no JSONPath queries. The reasoning is §8.1's, applied again: a richer condition language becomes a de facto DSL whose exact spelling Flow's scheduling behavior depends on, and which must then be versioned, documented, and maintained forever. A worker that needs a complex judgment ("are all tests green and coverage above 80%?") computes it inside the worker boundary (§18.2) and writes a scalar verdict field — `{"status": "approved"}` — for the contract to check. This is precisely the shape §10.1's retry-as-self-iteration pattern requires, and nothing in that pattern needs more.
@@ -192,6 +194,34 @@ This is the *only* vocabulary Flow itself understands for this purpose — two f
 **Effect:**
 - `Retryable` (the default if the field is absent or unrecognized): standard `RetryPolicy` behavior is unaffected — see §10.
 - `Permanent`: Flow transitions the step directly to terminal failure, regardless of remaining attempts under `RetryPolicy`. This exists so a worker that knows with certainty that retrying is pointless (e.g. an expired credential no amount of re-running will fix) doesn't have to exhaust a multi-attempt policy purely to rediscover, on every attempt, what it already knew on the first one.
+
+### 8.2 Flow-Derived Failure Reason
+
+Every `ExecutionFailed` Flow writes also carries a `Reason`: a human-readable diagnostic Flow derives
+from the facts in §8's table — which condition of that table was not met, and for a contract failure, which
+declared outputs were unsatisfied and whether each was missing, unparseable, or resolved a JSON
+Pointer to the wrong value (§4.1).
+
+This is the opposite direction of travel from §8.1 and the two must not be conflated. §8.1 is the
+*worker's* claim about itself, absent whenever the worker wrote no metadata — so a worker that
+produced nothing legitimately reports nothing. `Reason` is *Flow's* own account, derived from what
+Flow observed, and is therefore present on every failure without depending on the worker having
+survived to describe it. That is precisely the case it exists for: a worker that exits `0` having
+written none of its declared outputs is the classification §8's table already fully determines, and
+before this field Flow recorded that verdict while discarding the reasoning behind it.
+
+A `Reason` is absent on any `ExecutionFailed` recorded before this field existed, and absent means
+"not recorded" — never "no reason was derivable". An implementation reading a journal must treat the
+field as optional; only one it *writes* is guaranteed to carry it.
+
+Consistent with §4.1's evaluate-exactly-once rule, `Reason` is composed at outcome-classification time
+and stored in the event. Replay reads it; replay never recomputes it, so a diagnostic can never
+disagree with the classification it explains, and neither depends on the state of the filesystem at
+replay time. Flow-originated classifications that never consult Core's exit report — §7's orphan
+recovery — carry a `Reason` on the same terms.
+
+`Reason` is a diagnostic for humans, never an input to routing: nothing in Flow parses it or branches
+on it, for the same reason §8.1's vocabulary is closed rather than freeform.
 
 ---
 

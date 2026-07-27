@@ -9,6 +9,54 @@ namespace Aer.Cli.Tests;
 /// </summary>
 public class FlowStateReporterTests
 {
+    /// <summary>
+    /// #597: `aer run`'s own terminal output is named in the issue's acceptance criteria, not just
+    /// `flow.jsonl`. Before this, a worker that exited 0 having written none of its declared outputs
+    /// printed `worker: Failed` beside `ExitCode: 0` — which reads as an AER bug rather than a
+    /// worker one and sent diagnosis in the wrong direction three times.
+    /// </summary>
+    /// <remarks>
+    /// The succeeded step is the polarity control on the same output: a reporter that appended the
+    /// suffix unconditionally, or dropped it entirely, fails one line or the other.
+    /// </remarks>
+    [Fact]
+    public void A_failed_step_reports_the_reason_Flow_derived_and_a_succeeded_step_reports_none()
+    {
+        const string reason = "Contract not satisfied: 'plan' is missing";
+        var snapshot = new WorkflowDefinitionSnapshot(
+            new WorkflowDefinitionSnapshotId("snap-1"),
+            new WorkflowTemplateId("wf"),
+            1,
+            [
+                new WorkflowStepDefinition(new StepId("source"), "source", [], ["plan"], [], new RetryPolicy(1)),
+                new WorkflowStepDefinition(new StepId("later"), "later", [], ["out"], [], new RetryPolicy(1)),
+            ]);
+
+        var state = new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            [
+                new StepState(
+                    new StepId("source"), StepStatus.Failed, new ExecutionId("exec-source"),
+                    new Dictionary<StepId, ExecutionId>(),
+                    LatestFailureClassification: FailureClassification.Retryable,
+                    LatestFailureReason: reason),
+                new StepState(
+                    new StepId("later"), StepStatus.Succeeded, new ExecutionId("exec-later"),
+                    new Dictionary<StepId, ExecutionId>()),
+            ],
+            WorkflowStatus.Terminal);
+
+        using var stringWriter = new StringWriter();
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot));
+
+        var lines = stringWriter.ToString()
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+
+        Assert.Contains($"  source: {StepStatus.Failed} — {reason}", lines);
+        Assert.Contains($"  later: {StepStatus.Succeeded}", lines);
+    }
+
     [Fact]
     public void A_paused_step_reports_its_execution_id_paused_outcome_and_supersede_targets()
     {

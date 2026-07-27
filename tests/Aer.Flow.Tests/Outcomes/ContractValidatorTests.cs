@@ -1,4 +1,5 @@
 using Aer.Flow.Tests.TestSupport;
+using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Outcomes;
 
@@ -155,10 +156,148 @@ public class ContractValidatorTests
         }
     }
 
+    /// <summary>
+    /// The four ways an output goes unsatisfied must be told apart in the reason, since collapsing
+    /// them into one <c>false</c> is the defect #597 exists to fix.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every arm uses the same output name, in its own directory.</b> The first version of this
+    /// test gave each arm a different filename — <c>missing.json</c>, <c>invalid.json</c>,
+    /// <c>mismatch.json</c> — which made its pairwise <c>NotEqual</c> assertions satisfiable by the
+    /// filename alone: an implementation rendering all four cases as <c>'X' is missing</c> passed it
+    /// in full, which is exactly the collapse the test is named for. Holding the name constant is
+    /// what forces the strings to differ by *kind*. Caught by an independent reviewer.
+    /// <para>
+    /// The resolved-to-wrong-value and pointer-did-not-resolve arms share a
+    /// <see cref="UnsatisfiedOutputReason"/> value, so they are the pair most likely to collapse and
+    /// the one the earlier version never compared. They are compared here.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ContractValidator_distinguishes_missing_file_invalid_json_and_both_condition_failures()
+    {
+        const string outputName = "result.json";
+        var condition = new OutputCondition("/status", new JsonScalar.String("approved"));
+        var contract = new WorkerContract("worker", [], [new ProducedOutput(outputName, condition)], []);
+        var missingContract = new WorkerContract("worker", [], [new ProducedOutput(outputName)], []);
+
+        var directories = new List<string>();
+        try
+        {
+            string ClassifyIn(WorkerContract usedContract, string? fileContent)
+            {
+                var directory = CreateTempDirectory();
+                directories.Add(directory);
+                if (fileContent is not null)
+                {
+                    File.WriteAllText(Path.Combine(directory, outputName), fileContent);
+                }
+
+                var classification = OutcomeClassifier.Classify(
+                    new CoreDispatchResult(0, CoreExitReason.Natural), usedContract, directory);
+
+                Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+                Assert.NotNull(classification.Reason);
+                Assert.Contains(outputName, classification.Reason);
+                return classification.Reason;
+            }
+
+            var missing = ClassifyIn(missingContract, null);
+            var notJson = ClassifyIn(contract, "not json");
+            var wrongValue = ClassifyIn(contract, """{"status": "needs_revision"}""");
+            var didNotResolve = ClassifyIn(contract, """{"other": "value"}""");
+
+            // Each kind says its own thing. These are what make the NotEqual assertions below mean
+            // "distinguished by kind" rather than "distinguished by some incidental difference".
+            Assert.Contains("is missing", missing);
+            Assert.Contains("is not valid JSON", notJson);
+            Assert.Contains("resolved to", wrongValue);
+            Assert.Contains("did not resolve", didNotResolve);
+
+            // The mismatch arm names both sides of the comparison — the delta is the diagnostic.
+            Assert.Contains("needs_revision", wrongValue);
+            Assert.Contains("approved", wrongValue);
+
+            Assert.Equal(4, new HashSet<string> { missing, notJson, wrongValue, didNotResolve }.Count);
+        }
+        finally
+        {
+            foreach (var directory in directories)
+            {
+                DirectoryCleanup.DeleteRecursively(directory);
+            }
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"contract-validator-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         return directory;
     }
+
+    /// <summary>
+    /// A malformed JSON Pointer is a workflow-authoring fault, and it must be <b>reported</b> rather
+    /// than thrown.
+    /// </summary>
+    /// <remarks>
+    /// <c>TryResolvePointer</c> throws <see cref="FormatException"/> for a pointer not starting with
+    /// <c>/</c>, and nothing validates <c>OutputCondition.Path</c> when a workflow is parsed. Before
+    /// #597 the classifier stopped at the first unsatisfied output, so a malformed pointer on a
+    /// *later* output was usually never reached; listing every unsatisfied output removed that
+    /// accidental shielding. The escape route mattered: <see cref="OutcomeClassifier.Classify"/>
+    /// runs after the process has exited but before its outcome is appended, and
+    /// <c>Aer.Cli.Program</c> catches only <c>AerFlowException</c> — so the throw would abandon the
+    /// execution mid-classification and leave a crash-recovery orphan, on every run.
+    /// <para>
+    /// The first output is deliberately missing: that is what makes the second one reachable only
+    /// because the walk continues, which is the exact regression this pins.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_malformed_pointer_on_a_later_output_is_reported_rather_than_thrown()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "second.json"), """{"status":"ok"}""");
+            var contract = new WorkerContract(
+                "worker",
+                [],
+                [
+                    new ProducedOutput("first.json"),
+                    new ProducedOutput("second.json", new OutputCondition("status", new JsonScalar.String("ok"))),
+                ],
+                []);
+
+            // Neither entry point may throw. IsSatisfied stops at the first failure and Classify
+            // does not, so only the second actually reaches the malformed pointer — both are
+            // asserted so a later change to either walk cannot reintroduce the escape unnoticed.
+            Assert.False(ContractValidator.IsSatisfied(contract, directory));
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural), contract, directory);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.NotNull(classification.Reason);
+            Assert.Contains("first.json", classification.Reason);
+            Assert.Contains("second.json", classification.Reason);
+            Assert.Contains("cannot be evaluated", classification.Reason);
+
+            // Polarity: the same pointer written correctly is satisfied, so the diagnostic above is
+            // about the pointer's shape and not about the file or the walk.
+            var validContract = new WorkerContract(
+                "worker",
+                [],
+                [new ProducedOutput("second.json", new OutputCondition("/status", new JsonScalar.String("ok")))],
+                []);
+
+            Assert.True(ContractValidator.IsSatisfied(validContract, directory));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
 }
+

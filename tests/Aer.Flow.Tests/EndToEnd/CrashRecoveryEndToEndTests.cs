@@ -209,6 +209,13 @@ public class CrashRecoveryEndToEndTests
             Assert.Equal(orphanExecutionId, abandoned.ExecutionId);
             Assert.Equal(FailureClassification.Retryable, abandoned.FailureClassification);
 
+            // #597: the fourth failure path, and the only one that does not go through
+            // OutcomeClassifier — MutationInterface builds this event directly, so the classifier's
+            // own tests cannot reach it. Without an arm here, "every failure carries a reason" would
+            // be a claim measured on three of the four sites that produce one.
+            Assert.NotNull(abandoned.Reason);
+            Assert.Contains("crash recovery", abandoned.Reason, StringComparison.OrdinalIgnoreCase);
+
             // §16: the orphaned attempt's own directory is untouched — the retry got its own.
             Assert.True(Directory.Exists(ArtifactManager.ResolveOutputDirectory(artifactsRoot, orphanExecutionId)));
         }

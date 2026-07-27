@@ -398,7 +398,11 @@ public static class MutationInterface
                 foreach (var executionId in crashRecovery.ToFinalizeAsAbandoned)
                 {
                     await eventLogWriter.AppendAsync(
-                            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable), ioCancellationToken)
+                            new FlowEvent.ExecutionFailed(
+                                executionId,
+                                FailureClassification.Retryable,
+                                "Abandoned during crash recovery: no ExecutionExited was recorded for this execution before Flow restarted."),
+                            ioCancellationToken)
                         .ConfigureAwait(false);
                 }
 
@@ -658,7 +662,7 @@ public static class MutationInterface
         classification.Verdict switch
         {
             OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(executionId),
-            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification),
+            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification, classification.Reason),
             OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(executionId),
             _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
         };

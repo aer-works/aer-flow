@@ -43,7 +43,17 @@ public static class FlowStateReporter
             }
             else
             {
-                output.WriteLine($"  {step.StepId}: {step.Status}");
+                // #597: `worker: Failed` beside `ExitCode: 0` reads as an AER bug rather than a
+                // worker one, sending diagnosis in the wrong direction. The reason is a fact Flow
+                // already holds at classification time, so naming it here costs nothing and is what
+                // the issue's acceptance criteria ask for by name — "in flow.jsonl *and* in aer
+                // run's own terminal output". Null for a success, and for a failure recorded before
+                // the field existed.
+                var reasonSuffix = string.IsNullOrWhiteSpace(step.LatestFailureReason)
+                    ? string.Empty
+                    : $" — {step.LatestFailureReason}";
+
+                output.WriteLine($"  {step.StepId}: {step.Status}{reasonSuffix}");
             }
         }
 

@@ -43,6 +43,8 @@ public class FlowEventSerializationTests
         yield return [new FlowEvent.ExecutionSucceeded(ExecutionId)];
         yield return [new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification.Retryable)];
         yield return [new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification: null)];
+        yield return [new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification.Retryable, "Worker process exited with code 1")];
+        yield return [new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification: null, "Missing required output file 'plan.md'")];
         yield return [new FlowEvent.ExecutionCancelled(ExecutionId)];
         yield return [new FlowEvent.CancellationRequested(ExecutionId)];
         yield return [new FlowEvent.WorkflowPaused(ExecutionId, StepId)];
@@ -79,4 +81,69 @@ public class FlowEventSerializationTests
 
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<FlowEvent>(json));
     }
+
+    /// <summary>
+    /// Produces the <c>flow.jsonl</c> line an AER build from before #597 would have written, by
+    /// serializing a current event and deleting the <c>Reason</c> property from the wire form.
+    /// </summary>
+    /// <remarks>
+    /// Deriving it beats hand-typing it. The first version of these two tests hand-wrote
+    /// <c>{"eventType":"executionFailed","executionId":"exec-1",…}</c> in camelCase; the real
+    /// serializer emits members in PascalCase and only the discriminator in camelCase, so every
+    /// property silently missed and deserialized to its default. The tests failed for a reason that
+    /// had nothing to do with what they were written to check. Derived this way, the fixture tracks
+    /// the wire format automatically and cannot drift away from it again.
+    /// </remarks>
+    private static string LegacyExecutionFailedJson(FailureClassification? classification)
+    {
+        var current = JsonSerializer.Serialize(
+            (FlowEvent)new FlowEvent.ExecutionFailed(ExecutionId, classification, "some reason"),
+            typeof(FlowEvent));
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(current)!.AsObject();
+
+        // Guards the derivation itself: if the property were ever renamed, Remove would return
+        // false and this fixture would quietly become a *current* line, making the legacy test
+        // pass while proving nothing.
+        Assert.True(node.Remove(nameof(FlowEvent.ExecutionFailed.Reason)));
+
+        return node.ToJsonString();
+    }
+
+    [Theory]
+    [InlineData(FailureClassification.Retryable)]
+    [InlineData(FailureClassification.Permanent)]
+    [InlineData(null)]
+    public void Deserializing_legacy_ExecutionFailed_without_Reason_property_deserializes_with_null_Reason(
+        FailureClassification? classification)
+    {
+        // #597 added Reason as a trailing defaulted member specifically so lines already on disk
+        // stay readable. A journal that stopped deserializing after an upgrade is unrecoverable
+        // state, which is why this is asserted rather than assumed.
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(LegacyExecutionFailedJson(classification));
+
+        var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
+        Assert.Equal(ExecutionId, failed.ExecutionId);
+        Assert.Equal(classification, failed.FailureClassification);
+        Assert.Null(failed.Reason);
+    }
+
+    [Fact]
+    public void Deserializing_current_ExecutionFailed_with_Reason_property_sets_Reason()
+    {
+        // The polarity control for the test above: same event shape, Reason present rather than
+        // stripped. Without this arm, an implementation that never read Reason at all would pass
+        // the legacy test — null is what it asserts.
+        const string reason = "Missing required output file 'plan'";
+
+        var currentJson = JsonSerializer.Serialize(
+            (FlowEvent)new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification.Retryable, reason),
+            typeof(FlowEvent));
+
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson);
+
+        var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
+        Assert.Equal(reason, failed.Reason);
+    }
 }
+
