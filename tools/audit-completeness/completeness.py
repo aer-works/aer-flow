@@ -376,9 +376,33 @@ def step9_pinned_models_exist():
     Only a join against the enumerated set separates it from the valid names -- which is precisely the
     population CLAUDE.md gate `record-once` describes as earning a checker.
 
-    Scope, stated because it is narrower than the step's title suggests: this checks the AGY side. The
-    `claude` pins (`opus`, `haiku`) are CLI aliases with no equivalent enumerated register in this
-    repo, so nothing here validates them.
+    THIS IS NOT THE FIRST CHECK OF ITS KIND, AND SAYING SO IS THE POINT
+    `tools/smoke-preflight/preflight.py` already validates model pins against agy's catalogue, was
+    built for the same failure class (`gemini-3-flash` pinning nothing for months), and does it
+    BETTER where it runs: it queries `agy models` live rather than joining against a recording. An
+    earlier draft of this step did not mention it, which is the `common-sense` gate's own question --
+    does a helper for this already exist? -- going unasked.
+
+    They are complementary, and the split is not a matter of taste:
+      * preflight's population is `tests/Aer.Cli.SmokeTests` and its fixtures. It does not read
+        `tools/`, which is where these pins live.
+      * preflight needs a live `agy` binary and degrades to a WARNING without one, so it cannot gate
+        anything in CI. It runs as a `depends-on` of the `smoke-*` tasks, which are permanently
+        human-gated live runs.
+      * this step reads a recorded register, needs no vendor, and runs in CI's `audit` job.
+    So: preflight covers tests/ precisely but only when a person runs a smoke test; this covers
+    tools/ approximately on every PR. Neither subsumes the other.
+
+    SCOPE, stated because two limits are narrower than the title
+      * **agy only.** The `claude` pins (`opus`, `haiku`) are CLI aliases, and `claude` has no
+        catalogue subcommand at all -- `claude models` is taken as a PROMPT and answered, which
+        spends usage (preflight's header documents this). So nothing here validates them.
+      * **The tools/ scan is TEXTUAL**, and declared as a limitation rather than presented as
+        equivalent to reading the code. It finds names in a pin POSITION -- next to `--model`, or as
+        a `"model":` value -- which is what keeps prose about model names out of the population. A
+        pin built at runtime, or written in a shape this pattern does not match, is invisible to it.
+        `dispatch.py`'s `TEMPLATES` is additionally imported and read structurally, so that one
+        source does not rest on the regex.
     """
     rule("STEP 9 -- every pinned agy model name is one `agy models` lists")
     caps = read("docs/vendor-capabilities.md")
@@ -443,6 +467,33 @@ def step9_pinned_models_exist():
               " remove this arm rather than letting it silently check nothing")
         return False
 
+    # Everything else under tools/, found in a PIN POSITION rather than anywhere in the prose. The
+    # docstring's population claim is "every agy model name pinned in a tool"; without this arm the
+    # code read two named sources while the claim covered the tree, which is the claim-wider-than-
+    # measurement defect this whole step exists to catch, in the step itself.
+    pin_position = re.compile(
+        r'(?:--model["\s,]+|"[Mm]odel"\s*:\s*")([A-Za-z][A-Za-z0-9.\-]*)')
+    seen = {(w, m) for w, m in pins}
+    for dirpath, _, filenames in os.walk(os.path.join(ROOT, "tools")):
+        if "__pycache__" in dirpath:
+            continue
+        for fn in filenames:
+            if not fn.endswith((".py", ".md", ".toml", ".json")):
+                continue
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, ROOT).replace("\\", "/")
+            with open(full, encoding="utf-8", errors="replace") as f:
+                for lineno, text in enumerate(f, 1):
+                    for name in pin_position.findall(text):
+                        # Only judge names that are trying to be agy models. A claude alias in a pin
+                        # position is out of scope per the docstring, and a `<placeholder>` is not a
+                        # pin at all.
+                        if not name.startswith(("gemini-", "gpt-")):
+                            continue
+                        key = (f"{rel}:{lineno}", name)
+                        if key not in seen:
+                            seen.add(key)
+                            pins.append(key)
     ok = True
     for where, model in pins:
         good = model in accepted
