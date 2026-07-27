@@ -41,7 +41,7 @@ namespace Aer.Adapters;
 /// </para>
 /// <para>
 /// What actually withholds them there is the <c>PreToolUse</c> hook (#554), not the vendor's own
-/// default: <see cref="BuildDeniedTools"/> derives denied tools from <b>all four</b> grant categories
+/// default: <see cref="BuildDeniedTools"/> derives denied tools from <b>all four boolean</b> grant categories
 /// — reads and writes included, not only the two the flag encodes — and every invocation carries that
 /// list in <see cref="DeniedToolsVariable"/>, this branch included. A hook deny blocking a call
 /// <em>while running under <c>--dangerously-skip-permissions</c></em> is measured, not inferred from
@@ -53,8 +53,19 @@ namespace Aer.Adapters;
 /// <b>The consequence for anyone editing this class:</b> under that branch the tool-name lists
 /// (<c>ReadTools</c>, <c>WriteTools</c>, <c>ShellTools</c>, <c>NetworkTools</c>) are the entire
 /// enforcement boundary — a write-capable <c>agy</c> tool missing from <c>WriteTools</c> is simply
-/// not denied. Removing a category from <see cref="BuildDeniedTools"/> as "redundant with the flag"
-/// is the specific edit that would make #596's over-grant real.
+/// not denied. Whether those lists are complete against agy's real tool surface is unmeasured — #623,
+/// which is the security property here rather than a tidiness question. Removing a category from
+/// <see cref="BuildDeniedTools"/> as "redundant with the flag" is the specific edit that would make
+/// #596's over-grant real.
+/// </para>
+/// <para>
+/// <b>And the hook only takes it back while it runs.</b> On this vendor an absent or unparseable hook
+/// response reads as an <em>allow</em> — see the fail-open note on <see cref="BuildHooksJson"/> below.
+/// Under <c>--mode</c> that is backstopped by agy's own fail-closed default; under
+/// <c>--dangerously-skip-permissions</c> there is no backstop, so a hook that cannot start is a fully
+/// ungated worker rather than a degraded one. Scoping shell patterns is a second gap in the same
+/// direction: this adapter does not read <see cref="PermissionGrant.ShellCommandPatterns"/> at all,
+/// so a grant narrowed to <c>git:*</c> resolves to an unscoped shell — #624.
 /// </para>
 /// </summary>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator

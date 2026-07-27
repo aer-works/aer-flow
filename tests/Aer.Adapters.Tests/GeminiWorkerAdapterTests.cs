@@ -622,13 +622,21 @@ public class GeminiWorkerAdapterTests
     }
 
     /// <summary>
-    /// Guards the population rather than any one category. Each of the four is covered by a
-    /// withholding test above, but nothing stopped a fifth being added to
+    /// Guards the <b>boolean</b> category population, and only that. Each of the four booleans is
+    /// covered by a withholding test above, but nothing stopped a fifth <i>boolean</i> being added to
     /// <see cref="PermissionGrant"/> and silently contributing no denied tools — under
     /// <c>--dangerously-skip-permissions</c> that is a capability granted with no arm to catch it.
-    /// This fails until the new category is covered, which is the point: it is a prompt to write the
-    /// test, not a substitute for one.
+    /// This fails until the new one is covered, which is the point: a prompt to write the test, not a
+    /// substitute for one.
     /// </summary>
+    /// <remarks>
+    /// <b>A non-boolean dimension already exists that this guard cannot see, by construction.</b>
+    /// <see cref="PermissionGrant.ShellCommandPatterns"/> is the fifth constructor parameter and is
+    /// filtered out below, so it contributes no denied tools and nothing here notices — nor would an
+    /// enum or a host allowlist added later. That is not hypothetical drift: this adapter never reads
+    /// the field at all, while <c>ClaudeWorkerAdapter</c> honours it, which is its own defect — #624. Widening the filter is not the fix, because a pattern list does not map onto
+    /// "withheld → deny these names"; it needs a per-vendor answer.
+    /// </remarks>
     [Fact]
     public void Every_permission_category_has_a_withholding_arm_in_this_suite()
     {
