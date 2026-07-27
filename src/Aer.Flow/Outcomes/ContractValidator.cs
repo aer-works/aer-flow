@@ -20,7 +20,6 @@ public static class ContractValidator
     /// </summary>
     private const int MaxRenderedValueLength = 60;
 
-
     /// <summary>
     /// True when every entry in <paramref name="contract"/>'s <c>ProducedOutputs</c> exists at
     /// <paramref name="outputDirectory"/> and satisfies its declared <see cref="OutputCondition"/>,
@@ -112,7 +111,32 @@ public static class ContractValidator
         {
             var expected = DescribeScalar(condition.EqualsValue);
 
-            if (!TryResolvePointer(document.RootElement, condition.Path, out var resolved))
+            // A pointer not starting with '/' makes TryResolvePointer throw, and nothing validates
+            // OutputCondition.Path when a workflow is parsed — it is a plain record. Before #597 the
+            // classifier short-circuited on the first unsatisfied output, so a malformed pointer on a
+            // *later* output was often never evaluated; listing every output removed that accidental
+            // shielding and turned an authoring mistake into a FormatException escaping
+            // OutcomeClassifier.Classify — after the process ran, before its outcome was appended,
+            // i.e. a crash-recovery orphan on every run. Reporting it is also just the right answer:
+            // naming a condition AER cannot evaluate is exactly what this issue is about.
+            JsonElement resolved;
+            bool didResolve;
+            try
+            {
+                didResolve = TryResolvePointer(document.RootElement, condition.Path, out resolved);
+            }
+            catch (FormatException ex)
+            {
+                return new UnsatisfiedOutput(
+                    outputName,
+                    UnsatisfiedOutputReason.MalformedCondition,
+                    condition.Path,
+                    ActualValue: null,
+                    ExpectedValue: expected,
+                    Detail: ex.Message);
+            }
+
+            if (!didResolve)
             {
                 return new UnsatisfiedOutput(
                     outputName,
@@ -270,6 +294,13 @@ public enum UnsatisfiedOutputReason
 
     /// <summary>The file parsed as JSON, but its <see cref="OutputCondition"/>'s JSON Pointer either did not resolve or resolved to a value other than the expected one.</summary>
     ConditionFailed,
+
+    /// <summary>
+    /// The condition itself is not evaluable — its JSON Pointer is malformed, so the output can be
+    /// neither satisfied nor meaningfully compared. A workflow-authoring fault rather than a worker
+    /// one, and reported rather than thrown so it names itself instead of escaping the classifier.
+    /// </summary>
+    MalformedCondition,
 }
 
 /// <summary>
@@ -278,9 +309,15 @@ public enum UnsatisfiedOutputReason
 /// <see cref="UnsatisfiedOutputReason.ConditionFailed"/>; <see cref="ActualValue"/> is null within
 /// that case when the pointer didn't resolve at all, as distinct from resolving to a mismatched value.
 /// </summary>
+/// <param name="Detail">
+/// Extra explanation for a reason whose cause is not implied by the other fields — currently only
+/// <see cref="UnsatisfiedOutputReason.MalformedCondition"/>, where it carries why the pointer could
+/// not be parsed. Null otherwise.
+/// </param>
 public sealed record UnsatisfiedOutput(
     string Name,
     UnsatisfiedOutputReason Reason,
     string? ConditionPath = null,
     string? ActualValue = null,
-    string? ExpectedValue = null);
+    string? ExpectedValue = null,
+    string? Detail = null);

@@ -298,8 +298,13 @@ public class OutcomeClassifierTests
         var directory = CreateTempDirectory();
         try
         {
-            var outputs = Enumerable.Range(1, 35)
-                .Select(i => new ProducedOutput($"pathological_long_output_filename_entry_number_{i:D2}_forcing_truncation.json"))
+            // Exactly at the listing cap, so nothing overflows and the ellipsis is what ends the
+            // string. Above the cap the reason ends with "(+N more)" instead — that path is the
+            // overflow test's, and conflating the two is what made this fixture fail when the count
+            // cap landed: it was asserting an ellipsis on a reason that had legitimately stopped
+            // ending with one.
+            var outputs = Enumerable.Range(1, 8)
+                .Select(i => new ProducedOutput($"pathological_long_output_filename_entry_number_{i:D2}_forcing_truncation_of_the_assembled_reason.json"))
                 .ToList();
             var contract = new WorkerContract("worker", [], outputs, []);
 
@@ -334,6 +339,55 @@ public class OutcomeClassifierTests
         var directory = Path.Combine(Path.GetTempPath(), $"outcome-classifier-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    /// <summary>
+    /// When more unsatisfied outputs exist than the reason lists, the "(+N more)" marker must
+    /// survive truncation — it is the only signal that anything was omitted.
+    /// </summary>
+    /// <remarks>
+    /// The first version appended the marker and then truncated the whole string, which made the
+    /// marker the first thing cut. That reinstated, at the count layer, the same silent dropping the
+    /// per-value cap had just been added to prevent: a signal that vanishes exactly when it becomes
+    /// true. Found by a second reader after the review, in code written to fix the review.
+    /// </remarks>
+    [Fact]
+    public void Classify_keeps_the_overflow_marker_even_when_the_reason_is_truncated()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            // Long names so the listed outputs alone blow the 500-char budget, forcing the collision
+            // between truncation and the marker.
+            var outputs = Enumerable.Range(1, 40)
+                .Select(i => new ProducedOutput($"a_deliberately_long_output_filename_number_{i:D2}_forcing_truncation.json"))
+                .ToList();
+            var contract = new WorkerContract("worker", [], outputs, []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural), contract, directory);
+
+            Assert.NotNull(classification.Reason);
+            Assert.True(
+                classification.Reason.Length <= 500,
+                $"Reason length {classification.Reason.Length} exceeded the 500-character cap.");
+            Assert.EndsWith("more)", classification.Reason);
+            Assert.Contains("(+32 more)", classification.Reason);
+
+            // Polarity: at or under the listing cap there is no marker to preserve.
+            var fewOutputs = Enumerable.Range(1, 3).Select(i => new ProducedOutput($"out{i}.json")).ToList();
+            var fewClassification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural),
+                new WorkerContract("worker", [], fewOutputs, []),
+                directory);
+
+            Assert.NotNull(fewClassification.Reason);
+            Assert.DoesNotContain("more)", fewClassification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
     }
 }
 

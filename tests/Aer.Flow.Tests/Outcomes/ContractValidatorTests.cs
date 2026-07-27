@@ -235,5 +235,69 @@ public class ContractValidatorTests
         Directory.CreateDirectory(directory);
         return directory;
     }
+
+    /// <summary>
+    /// A malformed JSON Pointer is a workflow-authoring fault, and it must be <b>reported</b> rather
+    /// than thrown.
+    /// </summary>
+    /// <remarks>
+    /// <c>TryResolvePointer</c> throws <see cref="FormatException"/> for a pointer not starting with
+    /// <c>/</c>, and nothing validates <c>OutputCondition.Path</c> when a workflow is parsed. Before
+    /// #597 the classifier stopped at the first unsatisfied output, so a malformed pointer on a
+    /// *later* output was usually never reached; listing every unsatisfied output removed that
+    /// accidental shielding. The escape route mattered: <see cref="OutcomeClassifier.Classify"/>
+    /// runs after the process has exited but before its outcome is appended, and
+    /// <c>Aer.Cli.Program</c> catches only <c>AerFlowException</c> — so the throw would abandon the
+    /// execution mid-classification and leave a crash-recovery orphan, on every run.
+    /// <para>
+    /// The first output is deliberately missing: that is what makes the second one reachable only
+    /// because the walk continues, which is the exact regression this pins.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_malformed_pointer_on_a_later_output_is_reported_rather_than_thrown()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "second.json"), """{"status":"ok"}""");
+            var contract = new WorkerContract(
+                "worker",
+                [],
+                [
+                    new ProducedOutput("first.json"),
+                    new ProducedOutput("second.json", new OutputCondition("status", new JsonScalar.String("ok"))),
+                ],
+                []);
+
+            // Neither entry point may throw. IsSatisfied stops at the first failure and Classify
+            // does not, so only the second actually reaches the malformed pointer — both are
+            // asserted so a later change to either walk cannot reintroduce the escape unnoticed.
+            Assert.False(ContractValidator.IsSatisfied(contract, directory));
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural), contract, directory);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.NotNull(classification.Reason);
+            Assert.Contains("first.json", classification.Reason);
+            Assert.Contains("second.json", classification.Reason);
+            Assert.Contains("cannot be evaluated", classification.Reason);
+
+            // Polarity: the same pointer written correctly is satisfied, so the diagnostic above is
+            // about the pointer's shape and not about the file or the walk.
+            var validContract = new WorkerContract(
+                "worker",
+                [],
+                [new ProducedOutput("second.json", new OutputCondition("/status", new JsonScalar.String("ok")))],
+                []);
+
+            Assert.True(ContractValidator.IsSatisfied(validContract, directory));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
 }
 

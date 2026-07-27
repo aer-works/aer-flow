@@ -124,9 +124,15 @@ public static class OutcomeClassifier
 
         var reason = "Contract not satisfied: " + string.Join("; ", listed.Select(DescribeUnsatisfiedOutput));
 
-        if (unsatisfiedOutputs.Count > listed.Count)
+        // The suffix's own length is reserved from the budget rather than appended after
+        // truncating. Appending it left the marker as the first thing Truncate cut — reinstating,
+        // at the count layer, the very "outputs silently dropped with no signal" this cap exists to
+        // prevent. A signal that disappears exactly when it becomes true is worse than none.
+        var overflow = unsatisfiedOutputs.Count - listed.Count;
+        if (overflow > 0)
         {
-            reason += $" (+{unsatisfiedOutputs.Count - listed.Count} more)";
+            var suffix = $" (+{overflow} more)";
+            return Truncate(reason, MaxReasonLength - suffix.Length) + suffix;
         }
 
         return Truncate(reason, MaxReasonLength);
@@ -139,6 +145,8 @@ public static class OutcomeClassifier
         UnsatisfiedOutputReason.ConditionFailed => output.ActualValue is null
             ? $"'{output.Name}': JSON Pointer '{output.ConditionPath}' did not resolve (expected {output.ExpectedValue})"
             : $"'{output.Name}': JSON Pointer '{output.ConditionPath}' resolved to {output.ActualValue}, expected {output.ExpectedValue}",
+        UnsatisfiedOutputReason.MalformedCondition =>
+            $"'{output.Name}': condition cannot be evaluated — {output.Detail}",
         _ => throw new ArgumentOutOfRangeException(nameof(output), output.Reason, "Unknown UnsatisfiedOutputReason."),
     };
 
