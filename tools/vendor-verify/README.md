@@ -46,15 +46,9 @@ along.
 
 **3. Never probe a slash command from Git Bash on Windows.**
 MSYS path conversion rewrites a leading `/usage` into `C:/Program Files/Git/usage` **before the CLI
-sees it**, and the model then answers about that path — which reads exactly like *"the command does
-not exist."* The input was corrupted upstream of the instrument, and nothing in the output says so.
-This nearly produced a second wrong answer to the same question ten minutes after the first. Use
-`cmd`/PowerShell, `MSYS_NO_PATHCONV=1`, or a leading `//`; and treat any "the CLI doesn't have that"
-conclusion reached in Git Bash as unproven until re-run somewhere else.
-
-Rules 1 and 2 guard against an instrument that cannot tell two causes apart. Rule 3 guards against
-the harness silently changing the question — the honest answer to a rewritten question is
-indistinguishable from the answer you were afraid of.
+sees it**, and the model answers about that path — which reads exactly like *"the command does not
+exist."* Use `cmd`/PowerShell, `MSYS_NO_PATHCONV=1`, or a leading `//`. Treat any "the CLI doesn't
+have that" conclusion reached in Git Bash as unproven until re-run somewhere else.
 
 A check that cannot separate its cases must return `INCONCLUSIVE`. That is a real result, and it is
 more useful than a confident wrong one.
