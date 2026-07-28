@@ -1,12 +1,16 @@
 # `aer-agy-loop` — dispatch one AER workflow step, read back its output
 
 ```
+pixi run aer-dispatch -- --list-templates
+
 pixi run aer-dispatch -- \
+    [--template advise|implement|review|fact-check] \
     --prompt-file <path> \
     --output-name <name> \
     --working-directory <absolute path> \
     [--adapter gemini] [--model <name>] [--effort <level>] \
-    [--read-files] [--write-files] [--run-shell-commands] [--network-access] \
+    [--read-files|--no-read-files] [--write-files|--no-write-files] \
+    [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
     [--timeout-minutes 20]
 ```
 
@@ -40,11 +44,48 @@ same shape of mistake Architecture Rule 1 already forbids inside the engine itse
 parse conversation content to make routing decisions) — this just names that the same discipline
 applies one layer up, in tooling that could otherwise grow into a shadow engine.
 
+## Templates — pick the role, not the settings
+
+`--template advise|implement|review|fact-check` pins vendor, model, effort, permission grant and
+timeout as a set. Run `pixi run aer-dispatch -- --list-templates` for what each one is
+for and what it resolves to; the definitions and the reasoning behind each setting live next to the
+`TEMPLATES` dict in `dispatch.py`, and are deliberately not restated here.
+
+Two things worth knowing before reaching for one:
+
+- **Precedence is explicit flag > template > built-in default**, so `--template review --model haiku`
+  does what it says. That is intentional: the templates are a starting point you can override, not a
+  lock.
+- **Every template grants write, including the reviewing ones.** A worker satisfies its
+  `ProducedOutputs` contract only by writing the artifact into `AER_OUTPUT_DIR`. With writes *and*
+  the shell both withheld, nothing can produce that file — measured on **claude/haiku**, both arms:
+  withheld → `Contract not satisfied`; `--write-files` → `Succeeded`. That combination is refused
+  here before it can spend. The gemini equivalent is **unmeasured** — there is no deny-list on that
+  path, `WriteFiles:false` resolves to `--mode plan` — so the refusal is conservative there rather
+  than evidenced.
+- **Withholding writes while granting the shell does *not* stop a worker writing.**
+  [#529](https://github.com/aer-works/aer-flow/issues/529) measured the file being created anyway by
+  `Bash` on claude. On gemini this is inferred from the same substitution argument, not measured —
+  and note `--dangerously-skip-permissions` is *not* the reason: the `PreToolUse` hook derives its
+  deny list from all four grant categories and takes the flag's over-grant back. So that combination
+  is allowed through here — it is satisfiable, and pretending otherwise would be a claim wider than
+  the evidence. **"Read-only reviewer" is still not expressible**
+  ([#629](https://github.com/aer-works/aer-flow/issues/629)); what is expressible is "no writes and
+  no shell", which cannot report.
+- **So the spread is one axis, not four shapes.** All four sit at read + write; only `implement` adds
+  shell + network, which is the path #596, #611, #623 and #624 all came from. A session that only
+  ever dispatches reviews never exercises that half of AER — the value is in reaching for `implement`
+  sometimes, not in the set being varied.
+
+A pinned `agy` model name is checked against `agy models` (as recorded in
+`docs/vendor-capabilities.md`) by STEP 9 of `pixi run audit-completeness` — the first draft of these
+templates shipped a name the CLI does not accept, and prose did not catch it.
+
 ## Using this for an advisor consult
 
-`--model gemini-3.1-pro-high` (agy's Pro tier, high reasoning effort — see `agy models` for the
-full catalogue) is a reasonable default when dispatching a consult rather than an implementation or
-review task.
+The `advise` template is this, pinned. `--model gemini-3.1-pro-high` (agy's Pro tier, high reasoning
+effort — see `agy models` for the full catalogue) is a reasonable default when dispatching a consult
+rather than an implementation or review task.
 
 **Ground it — don't ask it cold.** A bare knowledge question about a fast-moving CLI is a
 training-data-staleness risk, not just a style preference: asked "what CLI flag does agy use to

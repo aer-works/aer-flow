@@ -293,8 +293,36 @@ claude-sonnet-4-6         claude-opus-4-6-thinking  gpt-oss-120b-medium
 Two things the design assumed otherwise:
 
 - **Effort is baked into the model name**, *and* `--effort low|medium|high` exists as a separate flag.
-  Two overlapping controls, and the interaction between them is unprobed — tracked in
-  [#510](https://github.com/aer-works/aer-flow/issues/510), open.
+  Two overlapping controls. What is now known, split from what is not:
+  - **Acceptance, measured.** `agy` accepts both together on a suffixed model — a real dispatch of
+    `gemini-3.1-pro-high --effort high` ran and answered
+    ([`tools/aer-agy-loop/README.md`](../tools/aer-agy-loop/README.md), "Using this for an advisor
+    consult").
+  - **Rejection is LOUD, measured. Whether it is *per-model* is an inference, not measured.** A real
+    dispatch failed with `Error: invalid model selection (--model "gemini-3-pro" --effort "high"):
+    --effort is not supported for model "gemini-3-pro"` — recorded in
+    [`OutcomeClassifierTests`](../tests/Aer.Flow.Tests/Outcomes/OutcomeClassifierTests.cs), which
+    pins it as the stderr AER must surface. What that establishes is the *failure shape*: agy errors
+    out rather than ignoring the flag.
+
+    It does **not** isolate "this model does not support `--effort`" from "this model is not valid".
+    agy's own wording attributes the failure to the flag — `--effort is not supported for model` — but
+    `gemini-3-pro` is absent from the catalogue above, which this page says "enumerates what the CLI
+    will actually accept", and a combined model+effort validator could plausibly emit that wording for
+    an uncatalogued model. **The missing control is one dispatch:** `agy --model gemini-3-pro` with
+    *no* `--effort`. If it runs, rejection is genuinely per-model. If it fails, the datum was never
+    about `--effort` at all.
+  - **Precedence is unprobed** — when both are given and both accepted, which one wins is unknown.
+    That, and only that, is what [#510](https://github.com/aer-works/aer-flow/issues/510) tracks.
+  - **A second suffixed model reached effort-value validation**, which is further evidence for
+    acceptance: the divergence recorded below on this page was measured while building
+    `effort.agy-value-set`, whose probe passes an invalid `--effort` to `gemini-3.6-flash-low` and
+    reads the valid set back out of the error. Getting a valid-set message means agy validated the
+    *effort*, not the model.
+
+  Corrected 2026-07-27: this bullet previously said the whole "interaction" was unprobed, while the
+  rejection datum sat measured in a test's doc comment with no route back here — a fact with no
+  canonical home, which is the drift gate `record-once` exists to stop.
 - **The grid has holes.** `gemini-3.1-pro` has `high` and `low` but **no `medium`**. A UI offering
   model × effort as a matrix would offer combinations the CLI rejects. This sharpens
   [0023](decisions/0023-effort-and-models-are-named-by-behaviour.md): naming by behaviour is right,

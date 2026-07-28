@@ -5,7 +5,7 @@ WHY THIS EXISTS
 `docs/documentation-lessons.md` rule 15 says any claim of completeness ships with the artifact that
 lets someone check it. This is that artifact for the #527 audit chain.
 
-The chain has eight steps, and each one has a population that can be ENUMERATED and a disposition
+The chain has nine steps, and each one has a population that can be ENUMERATED and a disposition
 that must exist for every member:
 
   1 sources        every source considered -> included, or excluded with a reason
@@ -16,8 +16,8 @@ that must exist for every member:
   5 what changed   every measured finding -> an architectural implication, or "no impact" + why
   6 design         every decision on disk -> reviewed, amended, superseded, or unaffected + why
   7 milestones     every open milestone   -> re-checked against the changes
-  8 build plan     every design decision  -> a sequenced piece of work (not implemented -- judgement,
-                     not a join; see main())
+  8 cited checks   every vendor-verify check name cited anywhere -> actually registered
+  9 pinned models  every agy model pinned in tools/ -> a name `agy models` lists
 
 This script recomputes what is mechanically recomputable (populations, and which members carry a
 disposition) and prints what it CANNOT check, because a completeness checker that hides its own
@@ -36,10 +36,13 @@ direct evidence the "let it die" instruction was wrong -- a completeness check w
 keeps growing (decisions/, vendor-verify checks) needs to keep running, not be frozen at the
 population it was born with.
 
-**It is now a standing check.** Still not wired into CI (steps 2/3/5 read local docs, cheap and
-fine there, but step 1's population is a judgement call nobody should make unattended) -- run it
-before a PR touching `docs/decisions/`, `docs/vendor-*.md`, or `tools/vendor-verify/verify.py`
-ships, per CLAUDE.md gate `record-once`.
+**It is now a standing check, and it IS wired into CI** -- `.github/workflows/ci.yml` defines an
+`audit` job running `pixi run audit-completeness`, and `audit` is a required leg of the aggregate
+`ci` gate. This paragraph used to say the opposite ("still not wired into CI"); it went stale when
+that job landed, and was then contradicted by a comment three hundred lines below it in this same
+file. Run it locally too before a PR touching `docs/decisions/`, `docs/vendor-*.md`, or
+`tools/vendor-verify/verify.py`, per CLAUDE.md gate `record-once` -- a local run has the mirrored
+corpus CI does not, so step 2 checks strictly more there.
 
 Every check here still verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any
 good. That limit is real and stays true whether this runs once or every PR: it catches an omission,
@@ -361,6 +364,214 @@ def step8_cited_checks_exist():
     return ok
 
 
+# Two predicates, because the two call sites need opposite tolerances.
+#
+# TOKEN_SHAPE: lowercase and hyphenated. Used on the register's own fence, where a digit must NOT be
+# required -- agy serves Anthropic and OpenAI models, and a digit-free catalogue entry would make the
+# sanity arm print "the PARSE is wrong" about a perfectly correct parse.
+#
+# PIN_SHAPE: the same, plus at least one DIGIT. Used on the tools/ walk, where `--model` appears in
+# prose and every following word is a candidate -- the digit is what rejects `read-only`,
+# `fail-closed` and `skip-permissions`. Cost: a real pin with no digit is invisible to the walk.
+TOKEN_SHAPE = re.compile(r"[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
+PIN_SHAPE = re.compile(r"(?=.*[0-9])[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
+
+
+def step9_pinned_models_exist():
+    """Every `agy` model name pinned in a tool is one `agy models` actually lists.
+
+    Paid for the same day this step was written. `dispatch.py`'s new template set -- written partly
+    to STOP stale pins -- shipped its first draft pinning `gemini-3.1-pro`. `agy models` lists
+    `gemini-3.1-pro-high` and `gemini-3.1-pro-low`; the bare name is not an accepted value, so the
+    template would have failed at dispatch, after the operator had already paid for a run. That is
+    #547's failure class ("nothing guards a stale model pin reaching the product on agy") reproduced
+    inside the file meant to prevent it, by an author who had read the register hours earlier.
+
+    Prose could not have caught it: `gemini-3.1-pro` reads exactly like a real model name, appears as
+    a substring of two real ones, and is used correctly in surrounding prose about the grid's holes.
+    Only a join against the enumerated set separates it from the valid names -- which is precisely the
+    population CLAUDE.md gate `record-once` describes as earning a checker.
+
+    THIS IS NOT THE FIRST CHECK OF ITS KIND, AND SAYING SO IS THE POINT
+    `tools/smoke-preflight/preflight.py` already validates model pins against agy's catalogue, was
+    built for the same failure class (`gemini-3-flash` pinning nothing for months), and does it
+    BETTER where it runs: it queries `agy models` live rather than joining against a recording. An
+    earlier draft of this step did not mention it, which is the `common-sense` gate's own question --
+    does a helper for this already exist? -- going unasked.
+
+    They are complementary, and the split is not a matter of taste:
+      * preflight's population is `tests/Aer.Cli.SmokeTests` and its fixtures. It does not read
+        `tools/`, which is where these pins live.
+      * preflight needs a live `agy` binary and degrades to a WARNING without one, so it cannot gate
+        anything in CI. It runs as a `depends-on` of the `smoke-*` tasks, which are permanently
+        human-gated live runs.
+      * this step reads a recorded register, needs no vendor, and runs in CI's `audit` job.
+    So: preflight covers tests/ precisely but only when a person runs a smoke test; this covers
+    tools/ approximately on every PR. Neither subsumes the other.
+
+    SCOPE, stated because two limits are narrower than the title
+      * **agy only.** The `claude` pins (`opus`, `haiku`) are CLI aliases, and `claude` has no
+        catalogue subcommand at all -- `claude models` is taken as a PROMPT and answered, which
+        spends usage (preflight's header documents this). So nothing here validates them.
+      * **The tools/ scan is TEXTUAL**, and declared as a limitation rather than presented as
+        equivalent to reading the code. It finds names in a pin POSITION -- next to `--model`, or as
+        a `"model":` value -- which is what keeps prose about model names out of the population. A
+        pin built at runtime, or written in a shape this pattern does not match, is invisible to it.
+        `dispatch.py`'s `TEMPLATES` is additionally imported and read structurally, so that one
+        source does not rest on the regex.
+    """
+    rule("STEP 9 -- every pinned agy model name is one `agy models` lists")
+    caps = read("docs/vendor-capabilities.md")
+
+    # The register records the CLI's own output verbatim in a fenced block. Parse that block rather
+    # than a hand-maintained list here, so re-running `agy models` into the register is the single
+    # act that updates this check -- record once, per the gate.
+    # Residual risk, the only one worth carrying: a second fence added BEFORE the models block, in
+    # the SAME section, is still taken instead. The shape guard below is the backstop, and it only
+    # catches a block whose tokens are not model names -- a fence holding some OTHER model list
+    # parses silently wrong.
+    section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
+    if not section:
+        print("    !! could not locate the `agy models` section in docs/vendor-capabilities.md")
+        return False
+    fence = re.search(r"```[a-zA-Z]*\n(.*?)```", section.group(1), re.S)
+    if not fence:
+        print("    !! the `agy models` section carries no fenced block")
+        return False
+    accepted = set(fence.group(1).split())
+
+    # A sanity assertion on the PARSE itself, not merely on emptiness. Without it a mis-parse that
+    # captured prose still went red -- but every PIN was blamed while the fault was the parse, which
+    # is the right verdict for the wrong reason and points at the wrong file. Note `line()` called
+    # with no `expected` prints no marker and returns True, so the printed count could never have
+    # caught this on its own.
+    shaped = {n for n in accepted if TOKEN_SHAPE.fullmatch(n)}
+    # Two arms, two different messages, because they support two different conclusions. Tokens that
+    # are not model-shaped DO establish a bad parse. A surprising COUNT does not -- a catalogue that
+    # legitimately shrinks to 4 or grows past 40 would trip it, and blaming the parse there would be
+    # the right verdict for the wrong reason, which is the failure this guard exists to prevent.
+    if accepted != shaped:
+        print(f"    !! the `agy models` block parsed to token(s) that are not model names -- the"
+              f" PARSE is wrong, not the pins. Got: {sorted(accepted - shaped)[:8]}")
+        return False
+    # Bounds are a smoke alarm, not a diagnosis: wide enough that only a wild parse trips them
+    # (today: 12), and the message says to go look rather than naming a culprit.
+    if not 5 <= len(accepted) <= 40:
+        print(f"    !! the `agy models` block parsed to {len(accepted)} names, outside the expected"
+              " 5..40. Either the catalogue changed dramatically or the parse drifted -- check which"
+              " before trusting any verdict below.")
+        return False
+    line("model names enumerated by the register", len(accepted))
+
+    # Claude's own CLI aliases -- the one genuine exclusion from the walk below. Mirrors
+    # `smoke-preflight/preflight.py`'s CLAUDE_ALIASES rather than inventing a second list; that file
+    # records that `haiku` was verified to resolve via `modelUsage` rather than assumed.
+    CLAUDE_CLI_ALIASES = {"opus", "sonnet", "haiku", "fable"}
+
+    pins = []  # (where, model)
+
+    # dispatch.py is import-safe (its main() sits behind an `if __name__` guard), so read the real
+    # dict rather than regexing a copy of it -- a regex would go stale against the literal it parses.
+    disp_path = os.path.join(ROOT, "tools", "aer-agy-loop", "dispatch.py")
+    if not os.path.exists(disp_path):
+        # A missing source is a HARD failure, not a quiet skip. Skipping would let a rename drop the
+        # template pins from the population while `verify.py`'s pin kept the step green -- a check
+        # that passes because it stopped looking, which is the exact defect step 2's comment names.
+        print(f"    !! {disp_path} not found -- the template pins cannot be checked, so this step"
+              " cannot make its claim")
+        return False
+
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_aer_dispatch_audit", disp_path)
+    mod = importlib.util.module_from_spec(spec)
+    # Importing writes `tools/aer-agy-loop/__pycache__/` otherwise. A read-only audit that dirties
+    # `git status` teaches everyone who runs it to ignore its output's neighbours, so suppress the
+    # bytecode write rather than adding a .gitignore line for a directory that need not exist.
+    prior, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.dont_write_bytecode = prior
+    for name, tpl in getattr(mod, "TEMPLATES", {}).items():
+        if tpl.get("adapter") == "gemini" and tpl.get("model"):
+            pins.append((f"dispatch.py TEMPLATES[{name!r}]", tpl["model"]))
+    if not pins:
+        print("    !! dispatch.py loaded but contributed no agy model pin -- TEMPLATES has been"
+              " emptied, renamed, or restructured, so this step is no longer checking it")
+        return False
+
+    # verify.py's CHEAP carries the same kind of pin and goes stale the same way. Regexed rather than
+    # imported: verify.py does work at import time that this script has no business triggering.
+    # Each source is required to contribute, for the same reason the missing-file arm above is a hard
+    # failure: a population that silently shrinks is how a check keeps printing OK about less and less.
+    before_cheap = len(pins)
+    cheap = re.search(r'"agy":\s*\[([^\]]*)\]', read("tools/vendor-verify/verify.py"))
+    if cheap:
+        for tok in re.findall(r'"([^"]+)"', cheap.group(1)):
+            if tok.startswith("gemini-") or tok.startswith("claude-") or tok.startswith("gpt-"):
+                pins.append(("verify.py CHEAP['agy']", tok))
+    if len(pins) == before_cheap:
+        print("    !! verify.py's CHEAP['agy'] no longer yields a model pin -- if that is deliberate,"
+              " remove this arm rather than letting it silently check nothing")
+        return False
+
+    # Everything else under tools/, found in a PIN POSITION rather than anywhere in the prose. The
+    # docstring's population claim is "every agy model name pinned in a tool"; without this arm the
+    # code read two named sources while the claim covered the tree, which is the claim-wider-than-
+    # measurement defect this whole step exists to catch, in the step itself.
+    pin_position = re.compile(
+        r'(?:--model["\s,]+|"[Mm]odel"\s*:\s*")([A-Za-z][A-Za-z0-9.\-]*)')
+    seen = {(w, m) for w, m in pins}
+    for dirpath, _, filenames in os.walk(os.path.join(ROOT, "tools")):
+        # Build artefacts are not source. Walking them made the audit's runtime depend on
+        # whether someone had built, and a hit would have been reported with a bin/ path.
+        parts = dirpath.split(os.sep)
+        # Component test. The previous `os.sep + "bin"` was a substring test, so any future
+        # directory merely STARTING with bin/obj would have been excluded too -- no such directory
+        # exists today, so this changes nothing on the current tree and is a spelling fix, not a
+        # bug fix. Note this walk is over an ABSOLUTE path, so unlike step 8's relative walk a
+        # checkout under a path component named bin or obj would skip tools/ entirely.
+        if "__pycache__" in parts or "obj" in parts or "bin" in parts:
+            continue
+        for fn in filenames:
+            if not fn.endswith((".py", ".md", ".toml", ".json")):
+                continue
+            full = os.path.join(dirpath, fn)
+            rel = os.path.relpath(full, ROOT).replace("\\", "/")
+            with open(full, encoding="utf-8", errors="replace") as f:
+                for lineno, text in enumerate(f, 1):
+                    for name in pin_position.findall(text):
+                        # Judge anything that is not a claude CLI ALIAS. The earlier filter here was
+                        # `startswith(("gemini-", "gpt-"))`, which silently skipped `claude-sonnet-4-6`
+                        # and `claude-opus-4-6-thinking` -- both of which `agy models` LISTS, because
+                        # agy serves Anthropic models too. A drifted pin like `claude-opus-4-7-thinking`
+                        # sailed past unexamined, in the step whose whole purpose is catching that. It
+                        # also made this step's two arms disagree, since the CHEAP arm above already
+                        # accepts `claude-` names. Aliases are the only genuine exclusion, and they are
+                        # NAMED rather than inferred from a prefix.
+                        # Two conditions, and both are needed. Dropping the old `gemini-|gpt-` prefix
+                        # filter was right -- it hid real agy models -- but "not an alias" alone is
+                        # far too wide: `--model` appears in PROSE all over these files ("the --model
+                        # flag is sent", "--model default"), and every following word became a
+                        # candidate pin. So a token must also LOOK like a model identifier: hyphenated
+                        # and carrying a digit, which is true of every name `agy models` lists and of
+                        # no English word. A hypothetical unhyphenated pin is invisible to this, and
+                        # that is the declared cost of scanning text rather than parsing code.
+                        if name in CLAUDE_CLI_ALIASES or not PIN_SHAPE.fullmatch(name):
+                            continue
+                        key = (f"{rel}:{lineno}", name)
+                        if key not in seen:
+                            seen.add(key)
+                            pins.append(key)
+    ok = True
+    for where, model in pins:
+        good = model in accepted
+        ok &= good
+        print(f" {'OK' if good else '!!'} {where:<46} {model}"
+              f"{'' if good else '  -- not listed by `agy models`'}")
+    return bool(ok)
+
+
 def step7_milestones():
     rule("STEP 7 -- the milestone approach re-verified against the audit")
     plan = read("docs/plan.md")
@@ -518,16 +729,24 @@ def git_state():
 def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
-               step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist()]
+               step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
+               step9_pinned_models_exist()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
         "That a finding's architectural implication is CORRECT -- only that one was recorded.",
-        "Step 8's population is the build plan, whose completeness is a judgement, not a join.",
+        "The BUILD PLAN -- every design decision -> a sequenced piece of work -- is not checked",
+        "  at all: its completeness is a judgement, not a join. (Step 8 is the CITATION",
+        "  check; this list previously mislabelled it as the build plan.)",
         "That the vendor-verify checks still pass -- run `pixi run vendor-verify` for that.",
         "Whether a source nobody thought of exists. Enumeration cannot find its own blind spot.",
         "Whether a 'no impact' or 'unaffected' call was the RIGHT call. It checks that a reason",
         "  was given, never that the reason is good.",
+        "Step 9 checks the AGY pins only. `opus`/`haiku` are claude CLI aliases with no",
+        "  vendor catalogue to join against, so nothing HERE validates them --",
+        "  smoke-preflight does check claude alias/shape, but only for tests/.",
+        "Step 9 proves a name is one the CLI LISTS, never that the CLI still lists it --",
+        "  the register is a recording, and re-running `agy models` is what refreshes it.",
         "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
         "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
     ]:
