@@ -7,18 +7,25 @@ namespace Aer.Cli;
 /// <remarks>
 /// <para>
 /// The outbox is not the workspace. <c>AER_OUTPUT_DIR</c> is a directory AER owns under the task
-/// directory's <c>artifacts/execution_&lt;id&gt;/</c>, outside the repo entirely, and a grant that
-/// withholds "modify the workspace" was never meant to withhold "write your report". Conflating them
-/// is why a read-only reviewer cannot produce a deliverable, and why every reviewing template grants
-/// a write it does not need.
+/// directory's <c>artifacts/execution_&lt;id&gt;/</c>, and a grant that withholds "modify the
+/// workspace" was never meant to withhold "write your report". Conflating them is why a read-only
+/// reviewer cannot produce a deliverable, and why every reviewing template grants a write it does
+/// not need.
 /// </para>
 /// <para>
-/// <b>Containment, not prefix matching.</b> Both paths are resolved before comparison, so
-/// <c>&lt;outbox&gt;/../../repo/src/x.cs</c> does not pass by sharing a leading substring, and a
-/// sibling directory whose name merely starts with the outbox's — <c>artifacts/execution_1-evil</c>
-/// beside <c>artifacts/execution_1</c> — is not inside it. Getting this wrong turns a permission
-/// boundary into a formality, which is why the traversal and sibling-prefix cases are tested with a
-/// legitimate in-outbox control beside them.
+/// <b>What this proves is "inside the outbox", never "outside the workspace"</b> — those are not the
+/// same claim, and the task directory is not required to sit outside the repo: the repo's own
+/// dispatcher defaults it to a gitignored scratch subtree <em>within</em> the checkout. Containment
+/// in the allocated, per-execution outbox is the whole of the guarantee.
+/// </para>
+/// <para>
+/// <b>Containment, not prefix matching.</b> Both paths are fully resolved before comparison — <c>..</c>
+/// normalised and <b>every path component's links followed</b> — so <c>&lt;outbox&gt;/../../repo/src/x.cs</c>
+/// does not pass by sharing a leading substring, a sibling directory whose name merely starts with
+/// the outbox's (<c>artifacts/execution_1-evil</c> beside <c>artifacts/execution_1</c>) is not inside
+/// it, and a symlink planted at <c>&lt;outbox&gt;/escape</c> pointing at the repo does not launder a
+/// workspace write into an outbox one. Getting this wrong turns a permission boundary into a
+/// formality, which is why each case is tested with a legitimate in-outbox control beside it.
 /// </para>
 /// </remarks>
 public static class OutboxPath
@@ -40,10 +47,11 @@ public static class OutboxPath
         string resolvedOutbox;
         try
         {
-            resolvedCandidate = Path.GetFullPath(candidate);
-            resolvedOutbox = Path.GetFullPath(outboxDirectory);
+            resolvedCandidate = ResolveLinks(Path.GetFullPath(candidate));
+            resolvedOutbox = ResolveLinks(Path.GetFullPath(outboxDirectory));
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+                                      or PathTooLongException or IOException or UnauthorizedAccessException)
         {
             return false;
         }
@@ -60,5 +68,46 @@ public static class OutboxPath
             : StringComparison.Ordinal;
 
         return resolvedCandidate.StartsWith(outboxWithSeparator, comparison);
+    }
+
+    /// <summary>
+    /// <paramref name="fullPath"/> with every existing path component's link target followed, so a
+    /// link cannot make a path outside the outbox look like one inside it.
+    /// </summary>
+    /// <remarks>
+    /// Resolves component by component from the root rather than resolving only the deepest existing
+    /// entry: the dangerous shape is a link <em>partway along</em> the path
+    /// (<c>&lt;outbox&gt;/link-to-repo/src/x.cs</c>), where the final component is an ordinary file
+    /// and resolving it alone answers the wrong question. Components that do not exist yet — the file
+    /// a worker is about to create — are appended unresolved, which is correct: a path that does not
+    /// exist has no link to follow, and its parents were resolved on the way down.
+    /// </remarks>
+    private static string ResolveLinks(string fullPath)
+    {
+        var root = Path.GetPathRoot(fullPath);
+        if (string.IsNullOrEmpty(root))
+        {
+            return fullPath;
+        }
+
+        var current = root;
+        foreach (var segment in fullPath[root.Length..].Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            var target = Directory.Exists(current)
+                ? Directory.ResolveLinkTarget(current, returnFinalTarget: true)?.FullName
+                : File.Exists(current)
+                    ? File.ResolveLinkTarget(current, returnFinalTarget: true)?.FullName
+                    : null;
+
+            if (target is not null)
+            {
+                current = Path.GetFullPath(target);
+            }
+        }
+
+        return current;
     }
 }

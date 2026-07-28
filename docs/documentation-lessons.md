@@ -86,7 +86,10 @@ column over a sentence, because readers scan.
 **What happened.** `--disallowedTools` is documented as removing tools. True. A reader concludes it
 bounds what the model can *do*. It doesn't — with `Write` disallowed, the model used `Bash` and
 created the file anyway. **This is live in our own code** ([#529](https://github.com/aer-works/aer-flow/issues/529)):
-`BuildDisallowedTools` withholds `Edit,Write,NotebookEdit` and leaves `Bash`.
+a withheld write category withholds `Edit,Write,NotebookEdit` and leaves `Bash`. (Since
+[#649](https://github.com/aer-works/aer-flow/issues/649) those three names ride the `PreToolUse` hook
+rather than `--disallowedTools`, so the hook can allow the one write landing in `AER_OUTPUT_DIR`;
+which mechanism denies them does not change what `Bash` still reaches.)
 
 **Rule.** For anything security-adjacent, the docs state the *guarantee*, separately from the
 mechanism, and state it in terms of what an adversarial-or-just-creative agent can still achieve.

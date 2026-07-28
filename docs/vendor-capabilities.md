@@ -587,7 +587,8 @@ as though they were established.
 > What was measured below is that the **pattern discriminates between commands of the same tool**.
 > What was *not* measured is whether the model can reach the same goal through a **different tool** —
 > and it can. With `--disallowedTools Write`, the model wrote the file using `Bash`; with
-> `Edit,Write,NotebookEdit` withheld (the exact string `ClaudeWorkerAdapter` emits) it used `Bash`
+> `Edit,Write,NotebookEdit` withheld (the string `ClaudeWorkerAdapter` emitted for a withheld-write
+> grant until #649 moved those names onto its `PreToolUse` hook) it used `Bash`
 > and `Read`. `Bash` alone defeats withheld writes, withheld reads and withheld network.
 >
 > So the correct reading is: **`--allowedTools`/`--disallowedTools` bound which *tool* runs, never

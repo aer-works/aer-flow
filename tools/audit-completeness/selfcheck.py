@@ -261,6 +261,23 @@ def _templates_are_dispatchable():
         "reads withheld, shell granted": {**granted, "read_files": False},
         "network withheld, shell granted": {**granted, "network_access": False},
     }
+    # #649: on an adapter whose withheld writes reach AER_OUTPUT_DIR the "nothing here can write the
+    # output" arm is false, and refusing it refuses the read-only reviewer the whole feature exists
+    # for. Asserted as a pair against the identical gemini grant, so the rule cannot be satisfied by
+    # allowing that shape everywhere -- which is what would silently un-refuse gemini, where the
+    # vendor still denies the write before AER's hook is reached.
+    reviewer = {**granted, "write_files": False, "run_shell_commands": False}
+    assert dispatch.grant_refusal({**reviewer, "adapter": "claude"}) is None, (
+        "a read-only claude reviewer is refused. Its declared output lands in AER_OUTPUT_DIR, which "
+        "a withheld write still reaches on that adapter (#649) -- refusing it forces every reviewing "
+        "template to grant a workspace write it does not need."
+    )
+    assert dispatch.grant_refusal({**reviewer, "adapter": "gemini"}) is not None, (
+        "the same grant dispatches on gemini, where a withheld write resolves to `--mode plan` and "
+        "the vendor refuses the tool call before AER's hook is consulted -- so the contract cannot "
+        "be satisfied and the run burns its budget to fail."
+    )
+
     for label, arm in refusal_arms.items():
         assert dispatch.grant_refusal(arm) is not None, (
             f"a grant with {label} dispatches. With the shell it is #529's over-grant -- the "
@@ -277,7 +294,7 @@ def _templates_are_dispatchable():
         "shell reaches -- not grants that carry a shell."
     )
     return (f"{len(dispatch.TEMPLATES)} templates + {len(refusal_arms)} refusal arms "
-            "+ the coherent control")
+            "+ the coherent control + the outbox-capable/incapable pair")
 
 
 @check("every template dry-runs clean through the real command line")

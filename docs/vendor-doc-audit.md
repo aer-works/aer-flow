@@ -914,8 +914,11 @@ that needed fixing.
 
 `ClaudeWorkerAdapter.BuildDisallowedTools` maps each withheld grant category to the tools that
 reach it. The categories are independent, so a grant with `WriteFiles = false` and
-`RunShellCommands = true` emits exactly `--disallowedTools Edit,Write,NotebookEdit` and leaves
-`Bash` available. Running **that exact string**:
+`RunShellCommands = true` emitted exactly `--disallowedTools Edit,Write,NotebookEdit` and left
+`Bash` available. (Since [#649](https://github.com/aer-works/aer-flow/issues/649) those three names
+travel on the `PreToolUse` hook instead, so the hook can allow the write landing in
+`AER_OUTPUT_DIR` — the substitution below is unaffected, since it is about what `Bash` reaches.)
+Running **that exact string**:
 
 ```
 --permission-mode acceptEdits --disallowedTools "Edit,Write,NotebookEdit"

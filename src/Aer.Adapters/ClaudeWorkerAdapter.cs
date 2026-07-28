@@ -221,21 +221,6 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     public const string SimpleModeVariable = "CLAUDE_CODE_SIMPLE";
 
     /// <summary>
-    /// The environment variable carrying this invocation's denied-tool list to the <c>PreToolUse</c>
-    /// hook's own process (#543) — the same comma-joined names <see cref="BuildDisallowedTools"/>
-    /// emits for <c>--disallowedTools</c>. Set even when empty; <c>Aer.Cli</c>'s <c>hook-check</c>
-    /// treats an empty/missing value as "nothing withheld" and always allows. A hook process
-    /// inherits the spawning process's environment (confirmed in
-    /// <c>.vendor-survey/corpus/claude__hooks.md</c>: "A hook process inherits the parent
-    /// environment"), which is what makes this reach hook-check at all -- the settings file itself
-    /// is one static, shared file across every spawn (see <see cref="EnsureLaunchConfigFiles"/>), so
-    /// per-invocation data has to travel this way rather than through the file's content.
-    /// <see cref="Aer.Adapters"/> cannot reference <c>Aer.Cli</c> (the CLI depends on the adapters,
-    /// never the reverse), so this name is a plain string contract mirrored on
-    /// <c>HookCheckCommand.DeniedToolsEnvironmentVariable</c> — both sides assert the literal value
-    /// in their own test suite, and the two must agree.
-    /// </summary>
-    /// <summary>
     /// The vendor tag prefixing <see cref="DeniedToolsVariable"/>'s value (#600), so an absent list, an
     /// empty one AER deliberately set, and another vendor's list are three distinguishable things
     /// rather than one that always allowed. Mirrored as a literal in <c>Aer.Cli</c>'s hook command
@@ -244,6 +229,21 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// </summary>
     public const string DeniedToolsVendorTag = "claude";
 
+    /// <summary>
+    /// The environment variable carrying this invocation's denied-tool list to the <c>PreToolUse</c>
+    /// hook's own process (#543) — <see cref="BuildHookDeniedTools"/>'s names, which since #649 are a
+    /// <em>superset</em> of what <see cref="BuildDisallowedTools"/> puts on <c>--disallowedTools</c>:
+    /// the write tools ride this channel only, so the hook can allow the one write that lands in
+    /// <c>AER_OUTPUT_DIR</c>. Set even when empty. A hook process inherits the spawning process's
+    /// environment (confirmed in <c>.vendor-survey/corpus/claude__hooks.md</c>: "A hook process
+    /// inherits the parent environment"), which is what makes this reach hook-check at all -- the
+    /// settings file itself is one static, shared file across every spawn (see
+    /// <see cref="EnsureLaunchConfigFiles"/>), so per-invocation data has to travel this way rather
+    /// than through the file's content. <see cref="Aer.Adapters"/> cannot reference <c>Aer.Cli</c>
+    /// (the CLI depends on the adapters, never the reverse), so this name is a plain string contract
+    /// mirrored on <c>HookCheckCommand.DeniedToolsEnvironmentVariable</c> — both sides assert the
+    /// literal value in their own test suite, and the two must agree.
+    /// </summary>
     public const string DeniedToolsVariable = "AER_HOOK_DENIED_TOOLS";
 
     /// <summary>
@@ -441,8 +441,14 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// The deny-list mirror of <see cref="TryTranslatePermissionGrant"/> (#331): every category the
     /// grant <em>withholds</em> maps to the Claude Code tool(s) that would otherwise reach it, emitted
     /// as <c>--disallowedTools</c>. This is what makes a withheld checkbox true — <c>--allowedTools</c>
-    /// only auto-approves, it does not remove an unlisted tool from the model's reach. <c>NotebookEdit</c>
-    /// is denied alongside <c>Edit</c>/<c>Write</c> because it is also a file-write path.
+    /// only auto-approves, it does not remove an unlisted tool from the model's reach.
+    /// <para>
+    /// <b>Except the write tools, since #649.</b> <c>Edit</c>/<c>Write</c>/<c>NotebookEdit</c> are
+    /// withheld by the <c>PreToolUse</c> hook alone (<see cref="BuildHookDeniedTools"/>), because a
+    /// name on this flag is refused by the CLI before the hook can allow the one write landing in
+    /// <c>AER_OUTPUT_DIR</c>. <c>ChannelPopulationTests</c> holds the two channels to that split
+    /// across all sixteen grants.
+    /// </para>
     /// <para>
     /// <b>Boundary:</b> denial here is by <em>enumeration</em>, not default-deny. It covers the tools a
     /// grant category names; it does not cover tools outside the grant's four categories (<c>Task</c>,
@@ -456,8 +462,9 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// <b>WHAT THIS DOES NOT GUARANTEE — read before relying on it (#529, measured 2026-07-25).</b>
     /// This method bounds <em>which tool runs</em>. It does <em>not</em> bound what the worker can
     /// achieve, because <b>the model substitutes another tool and reaches the same goal</b>. Measured
-    /// with the exact string this method emits for a withheld-write grant,
-    /// <c>--disallowedTools Edit,Write,NotebookEdit</c>: the file was created anyway, by <c>Bash</c>.
+    /// with <c>--disallowedTools Edit,Write,NotebookEdit</c> — the string this method emitted for a
+    /// withheld-write grant before #649 moved those names to the hook: the file was created anyway,
+    /// by <c>Bash</c>.
     /// Because the four categories are independent, <c>Bash</c> stays available whenever
     /// <see cref="PermissionGrant.RunShellCommands"/> is granted — and <c>Bash</c> alone defeats
     /// withheld <em>writes</em>, withheld <em>reads</em> (<c>cat</c>) and withheld <em>network</em>
@@ -518,6 +525,16 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// </remarks>
     internal static string BuildHookDeniedTools(PermissionGrant? grant) =>
         grant is null ? string.Empty : string.Join(',', WithheldToolNames(grant, includeWriteTools: true));
+
+    /// <summary>
+    /// Yes, by the two mechanisms above acting together (#649): the write tools stay pre-approved on
+    /// <c>--allowedTools</c> so the model can invoke them, they are absent from
+    /// <see cref="BuildDisallowedTools"/> so the CLI does not refuse them first, and
+    /// <see cref="BuildHookDeniedTools"/> hands the hook the names it confines to
+    /// <c>AER_OUTPUT_DIR</c>. Verified live: a <c>WriteFiles: false</c> worker wrote its declared
+    /// output and failed to write its workspace.
+    /// </summary>
+    public bool WithheldWritesReachTheOutbox => true;
 
     private static List<string> WithheldToolNames(PermissionGrant grant, bool includeWriteTools)
     {

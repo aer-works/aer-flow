@@ -68,18 +68,60 @@ public class HookCheckCommandTests
 
     [Theory]
     [InlineData("")]
+    [InlineData("   ")]
     [InlineData("not json at all")]
     [InlineData("{}")]
     [InlineData("""{"tool_name": null}""")]
+    [InlineData("""{"tool_name": ""}""")]
     [InlineData("[]")]
-    public void Unreadable_or_shapeless_stdin_fails_open(string stdinContent)
+    [InlineData("""{"tool_name": "Write", "tool_input": {"file_path":""")] // truncated mid-payload
+    public void Shapeless_stdin_fails_closed_because_writes_ride_this_hook_alone(string stdinContent)
     {
+        // Every one of these allowed until #649, on the argument that --disallowedTools covered the
+        // same names anyway. #649 moved the write tools off that flag so this hook could allow the
+        // one write landing in AER_OUTPUT_DIR — which makes a parse failure here an ungated write,
+        // not a duplicate of an enforcement that still exists elsewhere.
         using var stdin = new StringReader(stdinContent);
         using var stderr = new StringWriter();
 
         var exitCode = HookCheckCommand.Execute(stdin, stderr, "claude:Bash,Edit,Write");
 
-        Assert.Equal(HookCheckCommand.AllowedExitCode, exitCode);
+        Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
+        Assert.Contains("rather than allowing it unchecked", stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_well_formed_payload_still_decides_on_the_grant_rather_than_denying_everything()
+    {
+        // The control for the theory above. Without it, a change that denied unconditionally would
+        // pass every fail-closed assertion while making the gate useless — the worker cannot call a
+        // single tool, and the reason string would be identical in both worlds.
+        using var denied = new StringReader("""{"tool_name": "Bash"}""");
+        using var allowed = new StringReader("""{"tool_name": "Read"}""");
+        using var stderr = new StringWriter();
+
+        Assert.Equal(
+            HookCheckCommand.DeniedExitCode,
+            HookCheckCommand.Execute(denied, stderr, "claude:Bash,Edit,Write"));
+        Assert.Equal(
+            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.Execute(allowed, stderr, "claude:Bash,Edit,Write"));
+    }
+
+    [Fact]
+    public void An_unreadable_stdin_denies_rather_than_allowing()
+    {
+        // The IOException arm, which no shaped-input case can reach.
+        using var stderr = new StringWriter();
+
+        var exitCode = HookCheckCommand.Execute(new ThrowingReader(), stderr, "claude:Bash,Edit,Write");
+
+        Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
+    }
+
+    private sealed class ThrowingReader : TextReader
+    {
+        public override string ReadToEnd() => throw new IOException("pipe closed");
     }
 
     [Fact]

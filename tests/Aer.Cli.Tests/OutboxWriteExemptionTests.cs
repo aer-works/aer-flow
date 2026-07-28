@@ -84,6 +84,58 @@ public class OutboxWriteExemptionTests
         Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
     }
 
+    [Fact]
+    public void The_exemption_covers_writes_only_not_every_tool_carrying_a_file_path()
+    {
+        // Read carries a file_path too. Keying the exemption off the field rather than the tool name
+        // silently exempted reads inside the outbox from a withheld ReadFiles — a category #649 never
+        // claimed. The withheld list here grants writes and withholds reads, which is the shape that
+        // separates the two.
+        using var stderr = new StringWriter();
+        var exitCode = HookCheckCommand.Execute(
+            new StringReader(Payload("Read", new { file_path = Path.Combine(Outbox, "review.md") })),
+            stderr, "claude:Read", Outbox);
+
+        Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
+    }
+
+    [Fact]
+    public void A_link_planted_inside_the_outbox_cannot_launder_a_workspace_write()
+    {
+        // Path.GetFullPath normalises `..` textually and never follows a link, so a prefix comparison
+        // on its output reports a path *through* a link as inside the outbox while the write lands
+        // wherever the link points. Demonstrated on a real directory link rather than argued.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-link-").FullName;
+        try
+        {
+            var outbox = Directory.CreateDirectory(Path.Combine(root, "artifacts", "execution_1")).FullName;
+            var workspace = Directory.CreateDirectory(Path.Combine(root, "repo", "src")).FullName;
+
+            var link = Path.Combine(outbox, "escape");
+            try
+            {
+                Directory.CreateSymbolicLink(link, workspace);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Windows needs Developer Mode or elevation to create one. The Linux and macOS CI
+                // legs carry this assertion; skipping here beats asserting nothing anywhere.
+                return;
+            }
+
+            var throughTheLink = Path.Combine(link, "Program.cs");
+
+            Assert.False(OutboxPath.IsInsideOutbox(throughTheLink, outbox));
+            // The control: the same outbox, a target that really is inside it. Without this, a
+            // resolver that answered false for everything would pass the assertion above.
+            Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(outbox, "review.md"), outbox));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>
     /// Builds a hook payload through the serializer rather than as a raw string literal, so a JSON
     /// brace never has to be escaped against C#'s own interpolation syntax — which is a way to write

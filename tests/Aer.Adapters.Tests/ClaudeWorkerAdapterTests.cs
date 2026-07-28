@@ -8,6 +8,7 @@ namespace Aer.Adapters.Tests;
 /// M20 Phase 4's deliverable: unit tests for the refactored, direct shell-less
 /// <see cref="ClaudeWorkerAdapter"/> resolving.
 /// </summary>
+[Collection(ClaudeLaunchConfigCollection.Name)]
 public class ClaudeWorkerAdapterTests
 {
     private static readonly WorkerContract ArchitectContract = new(
@@ -214,7 +215,7 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Equal("Read,Edit,Write,Bash,WebFetch,WebSearch", target.Args[3]);
+        Assert.Equal("Read,Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", target.Args[3]);
     }
 
     [Fact]
@@ -224,7 +225,10 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Equal("Bash(git:*),Bash(npm:*)", target.Args[3]);
+        // The write tools precede the shell entries because #649 pre-approves them unconditionally —
+        // pre-approval is not a ceiling, and the hook is what confines them to AER_OUTPUT_DIR. The
+        // pattern scoping this test is about is unaffected by that.
+        Assert.Equal("Edit,Write,NotebookEdit,Bash(git:*),Bash(npm:*)", target.Args[3]);
     }
 
     [Fact]
@@ -235,7 +239,10 @@ public class ClaudeWorkerAdapterTests
             new WorkerInvocation("Draft a plan.", PermissionScope: "Write,Bash(git:*)", PermissionGrant: grant),
             ArchitectContract);
 
-        Assert.Equal("Read", target.Args[3]);
+        // What this test is about is that the raw scope's Bash(git:*) is gone — the grant won. The
+        // write tools present are the grant's own #649 pre-approval, not the raw scope leaking in.
+        Assert.Equal("Read,Edit,Write,NotebookEdit", target.Args[3]);
+        Assert.DoesNotContain("Bash", target.Args[3], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -247,7 +254,9 @@ public class ClaudeWorkerAdapterTests
             new PermissionGrant(RunShellCommands: true, NetworkAccess: true), out var resolved, out var gapReason);
 
         Assert.True(succeeded);
-        Assert.Equal("Bash,WebFetch,WebSearch", resolved);
+        // Write tools ride the allow list unconditionally since #649; what this test is about is
+        // that translation never returns false for claude, and that the shell/network arms resolve.
+        Assert.Equal("Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", resolved);
         Assert.Null(gapReason);
     }
 
@@ -279,7 +288,9 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Equal("Read", ArgValue(target, "--allowedTools"));
+        // Writes are pre-approved so the hook can be consulted at all, and absent from the deny flag
+        // so the CLI does not refuse them first. Both halves are #649; neither is enforcement.
+        Assert.Equal("Read,Edit,Write,NotebookEdit", ArgValue(target, "--allowedTools"));
         Assert.Equal("Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
     }
 
