@@ -25,8 +25,7 @@ namespace Aer.Adapters;
 /// </para>
 /// <para>
 /// <b>Why the retry:</b> the rename itself can still collide. Two chat sessions starting their first
-/// turn from the same daemon process is a genuine, expected race (#533), and both adapters rewrite
-/// their file on <i>every</i> resolve rather than once per fresh <c>~/.aer</c>. Measured under
+/// turn from the same daemon process is a genuine, expected race (#533). Measured under
 /// #543's own parallel test run: a concurrent <see cref="File.Move(string, string, bool)"/> onto the
 /// same destination throws <see cref="UnauthorizedAccessException"/> on Windows — a transient
 /// sharing violation, not a real permissions problem — while another thread's move or read briefly
@@ -38,6 +37,23 @@ namespace Aer.Adapters;
 /// <see cref="AppContext.BaseDirectory"/>, constant for the process's lifetime), so whichever
 /// attempt wins, the file ends up holding the one content every writer wanted anyway.
 /// </para>
+/// <para>
+/// <b>Why the write is skipped when the content already matches (#667):</b> that same determinism
+/// means a rewrite on every resolve buys nothing and costs a race. The reader that pays for it is
+/// not another writer but the vendor CLI, which opens <c>--settings</c> once at spawn with no retry
+/// of its own; a claude that cannot load its settings file loads no <c>PreToolUse</c> hook, which
+/// <c>gate.broken-hook-fails-open</c> measures as an allow. Measured before the skip: under four
+/// concurrent resolvers, 4239 of 424091 unretried reads of <c>claude-settings.json</c> failed with a
+/// sharing violation, while reads of the never-rewritten <c>claude-mcp.json</c> in the same directory
+/// failed none.
+/// </para>
+/// <para>
+/// <b>This bounds the window rather than closing it.</b> The first resolve against a fresh or drifted
+/// file still writes, and a spawn inside that window can still lose its read; the retry above is what
+/// covers it, and is why it stays. What the skip removes is every resolve after the first — the whole
+/// population in the daemon case, where the file is canonical long before two sessions start a turn
+/// together.
+/// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter
 {
@@ -47,6 +63,11 @@ internal static class AtomicLaunchConfigWriter
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(content);
+
+        if (AlreadyHolds(path, content))
+        {
+            return;
+        }
 
         for (var attempt = 1; ; attempt++)
         {
@@ -78,6 +99,38 @@ internal static class AtomicLaunchConfigWriter
                 TryDeleteTemp(tempPath);
                 throw;
             }
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> already holds exactly <paramref name="content"/>, so there
+    /// is nothing to write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Existence-only would be wrong here: #543 reversed #533's "never overwrite existing content"
+    /// precisely because a stale file -- a pre-#543 <c>{}</c>, or content a worker tampered with
+    /// through its own <c>--add-dir</c> grant -- would otherwise stay installed forever with the gate
+    /// silently disabled. Comparing content keeps that reversal intact while removing the writes that
+    /// change nothing.
+    /// </para>
+    /// <para>
+    /// <b>An unreadable file counts as differing.</b> This probe can take the very sharing violation
+    /// it exists to spare the vendor CLI, and the safe response to "I could not tell" is to write:
+    /// the cost of a redundant write is contention, and the cost of a skipped one is a worker running
+    /// with no gate. It must never throw -- a failed probe is not a failed write.
+    /// </para>
+    /// </remarks>
+    private static bool AlreadyHolds(string path, string content)
+    {
+        try
+        {
+            return File.Exists(path)
+                && string.Equals(File.ReadAllText(path), content, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

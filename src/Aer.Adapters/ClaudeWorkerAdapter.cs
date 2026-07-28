@@ -282,22 +282,24 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// process per command, with no daemon involved at all).
     /// </summary>
     /// <remarks>
-    /// <b>The settings file is always rewritten with canonical content (#543), reversing #533's
-    /// "never overwrite existing content."</b> That was correct while the file held only inert `{}`
-    /// with nothing to lose; now it carries the mandatory `PreToolUse` hook (0029), and "never
+    /// <b>The settings file is left holding canonical content on every resolve (#543), reversing
+    /// #533's "never overwrite existing content."</b> That was correct while the file held only inert
+    /// `{}` with nothing to lose; now it carries the mandatory `PreToolUse` hook (0029), and "never
     /// overwrite" would leave a pre-#543 `{}` -- or any other stale content -- permanently installed,
     /// silently disabling the gate for good on any machine that ran an earlier build even once. The
     /// file is entirely AER-owned (no operator content can live here, per
     /// <see cref="AerPaths.WorkerLaunchConfig"/>'s own doc comment), so there is nothing that
-    /// overwriting could destroy. The MCP config file is untouched by #543 and keeps the old
-    /// once-only semantics.
+    /// overwriting could destroy. Since #667 the write is skipped when the file already holds exactly
+    /// that content -- a narrower thing than "never overwrite", and one that leaves drift correction
+    /// intact; see <see cref="AtomicLaunchConfigWriter"/> for why the redundant write was worth
+    /// removing. The MCP config file is untouched by #543 and keeps the old once-only semantics.
     /// </remarks>
     private static (string SettingsPath, string McpConfigPath) EnsureLaunchConfigFiles()
     {
         Directory.CreateDirectory(AerPaths.WorkerLaunchConfig);
 
         var settingsPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-settings.json");
-        WriteFileAtomically(settingsPath, BuildSettingsJson());
+        AtomicLaunchConfigWriter.Write(settingsPath, BuildSettingsJson());
 
         // The standard empty MCP config shape -- declares no servers, so this adds nothing beyond
         // what claude would otherwise discover on its own.
@@ -369,30 +371,6 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         return JsonSerializer.Serialize(settings);
     }
-
-    /// <summary>
-    /// Writes <paramref name="content"/> to <paramref name="path"/> via a temp file plus
-    /// <see cref="File.Move(string, string, bool)"/>, whose overwrite is a same-volume rename and
-    /// therefore atomic on both Windows and POSIX -- a reader never observes a torn write, which a
-    /// direct <see cref="File.WriteAllText(string, string)"/> onto the final path does not guarantee
-    /// when two callers race to rewrite it (see <see cref="BuildSettingsJson"/>'s remarks on why
-    /// that race is otherwise benign; this is what keeps it benign at the byte level too).
-    /// </summary>
-    /// <remarks>
-    /// The rename itself can still collide: #533's own comment already names two chat sessions
-    /// starting their first turn from the same daemon process as a genuine, expected race, and
-    /// unlike #533's existence-only write this one repeats on every <see cref="Resolve"/>, not once
-    /// per fresh <c>~/.aer</c>. Measured under this PR's own parallel test run: a concurrent
-    /// <see cref="File.Move(string, string, bool)"/> onto the same destination throws
-    /// <see cref="UnauthorizedAccessException"/> on Windows (a transient sharing violation, not a
-    /// real permissions problem) while another thread's move or read briefly holds the destination
-    /// open. Every racing writer in one process produces byte-identical content (a deterministic
-    /// function of <see cref="AppContext.BaseDirectory"/>, constant for the process's lifetime), so
-    /// retrying is correct rather than papering over a real disagreement: whichever attempt
-    /// eventually wins, the file ends up holding the one content every writer wanted anyway.
-    /// </remarks>
-    private static void WriteFileAtomically(string path, string content) =>
-        AtomicLaunchConfigWriter.Write(path, content);
 
     /// <summary>
     /// Writes <paramref name="content"/> to <paramref name="path"/> only if it does not already
