@@ -19,7 +19,11 @@ if (args.Length == 1 && args[0] == "--version")
 if (args.Length >= 1 && args[0] == "hook-check")
 {
     var deniedTools = Environment.GetEnvironmentVariable(HookCheckCommand.DeniedToolsEnvironmentVariable);
-    return HookCheckCommand.Execute(Console.In, Console.Error, deniedTools);
+    // #649: the hook needs to know where this execution's outbox is to allow a withheld write into
+    // it. AER_OUTPUT_DIR reaches this process the same way the denied list does -- a hook subprocess
+    // inherits the worker's environment.
+    var outputDir = Environment.GetEnvironmentVariable("AER_OUTPUT_DIR");
+    return HookCheckCommand.Execute(Console.In, Console.Error, deniedTools, outputDir);
 }
 
 // #554: the same idea for agy, and a separate command because the two vendors share none of the

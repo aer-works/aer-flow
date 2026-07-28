@@ -271,14 +271,16 @@ public class ClaudeWorkerAdapterTests
     [Fact]
     public void The_disallowed_list_is_the_exact_complement_of_the_withheld_categories()
     {
-        // Read granted; write, shell and network all withheld -> each maps to its denied tool(s),
-        // NotebookEdit included as a second file-write path alongside Edit/Write.
+        // Read granted; write, shell and network all withheld. Every withheld category maps to its
+        // denied tool(s) EXCEPT writes, which #649 moved to the hook: named here, the CLI would refuse
+        // the write before the hook could allow the one landing in AER_OUTPUT_DIR. The hook's own list
+        // still carries them — see Withheld_writes_leave_the_flag_and_move_to_the_hooks_list.
         var grant = new PermissionGrant(ReadFiles: true);
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
         Assert.Equal("Read", ArgValue(target, "--allowedTools"));
-        Assert.Equal("Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
+        Assert.Equal("Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
     }
 
     [Fact]
@@ -401,18 +403,20 @@ public class ClaudeWorkerAdapterTests
     /// a separately-derived value, so the two mechanisms can never disagree about what was withheld.
     /// </summary>
     [Fact]
-    public void The_denied_tools_environment_variable_mirrors_disallowedTools_exactly()
+    public void The_denied_tools_environment_variable_is_the_flag_plus_the_write_tools()
     {
         var grant = new PermissionGrant(ReadFiles: true);
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var disallowedToolsArg = ArgValue(target, "--disallowedTools");
+        // #649: the two channels deliberately differ, on writes and only on writes. The flag is what
+        // the CLI enforces directly; the hook list is what it enforces with the target path in hand.
         Assert.NotNull(target.Environment);
-        // #600 prefixes the value with the vendor tag; the names after it must still mirror the flag.
-        Assert.Contains(
-            (ClaudeWorkerAdapter.DeniedToolsVariable, $"claude:{disallowedToolsArg}"),
-            target.Environment);
+        var hookList = target.Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
+
+        // #600's vendor tag and #649's differing contents, on the same value.
+        Assert.Equal("Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
+        Assert.Equal("claude:Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", hookList);
     }
 
     [Fact]
@@ -526,5 +530,48 @@ public class ClaudeWorkerAdapterTests
         Assert.True(exited, "hook-check did not exit within 30s");
 
         return (process.ExitCode, stderr);
+    }
+
+    [Fact]
+    public void Withheld_writes_leave_the_flag_and_move_to_the_hooks_list()
+    {
+        // #649's boundary change, asserted on both channels at once because the whole point is that
+        // they now differ. A write named in --disallowedTools is refused by the CLI before the hook is
+        // consulted, so leaving it there makes the outbox exemption unreachable and a read-only
+        // reviewer unable to produce the artifact it was dispatched for. The hook keeps the names,
+        // because it is what still denies a workspace write.
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var flag = ArgValue(target, "--disallowedTools") ?? string.Empty;
+        var hookList = target.Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
+
+        Assert.DoesNotContain("Write", flag, StringComparison.Ordinal);
+        Assert.DoesNotContain("Edit", flag, StringComparison.Ordinal);
+        Assert.Contains("Write", hookList, StringComparison.Ordinal);
+        Assert.Contains("Edit", hookList, StringComparison.Ordinal);
+        Assert.Contains("NotebookEdit", hookList, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Every_other_withheld_category_still_appears_on_both_channels()
+    {
+        // The control on the change above. Only writes move; a change that dropped every category from
+        // the flag would pass the first assertion and quietly remove the enforcement the flag provides
+        // for the categories where the hook has no path to inspect.
+        var grant = new PermissionGrant(
+            ReadFiles: false, WriteFiles: true, RunShellCommands: false, NetworkAccess: false);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var flag = ArgValue(target, "--disallowedTools")!;
+        var hookList = target.Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
+
+        foreach (var tool in new[] { "Read", "Bash", "WebFetch", "WebSearch" })
+        {
+            Assert.Contains(tool, flag, StringComparison.Ordinal);
+            Assert.Contains(tool, hookList, StringComparison.Ordinal);
+        }
     }
 }

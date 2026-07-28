@@ -54,7 +54,14 @@ public static class HookCheckCommand
     /// value as parameters, rather than reading <see cref="Console"/>/<see cref="Environment"/>
     /// directly, so the decision logic is testable without a real subprocess.
     /// </summary>
-    public static int Execute(TextReader stdin, TextWriter stderr, string? deniedToolsRaw)
+    /// <param name="outboxDirectory">
+    /// This execution's <c>AER_OUTPUT_DIR</c> (#649). A withheld write whose target resolves inside it
+    /// is allowed: that directory is AER's own, outside the workspace, and withholding "modify the
+    /// workspace" was never meant to withhold "write your report". <see langword="null"/> disables the
+    /// exemption entirely, so a hook that cannot tell where the outbox is denies as before.
+    /// </param>
+    public static int Execute(
+        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(stdin);
         ArgumentNullException.ThrowIfNull(stderr);
@@ -96,6 +103,7 @@ public static class HookCheckCommand
         }
 
         string? toolName;
+        string? writeTarget = null;
         try
         {
             using var doc = JsonDocument.Parse(input);
@@ -106,6 +114,7 @@ public static class HookCheckCommand
             }
 
             toolName = toolNameProp.GetString();
+            writeTarget = ReadWriteTarget(doc.RootElement);
         }
         catch (JsonException)
         {
@@ -114,6 +123,16 @@ public static class HookCheckCommand
 
         if (toolName is not null && denied.Contains(toolName))
         {
+            // #649: the outbox is not the workspace. A withheld write landing in AER_OUTPUT_DIR is the
+            // worker producing its declared output, which is the whole reason it was dispatched --
+            // denying it is what forced every reviewing template to grant a workspace write it never
+            // needed. Anything outside stays denied, and OutboxPath resolves both sides so a traversal
+            // cannot walk back into the repo.
+            if (OutboxPath.IsInsideOutbox(writeTarget, outboxDirectory))
+            {
+                return AllowedExitCode;
+            }
+
             stderr.WriteLine(
                 $"AER: the '{toolName}' tool is withheld by this session's permission grant.");
             return DeniedExitCode;
@@ -124,4 +143,31 @@ public static class HookCheckCommand
 
     /// <summary>Mirrors <c>ClaudeWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
     private const string VendorTag = "claude";
+
+    /// <summary>
+    /// The filesystem path a write-family tool is targeting, or <see langword="null"/> for any tool
+    /// that is not writing a file. Claude Code names it <c>file_path</c> on <c>Write</c>/<c>Edit</c>
+    /// and <c>notebook_path</c> on <c>NotebookEdit</c>; a tool exposing neither has no target for the
+    /// outbox exemption to apply to, which is the safe answer for every non-write tool.
+    /// </summary>
+    private static string? ReadWriteTarget(JsonElement root)
+    {
+        if (!root.TryGetProperty("tool_input", out var toolInput) ||
+            toolInput.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var name in WriteTargetProperties)
+        {
+            if (toolInput.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+            {
+                return value.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static readonly string[] WriteTargetProperties = ["file_path", "notebook_path"];
 }

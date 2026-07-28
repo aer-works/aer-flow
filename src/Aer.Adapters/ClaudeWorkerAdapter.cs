@@ -191,7 +191,8 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             Environment:
             [
                 (MaxSubagentSpawnDepthVariable, "1"),
-                (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{disallowed}"),
+                // #600 tags it with the vendor; #649 makes its contents differ from the flag.
+                (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(invocation.PermissionGrant)}"),
                 (SimpleModeVariable, "0"),
             ]);
     }
@@ -481,13 +482,44 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             return string.Empty;
         }
 
+        return string.Join(',', WithheldToolNames(grant, includeWriteTools: false));
+    }
+
+    /// <summary>
+    /// The withheld tool names carried to the <c>PreToolUse</c> hook — the same list
+    /// <see cref="BuildDisallowedTools"/> emits, <b>plus</b> the write tools it deliberately omits (#649).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two lists differ on exactly one category, and the difference is the whole of #649. A write
+    /// named in <c>--disallowedTools</c> is refused by the CLI before the hook is consulted, so the
+    /// hook could never allow a worker to write its own declared output — which is why a read-only
+    /// reviewer could not produce a deliverable, and why every reviewing template granted a workspace
+    /// write it never needed. Withholding writes therefore moves off the flag and onto the hook, which
+    /// can see the target path and allow only the ones landing in <c>AER_OUTPUT_DIR</c>.
+    /// </para>
+    /// <para>
+    /// <b>This is an enforcement-boundary change, not a refactor.</b> Writes were denied by the flag
+    /// measured to actually enforce (<c>gate.allowedtools-is-preapproval-not-ceiling</c> established
+    /// that only the deny list does) and are now denied by the hook. Three things bound it: 0029 makes
+    /// the hook mandatory on every spawned worker, #600 makes a missing or wrong-vendor denied list
+    /// deny rather than allow, and on agy this changes nothing at all — under
+    /// <c>--dangerously-skip-permissions</c> the hook was already the only boundary. Every other
+    /// category keeps its flag denial as well as its hook entry, so only writes move.
+    /// </para>
+    /// </remarks>
+    internal static string BuildHookDeniedTools(PermissionGrant? grant) =>
+        grant is null ? string.Empty : string.Join(',', WithheldToolNames(grant, includeWriteTools: true));
+
+    private static List<string> WithheldToolNames(PermissionGrant grant, bool includeWriteTools)
+    {
         List<string> denied = [];
         if (!grant.ReadFiles)
         {
             denied.Add("Read");
         }
 
-        if (!grant.WriteFiles)
+        if (!grant.WriteFiles && includeWriteTools)
         {
             denied.Add("Edit");
             denied.Add("Write");
@@ -505,7 +537,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             denied.Add("WebSearch");
         }
 
-        return string.Join(',', denied);
+        return denied;
     }
 
     private static string BuildPrompt(string promptTemplate, WorkerContract contract, bool isWindows)
