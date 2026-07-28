@@ -456,6 +456,78 @@ public class GeminiWorkerAdapterTests
     }
 
     [Fact]
+    public void A_shell_grant_narrowed_by_patterns_is_refused_rather_than_widened_to_every_command()
+    {
+        // #624: this adapter cannot express a pattern-scoped shell. Under
+        // --dangerously-skip-permissions the denied tool *names* are the whole boundary (#623), and a
+        // pattern is not a name. The patterns were simply dropped, so an operator narrowing a gemini
+        // worker's shell to `git:*` received an unscoped shell — the widest possible grant, produced
+        // by asking for a narrower one, with no warning at any step.
+        var adapter = new GeminiWorkerAdapter();
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true, RunShellCommands: true,
+            ShellCommandPatterns: ["git:*"], NetworkAccess: true);
+
+        var succeeded = adapter.TryTranslatePermissionGrant(grant, out var resolved, out var gapReason);
+
+        Assert.False(succeeded);
+        Assert.Null(resolved);
+        Assert.NotNull(gapReason);
+        Assert.Contains("ShellCommandPatterns", gapReason!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Resolving_a_pattern_scoped_shell_grant_throws_rather_than_dispatching_an_unscoped_one()
+    {
+        // The refusal has to reach a dispatch, not only the builder UI that calls the translator
+        // directly. Resolve is the path `aer run` takes.
+        var adapter = new GeminiWorkerAdapter();
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true, RunShellCommands: true,
+            ShellCommandPatterns: ["git:*"], NetworkAccess: true);
+
+        Assert.Throws<PermissionGrantUnsupportedException>(
+            () => adapter.Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract));
+    }
+
+    [Fact]
+    public void An_empty_pattern_list_alongside_a_shell_grant_still_translates()
+    {
+        // The control, and the polarity mirror of the refusal above: the two differ only in whether
+        // the pattern list has anything in it. Without this, the refusal passes just as well on an
+        // adapter that rejects every shell grant — which would break the daemon's "auto" permission
+        // mode, the one live shape that grants the shell at all.
+        var adapter = new GeminiWorkerAdapter();
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true, RunShellCommands: true,
+            ShellCommandPatterns: [], NetworkAccess: true);
+
+        var succeeded = adapter.TryTranslatePermissionGrant(grant, out var resolved, out var gapReason);
+
+        Assert.True(succeeded);
+        Assert.Equal("--dangerously-skip-permissions", resolved);
+        Assert.Null(gapReason);
+    }
+
+    [Fact]
+    public void Patterns_without_a_shell_grant_are_not_refused()
+    {
+        // The second control. Patterns only mean anything alongside a shell grant, so a stray list on
+        // a grant that withholds the shell is inert rather than a contradiction — refusing it would
+        // reject a harmless binding, and the UI keeps the text box populated when the box is unticked.
+        var adapter = new GeminiWorkerAdapter();
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true, RunShellCommands: false,
+            ShellCommandPatterns: ["git:*"], NetworkAccess: false);
+
+        var succeeded = adapter.TryTranslatePermissionGrant(grant, out var resolved, out var gapReason);
+
+        Assert.True(succeeded);
+        Assert.Equal("accept-edits", resolved);
+        Assert.Null(gapReason);
+    }
+
+    [Fact]
     public void Resolving_with_shell_and_network_access_emits_dangerously_skip_permissions_as_standalone_argument()
     {
         var grant = new PermissionGrant(RunShellCommands: true, NetworkAccess: true);
