@@ -276,7 +276,7 @@ def _templates_are_dispatchable():
         "template to grant a workspace write it does not need."
     )
     assert dispatch.grant_refusal({**reviewer, "adapter": "gemini"}) is not None, (
-        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #670."
+        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #901."
     )
 
     for label, arm in refusal_arms.items():
@@ -652,34 +652,34 @@ def _recordonce_discriminates():
     rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
 
     restated = {
-        "src/A.cs": [["// #670 says the vendor refuses the write.", "// It does not, measured."]],
-        "docs/B.md": [["#670 records that the vendor does not refuse.", "Measured against the CLI."]],
+        "src/A.cs": [["// #901 says the vendor refuses the write.", "// It does not, measured."]],
+        "docs/B.md": [["#901 records that the vendor does not refuse.", "Measured against the CLI."]],
     }
     assert rec.violations(restated), (
-        "two files each explaining #670 was accepted -- the exact shape this exists for, and "
+        "two files each explaining #901 was accepted -- the exact shape this exists for, and "
         "accepting it makes the checker decorative")
 
     # The control that matters: the FIX for the above must pass, or the checker tells people to
     # delete their links rather than their duplication.
     canonical = {
-        "src/A.cs": [["// See #670."]],
-        "docs/B.md": [["#670 records that the vendor does not refuse.", "Measured against the CLI."]],
+        "src/A.cs": [["// See #901."]],
+        "docs/B.md": [["#901 records that the vendor does not refuse.", "Measured against the CLI."]],
     }
     assert not rec.violations(canonical), (
         "one explanation plus one pointer was rejected -- that is the shape record-once ASKS for")
 
     suppressed = {
-        "src/A.cs": [["// #670 explained here.", "// record-once-ok: #670 canonical is docs/B.md"]],
-        "docs/B.md": [["#670 explained here too.", "Second line."]],
+        "src/A.cs": [["// #901 explained here.", "// record-once-ok: #901 canonical is docs/B.md"]],
+        "docs/B.md": [["#901 explained here too.", "Second line."]],
     }
     assert not rec.violations(suppressed), "record-once-ok did not suppress its own issue"
 
     # And one escape must not silence everything.
     wrong_issue = {
-        "src/A.cs": [["// #671 explained here.", "// record-once-ok: #670 unrelated"]],
-        "docs/B.md": [["#671 explained here too.", "Second line."]],
+        "src/A.cs": [["// #902 explained here.", "// record-once-ok: #901 unrelated"]],
+        "docs/B.md": [["#902 explained here too.", "Second line."]],
     }
-    assert rec.violations(wrong_issue), "record-once-ok for #670 silenced #671"
+    assert rec.violations(wrong_issue), "record-once-ok for #901 silenced #902"
 
     return "4 polarities (restated / canonical / suppressed / wrong-issue suppression)"
 

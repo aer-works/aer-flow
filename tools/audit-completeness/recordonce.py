@@ -1,4 +1,4 @@
-"""Fail a change that explains the same issue in more than one place.
+"""Fail a change that explains the same issue in more than one place (#671).
 
 `record-once` is the gate with the worst compliance record in this repo and the only one with no
 checker. It is prose enforcing prose, so it fails the way prose does: one change restated a single

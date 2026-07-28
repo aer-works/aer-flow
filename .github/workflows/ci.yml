@@ -355,9 +355,7 @@ jobs:
       # checker that failed.
       - name: Prove those assertions discriminate
         run: pixi run audit-controls
-      # #671: the record-once gate had no checker and is the gate that keeps failing -- one change
-      # restated a corrected fact into five files with CI green throughout. Diff-level, so it belongs
-      # here rather than in a test project: it reads the change, not the tree.
+      # See tools/audit-completeness/recordonce.py (#671).
       - name: No fact is explained in more than one place
         run: pixi run audit-recordonce -- origin/${{ github.base_ref || 'main' }}
 

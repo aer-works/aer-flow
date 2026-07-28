@@ -193,8 +193,7 @@ audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
 
-# #671: the record-once gate's checker. Reads the DIFF against origin/main, so it needs full history
-# -- CI's audit job sets fetch-depth: 0 for this reason.
+# Needs full history: it diffs against origin/main. See recordonce.py (#671).
 audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
