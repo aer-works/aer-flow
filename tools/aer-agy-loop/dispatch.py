@@ -38,9 +38,10 @@ Usage:
         [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>] \
         [--dry-run]
 
-Prints the produced output file's content to stdout on success. On failure, prints whatever
-`aer run` reported plus the raw `flow.jsonl` event log (there is usually more diagnostic detail
-there than in the CLI's own terminal summary) to stderr, and exits non-zero.
+Prints the produced output file's content to stdout on success -- or, under `--dry-run`, the dry-run
+report instead, having dispatched nothing. On failure, prints whatever `aer run` reported plus the
+raw `flow.jsonl` event log (there is usually more diagnostic detail there than in the CLI's own
+terminal summary) to stderr, and exits non-zero.
 """
 from __future__ import annotations
 
@@ -135,9 +136,9 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 #
 # Every template grants WriteFiles, the reviewing ones included. A worker satisfies its
 # ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and the three read-only
-# templates withhold the shell as well, so anything less cannot report at all -- see the guard in
-# main() for the arm-by-arm scope. #629 is AER accepting that combination rather than refusing it at
-# bind time.
+# templates withhold the shell as well, so anything less cannot report at all -- see
+# `grant_refusal()` for the arm-by-arm scope. #629 is AER accepting that combination rather than
+# refusing it at bind time.
 #
 # Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
 # translation and the path #596, #611, #623 and #624 all came from. A session that only ever
@@ -206,10 +207,10 @@ BUILT_IN = {
 def resolve(template: dict) -> dict:
     """What a bare `--template X` resolves to: its settings over the built-in defaults.
 
-    Every template currently spells out all eight keys, so nothing is filled today. Read one anyway:
-    `TEMPLATES[name].get("adapter")` on a template that omits it returns None while the dispatch it
-    is describing runs on gemini, which is how a model-pin check came to skip a template it should
-    have validated.
+    Every template currently spells out every key in `BUILT_IN`, so nothing is filled today. Read one
+    anyway: `TEMPLATES[name].get("adapter")` on a template that omits it returns None while the
+    dispatch it is describing runs on gemini, which is how a model-pin check came to skip a template
+    it should have validated.
     """
     return {k: template.get(k, v) for k, v in BUILT_IN.items()}
 
@@ -240,15 +241,17 @@ def grant_refusal(grant: dict) -> str | None:
         #   * claude, write withheld + shell granted -> satisfiable, measured (#529).
         #   * gemini, write withheld + shell + network granted -> SATISFIABILITY measured
         #     2026-07-27: `--no-write-files --run-shell-commands --network-access` produced the
-        #     contract output and `executionSucceeded`. The MECHANISM is still inferred, not
-        #     observed -- `flow.jsonl` records execution lifecycle only, no tool calls, so which
-        #     tool wrote the file is not in the artifact. Do not read
-        #     `--dangerously-skip-permissions` as handing the writes over: GeminiWorkerAdapter's
-        #     fourth doc paragraph retracts that for AER's path -- the PreToolUse hook derives its
-        #     deny list from all four grant categories (`DeniedToolsVariable`) and takes the
-        #     over-grant back, measured by `agy.hook-deny-honoured`. What makes it satisfiable is
-        #     that a granted shell is absent from that deny list, which is #529's substitution
-        #     argument. That the log cannot distinguish the two is #638.
+        #     contract output and `executionSucceeded`. The MECHANISM is NOT established. AER's
+        #     event model carries no tool calls at all (`FlowEvent.cs` / `CoreEvent.cs`), so the
+        #     artifact cannot name the tool that wrote the file -- #638.
+        #     Two explanations survive that evidence, and this comment does not choose between them:
+        #       - the hook denied the write tools and the shell wrote the file (#529's substitution);
+        #       - the hook never fired, so nothing was denied and agy's own write tool wrote it.
+        #     The second is live rather than theoretical: see `GeminiWorkerAdapter`'s
+        #     `BuildDeniedTools` paragraph AND the fail-open one after it -- the hook only withholds
+        #     while it runs, and under `--dangerously-skip-permissions`, which is what this grant
+        #     translates to, there is no backstop behind it. So do not read this run as evidence
+        #     that the over-grant WAS taken back.
         #   * gemini, write + shell both withheld -> still INFERRED. This is the arm the guard
         #     fires on, so it is the one a run cannot reach.
         #
@@ -273,10 +276,14 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     declares the arms in the order argparse silently mis-defaults.
     """
     argv = sys.argv if argv is None else argv
+    # `--list` and `--list-t` are valid abbreviations -- argparse's allow_abbrev defaults to True and
+    # accepts any unambiguous prefix. A literal `"--list-templates" not in argv` test does not see
+    # them, so asking for the catalogue got "the following arguments are required: --prompt-file".
+    listing = any(a.startswith("--list") for a in argv)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--prompt-file", required=("--list-templates" not in argv), type=Path, help="Path to the prompt text sent to the worker.")
-    parser.add_argument("--output-name", required=("--list-templates" not in argv), help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
-    parser.add_argument("--working-directory", required=("--list-templates" not in argv), type=Path, help="Absolute path the dispatched worker treats as its project root.")
+    parser.add_argument("--prompt-file", required=not listing, type=Path, help="Path to the prompt text sent to the worker.")
+    parser.add_argument("--output-name", required=not listing, help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
+    parser.add_argument("--working-directory", required=not listing, type=Path, help="Absolute path the dispatched worker treats as its project root.")
     parser.add_argument("--template", choices=sorted(TEMPLATES), default=None,
                         help="Role preset supplying adapter/model/effort/permissions/timeout. Explicit flags still win. See --list-templates.")
     parser.add_argument("--list-templates", action="store_true", help="Print each template, what it is for, and what it resolves to, then exit.")

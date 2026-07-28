@@ -13,9 +13,10 @@ to cut.
 
     pixi run audit-selfcheck
 
-Each assertion prints the size of the population it examined. A check whose population is empty is
-not a passing check -- it is a check that compared nothing -- and that has to be legible in the
-output rather than reading as OK.
+Each assertion reports the population it examined, and `main()` fails any check that does not --
+because "OK" over an empty population is the failure mode this file exists to catch, and a check
+that quietly stopped comparing looks exactly like one that compared and agreed. A LINT with nothing
+to flag is still a pass; it just has to say what it searched.
 
 WHAT THIS CANNOT CHECK
   * That a check's population is the RIGHT population. It asserts the join holds, never that the
@@ -66,7 +67,14 @@ def load(path: Path, name: str):
     return mod
 
 
-dispatch = load(ROOT / "tools" / "aer-agy-loop" / "dispatch.py", "_selfcheck_dispatch")
+# Module-level so `controls.py` can point a check at a MUTATED COPY in a temp tree. A control that
+# edited these tracked files in place would leave the repo broken if it were interrupted, and the
+# faults being injected are deliberately the kind that make a checker pass -- the worst kind to
+# leave behind.
+DISPATCH_PY = ROOT / "tools" / "aer-agy-loop" / "dispatch.py"
+LINT_DIRS = (ROOT / "tools" / "audit-completeness", ROOT / "tools" / "aer-agy-loop")
+
+dispatch = load(DISPATCH_PY, "_selfcheck_dispatch")
 completeness = load(ROOT / "tools" / "audit-completeness" / "completeness.py", "_selfcheck_audit")
 
 
@@ -91,7 +99,14 @@ def resolved_templates() -> dict[str, dict]:
 # ---------------------------------------------------------------------------------------------
 
 def code_tokens(text: str):
-    """Every token except comments and docstrings -- the file's code, ignoring its prose.
+    """The file's code, ignoring its prose: every token except comments, docstrings, and whitespace.
+
+    WHAT IT CANNOT SEE, stated because the obvious reading of the line above is wrong: NEWLINE,
+    INDENT and DEDENT all strip to empty and are dropped with the rest of the whitespace, so BLOCK
+    STRUCTURE is invisible. `if x:\\n    y = 1\\nz = 2` and `if x:\\n    y = 1\\n    z = 2` produce
+    identical token lists. Moving a statement into or out of a conditional, a loop or a `try` is
+    exactly the edit someone would want a "prose-only?" instrument to catch, and this one does not.
+    The self-test below carries that case as a known-failing polarity rather than leaving it implied.
 
     Turns "this commit only touches comments" from a characterisation into an assertion. It was
     written after a commit was described as prose-only while it had changed two user-visible string
@@ -155,6 +170,36 @@ def control_arm(baseline, mutate, restore, describe=""):
         restore()
 
 
+def is_citation(src, m):
+    """True if the count sits inside a double-quoted span on its own line.
+
+    A quoted count is reporting what some OTHER text said; an unquoted one is this file making a
+    claim. The distinction is not decoration: this check's own comment recording why it exists
+    quotes both historical wrong values, and the first version failed on that sentence. A check
+    that cries wolf about the note explaining it gets deleted.
+
+    Two stated costs. A genuine transcription written inside double quotes is skipped. And only
+    `"` is paired -- prose apostrophes make `'` unpairable -- so a single-quoted citation still
+    reads as a claim.
+
+    Triple-quote delimiters are blanked before pairing, and that is load-bearing rather than tidy: a
+    ONE-LINE docstring wraps its own contents in `"` characters, so a wrong count inside one paired
+    as a quoted span and was skipped as a citation. `controls.py` caught it on its first run, with a
+    planted count the lint reported as clean.
+
+    Writing that example out with a real number here made this very file trip the lint -- the third
+    fixture in a row to do so. Anything illustrating a count must not BE one.
+    """
+    line_start = src.rfind("\n", 0, m.start()) + 1
+    line_end = src.find("\n", m.end())
+    line = src[line_start:line_end if line_end != -1 else len(src)]
+    # Blanked, not stripped, so every offset below still lines up with the real line.
+    line = re.sub(r'"{3}', "   ", line)
+    quotes = [i for i, c in enumerate(line) if c == '"']
+    rel = m.start() - line_start
+    return any(a < rel < b for a, b in zip(quotes[0::2], quotes[1::2]))
+
+
 # ---------------------------------------------------------------------------------------------
 # The enumerable surfaces
 # ---------------------------------------------------------------------------------------------
@@ -181,7 +226,7 @@ def _pins_resolve():
     return f"{len(checked)} of {len(dispatch.TEMPLATES)} templates pin an agy model"
 
 
-@check("no template is refused by dispatch's own permission guards")
+@check("no template is refused, and the guard keeps #529's shape")
 def _templates_are_dispatchable():
     # Calls `grant_refusal` rather than restating its conditions. The restatement asserted
     # `write_files is True` for every template -- STRICTER than the product, which refuses only when
@@ -193,7 +238,29 @@ def _templates_are_dispatchable():
             f"TEMPLATES[{name!r}] resolves to a grant dispatch.py refuses before it can spend, so "
             f"the template cannot be used at all: {refusal}"
         )
-    return f"{len(dispatch.TEMPLATES)} templates"
+
+    # The templates alone CANNOT catch the defect this check exists for. All of them grant write, so
+    # the over-strict `not write_files` rule passes on every one of them -- restoring F1's exact
+    # defect leaves the loop above green. The polarity has to be asserted directly, on the grant that
+    # separates the two rules.
+    #
+    # This arm was a control run in a scratch file, reported in a commit message as verification, and
+    # preserved nowhere -- "established once, in a temp directory, thrown away with the session",
+    # which is the failure `dispatch.py`'s own header exists to stop.
+    permissive = {**dispatch.BUILT_IN, "write_files": False,
+                  "run_shell_commands": True, "network_access": True}
+    assert dispatch.grant_refusal(permissive) is None, (
+        "the #529 grant -- write withheld, shell AND network granted -- is refused. The guard has "
+        "drifted back to the over-strict `not write_files` rule. #529 measured that a granted shell "
+        "produces the file anyway, so this combination is satisfiable and must dispatch."
+    )
+    # And the other side of the `and`, so neither condition can be dropped silently.
+    starved = {**dispatch.BUILT_IN, "write_files": False, "run_shell_commands": False}
+    assert dispatch.grant_refusal(starved) is not None, (
+        "a grant withholding BOTH writes and the shell is allowed through; nothing could satisfy "
+        "the ProducedOutputs contract, so the run would spend its full budget and fail (#629)."
+    )
+    return f"{len(dispatch.TEMPLATES)} templates + both #529 polarities"
 
 
 @check("every template dry-runs clean through the real command line")
@@ -208,7 +275,7 @@ def _templates_dry_run():
     assert dispatch.TEMPLATES, "TEMPLATES is empty -- this compared nothing"
     with tempfile.TemporaryDirectory() as scratch:
         def dry_run(*extra):
-            cmd = [sys.executable, str(ROOT / "tools" / "aer-agy-loop" / "dispatch.py"),
+            cmd = [sys.executable, str(DISPATCH_PY),
                    "--prompt-file", str(ROOT / "CLAUDE.md"), "--output-name", "out",
                    "--working-directory", str(ROOT), "--scratch-root", scratch,
                    "--dry-run", *extra]
@@ -220,28 +287,63 @@ def _templates_dry_run():
                 f"`--template {name} --dry-run` exits {done.returncode}, so the template cannot be "
                 f"dispatched at all:\n{done.stderr.strip()[:400]}"
             )
+            # Exit 0 plus a written bindings.json is ALSO true of a real, successful dispatch. Delete
+            # --dry-run's early return and, on a machine with Aer.Cli.exe built, this check becomes
+            # four live vendor runs -- two agy, one opus at xhigh -- and still prints OK. The marker
+            # is the only thing that distinguishes "stopped" from "spent".
+            assert "DRY RUN -- nothing was dispatched" in done.stdout, (
+                f"`--template {name} --dry-run` exited 0 without printing the dry-run report, so it "
+                "may have DISPATCHED. Cost is the operator's call; a checker must not be able to "
+                "start spending on its own."
+            )
             payload = json.loads((Path(scratch) / "bindings.json").read_text(encoding="utf-8"))
-            grant = payload["worker"]["PermissionGrant"]
+            entry = payload["worker"]
             expected = dispatch.resolve(dispatch.TEMPLATES[name])
             # The bindings are what AER actually reads. A template's dict agreeing with itself proves
-            # nothing about what reached the engine -- precedence runs in between.
+            # nothing about what reached the engine -- precedence runs in between. All eight resolved
+            # keys, not just the permissions: a precedence bug that dropped the MODEL pin is #547's
+            # failure class, and it would be invisible to the only check that reads the bindings.
             for key, field in (("read_files", "ReadFiles"), ("write_files", "WriteFiles"),
                                ("run_shell_commands", "RunShellCommands"),
                                ("network_access", "NetworkAccess")):
-                assert grant[field] == expected[key], (
+                assert entry["PermissionGrant"][field] == expected[key], (
                     f"template {name!r} declares {key}={expected[key]} but the generated bindings "
-                    f"carry {field}={grant[field]} -- precedence dropped it on the way to the engine"
+                    f"carry {field}={entry['PermissionGrant'][field]} -- precedence dropped it on "
+                    "the way to the engine"
                 )
+            assert entry["Adapter"] == expected["adapter"], (
+                f"template {name!r} declares adapter={expected['adapter']!r}; bindings carry "
+                f"{entry['Adapter']!r}")
+            # Model and Effort are OMITTED when unset rather than written null, so absence is the
+            # assertion for a template that pins nothing -- see build_bindings.
+            for key, field in (("model", "Model"), ("effort", "Effort")):
+                if expected[key]:
+                    assert entry.get(field) == expected[key], (
+                        f"template {name!r} pins {key}={expected[key]!r}; bindings carry "
+                        f"{entry.get(field)!r}")
+                else:
+                    assert field not in entry, (
+                        f"template {name!r} sets no {key}, but bindings carry "
+                        f"{field}={entry.get(field)!r} -- AER would pin something nobody chose")
+            # Exercises the hour-split at the same time: "00:90:00" is malformed under .NET's
+            # [-][d.]hh:mm:ss, and every timeout below 60 hides it.
+            hours, minutes = divmod(expected["timeout_minutes"], 60)
+            assert entry["Timeout"] == f"{hours:02d}:{minutes:02d}:00", (
+                f"template {name!r} sets timeout_minutes={expected['timeout_minutes']} but bindings "
+                f"carry Timeout={entry['Timeout']!r}")
 
         # Polarity, through the same surface: a grant nothing can satisfy must be REFUSED, not
-        # dry-run clean. Without this arm the check above passes on a dispatch.py whose guards were
-        # deleted outright.
+        # dry-run clean. Asserted on the MESSAGE, not the exit code -- dispatch.py returns 2 from the
+        # guard AND from the missing-CLI branch, and argparse exits 2 on any command-line error, so a
+        # one-character typo in the flag below would make this arm measure nothing forever.
         refused = dry_run("--no-write-files", "--no-run-shell-commands")
-        assert refused.returncode == 2, (
-            f"a grant withholding both writes and the shell dry-ran with exit {refused.returncode}; "
-            "the guards do not fire through the command line"
+        assert "nothing here can write the output" in refused.stderr, (
+            f"a grant withholding both writes and the shell did not produce the guard's refusal "
+            f"(exit {refused.returncode}). The guards do not fire through the command line, or the "
+            f"arm's own flags no longer parse:\n{refused.stderr.strip()[:300]}"
         )
-    return f"{len(dispatch.TEMPLATES)} templates dispatched dry + 1 refusal polarity"
+    return (f"{len(dispatch.TEMPLATES)} templates x 8 resolved keys vs the generated bindings, "
+            "+ 1 refusal polarity")
 
 
 @check("every permission boolean can be turned OFF from the command line")
@@ -277,7 +379,7 @@ def _both_flag_directions():
     return f"{len(booleans)} booleans x 3 directions (unset/on/off)"
 
 
-@check("PIN_SHAPE rejects English; TOKEN_SHAPE accepts the whole catalogue")
+@check("both shapes accept known pins, and PIN_SHAPE rejects English")
 def _shapes_discriminate():
     # PIN_SHAPE guards the tools/ walk, where `--model` appears in prose and every following word is
     # a candidate, so it requires a digit. TOKEN_SHAPE guards the register's own fence, where
@@ -289,16 +391,29 @@ def _shapes_discriminate():
             f"PIN_SHAPE matches {word!r}, an English word. It is everywhere in this repo, and a "
             "match makes the walk report it as an invalid model pin."
         )
+    # POSITIVE control, against a literal rather than the register. Asserting either shape over
+    # `register_models()` proves nothing: that parser REJECTS any register whose tokens do not all
+    # fullmatch TOKEN_SHAPE (completeness.py's `unshaped` arm), so the population arrives
+    # pre-filtered and the assertion is satisfied by the filter that produced it. With no positive
+    # control, `PIN_SHAPE = re.compile(r"(?!)")` -- a regex matching NOTHING -- left every assertion
+    # in this file green while step 9's tools/ walk silently stopped finding any pin at all.
+    known_pins = ("gemini-3.1-pro-high", "gemini-3.6-flash-low", "claude-sonnet-4-6",
+                  "gpt-oss-120b-medium")
+    for pin in known_pins:
+        assert completeness.PIN_SHAPE.fullmatch(pin), (
+            f"PIN_SHAPE rejects {pin!r}, a real agy model name. The tools/ walk gates on this, so it "
+            "would stop finding pins entirely and step 9 would pass by looking at nothing."
+        )
+        assert completeness.TOKEN_SHAPE.fullmatch(pin), (
+            f"TOKEN_SHAPE rejects {pin!r} -- the register parse would call a correct parse a bad one"
+        )
     models = register_models()
-    for model in models:
-        assert completeness.TOKEN_SHAPE.fullmatch(model), \
-            f"TOKEN_SHAPE rejects {model!r} -- step 9 would call a correct parse a bad one"
-    # PIN_SHAPE is NOT asserted over the whole register: its digit requirement is a deliberate cost,
-    # not a defect, so a digit-free catalogue entry is measured and reported rather than failed.
+    # The register is still read, for the ONE thing it can honestly say: how big PIN_SHAPE's stated
+    # blind spot currently is. Its digit requirement is a deliberate cost, not a defect, so a
+    # digit-free catalogue entry is measured and reported rather than failed.
     blind = sorted(m for m in models if not completeness.PIN_SHAPE.fullmatch(m))
-    for model in models - set(blind):
-        assert completeness.PIN_SHAPE.fullmatch(model), f"PIN_SHAPE rejects {model!r} unexpectedly"
-    note = f"{len(english)} English words rejected, {len(models)} catalogue entries accepted"
+    note = (f"{len(english)} English words rejected, {len(known_pins)} known pins accepted, "
+            f"{len(models)} catalogue entries parsed")
     return note + (f"; PIN_SHAPE is blind to {blind} (digit-free, invisible to the tools/ walk)"
                    if blind else "; no catalogue entry is digit-free, so the walk's blind spot is empty")
 
@@ -341,16 +456,27 @@ def _step9_fails_closed():
 def _no_transcribed_counts():
     # `record-once`: never transcribe a value that lives somewhere authoritative. Both patterns were
     # real -- a docstring said "eight steps" while main() ran nine, and a comment said "(today: 12)"
-    # where the register's fence holds 11.
+    # against the count `register_models()` computes.
     #
     # The population is every python file in this pair of tools, INCLUDING this one, which is where
-    # both live instances were: this file's own docstring said "six assertions" while more than that
-    # were registered, and a comment said "invokes it five times" about a call it made fewer times.
-    # (Both are quoted here, so `is_citation` skips them -- they are also its only live population.)
-    files = sorted((ROOT / "tools" / "audit-completeness").glob("*.py")) + \
-        sorted((ROOT / "tools" / "aer-agy-loop").glob("*.py"))
+    # the live instances were: this file's own docstring said "six assertions" while more were
+    # registered. Those quoted counts are what `is_citation` is exercised on -- three of them, across
+    # two comments, and if it misclassified any one the assert below would fire.
+    #
+    # SCOPE, because the report says "nothing transcribes a count" and that is a claim about these
+    # two patterns, not about the tree: only `<n> steps`, `<n> assertions` and `today: <n>` are
+    # searched. Prose that transcribes a computed value in any other shape is invisible here. Two
+    # such were found by a reviewer and fixed by CITING the expression instead -- which is the actual
+    # remedy, since no pattern list will ever cover English.
+    files = sorted(f for d in LINT_DIRS for f in d.glob("*.py"))
     assert files, "no tooling files found -- the population is empty"
     steps = len(re.findall(r"^def step\d", completeness.read("tools/audit-completeness/completeness.py"), re.M))
+    # `completeness.read` returns "" for a missing path, so a rename or a typo makes this 0 in
+    # silence -- and the first real transcription it ever caught would be reported as "claims 9
+    # steps; 0 are defined". The same "population that silently shrinks" this file checks for
+    # elsewhere.
+    assert steps, ("no `def stepN` functions found in completeness.py -- the value this lint "
+                   "compares against is not being computed, so it cannot judge any claim")
     fence_count = len(register_models())
     words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
              "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
@@ -358,25 +484,6 @@ def _no_transcribed_counts():
     def claimed(tok):
         tok = tok.lower()
         return words.get(tok, int(tok) if tok.isdigit() else None)
-
-    def is_citation(src, m):
-        """True if the count sits inside a double-quoted span on its own line.
-
-        A quoted count is reporting what some OTHER text said; an unquoted one is this file making a
-        claim. The distinction is not decoration: this check's own comment recording why it exists
-        quotes both historical wrong values, and the first version failed on that sentence. A check
-        that cries wolf about the note explaining it gets deleted.
-
-        Two stated costs. A genuine transcription written inside double quotes is skipped. And only
-        `"` is paired -- prose apostrophes make `'` unpairable -- so a single-quoted citation still
-        reads as a claim.
-        """
-        line_start = src.rfind("\n", 0, m.start()) + 1
-        line_end = src.find("\n", m.end())
-        line = src[line_start:line_end if line_end != -1 else len(src)]
-        quotes = [i for i, c in enumerate(line) if c == '"']
-        rel = m.start() - line_start
-        return any(a < rel < b for a, b in zip(quotes[0::2], quotes[1::2]))
 
     found = cited = 0
     for path in files:
@@ -414,17 +521,31 @@ def _no_transcribed_counts():
 
 @check("the two reusable instruments work on themselves")
 def _instruments_self_test():
-    # Discriminating in both directions. The earlier version asserted only that a comment change is
-    # invisible, which stayed green with the docstring branch deleted entirely.
-    assert code_tokens("x = 1  # comment\n") == code_tokens("x = 1  # different comment\n"), \
-        "code_tokens is sensitive to comment text"
-    assert code_tokens('"""doc a."""\nx = 1\n') == code_tokens('"""doc b."""\nx = 1\n'), \
-        "code_tokens is sensitive to docstring text"
-    assert code_tokens("x = 1\n") != code_tokens("x = 2\n"), "code_tokens missed a real code change"
-    # The defect it was written for: a string literal a USER sees is code, not prose, however it is
-    # quoted. Triple-quoted and not in a docstring slot, so quote style alone cannot classify it.
-    assert code_tokens('x = """v1"""\n') != code_tokens('x = """v2"""\n'), \
-        "code_tokens treated a triple-quoted VALUE as prose -- quote style is not position"
+    # A table rather than a run of asserts, so the count in the population line is COUNTED. Written
+    # as `4 code_tokens polarities` it was already wrong one edit later, in the file that lints for
+    # exactly that -- and the lint's patterns do not cover the word "polarities", so it stayed green.
+    #
+    # `same=True` means the two inputs must be indistinguishable to the instrument (prose changed);
+    # `same=False` means it must tell them apart (code changed). Both directions, because a
+    # `code_tokens` that returned [] for everything would satisfy only the first kind.
+    polarities = [
+        ("comment text is invisible", "x = 1  # comment\n", "x = 1  # different comment\n", True),
+        ("docstring text is invisible", '"""doc a."""\nx = 1\n', '"""doc b."""\nx = 1\n', True),
+        ("a real code change is visible", "x = 1\n", "x = 2\n", False),
+        # The defect it was written for: a string literal a USER sees is code, not prose, however it
+        # is quoted. Triple-quoted and not in a docstring slot, so quote style cannot classify it.
+        ("a triple-quoted VALUE is code", 'x = """v1"""\n', 'x = """v2"""\n', False),
+        # The KNOWN blind spot, pinned in the direction it actually behaves so the docstring's stated
+        # limitation is checked rather than merely claimed. If a future edit starts keeping
+        # NEWLINE/INDENT/DEDENT this fails, and the docstring has to be corrected with it.
+        ("block structure is NOT visible (known gap)",
+         "if x:\n    y = 1\nz = 2\n", "if x:\n    y = 1\n    z = 2\n", True),
+    ]
+    for label, a, b, same in polarities:
+        if same:
+            assert code_tokens(a) == code_tokens(b), f"code_tokens: {label} -- it distinguished them"
+        else:
+            assert code_tokens(a) != code_tokens(b), f"code_tokens: {label} -- it missed the change"
 
     try:
         control_arm(lambda: False, lambda: None, lambda: None, describe="deliberately red baseline")
@@ -432,7 +553,9 @@ def _instruments_self_test():
         pass
     else:
         raise AssertionError("control_arm reported a result on a RED baseline -- its whole purpose")
-    return "4 code_tokens polarities + control_arm's red baseline"
+    return (f"{len(polarities)} code_tokens polarities "
+            f"({sum(1 for p in polarities if not p[3])} must discriminate) "
+            "+ control_arm's red baseline")
 
 
 def main() -> int:
@@ -449,9 +572,24 @@ def main() -> int:
         except AssertionError as e:
             FAILURES.append(f"{name}: {e}")
             print(f" !! {name}\n      {e}")
+        except Exception as e:  # noqa: BLE001 -- see below
+            # Not just AssertionError. A check can raise FileNotFoundError (a bindings.json that was
+            # never written), JSONDecodeError, or SystemExit(2) from argparse if a flag it names is
+            # removed. Any of those used to abort the whole run before the remaining checks and
+            # before the summary -- the exit code stayed non-zero, so never a false pass, but the
+            # file's whole premise is that a failure says what failed.
+            FAILURES.append(f"{name}: {type(e).__name__}: {e}")
+            print(f" !! {name}\n      raised {type(e).__name__}: {e}\n"
+                  f"      (a raise, not a failed assertion -- the check itself is broken)")
         else:
-            print(f" OK {name}")
-            if population:
+            if not population:
+                # An assertion that reports no population cannot be distinguished from one that
+                # examined nothing, which is the whole defect class here.
+                FAILURES.append(f"{name}: reported no population")
+                print(f" !! {name}\n      passed without reporting a population -- it cannot be "
+                      "told apart from a check that compared nothing")
+            else:
+                print(f" OK {name}")
                 print(f"      {population}")
 
     if FAILURES:
