@@ -760,8 +760,16 @@ def _recordonce_discriminates():
     """
     rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
 
+    # recordonce takes added lines split BY HUNK, so every fixture says which lines are contiguous.
+    # Written out rather than defaulted, because contiguity is now load-bearing: a fixture that
+    # silently rejoined two hunks would exercise the fabricated-shingle path the split exists to
+    # close, and would do it invisibly.
+    def one(*lines: str) -> list[list[str]]:
+        """One hunk: every line contiguous with the next."""
+        return [list(lines)]
+
     sentence = "the vendor refuses the call before any hook is ever consulted here"
-    restated = {"src/A.cs": [f"// {sentence}"], "docs/B.md": [sentence]}
+    restated = {"src/A.cs": one(f"// {sentence}"), "docs/B.md": one(sentence)}
 
     # Assembled, not written out: `SUPPRESS` has no notion of context, so a literal marker in this
     # file would exempt the whole of this file from the checker it is a fixture for. Same reason
@@ -792,27 +800,43 @@ def _recordonce_discriminates():
         # A restatement that reaches a code file only through its comments still has to be found:
         # the measured case spread one corrected fact across `///` comments and markdown alike.
         ("prose restated across a comment and a doc",
-         {"src/C.cs": [f"/// {sentence}"], "docs/D.md": [f"- {sentence}"]}, True),
+         {"src/C.cs": one(f"/// {sentence}"), "docs/D.md": one(f"- {sentence}")}, True),
+        # The measured shape `groups` is built around: the restatement wrapped mid-sentence in every
+        # file it landed in, so a run has to span consecutive comment lines. Guards contiguity from
+        # the other side -- a break rule that split per line would satisfy every arm below and fail
+        # the only thing this checker was ever built to catch.
+        ("a sentence wrapped across two comment lines",
+         {"src/W.cs": one("/// the vendor refuses the call before any hook",
+                          "/// is ever consulted here at all"),
+          "docs/W.md": one("the vendor refuses the call before any hook is ever consulted here "
+                           "at all")}, True),
+        # Was a FALSE POSITIVE until hunks were split apart, and measured as one: neither hunk holds
+        # nine words, so the only shingle either file can produce is the join -- a word sequence
+        # present in no line of either. Two files "sharing" it shared nothing. The same fabrication
+        # also reached the `e.g. "..."` sample printed under real findings.
+        ("two files sharing only a cross-hunk join",
+         {p: [["/// the gate refuses a payload"], ["/// it cannot judge at all"]]
+          for p in ("src/H1.cs", "src/H2.cs")}, False),
         # Was a false positive under the reference-counting design: one issue cited in many files
         # is the register working, and ten different sentences share no wording.
         ("one issue cited in ten files",
-         {f"src/F{i}.cs": [f"{line} See #901."] for i, line in enumerate(distinct)}, False),
+         {f"src/F{i}.cs": one(f"{line} See #901.") for i, line in enumerate(distinct)}, False),
         # Was a false positive under the first shingling design: duplicated test setup is ordinary.
         ("duplicated test setup code",
-         {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
-                             "using var stderr = new StringWriter();"] for i in range(3)}, False),
+         {f"tests/T{i}.cs": one("var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
+                                "using var stderr = new StringWriter();") for i in range(3)}, False),
         # The three shapes the first draft failed CI on, for the reason recorded beside `TABLE_ROW`
         # in recordonce.py. The first of them fired on every new decision record.
         ("a decision record, its index row and its plan row",
-         {"docs/decisions/0042-x.md": [f"# 0042 - {title}"],
-          "docs/decisions/README.md": [f"| [0042](0042-x.md) | {title} | M26 |"],
-          "docs/plan.md": [f"| 0042 | {title} | done |"]}, False),
+         {"docs/decisions/0042-x.md": one(f"# 0042 - {title}"),
+          "docs/decisions/README.md": one(f"| [0042](0042-x.md) | {title} | M26 |"),
+          "docs/plan.md": one(f"| 0042 | {title} | done |")}, False),
         ("a regenerated banner in two generated files",
-         {"src/Aer.Ui.Core/Generated.cs": banner, "src/Aer.Mobile/lib/tokens.dart": banner}, False),
+         {"src/Aer.Ui.Core/Generated.cs": [banner], "src/Aer.Mobile/lib/tokens.dart": [banner]}, False),
         ("the same command block fenced in two runbooks",
-         {"docs/runbooks/a.md": fenced, "docs/runbooks/b.md": fenced}, False),
+         {"docs/runbooks/a.md": [fenced], "docs/runbooks/b.md": [fenced]}, False),
         ("a file a marker exempts",
-         {"src/A.cs": [f"// {sentence}", marker], "docs/B.md": [sentence]}, False),
+         {"src/A.cs": one(f"// {sentence}", marker), "docs/B.md": one(sentence)}, False),
     ]
     for label, by_file, fires in polarities:
         found = rec.violations(by_file)
@@ -822,7 +846,7 @@ def _recordonce_discriminates():
             assert not found, f"record-once: {label} was rejected -- {found}"
 
     # The exemption has to be visible, or a silenced run reads exactly like a clean one.
-    assert rec.groups({"src/A.cs": [marker]})[1] == ["src/A.cs"], (
+    assert rec.groups({"src/A.cs": one(marker)})[1] == ["src/A.cs"], (
         "record-once: a suppressed file was not reported as suppressed")
 
     return (f"{len(polarities)} record-once polarities "

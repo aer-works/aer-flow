@@ -79,23 +79,54 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 GENERATED = re.compile(r"GENERATED FILE", re.IGNORECASE)
 
 
-def prose_words(path: str, lines: list[str]) -> list[str]:
-    """The added text of one file, as a single normalised word stream, exclusions applied."""
-    if any(GENERATED.search(line) for line in lines[:8]):
+def prose_runs(path: str, hunks: list[list[str]]) -> list[list[str]]:
+    """The added prose of one file as CONTIGUOUS runs, each a normalised word stream.
+
+    Runs, not one stream per file, because a shingle that spans a break is evidence of a sentence
+    nobody wrote. Measured, twice, before this was changed:
+
+      * A `.py` file whose real comment `# the gate refuses a payload it cannot judge` was followed
+        by an unrelated docstring line `# a hash inside a docstring` (read because `COMMENT` matches
+        a leading `#` with no notion of context) produced FIVE shingles, every one of them a word
+        sequence present in no line of the file.
+      * Two `///` comments 400 lines apart in one `.cs` file -- two hunks, handed over adjacent with
+        nothing marking the gap -- produced five more. This one needs no docstring and no Python: it
+        is the ordinary shape of any change that edits two places in a file.
+
+    Both could be reported as the `e.g. "..."` sample under a real finding, and both could make two
+    files share a shingle neither of them contains. A checker whose evidence can be fabricated is
+    not one anybody should act on.
+
+    A run breaks at a hunk boundary, at a non-prose line, and at a prose line carrying no words --
+    an empty `///` or a blank markdown line. That last one is a deliberate choice rather than a
+    side effect: it is a paragraph break, two paragraphs are two passages, and a sentence cannot
+    wrap across one. It can only ever shrink the shingle set, never invent a match.
+    """
+    if any(GENERATED.search(line) for hunk in hunks for line in hunk[:8]):
         return []
 
     markdown = path.endswith(PROSE_EVERYWHERE)
-    words: list[str] = []
-    fenced = False
-    for line in lines:
-        if markdown and FENCE.match(line):
-            fenced = not fenced
-            continue
-        if fenced or (markdown and TABLE_ROW.match(line)):
-            continue
-        if markdown or COMMENT.match(line):
-            words.extend(normalise(line))
-    return words
+    runs: list[list[str]] = []
+    for lines in hunks:
+        current: list[str] = []
+        fenced = False
+        for line in lines:
+            words: list[str] = []
+            if markdown and FENCE.match(line):
+                fenced = not fenced
+            elif fenced or (markdown and TABLE_ROW.match(line)):
+                pass
+            elif markdown or COMMENT.match(line):
+                words = normalise(line)
+
+            if words:
+                current.extend(words)
+            elif current:
+                runs.append(current)
+                current = []
+        if current:
+            runs.append(current)
+    return runs
 
 
 def normalise(line: str) -> list[str]:
@@ -164,14 +195,19 @@ def prove(sha: str, expected: tuple[tuple[str, ...], ...]) -> tuple[bool, list[s
     return False, detail
 
 
-def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[str]]:
-    """Every line this change adds, keyed by file. `--unified=0` so no context line is counted."""
+def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[list[str]]]:
+    """Every line this change adds, keyed by file and SPLIT BY HUNK.
+
+    `--unified=0` so no context line is counted. The split matters and is not bookkeeping: two hunks
+    are two places in the file, and text joined across them is text nobody wrote. See `prose_runs`.
+    """
     out = subprocess.run(
         ["git", "diff", "--unified=0", f"{base}...{head}"],
         capture_output=True, text=True, check=True).stdout
 
-    by_file: dict[str, list[str]] = collections.defaultdict(list)
+    by_file: dict[str, list[list[str]]] = collections.defaultdict(list)
     current = None
+    hunk: list[str] | None = None
     for line in out.splitlines():
         if line.startswith("+++"):
             # git quotes a path holding non-ASCII or shell-special characters: `+++ "b/docs/café.md"`.
@@ -179,25 +215,32 @@ def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[str]]:
             # added lines were appended to a stream belonging to a different path.
             path = line[4:].strip()
             current = None if path == "/dev/null" else PATH_PREFIX.sub("", path.strip('"'), count=1)
+            hunk = None
+        elif line.startswith("@@"):
+            hunk = None
         elif line.startswith("+") and current:
-            by_file[current].append(line[1:])
+            if hunk is None:
+                hunk = []
+                by_file[current].append(hunk)
+            hunk.append(line[1:])
     return by_file
 
 
-def groups(by_file: dict[str, list[str]]) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]],
-                                                    list[str]]:
+def groups(by_file: dict[str, list[list[str]]]) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]],
+                                                          list[str]]:
     """File-sets that share at least one shingle, plus the files a marker took out of the run."""
-    # Each file's added text is shingled as one stream rather than per line: the measured
-    # restatement wrapped mid-sentence in every file it landed in.
+    # Shingled across each contiguous run rather than per line, because the measured restatement
+    # wrapped mid-sentence in every file it landed in -- and no further than a run, because text
+    # joined across a break is text nobody wrote. See `prose_runs`.
     where: dict[tuple[str, ...], set[str]] = collections.defaultdict(set)
     suppressed = []
-    for path, lines in by_file.items():
-        if any(SUPPRESS.search(line) for line in lines):
+    for path, hunks in by_file.items():
+        if any(SUPPRESS.search(line) for hunk in hunks for line in hunk):
             suppressed.append(path)
             continue
-        words = prose_words(path, lines)
-        for i in range(len(words) - SHINGLE + 1):
-            where[tuple(words[i:i + SHINGLE])].add(path)
+        for words in prose_runs(path, hunks):
+            for i in range(len(words) - SHINGLE + 1):
+                where[tuple(words[i:i + SHINGLE])].add(path)
 
     # One entry per set of files, not per shingle: a restated paragraph produces dozens of
     # overlapping shingles and printing each would bury the finding.
@@ -208,7 +251,7 @@ def groups(by_file: dict[str, list[str]]) -> tuple[dict[tuple[str, ...], list[tu
     return by_group, sorted(suppressed)
 
 
-def violations(by_file: dict[str, list[str]]) -> list[str]:
+def violations(by_file: dict[str, list[list[str]]]) -> list[str]:
     by_group, _ = groups(by_file)
 
     # A restated passage spanning four files also produces a group for every pair and triple within

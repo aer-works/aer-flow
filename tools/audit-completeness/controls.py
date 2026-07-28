@@ -310,6 +310,22 @@ def _loading_recordonce_as(mutate):
     return swap(selfcheck, "load", patched)
 
 
+def replacing(mod, name, value):
+    """setattr, but refuse to invent an attribute that is not already there.
+
+    A mutation is only a mutation if something reads what it replaced. Renaming `prose_words` to
+    `prose_runs` left `setattr(mod, "prose_words", ...)` quietly defining a function nobody calls, so
+    the arm below ran an UNMUTATED checker and reported the green as evidence the check discriminates.
+    `audit-controls` caught it, one layer up, which is the only reason it is not still there.
+
+    Bare `setattr` cannot tell a rename from a working control, and neither can a reader. This can.
+    """
+    assert hasattr(mod, name), (
+        f"control tried to replace {mod.__name__}.{name}, which does not exist -- renamed? "
+        "A mutation of an attribute nothing reads is not a control.")
+    setattr(mod, name, value)
+
+
 MOBILE_FILTER = "the mobile job's steps live where its path filter can see them"
 
 
@@ -385,7 +401,7 @@ RECORDONCE_PIN = "the record-once checker still finds the passages it found in a
 
 @control(RECORDONCE, "the checker stops finding anything, so every restatement ships green")
 def _recordonce_blind():
-    with _loading_recordonce_as(lambda m: setattr(m, "violations", lambda by_file: [])):
+    with _loading_recordonce_as(lambda m: replacing(m, "violations", lambda by_file: [])):
         yield
 
 
@@ -394,8 +410,14 @@ def _recordonce_reads_code():
     # The false-positive direction, and the one a fires-on-restatement check cannot see alone: a
     # checker that flags every shared `using var stderr = new StringWriter();` blocks real work
     # while looking exactly as healthy as one that works.
+    #
+    # Reads every line as prose while leaving contiguity intact -- one run per hunk, as the real
+    # thing produces. Injecting both faults at once would let a contiguity regression masquerade as
+    # this one, and this arm is named for exactly one of them.
     def read_everything(mod):
-        mod.prose_words = lambda path, lines: [w for line in lines for w in mod.normalise(line)]
+        replacing(mod, "prose_runs",
+                  lambda path, hunks: [[w for line in hunk for w in mod.normalise(line)]
+                                       for hunk in hunks])
     with _loading_recordonce_as(read_everything):
         yield
 
@@ -403,13 +425,13 @@ def _recordonce_reads_code():
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
     # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.
-    with _loading_recordonce_as(lambda m: setattr(m, "TABLE_ROW", re.compile(r"(?!)"))):
+    with _loading_recordonce_as(lambda m: replacing(m, "TABLE_ROW", re.compile(r"(?!)"))):
         yield
 
 
 @control(RECORDONCE_PIN, "the pin is emptied, so the checker can stop finding anything and stay green")
 def _recordonce_pin_is_vacuous():
-    with _loading_recordonce_as(lambda m: setattr(m, "PROVEN_GROUPS", ())):
+    with _loading_recordonce_as(lambda m: replacing(m, "PROVEN_GROUPS", ())):
         yield
 
 
