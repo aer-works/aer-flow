@@ -45,7 +45,19 @@ fmt-check = { cmd = "dotnet format --verify-no-changes", depends-on = ["fmt-chec
 # token file, so running this is a deliberate act after editing tokens rather than a build side
 # effect that rewrites tracked files under everyone.
 tokens = "dotnet run --project tools/Aer.DesignTokens"
-lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core", "lint-sidecar"] }
+# --no-incremental is load-bearing, not a purity knob (#687). MSBuild decides a project is up to date
+# by comparing timestamps, so a source file OLDER than the assembly built from it is silently skipped
+# and `dotnet build -warnaserror` prints "Build succeeded. 0 Error(s)" for code that does not compile.
+# Measured: this reported success locally on the exact tree CI then rejected with CS8604, on both
+# platforms. Mutation testing is what puts a tree in that state, and the v-and-v gate calls for it on
+# every behaviour change -- edit, build the mutant, restore the original, and the restored file can
+# predate the mutant's output. CI never sees it because a fresh checkout has nothing to skip, which is
+# exactly why the local gate has to be the honest one. ~10s on this solution; a gate that can certify
+# a non-compiling tree is worth nothing at any speed.
+#
+# Partial cover for `test` too, when run through `gates`: lint precedes it and forces the rebuild, so
+# the suite then runs against fresh assemblies. `pixi run test` on its own is still exposed.
+lint = { cmd = "dotnet build -warnaserror --no-incremental", depends-on = ["build-core", "lint-sidecar"] }
 
 # M21 Phase 2 (#232): mobile-build produces a debug APK only — Aer.Mobile is sideload-only for this
 # milestone (no Play Store signing/release config exists).
@@ -195,6 +207,16 @@ audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
 
 # Needs full history: it diffs against origin/main. See recordonce.py (#671).
 audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }
+
+# Every local gate, one exit code. Report THIS command's exit status, never a per-gate line scraped
+# out of the combined output -- see tools/gates/gates.py for the two occasions that went wrong.
+gates = { cmd = "python -u tools/gates/gates.py" }
+gates-fast = { cmd = "python -u tools/gates/gates.py --fast" }
+gates-selftest = { cmd = "python -u tools/gates/gates.py --selftest" }
+
+# One-time per clone: point git at the committed hooks. .git/hooks is not version-controlled, so a
+# pre-push gate left there binds one machine and silently protects nobody else.
+setup-hooks = { cmd = "git config core.hooksPath .githooks" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,

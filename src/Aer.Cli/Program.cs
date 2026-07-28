@@ -23,7 +23,10 @@ if (args.Length >= 1 && args[0] == "hook-check")
     // it. AER_OUTPUT_DIR reaches this process the same way the denied list does -- a hook subprocess
     // inherits the worker's environment.
     var outputDir = Environment.GetEnvironmentVariable("AER_OUTPUT_DIR");
-    return HookCheckCommand.Execute(Console.In, Console.Error, deniedTools, outputDir);
+    // #679: where a granted write may land -- see HookCheckCommand.Execute's own parameter docs for
+    // what its absence means.
+    var workspaceDir = Environment.GetEnvironmentVariable(HookCheckCommand.WorkspaceEnvironmentVariable);
+    return HookCheckCommand.Execute(Console.In, Console.Error, deniedTools, outputDir, workspaceDir);
 }
 
 // #554: the same idea for agy, and a separate command because the two vendors share none of the
@@ -34,7 +37,11 @@ if (args.Length >= 1 && args[0] == "hook-check")
 if (args.Length >= 1 && args[0] == "agy-hook-check")
 {
     var deniedTools = Environment.GetEnvironmentVariable(AgyHookCheckCommand.DeniedToolsEnvironmentVariable);
-    return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools);
+    // #679: the outbox reaches this gate for the GRANTED-write bound only. #649's withheld-write
+    // exemption remains claude-only and is not extended here.
+    var agyOutputDir = Environment.GetEnvironmentVariable("AER_OUTPUT_DIR");
+    var agyWorkspaceDir = Environment.GetEnvironmentVariable(HookCheckCommand.WorkspaceEnvironmentVariable);
+    return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools, agyOutputDir, agyWorkspaceDir);
 }
 
 var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };

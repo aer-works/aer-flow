@@ -1,8 +1,8 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Whether a write a worker is attempting lands in its own outbox — the <c>AER_OUTPUT_DIR</c> AER
-/// allocated for this execution — rather than in the workspace (#649).
+/// Whether a path a worker is attempting to write resolves inside a directory AER named — its outbox
+/// (<c>AER_OUTPUT_DIR</c>, #649) or its workspace (#679).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,14 +31,19 @@ namespace Aer.Cli;
 public static class OutboxPath
 {
     /// <summary>
-    /// True when <paramref name="candidate"/> resolves to a location inside
-    /// <paramref name="outboxDirectory"/>. Fails closed: an unset outbox, an empty candidate, or a
-    /// path the OS refuses to resolve all answer false, so an unanswerable question denies rather
-    /// than allows.
+    /// True when <paramref name="candidate"/> resolves to a location inside <paramref name="root"/>.
+    /// Fails closed: an unset root, an empty candidate, or a path the OS refuses to resolve all
+    /// answer false, so an unanswerable question denies rather than allows.
     /// </summary>
-    public static bool IsInsideOutbox(string? candidate, string? outboxDirectory)
+    /// <remarks>
+    /// Containment against an arbitrary root, not against the outbox specifically. #649 needed it for
+    /// the outbox and named it for that; #679 asks the same question of a worker's workspace, and the
+    /// resolution this does — links followed component by component, separator-terminated prefix — is
+    /// what either boundary needs to be a boundary rather than a string comparison.
+    /// </remarks>
+    public static bool IsInside(string? candidate, string? root)
     {
-        if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(outboxDirectory))
+        if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(root))
         {
             return false;
         }
@@ -50,17 +55,25 @@ public static class OutboxPath
         // created that path inside its workspace and wrote there, and this check called it contained.
         // The exemption would have laundered a workspace write. AER always has an absolute path to
         // give; anything else is a question this cannot answer, so it denies.
-        if (!Path.IsPathRooted(outboxDirectory))
+        if (!Path.IsPathRooted(root))
         {
             return false;
         }
 
         string resolvedCandidate;
-        string resolvedOutbox;
+        string resolvedRoot;
         try
         {
-            resolvedCandidate = ResolveLinks(Path.GetFullPath(candidate));
-            resolvedOutbox = ResolveLinks(Path.GetFullPath(outboxDirectory));
+            // Null is "this path could not be resolved", never "resolved to nothing" — a link cycle
+            // is the case, and it must not be answered with a half-walked path.
+            if (ResolveLinks(Path.GetFullPath(candidate)) is not { } candidateResolved ||
+                ResolveLinks(Path.GetFullPath(root)) is not { } rootResolved)
+            {
+                return false;
+            }
+
+            resolvedCandidate = candidateResolved;
+            resolvedRoot = rootResolved;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException
                                       or PathTooLongException or IOException or UnauthorizedAccessException)
@@ -69,9 +82,9 @@ public static class OutboxPath
         }
 
         // The trailing separator is what stops `execution_1-evil` counting as inside `execution_1`.
-        var outboxWithSeparator = resolvedOutbox.EndsWith(Path.DirectorySeparatorChar)
-            ? resolvedOutbox
-            : resolvedOutbox + Path.DirectorySeparatorChar;
+        var rootWithSeparator = resolvedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? resolvedRoot
+            : resolvedRoot + Path.DirectorySeparatorChar;
 
         // Case-insensitive on Windows only: on Linux `Report.md` and `report.md` are different files,
         // and treating them as one would let a denied path through under a different case.
@@ -79,12 +92,13 @@ public static class OutboxPath
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
-        return resolvedCandidate.StartsWith(outboxWithSeparator, comparison);
+        return resolvedCandidate.StartsWith(rootWithSeparator, comparison);
     }
 
     /// <summary>
-    /// <paramref name="fullPath"/> with every existing path component's link target followed, so a
-    /// link cannot make a path outside the outbox look like one inside it.
+    /// <paramref name="fullPath"/> with every link followed — each component of the path, and each
+    /// component of whatever a link resolves to — so no chain of links makes a path outside a root
+    /// look like one inside it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -105,7 +119,45 @@ public static class OutboxPath
     /// way down.
     /// </para>
     /// </remarks>
-    private static string ResolveLinks(string fullPath)
+    /// <returns>
+    /// The fully resolved path, or <see langword="null"/> when the link budget is exhausted — a cycle,
+    /// or a chain deeper than any real tree.
+    /// </returns>
+    private static string? ResolveLinks(string fullPath)
+    {
+        // Re-walked until it stops changing, because one pass is not enough: a link whose TARGET
+        // path itself contains a link was resolved by ResolveOnce's per-component walk on the way
+        // down, but the substituted target was then appended without walking ITS components.
+        // Measured bypass, from an independent review of #679 — `<ws>/l` -> `<ws>/pub/x.txt` with
+        // `<ws>/pub` a link out of the workspace was reported inside it, and the bytes landed
+        // outside. The direct form denied correctly, so the second link was what laundered it.
+        var resolved = fullPath;
+        for (var pass = 0; pass < MaxLinkHops; pass++)
+        {
+            if (ResolveOnce(resolved) is not { } next)
+            {
+                // A hop budget inside the walk was exhausted; see the return below.
+                return null;
+            }
+
+            if (string.Equals(next, resolved, StringComparison.Ordinal))
+            {
+                return resolved;
+            }
+
+            resolved = next;
+        }
+
+        // Budget exhausted: a cycle, or a chain deeper than any real tree. An earlier version returned
+        // whatever it had reached and asserted that "cannot match a root prefix by construction", which
+        // was simply false — two links inside a root pointing at each other resolve, every pass, to a
+        // path still inside that root, so the half-walked answer would have ALLOWED. Nothing is known
+        // about this path, and the one posture this file holds everywhere else is that an unanswerable
+        // question denies.
+        return null;
+    }
+
+    private static string? ResolveOnce(string fullPath)
     {
         var root = Path.GetPathRoot(fullPath);
         if (string.IsNullOrEmpty(root))
@@ -126,7 +178,12 @@ public static class OutboxPath
                 ? current + segment
                 : current + Path.DirectorySeparatorChar + segment;
 
-            current = FollowLink(current);
+            if (FollowLink(current) is not { } followed)
+            {
+                return null;
+            }
+
+            current = followed;
         }
 
         return current;
@@ -137,10 +194,12 @@ public static class OutboxPath
     /// </summary>
     /// <remarks>
     /// Hop-limited rather than recursive: a link cycle would otherwise spin here, and this runs on
-    /// every write a withheld-write worker attempts. Exhausting the limit returns whatever was
-    /// reached, which cannot match the outbox prefix and therefore denies.
+    /// every write a withheld-write worker attempts. Exhausting the limit returns <see langword="null"/>
+    /// so the caller denies — returning the path reached is actively wrong for the case that motivates
+    /// the limit, since a two-link cycle lands back on its own starting path after an even number of
+    /// hops, which the caller cannot tell apart from a path that needed no resolving at all.
     /// </remarks>
-    private static string FollowLink(string path)
+    private static string? FollowLink(string path)
     {
         for (var hop = 0; hop < MaxLinkHops; hop++)
         {
@@ -159,7 +218,7 @@ public static class OutboxPath
             path = Path.GetFullPath(target, Path.GetDirectoryName(path) ?? path);
         }
 
-        return path;
+        return null;
     }
 
     private const int MaxLinkHops = 16;

@@ -12,6 +12,12 @@ public class OutboxWriteExemptionTests
     private static readonly string Outbox =
         Path.Combine(Path.GetTempPath(), "aer-task", "artifacts", "execution_1");
 
+    /// <summary>
+    /// #679's workspace. Deliberately NOT a parent of <see cref="Outbox"/>: the two arms of the bound
+    /// have to be separable, or a test cannot tell which one allowed a write.
+    /// </summary>
+    private static readonly string Workspace = Path.Combine(Path.GetTempPath(), "aer-workspace");
+
     private static int Decide(string toolName, string? targetPath, string? outbox = null)
     {
         var payload = Payload(toolName, targetPath is null ? null : new { file_path = targetPath });
@@ -66,7 +72,7 @@ public class OutboxWriteExemptionTests
         // allowed on a missing path would turn every withheld non-write tool into an allow.
         //
         // Scope, because the name suggests more than it proves: this guards
-        // IsInsideOutbox(null, ...) == false and nothing else. It passes with or without the
+        // IsInside(null, ...) == false and nothing else. It passes with or without the
         // tool-name gate, since Bash carries no file_path either way — the gate itself is guarded by
         // The_exemption_covers_writes_only_not_every_tool_carrying_a_file_path.
         using var stderr = new StringWriter();
@@ -115,7 +121,7 @@ public class OutboxWriteExemptionTests
         // nothing, and failed the contract after paying for the run in full.
         const string relative = @"task2\artifacts\execution_1";
 
-        Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(relative, "review.md"), relative));
+        Assert.False(OutboxPath.IsInside(Path.Combine(relative, "review.md"), relative));
 
         // And the operator is told which of the two things went wrong. The generic withheld-tool
         // message sends them to their permission grant for a fault that is in their --task-dir.
@@ -129,7 +135,7 @@ public class OutboxWriteExemptionTests
 
         // Control: the same shape rooted, which is what AER actually emits, still resolves.
         var rooted = Path.Combine(Path.GetTempPath(), "aer-task", "artifacts", "execution_1");
-        Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(rooted, "review.md"), rooted));
+        Assert.True(OutboxPath.IsInside(Path.Combine(rooted, "review.md"), rooted));
     }
 
     [Fact]
@@ -166,8 +172,8 @@ public class OutboxWriteExemptionTests
                 Assert.False(Directory.Exists(link));
             }
 
-            Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(link, "Program.cs"), outbox));
-            Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(outbox, "review.md"), outbox));
+            Assert.False(OutboxPath.IsInside(Path.Combine(link, "Program.cs"), outbox));
+            Assert.True(OutboxPath.IsInside(Path.Combine(outbox, "review.md"), outbox));
         }
         finally
         {
@@ -197,8 +203,8 @@ public class OutboxWriteExemptionTests
                 return;
             }
 
-            Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(link, "deep", "Program.cs"), outbox));
-            Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(outbox, "review.md"), outbox));
+            Assert.False(OutboxPath.IsInside(Path.Combine(link, "deep", "Program.cs"), outbox));
+            Assert.True(OutboxPath.IsInside(Path.Combine(outbox, "review.md"), outbox));
         }
         finally
         {
@@ -232,10 +238,10 @@ public class OutboxWriteExemptionTests
 
             var throughTheLink = Path.Combine(link, "Program.cs");
 
-            Assert.False(OutboxPath.IsInsideOutbox(throughTheLink, outbox));
+            Assert.False(OutboxPath.IsInside(throughTheLink, outbox));
             // The control: the same outbox, a target that really is inside it. Without this, a
             // resolver that answered false for everything would pass the assertion above.
-            Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(outbox, "review.md"), outbox));
+            Assert.True(OutboxPath.IsInside(Path.Combine(outbox, "review.md"), outbox));
         }
         finally
         {
@@ -244,27 +250,193 @@ public class OutboxWriteExemptionTests
     }
 
     [Fact]
-    public void A_granted_write_is_allowed_anywhere_on_disk_because_no_path_is_consulted()
+    public void A_link_whose_target_path_contains_another_link_cannot_launder_a_write()
     {
-        // The limit of this gate, stated rather than assumed. Every test above drives the WITHHELD
-        // path, where the target decides the verdict. When the tool is granted the hook returns
-        // before it looks at any path, so `WriteFiles: true` bounds nothing — not to the outbox, not
-        // to the workspace, not to this filesystem's root. #679.
+        // The measured bypass from #679's review, and the one shape the two tests above cannot reach:
+        // both plant a single link, which one resolution pass handles. Here the FIRST link's target
+        // is `<ws>/pub/x.txt` — a path that is itself routed through a second link. Resolving `hop`
+        // substitutes that target wholesale, and a single-pass walk never revisits `pub`, so the
+        // answer came back `<ws>/pub/x.txt`, prefix-matched the workspace, and reported contained
+        // while the bytes landed outside it.
         //
-        // Measured live on the vendor side by `agy.plan-mode-does-not-deny-writes`: agy writes
-        // outside every directory it was given, so nothing beneath AER supplies the bound either.
+        // The direct form (`<ws>/pub/x.txt`, no `hop`) denied correctly the whole time, which is what
+        // identifies the second link as the launderer rather than the first. It is asserted below as
+        // the discriminating control: a resolver that answers false for everything passes the first
+        // assertion, and one that never regressed passes both.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-chain-").FullName;
+        try
+        {
+            var workspace = Directory.CreateDirectory(Path.Combine(root, "ws")).FullName;
+            var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
+            File.WriteAllText(Path.Combine(outside, "x.txt"), "landed outside");
+
+            var secondLink = Path.Combine(workspace, "pub");
+            var firstLink = Path.Combine(workspace, "hop");
+            try
+            {
+                Directory.CreateSymbolicLink(secondLink, outside);
+                File.CreateSymbolicLink(firstLink, Path.Combine(secondLink, "x.txt"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Windows needs Developer Mode or elevation. Skipped LOUDLY rather than returning
+                // silently like the two tests above: this is the only arm covering a measured escape,
+                // and a silent return makes an uncovered run look identical to a covered one.
+                Assert.Skip("this host cannot create symbolic links; the Linux and macOS legs assert it");
+                return;
+            }
+
+            Assert.False(OutboxPath.IsInside(firstLink, workspace));
+            Assert.False(OutboxPath.IsInside(Path.Combine(secondLink, "x.txt"), workspace));
+            Assert.True(OutboxPath.IsInside(Path.Combine(workspace, "src", "real.cs"), workspace));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_link_cycle_denies_rather_than_resolving_to_where_it_gave_up()
+    {
+        // The hop limit existed to stop this spinning, and both it and the pass limit above then
+        // returned the path they had reached — justified in a comment claiming such a path "cannot
+        // match a root prefix by construction". For a cycle that is false in the worst direction: two
+        // links inside the workspace pointing at each other land back on the starting path after an
+        // even number of hops, so the resolver returned a path inside the root and ALLOWED, and the
+        // outer loop could not tell that from a path needing no resolution at all.
+        //
+        // Denying is the only defensible answer, and it costs nothing real: the OS refuses to open a
+        // cycle anyway, so no legitimate write is being turned away here.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-cycle-").FullName;
+        try
+        {
+            var workspace = Directory.CreateDirectory(Path.Combine(root, "ws")).FullName;
+            var a = Path.Combine(workspace, "a");
+            var b = Path.Combine(workspace, "b");
+            try
+            {
+                Directory.CreateSymbolicLink(a, b);
+                Directory.CreateSymbolicLink(b, a);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("this host cannot create symbolic links; the Linux and macOS legs assert it");
+                return;
+            }
+
+            Assert.False(OutboxPath.IsInside(Path.Combine(a, "x.txt"), workspace));
+            // Both controls matter: the same workspace still admits a real path, and a cycle in the
+            // ROOT is unanswerable too — otherwise only the candidate side would be covered.
+            Assert.True(OutboxPath.IsInside(Path.Combine(workspace, "src", "real.cs"), workspace));
+            Assert.False(OutboxPath.IsInside(Path.Combine(workspace, "src", "real.cs"), a));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// #679 inverted: a grant decides whether a worker may write, never where. This test asserted the
+    /// opposite until the bound existed — it was the characterisation of the defect, and the fix is
+    /// what turned it red.
+    /// </summary>
+    [Fact]
+    public void A_granted_write_outside_the_workspace_and_the_outbox_is_denied()
+    {
         using var stderr = new StringWriter();
         var somewhereElse = Path.Combine(Path.GetTempPath(), "not-the-workspace", "anything.txt");
 
         Assert.Equal(
-            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.DeniedExitCode,
             HookCheckCommand.Execute(
                 new StringReader(Payload("Write", new { file_path = somewhereElse })),
-                stderr, "claude:Bash", Outbox));
+                stderr, "claude:Bash", Outbox, Workspace));
 
-        // The control: the same path, the same payload, with Write withheld instead of granted. It
-        // is what makes the assertion above a statement about the grant rather than about the path.
+        // Two controls, because the assertion above has two ways to pass for the wrong reason. The
+        // first: the same granted tool writing INSIDE the workspace, which must still be allowed —
+        // without it a gate that denied every write would satisfy the assertion. The second: the same
+        // path with Write withheld, which keeps this a statement about where rather than whether.
+        using var inside = new StringWriter();
+        Assert.Equal(
+            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Write", new { file_path = Path.Combine(Workspace, "src", "x.cs") })),
+                inside, "claude:Bash", Outbox, Workspace));
         Assert.Equal(HookCheckCommand.DeniedExitCode, Decide("Write", somewhereElse));
+    }
+
+    /// <summary>
+    /// A granted write still reaches the outbox. The outbox is not inside the workspace, so a bound
+    /// written as "workspace only" would pass every assertion above and break the deliverable every
+    /// dispatch exists to produce.
+    /// </summary>
+    [Fact]
+    public void A_granted_write_into_the_outbox_is_allowed_even_though_it_is_outside_the_workspace()
+    {
+        using var stderr = new StringWriter();
+
+        Assert.Equal(
+            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Write", new { file_path = Path.Combine(Outbox, "review.md") })),
+                stderr, "claude:Bash", Outbox, Workspace));
+
+        // The control: the outbox really is outside the workspace, so the allow above came from the
+        // outbox arm of the bound and not from the workspace arm answering for it.
+        Assert.False(OutboxPath.IsInside(Path.Combine(Outbox, "review.md"), Workspace));
+    }
+
+    /// <summary>
+    /// With no workspace declared, a granted write is narrowed to the outbox rather than left
+    /// unbounded — the decision recorded on #679 for the directory-less shape.
+    /// </summary>
+    [Fact]
+    public void A_granted_write_with_no_workspace_declared_is_bounded_to_the_outbox()
+    {
+        using var stderr = new StringWriter();
+
+        Assert.Equal(
+            HookCheckCommand.DeniedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Write", new { file_path = Path.Combine(Workspace, "src", "x.cs") })),
+                stderr, "claude:Bash", Outbox, workspaceDirectory: null));
+
+        // The control: the same null workspace, writing into the outbox, still allowed. Without it a
+        // null workspace denying everything would satisfy the assertion above.
+        using var outbox = new StringWriter();
+        Assert.Equal(
+            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Write", new { file_path = Path.Combine(Outbox, "review.md") })),
+                outbox, "claude:Bash", Outbox, workspaceDirectory: null));
+    }
+
+    /// <summary>
+    /// A write-family tool whose target this gate cannot read is denied rather than allowed. This is
+    /// the condition `agy.hook-payload-carries-write-path` is recorded as non-sentinel on: a payload
+    /// that stopped naming the target would break loudly here instead of going silently unbounded.
+    /// </summary>
+    [Fact]
+    public void A_granted_write_whose_target_cannot_be_read_from_the_payload_is_denied()
+    {
+        using var stderr = new StringWriter();
+
+        Assert.Equal(
+            HookCheckCommand.DeniedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Write", new { unexpected_key = "somewhere" })),
+                stderr, "claude:Bash", Outbox, Workspace));
+
+        // The control: an identical payload for a tool that is NOT write-family is still allowed, so
+        // the denial above is about an unreadable write target and not about the odd key.
+        using var nonWrite = new StringWriter();
+        Assert.Equal(
+            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Read", new { unexpected_key = "somewhere" })),
+                nonWrite, "claude:Bash", Outbox, Workspace));
     }
 
     /// <summary>

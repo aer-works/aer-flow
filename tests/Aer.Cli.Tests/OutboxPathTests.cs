@@ -14,13 +14,13 @@ public class OutboxPathTests
     {
         // The control everything else is read against. If this fails the rest proves nothing — a
         // check that denies universally would pass every negative case below.
-        Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(Outbox, "review.md"), Outbox));
+        Assert.True(OutboxPath.IsInside(Path.Combine(Outbox, "review.md"), Outbox));
     }
 
     [Fact]
     public void A_file_in_a_subdirectory_of_the_outbox_is_inside_it()
     {
-        Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(Outbox, "nested", "review.md"), Outbox));
+        Assert.True(OutboxPath.IsInside(Path.Combine(Outbox, "nested", "review.md"), Outbox));
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public class OutboxPathTests
         // and the write would land in the repo the grant was withholding.
         var escaped = Path.Combine(Outbox, "..", "..", "..", "repo", "src", "Program.cs");
 
-        Assert.False(OutboxPath.IsInsideOutbox(escaped, Outbox));
+        Assert.False(OutboxPath.IsInside(escaped, Outbox));
     }
 
     [Fact]
@@ -38,13 +38,13 @@ public class OutboxPathTests
     {
         // `execution_1-evil` beside `execution_1`. The trailing-separator comparison is what catches
         // this; without it a worker could write anywhere it could name.
-        Assert.False(OutboxPath.IsInsideOutbox(Outbox + "-evil" + Path.DirectorySeparatorChar + "x.md", Outbox));
+        Assert.False(OutboxPath.IsInside(Outbox + "-evil" + Path.DirectorySeparatorChar + "x.md", Outbox));
     }
 
     [Fact]
     public void The_outbox_directory_itself_is_not_a_file_inside_it()
     {
-        Assert.False(OutboxPath.IsInsideOutbox(Outbox, Outbox));
+        Assert.False(OutboxPath.IsInside(Outbox, Outbox));
     }
 
     [Theory]
@@ -54,8 +54,8 @@ public class OutboxPathTests
     public void An_unanswerable_question_denies_rather_than_allows(string? missing)
     {
         // Fails closed in both directions: no outbox to compare against, and nothing to compare.
-        Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(Outbox, "review.md"), missing));
-        Assert.False(OutboxPath.IsInsideOutbox(missing, Outbox));
+        Assert.False(OutboxPath.IsInside(Path.Combine(Outbox, "review.md"), missing));
+        Assert.False(OutboxPath.IsInside(missing, Outbox));
     }
 
     [Fact]
@@ -72,10 +72,10 @@ public class OutboxPathTests
         var priorCwd = Directory.GetCurrentDirectory();
         try
         {
-            Assert.False(OutboxPath.IsInsideOutbox("review.md", outbox));
+            Assert.False(OutboxPath.IsInside("review.md", outbox));
 
             Directory.SetCurrentDirectory(outbox);
-            Assert.True(OutboxPath.IsInsideOutbox("review.md", outbox));
+            Assert.True(OutboxPath.IsInside("review.md", outbox));
         }
         finally
         {

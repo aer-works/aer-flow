@@ -37,10 +37,11 @@ namespace Aer.Cli;
 /// stdout and agy allows. Unavoidable in-process, and stated rather than papered over.
 /// </para>
 /// <para>
-/// Like its claude sibling this enforces category denial by tool name only. It does not inspect tool
-/// arguments and does not attempt to close the substitution gap (#529's claude-side analogue; #596
-/// is the agy-side over-grant this hook is a prerequisite for fixing). Withholding a category while
-/// granting <c>run_command</c> still leaves that category reachable through the shell.
+/// Like its claude sibling this enforces category denial by tool name, and since #679 reads one
+/// argument — a granted write's target, to bound where it may land. It still does not attempt to
+/// close the substitution gap (#529's claude-side analogue; #596 is the agy-side over-grant this hook
+/// is a prerequisite for fixing): withholding a category while granting <c>run_command</c> leaves
+/// that category reachable through the shell, and a granted shell reaches a write this bound refuses.
 /// </para>
 /// </remarks>
 public static class AgyHookCheckCommand
@@ -93,18 +94,23 @@ public static class AgyHookCheckCommand
     /// streams and the raw env value as parameters rather than touching <see cref="Console"/> or
     /// <see cref="Environment"/> directly, so the decision logic is testable without a subprocess.
     /// </summary>
-    public static int Execute(TextReader stdin, TextWriter stdout, string? deniedToolsRaw)
+    public static int Execute(
+        TextReader stdin, TextWriter stdout, string? deniedToolsRaw, string? outboxDirectory = null,
+        string? workspaceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(stdin);
         ArgumentNullException.ThrowIfNull(stdout);
 
         try
         {
-            stdout.Write(Decide(stdin, deniedToolsRaw));
+            stdout.Write(Decide(stdin, deniedToolsRaw, outboxDirectory, workspaceDirectory));
         }
         catch
         {
-            // Reaching here means a defect in Decide -- but an exception escaping this method would
+            // Reaching here means a defect in Decide -- every payload shape agy can send is answered
+            // there, including a non-string toolCall.name, which is checked at the guard rather than
+            // left to reach this handler by way of GetString's InvalidOperationException. But an
+            // exception escaping this method would
             // print a .NET stack trace to stderr, leave stdout empty, and be read by agy as an ALLOW
             // (`agy.hook-malformed-stdout-fails-open`). On the vendor where this hook is the only
             // gate, a bug must not silently widen the grant it was installed to narrow.
@@ -119,7 +125,8 @@ public static class AgyHookCheckCommand
         return ExitCode;
     }
 
-    private static string Decide(TextReader stdin, string? deniedToolsRaw)
+    private static string Decide(
+        TextReader stdin, string? deniedToolsRaw, string? outboxDirectory, string? workspaceDirectory)
     {
         // Drain stdin first and unconditionally: agy is the writer on the other end of this pipe,
         // and exiting before reading its full payload risks a blocked write on its side for any
@@ -153,14 +160,9 @@ public static class AgyHookCheckCommand
                       "names it cannot judge, and denied this call rather than allowing it unchecked.");
         }
 
+        // #679 removed the early allow for an empty list here as on claude; see
+        // HookCheckCommand.Decide for why, and for what an empty list cannot be told apart from.
         var denied = deniedList.Tools;
-        if (denied.Count == 0)
-        {
-            // AER set the list and nothing is withheld. BuildDeniedTools returns empty whenever
-            // PermissionGrant is null (the raw PermissionScope escape hatch), which is the ordinary
-            // `aer run` shape, so denying here would break every raw-scope worker.
-            return AllowJson;
-        }
 
         if (string.IsNullOrWhiteSpace(input))
         {
@@ -169,19 +171,22 @@ public static class AgyHookCheckCommand
         }
 
         string? toolName;
+        string? writeTarget = null;
         try
         {
             using var doc = JsonDocument.Parse(input);
             if (doc.RootElement.ValueKind != JsonValueKind.Object ||
                 !doc.RootElement.TryGetProperty("toolCall", out var toolCall) ||
                 toolCall.ValueKind != JsonValueKind.Object ||
-                !toolCall.TryGetProperty("name", out var nameProp))
+                !toolCall.TryGetProperty("name", out var nameProp) ||
+                nameProp.ValueKind != JsonValueKind.String)
             {
                 return DenyJson("AER: the permission gate could not find toolCall.name in the hook " +
                                 "payload and denied this call rather than allowing it unchecked.");
             }
 
             toolName = nameProp.GetString();
+            writeTarget = ReadWriteTarget(toolCall, toolName);
         }
         catch (JsonException)
         {
@@ -195,10 +200,80 @@ public static class AgyHookCheckCommand
                             "and denied this call rather than allowing it unchecked.");
         }
 
-        return IsWithheld(denied, toolName)
-            ? DenyJson($"AER: the '{toolName}' tool is withheld by this session's permission grant.")
-            : AllowJson;
+        if (IsWithheld(denied, toolName))
+        {
+            return DenyJson($"AER: the '{toolName}' tool is withheld by this session's permission grant.");
+        }
+
+        // #679, as on claude -- see HookCheckCommand's equivalent. It matters more here: nothing agy
+        // offers bounds a write (`agy.plan-mode-does-not-deny-writes`), so this gate is the only one.
+        if (WriteFamilyTools.Contains(toolName))
+        {
+            if (OutboxPath.IsInside(writeTarget, workspaceDirectory) ||
+                OutboxPath.IsInside(writeTarget, outboxDirectory))
+            {
+                return AllowJson;
+            }
+
+            return DenyJson(
+                $"AER: the '{toolName}' tool is granted, but its target " +
+                $"({writeTarget ?? "unreadable from the payload"}) resolves outside both this " +
+                "worker's workspace and its outbox. A grant decides whether a worker may write, not " +
+                "where.");
+        }
+
+        return AllowJson;
     }
+
+    /// <summary>
+    /// The absolute path an agy write-family call targets, or <see langword="null"/> when this gate
+    /// cannot read one — in which case the caller denies rather than allowing an unbounded write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>toolCall.args.TargetFile</c>, PascalCase, measured by
+    /// <c>agy.hook-payload-carries-write-path</c> against a live <c>write_to_file</c> call rather than
+    /// read off agy's documentation — which <c>docs/vendor-doc-audit.md</c> records as wrong in two
+    /// other places about this same CLI.
+    /// </para>
+    /// <para>
+    /// <b>Measured for <c>write_to_file</c> only</b> — see <c>docs/vendor-capabilities.md</c> for what
+    /// that leaves open about its three siblings, which are listed anyway so such a call is
+    /// <i>denied</i> for want of a readable path rather than passing a gate that knows one tool.
+    /// Gated on the tool name and not the field's presence, for the reason
+    /// <c>HookCheckCommand.ReadWriteTarget</c> gives.
+    /// </para>
+    /// </remarks>
+    private static string? ReadWriteTarget(JsonElement toolCall, string? toolName)
+    {
+        if (toolName is null || !WriteFamilyTools.Contains(toolName))
+        {
+            return null;
+        }
+
+        if (!toolCall.TryGetProperty("args", out var args) || args.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return args.TryGetProperty("TargetFile", out var target) && target.ValueKind == JsonValueKind.String
+            ? target.GetString()
+            : null;
+    }
+
+    /// <summary>
+    /// Mirrors <c>GeminiWorkerAdapter.WriteTools</c> — the agy tools whose target #679 bounds.
+    /// </summary>
+    /// <remarks>
+    /// A mirror contract like <see cref="DeniedToolsEnvironmentVariable"/>: <c>Aer.Adapters</c> cannot
+    /// reference <c>Aer.Cli</c>. A name missing here is a genuine hole rather than a broken run — the
+    /// write would be granted and unbounded — which is the opposite polarity from the claude side's
+    /// equivalent, and the reason a test derives this list from a real <c>Resolve</c>.
+    /// </remarks>
+    public static readonly IReadOnlySet<string> WriteFamilyTools = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "write_to_file", "replace_file_content", "multi_replace_file_content", "generate_image",
+    };
 
     /// <summary>
     /// Builds the denial object through <see cref="JsonSerializer"/> rather than string

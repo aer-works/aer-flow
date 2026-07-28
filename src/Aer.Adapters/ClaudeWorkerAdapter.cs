@@ -205,15 +205,24 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(invocation.Effort);
         }
 
+        var environment = new List<(string Name, string Value)>
+        {
+            (MaxSubagentSpawnDepthVariable, "1"),
+            // #600 tags it with the vendor; #649 makes its contents differ from the flag.
+            (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(invocation.PermissionGrant)}"),
+            (SimpleModeVariable, "0"),
+        };
+
+        // #679; see WorkerEnvironment.WorkspaceVariable for why this is told rather than inferred,
+        // and for what its absence means.
+        if (invocation.WorkingDirectory is { } workspace)
+        {
+            environment.Add((WorkerEnvironment.WorkspaceVariable, workspace));
+        }
+
         return new CoreDispatchTarget(
             "claude", [.. args], invocation.WorkingDirectory, PromptText: prompt,
-            Environment:
-            [
-                (MaxSubagentSpawnDepthVariable, "1"),
-                // #600 tags it with the vendor; #649 makes its contents differ from the flag.
-                (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(invocation.PermissionGrant)}"),
-                (SimpleModeVariable, "0"),
-            ]);
+            Environment: [.. environment]);
     }
 
     /// <summary>
