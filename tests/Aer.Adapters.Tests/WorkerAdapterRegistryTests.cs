@@ -27,6 +27,7 @@ namespace Aer.Adapters.Tests;
 /// is "this adapter's dispatch depends on the grant", not "this adapter enforces denial".
 /// </para>
 /// </remarks>
+[Collection(LaunchConfigCollection.Name)]
 public class WorkerAdapterRegistryTests
 {
     private static readonly WorkerContract Contract =

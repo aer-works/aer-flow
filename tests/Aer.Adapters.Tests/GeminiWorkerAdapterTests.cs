@@ -8,6 +8,7 @@ namespace Aer.Adapters.Tests;
 /// M20 Phase 4's deliverable: unit tests for the refactored, direct shell-less
 /// <see cref="GeminiWorkerAdapter"/> resolving.
 /// </summary>
+[Collection(LaunchConfigCollection.Name)]
 public class GeminiWorkerAdapterTests
 {
     private static readonly WorkerContract ArchitectContract = new(

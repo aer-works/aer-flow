@@ -10,6 +10,7 @@ namespace Aer.Adapters.Tests;
 /// adapter, and the worker-binding config parsed and resolved into <see cref="WorkerBinding"/>s —
 /// no real vendor, no live process.
 /// </summary>
+[Collection(LaunchConfigCollection.Name)]
 public class WorkerBindingResolverTests
 {
     private static readonly WorkerContract ArchitectContract = new(

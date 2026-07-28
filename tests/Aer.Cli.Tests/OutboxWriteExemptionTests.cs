@@ -6,6 +6,7 @@ namespace Aer.Cli.Tests;
 /// never meant to withhold "write your report", and that conflation is why every reviewing template
 /// grants a workspace write it does not need.
 /// </summary>
+[Collection(WorkingDirectoryCollection.Name)]
 public class OutboxWriteExemptionTests
 {
     private static readonly string Outbox =

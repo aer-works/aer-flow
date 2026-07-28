@@ -25,8 +25,7 @@ namespace Aer.Adapters;
 /// </para>
 /// <para>
 /// <b>Why the retry:</b> the rename itself can still collide. Two chat sessions starting their first
-/// turn from the same daemon process is a genuine, expected race (#533), and both adapters rewrite
-/// their file on <i>every</i> resolve rather than once per fresh <c>~/.aer</c>. Measured under
+/// turn from the same daemon process is a genuine, expected race (#533). Measured under
 /// #543's own parallel test run: a concurrent <see cref="File.Move(string, string, bool)"/> onto the
 /// same destination throws <see cref="UnauthorizedAccessException"/> on Windows — a transient
 /// sharing violation, not a real permissions problem — while another thread's move or read briefly
@@ -38,6 +37,17 @@ namespace Aer.Adapters;
 /// <see cref="AppContext.BaseDirectory"/>, constant for the process's lifetime), so whichever
 /// attempt wins, the file ends up holding the one content every writer wanted anyway.
 /// </para>
+/// <para>
+/// <b>Skipped when the content already matches (#667):</b> the same determinism makes a rewrite on
+/// every resolve pure contention. The reader it costs is the vendor CLI, which opens
+/// <c>--settings</c> once at spawn with no retry; before the skip, 4239 of 424091 unretried reads
+/// failed a sharing violation under four concurrent resolvers.
+/// </para>
+/// <para>
+/// This bounds the window rather than closing it: the first resolve against a fresh or drifted file
+/// still writes, which is why the retry stays, and why enough concurrent cold-start writers can still
+/// exhaust it (#682).
+/// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter
 {
@@ -47,6 +57,11 @@ internal static class AtomicLaunchConfigWriter
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(content);
+
+        if (AlreadyHolds(path, content))
+        {
+            return;
+        }
 
         for (var attempt = 1; ; attempt++)
         {
@@ -78,6 +93,33 @@ internal static class AtomicLaunchConfigWriter
                 TryDeleteTemp(tempPath);
                 throw;
             }
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="path"/> already holds exactly <paramref name="content"/>, so there
+    /// is nothing to write.
+    /// </summary>
+    /// <remarks>
+    /// Content, not existence: #543 reversed "never overwrite" so that a stale or tampered file cannot
+    /// stay installed with the gate silently off, and comparing content keeps that.
+    /// <para>
+    /// <b>Unreadable counts as differing</b> -- the cost of a redundant write is contention, the cost
+    /// of a skipped one is an ungated worker. Deliberately not a blanket catch: a worker can write
+    /// this file through its own <c>--add-dir</c> grant, so a pathologically large one escapes as
+    /// <see cref="OutOfMemoryException"/>. Left loud rather than guarded by a guessed size threshold.
+    /// </para>
+    /// </remarks>
+    private static bool AlreadyHolds(string path, string content)
+    {
+        try
+        {
+            return File.Exists(path)
+                && string.Equals(File.ReadAllText(path), content, StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

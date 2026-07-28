@@ -2,6 +2,7 @@ using Aer.Flow.Domain;
 
 namespace Aer.Cli.Tests;
 
+[Collection(WorkingDirectoryCollection.Name)]
 public class DecideOptionsParserTests
 {
     [Fact]

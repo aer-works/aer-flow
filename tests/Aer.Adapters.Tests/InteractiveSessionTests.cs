@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Aer.Adapters.Tests;
 
+[Collection(LaunchConfigCollection.Name)]
 public sealed class InteractiveSessionTests
 {
     private readonly WorkerContract _contract = new(

@@ -9,7 +9,7 @@ namespace Aer.Adapters.Tests;
 /// every grant rather than on hand-picked ones, because the failure this guards against is a
 /// category silently falling off <em>one</em> channel — which two examples cannot see and sixteen can.
 /// </summary>
-[Collection(ClaudeLaunchConfigCollection.Name)]
+[Collection(LaunchConfigCollection.Name)]
 public class ChannelPopulationTests
 {
     private static readonly WorkerContract Contract =

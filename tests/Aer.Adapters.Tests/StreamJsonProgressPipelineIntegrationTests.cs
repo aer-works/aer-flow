@@ -22,6 +22,7 @@ namespace Aer.Adapters.Tests;
 /// <c>ExecuteSessionTurnAsync</c>'s own channel/pump pattern so a regression in either the native
 /// capture or the channel hand-off would fail here, not silently in production.
 /// </summary>
+[Collection(LaunchConfigCollection.Name)]
 public class StreamJsonProgressPipelineIntegrationTests
 {
     // Captured verbatim from a live `claude -p ... --output-format stream-json
