@@ -922,6 +922,81 @@ def _event_surface():
                   f"{silent_despite_condition} || condition never created here, so untested: {untested}")
 
 
+def reported_turn(stdout):
+    """`(num_turns, total_cost_usd)` exactly as the CLI reported them, or `(None, None)`.
+
+    Reported, never inferred. Reading an unparseable payload as "no turn was taken" is the
+    zero-from-a-condition-that-never-arose error this whole suite is built to avoid -- and it would
+    fail in the expensive direction, certifying a per-spawn probe as free.
+    """
+    try:
+        payload = json.loads(stdout)
+    except (ValueError, TypeError):
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    return payload.get("num_turns"), payload.get("total_cost_usd")
+
+
+@check("gate.sessionstart-without-a-turn", "gate",
+       "whether a spawn can fire SessionStart and TERMINATE WITHOUT A MODEL TURN -- the cost premise "
+       "of #532's per-spawn gate probe, which nothing had measured")
+def _sessionstart_without_a_turn():
+    """#532 proposes proving the mandatory `PreToolUse` hook can execute by probing on `SessionStart`
+    instead, "at zero model cost", citing `gate.headless-event-surface`.
+
+    That check establishes `SessionStart` FIRES under `-p`. It does not establish this one. Read its
+    body: it fires the event inside a full task -- write a file, read it back, run a shell command,
+    launch a subagent -- and is in `NEEDS_CAPABILITY` for exactly that reason. A turn was paid for in
+    every run that produced the finding, so whether the event is reachable WITHOUT one was never
+    asked. For a probe that runs on every worker spawn the difference is whether AER pays nothing or
+    pays a turn on everything it dispatches, which is not a detail to assume either way.
+
+    THE CONTROL CARRIES THE CHECK. A cheap arm that logs nothing has two causes this run cannot tell
+    apart: the invocation does not fire `SessionStart`, or the settings file never loaded and no arm
+    here could have fired anything. The turn-taking arm separates them -- it must fire, or every zero
+    below is a fact about this harness rather than about the CLI. Same rule as
+    `gate.permission-denied-fires`, and the same reason that one exists.
+    """
+    arms = [("control (takes a turn)", ["-p", "Reply with the single word OK."]),
+            ("empty prompt", ["-p", ""]),
+            ("no prompt, stdin closed", ["-p"])]
+
+    results, detail = [], []
+    for label, invocation in arms:
+        wd = tempfile.mkdtemp(prefix="v-ss0-")
+        try:
+            log = os.path.join(wd, "SessionStart.log").replace("\\", "/")
+            hk = os.path.join(wd, "ss.sh").replace("\\", "/")
+            hook_script(hk, log, "exit 0")
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": {"SessionStart": [
+                {"hooks": [{"type": "command", "command": "sh %s" % hk}]}]}}, open(st, "w"))
+
+            code, out, _ = run(["claude", *invocation, "--settings", st, "--output-format", "json"],
+                               timeout=180, cwd=wd)
+            turns, cost = reported_turn(out)
+            results.append({"label": label, "fired": fired(log), "turns": turns, "cost": cost,
+                            "code": code})
+            detail.append(f"{label}: fired={fired(log)} num_turns={turns} cost={cost} exit={code}")
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    control = results[0]
+    if not control["fired"]:
+        return INCONCLUSIVE, ("the turn-taking control never fired SessionStart, so the settings "
+                              f"file did not load and no zero below is evidence -- {'; '.join(detail)}")
+
+    # `turns == 0` only counts when the CLI actually SAID zero. `None` is an unreadable payload, and
+    # a probe certified free on a payload nobody could parse is the expensive way to be wrong.
+    free = [r for r in results[1:] if r["fired"] and r["turns"] == 0]
+    if free:
+        return PASS, (f"SessionStart IS reachable with no model turn, via: "
+                      f"{', '.join(r['label'] for r in free)} || {'; '.join(detail)}")
+    return PASS, ("#532's zero-cost premise is FALSE as measured: no arm fired SessionStart without "
+                  f"a reported turn. A per-spawn probe costs a turn per spawn || {'; '.join(detail)}")
+
+
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",
        "--allowedTools pre-approves tools; it does not restrict the toolset, so it cannot bound "
        "what a worker may do", sentinel=True)
