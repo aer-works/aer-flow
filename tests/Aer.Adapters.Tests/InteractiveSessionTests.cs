@@ -125,10 +125,15 @@ public sealed class InteractiveSessionTests
         // spec §4 is right that a declared-and-absent output is a failure.
         Assert.Empty(chatStep.Outputs);
         Assert.Empty(bindings["chat-worker"].Contract.ProducedOutputs);
+        // Deliberately NOT asserted on the materialized PromptTemplate: the daemon rebuilds a turn's
+        // prompt from the user's message and overwrites that field before every dispatch, so an
+        // assertion there is green and vacuous. BuildTurnPrompt is the shared path both the
+        // materializer and the daemon's per-turn rewrite go through, and it is what carries the ask.
         Assert.Contains(
             InteractiveSessionMaterializer.DefaultOutputFileName,
-            bindings["chat-worker"].PromptTemplate,
+            InteractiveSessionMaterializer.BuildTurnPrompt("any message"),
             StringComparison.Ordinal);
+        Assert.StartsWith("any message", InteractiveSessionMaterializer.BuildTurnPrompt("any message"), StringComparison.Ordinal);
 
         // Nothing upstream declares response.md any more, so the anchor cannot require it. DependsOn
         // (asserted above) is what orders the two steps; this only ever wired an artifact the no-op

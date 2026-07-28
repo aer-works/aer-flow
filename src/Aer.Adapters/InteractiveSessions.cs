@@ -86,6 +86,23 @@ public static class InteractiveSessionMaterializer
     /// Still worth asking for: the structured-result channel only carries an answer when the turn ran
     /// with streaming output captured, so on a non-streaming turn the file is the only channel there is.
     /// </remarks>
+    /// <summary>
+    /// The prompt a chat turn is actually dispatched with. Every turn's prompt is rebuilt by the
+    /// daemon from the user's message (or a synthesized handoff summary) and overwrites the
+    /// materialized <c>PromptTemplate</c>, so the ask has to be appended here, on the per-turn path,
+    /// rather than once at materialization — appending it to the materialized template only was
+    /// measured to reach no vendor at all.
+    /// </summary>
+    public static string BuildTurnPrompt(string message) => message + ResponseFileInstruction;
+
+    /// <summary>The chat worker's contract. AER owns it; it is never operator-authored.</summary>
+    public static WorkerContract ChatWorkerContract => new(
+        WorkerName: DefaultWorkerName,
+        RequiredInputs: [],
+        // See ResponseFileInstruction (#650).
+        ProducedOutputs: [],
+        OptionalMetadata: []);
+
     public static string ResponseFileInstruction =>
         $"\n\nWrite your answer to {WorkerEnvironmentReference.For("AER_OUTPUT_DIR")}" +
         $"{Path.DirectorySeparatorChar}{DefaultOutputFileName} if you are able to write files. " +
@@ -163,9 +180,9 @@ public static class InteractiveSessionMaterializer
                     PausePoint: new PausePoint([new StepId(DefaultStepId)], PausePointKind.NeedsInput))
             ]);
 
-        var promptTemplate = (string.IsNullOrWhiteSpace(initialMessage)
+        var promptTemplate = BuildTurnPrompt(string.IsNullOrWhiteSpace(initialMessage)
             ? "You are an AI assistant in an interactive session. Answer user questions and perform requested tasks."
-            : initialMessage) + ResponseFileInstruction;
+            : initialMessage);
 
         var vendorSessionId = string.Equals(normalizedAdapter, "claude", StringComparison.OrdinalIgnoreCase)
             ? Guid.NewGuid().ToString()
@@ -175,13 +192,7 @@ public static class InteractiveSessionMaterializer
         {
             [DefaultWorkerName] = new WorkerBindingConfigEntry(
                 Adapter: normalizedAdapter,
-                Contract: new WorkerContract(
-                    WorkerName: DefaultWorkerName,
-                    RequiredInputs: [],
-                    // No ProducedOutputs: see ResponseFileInstruction (#650). The prompt asks for
-                    // response.md; the contract does not require it, because AER genuinely does not.
-                    ProducedOutputs: [],
-                    OptionalMetadata: []),
+                Contract: ChatWorkerContract,
                 PromptTemplate: promptTemplate,
                 Timeout: TimeSpan.FromMinutes(10),
                 PermissionGrant: defaultGrant,
