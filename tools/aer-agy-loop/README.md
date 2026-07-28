@@ -65,9 +65,11 @@ Two things worth knowing before reaching for one:
   than evidenced.
 - **Withholding writes while granting the shell does *not* stop a worker writing.**
   [#529](https://github.com/aer-works/aer-flow/issues/529) measured the file being created anyway by
-  `Bash`, and on gemini `--dangerously-skip-permissions` hands over the writes outright. So that
-  combination is allowed through here — it is satisfiable, and pretending otherwise would be a claim
-  wider than the evidence. **"Read-only reviewer" is still not expressible**
+  `Bash` on claude. On gemini this is inferred from the same substitution argument, not measured —
+  and note `--dangerously-skip-permissions` is *not* the reason: the `PreToolUse` hook derives its
+  deny list from all four grant categories and takes the flag's over-grant back. So that combination
+  is allowed through here — it is satisfiable, and pretending otherwise would be a claim wider than
+  the evidence. **"Read-only reviewer" is still not expressible**
   ([#629](https://github.com/aer-works/aer-flow/issues/629)); what is expressible is "no writes and
   no shell", which cannot report.
 - **So the spread is one axis, not four shapes.** All four sit at read + write; only `implement` adds

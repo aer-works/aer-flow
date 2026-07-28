@@ -143,13 +143,11 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 #
 # EVERY template grants WriteFiles, including the review and fact-check ones. Not an oversight: a
 # worker satisfies its ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and
-# `WriteFiles: false` withholds the Write tool, so a read-only dispatch CANNOT succeed no matter what
-# it is asked to do. Measured on claude/haiku, both arms: read-only -> "Contract not satisfied";
-# --write-files -> "Succeeded". Gemini reaches the same place by a different mechanism (`--mode plan`
-# rather than a deny-list) and that path is UNMEASURED -- see the guard in main() for the full
-# scoping. The three "read-only" templates shipped broken in this file's first
-# draft and one of them wasted a 9-minute opus run proving it. `dispatch.py` now refuses a read-only
-# dispatch outright; AER accepting the unsatisfiable combination is #629.
+# these templates withhold the shell too -- with both withheld nothing can produce that file.
+# (Withholding writes while GRANTING the shell is a different case and is satisfiable; see the guard
+# in main(), which is the scoped statement.) The three "read-only" templates shipped broken in this
+# file's first draft and one of them wasted a 9-minute opus run proving it. AER accepting the
+# unsatisfiable combination rather than refusing it at bind time is #629.
 #
 # So the real spread is ONE axis, not four shapes:
 #   * read + write            (advise, review, fact-check) -- the floor; anything less cannot report
@@ -301,21 +299,21 @@ def main() -> int:
         return 2
 
     if not args.write_files and not args.run_shell_commands:
-        # BOTH conditions, and the second one is the whole point. An earlier version refused on
-        # `not write_files` alone and told the operator a read-only worker was "structurally incapable
-        # of satisfying any contract". `ClaudeWorkerAdapter`'s own doc (#529, measured 2026-07-25)
-        # says the opposite for the shell-granted case: with the exact deny string a withheld-write
-        # grant emits, "the file was created anyway, by Bash". On gemini it is worse --
-        # `--dangerously-skip-permissions` "would hand the worker the writes the operator declined,
-        # purely from the flag". So write-withheld-plus-shell-granted is measurably SATISFIABLE on
-        # both vendors, and refusing it was a claim wider than its evidence, contradicted by two doc
-        # comments in this repo.
+        # BOTH conditions. Refusing on `not write_files` alone was wrong: #529 measured, on claude,
+        # that a withheld-write grant with the shell granted produced the file anyway via Bash. So
+        # that combination is satisfiable and is allowed through.
         #
-        # What is measured, and all that is: on claude/haiku, the same prompt dispatched twice with
-        # only this flag changed. Write and shell both withheld -> `Contract not satisfied:
-        # 'probe-out' is missing`. With --write-files -> `Succeeded`. The gemini equivalent of that
-        # arm is UNMEASURED (`WriteFiles:false, ReadFiles:true` resolves to `--mode plan` there, not
-        # a deny-list), so the refusal is conservative on that vendor rather than evidenced.
+        # Scope, since only one arm is measured:
+        #   * claude, write+shell withheld -> `Contract not satisfied`; with --write-files ->
+        #     `Succeeded`. Same prompt, one flag changed. This is the arm the guard fires on.
+        #   * claude, write withheld + shell granted -> satisfiable, measured (#529).
+        #   * gemini, either arm -> INFERRED, not measured. Do not read
+        #     `--dangerously-skip-permissions` as handing the writes over: GeminiWorkerAdapter's
+        #     fourth doc paragraph retracts that for AER's path -- the PreToolUse hook derives its
+        #     deny list from all four grant categories and takes the over-grant back, measured by
+        #     `agy.hook-deny-honoured`. What makes it satisfiable there is instead that a granted
+        #     shell is absent from the deny list, which is the same substitution argument as #529
+        #     rather than a measurement.
         #
         # This bit the review dispatch for this very change: a 9-minute opus run produced nothing.
         # AER accepting the unsatisfiable combination rather than refusing it at bind time is #629;
@@ -324,8 +322,9 @@ def main() -> int:
             "error: nothing here can write the output. A worker satisfies its ProducedOutputs "
             "contract by writing the artifact into AER_OUTPUT_DIR, and this grant withholds both "
             "the write tools and the shell -- so the run would burn its full budget and then fail "
-            "the contract check. Pass --write-files (or --run-shell-commands, which #529 measured "
-            "as defeating a withheld write anyway). See #629.",
+            "the contract check. Pass --write-files, or --run-shell-commands --network-access "
+            "(both -- shell alone is refused above), which #529 measured as defeating a withheld "
+            "write anyway. See #629.",
             file=sys.stderr,
         )
         return 2

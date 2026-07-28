@@ -364,20 +364,17 @@ def step8_cited_checks_exist():
     return ok
 
 
-# What a vendor model identifier looks like: lowercase, hyphenated, and carrying at least one DIGIT.
-# The digit is the whole load-bearing part and it is asserted, not described -- an earlier version of
-# this said "carrying a digit" in a comment over `[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+`, which requires no
-# digit at all and happily matches `read-only`, `fail-closed`, `cross-vendor` and `skip-permissions`.
-# Those words are everywhere in this repo; the check passed only because none of them sits in a
-# `--model` pin position today. Absence of a trigger is not a working filter, and that was the
-# comment-vs-code defect this step exists to catch, committed inside the fix for it.
+# Two predicates, because the two call sites need opposite tolerances.
 #
-# Defined ONCE and used by both the register sanity check and the tools/ walk. Those were two
-# near-identical regexes for one concept in one function, differing by a single `.`.
+# TOKEN_SHAPE: lowercase and hyphenated. Used on the register's own fence, where a digit must NOT be
+# required -- agy serves Anthropic and OpenAI models, and a digit-free catalogue entry would make the
+# sanity arm print "the PARSE is wrong" about a perfectly correct parse.
 #
-# Declared cost: a real pin with no digit in its name is invisible to the walk. Every name `agy
-# models` lists has one.
-MODEL_NAME_SHAPE = re.compile(r"(?=.*[0-9])[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
+# PIN_SHAPE: the same, plus at least one DIGIT. Used on the tools/ walk, where `--model` appears in
+# prose and every following word is a candidate -- the digit is what rejects `read-only`,
+# `fail-closed` and `skip-permissions`. Cost: a real pin with no digit is invisible to the walk.
+TOKEN_SHAPE = re.compile(r"[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
+PIN_SHAPE = re.compile(r"(?=.*[0-9])[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
 
 
 def step9_pinned_models_exist():
@@ -429,21 +426,10 @@ def step9_pinned_models_exist():
     # The register records the CLI's own output verbatim in a fenced block. Parse that block rather
     # than a hand-maintained list here, so re-running `agy models` into the register is the single
     # act that updates this check -- record once, per the gate.
-    # Anchored to the SECTION, and tolerant of a language tag on the fence. Precisely what that
-    # bought, because an earlier version of this comment credited it with more:
-    #   * tagged opener (```text)        -> FIXED here; `[a-zA-Z]*` matches it.
-    #   * fence moves out of the section -> caught LOUDLY here; `fence` is None.
-    #   * heading text changes           -> caught LOUDLY here; `section` is None.
-    #   * a second fence added BEFORE the models block, in the SAME section -> NOT fixed here.
-    #     `re.search` still takes the first fence in the section. What catches that is the shape
-    #     guard below, and only when the wrong block's tokens fail it -- a fence holding some OTHER
-    #     model list would still parse silently wrong.
-    # Known bound laxity: `(?=
-##\s|\Z)` does not terminate on a `###` subheading -- `
-##` matches
-    # the first two hashes and `\s` then fails on the third -- so adding a `### ` subsection above
-    # the fence reopens the search window. Left as-is with the shape guard as the backstop rather
-    # than tightened blind; recorded so the next reader does not have to rediscover it.
+    # Residual risk, the only one worth carrying: a second fence added BEFORE the models block, in
+    # the SAME section, is still taken instead. The shape guard below is the backstop, and it only
+    # catches a block whose tokens are not model names -- a fence holding some OTHER model list
+    # parses silently wrong.
     section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
     if not section:
         print("    !! could not locate the `agy models` section in docs/vendor-capabilities.md")
@@ -459,7 +445,7 @@ def step9_pinned_models_exist():
     # is the right verdict for the wrong reason and points at the wrong file. Note `line()` called
     # with no `expected` prints no marker and returns True, so the printed count could never have
     # caught this on its own.
-    shaped = {n for n in accepted if MODEL_NAME_SHAPE.fullmatch(n)}
+    shaped = {n for n in accepted if TOKEN_SHAPE.fullmatch(n)}
     # Two arms, two different messages, because they support two different conclusions. Tokens that
     # are not model-shaped DO establish a bad parse. A surprising COUNT does not -- a catalogue that
     # legitimately shrinks to 4 or grows past 40 would trip it, and blaming the parse there would be
@@ -540,9 +526,11 @@ def step9_pinned_models_exist():
         # Build artefacts are not source. Walking them made the audit's runtime depend on
         # whether someone had built, and a hit would have been reported with a bin/ path.
         parts = dirpath.split(os.sep)
-        # Component test, matching how step 8 does it. `os.sep + "bin"` was a SUBSTRING test, so it
-        # also excluded `tools/binaries/` and `tools/binding-probe/` -- one file spelling the same
-        # exclusion two ways, and the looser spelling silently narrowing the population.
+        # Component test. The previous `os.sep + "bin"` was a substring test, so any future
+        # directory merely STARTING with bin/obj would have been excluded too -- no such directory
+        # exists today, so this changes nothing on the current tree and is a spelling fix, not a
+        # bug fix. Note this walk is over an ABSOLUTE path, so unlike step 8's relative walk a
+        # checkout under a path component named bin or obj would skip tools/ entirely.
         if "__pycache__" in parts or "obj" in parts or "bin" in parts:
             continue
         for fn in filenames:
@@ -569,7 +557,7 @@ def step9_pinned_models_exist():
                         # and carrying a digit, which is true of every name `agy models` lists and of
                         # no English word. A hypothetical unhyphenated pin is invisible to this, and
                         # that is the declared cost of scanning text rather than parsing code.
-                        if name in CLAUDE_CLI_ALIASES or not MODEL_NAME_SHAPE.fullmatch(name):
+                        if name in CLAUDE_CLI_ALIASES or not PIN_SHAPE.fullmatch(name):
                             continue
                         key = (f"{rel}:{lineno}", name)
                         if key not in seen:

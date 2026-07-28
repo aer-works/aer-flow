@@ -306,27 +306,19 @@ Two things the design assumed otherwise:
     out rather than ignoring the flag.
 
     It does **not** isolate "this model does not support `--effort`" from "this model is not valid".
-    `gemini-3-pro` is absent from the catalogue above, and this document says that catalogue
-    "enumerates what the CLI will actually accept" — so the run may have failed on the model, with
-    `--effort` merely along for the ride. **The missing control is one dispatch:** `agy --model
-    gemini-3-pro` with *no* `--effort`. If it runs, rejection is genuinely per-model. If it fails,
-    the datum was never about `--effort` at all.
-
-    An earlier version of this bullet asserted "per-model and LOUD, **measured**" — the inference
-    labelled as the measurement, which is the `claim-scope` failure this register exists to prevent.
+    agy's own wording attributes the failure to the flag — `--effort is not supported for model` — but
+    `gemini-3-pro` is absent from the catalogue above, which this page says "enumerates what the CLI
+    will actually accept", and a combined model+effort validator could plausibly emit that wording for
+    an uncatalogued model. **The missing control is one dispatch:** `agy --model gemini-3-pro` with
+    *no* `--effort`. If it runs, rejection is genuinely per-model. If it fails, the datum was never
+    about `--effort` at all.
   - **Precedence is unprobed** — when both are given and both accepted, which one wins is unknown.
     That, and only that, is what [#510](https://github.com/aer-works/aer-flow/issues/510) tracks.
-  - **A stronger acceptance datum may already exist, unread.** The `effort.agy-value-set` sentinel
-    cited further down this page probes `agy -p --model gemini-3.6-flash-low --effort
-    __aer-sentinel-probe__` and parses a `(valid: …)` list from the output. Its design *presupposes*
-    that agy reaches `--effort` value-validation on a suffixed model — so a recorded `PASS` would be
-    a re-runnable acceptance datum on a second suffixed model, stronger than the single README run
-    cited above. **No run of it is recorded anywhere**, and `_parse_effort_set` returns
-    `INCONCLUSIVE` on any output lacking `(valid: …)`, which is where an `invalid model selection`
-    stderr would also land. Run `pixi run vendor-verify -- --only effort.agy-value-set` and record
-    the result before anyone treats acceptance as settled. Noted because this check sits twenty
-    lines below the bullet and was not reached for when the bullet was written — the `common-sense`
-    gate's own instruction to run `verify.py --list` before claiming a vendor fact is unmeasured.
+  - **A second suffixed model reached effort-value validation**, which is further evidence for
+    acceptance: the divergence recorded below on this page was measured while building
+    `effort.agy-value-set`, whose probe passes an invalid `--effort` to `gemini-3.6-flash-low` and
+    reads the valid set back out of the error. Getting a valid-set message means agy validated the
+    *effort*, not the model.
 
   Corrected 2026-07-27: this bullet previously said the whole "interaction" was unprobed, while the
   rejection datum sat measured in a test's doc comment with no route back here — a fact with no
