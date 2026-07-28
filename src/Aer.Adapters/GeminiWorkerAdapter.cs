@@ -362,17 +362,26 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(FormatPrintTimeout(timeout));
         }
 
+        var environment = new List<(string Name, string Value)>
+        {
+            // Read by `aer agy-hook-check` inside the hook subprocess. Always set, even when
+            // empty, so the value is AER's rather than whatever the operator's environment
+            // happened to carry. It does NOT currently make "nothing withheld" distinguishable
+            // from "the list never arrived" -- the command collapses absent and empty to the
+            // same allow. See #600.
+            (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
+        };
+
+        // #679; see WorkerEnvironment.WorkspaceVariable. Load-bearing on this vendor rather than
+        // merely useful, for the reason AgyHookCheckCommand's own bound gives.
+        if (invocation.WorkingDirectory is { } workspace)
+        {
+            environment.Add((WorkerEnvironment.WorkspaceVariable, workspace));
+        }
+
         return new CoreDispatchTarget(
             "agy", [.. args], invocation.WorkingDirectory, PromptText: prompt,
-            Environment:
-            [
-                // Read by `aer agy-hook-check` inside the hook subprocess. Always set, even when
-                // empty, so the value is AER's rather than whatever the operator's environment
-                // happened to carry. It does NOT currently make "nothing withheld" distinguishable
-                // from "the list never arrived" -- the command collapses absent and empty to the
-                // same allow. See #600.
-                (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
-            ]);
+            Environment: [.. environment]);
     }
 
     /// <summary>

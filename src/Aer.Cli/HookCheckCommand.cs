@@ -67,15 +67,22 @@ public static class HookCheckCommand
     /// workspace" was never meant to withhold "write your report". <see langword="null"/> disables the
     /// exemption entirely, so a hook that cannot tell where the outbox is denies as before.
     /// </param>
+    /// <param name="workspaceDirectory">
+    /// This worker's <c>AER_WORKSPACE_DIR</c> (#679) — the <c>WorkingDirectory</c> it was dispatched
+    /// against. A <b>granted</b> write is bounded to it or to the outbox; before #679 a granted write
+    /// was bounded by nothing. <see langword="null"/> means no workspace was declared, which narrows a
+    /// granted write to the outbox rather than widening it to the disk.
+    /// </param>
     public static int Execute(
-        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory = null)
+        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory = null,
+        string? workspaceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(stdin);
         ArgumentNullException.ThrowIfNull(stderr);
 
         try
         {
-            return Decide(stdin, stderr, deniedToolsRaw, outboxDirectory);
+            return Decide(stdin, stderr, deniedToolsRaw, outboxDirectory, workspaceDirectory);
         }
         catch (Exception ex)
         {
@@ -106,7 +113,8 @@ public static class HookCheckCommand
     }
 
     private static int Decide(
-        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory)
+        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory,
+        string? workspaceDirectory)
     {
         // Always drain stdin before deciding anything, even when there is nothing to check
         // against below: Claude Code is the writer on the other end of this pipe, and exiting
@@ -130,14 +138,18 @@ public static class HookCheckCommand
             return DeniedExitCode;
         }
 
+        // #679 removed the early allow that used to sit here for an empty list. It read the empty
+        // case as "nothing withheld, nothing to do", and that is exactly the shape the issue is
+        // about: `implement` grants every category, so its list is empty and its writes were bounded
+        // by nothing at all. A write is now bounded whether or not anything was withheld, so the
+        // payload has to be parsed either way.
+        //
+        // An empty list still means one of two things this gate cannot tell apart -- a grant that
+        // withholds nothing, or `PermissionGrant is null`, the raw PermissionScope escape hatch --
+        // and both are bounded, deliberately. Distinguishing them would need a three-state
+        // environment protocol whose empty-versus-absent case is unreliable across platforms, which
+        // is a new way to fail open in the gate that exists to fail closed.
         var denied = deniedList.Tools;
-        if (denied.Count == 0)
-        {
-            // AER set the list and nothing is withheld. BuildDisallowedTools returns empty whenever
-            // PermissionGrant is null (the raw PermissionScope escape hatch), which is the ordinary
-            // `aer run` shape, so this must allow.
-            return AllowedExitCode;
-        }
 
         if (string.IsNullOrWhiteSpace(input))
         {
@@ -175,7 +187,7 @@ public static class HookCheckCommand
             // denying it is what forced every reviewing template to grant a workspace write it never
             // needed. Anything outside stays denied, and OutboxPath resolves both sides so neither a
             // traversal nor a link can walk back into the repo.
-            if (OutboxPath.IsInsideOutbox(writeTarget, outboxDirectory))
+            if (OutboxPath.IsInside(writeTarget, outboxDirectory))
             {
                 return AllowedExitCode;
             }
@@ -200,6 +212,28 @@ public static class HookCheckCommand
             return DeniedExitCode;
         }
 
+        // #679: the tool is granted, which decides WHETHER it may write, never WHERE. Until this
+        // existed the grant was a boolean while the risk was a path, and a granted write reached any
+        // location the worker's own process could.
+        if (WriteFamilyTools.Contains(toolName))
+        {
+            if (OutboxPath.IsInside(writeTarget, workspaceDirectory) ||
+                OutboxPath.IsInside(writeTarget, outboxDirectory))
+            {
+                return AllowedExitCode;
+            }
+
+            // Reached with a null writeTarget too, and that is the intended reading: a write-family
+            // tool whose target this gate could not find is a write it cannot bound. Denying is what
+            // keeps a future payload change loud instead of silently unbounded.
+            stderr.WriteLine(
+                $"AER: the '{toolName}' tool is granted, but its target " +
+                $"({writeTarget ?? "unreadable from the payload"}) resolves outside both this " +
+                "worker's workspace and its outbox. A grant decides whether a worker may write, not " +
+                "where.");
+            return DeniedExitCode;
+        }
+
         return AllowedExitCode;
     }
 
@@ -217,6 +251,12 @@ public static class HookCheckCommand
 
     /// <summary>Mirrors <c>ClaudeWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
     private const string VendorTag = "claude";
+
+    /// <summary>
+    /// Mirrors <c>WorkerEnvironment.WorkspaceVariable</c> — the workspace a granted write is bounded
+    /// to (#679). See that member for why the name is written out on both sides.
+    /// </summary>
+    public const string WorkspaceEnvironmentVariable = "AER_WORKSPACE_DIR";
 
     /// <summary>
     /// The filesystem path a write-family tool is targeting, or <see langword="null"/> for any other

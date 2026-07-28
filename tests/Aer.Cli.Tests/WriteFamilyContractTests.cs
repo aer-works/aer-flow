@@ -61,6 +61,70 @@ public class WriteFamilyContractTests
         Assert.DoesNotContain("MultiEdit", string.Join(',', HookCheckCommand.WriteFamilyTools));
     }
 
+    /// <summary>
+    /// #679's agy mirror. <see cref="AgyHookCheckCommand.WriteFamilyTools"/> decides which agy calls
+    /// get their target bounded; see that member for which way a missing name fails, and why it is
+    /// the opposite polarity from the claude side above.
+    /// </summary>
+    /// <remarks>
+    /// The adapter's side is derived from two real resolves that differ in one field, so the
+    /// difference between their denied lists <i>is</i> the write family. Writing the four names out
+    /// here would be a third copy agreeing with the other two until someone edited one.
+    /// </remarks>
+    [Fact]
+    public void The_agy_tools_whose_target_is_bounded_are_exactly_the_adapters_write_family()
+    {
+        // Shell stays withheld in both arms: #529's refusal rejects a binding that withholds writes
+        // while granting the shell, so varying writes alone is the only legal comparison.
+        var denied = (bool writeFiles) => Split(
+            new GeminiWorkerAdapter().Resolve(
+                new WorkerInvocation(
+                    "Review this.",
+                    PermissionGrant: new PermissionGrant(
+                        ReadFiles: true, WriteFiles: writeFiles, RunShellCommands: false,
+                        NetworkAccess: false)),
+                new WorkerContract("reviewer", [], [], []))
+                .Environment!.Single(v => v.Name == GeminiWorkerAdapter.DeniedToolsVariable)
+                .Value.Split(':', 2)[1]);
+
+        var writeTools = denied(false).Except(denied(true)).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(
+            AgyHookCheckCommand.WriteFamilyTools.OrderBy(t => t, StringComparer.Ordinal),
+            writeTools.OrderBy(t => t, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Both adapters tell the gate where the workspace is (#679), under the one name each side spells
+    /// out independently — see <see cref="WorkerEnvironment.WorkspaceVariable"/> for which way a
+    /// mismatch fails.
+    /// </summary>
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("agy")]
+    public void An_adapter_passes_its_working_directory_to_the_gate_and_omits_it_when_there_is_none(
+        string vendor)
+    {
+        var workspace = Path.Combine(Path.GetTempPath(), "aer-workspace");
+        IWorkerAdapter adapter = vendor == "claude"
+            ? new ClaudeWorkerAdapter()
+            : new GeminiWorkerAdapter();
+        var contract = new WorkerContract("reviewer", [], [], []);
+
+        var withWorkspace = adapter.Resolve(
+            new WorkerInvocation("Review this.", WorkingDirectory: workspace), contract);
+        Assert.Equal(
+            workspace,
+            withWorkspace.Environment!.Single(v => v.Name == HookCheckCommand.WorkspaceEnvironmentVariable).Value);
+
+        // The polarity arm, and the one carrying the decision: absent rather than empty, so the gate
+        // can tell an undeclared workspace from a declared one it could not resolve.
+        var withoutWorkspace = adapter.Resolve(new WorkerInvocation("Review this."), contract);
+        Assert.DoesNotContain(
+            withoutWorkspace.Environment!,
+            v => v.Name == HookCheckCommand.WorkspaceEnvironmentVariable);
+    }
+
     private static string? Arg(Aer.Flow.Dispatch.CoreDispatchTarget target, string flag)
     {
         for (var i = 0; i < target.Args.Count - 1; i++)

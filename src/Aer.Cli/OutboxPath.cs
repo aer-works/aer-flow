@@ -1,8 +1,8 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Whether a write a worker is attempting lands in its own outbox — the <c>AER_OUTPUT_DIR</c> AER
-/// allocated for this execution — rather than in the workspace (#649).
+/// Whether a path a worker is attempting to write resolves inside a directory AER named — its outbox
+/// (<c>AER_OUTPUT_DIR</c>, #649) or its workspace (#679).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,14 +31,19 @@ namespace Aer.Cli;
 public static class OutboxPath
 {
     /// <summary>
-    /// True when <paramref name="candidate"/> resolves to a location inside
-    /// <paramref name="outboxDirectory"/>. Fails closed: an unset outbox, an empty candidate, or a
-    /// path the OS refuses to resolve all answer false, so an unanswerable question denies rather
-    /// than allows.
+    /// True when <paramref name="candidate"/> resolves to a location inside <paramref name="root"/>.
+    /// Fails closed: an unset root, an empty candidate, or a path the OS refuses to resolve all
+    /// answer false, so an unanswerable question denies rather than allows.
     /// </summary>
-    public static bool IsInsideOutbox(string? candidate, string? outboxDirectory)
+    /// <remarks>
+    /// Containment against an arbitrary root, not against the outbox specifically. #649 needed it for
+    /// the outbox and named it for that; #679 asks the same question of a worker's workspace, and the
+    /// resolution this does — links followed component by component, separator-terminated prefix — is
+    /// what either boundary needs to be a boundary rather than a string comparison.
+    /// </remarks>
+    public static bool IsInside(string? candidate, string? root)
     {
-        if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(outboxDirectory))
+        if (string.IsNullOrWhiteSpace(candidate) || string.IsNullOrWhiteSpace(root))
         {
             return false;
         }
@@ -50,17 +55,17 @@ public static class OutboxPath
         // created that path inside its workspace and wrote there, and this check called it contained.
         // The exemption would have laundered a workspace write. AER always has an absolute path to
         // give; anything else is a question this cannot answer, so it denies.
-        if (!Path.IsPathRooted(outboxDirectory))
+        if (!Path.IsPathRooted(root))
         {
             return false;
         }
 
         string resolvedCandidate;
-        string resolvedOutbox;
+        string resolvedRoot;
         try
         {
             resolvedCandidate = ResolveLinks(Path.GetFullPath(candidate));
-            resolvedOutbox = ResolveLinks(Path.GetFullPath(outboxDirectory));
+            resolvedRoot = ResolveLinks(Path.GetFullPath(root));
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException
                                       or PathTooLongException or IOException or UnauthorizedAccessException)
@@ -69,9 +74,9 @@ public static class OutboxPath
         }
 
         // The trailing separator is what stops `execution_1-evil` counting as inside `execution_1`.
-        var outboxWithSeparator = resolvedOutbox.EndsWith(Path.DirectorySeparatorChar)
-            ? resolvedOutbox
-            : resolvedOutbox + Path.DirectorySeparatorChar;
+        var rootWithSeparator = resolvedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? resolvedRoot
+            : resolvedRoot + Path.DirectorySeparatorChar;
 
         // Case-insensitive on Windows only: on Linux `Report.md` and `report.md` are different files,
         // and treating them as one would let a denied path through under a different case.
@@ -79,7 +84,7 @@ public static class OutboxPath
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
-        return resolvedCandidate.StartsWith(outboxWithSeparator, comparison);
+        return resolvedCandidate.StartsWith(rootWithSeparator, comparison);
     }
 
     /// <summary>

@@ -37,12 +37,13 @@ public class AgyHookCheckCommandTests
          "transcriptPath":"C:/x/transcript_full.jsonl","workspacePaths":["C:/x"]}
         """;
 
-    private static string Decide(string stdinText, string? denied)
+    private static string Decide(
+        string stdinText, string? denied, string? outbox = null, string? workspace = null)
     {
         using var stdin = new StringReader(stdinText);
         using var stdout = new StringWriter();
 
-        var exitCode = AgyHookCheckCommand.Execute(stdin, stdout, denied);
+        var exitCode = AgyHookCheckCommand.Execute(stdin, stdout, denied, outbox, workspace);
 
         Assert.Equal(AgyHookCheckCommand.ExitCode, exitCode);
 
@@ -68,25 +69,98 @@ public class AgyHookCheckCommandTests
     }
 
     [Fact]
-    public void A_granted_write_is_allowed_wherever_it_points_because_this_gate_reads_only_the_name()
+    public void A_granted_write_outside_the_workspace_and_the_outbox_is_denied()
     {
-        // The limit, stated. This command decides on `toolCall.name` alone — no argument, no path.
-        // So a granted write is allowed to a target outside the workspace, outside every `--add-dir`
-        // path, and outside anything AER owns. #679.
+        // #679 inverted, and re-keyed to names agy actually sends. This asserted the opposite until
+        // the bound existed — but it could never have failed for the right reason, because it drove
+        // the gate with `write_file` and `AbsolutePath`, neither of which agy produces.
+        // `agy.hook-payload-carries-write-path` measured the real pair: `write_to_file` and
+        // `toolCall.args.TargetFile`. A fabricated tool name is not in any write list, so that
+        // payload was judged as an ordinary unknown tool and would have passed against a gate that
+        // bounded real writes correctly.
         //
         // It matters here more than on claude: `agy.plan-mode-does-not-deny-writes` measured that
         // agy itself writes outside every directory it was given, so there is no second bound
         // underneath this one to fall back on.
-        var payload = Payload("write_file").Replace(
-            "\"CommandLine\":\"node --version\"",
-            "\"AbsolutePath\":\"C:/somewhere/else/entirely.txt\"");
+        var payload = WritePayload("C:/somewhere/else/entirely.txt");
 
-        Assert.Equal("allow", Decide(payload, "agy:run_command,manage_task"));
+        Assert.Equal("deny", Decide(payload, "agy:run_command,manage_task", Outbox, Workspace));
 
-        // The control: the identical payload with that tool withheld. Without it this passes on a
-        // gate that allows everything, which is the failure mode this suite's header names.
-        Assert.Equal("deny", Decide(payload, "agy:run_command,write_file"));
+        // The same two controls OutboxWriteExemptionTests' claude equivalent carries, for the same
+        // reasons: an inside-the-workspace write that must still be allowed, and the same payload
+        // with the tool withheld.
+        Assert.Equal(
+            "allow",
+            Decide(WritePayload(Workspace + "/src/x.cs"), "agy:run_command,manage_task", Outbox, Workspace));
+        Assert.Equal("deny", Decide(payload, "agy:run_command,write_to_file", Outbox, Workspace));
     }
+
+    /// <summary>
+    /// A granted write still reaches the outbox, which sits outside the workspace. Same claim as
+    /// <c>OutboxWriteExemptionTests</c>' claude equivalent, which says what a workspace-only bound
+    /// would cost.
+    /// </summary>
+    [Fact]
+    public void A_granted_write_into_the_outbox_is_allowed()
+    {
+        Assert.Equal(
+            "allow",
+            Decide(WritePayload(Outbox + "/review.md"), "agy:run_command", Outbox, Workspace));
+
+        // Same control as the claude equivalent, and it earns its place for the same reason there.
+        Assert.False(OutboxPath.IsInside(Path.Combine(Outbox, "review.md"), Workspace));
+    }
+
+    /// <summary>
+    /// A write whose target this gate cannot read is denied — the condition
+    /// <c>OutboxWriteExemptionTests</c>' claude equivalent states, and the one agy's own payload check
+    /// is recorded as non-sentinel on.
+    /// </summary>
+    [Fact]
+    public void A_granted_write_whose_target_cannot_be_read_from_the_payload_is_denied()
+    {
+        // The measured key, replaced with the one the old test invented — so this also pins that a
+        // fabricated field name is not silently accepted as a target.
+        var payload = WritePayload("C:/somewhere/else.txt").Replace("TargetFile", "AbsolutePath");
+
+        Assert.Equal("deny", Decide(payload, "agy:run_command", Outbox, Workspace));
+
+        // The control: the identical payload for a non-write tool is still allowed, so the denial is
+        // about an unreadable write target rather than about the unexpected key.
+        Assert.Equal(
+            "allow",
+            Decide(Payload("list_dir").Replace("CommandLine", "AbsolutePath"), "agy:run_command", Outbox, Workspace));
+    }
+
+    // Real rooted paths for this platform, not literals: `C:/...` is not rooted on Linux, so a
+    // hardcoded Windows path would make every containment answer false and the allow arms would fail
+    // on the Linux CI leg for a reason that has nothing to do with the gate.
+    private static readonly string Workspace = Path.Combine(Path.GetTempPath(), "aer-workspace");
+
+    private static readonly string Outbox =
+        Path.Combine(Path.GetTempPath(), "aer-task", "artifacts", "execution_1");
+
+    /// <summary>
+    /// A real <c>write_to_file</c> payload: the tool name and the <c>TargetFile</c> key are the ones
+    /// <c>agy.hook-payload-carries-write-path</c> observed on a live call, not plausible-looking
+    /// substitutes.
+    /// </summary>
+    /// <remarks>
+    /// Serialised rather than string-spliced, so a Windows path's backslashes cannot produce JSON
+    /// that happens to parse into something other than the path intended — the same reason
+    /// <c>OutboxWriteExemptionTests</c> builds its payloads this way.
+    /// </remarks>
+    private static string WritePayload(string target) =>
+        JsonSerializer.Serialize(new
+        {
+            artifactDirectoryPath = "C:/x/brain/abc",
+            conversationId = "abc",
+            modelName = "gemini-3.6-flash-medium",
+            stepIdx = 3,
+            toolCall = new { args = new { TargetFile = target }, name = "write_to_file" },
+            transcriptPath = "C:/x/transcript_full.jsonl",
+            workspacePaths = new[] { "C:/x" },
+        });
 
     [Theory]
     [InlineData(null)]
