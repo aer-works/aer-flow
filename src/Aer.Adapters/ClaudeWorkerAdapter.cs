@@ -118,8 +118,9 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         // either the mandatory PreToolUse hook (0029) or MCP config; it passes both explicitly, at
         // a path AER owns rather than the room's own directory (`WorkingDirectory` may be a repo the
         // operator did not ask AER to write into). EnsureLaunchConfigFiles populates the real
-        // PreToolUse hook (#543) -- see its own doc comment for why the settings file is always
-        // rewritten rather than written once.
+        // PreToolUse hook (#543) -- see its own doc comment for why the settings file is left holding
+        // canonical content on every resolve rather than written once, and #667 for why an unchanged
+        // file is not rewritten to get there.
         var (settingsPath, mcpConfigPath) = EnsureLaunchConfigFiles();
         args.Add("--settings");
         args.Add(settingsPath);

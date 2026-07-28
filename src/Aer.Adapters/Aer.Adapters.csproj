@@ -9,6 +9,13 @@
          no other coupling: Aer.Workers.Dialogue still references neither Aer.Flow nor Aer.Adapters
          (M17 Phase 2's decision of record), so this edge is one-directional. -->
     <ProjectReference Include="..\Aer.Workers.Dialogue\Aer.Workers.Dialogue.csproj" />
+
+    <!-- #667: AtomicLaunchConfigWriter is internal and had no direct tests, so its drift-correction
+         behaviour could only be reached through ClaudeWorkerAdapter.Resolve. That meant a test had
+         to hand-write the one shared claude-settings.json, and that is what forced the whole
+         Aer.Adapters.Tests suite to be serialised. Testing the writer against a throwaway path
+         instead removes the shared state rather than scheduling around it. -->
+    <InternalsVisibleTo Include="Aer.Adapters.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -8,7 +8,7 @@ namespace Aer.Adapters.Tests;
 /// M20 Phase 4's deliverable: unit tests for the refactored, direct shell-less
 /// <see cref="ClaudeWorkerAdapter"/> resolving.
 /// </summary>
-[Collection(ClaudeLaunchConfigCollection.Name)]
+[Collection(LaunchConfigCollection.Name)]
 public class ClaudeWorkerAdapterTests
 {
     private static readonly WorkerContract ArchitectContract = new(
@@ -345,10 +345,15 @@ public class ClaudeWorkerAdapterTests
     /// #543 reverses #533's "never overwrite" for this one file: the settings file is entirely
     /// AER-owned (nothing an operator could have put there survives), and it now carries the
     /// mandatory `PreToolUse` hook, so leaving stale content in place would permanently disable the
-    /// gate on any machine that ran a pre-#543 build even once. This inverts what
-    /// `An_existing_settings_file_survives_a_second_Resolve_call_untouched` asserted before #543 --
-    /// deliberately, not a silent edit; see `EnsureLaunchConfigFiles`'s own doc comment.
+    /// gate on any machine that ran a pre-#543 build even once.
     /// </summary>
+    /// <remarks>
+    /// <b>Has to be asserted through <c>Resolve</c>, not only on the writer.</b> With this test moved
+    /// down to <c>AtomicLaunchConfigWriterTests</c>, swapping <c>EnsureLaunchConfigFiles</c> back to
+    /// <c>EnsureFileExists</c> -- the pre-#543 regression itself -- left the suite green. The
+    /// writer-level test proves the writer corrects drift; this one proves the adapter routes through
+    /// it. Different claims, not a restatement.
+    /// </remarks>
     [Fact]
     public void A_settings_file_with_stale_content_is_overwritten_with_the_canonical_hook_on_the_next_resolve()
     {

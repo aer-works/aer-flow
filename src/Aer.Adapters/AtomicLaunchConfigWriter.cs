@@ -38,21 +38,15 @@ namespace Aer.Adapters;
 /// attempt wins, the file ends up holding the one content every writer wanted anyway.
 /// </para>
 /// <para>
-/// <b>Why the write is skipped when the content already matches (#667):</b> that same determinism
-/// means a rewrite on every resolve buys nothing and costs a race. The reader that pays for it is
-/// not another writer but the vendor CLI, which opens <c>--settings</c> once at spawn with no retry
-/// of its own; a claude that cannot load its settings file loads no <c>PreToolUse</c> hook, which
-/// <c>gate.broken-hook-fails-open</c> measures as an allow. Measured before the skip: under four
-/// concurrent resolvers, 4239 of 424091 unretried reads of <c>claude-settings.json</c> failed with a
-/// sharing violation, while reads of the never-rewritten <c>claude-mcp.json</c> in the same directory
-/// failed none.
+/// <b>Skipped when the content already matches (#667):</b> the same determinism makes a rewrite on
+/// every resolve pure contention. The reader it costs is the vendor CLI, which opens
+/// <c>--settings</c> once at spawn with no retry; before the skip, 4239 of 424091 unretried reads
+/// failed a sharing violation under four concurrent resolvers.
 /// </para>
 /// <para>
-/// <b>This bounds the window rather than closing it.</b> The first resolve against a fresh or drifted
-/// file still writes, and a spawn inside that window can still lose its read; the retry above is what
-/// covers it, and is why it stays. What the skip removes is every resolve after the first — the whole
-/// population in the daemon case, where the file is canonical long before two sessions start a turn
-/// together.
+/// This bounds the window rather than closing it: the first resolve against a fresh or drifted file
+/// still writes, which is why the retry stays, and why enough concurrent cold-start writers can still
+/// exhaust it (#682).
 /// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter
@@ -107,18 +101,13 @@ internal static class AtomicLaunchConfigWriter
     /// is nothing to write.
     /// </summary>
     /// <remarks>
+    /// Content, not existence: #543 reversed "never overwrite" so that a stale or tampered file cannot
+    /// stay installed with the gate silently off, and comparing content keeps that.
     /// <para>
-    /// Existence-only would be wrong here: #543 reversed #533's "never overwrite existing content"
-    /// precisely because a stale file -- a pre-#543 <c>{}</c>, or content a worker tampered with
-    /// through its own <c>--add-dir</c> grant -- would otherwise stay installed forever with the gate
-    /// silently disabled. Comparing content keeps that reversal intact while removing the writes that
-    /// change nothing.
-    /// </para>
-    /// <para>
-    /// <b>An unreadable file counts as differing.</b> This probe can take the very sharing violation
-    /// it exists to spare the vendor CLI, and the safe response to "I could not tell" is to write:
-    /// the cost of a redundant write is contention, and the cost of a skipped one is a worker running
-    /// with no gate. It must never throw -- a failed probe is not a failed write.
+    /// <b>Unreadable counts as differing</b> -- the cost of a redundant write is contention, the cost
+    /// of a skipped one is an ungated worker. Deliberately not a blanket catch: a worker can write
+    /// this file through its own <c>--add-dir</c> grant, so a pathologically large one escapes as
+    /// <see cref="OutOfMemoryException"/>. Left loud rather than guarded by a guessed size threshold.
     /// </para>
     /// </remarks>
     private static bool AlreadyHolds(string path, string content)

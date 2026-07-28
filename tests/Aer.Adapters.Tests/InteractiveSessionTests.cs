@@ -7,10 +7,7 @@ using Xunit;
 
 namespace Aer.Adapters.Tests;
 
-// Resolves ClaudeWorkerAdapter, so it reads the shared claude-settings.json and belongs in the
-// collection that serialises those classes. Was missing it before #667 -- an inconsistency, not a
-// measured flake.
-[Collection(ClaudeLaunchConfigCollection.Name)]
+[Collection(LaunchConfigCollection.Name)]
 public sealed class InteractiveSessionTests
 {
     private readonly WorkerContract _contract = new(

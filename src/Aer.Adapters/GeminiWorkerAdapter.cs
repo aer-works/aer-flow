@@ -381,11 +381,13 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Rewritten every resolve, never merely created-if-absent</b>, for the reason #543 gives on
-    /// the claude side: a stale file left by an earlier build would silently disable the gate for
-    /// good on any machine that ran that build once. It also means a worker that tampered with the
-    /// file cannot carry that into the next spawn. The directory is entirely AER-owned, so there is
-    /// no operator content for the rewrite to destroy.
+    /// <b>Left holding canonical content on every resolve, never merely created-if-absent</b>, for the
+    /// reason #543 gives on the claude side: a stale file left by an earlier build would silently
+    /// disable the gate for good on any machine that ran that build once. It also means a worker that
+    /// tampered with the file cannot carry that into the next spawn — #667 skips the write when the
+    /// file already matches, which does not weaken that, because a tampered file differs and is
+    /// therefore still rewritten. The directory is entirely AER-owned, so there is no operator content
+    /// for the rewrite to destroy.
     /// </para>
     /// <para>
     /// <b>Never the operator's own <c>~/.gemini/config/</c></b>, which is agy's other documented
