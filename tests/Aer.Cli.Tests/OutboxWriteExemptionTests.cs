@@ -242,6 +242,30 @@ public class OutboxWriteExemptionTests
         }
     }
 
+    [Fact]
+    public void A_granted_write_is_allowed_anywhere_on_disk_because_no_path_is_consulted()
+    {
+        // The limit of this gate, stated rather than assumed. Every test above drives the WITHHELD
+        // path, where the target decides the verdict. When the tool is granted the hook returns
+        // before it looks at any path, so `WriteFiles: true` bounds nothing — not to the outbox, not
+        // to the workspace, not to this filesystem's root. #679.
+        //
+        // Measured live on the vendor side by `agy.plan-mode-does-not-deny-writes`: agy writes
+        // outside every directory it was given, so nothing beneath AER supplies the bound either.
+        using var stderr = new StringWriter();
+        var somewhereElse = Path.Combine(Path.GetTempPath(), "not-the-workspace", "anything.txt");
+
+        Assert.Equal(
+            HookCheckCommand.AllowedExitCode,
+            HookCheckCommand.Execute(
+                new StringReader(Payload("Write", new { file_path = somewhereElse })),
+                stderr, "claude:Bash", Outbox));
+
+        // The control: the same path, the same payload, with Write withheld instead of granted. It
+        // is what makes the assertion above a statement about the grant rather than about the path.
+        Assert.Equal(HookCheckCommand.DeniedExitCode, Decide("Write", somewhereElse));
+    }
+
     /// <summary>
     /// Builds a hook payload through the serializer rather than as a raw string literal, so a JSON
     /// brace never has to be escaped against C#'s own interpolation syntax — which is a way to write

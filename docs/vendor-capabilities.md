@@ -498,6 +498,34 @@ hard-codes *"agy has no usage"* would bake in a claim that two open probes might
 The honest element is one that can say *"no usage data from this worker"* and later carry a figure
 without being redesigned.
 
+## Neither `--mode` nor `--add-dir` stops `agy` writing a file
+
+Read this before treating either flag as a safety boundary. Check:
+`agy.plan-mode-does-not-deny-writes`.
+
+One `agy -p --mode plan --add-dir A` run, asked for two absolute writes — one into `A`, one into a
+directory `B` that was never named on the command line:
+
+| target | named to agy | result |
+|---|---|---|
+| `A/probe-out/review.md` | yes, via `--add-dir` | written |
+| `B/leaked.txt` | no | written |
+
+No prompt, no refusal, exit 0, and both files present on disk. Identical across two runs.
+
+The name suggests otherwise on both flags, which is the whole reason this is written down. `plan`
+constrains what the model *sets out* to do, not what its tools are permitted to do; `--add-dir`
+grants visibility rather than withholding it elsewhere.
+
+The verdict is read against the file on disk rather than the CLI's report, and that is not
+fastidiousness: the first attempt to establish this returned "workspace empty, nothing written"
+three times and was wrong, because `agy -p` ignores the process working directory (see #472 above)
+and a prompt naming "your current directory" pointed somewhere nobody was watching. A control that
+cannot separate *refused* from *never attempted* measures nothing.
+
+This is also the narrower reading of `agy.fails-closed-headless`. That check auto-denies an ungated
+**shell command**; the write tool is a different tool and answers differently.
+
 ## `agy` permission grammar
 
 Rules live in `~/.gemini/antigravity-cli/settings.json` under `permissions.allow` / `.deny`. This is

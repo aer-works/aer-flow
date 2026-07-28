@@ -67,6 +67,27 @@ public class AgyHookCheckCommandTests
         Assert.Equal("allow", Decide(Payload("view_file"), "agy:run_command,manage_task"));
     }
 
+    [Fact]
+    public void A_granted_write_is_allowed_wherever_it_points_because_this_gate_reads_only_the_name()
+    {
+        // The limit, stated. This command decides on `toolCall.name` alone — no argument, no path.
+        // So a granted write is allowed to a target outside the workspace, outside every `--add-dir`
+        // path, and outside anything AER owns. #679.
+        //
+        // It matters here more than on claude: `agy.plan-mode-does-not-deny-writes` measured that
+        // agy itself writes outside every directory it was given, so there is no second bound
+        // underneath this one to fall back on.
+        var payload = Payload("write_file").Replace(
+            "\"CommandLine\":\"node --version\"",
+            "\"AbsolutePath\":\"C:/somewhere/else/entirely.txt\"");
+
+        Assert.Equal("allow", Decide(payload, "agy:run_command,manage_task"));
+
+        // The control: the identical payload with that tool withheld. Without it this passes on a
+        // gate that allows everything, which is the failure mode this suite's header names.
+        Assert.Equal("deny", Decide(payload, "agy:run_command,write_file"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
