@@ -110,23 +110,51 @@ def _bad_pin():
         yield
 
 
-@control("no template is refused, and the guard keeps #529's shape",
-         "the guard reverts to the over-strict `not write_files` rule (F1's defect)")
-def _over_strict_guard():
-    # THE arm this whole file exists for. Every template grants write, so the loop over templates
-    # cannot see this -- only the explicit #529 polarity can. Before that polarity was added, this
-    # exact mutation left `audit-selfcheck` green.
-    def over_strict(grant):
+@control("no template is refused, and every grant the shell would over-reach is",
+         "the coherence rule is dropped, so a withheld write dispatches whenever the shell is granted")
+def _no_coherence_rule():
+    # The pre-#529 guard, verbatim. Every template is coherent, so the loop over templates cannot see
+    # this -- only the explicit refusal arms can.
+    def pre_529(grant):
         if grant["run_shell_commands"] and not grant["network_access"]:
             return "shell without network"
-        if not grant["write_files"]:
+        if not grant["write_files"] and not grant["run_shell_commands"]:
             return "nothing here can write the output"
         return None
-    with swap(selfcheck.dispatch, "grant_refusal", over_strict):
+    with swap(selfcheck.dispatch, "grant_refusal", pre_529):
         yield
 
 
-@control("no template is refused, and the guard keeps #529's shape",
+@control("no template is refused, and every grant the shell would over-reach is",
+         "the coherence rule keeps writes but drops reads, which no template would notice")
+def _coherence_rule_forgets_reads():
+    # Reads are the arm with nothing behind them: every template either grants read or withholds the
+    # shell. Written as its own arm because the check must fail on the CATEGORY being dropped, not
+    # only on the rule vanishing.
+    def writes_only(grant):
+        if grant["run_shell_commands"] and not grant["network_access"]:
+            return "shell without network"
+        if grant["run_shell_commands"] and not grant["write_files"]:
+            return "reaches both anyway"
+        if not grant["write_files"] and not grant["run_shell_commands"]:
+            return "nothing here can write the output"
+        return None
+    with swap(selfcheck.dispatch, "grant_refusal", writes_only):
+        yield
+
+
+@control("no template is refused, and every grant the shell would over-reach is",
+         "the rule over-corrects and refuses every grant carrying a shell")
+def _refuses_all_shell():
+    # The opposite defect, and the one a refusal-only check cannot see without its control arm: this
+    # makes `implement` -- the only template exercising the write path -- undispatchable.
+    def any_shell(grant):
+        return "reaches both anyway" if grant["run_shell_commands"] else None
+    with swap(selfcheck.dispatch, "grant_refusal", any_shell):
+        yield
+
+
+@control("no template is refused, and every grant the shell would over-reach is",
          "the guard stops refusing anything at all")
 def _no_guard():
     with swap(selfcheck.dispatch, "grant_refusal", lambda grant: None):

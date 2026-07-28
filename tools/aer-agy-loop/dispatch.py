@@ -218,9 +218,13 @@ def resolve(template: dict) -> dict:
 def grant_refusal(grant: dict) -> str | None:
     """Why this permission grant is refused before it can spend, or None if it is dispatchable.
 
-    One copy, called rather than restated. A checker restating the second condition as `write_files
-    is True` asserted a stricter rule than this enforces, in a message contradicting what #529
-    measured -- and printed OK.
+    One copy, called rather than restated -- a checker that restated a condition asserted a
+    different rule than this enforces and printed OK.
+
+    The conditions overlap on purpose: each names one cause and says what to do about it, so
+    collapsing them into the single predicate they add up to would refuse the same grants with a
+    message that no longer tells the operator which problem they have. `selfcheck.py`'s
+    `_templates_are_dispatchable` asserts that sum directly.
     """
     if grant["run_shell_commands"] and not grant["network_access"]:
         return (
@@ -230,10 +234,20 @@ def grant_refusal(grant: dict) -> str | None:
             "over-granting. Pass --network-access too, or drop --run-shell-commands."
         )
 
+    if grant["run_shell_commands"] and not (grant["read_files"] and grant["write_files"]):
+        # `WorkerBindingResolver.RefuseIfShellDefeatsAWithheldCategory`'s rule, at the caller, so the
+        # flags are refused before the operator commits rather than at bind time after. Network is
+        # absent because the condition above already refuses shell-without-network.
+        return (
+            "RunShellCommands with ReadFiles or WriteFiles withheld is refused: a granted shell "
+            "reaches both anyway (cat, redirection), so withholding them does not withhold them "
+            "(#529). AER refuses the same combination at bind time. Grant them, making the real "
+            "reach explicit, or drop --run-shell-commands."
+        )
+
     if not grant["write_files"] and not grant["run_shell_commands"]:
-        # BOTH conditions. Refusing on `not write_files` alone was wrong: #529 measured, on claude,
-        # that a withheld-write grant with the shell granted produced the file anyway via Bash. So
-        # that combination is satisfiable and is allowed through.
+        # Kept as its own condition for its own message: a withheld write now lands here or on the
+        # coherence rule above depending on the shell, and the two refusals are not the same problem.
         #
         # Scope, since only one arm is measured:
         #   * claude, write+shell withheld -> `Contract not satisfied`; with --write-files ->
@@ -262,8 +276,8 @@ def grant_refusal(grant: dict) -> str | None:
             "nothing here can write the output. A worker satisfies its ProducedOutputs contract by "
             "writing the artifact into AER_OUTPUT_DIR, and this grant withholds both the write tools "
             "and the shell -- so the run would burn its full budget and then fail the contract "
-            "check. Pass --write-files, or --run-shell-commands --network-access (both -- shell "
-            "alone is refused above), which #529 measured as defeating a withheld write anyway. "
+            "check. Pass --write-files. Granting the shell instead is no longer an escape: it "
+            "defeats a withheld write (#529), which is why the coherence rule above refuses it. "
             "See #629."
         )
 

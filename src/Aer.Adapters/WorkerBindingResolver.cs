@@ -46,6 +46,10 @@ public static class WorkerBindingResolver
     /// An entry's <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> names a profile with no
     /// entry in <paramref name="profiles"/>.
     /// </exception>
+    /// <exception cref="IncoherentPermissionGrantException">
+    /// An entry's <see cref="WorkerBindingConfigEntry.PermissionGrant"/> grants the shell while
+    /// withholding a category the shell reaches anyway (#529).
+    /// </exception>
     public static IReadOnlyDictionary<string, WorkerBinding> Resolve(
         IReadOnlyDictionary<string, WorkerBindingConfigEntry> config,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
@@ -63,6 +67,8 @@ public static class WorkerBindingResolver
             {
                 throw new UnknownWorkerAdapterException(entry.Adapter);
             }
+
+            RefuseIfShellDefeatsAWithheldCategory(workerName, entry.PermissionGrant);
 
             var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
             var invocation = new WorkerInvocation(
@@ -86,6 +92,51 @@ public static class WorkerBindingResolver
         }
 
         return bindings;
+    }
+
+    /// <summary>
+    /// #529: a granted shell reaches three of <see cref="PermissionGrant"/>'s four categories, so a
+    /// grant that withholds one of those while granting the shell does not actually withhold it.
+    /// Both places AER enforces a grant match on tool <em>name</em> —
+    /// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> emits <c>--disallowedTools Edit,Write,NotebookEdit</c>
+    /// and the <c>PreToolUse</c> hook check inspects the tool name — and neither can tell
+    /// <c>Bash("cat x")</c> from <c>Read("x")</c>.
+    ///
+    /// <para>
+    /// <see cref="PermissionGrant.ShellCommandPatterns"/> is deliberately <em>not</em> an exemption.
+    /// A pattern list only reaches the <c>--allowedTools</c> string, and
+    /// <c>gate.allowedtools-is-preapproval-not-ceiling</c> measured that list to be pre-approval
+    /// rather than a ceiling; the <c>--disallowedTools</c> side has no narrowed <c>Bash(…)</c> form
+    /// at all. So a pattern list changes what is pre-approved, never what is reachable.
+    /// </para>
+    /// </summary>
+    private static void RefuseIfShellDefeatsAWithheldCategory(string workerName, PermissionGrant? grant)
+    {
+        if (grant is null || !grant.RunShellCommands)
+        {
+            return;
+        }
+
+        List<string> withheld = [];
+        if (!grant.ReadFiles)
+        {
+            withheld.Add(nameof(PermissionGrant.ReadFiles));
+        }
+
+        if (!grant.WriteFiles)
+        {
+            withheld.Add(nameof(PermissionGrant.WriteFiles));
+        }
+
+        if (!grant.NetworkAccess)
+        {
+            withheld.Add(nameof(PermissionGrant.NetworkAccess));
+        }
+
+        if (withheld.Count > 0)
+        {
+            throw new IncoherentPermissionGrantException(workerName, withheld);
+        }
     }
 
     /// <summary>

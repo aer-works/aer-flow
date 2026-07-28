@@ -226,7 +226,7 @@ def _pins_resolve():
     return f"{len(checked)} of {len(dispatch.TEMPLATES)} templates pin an agy model"
 
 
-@check("no template is refused, and the guard keeps #529's shape")
+@check("no template is refused, and every grant the shell would over-reach is")
 def _templates_are_dispatchable():
     # Calls `grant_refusal` rather than restating its conditions. The restatement asserted
     # `write_files is True` for every template -- STRICTER than the product, which refuses only when
@@ -239,28 +239,44 @@ def _templates_are_dispatchable():
             f"the template cannot be used at all: {refusal}"
         )
 
-    # The templates alone CANNOT catch the defect this check exists for. All of them grant write, so
-    # the over-strict `not write_files` rule passes on every one of them -- restoring F1's exact
-    # defect leaves the loop above green. The polarity has to be asserted directly, on the grant that
-    # separates the two rules.
+    # The templates alone CANNOT catch what this check exists for: every one of them is coherent, so
+    # the loop above stays green under any rule that only ever refuses. The refusals have to be
+    # asserted directly, on the grants that separate one rule from the next.
     #
-    # This arm was a control run in a scratch file, reported in a commit message as verification, and
-    # preserved nowhere -- "established once, in a temp directory, thrown away with the session",
-    # which is the failure `dispatch.py`'s own header exists to stop.
-    permissive = {**dispatch.BUILT_IN, "write_files": False,
-                  "run_shell_commands": True, "network_access": True}
-    assert dispatch.grant_refusal(permissive) is None, (
-        "the #529 grant -- write withheld, shell AND network granted -- is refused. The guard has "
-        "drifted back to the over-strict `not write_files` rule. #529 measured that a granted shell "
-        "produces the file anyway, so this combination is satisfiable and must dispatch."
+    # `write_files: False` is refused under EVERY shell setting -- so `grant_refusal` adds up to
+    # "writes are always required", and a reader who notices that can collapse three conditions into
+    # one predicate. The conditions are kept apart for their messages, not their verdicts. Asserted
+    # here so the sum is a fact that runs, and so collapsing them has to fail this instead of quietly
+    # losing the read_files and network arms.
+    for shell in (True, False):
+        write_withheld = {**dispatch.BUILT_IN, "write_files": False,
+                          "run_shell_commands": shell, "network_access": True}
+        assert dispatch.grant_refusal(write_withheld) is not None, (
+            f"a grant withholding writes with run_shell_commands={shell} dispatches. With the shell "
+            "it is #529's over-grant -- the operator asked for no writes and gets writes through "
+            "Bash, which AER now refuses at bind time; without it nothing can satisfy the "
+            "ProducedOutputs contract and the run burns its full budget to fail (#629)."
+        )
+
+    # The discriminating control. Without it every assertion above passes on a `grant_refusal` that
+    # refuses everything, which would make the whole dispatch path dead and still print OK.
+    coherent = {**dispatch.BUILT_IN, "read_files": True, "write_files": True,
+                "run_shell_commands": True, "network_access": True}
+    assert dispatch.grant_refusal(coherent) is None, (
+        "the fully-granted shell grant is refused, so no template exercising the write path can "
+        "dispatch at all. The coherence rule is meant to refuse grants that withhold a category the "
+        "shell reaches -- not grants that carry a shell."
     )
-    # And the other side of the `and`, so neither condition can be dropped silently.
-    starved = {**dispatch.BUILT_IN, "write_files": False, "run_shell_commands": False}
-    assert dispatch.grant_refusal(starved) is not None, (
-        "a grant withholding BOTH writes and the shell is allowed through; nothing could satisfy "
-        "the ProducedOutputs contract, so the run would spend its full budget and fail (#629)."
+
+    # Read is the arm with no template behind it: every template either grants read or withholds the
+    # shell, so dropping `read_files` from the coherence rule leaves everything else here green.
+    read_withheld = {**dispatch.BUILT_IN, "read_files": False, "write_files": True,
+                     "run_shell_commands": True, "network_access": True}
+    assert dispatch.grant_refusal(read_withheld) is not None, (
+        "a grant withholding reads while granting the shell dispatches. `cat` is a shell command "
+        "(#529); AER refuses this at bind time and dispatch.py must not send it."
     )
-    return f"{len(dispatch.TEMPLATES)} templates + both #529 polarities"
+    return f"{len(dispatch.TEMPLATES)} templates + 4 refusal arms + the coherent control"
 
 
 @check("every template dry-runs clean through the real command line")
@@ -342,8 +358,17 @@ def _templates_dry_run():
             f"(exit {refused.returncode}). The guards do not fire through the command line, or the "
             f"arm's own flags no longer parse:\n{refused.stderr.strip()[:300]}"
         )
+
+        # The other refusal, on its own message for the same reason. This one would otherwise reach
+        # AER and be refused there instead, after the operator has committed to the flags (#529).
+        incoherent = dry_run("--no-write-files", "--run-shell-commands", "--network-access")
+        assert "reaches both anyway" in incoherent.stderr, (
+            f"a grant withholding writes while granting the shell dry-ran clean (exit "
+            f"{incoherent.returncode}). dispatch.py would build a bindings.json that "
+            f"WorkerBindingResolver refuses:\n{incoherent.stderr.strip()[:300]}"
+        )
     return (f"{len(dispatch.TEMPLATES)} templates x 8 resolved keys vs the generated bindings, "
-            "+ 1 refusal polarity")
+            "+ 2 refusal polarities")
 
 
 @check("every permission boolean can be turned OFF from the command line")

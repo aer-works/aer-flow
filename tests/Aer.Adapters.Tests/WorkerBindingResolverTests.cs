@@ -312,4 +312,114 @@ public class WorkerBindingResolverTests
             return new CoreDispatchTarget("echo", []);
         }
     }
+    // ---------------------------------------------------------------------------------------
+    // #529 — a granted shell reaches three of the four categories, so withholding one while
+    // granting the shell does not withhold it. These assert the bind-time refusal.
+    // ---------------------------------------------------------------------------------------
+
+    private static Dictionary<string, IWorkerAdapter> EchoAdapter() =>
+        new() { ["echo"] = new FakeEchoWorkerAdapter() };
+
+    private static Dictionary<string, WorkerBindingConfigEntry> ConfigWithGrant(PermissionGrant grant) =>
+        new()
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5),
+                PermissionGrant: grant),
+        };
+
+    [Theory]
+    // Each withholds exactly one category a granted Bash reaches. #529 measured the write arm
+    // directly: --disallowedTools Edit,Write,NotebookEdit removed those tools and the model
+    // created the file with Bash instead.
+    [InlineData(false, true, true, "WriteFiles")]
+    [InlineData(true, false, true, "ReadFiles")]
+    [InlineData(true, true, false, "NetworkAccess")]
+    public void A_grant_that_withholds_a_category_a_granted_shell_reaches_is_refused(
+        bool writeFiles, bool readFiles, bool networkAccess, string expectedCategoryInMessage)
+    {
+        var grant = new PermissionGrant(
+            ReadFiles: readFiles, WriteFiles: writeFiles,
+            RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: networkAccess);
+
+        var thrown = Assert.Throws<IncoherentPermissionGrantException>(
+            () => WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter()));
+
+        Assert.Contains(expectedCategoryInMessage, thrown.Message, StringComparison.Ordinal);
+        Assert.Contains("architect", thrown.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_grant_with_the_shell_and_every_reachable_category_granted_resolves()
+    {
+        // The control arm. Without it the check above passes on a resolver that refuses every
+        // grant carrying a shell, which would be a different and much worse defect.
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true,
+            RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true);
+
+        var bindings = WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter());
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void A_grant_that_withholds_categories_without_the_shell_resolves()
+    {
+        // The second control. Withholding writes is perfectly coherent when no shell is granted —
+        // that is the ordinary read-only reviewer, and it must keep working.
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: false,
+            RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+
+        var bindings = WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter());
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void A_shell_command_pattern_allowlist_does_not_exempt_the_grant_from_the_refusal()
+    {
+        // The tempting exemption, and the reason it is wrong: a pattern list reaches only
+        // --allowedTools, which gate.allowedtools-is-preapproval-not-ceiling measured to be
+        // pre-approval rather than a ceiling. --disallowedTools has no narrowed Bash(…) form at all,
+        // so patterns change what is pre-approved and never what is reachable.
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: false,
+            RunShellCommands: true, ShellCommandPatterns: ["git:*"], NetworkAccess: true);
+
+        Assert.Throws<IncoherentPermissionGrantException>(
+            () => WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter()));
+    }
+
+    [Fact]
+    public void Every_category_a_shell_defeats_is_named_at_once_rather_than_one_per_run()
+    {
+        // An operator fixing these one at a time would hit the refusal three times over.
+        var grant = new PermissionGrant(
+            ReadFiles: false, WriteFiles: false,
+            RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: false);
+
+        var thrown = Assert.Throws<IncoherentPermissionGrantException>(
+            () => WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter()));
+
+        Assert.Equal(["ReadFiles", "WriteFiles", "NetworkAccess"], thrown.WithheldCategories);
+    }
+
+    [Fact]
+    public void An_entry_with_no_structured_grant_at_all_resolves()
+    {
+        // Third control: the coherence check must not fire on the many entries that carry no
+        // PermissionGrant, which is still the common case.
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "echo", ArchitectContract, "Draft a plan.", TimeSpan.FromMinutes(5)),
+        };
+
+        var bindings = WorkerBindingResolver.Resolve(config, EchoAdapter());
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
 }
