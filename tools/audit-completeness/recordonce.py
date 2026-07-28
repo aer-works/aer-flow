@@ -67,10 +67,32 @@ def normalise(line: str) -> list[str]:
     return text.split()
 
 
-def added_lines_by_file(base: str) -> dict[str, list[str]]:
+# A real historical change this must still fire on, pinned by SHA (`--prove`).
+#
+# Fixtures are not enough and that is measured, not cautionary: two earlier designs of this checker
+# passed every fixture written for them and were useless against the diff they existed to catch. The
+# first counted issue references and flagged the issue its own PR implemented; the second read
+# duplicated test setup as restatement. Both looked healthy in `selfcheck.py`.
+#
+# fc884cd is the #666 merge, which restated one corrected fact across several files. If a future
+# change to this file stops finding those, it has stopped working -- whatever its fixtures say.
+PROVEN_AGAINST = ("fc884cd6dac19f16d803c28246e101e1c9fef493", 8)
+
+
+def prove(sha: str, minimum: int) -> tuple[bool, str]:
+    """Run against a recorded historical change and report whether it still fires there."""
+    try:
+        by_file = added_lines_by_file(f"{sha}^", head=sha)
+    except subprocess.CalledProcessError as exc:
+        return False, f"cannot read {sha[:7]} -- {exc.stderr.strip()}"
+    found = len(violations(by_file))
+    return found >= minimum, f"{found} passage(s) in {sha[:7]}, expected at least {minimum}"
+
+
+def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[str]]:
     """Every line this change adds, keyed by file. `--unified=0` so no context line is counted."""
     out = subprocess.run(
-        ["git", "diff", "--unified=0", f"{base}...HEAD"],
+        ["git", "diff", "--unified=0", f"{base}...{head}"],
         capture_output=True, text=True, check=True).stdout
 
     by_file: dict[str, list[str]] = collections.defaultdict(list)
@@ -121,6 +143,16 @@ def violations(by_file: dict[str, list[str]]) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) > 1 and argv[1] == "--prove":
+        ok, detail = prove(*PROVEN_AGAINST)
+        print(f"record-once --prove: {detail}")
+        if not ok:
+            print("!! the checker no longer fires on the change it was built to catch.",
+                  file=sys.stderr)
+            return 1
+        print(" OK still fires on real historical data, not only on its fixtures")
+        return 0
+
     base = argv[1] if len(argv) > 1 else "origin/main"
     try:
         by_file = added_lines_by_file(base)

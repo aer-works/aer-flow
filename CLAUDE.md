@@ -235,6 +235,13 @@ open-ended rigour with no named failure behind it. These other gates stay delibe
 checker of their own; this one earned one because its population (decision files, vendor-verify
 checks) is enumerable and its omissions are otherwise invisible.
 
+**A broken check is fixed in the change that found it, not filed** — until it is, every later change
+ships past it. The single exception to "a second defect becomes its own issue", which is about
+*product* defects. Enforced where it can be: `pixi run audit-controls` fails a checker with no
+discriminating control, and each checker pins a real historical range it must still fire on
+(`recordonce.py`'s `PROVEN_AGAINST`) — fixtures alone have twice certified a checker that was useless
+on real data.
+
 ---
 
 ## Cost and reversibility are the operator's call
