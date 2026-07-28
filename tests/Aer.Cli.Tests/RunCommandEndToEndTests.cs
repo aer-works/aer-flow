@@ -155,11 +155,185 @@ public class RunCommandEndToEndTests
         }
     }
 
-    private static async Task<string> WriteThreeStepWorkflowAsync(string directory)
+    // ---------------------------------------------------------------------------------------
+    // #628 — the named workflow file is not read when the task directory is already bound.
+    // Resuming is intended (M15 Phase 1, #137); resuming a *different* template silently is not.
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Resuming_a_task_directory_bound_to_a_different_template_is_refused()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
+            await RunCommand.ExecuteAsync(
+                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var otherWorkflowPath = await WriteThreeStepWorkflowAsync(
+                Path.Combine(testRoot, "other"), templateId: "some-other-task");
+
+            var thrown = await Assert.ThrowsAsync<ResumedTemplateMismatchException>(
+                () => RunCommand.ExecuteAsync(
+                    new RunOptions(otherWorkflowPath, bindingsFilePath, taskDirectory),
+                    Adapters,
+                    cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal("three-step-linear", thrown.BoundTemplateId);
+            Assert.Equal("some-other-task", thrown.NamedTemplateId);
+            Assert.Equal(taskDirectory, thrown.TaskDirectoryPath);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task The_refusal_leaves_the_bound_task_directory_untouched()
+    {
+        // The measured symptom was a run that reported a prior run's terminal result while writing
+        // nothing. Refusing has to be the same kind of no-op on disk — a refusal that appended to
+        // the log would corrupt the very task it is protecting.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
+            await RunCommand.ExecuteAsync(
+                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var eventsBefore = (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count;
+            var snapshotBefore = await File.ReadAllTextAsync(
+                Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+
+            var otherWorkflowPath = await WriteThreeStepWorkflowAsync(
+                Path.Combine(testRoot, "other"), templateId: "some-other-task");
+            await Assert.ThrowsAsync<ResumedTemplateMismatchException>(
+                () => RunCommand.ExecuteAsync(
+                    new RunOptions(otherWorkflowPath, bindingsFilePath, taskDirectory),
+                    Adapters,
+                    cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal(
+                eventsBefore,
+                (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count);
+            Assert.Equal(
+                snapshotBefore,
+                await File.ReadAllTextAsync(
+                    Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Resuming_with_the_same_template_from_a_different_file_still_succeeds()
+    {
+        // The control, and the polarity mirror of the refusal above: the two runs differ only in
+        // whether the second file's template id matches. Without it, the refusal passes just as well
+        // on a check keyed to the file path, which would break every legitimate resume from a copied
+        // or regenerated workflow file.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
+            await RunCommand.ExecuteAsync(
+                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var samePath = await WriteThreeStepWorkflowAsync(Path.Combine(testRoot, "elsewhere"));
+
+            var result = await RunCommand.ExecuteAsync(
+                new RunOptions(samePath, bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Terminal, result.State.Status);
+            Assert.All(result.State.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task An_in_process_resume_that_names_no_workflow_file_is_unaffected()
+    {
+        // The second control. RunOptions.WorkflowFilePath is nullable precisely so an in-process
+        // caller resuming a known task directory need not produce one (M15 Phase 1, #137) — nothing
+        // was named, so there is no disagreement to refuse.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
+            await RunCommand.ExecuteAsync(
+                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var result = await RunCommand.ExecuteAsync(
+                new RunOptions(WorkflowFilePath: null, bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Terminal, result.State.Status);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task A_run_reports_whether_it_bound_the_named_template_or_resumed_a_snapshot()
+    {
+        // Refusing a mismatch leaves the matching resume still silent about which template ran, and
+        // a terminal replay of an already-finished task is otherwise indistinguishable from a fresh
+        // one: same status line, same exit code, no new events. This flag is what FlowStateReporter
+        // says it with.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var fresh = await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.False(fresh.ResumedFromSnapshot);
+
+            var resumed = await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.True(resumed.ResumedFromSnapshot);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    private static async Task<string> WriteThreeStepWorkflowAsync(
+        string directory, string templateId = "three-step-linear")
     {
         Directory.CreateDirectory(directory);
         var definition = new WorkflowDefinition(
-            new WorkflowTemplateId("three-step-linear"),
+            new WorkflowTemplateId(templateId),
             1,
             [
                 new WorkflowStepDefinition(new StepId("architect"), "architect", [], ["plan"], [], new RetryPolicy(1)),

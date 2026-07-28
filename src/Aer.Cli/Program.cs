@@ -47,6 +47,12 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
         "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine("       aer --version");
+    // #628: <workflow-file> reads as "this is what runs", and under --task-dir it often is not.
+    Console.Error.WriteLine();
+    Console.Error.WriteLine(
+        "  aer run resumes a --task-dir that already holds a snapshot, running the workflow that " +
+        "directory was first bound to rather than <workflow-file>. It refuses when the two are " +
+        "different templates. Use a fresh --task-dir to start different work.");
     return 64;
 }
 

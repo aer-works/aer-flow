@@ -67,9 +67,17 @@ public static class RunCommand
         var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
         var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
 
-        var snapshot = File.Exists(snapshotPath)
-            ? await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false)
-            : await BindAndPersistAsync(RequireWorkflowFilePath(options), snapshotPath, cancellationToken).ConfigureAwait(false);
+        var resumedFromSnapshot = File.Exists(snapshotPath);
+        WorkflowDefinitionSnapshot snapshot;
+        if (resumedFromSnapshot)
+        {
+            snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
+            await RefuseIfTheNamedTemplateIsNotTheBoundOneAsync(options, snapshot, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            snapshot = await BindAndPersistAsync(RequireWorkflowFilePath(options), snapshotPath, cancellationToken).ConfigureAwait(false);
+        }
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
@@ -96,7 +104,41 @@ public static class RunCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot);
+        return new CommandResult(state, snapshot, resumedFromSnapshot);
+    }
+
+    /// <summary>
+    /// #628: resuming the bound snapshot instead of the named file is intended (M15 Phase 1, #137),
+    /// but doing it when the two name different templates ran another task's workflow and reported
+    /// its result — the measured case replayed a prior terminal run's declared outputs, timeout and
+    /// failure reason, wrote no events, and exited non-zero, which is indistinguishable from a
+    /// genuine fresh failure.
+    ///
+    /// <para>
+    /// The named file is parsed in full rather than scraped for its id, so there is one parser for
+    /// workflow files and no second reading of the same format to drift. A resume that names a
+    /// malformed file therefore now fails on it, where before the file was not read at all.
+    /// </para>
+    /// </summary>
+    private static async Task RefuseIfTheNamedTemplateIsNotTheBoundOneAsync(
+        RunOptions options, WorkflowDefinitionSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        // Nothing named, nothing to disagree with: WorkflowFilePath is nullable so an in-process
+        // caller resuming a known task directory need not produce one.
+        if (options.WorkflowFilePath is not { } workflowFilePath)
+        {
+            return;
+        }
+
+        var named = await WorkflowDefinitionParser.LoadFromFileAsync(workflowFilePath, cancellationToken)
+            .ConfigureAwait(false);
+        if (named.WorkflowTemplateId == snapshot.WorkflowTemplateId)
+        {
+            return;
+        }
+
+        throw new ResumedTemplateMismatchException(
+            snapshot.WorkflowTemplateId.Value, named.WorkflowTemplateId.Value, options.TaskDirectoryPath);
     }
 
     /// <summary>

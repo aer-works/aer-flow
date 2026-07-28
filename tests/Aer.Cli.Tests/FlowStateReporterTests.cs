@@ -57,6 +57,39 @@ public class FlowStateReporterTests
         Assert.Contains($"  later: {StepStatus.Succeeded}", lines);
     }
 
+    /// <summary>
+    /// #628: a resumed run reports the prior run's status and writes no new events, so without this
+    /// line an already-terminal task directory is indistinguishable from a fresh failure. Naming the
+    /// template is the point — under <c>--task-dir</c> it need not be the file on the command line.
+    /// </summary>
+    /// <remarks>
+    /// A fresh run is the polarity control on the same output: a reporter that printed the line
+    /// unconditionally would claim every first run resumed something.
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_resumed_run_says_which_template_it_resumed_and_a_fresh_one_says_nothing(bool resumed)
+    {
+        var snapshot = new WorkflowDefinitionSnapshot(
+            new WorkflowDefinitionSnapshotId("snap-1"),
+            new WorkflowTemplateId("the-bound-template"),
+            1,
+            [new WorkflowStepDefinition(new StepId("only"), "only", [], ["out"], [], new RetryPolicy(1))]);
+        var state = new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            [new StepState(new StepId("only"), StepStatus.Succeeded, new ExecutionId("exec-1"), new Dictionary<StepId, ExecutionId>())],
+            WorkflowStatus.Terminal);
+
+        using var stringWriter = new StringWriter();
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, ResumedFromSnapshot: resumed));
+
+        var output = stringWriter.ToString();
+
+        Assert.Equal(resumed, output.Contains("Resumed the snapshot", StringComparison.Ordinal));
+        Assert.Equal(resumed, output.Contains("the-bound-template", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void A_paused_step_reports_its_execution_id_paused_outcome_and_supersede_targets()
     {
