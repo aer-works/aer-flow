@@ -1818,9 +1818,10 @@ def _agy_hook_env():
        "an agy PreToolUse payload for `write_to_file` names the file the write targets, and names it "
        "absolutely -- the fact a path-bounded gate (#679) has to read, on the vendor where "
        "`agy.plan-mode-does-not-deny-writes` measured that neither --mode nor --add-dir bounds one. "
-       "SCOPED TO THE TOOL THE RUN OBSERVED: the probe's matcher covers all three of "
-       "GeminiWorkerAdapter.WriteTools, and agy chose `write_to_file` for the prompt it was given, so "
-       "the other two are UNMEASURED here -- the note reports which names actually arrived")
+       "SCOPED TO THE TOOL THE RUN OBSERVED: agy chose `write_to_file` for the prompt it was given. "
+       "The probe's matcher covers three of GeminiWorkerAdapter.WriteTools' four names and "
+       "`generate_image` not at all, so THREE of the four are UNMEASURED -- the note reports which "
+       "names actually arrived")
 def _agy_hook_write_path():
     """#679 proposes confining a granted write to `WorkingDirectory` union `AER_OUTPUT_DIR`.
     `AgyHookCheckCommand` decides on `toolCall.name` alone today, so that fix rests entirely on the
