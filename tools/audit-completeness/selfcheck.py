@@ -204,6 +204,27 @@ def is_citation(src, m):
 # The enumerable surfaces
 # ---------------------------------------------------------------------------------------------
 
+def glob_matches(pattern: str, path: str) -> bool:
+    """Does one `dorny/paths-filter` pattern select one repo-relative path?
+
+    Models the pattern forms this workflow uses -- `a/b/**`, `**/c`, a literal path -- rather than
+    emulating picomatch. `*` does not cross a separator; `**` does.
+    """
+    rx, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            rx, i = rx + "(?:.*/)?", i + 3
+        elif pattern.startswith("/**", i):
+            rx, i = rx + "(?:/.*)?", i + 3
+        elif pattern[i] == "*":
+            rx, i = rx + "[^/]*", i + 1
+        elif pattern[i] == "?":
+            rx, i = rx + "[^/]", i + 1
+        else:
+            rx, i = rx + re.escape(pattern[i]), i + 1
+    return re.fullmatch(rx, path) is not None
+
+
 def ci_workflow() -> dict:
     """CI's workflow as parsed data. A seam, so a control can hand back a mutated one."""
     import yaml
@@ -232,13 +253,29 @@ def _mobile_filter_covers_its_job():
     patterns = next(f["with"]["filters"] for f in ci["jobs"]["changes"]["steps"] if "with" in f)
     mobile = yaml.safe_load(patterns)["mobile"]
     target = called.removeprefix("./")
-    assert target in mobile, (
-        f"the mobile job runs {target}, which its filter does not list ({mobile}) -- so an edit to "
-        "those steps does not run them on a pull request")
-    assert not any(p.endswith("workflows/**") for p in mobile), (
-        f"the mobile filter is back to matching every workflow file ({mobile}), which is #677")
     assert (ROOT / target).is_file(), f"{target} does not exist"
-    return f"mobile -> {target}, listed in a filter of {len(mobile)} pattern(s)"
+
+    # The membership question, asserted in both directions against concrete paths. `target in mobile`
+    # would only have caught the exact spelling that regressed; what matters is which files select
+    # the job. The negative arms are the point -- the expensive direction is silent by construction,
+    # because a job that runs when it needn't looks identical to one that had to.
+    selected = [
+        (".github/workflows/ci.yml", False),
+        ("tools/audit-completeness/selfcheck.py", False),
+        ("src/Aer.Ui/App.axaml.cs", False),
+        (target, True),
+        ("src/Aer.Mobile/lib/main.dart", True),
+    ]
+    assert not any(p.startswith("!") for p in mobile), (
+        f"the mobile filter uses an exclusion ({mobile}), which `glob_matches` does not model -- it "
+        "would read as a literal and silently never match, so the arms below would mean nothing")
+    for path, wanted in selected:
+        hit = [p for p in mobile if glob_matches(p, path)]
+        assert bool(hit) == wanted, (
+            f"changing {path} {'does not run' if wanted else 'runs'} the mobile job. "
+            f"Filter: {mobile}" + (f", matched by {hit}" if hit else ""))
+    return (f"mobile -> {target}; {len(selected)} paths x the filter's {len(mobile)} pattern(s), "
+            f"{sum(1 for _, w in selected if not w)} of which must NOT select it")
 
 
 @check("every dispatch tells the worker the budget it is actually given")
