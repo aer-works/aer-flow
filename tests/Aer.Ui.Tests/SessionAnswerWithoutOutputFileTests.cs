@@ -133,6 +133,45 @@ public class SessionAnswerWithoutOutputFileTests : IAsyncLifetime
         Assert.False(string.IsNullOrWhiteSpace(turn.ErrorMessage));
     }
 
+    /// <summary>
+    /// #650: the chat contract no longer requires response.md, so the prompt is the only thing that
+    /// asks for it — and on a non-streaming vendor the file is the only channel an answer can arrive
+    /// on. The ask must therefore survive the daemon's per-turn prompt rewrite, which overwrites the
+    /// materialized template on every turn.
+    /// </summary>
+    /// <remarks>
+    /// Asserted against the bindings.json the daemon writes immediately before dispatching, which is
+    /// the prompt the vendor actually receives. The materialized template is not evidence — it is
+    /// discarded. The stub adapter writes response.md whether or not it was asked, so no assertion
+    /// about the recorded answer can discriminate this; the dispatched prompt is the only witness.
+    /// </remarks>
+    [Fact]
+    public async Task The_prompt_the_vendor_is_dispatched_with_still_asks_for_the_response_file()
+    {
+        var turn = await SendOneTurnAsync("does the ask survive the turn rewrite");
+        Assert.NotNull(turn);
+
+        var sessionsRoot = Path.Combine(AerPaths.Root, "sessions");
+        var bindingsFiles = Directory.Exists(sessionsRoot)
+            ? Directory.GetFiles(sessionsRoot, "bindings.json", SearchOption.AllDirectories)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .ToList()
+            : [];
+        Assert.NotEmpty(bindingsFiles);
+
+        var bindings = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFiles[0], TestContext.Current.CancellationToken);
+        var chat = bindings[InteractiveSessionMaterializer.DefaultWorkerName];
+
+        Assert.Contains(
+            InteractiveSessionMaterializer.DefaultOutputFileName, chat.PromptTemplate, StringComparison.Ordinal);
+        Assert.Contains("does the ask survive the turn rewrite", chat.PromptTemplate, StringComparison.Ordinal);
+
+        // The other half of #650, on the same entry: the contract must no longer require the file.
+        // Both together are the fix — requiring it fails a turn that cannot write, and not asking for
+        // it removes the only channel a non-streaming vendor has.
+        Assert.Empty(chat.Contract.ProducedOutputs);
+    }
+
     private async Task<SessionTurn> SendOneTurnAsync(string message)
     {
         var start = new StartSessionRequest(

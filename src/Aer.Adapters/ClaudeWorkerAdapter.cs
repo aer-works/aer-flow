@@ -526,7 +526,8 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         return prompt.ToString();
     }
 
-    private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
+    private static string EnvironmentReference(string name, bool isWindows) =>
+        WorkerEnvironmentReference.For(name, isWindows);
 
     /// <summary>
     /// Claude Code has no machine-readable "list models" subcommand — <c>--model</c> only documents

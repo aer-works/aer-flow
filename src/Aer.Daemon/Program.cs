@@ -1599,13 +1599,19 @@ namespace Aer.Daemon
 
             if (handoff)
             {
-                promptTemplate = InteractiveSessionMaterializer.SynthesizeContextSummary(metadata.Turns, userMessage);
+                promptTemplate = InteractiveSessionMaterializer.BuildTurnPrompt(
+                    InteractiveSessionMaterializer.SynthesizeContextSummary(metadata.Turns, userMessage));
                 resumeSession = false;
                 vendorSessionId = string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null;
             }
             else
             {
-                promptTemplate = userMessage;
+                // #650: BuildTurnPrompt, not the bare message. This value overwrites the materialized
+                // PromptTemplate on every turn, so an ask appended only at materialization reaches no
+                // vendor — measured. The chat contract no longer requires response.md, which makes the
+                // prompt the only thing that asks for it, and on a non-streaming vendor the file is the
+                // only channel an answer can arrive on.
+                promptTemplate = InteractiveSessionMaterializer.BuildTurnPrompt(userMessage);
                 // #285: CurrentVendorSessionId is minted client-side at materialization time, before
                 // the vendor CLI has ever heard of it -- it's non-null from turn zero, so "isInitial"
                 // was standing in for "has the vendor actually established this id" and is wrong
@@ -1627,11 +1633,11 @@ namespace Aer.Daemon
 
             WorkerBindingConfigEntry? existingEntry = existingBindings.TryGetValue(InteractiveSessionMaterializer.DefaultWorkerName, out var e) ? e : null;
 
-            var contract = existingEntry?.Contract ?? new WorkerContract(
-                WorkerName: InteractiveSessionMaterializer.DefaultWorkerName,
-                RequiredInputs: [],
-                ProducedOutputs: [new ProducedOutput(InteractiveSessionMaterializer.DefaultOutputFileName)],
-                OptionalMetadata: []);
+            // Always the canonical shape, never the persisted one (#650). AER owns this contract and
+            // an operator never authors it, so there is nothing in a session's own copy worth
+            // preserving — while reading it back would keep every session materialized before this
+            // change requiring response.md, and so keep classifying every one of its turns Failed.
+            var contract = InteractiveSessionMaterializer.ChatWorkerContract;
 
             var grant = existingEntry?.PermissionGrant ?? InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory(metadata.WorkingDirectory);
 
