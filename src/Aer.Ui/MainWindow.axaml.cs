@@ -611,9 +611,10 @@ public partial class MainWindow : Window
     /// same <c>RunCommand.ExecuteAsync</c> call <c>aer run</c> makes, reused in-process rather than
     /// spawning the installed binary (the seam decision this phase resolves). Bindings are never
     /// persisted in a task directory (M14 Phase 2's decision of record) and the template is only
-    /// ever read on a fresh start (<see cref="RunOptions.WorkflowFilePath"/>'s own remarks), so both
-    /// are asked for here rather than inferred — "ask, don't infer," the same discipline the recents
-    /// list already follows for task-directory discovery (UI spec §3.1).
+    /// ever <em>bound from</em> on a fresh start (<see cref="RunOptions.WorkflowFilePath"/>'s own
+    /// remarks, which also cover what a resume now reads it for), so both are asked for here rather
+    /// than inferred — "ask, don't infer," the same discipline the recents list already follows for
+    /// task-directory discovery (UI spec §3.1).
     /// <para>
     /// The pump itself runs on a background thread (<see cref="Task.Run(Func{Task})"/>): a live
     /// execution can take however long a real worker takes, and the UI thread must never await that

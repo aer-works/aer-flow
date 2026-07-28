@@ -36,8 +36,7 @@ if (args.Length >= 1 && args[0] == "agy-hook-check")
 var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
-    Console.Error.WriteLine(
-        "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>]");
+    Console.Error.WriteLine(RunOptionsParser.Usage);
     Console.Error.WriteLine(
         "       aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine(
@@ -47,12 +46,8 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
         "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine("       aer --version");
-    // #628: <workflow-file> reads as "this is what runs", and under --task-dir it often is not.
     Console.Error.WriteLine();
-    Console.Error.WriteLine(
-        "  aer run resumes a --task-dir that already holds a snapshot, running the workflow that " +
-        "directory was first bound to rather than <workflow-file>. It refuses when the two are " +
-        "different templates. Use a fresh --task-dir to start different work.");
+    Console.Error.WriteLine($"  {RunOptionsParser.ResumeNote}");
     return 64;
 }
 

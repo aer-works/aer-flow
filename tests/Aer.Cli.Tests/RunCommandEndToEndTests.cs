@@ -194,11 +194,61 @@ public class RunCommandEndToEndTests
     }
 
     [Fact]
-    public async Task The_refusal_leaves_the_bound_task_directory_untouched()
+    public async Task The_refusal_happens_before_anything_is_dispatched()
     {
-        // The measured symptom was a run that reported a prior run's terminal result while writing
-        // nothing. Refusing has to be the same kind of no-op on disk — a refusal that appended to
-        // the log would corrupt the very task it is protecting.
+        // The task directory is bound but has never run — the exact state `aer run` leaves behind
+        // when it persists the snapshot (before the bindings file is even parsed) and then throws on
+        // a malformed one. That state is what makes this test discriminate on ORDER: every step is
+        // still pending, so a refusal placed after the mutation surface would dispatch the whole
+        // workflow and leave a full log behind before raising. Bound-and-already-terminal, which is
+        // the obvious way to write this, cannot tell the two placements apart — a terminal flow
+        // dispatches nothing wherever the check sits.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            Directory.CreateDirectory(taskDirectory);
+            var bound = SnapshotBinder.Bind(
+                await WorkflowDefinitionParser.LoadFromFileAsync(
+                    await WriteThreeStepWorkflowAsync(testRoot), TestContext.Current.CancellationToken));
+            var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+            await SnapshotBinder.PersistAsync(bound, snapshotPath, TestContext.Current.CancellationToken);
+            var snapshotBefore = await File.ReadAllTextAsync(snapshotPath, TestContext.Current.CancellationToken);
+
+            var otherWorkflowPath = await WriteThreeStepWorkflowAsync(
+                Path.Combine(testRoot, "other"), templateId: "some-other-task");
+            await Assert.ThrowsAsync<ResumedTemplateMismatchException>(
+                () => RunCommand.ExecuteAsync(
+                    new RunOptions(otherWorkflowPath, bindingsFilePath, taskDirectory),
+                    Adapters,
+                    cancellationToken: TestContext.Current.CancellationToken));
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            Assert.True(
+                !File.Exists(logPath)
+                    || (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count == 0,
+                "The refusal dispatched work before raising.");
+            Assert.Equal(
+                snapshotBefore,
+                await File.ReadAllTextAsync(snapshotPath, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task A_resume_naming_something_that_is_not_a_file_resumes_rather_than_throwing()
+    {
+        // The desktop writes the bound template's bare *id* into its workflow-path box when a task
+        // directory has no recorded .aer/workflow-path (MainWindow.axaml.cs), and that value reaches
+        // RunOptions.WorkflowFilePath. It was harmless while a resume never read the value. Reading
+        // it without this guard calls File.ReadAllTextAsync on "three-step-linear" and throws
+        // FileNotFoundException — not an AerFlowException, so it escapes every typed boundary in the
+        // product and, on the desktop, an unobserved click handler leaves "Running…" on screen with
+        // nothing running and no message. Silent failure is the defect #628 is about.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try
@@ -210,26 +260,13 @@ public class RunCommandEndToEndTests
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-            var eventsBefore = (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count;
-            var snapshotBefore = await File.ReadAllTextAsync(
-                Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            var result = await RunCommand.ExecuteAsync(
+                new RunOptions("three-step-linear", bindingsFilePath, taskDirectory),
+                Adapters,
+                cancellationToken: TestContext.Current.CancellationToken);
 
-            var otherWorkflowPath = await WriteThreeStepWorkflowAsync(
-                Path.Combine(testRoot, "other"), templateId: "some-other-task");
-            await Assert.ThrowsAsync<ResumedTemplateMismatchException>(
-                () => RunCommand.ExecuteAsync(
-                    new RunOptions(otherWorkflowPath, bindingsFilePath, taskDirectory),
-                    Adapters,
-                    cancellationToken: TestContext.Current.CancellationToken));
-
-            Assert.Equal(
-                eventsBefore,
-                (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count);
-            Assert.Equal(
-                snapshotBefore,
-                await File.ReadAllTextAsync(
-                    Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken));
+            Assert.Equal(WorkflowStatus.Terminal, result.State.Status);
+            Assert.True(result.ResumedFromSnapshot);
         }
         finally
         {
