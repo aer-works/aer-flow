@@ -928,6 +928,17 @@ def reported_turn(stdout):
     Reported, never inferred. Reading an unparseable payload as "no turn was taken" is the
     zero-from-a-condition-that-never-arose error this whole suite is built to avoid -- and it would
     fail in the expensive direction, certifying a per-spawn probe as free.
+
+    THE KEY NAMES ARE ASSUMED, and the caller's control arm is what catches it if they are wrong.
+    `claude__agent-sdk__agent-loop.md:307` documents `total_cost_usd`, `usage` and `num_turns` on the
+    **Agent SDK's** result message; that the CLI's `--output-format json` uses the same names is an
+    inference, because nothing in the corpus documents the CLI's result shape and no check here had
+    ever parsed it. If the inference is wrong every arm reads `(None, None)` alike, which is why the
+    caller refuses to publish a finding unless a run it KNOWS took a turn reported one.
+
+    `total_cost_usd` is additionally documented as a client-side estimate rather than billing data
+    (`claude__agent-sdk__cost-tracking.md:14`), so it is reported for scale and never used as the
+    verdict; `num_turns` is what the decision reads.
     """
     try:
         payload = json.loads(stdout)
@@ -939,8 +950,9 @@ def reported_turn(stdout):
 
 
 @check("gate.sessionstart-without-a-turn", "gate",
-       "whether a spawn can fire SessionStart and TERMINATE WITHOUT A MODEL TURN -- the cost premise "
-       "of #532's per-spawn gate probe, which nothing had measured")
+       "on CLAUDE ONLY: whether a spawn can fire SessionStart and TERMINATE WITHOUT A MODEL TURN -- "
+       "the cost premise of #532's per-spawn gate probe, which nothing had measured. agy has no "
+       "such event and is answered from its documented surface instead; see the body")
 def _sessionstart_without_a_turn():
     """#532 proposes proving the mandatory `PreToolUse` hook can execute by probing on `SessionStart`
     instead, "at zero model cost", citing `gate.headless-event-surface`.
@@ -952,11 +964,30 @@ def _sessionstart_without_a_turn():
     asked. For a probe that runs on every worker spawn the difference is whether AER pays nothing or
     pays a turn on everything it dispatches, which is not a detail to assume either way.
 
-    THE CONTROL CARRIES THE CHECK. A cheap arm that logs nothing has two causes this run cannot tell
-    apart: the invocation does not fire `SessionStart`, or the settings file never loaded and no arm
-    here could have fired anything. The turn-taking arm separates them -- it must fire, or every zero
-    below is a fact about this harness rather than about the CLI. Same rule as
-    `gate.permission-denied-fires`, and the same reason that one exists.
+    CLAUDE ONLY, and the scope is the finding. #532 covers every worker AER spawns and both adapters
+    write the hook, but `agy` has no session-level event to probe and no route to proving the gate
+    that avoids a turn. That half is settled from the documented surface at no cost, so it is
+    recorded in `docs/vendor-doc-audit.md` § "The symmetry stops at proving the gate fired" rather
+    than restated or measured here. What it means for this check is only the scope: whatever this
+    run returns, the zero-cost premise is already false on agy.
+
+    THE CONTROL CARRIES THE CHECK, on two channels rather than one:
+
+      * the EVENT channel -- a cheap arm that logs nothing has two causes this run cannot separate:
+        the invocation does not fire `SessionStart`, or the settings file never loaded and nothing
+        here could have fired at all.
+      * the COST channel -- `reported_turn`'s key names are inferred from the Agent SDK's result
+        message, not from any documentation of the CLI's own JSON. If they are wrong, every arm reads
+        `None`, no arm can qualify as free, and the check would publish "the premise is false" on the
+        strength of a payload nobody could parse. A run that certainly took a turn must report one.
+
+    Both are the same rule twice, and it is the rule `gate.permission-denied-fires` exists because of:
+    a zero from a condition that never arose is not evidence of anything.
+
+    An arm that never started a session is reported as such and is barred from supporting the
+    verdict. `-p ""` may simply be rejected by argument parsing, and "the CLI refused this" is not
+    "no zero-turn invocation exists" -- treating it as such would close #532's cheap path on evidence
+    that never tested it.
     """
     arms = [("control (takes a turn)", ["-p", "Reply with the single word OK."]),
             ("empty prompt", ["-p", ""]),
@@ -982,19 +1013,48 @@ def _sessionstart_without_a_turn():
         finally:
             shutil.rmtree(wd, ignore_errors=True)
 
-    control = results[0]
+    control, candidates = results[0], results[1:]
+    joined = "; ".join(detail)
+
+    # Control, event channel: did the settings file load at all?
     if not control["fired"]:
         return INCONCLUSIVE, ("the turn-taking control never fired SessionStart, so the settings "
-                              f"file did not load and no zero below is evidence -- {'; '.join(detail)}")
+                              f"file did not load and no zero below is evidence -- {joined}")
 
-    # `turns == 0` only counts when the CLI actually SAID zero. `None` is an unreadable payload, and
-    # a probe certified free on a payload nobody could parse is the expensive way to be wrong.
-    free = [r for r in results[1:] if r["fired"] and r["turns"] == 0]
+    # Control, cost channel: this run certainly took a turn, so a readable payload has to say so.
+    # Without this the check reports "the premise is false" whenever `reported_turn`'s inferred key
+    # names are wrong -- a harness defect published as a vendor finding, which is the exact failure
+    # `gate.permission-denied-fires` carries on its own record.
+    if control["turns"] is None:
+        return INCONCLUSIVE, ("the control took a turn and reported no readable num_turns, so the "
+                              "CLI's JSON does not use the Agent SDK's key names and the cost "
+                              f"channel is unreadable -- fix reported_turn before trusting this. {joined}")
+    if control["turns"] == 0:
+        return INCONCLUSIVE, ("the control took a turn and reported num_turns=0, so that field does "
+                              f"not mean what this check reads it to mean -- {joined}")
+
+    # An arm the CLI refused never started a session, so it tested nothing. Counting it as evidence
+    # that no free invocation exists would close #532's cheap path on a run that never reached it.
+    started = [r for r in candidates if r["fired"] or r["turns"] is not None]
+    refused = [r for r in candidates if r not in started]
+
+    # `turns == 0` counts only where the CLI actually SAID zero.
+    free = [r for r in started if r["fired"] and r["turns"] == 0]
     if free:
         return PASS, (f"SessionStart IS reachable with no model turn, via: "
-                      f"{', '.join(r['label'] for r in free)} || {'; '.join(detail)}")
-    return PASS, ("#532's zero-cost premise is FALSE as measured: no arm fired SessionStart without "
-                  f"a reported turn. A per-spawn probe costs a turn per spawn || {'; '.join(detail)}")
+                      f"{', '.join(r['label'] for r in free)} || {joined}")
+
+    if not started:
+        return INCONCLUSIVE, ("every candidate invocation was refused before a session existed, so "
+                              "nothing here tested whether a free one exists. The agy half stands "
+                              f"regardless; see this check's body || refused: "
+                              f"{', '.join(r['label'] for r in refused)} || {joined}")
+
+    return PASS, ("#532's zero-cost premise is FALSE on claude for every invocation that started a "
+                  f"session here ({', '.join(r['label'] for r in started)}): each fired SessionStart "
+                  f"only by taking a turn. A per-spawn probe costs a turn per spawn. NOT tested: "
+                  f"invocations refused before a session existed "
+                  f"({', '.join(r['label'] for r in refused) or 'none'}) || {joined}")
 
 
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",

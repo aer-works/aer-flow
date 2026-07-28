@@ -578,6 +578,25 @@ a **stronger** always-fires guarantee than anything claude documents, if it hold
 they load from `<workspace>/.agents/hooks.json` and from `~/.gemini/config/hooks.json`, fire
 `PreToolUse`, and enforce `deny`. **The gate is symmetric across vendors.**
 
+**The symmetry stops at proving the gate fired, and that costs nothing to establish (2026-07-28).**
+Read as a set, the five events above have no member that is *session-level* — every one of them sits
+inside an invocation. That matters for [#532](https://github.com/aer-works/aer-flow/issues/532),
+which proposes proving the mandatory hook can execute by probing on claude's `SessionStart` "at zero
+model cost". There is no `SessionStart` here to probe. The nearest analogue is `PreInvocation`, which
+does fire *before the model is called* — but its only documented output field is `injectSteps`, so
+**nothing in its contract can stop the invocation it precedes**, and `injectSteps` is separately
+recorded below as not injecting under `-p`. `PreToolUse` needs a tool call, which needs a turn.
+
+So on `agy` every route to proving the gate fired either runs after billing has begun or requires a
+model turn, and #532's zero-cost premise is false here **whatever the claude measurement returns**.
+This is an inference from the documented surface, not a new measurement — the event list was already
+recorded above, and what is new is only what it implies for a per-spawn probe. The claude half is a
+genuinely open question and is `gate.sessionstart-without-a-turn`, written and awaiting a live run.
+
+An `OnSessionStartHook` does appear once in the vendor's changelog, in a note about routing lifecycle
+hooks through their Python-side `HookRouter`. That is product internals, not a `hooks.json` event —
+recorded here so the next reader who greps for it does not read it as a configurable surface.
+
 ### The Python SDK answers all three of #508's open questions
 
 `pip install google-antigravity` — a Python framework, documented as exposing:
