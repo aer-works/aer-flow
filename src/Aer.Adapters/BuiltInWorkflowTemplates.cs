@@ -180,6 +180,13 @@ public static class BuiltInWorkflowTemplates
 
         if (string.Equals(templateId, ReviewRun.Id, StringComparison.OrdinalIgnoreCase))
         {
+            // Writes stay granted here even though #649 made a read-only reviewer expressible, and the
+            // reason is that this template is adapter-agnostic: `normalizedPrimary` is whatever the
+            // caller asked for. `WriteFiles: false` plus a declared output binds on claude and is
+            // refused at bind time on agy (IWorkerAdapter.WithheldWritesReachTheOutbox), so narrowing
+            // it here would make a built-in template that works today fail on one vendor.
+            // `tools/aer-agy-loop/dispatch.py` does take the narrowing, because its reviewing
+            // templates pin the adapter.
             var defaultGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
 
             var definition = new WorkflowDefinition(

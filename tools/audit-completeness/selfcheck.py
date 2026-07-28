@@ -243,9 +243,12 @@ def _templates_are_dispatchable():
     # the loop above stays green under any rule that only ever refuses. The refusals have to be
     # asserted directly, on the grants that separate one rule from the next.
     #
-    # `write_files: False` is refused under EVERY shell setting -- so `grant_refusal` adds up to
-    # "writes are always required", and a reader who notices that can collapse three conditions into
-    # one predicate. The conditions are kept apart for their messages, not their verdicts. Asserted
+    # `write_files: False` is refused under every shell setting *on an adapter whose withheld writes
+    # cannot reach the outbox* -- which since #649 is a per-adapter answer, not a universal one. The
+    # arms below inherit `BUILT_IN["adapter"] == "gemini"`, and that is load-bearing rather than
+    # incidental: the same grants dispatch on claude, which the pair above asserts directly. So
+    # `grant_refusal` no longer adds up to "writes are always required", and the three conditions
+    # cannot be collapsed into one predicate even in principle. The conditions are kept apart for their messages, not their verdicts. Asserted
     # here so the sum is a fact that runs, and so collapsing them has to fail this instead of quietly
     # losing the read_files and network arms.
     granted = {**dispatch.BUILT_IN, "read_files": True, "write_files": True,

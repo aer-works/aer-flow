@@ -87,12 +87,23 @@ public static class OutboxPath
     /// link cannot make a path outside the outbox look like one inside it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Resolves component by component from the root rather than resolving only the deepest existing
     /// entry: the dangerous shape is a link <em>partway along</em> the path
     /// (<c>&lt;outbox&gt;/link-to-repo/src/x.cs</c>), where the final component is an ordinary file
-    /// and resolving it alone answers the wrong question. Components that do not exist yet — the file
-    /// a worker is about to create — are appended unresolved, which is correct: a path that does not
-    /// exist has no link to follow, and its parents were resolved on the way down.
+    /// and resolving it alone answers the wrong question.
+    /// </para>
+    /// <para>
+    /// <b>Each component is read with <see cref="FileSystemInfo.LinkTarget"/>, never gated on
+    /// <see cref="Directory.Exists"/>.</b> Those checks stat <em>through</em> a link, so a link whose
+    /// target does not exist yet answers false to both — and an earlier version of this method took
+    /// that as "not a link", appended the component literally, and reported a path resolving into the
+    /// workspace as contained. "Does not resolve to an existing entry" is not "has no link to follow":
+    /// a dangling link satisfies the first while still being a link. A component that is genuinely
+    /// absent has a null <see cref="FileSystemInfo.LinkTarget"/> and is appended unresolved, which is
+    /// correct — that is the file a worker is about to create, and its parents were resolved on the
+    /// way down.
+    /// </para>
     /// </remarks>
     private static string ResolveLinks(string fullPath)
     {
@@ -107,19 +118,49 @@ public static class OutboxPath
                      [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
                      StringSplitOptions.RemoveEmptyEntries))
         {
-            current = Path.Combine(current, segment);
-            var target = Directory.Exists(current)
-                ? Directory.ResolveLinkTarget(current, returnFinalTarget: true)?.FullName
-                : File.Exists(current)
-                    ? File.ResolveLinkTarget(current, returnFinalTarget: true)?.FullName
-                    : null;
+            // Deliberately not Path.Combine: on Windows a segment such as "C:" is itself rooted, and
+            // Combine discards everything accumulated so far and returns a drive-relative path. That
+            // only ever produced a denial, but it silently stopped being the path this method claims
+            // to return.
+            current = current.EndsWith(Path.DirectorySeparatorChar)
+                ? current + segment
+                : current + Path.DirectorySeparatorChar + segment;
 
-            if (target is not null)
-            {
-                current = Path.GetFullPath(target);
-            }
+            current = FollowLink(current);
         }
 
         return current;
     }
+
+    /// <summary>
+    /// <paramref name="path"/> with its own link chain followed, or unchanged when it is not a link.
+    /// </summary>
+    /// <remarks>
+    /// Hop-limited rather than recursive: a link cycle would otherwise spin here, and this runs on
+    /// every write a withheld-write worker attempts. Exhausting the limit returns whatever was
+    /// reached, which cannot match the outbox prefix and therefore denies.
+    /// </remarks>
+    private static string FollowLink(string path)
+    {
+        for (var hop = 0; hop < MaxLinkHops; hop++)
+        {
+            FileSystemInfo probe = new DirectoryInfo(path);
+            if (probe.LinkTarget is null)
+            {
+                probe = new FileInfo(path);
+            }
+
+            if (probe.LinkTarget is not { } target)
+            {
+                return path;
+            }
+
+            // A link target may be relative, and is relative to the link's own directory.
+            path = Path.GetFullPath(target, Path.GetDirectoryName(path) ?? path);
+        }
+
+        return path;
+    }
+
+    private const int MaxLinkHops = 16;
 }

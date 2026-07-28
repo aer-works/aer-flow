@@ -20,6 +20,14 @@ namespace Aer.Adapters;
 /// (<see cref="BuildDisallowedTools"/>), which is what actually enforces the denial — decision 0004's
 /// "fail closed".
 /// </para>
+/// <para>
+/// <b>Writes are the exception since #649</b>, and this is the first thing to know when reading the
+/// two lists here: <c>Edit</c>/<c>Write</c>/<c>NotebookEdit</c> are pre-approved on
+/// <c>--allowedTools</c> and absent from <c>--disallowedTools</c>, because the CLI refuses a named
+/// tool before AER's <c>PreToolUse</c> hook can allow the one write landing in
+/// <c>AER_OUTPUT_DIR</c>. For that category the hook is the whole enforcement; for the other three
+/// the sentence above still holds. See <see cref="BuildHookDeniedTools"/>.
+/// </para>
 /// </summary>
 public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
@@ -42,9 +50,11 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         // unusable — measured: the first live run of this change wrote nothing at all, exited 0, and
         // failed its contract, which is the exact symptom #629 describes.
         //
-        // Safe because --allowedTools is pre-approval and not a ceiling
-        // (gate.allowedtools-is-preapproval-not-ceiling). It grants nothing the hook will not take
-        // back, which is the same measured fact that made #611 invalid and #529 necessary.
+        // Safe because a hook exiting 2 beats a pre-approval: gate.hook-exit-2-beats-allow is the
+        // sentinel that measures THIS direction, passing --allowedTools Write alongside a hook that
+        // exits 2 and confirming the file is not written. (gate.allowedtools-is-preapproval-not-ceiling
+        // measures the opposite direction -- that an OMITTED tool still runs -- which is what made
+        // #611 invalid and #529 necessary, and is not the fact this line rests on.)
         tools.Add("Edit");
         tools.Add("Write");
         tools.Add("NotebookEdit");

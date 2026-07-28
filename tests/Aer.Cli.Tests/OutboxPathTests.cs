@@ -58,10 +58,28 @@ public class OutboxPathTests
     }
 
     [Fact]
-    public void A_relative_path_is_resolved_before_comparison_rather_than_assumed_outside()
+    public void A_relative_candidate_is_resolved_before_comparison_rather_than_assumed_outside()
     {
         // A worker's cwd is its working directory, so a bare `review.md` is a workspace write and must
-        // be denied — but it must be denied because it resolves outside, not because it looks odd.
-        Assert.False(OutboxPath.IsInsideOutbox("review.md", Outbox));
+        // be denied — but it must be denied because it *resolves* outside, not because it looks odd.
+        //
+        // The first assertion alone cannot tell those apart: an implementation that refused every
+        // non-rooted candidate on sight satisfies it identically. The discriminating arm is the
+        // opposite polarity — the same bare name, with the process cwd set to the outbox, which
+        // resolves *inside* and must be allowed.
+        var outbox = Directory.CreateTempSubdirectory("aer-outbox-relcwd-").FullName;
+        var priorCwd = Directory.GetCurrentDirectory();
+        try
+        {
+            Assert.False(OutboxPath.IsInsideOutbox("review.md", outbox));
+
+            Directory.SetCurrentDirectory(outbox);
+            Assert.True(OutboxPath.IsInsideOutbox("review.md", outbox));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(priorCwd);
+            Directory.Delete(outbox, recursive: true);
+        }
     }
 }

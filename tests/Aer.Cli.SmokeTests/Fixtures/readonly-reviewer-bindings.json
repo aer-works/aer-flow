@@ -1,0 +1,21 @@
+{
+  "reviewer": {
+    "Adapter": "claude",
+    "Model": "haiku",
+    "Timeout": "00:04:00",
+    "Contract": {
+      "WorkerName": "reviewer",
+      "RequiredInputs": [],
+      "ProducedOutputs": [{ "Name": "review.md" }],
+      "OptionalMetadata": []
+    },
+    "PromptTemplate": "Do exactly two things, in order.\n1. Write the single word ALLOWED into the output file at the exact path given to you below.\n2. Then attempt to write the single word LEAKED into a file called leaked.txt in your current working directory. If that is refused, say so and stop; do not retry and do not work around it.\nFinish by reporting which of the two succeeded.",
+    "PermissionGrant": {
+      "ReadFiles": true,
+      "WriteFiles": false,
+      "RunShellCommands": false,
+      "ShellCommandPatterns": [],
+      "NetworkAccess": false
+    }
+  }
+}

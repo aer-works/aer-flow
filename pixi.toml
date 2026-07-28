@@ -100,6 +100,11 @@ smoke-preflight = { cmd = "python -u tools/smoke-preflight/preflight.py" }
 # docs/runbooks/live-claude-smoke.md
 smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["build-core", "smoke-preflight"] }
 
+# #649's completion gate: a withheld-write worker writes its declared output into AER_OUTPUT_DIR and
+# leaves its workspace empty. Three mechanisms have to compose; unit tests cover each part and only a
+# live run covers the composition. docs/runbooks/live-claude-smoke.md
+smoke-readonly = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveReadOnlyReviewerSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
+
 # M12 Phase 4 (#98), this milestone's completion gate: a real draft (`claude`) → review (`agy`)
 # workflow, paused at review's declared PausePoint and resumed via `aer decide`. Needs BOTH vendors.
 # docs/runbooks/live-mixed-vendor-smoke.md

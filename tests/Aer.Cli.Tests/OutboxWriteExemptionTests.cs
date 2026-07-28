@@ -63,6 +63,11 @@ public class OutboxWriteExemptionTests
     {
         // Bash is withheld by name and has no target for the exemption to apply to. A hook that
         // allowed on a missing path would turn every withheld non-write tool into an allow.
+        //
+        // Scope, because the name suggests more than it proves: this guards
+        // IsInsideOutbox(null, ...) == false and nothing else. It passes with or without the
+        // tool-name gate, since Bash carries no file_path either way — the gate itself is guarded by
+        // The_exemption_covers_writes_only_not_every_tool_carrying_a_file_path.
         using var stderr = new StringWriter();
         var exitCode = HookCheckCommand.Execute(
             new StringReader(Payload("Bash", new { command = "rm -rf /" })),
@@ -111,9 +116,93 @@ public class OutboxWriteExemptionTests
 
         Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(relative, "review.md"), relative));
 
+        // And the operator is told which of the two things went wrong. The generic withheld-tool
+        // message sends them to their permission grant for a fault that is in their --task-dir.
+        using var stderr = new StringWriter();
+        var exitCode = HookCheckCommand.Execute(
+            new StringReader(Payload("Write", new { file_path = Path.Combine(relative, "review.md") })),
+            stderr, "claude:Edit,Write,NotebookEdit", relative);
+
+        Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
+        Assert.Contains("not an absolute path", stderr.ToString(), StringComparison.Ordinal);
+
         // Control: the same shape rooted, which is what AER actually emits, still resolves.
         var rooted = Path.Combine(Path.GetTempPath(), "aer-task", "artifacts", "execution_1");
         Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(rooted, "review.md"), rooted));
+    }
+
+    [Fact]
+    public void A_dangling_link_inside_the_outbox_cannot_launder_a_workspace_write()
+    {
+        // Directory.Exists and File.Exists both stat THROUGH a link, so a link whose target does not
+        // exist yet answers false to both. Resolution keyed on those checks therefore appends the
+        // link component unresolved and reports the path as contained. The worker's prompt already
+        // tells it to create parent directories as needed, so the write creates the target through
+        // the link — a workspace write laundered through the outbox.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-dangling-").FullName;
+        try
+        {
+            var outbox = Directory.CreateDirectory(Path.Combine(root, "artifacts", "execution_1")).FullName;
+            var neverCreated = Path.Combine(root, "repo", "src");
+
+            var link = Path.Combine(outbox, "escape");
+            try
+            {
+                Directory.CreateSymbolicLink(link, neverCreated);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            // The premise, and it is platform-split — measured, not assumed. On POSIX, Exists calls
+            // stat, which follows the link, so a dangling one reports false and a resolver keyed on
+            // Exists treats it as "not a link". Windows reports the reparse point itself as existing,
+            // so the hole never opens there. The assertion is scoped to the platforms where it is the
+            // premise; CI's Linux and macOS legs are what actually exercise this case.
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.False(Directory.Exists(link));
+            }
+
+            Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(link, "Program.cs"), outbox));
+            Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(outbox, "review.md"), outbox));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_link_partway_along_the_path_cannot_launder_a_workspace_write()
+    {
+        // The shape OutboxPath's own remarks name as the dangerous one — a link mid-path whose final
+        // component is an ordinary file — and which the last-position test cannot exercise.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-midlink-").FullName;
+        try
+        {
+            var outbox = Directory.CreateDirectory(Path.Combine(root, "artifacts", "execution_1")).FullName;
+            var workspace = Directory.CreateDirectory(Path.Combine(root, "repo", "src", "deep")).FullName;
+            File.WriteAllText(Path.Combine(workspace, "Program.cs"), "// real file");
+
+            var link = Path.Combine(outbox, "hop");
+            try
+            {
+                Directory.CreateSymbolicLink(link, Path.Combine(root, "repo", "src"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(link, "deep", "Program.cs"), outbox));
+            Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(outbox, "review.md"), outbox));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

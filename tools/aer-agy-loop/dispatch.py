@@ -134,11 +134,13 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 # these are the settings it resolves to. `fact-check` and `review` are separate templates rather
 # than one with a knob because that question has two answers, not a dial.
 #
-# Every template grants WriteFiles, the reviewing ones included. A worker satisfies its
-# ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and the three read-only
-# templates withhold the shell as well, so anything less cannot report at all -- see
-# `grant_refusal()` for the arm-by-arm scope. #629 is AER accepting that combination rather than
-# refusing it at bind time.
+# The reviewing templates withhold WriteFiles (#649). A worker satisfies its ProducedOutputs
+# contract by writing into AER_OUTPUT_DIR, and on claude a withheld write still reaches that
+# directory -- AER's PreToolUse hook confines the write tools to it rather than denying them. So a
+# reviewer can produce its report without being able to edit the code it is reviewing, which is what
+# every one of these grants used to require. `review` and `fact-check` pin the adapter to claude,
+# which is what makes the narrowing safe; see OUTBOX_WRITE_CAPABLE_ADAPTERS and `grant_refusal()`
+# for the arm-by-arm scope.
 #
 # Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
 # translation and the path #596, #611, #623 and #624 all came from. A session that only ever
@@ -246,8 +248,10 @@ def grant_refusal(grant: dict) -> str | None:
     """
     if grant["run_shell_commands"] and not grant["network_access"]:
         # The network arm of the same #529 rule as the condition below, kept separate only because it
-        # has a second reason on one vendor. `grant_refusal` never branches on adapter, so a message
-        # blaming gemini would be handed to an operator dispatching to claude.
+        # has a second reason on one vendor. THIS arm never branches on adapter -- #529 is a property
+        # of the grant, not of the vendor -- so a message blaming gemini would be handed to an
+        # operator dispatching to claude. (The outbox arm below does branch, on
+        # OUTBOX_WRITE_CAPABLE_ADAPTERS, because #649 genuinely differs per vendor.)
         return (
             "RunShellCommands without NetworkAccess is refused: a granted shell reaches the network "
             "anyway (curl), so withholding it does not withhold it (#529), and AER refuses the same "
