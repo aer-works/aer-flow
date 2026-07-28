@@ -526,6 +526,33 @@ cannot separate *refused* from *never attempted* measures nothing.
 This is also the narrower reading of `agy.fails-closed-headless`. That check auto-denies an ungated
 **shell command**; the write tool is a different tool and answers differently.
 
+## An `agy` write hook is told which file the write targets
+
+The counterpart to the section above: nothing agy offers bounds a write, so AER's own hook is the
+only candidate — and it can only bound what the payload tells it. Check:
+`agy.hook-payload-carries-write-path`.
+
+A `PreToolUse` payload matched on `write_to_file` carries `toolCall.args`, and the target appears in
+it as the **absolute** path the prompt named — not a basename, not a path relative to a cwd `agy -p`
+ignores anyway (#472). The key is **`TargetFile`**, PascalCase. So a path-bounded gate is
+implementable here, which is what #679 rests on.
+
+**Scoped to `write_to_file`.** `GeminiWorkerAdapter.WriteTools` names four tools, and this measured
+one; the other three (`replace_file_content`, `multi_replace_file_content`, `generate_image`) may key
+their target differently or not carry one. That is why the gate this feeds denies a write whose path
+it cannot find rather than allowing it: an unmeasured key fails loudly instead of silently unbounded.
+
+This was documented before it was measured, and that is the point of the check rather than a
+formality: `agy__hooks.md` describes `toolCall.args`, and this file already records two places the
+same documentation is wrong — `--cwd` is documented and does not exist, and `modelName` is present
+and undocumented. `agy.hook-env-inherited` reports `toolCall.name` for `run_command`, a different
+tool and a different field, and never touched this question.
+
+The absolute form is the load-bearing half. `OutboxPath` refuses to resolve a relative candidate
+against the hook process's inherited cwd, so a payload naming only `written.md` would leave nothing
+to compare a boundary against — which is why the check fails on a basename rather than passing on
+"the file is named somewhere".
+
 ## `agy` permission grammar
 
 Rules live in `~/.gemini/antigravity-cli/settings.json` under `permissions.allow` / `.deny`. This is

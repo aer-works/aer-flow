@@ -1814,6 +1814,106 @@ def _agy_hook_env():
                   f"(reported, not claimed)")
 
 
+@check("agy.hook-payload-carries-write-path", "agy",
+       "an agy PreToolUse payload for a WRITE names the file the write targets, and names it "
+       "absolutely -- the fact a path-bounded gate (#679) has to read, on the vendor where "
+       "`agy.plan-mode-does-not-deny-writes` measured that neither --mode nor --add-dir bounds one")
+def _agy_hook_write_path():
+    """#679 proposes confining a granted write to `WorkingDirectory` union `AER_OUTPUT_DIR`.
+    `AgyHookCheckCommand` decides on `toolCall.name` alone today, so that fix rests entirely on the
+    payload carrying a target path. agy's corpus documents `toolCall.args`, and agy's documentation
+    has already been wrong twice in `docs/vendor-doc-audit.md` -- `--cwd` is documented and does not
+    exist, and `modelName` is present and undocumented. A documented field is not a measured one.
+
+    Distinct from `agy.hook-env-inherited`, which dumps a payload for `run_command` and reports only
+    that `toolCall.name` is present. The tool differs, the field differs, and the question differs:
+    that check asks whether the environment channel works, this asks whether the payload can bound a
+    path.
+
+    Two things have to hold, and the second is the one that bites. A path the hook cannot resolve is
+    no boundary at all: `OutboxPath` refuses to resolve a relative candidate against the hook
+    process's own inherited cwd, and agy ignores the process working directory outright (#472), so a
+    relative target in the payload leaves nothing to compare against.
+
+    Not a sentinel, on one condition. If agy renamed or dropped the field, a hook that denies when it
+    cannot find a path breaks every write LOUDLY, and nothing rots silently. **That reasoning is void
+    the moment the hook allows-on-missing-path** -- make this a sentinel if anyone writes it that way.
+
+    The instrument's own failure mode is a false negative, so the hook firing at all is checked
+    before any conclusion is drawn from an absent path: an empty log means discovery failed, which
+    reads identically to a payload without a path and means something completely different.
+    """
+    token = "AER_PATH_PROBE_OK"
+    wd = tempfile.mkdtemp(prefix="v-agyp-")
+    try:
+        log = os.path.join(wd, "h.log").replace("\\", "/")
+        hk = os.path.join(wd, "h.sh").replace("\\", "/")
+        target = os.path.join(wd, "probe-out", "written.md").replace("\\", "/")
+        with open(os.path.join(wd, "h.sh"), "w", newline="\n") as f:
+            f.write("#!/bin/sh\n")
+            f.write('cat >> "%s"\n' % log)
+            f.write('printf "\\n" >> "%s"\n' % log)
+            # Allow explicitly: this measures the payload, not the verdict channel, and an implicit
+            # allow would confound it with `agy.hook-malformed-stdout-fails-open`.
+            f.write("""echo '{"decision":"allow"}'\n""")
+        os.chmod(os.path.join(wd, "h.sh"), 0o755)
+        # The write tools GeminiWorkerAdapter.WriteTools names, as a regex over agy's own tool names.
+        _agy_hook_json(wd, "sh %s" % hk,
+                       matcher="write_to_file|replace_file_content|multi_replace_file_content")
+        run(["agy", "-p",
+             f"Write the text {token} to the file {target}. Report SUCCEEDED or REFUSED.",
+             "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
+
+        if not os.path.exists(os.path.join(wd, "h.log")):
+            return INCONCLUSIVE, ("the write hook never fired -- a discovery or tool-name problem, "
+                                  "not evidence about the payload")
+        blob = open(os.path.join(wd, "h.log"), encoding="utf-8", errors="replace").read()
+
+        # Positive control on the instrument: the tool name is known to be carried
+        # (`agy.hook-env-inherited`), so its absence here means the log is not what it looks like.
+        if '"toolCall"' not in blob:
+            return INCONCLUSIVE, ("the log holds no toolCall object, so it is not a payload this "
+                                  "check can read a path out of")
+
+        args_present = '"args"' in blob
+        carries_target = target in blob or target.replace("/", "\\") in blob
+        basename_only = (not carries_target) and "written.md" in blob
+
+        # Which key holds it, reported rather than assumed: AgyHookCheckCommand has to read the path
+        # out by name, and `agy__hooks.md` documents `toolCall.args` as an opaque object without
+        # naming the write tool's own fields.
+        keys = set()
+        names = set()
+        for line in blob.splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                payload = json.loads(line)
+            except ValueError:
+                continue
+            call = payload.get("toolCall") or {}
+            if call.get("name"):
+                names.add(call["name"])
+            call_args = call.get("args") or {}
+            for k, v in call_args.items():
+                if isinstance(v, str) and ("written.md" in v):
+                    keys.add(k)
+
+        note = (f"args field present={args_present}; exact target present={carries_target}; "
+                f"basename-only={basename_only}; key(s) holding the target={sorted(keys) or 'none'}; "
+                f"tool name(s) agy actually sent={sorted(names) or 'none'}")
+
+        if carries_target:
+            return PASS, f"the payload names the absolute target a bound could be checked against. {note}"
+        if basename_only:
+            return FAIL, ("the payload names the file but NOT an absolute path -- #679's bound is "
+                          f"not implementable on this field alone. {note}")
+        return FAIL, f"the payload carries no target path for a write. {note}"
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+
+
 @check("agy.hook-malformed-stdout-fails-open", "agy",
        "agy ALLOWS when PreToolUse hook stdout is unparseable or empty, but DENIES an unrecognised "
        "`decision` VALUE -- so a crashed or silent gate is an open one while a merely wrong verdict "
