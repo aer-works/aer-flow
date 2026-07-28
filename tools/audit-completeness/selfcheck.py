@@ -903,8 +903,8 @@ def _recordonce_discriminates():
                            "docs/B.md": one(sentence)}, lambda path: literal.get(path)), (
         "record-once: a marker written as a code literal silenced the checker")
 
-    # A marker whose canonical location does not exist is a typo, not a decision, and a typo that
-    # silences a gate is worse than no marker. Refused, reported, and nothing is exempted.
+    # A marker whose canonical location does not exist exempts nothing and is reported as refused;
+    # `exemptions` in recordonce.py carries the reason.
     typo = marker.replace("docs/plan.md", "docs/no-such-file.md")
     absent = {"src/A.cs": [f"// {sentence}", typo], "docs/B.md": [sentence]}
     at_typo = lambda path: absent.get(path)  # noqa: E731

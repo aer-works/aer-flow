@@ -462,9 +462,8 @@ def _recordonce_marker_mutes_file():
 
 @control(RECORDONCE, "the marker is matched on raw lines, so a code literal silences the checker")
 def _recordonce_marker_ignores_context():
-    # The other half of #676: with no context test, writing the marker's characters anywhere in a
-    # tracked file exempted that file -- including in a string literal in a fixture, which is why
-    # selfcheck.py had to assemble the string from fragments to test the checker at all.
+    # The other half of #676: with no context test, the marker's characters anywhere in a tracked
+    # file exempted that file. See `marked_runs` in recordonce.py for what that cost.
     def raw_lines(mod):
         real = mod.marked_runs
 
