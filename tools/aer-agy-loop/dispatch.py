@@ -126,53 +126,30 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------------------------
-# Dispatch templates
-# ---------------------------------------------------------------------------------------------
-# Named role presets, so "which vendor, which model, which effort, and how much review" is a flag
-# rather than something the caller re-decides (and re-gets-wrong) every time. CLAUDE.md's
-# `second-reader` gate states the RULE for picking a tier; this is the concrete recipe, and the two
-# are deliberately in different places -- the gate is the principle, these are the settings.
+# Named role presets, so the tier decision is a flag rather than something the caller re-derives.
+# CLAUDE.md's `second-reader` gate carries the rule for choosing one -- would a weaker model
+# plausibly reach the OPPOSITE conclusion, for a reason unrelated to the thing under review? -- and
+# these are the settings it resolves to. `fact-check` and `review` are separate templates rather
+# than one with a knob because that question has two answers, not a dial.
 #
-# The tier question the gate asks: would a weaker model plausibly reach the OPPOSITE conclusion for a
-# reason having nothing to do with the thing under review? Yes -> a `-strong` template. No -> a cheap
-# one. That is why `fact-check` and `review` are different templates rather than one with a knob.
+# Every template grants WriteFiles, the reviewing ones included. A worker satisfies its
+# ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and the three read-only
+# templates withhold the shell as well, so anything less cannot report at all -- see the guard in
+# main() for the arm-by-arm scope. #629 is AER accepting that combination rather than refusing it at
+# bind time.
 #
-# WHY THE PERMISSION SHAPES DIFFER -- AND HOW SMALL THAT DIFFERENCE ACTUALLY IS
-# Corrected twice, both times downward, so read this rather than the shape you expect.
-#
-# EVERY template grants WriteFiles, including the review and fact-check ones. Not an oversight: a
-# worker satisfies its ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and
-# these templates withhold the shell too -- with both withheld nothing can produce that file.
-# (Withholding writes while GRANTING the shell is a different case and is satisfiable; see the guard
-# in main(), which is the scoped statement.) The three "read-only" templates shipped broken in this
-# file's first draft and one of them wasted a 9-minute opus run proving it. AER accepting the
-# unsatisfiable combination rather than refusing it at bind time is #629.
-#
-# So the real spread is ONE axis, not four shapes:
-#   * read + write            (advise, review, fact-check) -- the floor; anything less cannot report
-#   * + shell + network       (implement) -> agy's `--dangerously-skip-permissions` translation, which
-#                                is where #596, #611, #623 and #624 all live.
-# (`--print-timeout` derivation (#588) is NOT a reason to reach for `implement`: the adapter adds it
-# for any invocation carrying a timeout, with no branch on magnitude, so `advise` at 25 minutes and
-# the 20-minute default exercise it identically. An earlier draft sold the 40 minutes as buying that.)
-# The value is narrower than "a coverage matrix" -- an earlier draft claimed that while the dict below
-# showed three identical rows -- but it is not zero: a session that only ever reviews never touches
-# the shell/network path at all, and that path is where the AER defects have been.
+# Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
+# translation and the path #596, #611, #623 and #624 all came from. A session that only ever
+# dispatches reviews never exercises it.
 TEMPLATES = {
     "advise": {
         "_use": "Open design question with real options to weigh, BEFORE building. Cross-vendor on "
                 "purpose: a second opinion from the same family that wrote the code is one instrument "
                 "twice.",
-        # The effort is IN the model name, and `effort` is deliberately left unset rather than also
-        # passed: which of the two controls wins is unprobed -- see `docs/vendor-capabilities.md`'s
-        # `agy models` section for what is and is not measured, and #510. Sending no flag avoids the
-        # question entirely. (This was briefly a full restatement of that section's three-way split,
-        # which is the drift `record-once` forbids -- committed in the very change that moved the
-        # fact INTO the register.) `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
-        # the same way. The first draft of this template said `gemini-3.1-pro`, which `agy models`
-        # does not list at all -- #547's exact failure, committed by the file meant to prevent it.
-        # STEP 9 of `pixi run audit-completeness` now checks these names against that register.
+        # Effort is in the model name; the flag is left unset because which control wins is unprobed
+        # (#510) -- see `docs/vendor-capabilities.md`'s `agy models` section. `verify.py`'s CHEAP pins
+        # the same way. STEP 9 of `pixi run audit-completeness` checks these names against that
+        # register, because a name the CLI will not accept is #547's failure class.
         "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
         "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
@@ -181,7 +158,9 @@ TEMPLATES = {
     "implement": {
         "_use": "A bounded change with the approach already decided. Exercises the write path and "
                 "agy's skip-permissions translation, which is the half of AER that review-only "
-                "dispatches never touch.",
+                "dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's "
+                "timeout exercises that equally -- so do not reach for the skip-permissions grant "
+                "expecting it to buy that.",
         "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
         "read_files": True, "write_files": True,
         "run_shell_commands": True, "network_access": True,
@@ -235,12 +214,10 @@ def main() -> int:
     parser.add_argument("--write-files", action="store_true", default=None)
     parser.add_argument("--no-write-files", dest="write_files", action="store_false")
     parser.add_argument("--run-shell-commands", action="store_true", default=None)
-    # The `--no-` arms exist so a template can actually be overridden DOWNWARD. Without them
-    # `--template implement` was a lock on exactly the two flags that resolve to
-    # `--dangerously-skip-permissions`: an operator wanting implement's model and 40-minute timeout
-    # without the skip-permissions grant had to abandon the template and respell every setting.
-    # Reviewer-found, and it contradicted both the README's "not a lock" and the comment below that
-    # names turning a permission off as "the direction that matters for a permission grant".
+    # The `--no-` arms are what let a template be overridden DOWNWARD -- without them `--template
+    # implement` is a lock on the two flags that resolve to `--dangerously-skip-permissions`.
+    # Declaration order matters: argparse takes a dest's default from the FIRST action registered
+    # for it, so the positive arm (default=None) must stay first or the tri-state below breaks.
     parser.add_argument("--no-run-shell-commands", dest="run_shell_commands", action="store_false")
     parser.add_argument("--network-access", action="store_true", default=None)
     parser.add_argument("--no-network-access", dest="network_access", action="store_false")
@@ -252,12 +229,10 @@ def main() -> int:
     if args.list_templates:
         for name in sorted(TEMPLATES):
             t = TEMPLATES[name]
-            # `effort=None` is the one setting whose bare repr misleads: it reads as "nobody thought
-            # about effort" when it is a deliberate choice not to pass a control whose interaction
-            # with the model name is unprobed (#510). Say which it is, the same way the dispatch
-            # banner spells out an unpinned model rather than printing an empty string.
+            # A bare `None` reads as "nobody thought about effort" rather than "deliberately not
+            # sent" (#510), so say which it is.
             settings = " ".join(
-                f"{k}=" + ("<unset -- see the comment on this template>" if v is None else str(v))
+                f"{k}=" + ("<unset -- deliberately not sent; see #510>" if v is None else str(v))
                 for k, v in t.items() if not k.startswith("_"))
             print(name)
             print(f"    {t['_use']}")
@@ -385,12 +360,9 @@ def main() -> int:
         file=sys.stderr,
     )
 
-    # Remember whether a log already existed, and how stale it was, BEFORE running. A reused
-    # --scratch-root carries a previous dispatch's `flow.jsonl`, and printing that on failure hands
-    # the operator another run's PID, exit reason and step name as this run's diagnostics. That
-    # happened: a failed dispatch printed a six-hour-old log whose `Outputs` and `Timeout` belonged
-    # to a different task entirely, which reads as "AER ran the wrong workflow" rather than "AER
-    # never got far enough to write anything".
+    # Captured BEFORE the run. A reused --scratch-root carries a previous dispatch's log, and
+    # printing it on failure hands over another run's PID and exit reason as this run's diagnostics
+    # -- which reads as "AER ran the wrong workflow" rather than "AER wrote nothing".
     log_path = task_dir / "flow.jsonl"
     # Both the mtime AND the byte length. flow.jsonl is APPEND-only -- `FlowEventLogWriter` appends
     # lines and nothing truncates (the daemon has to DELETE the file to reset a task directory) -- so
