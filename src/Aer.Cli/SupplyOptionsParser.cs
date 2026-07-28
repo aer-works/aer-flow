@@ -85,7 +85,8 @@ public static class SupplyOptionsParser
             throw new CliArgumentException($"Missing required option '--bindings <bindings-file>'. {Usage}");
         }
 
-        return new SupplyOptions(taskDirectoryPath, worker, outputName, sourceFilePath, bindingsFilePath, workflowId);
+        return new SupplyOptions(
+            TaskDirectoryPath.Resolve(taskDirectoryPath), worker, outputName, sourceFilePath, bindingsFilePath, workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

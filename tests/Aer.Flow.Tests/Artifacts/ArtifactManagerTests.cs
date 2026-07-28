@@ -127,14 +127,14 @@ public class ArtifactManagerTests
     public void BuildEnvironment_numbers_inputs_in_order_and_appends_AER_OUTPUT_DIR_and_AER_ARTIFACTS_ROOT()
     {
         var variables = ArtifactManager.BuildEnvironment(
-            ["/artifacts/execution_A1/plan", "/artifacts/execution_B1/goal"], "/artifacts/execution_C1", "/artifacts");
+            [Qualified("/artifacts/execution_A1/plan"), Qualified("/artifacts/execution_B1/goal")], Qualified("/artifacts/execution_C1"), Qualified("/artifacts"));
 
         Assert.Equal(
             [
-                new EnvironmentVariable.AerComputed("AER_INPUT_0", "/artifacts/execution_A1/plan"),
-                new EnvironmentVariable.AerComputed("AER_INPUT_1", "/artifacts/execution_B1/goal"),
-                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1"),
-                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", "/artifacts"),
+                new EnvironmentVariable.AerComputed("AER_INPUT_0", Qualified("/artifacts/execution_A1/plan")),
+                new EnvironmentVariable.AerComputed("AER_INPUT_1", Qualified("/artifacts/execution_B1/goal")),
+                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", Qualified("/artifacts/execution_C1")),
+                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", Qualified("/artifacts")),
             ],
             variables);
     }
@@ -142,12 +142,12 @@ public class ArtifactManagerTests
     [Fact]
     public void BuildEnvironment_with_no_inputs_still_sets_AER_OUTPUT_DIR_and_AER_ARTIFACTS_ROOT()
     {
-        var variables = ArtifactManager.BuildEnvironment([], "/artifacts/execution_C1", "/artifacts");
+        var variables = ArtifactManager.BuildEnvironment([], Qualified("/artifacts/execution_C1"), Qualified("/artifacts"));
 
         Assert.Equal(
             [
-                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1"),
-                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", "/artifacts"),
+                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", Qualified("/artifacts/execution_C1")),
+                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", Qualified("/artifacts")),
             ],
             variables);
     }
@@ -156,14 +156,22 @@ public class ArtifactManagerTests
     public void BuildEnvironment_with_a_supplement_appends_AER_SUPPLEMENTARY_INPUT_after_AER_ARTIFACTS_ROOT()
     {
         var variables = ArtifactManager.BuildEnvironment(
-            [], "/artifacts/execution_C1", "/artifacts", "/artifacts/execution_S1");
+            [], Qualified("/artifacts/execution_C1"), Qualified("/artifacts"), Qualified("/artifacts/execution_S1"));
 
         Assert.Equal(
             [
-                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/artifacts/execution_C1"),
-                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", "/artifacts"),
-                new EnvironmentVariable.AerComputed("AER_SUPPLEMENTARY_INPUT", "/artifacts/execution_S1"),
+                new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", Qualified("/artifacts/execution_C1")),
+                new EnvironmentVariable.AerComputed("AER_ARTIFACTS_ROOT", Qualified("/artifacts")),
+                new EnvironmentVariable.AerComputed("AER_SUPPLEMENTARY_INPUT", Qualified("/artifacts/execution_S1")),
             ],
             variables);
     }
+
+    /// <summary>
+    /// A fixture path that is fully qualified on both platforms. <c>"/artifacts/x"</c> is rooted
+    /// everywhere but fully qualified only on POSIX — on Windows it resolves against the current
+    /// drive, so <see cref="ArtifactManager.BuildEnvironment"/> refuses it (#668). Written out, these
+    /// three assertions passed on the Linux CI leg and failed on the Windows one.
+    /// </summary>
+    private static string Qualified(string posixPath) => Path.GetFullPath(posixPath);
 }

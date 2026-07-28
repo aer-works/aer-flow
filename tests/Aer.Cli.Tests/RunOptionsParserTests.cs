@@ -21,7 +21,7 @@ public class RunOptionsParserTests
         var options = RunOptionsParser.Parse(
             ["workflow.json", "--bindings", "bindings.json", "--task-dir", "/tmp/task", "--workflow-id", "wf-1"]);
 
-        Assert.Equal("/tmp/task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("/tmp/task"), options.TaskDirectoryPath);
         Assert.Equal("wf-1", options.WorkflowId);
     }
 

@@ -92,7 +92,7 @@ public static class DecideOptionsParser
         var decisionType = ParseDecisionType(typeText);
 
         return new DecideOptions(
-            taskDirectoryPath,
+            TaskDirectoryPath.Resolve(taskDirectoryPath),
             executionId,
             decisionType,
             targetStep is null ? null : new StepId(targetStep),

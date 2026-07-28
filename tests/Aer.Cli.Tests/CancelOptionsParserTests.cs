@@ -7,7 +7,7 @@ public class CancelOptionsParserTests
     {
         var options = CancelOptionsParser.Parse(["task", "--execution", "exec-1", "--bindings", "bindings.json"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal("bindings.json", options.BindingsFilePath);
         Assert.Null(options.WorkflowId);
@@ -19,7 +19,7 @@ public class CancelOptionsParserTests
         var options = CancelOptionsParser.Parse(
             ["task", "--execution", "exec-1", "--bindings", "bindings.json", "--workflow-id", "wf-1"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal("bindings.json", options.BindingsFilePath);
         Assert.Equal("wf-1", options.WorkflowId);
@@ -30,7 +30,7 @@ public class CancelOptionsParserTests
     {
         var options = CancelOptionsParser.Parse(["--execution", "exec-1", "--bindings", "bindings.json", "task"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal("bindings.json", options.BindingsFilePath);
     }

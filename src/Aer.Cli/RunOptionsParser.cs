@@ -80,7 +80,8 @@ public static class RunOptionsParser
         taskDirectoryPath ??= Path.Combine(
             Directory.GetCurrentDirectory(), ".aer", Path.GetFileNameWithoutExtension(workflowFilePath));
 
-        return new RunOptions(workflowFilePath, bindingsFilePath, taskDirectoryPath, workflowId);
+        return new RunOptions(
+            workflowFilePath, bindingsFilePath, TaskDirectoryPath.Resolve(taskDirectoryPath), workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

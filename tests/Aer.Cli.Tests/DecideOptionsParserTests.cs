@@ -10,7 +10,7 @@ public class DecideOptionsParserTests
         var options = DecideOptionsParser.Parse(
             ["task", "--execution", "exec-1", "--type", "resume", "--bindings", "bindings.json"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal(DecisionType.Resume, options.DecisionType);
         Assert.Null(options.TargetStepId);
@@ -51,7 +51,7 @@ public class DecideOptionsParserTests
         var options = DecideOptionsParser.Parse(
             ["--execution", "exec-1", "--type", "resume", "--bindings", "bindings.json", "task"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
     }
 
     [Fact]

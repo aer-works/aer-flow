@@ -1,0 +1,114 @@
+using System.Reflection;
+
+namespace Aer.Cli.Tests;
+
+/// <summary>
+/// #668: a relative <c>--task-dir</c> made AER and the worker disagree about where
+/// <c>AER_OUTPUT_DIR</c> points. AER derived the environment value from the relative form; the
+/// worker resolved it against its own working directory, wrote its declared output there, and the
+/// run was reported as <c>Contract not satisfied</c> — after paying in full, with nothing naming
+/// the cause and presenting exactly like a worker that had ignored its instructions.
+/// </summary>
+/// <remarks>
+/// The population is discovered rather than listed. Four entry points take a task directory today
+/// and a fifth is the way this regresses: it would be correct everywhere it was remembered and
+/// silent where it was not, which is the shape of the original defect. <see cref="EveryParser"/>
+/// fails until a new one is covered here.
+/// </remarks>
+public class TaskDirectoryIsResolvedAtTheBoundaryTests
+{
+    private const string Relative = "task2";
+
+    /// <summary>Each parser, driven through its own argument shape, keyed by the type it lives on.</summary>
+    private static readonly Dictionary<Type, Func<string>> Covered = new()
+    {
+        [typeof(RunOptionsParser)] = () =>
+            RunOptionsParser.Parse(["workflow.json", "--bindings", "b.json", "--task-dir", Relative])
+                .TaskDirectoryPath,
+        [typeof(CancelOptionsParser)] = () =>
+            CancelOptionsParser.Parse([Relative, "--execution", "e1", "--bindings", "b.json"])
+                .TaskDirectoryPath,
+        [typeof(DecideOptionsParser)] = () =>
+            DecideOptionsParser.Parse([Relative, "--execution", "e1", "--type", "resume", "--bindings", "b.json"])
+                .TaskDirectoryPath,
+        [typeof(SupplyOptionsParser)] = () =>
+            SupplyOptionsParser.Parse([Relative, "--worker", "w", "--output", "o", "--file", "f.txt", "--bindings", "b.json"])
+                .TaskDirectoryPath,
+    };
+
+    [Fact]
+    public void EveryParser_taking_a_task_directory_resolves_a_relative_one()
+    {
+        foreach (var (parser, parse) in Covered)
+        {
+            var resolved = parse();
+
+            Assert.True(
+                Path.IsPathRooted(resolved),
+                $"{parser.Name} returned '{resolved}' for --task-dir '{Relative}'. A worker resolves " +
+                "that against its own working directory, not the CLI's, and writes its output where " +
+                "AER does not look.");
+
+            // The control. Without it this passes on a parser that returns any absolute path at all
+            // — including one that discarded the operator's argument and substituted a default.
+            Assert.Equal(Path.GetFullPath(Relative), resolved);
+        }
+    }
+
+    [Fact]
+    public void EveryParser_is_covered_by_the_test_above()
+    {
+        var takesOne = typeof(RunOptionsParser).Assembly
+            .GetTypes()
+            .Where(t => t.IsClass && t.Name.EndsWith("OptionsParser", StringComparison.Ordinal))
+            .Where(t => t.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static)
+                         ?.ReturnType.GetProperty("TaskDirectoryPath") is not null)
+            .ToList();
+
+        Assert.NotEmpty(takesOne);
+        Assert.Empty(takesOne.Except(Covered.Keys).Select(t => t.Name));
+    }
+
+    [Fact]
+    public void BuildEnvironment_refuses_a_relative_path_rather_than_handing_it_to_a_worker()
+    {
+        // Defence in depth, and the half the CLI fix cannot supply: resolving at the boundary is
+        // structural, so any other caller — the daemon, a future entry point, a test fixture —
+        // reproduces the silent failure exactly. Loud here, because the cost of being wrong is a
+        // whole frontier-model run and a reason nothing names.
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer-668"));
+        var output = Path.Combine(root, "execution_1");
+
+        var relative = Assert.Throws<ArgumentException>(
+            () => Aer.Flow.Artifacts.ArtifactManager.BuildEnvironment([], "task2/artifacts/execution_1", root));
+        Assert.Contains("resolved by the worker process", relative.Message, StringComparison.Ordinal);
+
+        Assert.Throws<ArgumentException>(
+            () => Aer.Flow.Artifacts.ArtifactManager.BuildEnvironment([], output, "task2/artifacts"));
+
+        // The drive-relative arm, and the reason the predicate is IsPathFullyQualified rather than
+        // IsPathRooted: on Windows `IsPathRooted("C:task2")` is true while GetFullPath resolves it
+        // against the current directory — the very defect, passing the weaker check. Skipped off
+        // Windows, where the shape does not exist rather than being handled.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Throws<ArgumentException>(
+                () => Aer.Flow.Artifacts.ArtifactManager.BuildEnvironment([], "C:task2", root));
+        }
+
+        // The control: the same call, both fully qualified, must still build — or the guard has
+        // disabled the method and every assertion above it means nothing.
+        Assert.NotEmpty(Aer.Flow.Artifacts.ArtifactManager.BuildEnvironment([], output, root));
+    }
+
+    [Fact]
+    public void An_absolute_task_directory_is_left_alone()
+    {
+        var absolute = Path.Combine(Path.GetTempPath(), "aer-668", "task");
+
+        Assert.Equal(
+            Path.GetFullPath(absolute),
+            RunOptionsParser.Parse(["workflow.json", "--bindings", "b.json", "--task-dir", absolute])
+                .TaskDirectoryPath);
+    }
+}

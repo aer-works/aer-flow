@@ -62,6 +62,29 @@ public static class ArtifactManager
         return OutputDirectoryPath(artifactsRootPath, executionId);
     }
 
+    /// <summary>
+    /// Refuses a path the worker process would resolve differently from AER (#668).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Path.IsPathFullyQualified(string)"/>, not <c>IsPathRooted</c>, and the difference
+    /// is not pedantic on Windows. <c>IsPathRooted("C:task2")</c> is <c>true</c> while
+    /// <see cref="Path.GetFullPath(string)"/> resolves it against the process's current directory —
+    /// a drive-relative path is exactly the defect this guards, and it would have walked straight
+    /// through the weaker predicate. <c>"/artifacts/x"</c> is the same shape one step out: rooted,
+    /// resolved against the current drive, and fully qualified only on POSIX.
+    /// </remarks>
+    private static void RefuseRelative(string path, string parameterName)
+    {
+        if (!Path.IsPathFullyQualified(path))
+        {
+            throw new ArgumentException(
+                $"'{path}' is not fully qualified, and this value is resolved by the worker process " +
+                "against its own working directory and drive rather than AER's. Resolve it before " +
+                "building the environment (#668).",
+                parameterName);
+        }
+    }
+
     private static string OutputDirectoryPath(string artifactsRootPath, ExecutionId executionId) =>
         Path.Combine(artifactsRootPath, $"execution_{executionId}");
 
@@ -140,6 +163,22 @@ public static class ArtifactManager
         ArgumentNullException.ThrowIfNull(inputPaths);
         ArgumentException.ThrowIfNullOrEmpty(outputDirectory);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+
+        // #668: these values are read by a DIFFERENT process with a different working directory, so a
+        // relative one means two different directories to the two processes that use it. The failure
+        // is silent and total — the worker writes its declared output where AER never looks, and the
+        // run is reported as `Contract not satisfied` after being paid for in full, indistinguishable
+        // from a worker that ignored its instructions.
+        //
+        // The CLI resolves a task directory at its boundary, which is where the one measured instance
+        // came from. This refuses loudly for every other caller, because the cost of being wrong here
+        // is a whole frontier-model run and a cause nothing names.
+        RefuseRelative(outputDirectory, nameof(outputDirectory));
+        RefuseRelative(artifactsRootPath, nameof(artifactsRootPath));
+        if (supplementaryInputPath is not null)
+        {
+            RefuseRelative(supplementaryInputPath, nameof(supplementaryInputPath));
+        }
 
         var variables = new List<EnvironmentVariable.AerComputed>(inputPaths.Count + 3);
         for (var i = 0; i < inputPaths.Count; i++)
