@@ -57,11 +57,13 @@ Two things worth knowing before reaching for one:
   does what it says. The templates are a starting point you can override, not a lock — every
   permission has a `--no-` arm.
 - **A read-only dispatch is refused before it can spend**, because a worker satisfies its
-  `ProducedOutputs` contract only by writing into `AER_OUTPUT_DIR`. Withholding writes while granting
-  the shell is a *different* case and is allowed through, since the shell can write anyway
+  `ProducedOutputs` contract only by writing into `AER_OUTPUT_DIR`
+  ([#629](https://github.com/aer-works/aer-flow/issues/629)). Granting the shell instead is not an
+  escape: a granted shell reaches reads, writes and the network whatever the other flags say, so AER
+  refuses that combination at bind time and `dispatch.py` refuses it here first
   ([#529](https://github.com/aer-works/aer-flow/issues/529)). "Read-only reviewer" is therefore not
-  expressible ([#629](https://github.com/aer-works/aer-flow/issues/629)). The guard in `dispatch.py`
-  carries which arm is measured on which vendor; that scope is not repeated here.
+  expressible — both routes to it are closed. The guard in `dispatch.py` carries which arm is
+  measured on which vendor; that scope is not repeated here.
 
 A pinned `agy` model name is checked against `agy models` by STEP 9 of
 `pixi run audit-completeness`.
@@ -112,9 +114,14 @@ actually helps; bumping effort is not a substitute for it.
 ## The shell-commands guard
 
 `--run-shell-commands` without `--network-access` is refused client-side, before ever calling `aer
-run`: as of this writing, `GeminiWorkerAdapter` has no way to unlock shell commands without also
-unlocking network access (`--dangerously-skip-permissions` is the only confirmed non-interactive
-bypass agy exposes, and it grants everything together — see the adapter's own
-`TryTranslatePermissionGrant`). Requesting shell without network is a combination nothing can honor
-without over-granting, so this fails fast with an explanation instead of dispatching something the
-adapter will refuse anyway.
+run`, and so is `--run-shell-commands` with reads or writes withheld. Both are the same rule: **a
+granted shell reaches reads, writes and the network whatever the other flags say**, so withholding
+one of them does not withhold it ([#529](https://github.com/aer-works/aer-flow/issues/529)). AER
+refuses these at bind time; `dispatch.py` refuses them here so the flags fail before you commit to
+them rather than after.
+
+The network arm carries a second, vendor-specific reason on gemini: `GeminiWorkerAdapter` has no way
+to unlock shell commands without also unlocking network access (`--dangerously-skip-permissions` is
+the only confirmed non-interactive bypass agy exposes, and it grants everything together — see the
+adapter's own `TryTranslatePermissionGrant`). That reason applies to one vendor; the #529 one applies
+to both.
