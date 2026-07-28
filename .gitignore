@@ -58,3 +58,7 @@ bld/
 # tools/aer-agy-loop/dispatch.py's generated workflow/bindings/task-dir per run -- transient
 # per-invocation scaffolding, never the deliverable.
 /aer-agy-loop-scratch/
+
+# Python bytecode. Four .pyc files were tracked, so every tool run dirtied the tree.
+__pycache__/
+*.pyc
