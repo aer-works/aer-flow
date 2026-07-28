@@ -339,6 +339,10 @@ jobs:
       # registry as text. The exit code is the verdict -- never the output.
       - name: Audit register completeness
         run: pixi run audit-completeness
+      # The checkers' own checker (#630). Same job on purpose: it reads the same registers as text,
+      # needs no vendor and no build, and a failure has to block the same aggregate `ci` gate.
+      - name: Assert the tooling's enumerable surfaces
+        run: pixi run audit-selfcheck
 
   ci:
     needs: [changes, test, mobile, audit]

@@ -188,6 +188,7 @@ vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 # ships -- CLAUDE.md gate 8. Free except step 4 (closed-issue citation check), which needs `gh` and
 # the network and skips loudly rather than failing when neither is available.
 audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
+audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,

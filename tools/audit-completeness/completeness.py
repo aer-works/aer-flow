@@ -6,8 +6,8 @@ WHY THIS EXISTS
 lets someone check it. This is that artifact for the #527 audit chain.
 
 Each step takes a population that can be ENUMERATED and asserts every member carries a disposition.
-`main()` is the list of them -- do not restate it here; a copy of it stood at "eight steps" while
-`main()` ran nine.
+`main()` is the list of them; do not restate it here -- a restated count is one `selfcheck.py`
+now asserts against the code.
 
 This script recomputes what is mechanically recomputable (populations, and which members carry a
 disposition) and prints what it CANNOT check, because a completeness checker that hides its own
