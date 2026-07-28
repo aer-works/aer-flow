@@ -642,6 +642,48 @@ def _instruments_self_test():
             "+ control_arm's red baseline")
 
 
+@check("the record-once checker fires on restatement and not on pointers")
+def _recordonce_discriminates():
+    """Both polarities, because a checker that never fires reads exactly like a clean repo.
+
+    Fed constructed diffs rather than the live one: the live diff is whatever today's branch happens
+    to contain, so asserting on it would go green or red for reasons unrelated to the checker.
+    """
+    rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
+
+    restated = {
+        "src/A.cs": [["// #670 says the vendor refuses the write.", "// It does not, measured."]],
+        "docs/B.md": [["#670 records that the vendor does not refuse.", "Measured against the CLI."]],
+    }
+    assert rec.violations(restated), (
+        "two files each explaining #670 was accepted -- the exact shape this exists for, and "
+        "accepting it makes the checker decorative")
+
+    # The control that matters: the FIX for the above must pass, or the checker tells people to
+    # delete their links rather than their duplication.
+    canonical = {
+        "src/A.cs": [["// See #670."]],
+        "docs/B.md": [["#670 records that the vendor does not refuse.", "Measured against the CLI."]],
+    }
+    assert not rec.violations(canonical), (
+        "one explanation plus one pointer was rejected -- that is the shape record-once ASKS for")
+
+    suppressed = {
+        "src/A.cs": [["// #670 explained here.", "// record-once-ok: #670 canonical is docs/B.md"]],
+        "docs/B.md": [["#670 explained here too.", "Second line."]],
+    }
+    assert not rec.violations(suppressed), "record-once-ok did not suppress its own issue"
+
+    # And one escape must not silence everything.
+    wrong_issue = {
+        "src/A.cs": [["// #671 explained here.", "// record-once-ok: #670 unrelated"]],
+        "docs/B.md": [["#671 explained here too.", "Second line."]],
+    }
+    assert rec.violations(wrong_issue), "record-once-ok for #670 silenced #671"
+
+    return "4 polarities (restated / canonical / suppressed / wrong-issue suppression)"
+
+
 def main() -> int:
     print(__doc__.strip().splitlines()[0])
     print("=" * 78)
@@ -679,6 +721,7 @@ def main() -> int:
     if FAILURES:
         print(f"\n{len(FAILURES)} failing assertion(s).")
         return 1
+    # (checks are registered above; see _recordonce_discriminates)
     print(f"\nAll {len(CHECKS)} assertions hold.")
     return 0
 
