@@ -248,35 +248,36 @@ def _templates_are_dispatchable():
     # one predicate. The conditions are kept apart for their messages, not their verdicts. Asserted
     # here so the sum is a fact that runs, and so collapsing them has to fail this instead of quietly
     # losing the read_files and network arms.
-    for shell in (True, False):
-        write_withheld = {**dispatch.BUILT_IN, "write_files": False,
-                          "run_shell_commands": shell, "network_access": True}
-        assert dispatch.grant_refusal(write_withheld) is not None, (
-            f"a grant withholding writes with run_shell_commands={shell} dispatches. With the shell "
-            "it is #529's over-grant -- the operator asked for no writes and gets writes through "
-            "Bash, which AER now refuses at bind time; without it nothing can satisfy the "
-            "ProducedOutputs contract and the run burns its full budget to fail (#629)."
+    granted = {**dispatch.BUILT_IN, "read_files": True, "write_files": True,
+               "run_shell_commands": True, "network_access": True}
+
+    # One arm per category the rule must keep refusing, because each is separately droppable. Read
+    # and network have no template behind them at all -- every template either grants both or
+    # withholds the shell -- so dropping either from the rule leaves the loop above green.
+    refusal_arms = {
+        "writes withheld, shell granted": {**granted, "write_files": False},
+        # Same category, no shell: a different rule and a different message, so it needs its own arm.
+        "writes withheld, no shell": {**granted, "write_files": False, "run_shell_commands": False},
+        "reads withheld, shell granted": {**granted, "read_files": False},
+        "network withheld, shell granted": {**granted, "network_access": False},
+    }
+    for label, arm in refusal_arms.items():
+        assert dispatch.grant_refusal(arm) is not None, (
+            f"a grant with {label} dispatches. With the shell it is #529's over-grant -- the "
+            "operator withheld a category `cat`, redirection or `curl` reaches anyway, and AER "
+            "refuses it at bind time; without the shell nothing can satisfy the ProducedOutputs "
+            "contract and the run burns its full budget to fail (#629)."
         )
 
-    # The discriminating control. Without it every assertion above passes on a `grant_refusal` that
-    # refuses everything, which would make the whole dispatch path dead and still print OK.
-    coherent = {**dispatch.BUILT_IN, "read_files": True, "write_files": True,
-                "run_shell_commands": True, "network_access": True}
-    assert dispatch.grant_refusal(coherent) is None, (
+    # The discriminating control. Without it every arm above passes on a `grant_refusal` that refuses
+    # everything, which would make the whole dispatch path dead and still print OK.
+    assert dispatch.grant_refusal(granted) is None, (
         "the fully-granted shell grant is refused, so no template exercising the write path can "
         "dispatch at all. The coherence rule is meant to refuse grants that withhold a category the "
         "shell reaches -- not grants that carry a shell."
     )
-
-    # Read is the arm with no template behind it: every template either grants read or withholds the
-    # shell, so dropping `read_files` from the coherence rule leaves everything else here green.
-    read_withheld = {**dispatch.BUILT_IN, "read_files": False, "write_files": True,
-                     "run_shell_commands": True, "network_access": True}
-    assert dispatch.grant_refusal(read_withheld) is not None, (
-        "a grant withholding reads while granting the shell dispatches. `cat` is a shell command "
-        "(#529); AER refuses this at bind time and dispatch.py must not send it."
-    )
-    return f"{len(dispatch.TEMPLATES)} templates + 4 refusal arms + the coherent control"
+    return (f"{len(dispatch.TEMPLATES)} templates + {len(refusal_arms)} refusal arms "
+            "+ the coherent control")
 
 
 @check("every template dry-runs clean through the real command line")

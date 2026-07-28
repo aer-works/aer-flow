@@ -451,8 +451,10 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// A <em>resolved binding</em> can no longer carry that shape:
     /// <see cref="WorkerBindingResolver.Resolve"/> refuses it
     /// (<see cref="IncoherentPermissionGrantException"/>). That narrows which grants reach this
-    /// method; it does not close the gap, which is why everything above still holds — this method is
-    /// also called directly, and the substitution itself is untouched.
+    /// method; it does not close the gap, which is why everything above still holds. The substitution
+    /// itself is untouched, and an entry using the raw <c>PermissionScope</c> escape hatch carries no
+    /// <see cref="PermissionGrant"/> for that refusal to inspect — so it arrives here with
+    /// <c>grant is null</c> and nothing denied at all.
     /// </para>
     /// <para>
     /// Treat the result as <b>pre-approval and routing, never as a security boundary</b>. The

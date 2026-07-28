@@ -144,6 +144,24 @@ def _coherence_rule_forgets_reads():
 
 
 @control("no template is refused, and every grant the shell would over-reach is",
+         "the network condition is deleted, which no template and no other arm would notice")
+def _no_network_arm():
+    # Walked before it was written: with only the read/write coherence rule and the unsatisfiable
+    # rule left, every template stays coherent, the write arms still fire on write_files, and the
+    # read arm still fires on read_files. Nothing reddens -- so `--run-shell-commands` without
+    # `--network-access` would dispatch a bindings.json the engine refuses at bind time, which is
+    # exactly the failure moving the rule to the caller was meant to prevent.
+    def no_network(grant):
+        if grant["run_shell_commands"] and not (grant["read_files"] and grant["write_files"]):
+            return "reaches both anyway"
+        if not grant["write_files"] and not grant["run_shell_commands"]:
+            return "nothing here can write the output"
+        return None
+    with swap(selfcheck.dispatch, "grant_refusal", no_network):
+        yield
+
+
+@control("no template is refused, and every grant the shell would over-reach is",
          "the rule over-corrects and refuses every grant carrying a shell")
 def _refuses_all_shell():
     # The opposite defect, and the one a refusal-only check cannot see without its control arm: this

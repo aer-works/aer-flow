@@ -227,11 +227,15 @@ def grant_refusal(grant: dict) -> str | None:
     `_templates_are_dispatchable` asserts that sum directly.
     """
     if grant["run_shell_commands"] and not grant["network_access"]:
+        # The network arm of the same #529 rule as the condition below, kept separate only because it
+        # has a second reason on one vendor. `grant_refusal` never branches on adapter, so a message
+        # blaming gemini would be handed to an operator dispatching to claude.
         return (
-            "RunShellCommands without NetworkAccess is not honorable by the gemini adapter as of "
-            "this writing (--dangerously-skip-permissions is the only non-interactive shell unlock, "
-            "and it unlocks network too) -- the adapter refuses this combination rather than "
-            "over-granting. Pass --network-access too, or drop --run-shell-commands."
+            "RunShellCommands without NetworkAccess is refused: a granted shell reaches the network "
+            "anyway (curl), so withholding it does not withhold it (#529), and AER refuses the same "
+            "combination at bind time. On gemini it is additionally inexpressible -- "
+            "--dangerously-skip-permissions is the only non-interactive shell unlock and it grants "
+            "network too. Pass --network-access, or drop --run-shell-commands."
         )
 
     if grant["run_shell_commands"] and not (grant["read_files"] and grant["write_files"]):

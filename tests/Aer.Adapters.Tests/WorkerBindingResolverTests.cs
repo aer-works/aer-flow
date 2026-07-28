@@ -345,6 +345,12 @@ public class WorkerBindingResolverTests
         var thrown = Assert.Throws<IncoherentPermissionGrantException>(
             () => WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter()));
 
+        // EXACTLY the withheld one. `Assert.Contains` on the message would pass on a resolver that
+        // named all three every time, and the sibling test below cannot see that either — its grant
+        // withholds all three, so an over-broad list is indistinguishable from a correct one there.
+        // The message is the operator-facing artifact: naming a category they already granted tells
+        // them to grant it again.
+        Assert.Equal([expectedCategoryInMessage], thrown.WithheldCategories);
         Assert.Contains(expectedCategoryInMessage, thrown.Message, StringComparison.Ordinal);
         Assert.Contains("architect", thrown.Message, StringComparison.Ordinal);
     }
