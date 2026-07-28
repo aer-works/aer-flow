@@ -88,6 +88,35 @@ public class ChannelPopulationTests
         Assert.Equal(!network, flag.Contains("WebSearch"));
     }
 
+    [Theory]
+    [MemberData(nameof(EveryGrant))]
+    public void The_allow_list_pre_approves_the_write_tools_under_every_grant_including_all_deny(
+        bool read, bool write, bool shell, bool network)
+    {
+        // The population this actually touches is wider than "reviewers". A directory-less
+        // interactive session's grant is all-false, so it moved from writes actively denied on
+        // --disallowedTools to writes pre-approved and hook-confined -- which is what lets a chat
+        // worker write its response file at all. Pre-approval is not a ceiling
+        // (gate.allowedtools-is-preapproval-not-ceiling); the hook is what still refuses the
+        // workspace.
+        var grant = new PermissionGrant(
+            ReadFiles: read, WriteFiles: write, RunShellCommands: shell, NetworkAccess: network);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Review this.", PermissionGrant: grant), Contract);
+
+        var allowed = Split(target.Args.SkipWhile(a => a != "--allowedTools").Skip(1).FirstOrDefault());
+
+        foreach (var tool in WriteTools)
+        {
+            Assert.Contains(tool, allowed);
+        }
+
+        // Polarity on a category that did NOT change, so a build that pre-approved everything fails
+        // here rather than passing the assertion above for the wrong reason.
+        Assert.Equal(read, allowed.Contains("Read"));
+        Assert.Equal(network, allowed.Contains("WebFetch"));
+    }
+
     private static HashSet<string> Split(string? commaJoined) =>
         string.IsNullOrEmpty(commaJoined)
             ? new HashSet<string>(StringComparer.Ordinal)

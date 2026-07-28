@@ -43,6 +43,18 @@ public static class OutboxPath
             return false;
         }
 
+        // A relative outbox is not a location. This process is spawned by the vendor CLI and inherits
+        // *its* working directory, so resolving one here answers "inside a directory of that name
+        // under the worker's cwd" — and the worker's cwd is the workspace. Measured: a run with a
+        // relative --task-dir emitted AER_OUTPUT_DIR as `task2\artifacts\execution_<id>`, the worker
+        // created that path inside its workspace and wrote there, and this check called it contained.
+        // The exemption would have laundered a workspace write. AER always has an absolute path to
+        // give; anything else is a question this cannot answer, so it denies.
+        if (!Path.IsPathRooted(outboxDirectory))
+        {
+            return false;
+        }
+
         string resolvedCandidate;
         string resolvedOutbox;
         try

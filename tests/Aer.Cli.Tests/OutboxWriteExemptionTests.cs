@@ -100,6 +100,23 @@ public class OutboxWriteExemptionTests
     }
 
     [Fact]
+    public void A_relative_outbox_is_refused_rather_than_resolved_against_the_workers_cwd()
+    {
+        // Measured on a live run: a relative --task-dir emitted AER_OUTPUT_DIR as
+        // `task2\artifacts\execution_<id>`. This process inherits the vendor CLI's cwd, which is the
+        // workspace, so resolving it here certified a directory *inside the workspace* as the outbox
+        // and allowed the write. The worker's report landed there, AER looked at the real path, found
+        // nothing, and failed the contract after paying for the run in full.
+        const string relative = @"task2\artifacts\execution_1";
+
+        Assert.False(OutboxPath.IsInsideOutbox(Path.Combine(relative, "review.md"), relative));
+
+        // Control: the same shape rooted, which is what AER actually emits, still resolves.
+        var rooted = Path.Combine(Path.GetTempPath(), "aer-task", "artifacts", "execution_1");
+        Assert.True(OutboxPath.IsInsideOutbox(Path.Combine(rooted, "review.md"), rooted));
+    }
+
+    [Fact]
     public void A_link_planted_inside_the_outbox_cannot_launder_a_workspace_write()
     {
         // Path.GetFullPath normalises `..` textually and never follows a link, so a prefix comparison
