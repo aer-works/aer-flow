@@ -74,6 +74,24 @@ public static class InteractiveSessionMaterializer
     public const string AnchorOutputFileName = "turn.marker";
 
     /// <summary>
+    /// Asks for the answer as a file without requiring it (#650). It lives in the prompt rather than
+    /// in the contract's <c>ProducedOutputs</c> because those are two different statements that were
+    /// being made with one: what the worker is asked to do, and what AER treats as the turn having
+    /// succeeded. A chat turn's answer arrives either as this file or in the vendor's own structured
+    /// result, and the daemon reads whichever it gets — so requiring the file classified a completed
+    /// turn as <c>Failed</c> whenever the session's grant could not write one, which is every
+    /// directory-less and every plan-mode session.
+    /// </summary>
+    /// <remarks>
+    /// Still worth asking for: the structured-result channel only carries an answer when the turn ran
+    /// with streaming output captured, so on a non-streaming turn the file is the only channel there is.
+    /// </remarks>
+    public static string ResponseFileInstruction =>
+        $"\n\nWrite your answer to {WorkerEnvironmentReference.For("AER_OUTPUT_DIR")}" +
+        $"{Path.DirectorySeparatorChar}{DefaultOutputFileName} if you are able to write files. " +
+        "If you cannot, just answer normally — the answer is read either way.";
+
+    /// <summary>
     /// The default <see cref="PermissionGrant"/> for an interactive session that supplied no explicit
     /// grant. A working directory is a project ceiling (decision 0004); with none, the effective grant
     /// floors to the intersection and MUST fail closed -- no filesystem, shell, or network -- so a
@@ -115,20 +133,27 @@ public static class InteractiveSessionMaterializer
 
         var definition = new WorkflowDefinition(
             WorkflowTemplateId: new WorkflowTemplateId("interactive-session-template"),
-            WorkflowTemplateVersion: 2,
+            // 3: the chat step no longer declares response.md (#650). Spec §4 is unambiguous that a
+            // declared output which does not appear is a failure, and it is right — the defect was
+            // declaring one AER does not actually require. A chat turn's answer has two channels, the
+            // artifact and the vendor's own structured result, and the daemon accepts either.
+            WorkflowTemplateVersion: 3,
             Steps:
             [
                 new WorkflowStepDefinition(
                     StepId: new StepId(DefaultStepId),
                     Worker: DefaultWorkerName,
                     Inputs: [],
-                    Outputs: [DefaultOutputFileName],
+                    Outputs: [],
                     DependsOn: [],
                     RetryPolicy: new RetryPolicy(1)),
                 new WorkflowStepDefinition(
                     StepId: new StepId(AnchorStepId),
                     Worker: AnchorWorkerName,
-                    Inputs: [DefaultOutputFileName],
+                    // Nothing upstream declares response.md any more, so the anchor cannot require it
+                    // as an input. DependsOn is what orders the two steps; this only ever wired an
+                    // artifact the anchor does not read (it is a no-op bookkeeping step).
+                    Inputs: [],
                     Outputs: [AnchorOutputFileName],
                     DependsOn: [new StepId(DefaultStepId)],
                     RetryPolicy: new RetryPolicy(1),
@@ -138,9 +163,9 @@ public static class InteractiveSessionMaterializer
                     PausePoint: new PausePoint([new StepId(DefaultStepId)], PausePointKind.NeedsInput))
             ]);
 
-        var promptTemplate = string.IsNullOrWhiteSpace(initialMessage)
+        var promptTemplate = (string.IsNullOrWhiteSpace(initialMessage)
             ? "You are an AI assistant in an interactive session. Answer user questions and perform requested tasks."
-            : initialMessage;
+            : initialMessage) + ResponseFileInstruction;
 
         var vendorSessionId = string.Equals(normalizedAdapter, "claude", StringComparison.OrdinalIgnoreCase)
             ? Guid.NewGuid().ToString()
@@ -153,7 +178,9 @@ public static class InteractiveSessionMaterializer
                 Contract: new WorkerContract(
                     WorkerName: DefaultWorkerName,
                     RequiredInputs: [],
-                    ProducedOutputs: [new ProducedOutput(DefaultOutputFileName)],
+                    // No ProducedOutputs: see ResponseFileInstruction (#650). The prompt asks for
+                    // response.md; the contract does not require it, because AER genuinely does not.
+                    ProducedOutputs: [],
                     OptionalMetadata: []),
                 PromptTemplate: promptTemplate,
                 Timeout: TimeSpan.FromMinutes(10),
@@ -164,7 +191,7 @@ public static class InteractiveSessionMaterializer
                 Adapter: NoOpWorkerAdapter.AdapterName,
                 Contract: new WorkerContract(
                     WorkerName: AnchorWorkerName,
-                    RequiredInputs: [DefaultOutputFileName],
+                    RequiredInputs: [],
                     ProducedOutputs: [new ProducedOutput(AnchorOutputFileName)],
                     OptionalMetadata: []),
                 PromptTemplate: "(no-op bookkeeping step; ignored)",

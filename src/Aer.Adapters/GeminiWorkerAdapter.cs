@@ -489,7 +489,8 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         return prompt.ToString();
     }
 
-    private static string EnvironmentReference(string name, bool isWindows) => isWindows ? $"%{name}%" : $"${name}";
+    private static string EnvironmentReference(string name, bool isWindows) =>
+        WorkerEnvironmentReference.For(name, isWindows);
 
     private static readonly TimeSpan DiscoverySubcommandTimeout = TimeSpan.FromSeconds(5);
 

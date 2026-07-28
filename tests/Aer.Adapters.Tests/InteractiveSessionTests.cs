@@ -2,6 +2,7 @@ using Aer.Adapters.Tests.TestSupport;
 using Aer.Adapters;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
+using Aer.Flow.Outcomes;
 using Xunit;
 
 namespace Aer.Adapters.Tests;
@@ -113,13 +114,65 @@ public sealed class InteractiveSessionTests
         Assert.Equal(2, bindings.Count);
         Assert.True(bindings.ContainsKey("chat-worker"));
         Assert.Equal("claude", bindings["chat-worker"].Adapter);
-        Assert.Equal("Opening prompt", bindings["chat-worker"].PromptTemplate);
+        Assert.StartsWith("Opening prompt", bindings["chat-worker"].PromptTemplate, StringComparison.Ordinal);
         Assert.True(bindings.ContainsKey(InteractiveSessionMaterializer.AnchorWorkerName));
         Assert.Equal(NoOpWorkerAdapter.AdapterName, bindings[InteractiveSessionMaterializer.AnchorWorkerName].Adapter);
+
+        // #650: the chat step declares no output. A chat turn's answer arrives either as response.md
+        // or in the vendor's structured result, and the daemon reads whichever it gets — so requiring
+        // the file classified a completed turn as Failed on every directory-less and plan-mode
+        // session, whose grants cannot write one. The ask moved to the prompt, where it belongs:
+        // spec §4 is right that a declared-and-absent output is a failure.
+        Assert.Empty(chatStep.Outputs);
+        Assert.Empty(bindings["chat-worker"].Contract.ProducedOutputs);
+        Assert.Contains(
+            InteractiveSessionMaterializer.DefaultOutputFileName,
+            bindings["chat-worker"].PromptTemplate,
+            StringComparison.Ordinal);
+
+        // Nothing upstream declares response.md any more, so the anchor cannot require it. DependsOn
+        // (asserted above) is what orders the two steps; this only ever wired an artifact the no-op
+        // anchor never reads.
+        Assert.Empty(anchorStep.Inputs);
+        Assert.Empty(bindings[InteractiveSessionMaterializer.AnchorWorkerName].Contract.RequiredInputs);
 
         Assert.Equal("sess-abc", meta.SessionId);
         Assert.Equal("claude", meta.CurrentAdapter);
         Assert.Equal(0, meta.TurnCount);
+    }
+
+    [Fact]
+    public void A_chat_turn_that_writes_nothing_now_satisfies_its_contract()
+    {
+        // #650, stated at the layer that decides it. ContractValidator requires File.Exists for every
+        // declared output, and OutcomeClassifier turns an unsatisfied contract into Failed even on a
+        // natural exit-0 — so while the chat contract declared response.md, every turn of a
+        // directory-less or plan-mode session (whose grants cannot write) classified Failed despite
+        // the vendor succeeding. That verdict is what three separate daemon workarounds route around.
+        var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
+            sessionId: "sess-empty", taskDirectoryPath: "/tmp/aer/sessions/sess-empty", adapter: "claude");
+
+        var emptyOutputDirectory = Path.Combine(Path.GetTempPath(), $"aer-650-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(emptyOutputDirectory);
+        try
+        {
+            Assert.True(
+                ContractValidator.IsSatisfied(bindings["chat-worker"].Contract, emptyOutputDirectory),
+                "a chat turn that produced no artifact must not be classified as a failure");
+
+            // The polarity control on the same validator: it still fails a contract that DOES declare
+            // an output, so the assertion above is about the chat contract rather than about a
+            // validator that stopped checking anything.
+            Assert.False(
+                ContractValidator.IsSatisfied(
+                    new WorkerContract("w", [], [new ProducedOutput("required.md")], []),
+                    emptyOutputDirectory),
+                "the validator stopped enforcing declared outputs, so the assertion above proves nothing");
+        }
+        finally
+        {
+            Directory.Delete(emptyOutputDirectory, recursive: true);
+        }
     }
 
     [Fact]
