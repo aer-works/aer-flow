@@ -16,7 +16,7 @@ public class OutboxWriteExemptionTests
         var payload = Payload(toolName, targetPath is null ? null : new { file_path = targetPath });
 
         using var stderr = new StringWriter();
-        return HookCheckCommand.Execute(new StringReader(payload), stderr, "Edit,Write,NotebookEdit", outbox ?? Outbox);
+        return HookCheckCommand.Execute(new StringReader(payload), stderr, "claude:Edit,Write,NotebookEdit", outbox ?? Outbox);
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public class OutboxWriteExemptionTests
 
         Assert.Equal(
             HookCheckCommand.AllowedExitCode,
-            HookCheckCommand.Execute(new StringReader(payload), stderr, "Edit,Write,NotebookEdit", Outbox));
+            HookCheckCommand.Execute(new StringReader(payload), stderr, "claude:Edit,Write,NotebookEdit", Outbox));
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class OutboxWriteExemptionTests
         using var stderr = new StringWriter();
         var exitCode = HookCheckCommand.Execute(
             new StringReader(Payload("Bash", new { command = "rm -rf /" })),
-            stderr, "Bash", Outbox);
+            stderr, "claude:Bash", Outbox);
 
         Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
     }
@@ -79,7 +79,7 @@ public class OutboxWriteExemptionTests
         using var stderr = new StringWriter();
         var exitCode = HookCheckCommand.Execute(
             new StringReader(Payload("Write", new { file_path = Path.Combine(Outbox, "review.md") })),
-            stderr, "Edit,Write,NotebookEdit", outboxDirectory: null);
+            stderr, "claude:Edit,Write,NotebookEdit", outboxDirectory: null);
 
         Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
     }
