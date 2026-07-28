@@ -5,19 +5,9 @@ WHY THIS EXISTS
 `docs/documentation-lessons.md` rule 15 says any claim of completeness ships with the artifact that
 lets someone check it. This is that artifact for the #527 audit chain.
 
-The chain has nine steps, and each one has a population that can be ENUMERATED and a disposition
-that must exist for every member:
-
-  1 sources        every source considered -> included, or excluded with a reason
-  2 corpus read    every mirrored page    -> a ledger disposition
-  3 gaps verified  every backlog row      -> a vendor-verify check, or a stated reason it cannot run
-  4 citations live every #NNN cited near staleness language -> that issue is not actually CLOSED
-                     (needs `gh`; SKIPPED, not failed, when it is unavailable -- see step4_stale_citations)
-  5 what changed   every measured finding -> an architectural implication, or "no impact" + why
-  6 design         every decision on disk -> reviewed, amended, superseded, or unaffected + why
-  7 milestones     every open milestone   -> re-checked against the changes
-  8 cited checks   every vendor-verify check name cited anywhere -> actually registered
-  9 pinned models  every agy model pinned in tools/ -> a name `agy models` lists
+Each step takes a population that can be ENUMERATED and asserts every member carries a disposition.
+`main()` is the list of them -- do not restate it here; a copy of it stood at "eight steps" while
+`main()` ran nine.
 
 This script recomputes what is mechanically recomputable (populations, and which members carry a
 disposition) and prints what it CANNOT check, because a completeness checker that hides its own
@@ -382,9 +372,7 @@ def step9_pinned_models_exist():
     THIS IS NOT THE FIRST CHECK OF ITS KIND, AND SAYING SO IS THE POINT
     `tools/smoke-preflight/preflight.py` already validates model pins against agy's catalogue, was
     built for the same failure class (`gemini-3-flash` pinning nothing for months), and does it
-    BETTER where it runs: it queries `agy models` live rather than joining against a recording. An
-    earlier draft of this step did not mention it, which is the `common-sense` gate's own question --
-    does a helper for this already exist? -- going unasked.
+    BETTER where it runs: it queries `agy models` live rather than joining against a recording.
 
     They are complementary, and the split is not a matter of taste:
       * preflight's population is `tests/Aer.Cli.SmokeTests` and its fixtures. It does not read
@@ -438,8 +426,8 @@ def step9_pinned_models_exist():
         print(f"    !! the `agy models` block parsed to token(s) that are not model names -- the"
               f" PARSE is wrong, not the pins. Got: {sorted(accepted - shaped)[:8]}")
         return False
-    # Bounds are a smoke alarm, not a diagnosis: wide enough that only a wild parse trips them
-    # (today: 12), and the message says to go look rather than naming a culprit.
+    # A smoke alarm, not a diagnosis: wide enough that only a wild parse trips it, and the message
+    # says to go look rather than naming a culprit. The real count is printed one line below.
     if not 5 <= len(accepted) <= 40:
         print(f"    !! the `agy models` block parsed to {len(accepted)} names, outside the expected"
               " 5..40. Either the catalogue changed dramatically or the parse drifted -- check which"

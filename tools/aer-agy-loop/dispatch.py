@@ -132,10 +132,11 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 # these are the settings it resolves to. `fact-check` and `review` are separate templates rather
 # than one with a knob because that question has two answers, not a dial.
 #
-# Every template grants WriteFiles. A worker satisfies its ProducedOutputs contract only by writing
-# the artifact into AER_OUTPUT_DIR, and these templates withhold the shell too, so anything less
-# cannot report at all -- see the guard in main() for the measured scope. #629 is AER accepting that
-# combination rather than refusing it at bind time.
+# Every template grants WriteFiles, the reviewing ones included. A worker satisfies its
+# ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and the three read-only
+# templates withhold the shell as well, so anything less cannot report at all -- see the guard in
+# main() for the arm-by-arm scope. #629 is AER accepting that combination rather than refusing it at
+# bind time.
 #
 # Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
 # translation and the path #596, #611, #623 and #624 all came from. A session that only ever
@@ -146,11 +147,9 @@ TEMPLATES = {
                 "purpose: a second opinion from the same family that wrote the code is one instrument "
                 "twice.",
         # Effort is in the model name; the flag is left unset because which control wins is unprobed
-        # (#510). `docs/vendor-capabilities.md`'s `agy models` section holds what is and is not
-        # measured. Sending no flag avoids the question. `verify.py`'s CHEAP pins `gemini-3.6-flash-low`
-        # the same way. The first draft of this template said `gemini-3.1-pro`, which `agy models`
-        # does not list at all -- #547's exact failure, committed by the file meant to prevent it.
-        # STEP 9 of `pixi run audit-completeness` now checks these names against that register.
+        # (#510) -- see `docs/vendor-capabilities.md`'s `agy models` section. `verify.py`'s CHEAP pins
+        # the same way. STEP 9 of `pixi run audit-completeness` checks these names against that
+        # register, because a name the CLI will not accept is #547's failure class.
         "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
         "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
@@ -159,7 +158,9 @@ TEMPLATES = {
     "implement": {
         "_use": "A bounded change with the approach already decided. Exercises the write path and "
                 "agy's skip-permissions translation, which is the half of AER that review-only "
-                "dispatches never touch.",
+                "dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's "
+                "timeout exercises that equally -- so do not reach for the skip-permissions grant "
+                "expecting it to buy that.",
         "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
         "read_files": True, "write_files": True,
         "run_shell_commands": True, "network_access": True,
@@ -231,7 +232,7 @@ def main() -> int:
             # A bare `None` reads as "nobody thought about effort" rather than "deliberately not
             # sent" (#510), so say which it is.
             settings = " ".join(
-                f"{k}=" + ("<unset -- see the comment on this template>" if v is None else str(v))
+                f"{k}=" + ("<unset -- deliberately not sent; see #510>" if v is None else str(v))
                 for k, v in t.items() if not k.startswith("_"))
             print(name)
             print(f"    {t['_use']}")

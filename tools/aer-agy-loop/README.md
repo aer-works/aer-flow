@@ -54,32 +54,17 @@ for and what it resolves to; the definitions and the reasoning behind each setti
 Two things worth knowing before reaching for one:
 
 - **Precedence is explicit flag > template > built-in default**, so `--template review --model haiku`
-  does what it says. That is intentional: the templates are a starting point you can override, not a
-  lock.
-- **Every template grants write, including the reviewing ones.** A worker satisfies its
-  `ProducedOutputs` contract only by writing the artifact into `AER_OUTPUT_DIR`. With writes *and*
-  the shell both withheld, nothing can produce that file — measured on **claude/haiku**, both arms:
-  withheld → `Contract not satisfied`; `--write-files` → `Succeeded`. That combination is refused
-  here before it can spend. The gemini equivalent is **unmeasured** — there is no deny-list on that
-  path, `WriteFiles:false` resolves to `--mode plan` — so the refusal is conservative there rather
-  than evidenced.
-- **Withholding writes while granting the shell does *not* stop a worker writing.**
-  [#529](https://github.com/aer-works/aer-flow/issues/529) measured the file being created anyway by
-  `Bash` on claude. On gemini this is inferred from the same substitution argument, not measured —
-  and note `--dangerously-skip-permissions` is *not* the reason: the `PreToolUse` hook derives its
-  deny list from all four grant categories and takes the flag's over-grant back. So that combination
-  is allowed through here — it is satisfiable, and pretending otherwise would be a claim wider than
-  the evidence. **"Read-only reviewer" is still not expressible**
-  ([#629](https://github.com/aer-works/aer-flow/issues/629)); what is expressible is "no writes and
-  no shell", which cannot report.
-- **So the spread is one axis, not four shapes.** All four sit at read + write; only `implement` adds
-  shell + network, which is the path #596, #611, #623 and #624 all came from. A session that only
-  ever dispatches reviews never exercises that half of AER — the value is in reaching for `implement`
-  sometimes, not in the set being varied.
+  does what it says. The templates are a starting point you can override, not a lock — every
+  permission has a `--no-` arm.
+- **A read-only dispatch is refused before it can spend**, because a worker satisfies its
+  `ProducedOutputs` contract only by writing into `AER_OUTPUT_DIR`. Withholding writes while granting
+  the shell is a *different* case and is allowed through, since the shell can write anyway
+  ([#529](https://github.com/aer-works/aer-flow/issues/529)). "Read-only reviewer" is therefore not
+  expressible ([#629](https://github.com/aer-works/aer-flow/issues/629)). The guard in `dispatch.py`
+  carries which arm is measured on which vendor; that scope is not repeated here.
 
-A pinned `agy` model name is checked against `agy models` (as recorded in
-`docs/vendor-capabilities.md`) by STEP 9 of `pixi run audit-completeness` — the first draft of these
-templates shipped a name the CLI does not accept, and prose did not catch it.
+A pinned `agy` model name is checked against `agy models` by STEP 9 of
+`pixi run audit-completeness`.
 
 ## Using this for an advisor consult
 
