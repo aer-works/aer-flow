@@ -89,6 +89,13 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// nothing about environment inheritance where claude's states it explicitly, so reusing
     /// claude's answer without measuring would have been the population-scope mistake gate `claim-scope` names.
     /// </remarks>
+    /// <summary>
+    /// The vendor tag prefixing <see cref="DeniedToolsVariable"/>'s value (#600). Deliberately not
+    /// shared with claude's: the variable name is the same because a worker is only ever one vendor,
+    /// but the tag is what says which one, so the two tags must differ or it says nothing.
+    /// </summary>
+    public const string DeniedToolsVendorTag = "agy";
+
     public const string DeniedToolsVariable = ClaudeWorkerAdapter.DeniedToolsVariable;
 
     /// <summary>
@@ -357,7 +364,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
                 // happened to carry. It does NOT currently make "nothing withheld" distinguishable
                 // from "the list never arrived" -- the command collapses absent and empty to the
                 // same allow. See #600.
-                (DeniedToolsVariable, BuildDeniedTools(invocation.PermissionGrant)),
+                (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
             ]);
     }
 

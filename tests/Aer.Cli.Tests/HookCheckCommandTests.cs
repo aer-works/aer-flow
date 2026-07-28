@@ -15,7 +15,7 @@ public class HookCheckCommandTests
         using var stdin = new StringReader("""{"tool_name": "Bash", "tool_input": {"command": "ls"}}""");
         using var stderr = new StringWriter();
 
-        var exitCode = HookCheckCommand.Execute(stdin, stderr, "Edit,Write,Bash");
+        var exitCode = HookCheckCommand.Execute(stdin, stderr, "claude:Edit,Write,Bash");
 
         Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
         Assert.Contains("Bash", stderr.ToString());
@@ -27,7 +27,7 @@ public class HookCheckCommandTests
         using var stdin = new StringReader("""{"tool_name": "Read", "tool_input": {"file_path": "x"}}""");
         using var stderr = new StringWriter();
 
-        var exitCode = HookCheckCommand.Execute(stdin, stderr, "Edit,Write,Bash");
+        var exitCode = HookCheckCommand.Execute(stdin, stderr, "claude:Edit,Write,Bash");
 
         Assert.Equal(HookCheckCommand.AllowedExitCode, exitCode);
         Assert.Equal(string.Empty, stderr.ToString());
@@ -37,14 +37,18 @@ public class HookCheckCommandTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void An_absent_or_blank_denied_list_allows_every_tool(string? deniedToolsRaw)
+    public void An_absent_or_blank_denied_list_now_denies_because_the_gate_cannot_know(string? deniedToolsRaw)
     {
         using var stdin = new StringReader("""{"tool_name": "Bash"}""");
         using var stderr = new StringWriter();
 
         var exitCode = HookCheckCommand.Execute(stdin, stderr, deniedToolsRaw);
 
-        Assert.Equal(HookCheckCommand.AllowedExitCode, exitCode);
+        // #600 inverted this deliberately. It used to allow, which meant "AER set the list and nothing
+        // is withheld" and "the list never arrived" were the same observable outcome — so a channel
+        // that had stopped working looked exactly like one that was. An empty list AER actually sent
+        // still allows; it now arrives tagged (`claude:`), which is what makes the two tellable apart.
+        Assert.Equal(HookCheckCommand.DeniedExitCode, exitCode);
     }
 
     [Fact]
@@ -57,7 +61,7 @@ public class HookCheckCommandTests
         using var stdin = new StringReader("""{"tool_name": "BashOutput"}""");
         using var stderr = new StringWriter();
 
-        var exitCode = HookCheckCommand.Execute(stdin, stderr, "Bash");
+        var exitCode = HookCheckCommand.Execute(stdin, stderr, "claude:Bash");
 
         Assert.Equal(HookCheckCommand.AllowedExitCode, exitCode);
     }
@@ -73,7 +77,7 @@ public class HookCheckCommandTests
         using var stdin = new StringReader(stdinContent);
         using var stderr = new StringWriter();
 
-        var exitCode = HookCheckCommand.Execute(stdin, stderr, "Bash,Edit,Write");
+        var exitCode = HookCheckCommand.Execute(stdin, stderr, "claude:Bash,Edit,Write");
 
         Assert.Equal(HookCheckCommand.AllowedExitCode, exitCode);
     }
@@ -83,6 +87,6 @@ public class HookCheckCommandTests
     {
         using var stderr = new StringWriter();
 
-        Assert.Throws<ArgumentNullException>(() => HookCheckCommand.Execute(null!, stderr, "Bash"));
+        Assert.Throws<ArgumentNullException>(() => HookCheckCommand.Execute(null!, stderr, "claude:Bash"));
     }
 }

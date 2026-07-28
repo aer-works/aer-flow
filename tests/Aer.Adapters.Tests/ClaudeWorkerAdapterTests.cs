@@ -409,8 +409,9 @@ public class ClaudeWorkerAdapterTests
 
         var disallowedToolsArg = ArgValue(target, "--disallowedTools");
         Assert.NotNull(target.Environment);
+        // #600 prefixes the value with the vendor tag; the names after it must still mirror the flag.
         Assert.Contains(
-            (ClaudeWorkerAdapter.DeniedToolsVariable, disallowedToolsArg!),
+            (ClaudeWorkerAdapter.DeniedToolsVariable, $"claude:{disallowedToolsArg}"),
             target.Environment);
     }
 
@@ -422,7 +423,9 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         Assert.NotNull(target.Environment);
-        Assert.Contains((ClaudeWorkerAdapter.DeniedToolsVariable, string.Empty), target.Environment);
+        // #600: tagged, so "AER set this and nothing is withheld" is distinguishable from "the variable
+        // never arrived". The empty list after the tag is the part that still means "nothing withheld".
+        Assert.Contains((ClaudeWorkerAdapter.DeniedToolsVariable, "claude:"), target.Environment);
     }
 
     /// <summary>

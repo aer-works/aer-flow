@@ -191,7 +191,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             Environment:
             [
                 (MaxSubagentSpawnDepthVariable, "1"),
-                (DeniedToolsVariable, disallowed),
+                (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{disallowed}"),
                 (SimpleModeVariable, "0"),
             ]);
     }
@@ -226,6 +226,15 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// <c>HookCheckCommand.DeniedToolsEnvironmentVariable</c> — both sides assert the literal value
     /// in their own test suite, and the two must agree.
     /// </summary>
+    /// <summary>
+    /// The vendor tag prefixing <see cref="DeniedToolsVariable"/>'s value (#600), so an absent list, an
+    /// empty one AER deliberately set, and another vendor's list are three distinguishable things
+    /// rather than one that always allowed. Mirrored as a literal in <c>Aer.Cli</c>'s hook command
+    /// because <c>Aer.Adapters</c> cannot reference it; <c>DeniedToolChannelTests</c> is the one test
+    /// that sees both sides and fails if they drift.
+    /// </summary>
+    public const string DeniedToolsVendorTag = "claude";
+
     public const string DeniedToolsVariable = "AER_HOOK_DENIED_TOOLS";
 
     /// <summary>
