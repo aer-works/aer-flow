@@ -351,9 +351,7 @@ def _recordonce_reads_code():
 
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
-    # The shape that shipped in the first draft of this checker and would have fired on every new
-    # decision record: the index row and the plan row repeat the record's title, and repeating it
-    # there is the link `record-once` asks for.
+    # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.
     with _loading_recordonce_as(lambda m: setattr(m, "TABLE_ROW", re.compile(r"(?!)"))):
         yield
 

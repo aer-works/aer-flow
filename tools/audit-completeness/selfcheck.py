@@ -727,9 +727,8 @@ def _recordonce_discriminates():
         ("duplicated test setup code",
          {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
                              "using var stderr = new StringWriter();"] for i in range(3)}, False),
-        # The three that shipped as hard CI failures in the first draft, each on text the gate
-        # prescribes. The decision-record one fired on every new record: the index row and the
-        # plan row repeat the record's own title, which is the link the gate asks for.
+        # The three shapes the first draft failed CI on, for the reason recorded beside `TABLE_ROW`
+        # in recordonce.py. The first of them fired on every new decision record.
         ("a decision record, its index row and its plan row",
          {"docs/decisions/0042-x.md": [f"# 0042 - {title}"],
           "docs/decisions/README.md": [f"| [0042](0042-x.md) | {title} | M26 |"],
