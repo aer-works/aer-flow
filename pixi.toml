@@ -199,7 +199,12 @@ audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }
 # Every local gate, one exit code. Report THIS command's exit status, never a per-gate line scraped
 # out of the combined output -- see tools/gates/gates.py for the two occasions that went wrong.
 gates = { cmd = "python -u tools/gates/gates.py" }
+gates-fast = { cmd = "python -u tools/gates/gates.py --fast" }
 gates-selftest = { cmd = "python -u tools/gates/gates.py --selftest" }
+
+# One-time per clone: point git at the committed hooks. .git/hooks is not version-controlled, so a
+# pre-push gate left there binds one machine and silently protects nobody else.
+setup-hooks = { cmd = "git config core.hooksPath .githooks" }
 
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,

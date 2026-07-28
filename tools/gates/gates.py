@@ -18,15 +18,23 @@ import subprocess
 import sys
 
 # Order is cheapest-first so a broken tree reports in seconds rather than after the UI suite.
-GATES = [
+#
+# FAST is everything but the test suite, and it is what the pre-push hook runs. Drawing the line
+# there is deliberate: `test` is the slow half and CI runs it on both platforms anyway, while a hook
+# that costs two minutes on every push is a hook someone starts reaching for --no-verify to get past.
+# It also loses nothing this repo has actually shipped broken -- of the two failures that reached CI
+# in the session that prompted this, one was a lint violation FAST catches, and the other was a
+# Linux-only test that no hook on a Windows host could have caught.
+FAST = [
     "fmt-check",
     "lint",
     "audit-completeness",
     "audit-selfcheck",
     "audit-controls",
     "audit-recordonce",
-    "test",
 ]
+
+GATES = FAST + ["test"]
 
 PASS_MARK = "GATES: PASS"
 FAIL_MARK = "GATES: FAIL"
@@ -91,9 +99,10 @@ def main():
     if "--selftest" in sys.argv:
         return selftest()
 
-    failed = run_gates(GATES, pixi_runner)
+    names = FAST if "--fast" in sys.argv else GATES
+    failed = run_gates(names, pixi_runner)
     print()
-    print(summarise(GATES, failed))
+    print(summarise(names, failed))
     return 1 if failed else 0
 
 
