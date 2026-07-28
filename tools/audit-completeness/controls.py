@@ -422,6 +422,22 @@ def _recordonce_reads_code():
         yield
 
 
+@control(RECORDONCE, "comment context is lost, so docstrings and block bodies go invisible again")
+def _recordonce_reads_leaders_only():
+    # The pre-#675 reader, verbatim: a leader match per line, with no notion of what a line is inside.
+    # Distinct from the arm above, which is the false-positive direction -- this is the one that
+    # silently NARROWS the population, and narrowing is the failure that ships green. Repinning
+    # PROVEN_GROUPS on #675 was caused by one docstring this cannot see.
+    leader = re.compile(r"^\s*(///|//|/\*|\*|#|--|<!--)")
+
+    def leaders_only(mod):
+        replacing(mod, "comment_text",
+                  lambda lines, openers, blocks:
+                      (line if leader.match(line) else None for line in lines))
+    with _loading_recordonce_as(leaders_only):
+        yield
+
+
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
     # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.

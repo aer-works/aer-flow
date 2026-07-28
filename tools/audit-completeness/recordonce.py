@@ -28,9 +28,22 @@ WHAT IT CANNOT CHECK:
     files that already shared a passage reads the same as writing it twice. #674.
   * A comment the change FALSIFIED without touching -- absent from the diff by definition. #636's.
   * The same fact PARAPHRASED. Shingles match text, not meaning: nine consecutive words have to
-    match, so one substituted word inside the window defeats it.
-  * Prose that carries no comment leader in a code file -- `/* */` bodies, Python docstrings, string
-    literals. Only leader-led lines are read. #675.
+    match, so one substituted word inside the window defeats it. Measured, and worth knowing how
+    weak this makes the tool on the shape people actually write: `recordonce.py`'s own module
+    docstring and `selfcheck.py`'s `_recordonce_discriminates` docstring record the same measurement
+    independently, and share ZERO 9-grams. #675 cites that pair as a live instance; reading
+    docstrings was necessary to see it and is not sufficient.
+  * STRING LITERALS, still. Error messages, CLI help and journey titles are prose a change can
+    restate, and #675 named them. Not fixed here: an unanchored search for a comment opener matches
+    inside `"https://..."`, and reading code as prose is the false-positive class this checker has
+    already shipped twice. Comment context is the fix #675 prescribes; literals need a lexer.
+  * A comment TRAILING code on the same line -- `x = 1; /* note */`. Openers are anchored at the
+    start of a line for the reason above.
+  * A hunk that BEGINS inside a block comment, which reads as ordinary code: only added lines are
+    visible, so there is no opener to see. Assuming closed can only miss prose, never invent it.
+  * `.json`, `.txt` and the VALUES in `.yml`/`.toml`/`.csproj` -- data positions, not comments.
+    `.rst`/`.mdx` are not listed because neither exists in this repo; add them with a file, not in
+    advance.
   * Whether the surviving copy is the right one. It finds duplicates; it does not rank them.
 """
 from __future__ import annotations
@@ -61,7 +74,32 @@ NOISE = re.compile(r"#\d{3,}|https?://\S+")
 # flagging those was the second false-positive class this check produced. In a code file only comment
 # lines are read; markdown is prose apart from the exclusions below.
 PROSE_EVERYWHERE = (".md",)
-COMMENT = re.compile(r"^\s*(///|//|/\*|\*|#|--|<!--)")
+
+# Comment CONTEXT, per language, replacing a single leader regex applied to every line of every file
+# (#675). The regex read a line and could not read a block: a `/* */` body carries no leader on its
+# own lines, and neither does a Python docstring, so the prose that most often states a fact once was
+# the prose least visible here. Worse, it matched a leader wherever it appeared -- a `#` inside a
+# docstring, a `*` in a table -- so fragments of non-comment text entered the stream as if they were
+# comments. Contiguity stops those fragments welding onto their neighbours; this stops them being
+# read at all.
+#
+# Openers are anchored at the start of a line, closers are not. `/* note */` trailing a statement is
+# therefore missed, deliberately: an unanchored `//` matches inside `"https://..."` and an unanchored
+# `/*` inside any string holding one, and reading code as prose is the false-positive class this
+# checker has already shipped twice.
+#
+# (extensions, line-comment openers, (block open, block close) pairs)
+LANGUAGES = (
+    ((".cs", ".dart", ".go", ".rs", ".ts", ".js", ".java", ".kt", ".kts"),
+     ("///", "//"), (("/*", "*/"),)),
+    ((".py",), ("#",), (('"""', '"""'), ("'''", "'''"))),
+    ((".csproj", ".props", ".targets", ".axaml", ".xml", ".slnx", ".html", ".resx"),
+     (), (("<!--", "-->"),)),
+    ((".ps1",), ("#",), (("<#", "#>"),)),
+    ((".sh", ".yml", ".yaml", ".toml", ".cfg", ".ini", ".editorconfig", ".gitignore",
+      ".gitattributes", ".properties"), ("#",), ()),
+)
+LINE_OPENER = re.compile(r"^\s*")
 
 # Text whose duplication `record-once` PRESCRIBES, and which therefore cannot be evidence against it.
 #
@@ -77,6 +115,57 @@ PATH_PREFIX = re.compile(r"^b/")
 TABLE_ROW = re.compile(r"^\s*\|")
 FENCE = re.compile(r"^\s*(```|~~~)")
 GENERATED = re.compile(r"GENERATED FILE", re.IGNORECASE)
+
+
+def language(path: str) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+    """This file's line-comment openers and block-comment delimiters, or empty for both if unknown."""
+    for extensions, line_openers, blocks in LANGUAGES:
+        if path.endswith(extensions):
+            return line_openers, blocks
+    return (), ()
+
+
+def comment_text(lines: list[str], line_openers, blocks):
+    """Each line's comment content, or None where the line is not comment prose.
+
+    A generator over ONE hunk, and block state starts closed on every hunk. Only added lines are
+    visible here, so a hunk beginning in the middle of a `/* */` cannot be told from one that is not
+    in a comment at all. Assuming closed can only miss prose; assuming open would read code as prose,
+    which is the direction that has already produced false positives twice.
+    """
+    closer = None
+    for line in lines:
+        if closer is not None:
+            end = line.find(closer)
+            if end == -1:
+                yield line
+            else:
+                yield line[:end]
+                closer = None
+            continue
+
+        indent = LINE_OPENER.match(line).end()
+        body = line[indent:]
+
+        for opener, close in blocks:
+            if body.startswith(opener):
+                rest = body[len(opener):]
+                end = rest.find(close)
+                # `"""one-liner"""` opens and closes on one line; the delimiters being identical for
+                # a docstring is why the search starts AFTER the opener rather than at the line head.
+                if end == -1:
+                    closer = close
+                    yield rest
+                else:
+                    yield rest[:end]
+                break
+        else:
+            for opener in line_openers:
+                if body.startswith(opener):
+                    yield body[len(opener):]
+                    break
+            else:
+                yield None
 
 
 def prose_runs(path: str, hunks: list[list[str]]) -> list[list[str]]:
@@ -106,18 +195,22 @@ def prose_runs(path: str, hunks: list[list[str]]) -> list[list[str]]:
         return []
 
     markdown = path.endswith(PROSE_EVERYWHERE)
+    line_openers, blocks = language(path)
     runs: list[list[str]] = []
     for lines in hunks:
         current: list[str] = []
         fenced = False
-        for line in lines:
+        comments = [None] * len(lines) if markdown else list(comment_text(lines, line_openers, blocks))
+        for line, comment in zip(lines, comments):
             words: list[str] = []
             if markdown and FENCE.match(line):
                 fenced = not fenced
             elif fenced or (markdown and TABLE_ROW.match(line)):
                 pass
-            elif markdown or COMMENT.match(line):
+            elif markdown:
                 words = normalise(line)
+            elif comment is not None:
+                words = normalise(comment)
 
             if words:
                 current.extend(words)
@@ -151,9 +244,23 @@ def normalise(line: str) -> list[str]:
 # happened to include would become mandatory -- fixing it would break the pin. Pinning the sets
 # means a change to WHICH passages are found has to be adjudicated line by line, which is the only
 # reading of this list that is worth anything. Each entry below was read; none is boilerplate.
+#
+# REPINNED ONCE, #675, and the adjudication is the point of keeping this list. Teaching the checker
+# to read comment CONTEXT rather than line leaders made `tools/aer-agy-loop/dispatch.py` visible for
+# the first time -- its prose is a module docstring, which carries no leader on any line. The pinned
+# two-file group grew a third file and a second group appeared. Both were read before repinning:
+#
+#   "on claude the write tools stay pre-approved and AER's PreToolUse hook confines them to the outbox"
+#
+# is in `docs/decisions/0004-permission-scopes.md:57`, `src/Aer.Adapters/IWorkerAdapter.cs:100-101`
+# and `dispatch.py:231` at that SHA -- one fact, three files, near-verbatim. That is the defect this
+# checker exists for, found by the change rather than broken by it. A pin moving is not a licence to
+# repin; this one moved because the passage was read and judged real.
 PROVEN_SHA = "fc884cd6dac19f16d803c28246e101e1c9fef493"
 PROVEN_GROUPS = (
-    ('docs/decisions/0004-permission-scopes.md', 'src/Aer.Adapters/IWorkerAdapter.cs'),
+    ('docs/decisions/0004-permission-scopes.md', 'src/Aer.Adapters/IWorkerAdapter.cs',
+     'tools/aer-agy-loop/dispatch.py'),
+    ('docs/decisions/0004-permission-scopes.md', 'tools/aer-agy-loop/dispatch.py'),
     ('docs/decisions/0029-the-gate-is-three-mechanisms.md', 'docs/documentation-lessons.md',
      'src/Aer.Adapters/ClaudeWorkerAdapter.cs', 'tests/Aer.Cli.Tests/HookCheckCommandTests.cs'),
     ('docs/decisions/0029-the-gate-is-three-mechanisms.md',

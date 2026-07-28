@@ -801,10 +801,9 @@ def _recordonce_discriminates():
         # the measured case spread one corrected fact across `///` comments and markdown alike.
         ("prose restated across a comment and a doc",
          {"src/C.cs": one(f"/// {sentence}"), "docs/D.md": one(f"- {sentence}")}, True),
-        # The measured shape `groups` is built around: the restatement wrapped mid-sentence in every
-        # file it landed in, so a run has to span consecutive comment lines. Guards contiguity from
-        # the other side -- a break rule that split per line would satisfy every arm below and fail
-        # the only thing this checker was ever built to catch.
+        # Guards contiguity from the other side: a break rule that split per line would satisfy every
+        # arm below while losing the only shape the checker was built for. See `groups` in
+        # recordonce.py for why a run spans consecutive comment lines.
         ("a sentence wrapped across two comment lines",
          {"src/W.cs": one("/// the vendor refuses the call before any hook",
                           "/// is ever consulted here at all"),
@@ -817,6 +816,27 @@ def _recordonce_discriminates():
         ("two files sharing only a cross-hunk join",
          {p: [["/// the gate refuses a payload"], ["/// it cannot judge at all"]]
           for p in ("src/H1.cs", "src/H2.cs")}, False),
+        # #675's coverage half. None of these carried a leader on the line holding the words, so all
+        # three were invisible to the leader regex -- and a Python docstring is not an exotic case
+        # here: repinning PROVEN_GROUPS on this change was caused by exactly one, in dispatch.py.
+        ("a block-comment body with no leader on its lines",
+         {"src/BC.cs": one("/* the vendor refuses the call before any hook",
+                           "   is ever consulted here at all */"),
+          "docs/BC.md": one(f"{sentence} at all")}, True),
+        ("a python docstring restated into a doc",
+         {"tools/x.py": one("def f():", f'    """{sentence}."""'),
+          "docs/PY.md": one(sentence)}, True),
+        ("an xml comment restated into a doc",
+         {"src/X.csproj": one(f"<!-- {sentence} -->"), "docs/XM.md": one(sentence)}, True),
+        # The other direction of the same change: context means code positions stop being read, and
+        # a `#if` is not a `#` comment. Under the old leader regex this fired.
+        ("a C# preprocessor directive shared by two files",
+         {p: one("#if WINDOWS", "#region the vendor refuses the call before any hook is here",
+                 "#endif") for p in ("src/P1.cs", "src/P2.cs")}, False),
+        # An unanchored opener would find `//` inside every one of these and read the URL as prose.
+        ("the same long url in code in two files",
+         {p: one('var u = "https://example.com/a/b/c/d/e/f/g/h/i/j";')
+          for p in ("src/U1.cs", "src/U2.cs")}, False),
         # Was a false positive under the reference-counting design: one issue cited in many files
         # is the register working, and ten different sentences share no wording.
         ("one issue cited in ten files",
