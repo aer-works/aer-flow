@@ -204,6 +204,39 @@ def is_citation(src, m):
 # The enumerable surfaces
 # ---------------------------------------------------------------------------------------------
 
+@check("every dispatch tells the worker the budget it is actually given")
+def _dispatch_states_its_budget():
+    """A worker that does not know it is being timed spends the budget as if it were unbounded.
+
+    Nothing else can catch a preamble that stops being attached: the run still succeeds, and the
+    cost shows up only as a report that was two-thirds written when the process was killed. The
+    minutes are compared against the `Timeout` the same call emits, so a preamble that names a
+    number the binding does not carry fails here rather than misinforming the worker.
+    """
+    body = "-- the operator's own prompt --"
+    assert dispatch.TEMPLATES, "TEMPLATES is empty -- this compared nothing"
+    for name, tpl in resolved_templates().items():
+        output = f"{name}-artifact.md"
+        entry = dispatch.build_bindings(
+            worker_name="w", prompt_text=body, output_name=output,
+            adapter=tpl["adapter"], working_directory=ROOT,
+            timeout_minutes=tpl["timeout_minutes"], model=tpl["model"], effort=tpl["effort"],
+            read_files=tpl["read_files"], write_files=tpl["write_files"],
+            run_shell_commands=tpl["run_shell_commands"], network_access=tpl["network_access"],
+        )["w"]
+        prompt = entry["PromptTemplate"]
+        assert prompt.endswith(body), (
+            f"TEMPLATES[{name!r}]: the operator's prompt no longer arrives intact")
+        hours, minutes, _ = entry["Timeout"].split(":")
+        assert f"{int(hours) * 60 + int(minutes)} minutes" in prompt, (
+            f"TEMPLATES[{name!r}]: the prompt does not state the budget the binding carries "
+            f"({entry['Timeout']}) -- a worker told the wrong number is worse than one told none")
+        assert output in prompt, (
+            f"TEMPLATES[{name!r}]: the prompt never names {output}, so 'write it early' names "
+            "nothing the worker can act on")
+    return f"{len(dispatch.TEMPLATES)} templates x (budget stated = budget bound, prompt intact)"
+
+
 @check("every gemini template pins a model `agy models` lists")
 def _pins_resolve():
     accepted = register_models()

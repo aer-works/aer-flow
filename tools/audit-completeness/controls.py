@@ -310,6 +310,24 @@ def _loading_recordonce_as(mutate):
     return swap(selfcheck, "load", patched)
 
 
+BUDGET = "every dispatch tells the worker the budget it is actually given"
+
+
+@control(BUDGET, "the preamble is dropped, so every worker is timed without being told")
+def _dispatch_says_nothing():
+    with swap(selfcheck.dispatch, "budget_preamble", lambda minutes, output: ""):
+        yield
+
+
+@control(BUDGET, "the preamble names a fixed number instead of the budget the binding carries")
+def _dispatch_states_the_wrong_budget():
+    # The direction a "does it mention minutes?" test cannot see. Every template but one would still
+    # read correctly, and the worker that is misinformed is the one with the longest run to lose.
+    with swap(selfcheck.dispatch, "budget_preamble",
+              lambda minutes, output: f"BUDGET: you have 25 minutes. Write {output} early.\n\n"):
+        yield
+
+
 RECORDONCE = "the record-once checker fires on restated prose, not on text the register prescribes"
 RECORDONCE_PIN = "the record-once checker still finds the passages it found in a real merge"
 

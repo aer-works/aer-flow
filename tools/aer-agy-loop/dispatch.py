@@ -66,6 +66,26 @@ def _default_cli_path(repo_root: Path) -> Path:
     return repo_root / "src" / "Aer.Cli" / "bin" / "Debug" / "net10.0" / "Aer.Cli.exe"
 
 
+def budget_preamble(timeout_minutes: int, output_name: str) -> str:
+    """What the worker is never otherwise told: how long it has, and that expiry destroys its work.
+
+    No adapter passes the budget through. `ClaudeWorkerAdapter` passes no timeout flag at all, and
+    `GeminiWorkerAdapter`'s `--print-timeout` is a backstop pushed past AER's own limit so agy does
+    not expire first (#588) -- neither reaches the model. On expiry AER raises `AerTimeoutException`
+    and kills the process, so a report composed in memory and written at the end is lost entirely,
+    not truncated. The #666 review used 19 of its 25 minutes; there is no margin to spend on a model
+    that does not know it is being timed.
+    """
+    return (
+        f"BUDGET: you have {timeout_minutes} minutes of wall-clock time. This is a hard kill, not a "
+        f"warning -- when it expires your process is terminated and anything not already on disk is "
+        f"lost. Write {output_name} into AER_OUTPUT_DIR EARLY and append to it as you work, rather "
+        f"than composing the whole thing and saving it at the end. Order your work so the most "
+        f"important findings are written first; being cut off should cost the tail, not everything. "
+        f"If you are running short, write what you have and say what you did not get to.\n\n"
+    )
+
+
 def build_bindings(
     worker_name: str,
     prompt_text: str,
@@ -95,7 +115,7 @@ def build_bindings(
             "ProducedOutputs": [{"Name": output_name}],
             "OptionalMetadata": [],
         },
-        "PromptTemplate": prompt_text,
+        "PromptTemplate": budget_preamble(timeout_minutes, output_name) + prompt_text,
         # Split into hours: "00:90:00" is not 90 minutes under .NET's [-][d.]hh:mm:ss, it is
         # malformed. Everything below 60 was correct, which is why the default of 20 never showed it —
         # and #588 makes a larger number the natural next thing an operator reaches for.
