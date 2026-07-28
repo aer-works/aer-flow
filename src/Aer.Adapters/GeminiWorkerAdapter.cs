@@ -64,8 +64,9 @@ namespace Aer.Adapters;
 /// Under <c>--mode</c> that is backstopped by agy's own fail-closed default; under
 /// <c>--dangerously-skip-permissions</c> there is no backstop, so a hook that cannot start is a fully
 /// ungated worker rather than a degraded one. Scoping shell patterns is a second gap in the same
-/// direction: this adapter does not read <see cref="PermissionGrant.ShellCommandPatterns"/> at all,
-/// so a grant narrowed to <c>git:*</c> resolves to an unscoped shell — #624.
+/// direction, and it is why a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> is
+/// now refused rather than resolved to an unscoped shell (#624): a pattern is not a name, so under
+/// this flag there is nowhere for one to take effect.
 /// </para>
 /// </summary>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
@@ -206,6 +207,21 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     public bool TryTranslatePermissionGrant(PermissionGrant grant, out string? resolvedValue, out string? gapReason)
     {
         ArgumentNullException.ThrowIfNull(grant);
+
+        // #624, checked before the skip-permissions arm below, which is the one that would otherwise
+        // grant every command. Refusing rather than approximating is what IPermissionGrantTranslator
+        // requires: granting more than requested is as much a bug as granting less.
+        if (grant.RunShellCommands && grant.ShellCommandPatterns is { Count: > 0 })
+        {
+            resolvedValue = null;
+            gapReason = "agy cannot express a shell grant scoped to ShellCommandPatterns. Its only " +
+                "auto-approving shell flag is --dangerously-skip-permissions, which approves every " +
+                "command, and under that flag the PreToolUse hook's denied tool NAMES are the whole " +
+                "boundary (#623) — a pattern is not a name, so there is nowhere to put one. Accepting " +
+                "this would hand the worker an unscoped shell in answer to a request to narrow it. " +
+                "Withhold the shell, or use the Advanced raw permission-scope field.";
+            return false;
+        }
 
         if (grant.RunShellCommands && grant.NetworkAccess)
         {
