@@ -35,7 +35,8 @@ Usage:
         --working-directory <abs path> [--adapter gemini] [--model <name>] [--effort <level>] \
         [--read-files|--no-read-files] [--write-files|--no-write-files] \
         [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
-        [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>]
+        [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>] \
+        [--dry-run]
 
 Prints the produced output file's content to stdout on success. On failure, prints whatever
 `aer run` reported plus the raw `flow.jsonl` event log (there is usually more diagnostic detail
@@ -296,6 +297,8 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     parser.add_argument("--network-access", action="store_true", default=None)
     parser.add_argument("--no-network-access", dest="network_access", action="store_false")
     parser.add_argument("--timeout-minutes", type=int, default=None)
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Resolve the template, run every guard, generate workflow/bindings, then stop without dispatching. Spends nothing.")
     parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
     parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: <repo>/src/Aer.Cli/bin/Debug/net10.0/Aer.Cli.exe.")
     return parser
@@ -333,7 +336,10 @@ def main() -> int:
 
     repo_root = Path(__file__).resolve().parents[2]
     cli_path = args.cli_path or _default_cli_path(repo_root)
-    if not cli_path.exists():
+    # A dry run REPORTS the CLI's absence instead of failing on it. Requiring a built Aer.Cli.exe
+    # would put --dry-run out of reach of CI's `audit` job, which has no .NET and no build -- and
+    # being reachable there is the whole point (#639).
+    if not cli_path.exists() and not args.dry_run:
         print(f"error: Aer.Cli.exe not found at {cli_path} -- build it first (pixi run build).", file=sys.stderr)
         return 2
 
@@ -383,8 +389,12 @@ def main() -> int:
     # AER's side picked it. Saying that precisely matters here -- `gemini-3-flash` once sat in fixtures
     # and runbooks pinning nothing while the repo read as though a model had been chosen.
     print(
-        "[dispatch.py] about to dispatch: adapter={adapter} model={model} effort={effort} "
+        # "would dispatch" under --dry-run. The banner exists to announce a spend before it happens,
+        # and a dry run has none -- so saying "about to dispatch" and then dispatching nothing would
+        # make this line assert what the code does not do.
+        "[dispatch.py] {verb}: adapter={adapter} model={model} effort={effort} "
         "timeout={timeout}m".format(
+            verb="WOULD dispatch" if args.dry_run else "about to dispatch",
             adapter=args.adapter,
             model=args.model if args.model else "<none pinned -- the vendor CLI's own default>",
             # Deliberately says what is SENT, not what the vendor will do with the absence. For an
@@ -397,6 +407,22 @@ def main() -> int:
         ),
         file=sys.stderr,
     )
+
+    if args.dry_run:
+        # Stops HERE, after the JSON is generated, not before. The three bugs this script exists to
+        # stop -- an int WorkflowTemplateVersion, arrays rather than objects, an absolute task-dir --
+        # all live in the build above, so a dry run that skipped it would validate the half that was
+        # never the problem.
+        print("[dispatch.py] DRY RUN -- nothing was dispatched and nothing was spent.")
+        print(f"    workflow:   {workflow_path}")
+        print(f"    bindings:   {bindings_path}")
+        print(f"    task-dir:   {_forward_slashes(task_dir)}")
+        print(f"    Aer.Cli:    {cli_path}"
+              f"{'' if cli_path.exists() else '   <-- NOT BUILT; a real run would fail here'}")
+        print("    grant:      " + " ".join(
+            f"{k}={getattr(args, k)}" for k in
+            ("read_files", "write_files", "run_shell_commands", "network_access")))
+        return 0
 
     # Captured BEFORE the run. A reused --scratch-root carries a previous dispatch's log, and
     # printing it on failure hands over another run's PID and exit reason as this run's diagnostics

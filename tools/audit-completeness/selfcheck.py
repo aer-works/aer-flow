@@ -29,8 +29,11 @@ import ast
 import contextlib
 import importlib.util
 import io
+import json
 import re
+import subprocess
 import sys
+import tempfile
 import tokenize
 from pathlib import Path
 
@@ -191,6 +194,54 @@ def _templates_are_dispatchable():
             f"the template cannot be used at all: {refusal}"
         )
     return f"{len(dispatch.TEMPLATES)} templates"
+
+
+@check("every template dry-runs clean through the real command line")
+def _templates_dry_run():
+    # The checks above import `grant_refusal` and `build_parser` separately. Neither covers their
+    # COMPOSITION in main(): precedence applied, then guards, then the workflow/bindings build. This
+    # goes through the actual command line, which is the only surface an operator uses.
+    #
+    # Free to run and needs no vendor -- that is what #639's --dry-run bought. Before it, the only
+    # grants testable without spending were the ones the guards REFUSE, so the allow path could only
+    # be checked by paying for a run, and checking it once cost exactly that.
+    assert dispatch.TEMPLATES, "TEMPLATES is empty -- this compared nothing"
+    with tempfile.TemporaryDirectory() as scratch:
+        def dry_run(*extra):
+            cmd = [sys.executable, str(ROOT / "tools" / "aer-agy-loop" / "dispatch.py"),
+                   "--prompt-file", str(ROOT / "CLAUDE.md"), "--output-name", "out",
+                   "--working-directory", str(ROOT), "--scratch-root", scratch,
+                   "--dry-run", *extra]
+            return subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
+
+        for name in sorted(dispatch.TEMPLATES):
+            done = dry_run("--template", name)
+            assert done.returncode == 0, (
+                f"`--template {name} --dry-run` exits {done.returncode}, so the template cannot be "
+                f"dispatched at all:\n{done.stderr.strip()[:400]}"
+            )
+            payload = json.loads((Path(scratch) / "bindings.json").read_text(encoding="utf-8"))
+            grant = payload["worker"]["PermissionGrant"]
+            expected = dispatch.resolve(dispatch.TEMPLATES[name])
+            # The bindings are what AER actually reads. A template's dict agreeing with itself proves
+            # nothing about what reached the engine -- precedence runs in between.
+            for key, field in (("read_files", "ReadFiles"), ("write_files", "WriteFiles"),
+                               ("run_shell_commands", "RunShellCommands"),
+                               ("network_access", "NetworkAccess")):
+                assert grant[field] == expected[key], (
+                    f"template {name!r} declares {key}={expected[key]} but the generated bindings "
+                    f"carry {field}={grant[field]} -- precedence dropped it on the way to the engine"
+                )
+
+        # Polarity, through the same surface: a grant nothing can satisfy must be REFUSED, not
+        # dry-run clean. Without this arm the check above passes on a dispatch.py whose guards were
+        # deleted outright.
+        refused = dry_run("--no-write-files", "--no-run-shell-commands")
+        assert refused.returncode == 2, (
+            f"a grant withholding both writes and the shell dry-ran with exit {refused.returncode}; "
+            "the guards do not fire through the command line"
+        )
+    return f"{len(dispatch.TEMPLATES)} templates dispatched dry + 1 refusal polarity"
 
 
 @check("every permission boolean can be turned OFF from the command line")
