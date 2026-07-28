@@ -243,9 +243,12 @@ def _templates_are_dispatchable():
     # the loop above stays green under any rule that only ever refuses. The refusals have to be
     # asserted directly, on the grants that separate one rule from the next.
     #
-    # `write_files: False` is refused under EVERY shell setting -- so `grant_refusal` adds up to
-    # "writes are always required", and a reader who notices that can collapse three conditions into
-    # one predicate. The conditions are kept apart for their messages, not their verdicts. Asserted
+    # `write_files: False` is refused under every shell setting *on an adapter whose withheld writes
+    # cannot reach the outbox* -- which since #649 is a per-adapter answer, not a universal one. The
+    # arms below inherit `BUILT_IN["adapter"] == "gemini"`, and that is load-bearing rather than
+    # incidental: the same grants dispatch on claude, which the pair above asserts directly. So
+    # `grant_refusal` no longer adds up to "writes are always required", and the three conditions
+    # cannot be collapsed into one predicate even in principle. The conditions are kept apart for their messages, not their verdicts. Asserted
     # here so the sum is a fact that runs, and so collapsing them has to fail this instead of quietly
     # losing the read_files and network arms.
     granted = {**dispatch.BUILT_IN, "read_files": True, "write_files": True,
@@ -261,6 +264,21 @@ def _templates_are_dispatchable():
         "reads withheld, shell granted": {**granted, "read_files": False},
         "network withheld, shell granted": {**granted, "network_access": False},
     }
+    # #649: on an adapter whose withheld writes reach AER_OUTPUT_DIR the "nothing here can write the
+    # output" arm is false, and refusing it refuses the read-only reviewer the whole feature exists
+    # for. Asserted as a pair against the identical gemini grant, so the rule cannot be satisfied by
+    # allowing that shape everywhere -- which is what would silently un-refuse gemini, where the
+    # vendor still denies the write before AER's hook is reached.
+    reviewer = {**granted, "write_files": False, "run_shell_commands": False}
+    assert dispatch.grant_refusal({**reviewer, "adapter": "claude"}) is None, (
+        "a read-only claude reviewer is refused. Its declared output lands in AER_OUTPUT_DIR, which "
+        "a withheld write still reaches on that adapter (#649) -- refusing it forces every reviewing "
+        "template to grant a workspace write it does not need."
+    )
+    assert dispatch.grant_refusal({**reviewer, "adapter": "gemini"}) is not None, (
+        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #670."
+    )
+
     for label, arm in refusal_arms.items():
         assert dispatch.grant_refusal(arm) is not None, (
             f"a grant with {label} dispatches. With the shell it is #529's over-grant -- the "
@@ -277,7 +295,7 @@ def _templates_are_dispatchable():
         "shell reaches -- not grants that carry a shell."
     )
     return (f"{len(dispatch.TEMPLATES)} templates + {len(refusal_arms)} refusal arms "
-            "+ the coherent control")
+            "+ the coherent control + the outbox-capable/incapable pair")
 
 
 @check("every template dry-runs clean through the real command line")

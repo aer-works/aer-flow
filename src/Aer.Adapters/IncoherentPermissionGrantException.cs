@@ -8,8 +8,10 @@ namespace Aer.Adapters;
 /// (#529). <see cref="PermissionGrant"/> models four independent categories, but a granted shell is
 /// a superset of three of them: a worker that can run arbitrary commands can read, write, and reach
 /// the network no matter what the other three flags say. Both enforcement points AER has —
-/// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> and the <c>PreToolUse</c> hook check — match on
-/// tool *name*, so neither can tell <c>Bash("cat x")</c> from <c>Read("x")</c>.
+/// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> and the <c>PreToolUse</c> hook check — decide by
+/// tool *name*, so neither can tell <c>Bash("cat x")</c> from <c>Read("x")</c>. (The hook also reads
+/// a write's target path since #649, but only to exempt the outbox; it still cannot see inside a
+/// shell command, which is the gap this refusal exists for.)
 ///
 /// The refusal is at bind time rather than in <see cref="PermissionGrant"/>'s own constructor
 /// deliberately: the record is also the adapters' translation input, and their tests legitimately

@@ -479,6 +479,71 @@ public class WorkerBindingResolverTests
     }
 
     [Fact]
+    public void An_adapter_whose_withheld_writes_reach_the_outbox_is_not_refused()
+    {
+        // #649. Every declared output resolves under AER_OUTPUT_DIR, so "the grant gives no way to
+        // write it" is a claim about that one directory. Where a withheld write still reaches it the
+        // refusal is false — and it refuses exactly the shape #649 exists for: a read-only reviewer
+        // declaring review.md. Before this, the headline case could not bind at all.
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["outbox-capable"] = new OutboxCapableAdapter() };
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(ArchitectContract, grant, adapter: "outbox-capable"), adapters);
+
+        Assert.True(bindings.ContainsKey("architect"));
+    }
+
+    [Fact]
+    public void The_real_claude_adapter_binds_a_read_only_reviewer_that_declares_an_output()
+    {
+        // The capability above asserted on the shipped adapter rather than a double, so a change
+        // that flipped ClaudeWorkerAdapter's answer to false — restoring the refusal the live run
+        // disproved — fails here rather than at dispatch time.
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["claude"] = new ClaudeWorkerAdapter() };
+        var contract = new WorkerContract("architect", [], [new ProducedOutput("review.md")], []);
+
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(contract, new PermissionGrant(ReadFiles: true, WriteFiles: false), adapter: "claude"),
+            adapters);
+
+        Assert.True(bindings.ContainsKey("architect"));
+    }
+
+    [Fact]
+    public void An_adapter_that_has_not_answered_the_question_still_refuses()
+    {
+        // The polarity control for both tests above, and the reason the capability defaults to false:
+        // an adapter measured against nothing must refuse before the run is paid for, not after. This
+        // is the arm that fails if the refusal is deleted outright rather than made adapter-aware.
+        Assert.Throws<UnsatisfiableOutputContractException>(
+            () => WorkerBindingResolver.Resolve(
+                ConfigWith(ArchitectContract, new PermissionGrant(ReadFiles: true, WriteFiles: false)),
+                EchoAdapter()));
+    }
+
+    /// <summary>
+    /// A grant-consuming adapter that answers <see cref="IWorkerAdapter.WithheldWritesReachTheOutbox"/>
+    /// with true — <see cref="IPermissionGrantTranslator"/> because the refusal only runs for that
+    /// population, so a non-translator would pass for the wrong reason.
+    /// </summary>
+    private sealed class OutboxCapableAdapter : IWorkerAdapter, IPermissionGrantTranslator
+    {
+        public bool WithheldWritesReachTheOutbox => true;
+
+        public bool TryTranslatePermissionGrant(
+            PermissionGrant grant, out string? resolvedValue, out string? gapReason)
+        {
+            resolvedValue = "Read";
+            gapReason = null;
+            return true;
+        }
+
+        public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract) =>
+            new("echo", ["hi"]);
+    }
+
+    [Fact]
     public void An_adapter_that_does_not_consume_a_grant_is_not_refused_for_one()
     {
         // The control that killed the first version of this rule. NoOpWorkerAdapter never reads

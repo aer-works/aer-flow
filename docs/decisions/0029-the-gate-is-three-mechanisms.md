@@ -138,6 +138,16 @@ directions on the two vendors, and inferring one from the other is the mistake t
 finding). But on `claude` a dead hook still leaves the MCP callback and elicitation covering AER's
 own tools. On `agy` it leaves **nothing**.
 
+**What a dead hook costs on `claude` grew with [#649](https://github.com/aer-works/aer-flow/issues/649).**
+The sentence above is about AER's *own* tools; the vendor's are covered by `--disallowedTools`, which
+is where a withheld read, shell or network category still rides. Writes no longer do — they moved
+onto this hook so it could allow the one write landing in `AER_OUTPUT_DIR` — so on `claude` a hook
+that cannot start now means writes are ungated outright, where the flag previously caught them.
+Nothing else changed vendor posture, and the direction of travel is the one this decision already
+records: the `PreToolUse` hook is the only enforcement point over the toolset a worker actually has.
+It is also why the per-spawn self-check is a prerequisite for that grant rather than a companion to
+it.
+
 *Scope note:* the failure is measured **silent** on `claude` only. On `agy` it is unmeasured — no
 arm has produced a positive control for detecting agy's output about a hook, and agy's own hooks
 documentation describes no channel that would carry one. The self-check does not rest on that: it is

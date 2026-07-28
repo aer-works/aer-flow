@@ -84,7 +84,7 @@ public static class WorkerBindingResolver
                 // shell believing it escaped the write withhold. Told only that the contract is
                 // unsatisfiable, they would grant more shell.
                 RefuseIfShellDefeatsAWithheldCategory(workerName, entry.PermissionGrant);
-                RefuseIfTheContractCannotBeWritten(workerName, entry.Contract, entry.PermissionGrant);
+                RefuseIfTheContractCannotBeWritten(workerName, entry.Contract, entry.PermissionGrant, adapter);
             }
 
             var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
@@ -114,10 +114,11 @@ public static class WorkerBindingResolver
     /// <summary>
     /// #529: a granted shell reaches three of <see cref="PermissionGrant"/>'s four categories, so a
     /// grant that withholds one of those while granting the shell does not actually withhold it.
-    /// Both places AER enforces a grant match on tool <em>name</em> —
-    /// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> emits <c>--disallowedTools Edit,Write,NotebookEdit</c>
-    /// and the <c>PreToolUse</c> hook check inspects the tool name — and neither can tell
-    /// <c>Bash("cat x")</c> from <c>Read("x")</c>.
+    /// Both places AER enforces a grant decide by tool <em>name</em> —
+    /// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> emits <c>--disallowedTools</c> and the
+    /// <c>PreToolUse</c> hook check inspects the tool name — and neither can tell
+    /// <c>Bash("cat x")</c> from <c>Read("x")</c>. The hook additionally reads a write's target path
+    /// (#649), which exempts the outbox and reaches nothing inside a shell command.
     ///
     /// <para>
     /// <see cref="PermissionGrant.ShellCommandPatterns"/> is deliberately <em>not</em> an exemption.
@@ -166,13 +167,29 @@ public static class WorkerBindingResolver
     /// anything still here with <see cref="PermissionGrant.WriteFiles"/> withheld has no shell to
     /// write through either.
     /// </para>
+    ///
+    /// <para>
+    /// <b>Why this asks the adapter (#649).</b> Every declared output resolves under
+    /// <c>AER_OUTPUT_DIR</c> — <c>ContractValidator.Validate</c> combines each
+    /// <see cref="ProducedOutput.Name"/> onto the output directory and never looks anywhere else — so
+    /// "the grant gives no way to write it" is a claim about one directory, not about the workspace.
+    /// On an adapter where a withheld write still reaches that directory the refusal is simply false,
+    /// and it refuses precisely the shape #649 exists to enable: a read-only reviewer that declares
+    /// <c>review.md</c>. So the question goes to <see cref="IWorkerAdapter.WithheldWritesReachTheOutbox"/>
+    /// rather than being answered here, and adapters where it is still true keep the refusal.
+    /// </para>
     /// </summary>
     private static void RefuseIfTheContractCannotBeWritten(
-        string workerName, WorkerContract contract, PermissionGrant? grant)
+        string workerName, WorkerContract contract, PermissionGrant? grant, IWorkerAdapter adapter)
     {
         // A null grant is the raw PermissionScope escape hatch — nothing structured to reconcile
         // against the contract, so there is no claim here to check.
         if (grant is null || grant.WriteFiles || contract.ProducedOutputs.Count == 0)
+        {
+            return;
+        }
+
+        if (adapter.WithheldWritesReachTheOutbox)
         {
             return;
         }

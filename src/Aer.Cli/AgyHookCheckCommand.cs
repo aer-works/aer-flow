@@ -18,11 +18,12 @@ namespace Aer.Cli;
 /// print nothing agy parses, and — per the measured behaviour below — be read as an <i>allow</i>.
 /// </para>
 /// <para>
-/// <b>Fail-closed, unlike its claude sibling, and for a measured reason.</b>
-/// <see cref="HookCheckCommand"/> argues its fail-open is acceptable because <c>--disallowedTools</c>
-/// independently covers the same tool names. agy has no such flag: permission rules there are
-/// global-only (<c>agy.permissions-are-global-only</c>, decision 0029), so this hook is the
-/// <i>only</i> per-worker gate and anything it lets through is ungated outright.
+/// <b>Fail-closed, and it got here first.</b> <see cref="HookCheckCommand"/> used to fail open,
+/// arguing that <c>--disallowedTools</c> independently covered the same tool names. That was never
+/// available here: permission rules on agy are global-only (<c>agy.permissions-are-global-only</c>,
+/// decision 0029), so this hook is the <i>only</i> per-worker gate and anything it lets through is
+/// ungated outright. #649 voided the claude-side argument too — the write tools left that flag so the
+/// hook could allow an outbox write — so both commands now deny on every payload they cannot judge.
 /// </para>
 /// <para>
 /// <b>The specific failure that shapes this code</b> is measured by

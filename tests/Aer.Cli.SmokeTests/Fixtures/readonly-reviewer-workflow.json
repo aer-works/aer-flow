@@ -1,0 +1,14 @@
+{
+  "WorkflowTemplateId": "readonly-reviewer-outbox",
+  "WorkflowTemplateVersion": 1,
+  "Steps": [
+    {
+      "StepId": "reviewer",
+      "Worker": "reviewer",
+      "Inputs": [],
+      "Outputs": ["review.md"],
+      "DependsOn": [],
+      "RetryPolicy": { "MaxAttempts": 1 }
+    }
+  ]
+}

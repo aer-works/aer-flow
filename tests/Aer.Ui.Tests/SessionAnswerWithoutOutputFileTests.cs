@@ -14,11 +14,18 @@ namespace Aer.Ui.Tests;
 /// <para>
 /// <b>Why this is the real case, not an edge case.</b>
 /// <see cref="InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory"/> returns an all-deny
-/// grant for a session with no working directory — deliberately fail-closed (#321). That becomes
-/// <c>--disallowedTools Edit,Write,NotebookEdit,Bash</c>, so the model genuinely cannot write
-/// <c>response.md</c>. It says so, exits <c>is_error: false</c>, and puts the answer in
-/// <c>result</c>. Measured identically on <c>claude-opus-5</c> and <c>claude-haiku-4-5</c>, so this
-/// is not a model declining to use a tool it had.
+/// grant for a session with no working directory — deliberately fail-closed (#321). When measured,
+/// that became <c>--disallowedTools Edit,Write,NotebookEdit,Bash</c>, so the model genuinely could
+/// not write <c>response.md</c>. It said so, exited <c>is_error: false</c>, and put the answer in
+/// <c>result</c>. Measured identically on <c>claude-opus-5</c> and <c>claude-haiku-4-5</c>, so it was
+/// not a model declining to use a tool it had.
+/// </para>
+/// <para>
+/// <b>Since #649 the write tools are no longer on that flag</b> — they ride the <c>PreToolUse</c>
+/// hook, which allows a write into <c>AER_OUTPUT_DIR</c>, and that is where <c>response.md</c> is
+/// addressed. So the answer-without-a-file case is no longer the *only* outcome of a directory-less
+/// session; it remains a reachable one (the model may simply answer, the hook may deny, the vendor
+/// may refuse), and the reading path must keep handling it. That is what this covers.
 /// </para>
 /// <para>
 /// The worker's contract nonetheless declares <c>ProducedOutputs: [response.md]</c>. Both halves are

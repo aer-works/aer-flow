@@ -134,11 +134,13 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 # these are the settings it resolves to. `fact-check` and `review` are separate templates rather
 # than one with a knob because that question has two answers, not a dial.
 #
-# Every template grants WriteFiles, the reviewing ones included. A worker satisfies its
-# ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and the three read-only
-# templates withhold the shell as well, so anything less cannot report at all -- see
-# `grant_refusal()` for the arm-by-arm scope. #629 is AER accepting that combination rather than
-# refusing it at bind time.
+# The reviewing templates withhold WriteFiles (#649). A worker satisfies its ProducedOutputs
+# contract by writing into AER_OUTPUT_DIR, and on claude a withheld write still reaches that
+# directory -- AER's PreToolUse hook confines the write tools to it rather than denying them. So a
+# reviewer can produce its report without being able to edit the code it is reviewing, which is what
+# every one of these grants used to require. `review` and `fact-check` pin the adapter to claude,
+# which is what makes the narrowing safe; see OUTBOX_WRITE_CAPABLE_ADAPTERS and `grant_refusal()`
+# for the arm-by-arm scope.
 #
 # Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
 # translation and the path #596, #611, #623 and #624 all came from. A session that only ever
@@ -172,8 +174,12 @@ TEMPLATES = {
         "_use": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose "
                 "rationale asserts something. The default for any PR touching src/ or making a claim "
                 "in docs/. This is the tier that has actually caught the defects.",
+        # No workspace write (#649). A reviewer's deliverable is its report, which lands in
+        # AER_OUTPUT_DIR — a directory a withheld write still reaches on this adapter. Until that
+        # existed, every dispatch here granted the reviewer the ability to edit the very code it was
+        # reviewing, purely so it could save a file.
         "adapter": "claude", "model": "opus", "effort": "xhigh",
-        "read_files": True, "write_files": True,
+        "read_files": True, "write_files": False,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
     },
@@ -182,7 +188,7 @@ TEMPLATES = {
                 "list determines the work and a cheap model runs it. NOT for anything where noticing "
                 "something absent from the list is the point.",
         "adapter": "claude", "model": "haiku", "effort": "low",
-        "read_files": True, "write_files": True,
+        "read_files": True, "write_files": False,  # #649, same reason as `review` above.
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 15,
     },
@@ -215,6 +221,20 @@ def resolve(template: dict) -> dict:
     return {k: template.get(k, v) for k, v in BUILT_IN.items()}
 
 
+OUTBOX_WRITE_CAPABLE_ADAPTERS = frozenset({"claude"})
+"""Adapters whose `IWorkerAdapter.WithheldWritesReachTheOutbox` is true (#649): a worker with the
+write tools withheld can still write its declared output into AER_OUTPUT_DIR, so a contract naming
+one is satisfiable without granting a workspace write.
+
+Mirrors the C# capability rather than re-deriving it -- `Aer.Adapters` is the register, and the
+adapter answers there in its own vendor's terms. Membership is the whole difference: on claude the
+write tools stay pre-approved and AER's PreToolUse hook confines them to the outbox; gemini is not a
+member for the reason recorded in #670.
+Empty-by-default is deliberate for the same reason it is in C#: an adapter nobody has measured
+against the outbox path refuses before the run is paid for, not after.
+"""
+
+
 def grant_refusal(grant: dict) -> str | None:
     """Why this permission grant is refused before it can spend, or None if it is dispatchable.
 
@@ -228,8 +248,10 @@ def grant_refusal(grant: dict) -> str | None:
     """
     if grant["run_shell_commands"] and not grant["network_access"]:
         # The network arm of the same #529 rule as the condition below, kept separate only because it
-        # has a second reason on one vendor. `grant_refusal` never branches on adapter, so a message
-        # blaming gemini would be handed to an operator dispatching to claude.
+        # has a second reason on one vendor. THIS arm never branches on adapter -- #529 is a property
+        # of the grant, not of the vendor -- so a message blaming gemini would be handed to an
+        # operator dispatching to claude. (The outbox arm below does branch, on
+        # OUTBOX_WRITE_CAPABLE_ADAPTERS, because #649 genuinely differs per vendor.)
         return (
             "RunShellCommands without NetworkAccess is refused: a granted shell reaches the network "
             "anyway (curl), so withholding it does not withhold it (#529), and AER refuses the same "
@@ -249,7 +271,8 @@ def grant_refusal(grant: dict) -> str | None:
             "reach explicit, or drop --run-shell-commands."
         )
 
-    if not grant["write_files"] and not grant["run_shell_commands"]:
+    if (not grant["write_files"] and not grant["run_shell_commands"]
+            and grant.get("adapter") not in OUTBOX_WRITE_CAPABLE_ADAPTERS):
         # Kept as its own condition for its own message: a withheld write now lands here or on the
         # coherence rule above depending on the shell, and the two refusals are not the same problem.
         #

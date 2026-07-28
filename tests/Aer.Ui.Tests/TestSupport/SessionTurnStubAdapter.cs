@@ -33,10 +33,21 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
     /// <remarks>
     /// This is not a hypothetical. It is what the real <c>claude</c> CLI does on every
     /// directory-less chat session: <see cref="InteractiveSessionMaterializer.DefaultGrantForWorkingDirectory"/>
-    /// returns an all-deny grant for a session with no working directory (fail-closed, #321), which
-    /// becomes <c>--disallowedTools Edit,Write,NotebookEdit,Bash</c> — so the model genuinely cannot
-    /// write <c>response.md</c>, says so, and exits <c>is_error: false</c> with the answer in
-    /// <c>result</c>. Measured identically on claude-opus-5 and claude-haiku-4-5.
+    /// returns an all-deny grant for a session with no working directory (fail-closed, #321). When
+    /// this was measured that grant became <c>--disallowedTools Edit,Write,NotebookEdit,Bash</c>, so
+    /// the model genuinely could not write <c>response.md</c>, said so, and exited
+    /// <c>is_error: false</c> with the answer in <c>result</c>. Measured identically on claude-opus-5
+    /// and claude-haiku-4-5.
+    /// <para>
+    /// <b>#649 changed the primary path, and this stub deliberately still reproduces the old one.</b>
+    /// The write tools now leave <c>--disallowedTools</c> and ride the <c>PreToolUse</c> hook, which
+    /// allows a write landing in <c>AER_OUTPUT_DIR</c> — and <c>response.md</c> is addressed there
+    /// (<see cref="InteractiveSessionMaterializer.ResponseFileInstruction"/>), so a directory-less
+    /// session can now produce the file. What this stub covers is the case where it does not: a
+    /// vendor that refuses for its own reasons, a hook that denied, a model that simply answered
+    /// without writing. That path must keep working, which is why the stub stays — but it is no
+    /// longer what "every directory-less chat session" does.
+    /// </para>
     /// <para>
     /// Every pre-existing stub wrote the output file, so no test covered the case the product
     /// actually hits. The sentinel exists to make that case deterministic and CI-safe.

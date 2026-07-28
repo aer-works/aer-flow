@@ -85,4 +85,29 @@ public interface IWorkerAdapter
         progressEvent = null;
         return false;
     }
+
+    /// <summary>
+    /// True when a worker this adapter spawns with <see cref="PermissionGrant.WriteFiles"/> withheld
+    /// can nonetheless write its declared <see cref="WorkerContract.ProducedOutputs"/> into
+    /// <c>AER_OUTPUT_DIR</c> (#649). "Withhold writes" means <em>do not modify the workspace</em>; it
+    /// was never meant to mean <em>do not produce the artifact you were dispatched for</em>, and a
+    /// read-only reviewer is the shape that needs both at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the canonical question, asked once by <c>WorkerBindingResolver</c>; each adapter
+    /// answers it in its own vendor's terms, which is what Adapter Isolation requires here. The
+    /// mechanisms do not resemble each other: on Claude the write tools stay pre-approved on
+    /// <c>--allowedTools</c> and AER's <c>PreToolUse</c> hook confines them to the outbox; <c>agy</c>
+    /// answers no for the reason recorded in #670. <c>Aer.Flow</c> learns neither mechanism — it learns
+    /// only whether a declared output is reachable.
+    /// </para>
+    /// <para>
+    /// <b>Defaults to false, and the direction is deliberate.</b> An adapter that has not been
+    /// measured against the outbox path answers "no", so the binding is refused before the run is
+    /// paid for (#629) rather than after. A wrong "no" costs a refusal an operator can see and work
+    /// around; a wrong "yes" costs a full frontier-model run that returns nothing.
+    /// </para>
+    /// </remarks>
+    bool WithheldWritesReachTheOutbox => false;
 }

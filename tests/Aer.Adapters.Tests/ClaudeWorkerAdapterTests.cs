@@ -8,6 +8,7 @@ namespace Aer.Adapters.Tests;
 /// M20 Phase 4's deliverable: unit tests for the refactored, direct shell-less
 /// <see cref="ClaudeWorkerAdapter"/> resolving.
 /// </summary>
+[Collection(ClaudeLaunchConfigCollection.Name)]
 public class ClaudeWorkerAdapterTests
 {
     private static readonly WorkerContract ArchitectContract = new(
@@ -214,7 +215,7 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Equal("Read,Edit,Write,Bash,WebFetch,WebSearch", target.Args[3]);
+        Assert.Equal("Read,Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", target.Args[3]);
     }
 
     [Fact]
@@ -224,7 +225,10 @@ public class ClaudeWorkerAdapterTests
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Equal("Bash(git:*),Bash(npm:*)", target.Args[3]);
+        // The write tools precede the shell entries because #649 pre-approves them unconditionally —
+        // pre-approval is not a ceiling, and the hook is what confines them to AER_OUTPUT_DIR. The
+        // pattern scoping this test is about is unaffected by that.
+        Assert.Equal("Edit,Write,NotebookEdit,Bash(git:*),Bash(npm:*)", target.Args[3]);
     }
 
     [Fact]
@@ -235,7 +239,10 @@ public class ClaudeWorkerAdapterTests
             new WorkerInvocation("Draft a plan.", PermissionScope: "Write,Bash(git:*)", PermissionGrant: grant),
             ArchitectContract);
 
-        Assert.Equal("Read", target.Args[3]);
+        // What this test is about is that the raw scope's Bash(git:*) is gone — the grant won. The
+        // write tools present are the grant's own #649 pre-approval, not the raw scope leaking in.
+        Assert.Equal("Read,Edit,Write,NotebookEdit", target.Args[3]);
+        Assert.DoesNotContain("Bash", target.Args[3], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -247,7 +254,9 @@ public class ClaudeWorkerAdapterTests
             new PermissionGrant(RunShellCommands: true, NetworkAccess: true), out var resolved, out var gapReason);
 
         Assert.True(succeeded);
-        Assert.Equal("Bash,WebFetch,WebSearch", resolved);
+        // Write tools ride the allow list unconditionally since #649; what this test is about is
+        // that translation never returns false for claude, and that the shell/network arms resolve.
+        Assert.Equal("Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", resolved);
         Assert.Null(gapReason);
     }
 
@@ -271,14 +280,18 @@ public class ClaudeWorkerAdapterTests
     [Fact]
     public void The_disallowed_list_is_the_exact_complement_of_the_withheld_categories()
     {
-        // Read granted; write, shell and network all withheld -> each maps to its denied tool(s),
-        // NotebookEdit included as a second file-write path alongside Edit/Write.
+        // Read granted; write, shell and network all withheld. Every withheld category maps to its
+        // denied tool(s) EXCEPT writes, which #649 moved to the hook: named here, the CLI would refuse
+        // the write before the hook could allow the one landing in AER_OUTPUT_DIR. The hook's own list
+        // still carries them — see Withheld_writes_leave_the_flag_and_move_to_the_hooks_list.
         var grant = new PermissionGrant(ReadFiles: true);
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Equal("Read", ArgValue(target, "--allowedTools"));
-        Assert.Equal("Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
+        // Writes are pre-approved so the hook can be consulted at all, and absent from the deny flag
+        // so the CLI does not refuse them first. Both halves are #649; neither is enforcement.
+        Assert.Equal("Read,Edit,Write,NotebookEdit", ArgValue(target, "--allowedTools"));
+        Assert.Equal("Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
     }
 
     [Fact]
@@ -401,18 +414,20 @@ public class ClaudeWorkerAdapterTests
     /// a separately-derived value, so the two mechanisms can never disagree about what was withheld.
     /// </summary>
     [Fact]
-    public void The_denied_tools_environment_variable_mirrors_disallowedTools_exactly()
+    public void The_denied_tools_environment_variable_is_the_flag_plus_the_write_tools()
     {
         var grant = new PermissionGrant(ReadFiles: true);
         var target = new ClaudeWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var disallowedToolsArg = ArgValue(target, "--disallowedTools");
+        // #649: the two channels deliberately differ, on writes and only on writes. The flag is what
+        // the CLI enforces directly; the hook list is what it enforces with the target path in hand.
         Assert.NotNull(target.Environment);
-        // #600 prefixes the value with the vendor tag; the names after it must still mirror the flag.
-        Assert.Contains(
-            (ClaudeWorkerAdapter.DeniedToolsVariable, $"claude:{disallowedToolsArg}"),
-            target.Environment);
+        var hookList = target.Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
+
+        // #600's vendor tag and #649's differing contents, on the same value.
+        Assert.Equal("Bash,WebFetch,WebSearch", ArgValue(target, "--disallowedTools"));
+        Assert.Equal("claude:Edit,Write,NotebookEdit,Bash,WebFetch,WebSearch", hookList);
     }
 
     [Fact]
@@ -526,5 +541,48 @@ public class ClaudeWorkerAdapterTests
         Assert.True(exited, "hook-check did not exit within 30s");
 
         return (process.ExitCode, stderr);
+    }
+
+    [Fact]
+    public void Withheld_writes_leave_the_flag_and_move_to_the_hooks_list()
+    {
+        // #649's boundary change, asserted on both channels at once because the whole point is that
+        // they now differ. A write named in --disallowedTools is refused by the CLI before the hook is
+        // consulted, so leaving it there makes the outbox exemption unreachable and a read-only
+        // reviewer unable to produce the artifact it was dispatched for. The hook keeps the names,
+        // because it is what still denies a workspace write.
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var flag = ArgValue(target, "--disallowedTools") ?? string.Empty;
+        var hookList = target.Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
+
+        Assert.DoesNotContain("Write", flag, StringComparison.Ordinal);
+        Assert.DoesNotContain("Edit", flag, StringComparison.Ordinal);
+        Assert.Contains("Write", hookList, StringComparison.Ordinal);
+        Assert.Contains("Edit", hookList, StringComparison.Ordinal);
+        Assert.Contains("NotebookEdit", hookList, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Every_other_withheld_category_still_appears_on_both_channels()
+    {
+        // The control on the change above. Only writes move; a change that dropped every category from
+        // the flag would pass the first assertion and quietly remove the enforcement the flag provides
+        // for the categories where the hook has no path to inspect.
+        var grant = new PermissionGrant(
+            ReadFiles: false, WriteFiles: true, RunShellCommands: false, NetworkAccess: false);
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        var flag = ArgValue(target, "--disallowedTools")!;
+        var hookList = target.Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
+
+        foreach (var tool in new[] { "Read", "Bash", "WebFetch", "WebSearch" })
+        {
+            Assert.Contains(tool, flag, StringComparison.Ordinal);
+            Assert.Contains(tool, hookList, StringComparison.Ordinal);
+        }
     }
 }

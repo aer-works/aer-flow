@@ -153,3 +153,21 @@ real bug fixed in the same pass: a multi-line prompt's embedded newlines made `c
 parser split it into multiple statements, silently dropping `--allowedTools`/`--output-format`/
 `--model`; Windows prompts are now flattened to one line for exactly this reason. With both fixes,
 `draft` → `review` ran to completion end to end again.
+
+---
+
+## The read-only reviewer gate (#649)
+
+```
+pixi run smoke-readonly
+```
+
+`LiveReadOnlyReviewerSmokeTest` is the gate; it asserts all three of `Succeeded`, the declared output
+present in the outbox, and an empty workspace. Two of three is a different failure each way — no
+report is #629's pay-then-fail, a leaked file is the grant not being enforced — which is why the test
+asserts them together rather than in sequence.
+
+**Recorded green run:** 2026-07-28, `claude` haiku, four consecutive dispatches. One earlier dispatch
+that session exited 0 and produced nothing — the silent class #289 and #599 describe; replaying its
+argv by hand succeeded and it did not recur. Re-run rather than reading it as a regression. #532 is
+what would make that shape visible instead of silent.

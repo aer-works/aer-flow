@@ -11,30 +11,37 @@ namespace Aer.Cli;
 /// <c>.vendor-survey/corpus/claude__hooks.md</c>.
 /// </summary>
 /// <remarks>
-/// This enforces the same category denial <see cref="Aer.Adapters.ClaudeWorkerAdapter.BuildDisallowedTools"/>
-/// already computes for <c>--disallowedTools</c> — it is a second, independent mechanism reaching
-/// the same tool names, not a wider one. It does not inspect <c>tool_input</c> and does not attempt
-/// to close the <c>Bash</c>-substitution gap #529 measured (a withheld write category is still
-/// reachable through a granted shell) — that is explicitly out of scope here; see #529's own doc
-/// comment on <c>BuildDisallowedTools</c>. What this buys is the mechanism 0029 requires — a
-/// <c>PreToolUse</c> hook that can exit 2 — wired up and independently verifiable, which #532 needs
-/// a real positive control to check.
+/// This enforces the category denial <see cref="Aer.Adapters.ClaudeWorkerAdapter.BuildHookDeniedTools"/>
+/// computes. For reads, shell and network it is a second mechanism reaching the same names
+/// <c>--disallowedTools</c> already carries; for <b>writes it is the only one</b>, since #649 moved
+/// those names off that flag so this hook can allow the write landing in <c>AER_OUTPUT_DIR</c>. It
+/// does not attempt to close the <c>Bash</c>-substitution gap #529 measured (a withheld write
+/// category is still reachable through a granted shell) — that is explicitly out of scope here; see
+/// #529's own doc comment on <c>BuildDisallowedTools</c>. What this buys is the mechanism 0029
+/// requires — a <c>PreToolUse</c> hook that can exit 2 — wired up and independently verifiable,
+/// which #532 needs a real positive control to check.
 /// <para>
-/// Fails open on any input it cannot parse (empty stdin, malformed JSON, a missing
-/// <c>tool_name</c> field). <c>--disallowedTools</c> covers the exact same tool names, so a parse
-/// failure here does not create a hole wider than what already exists there — but neither mechanism
-/// is a security boundary for those names to begin with (see <c>BuildDisallowedTools</c>'s own doc
-/// comment, #529, measured: a granted <c>Bash</c> defeats a withheld write/read/network category
-/// regardless of which of these two enforces the write/read/network tool names directly). This
-/// method's fail-open only means "no worse than the pre-existing gap," never "safe."
+/// <b>Fails closed on every input it cannot judge</b> — unreadable stdin, empty stdin, malformed
+/// JSON, a missing or empty <c>tool_name</c>, and any unhandled defect. Until #649 each of those
+/// allowed, on the argument that <c>--disallowedTools</c> covered the same names anyway; once writes
+/// ride this hook alone that argument is void, and a parse failure would be an ungated write.
+/// <c>HookCheckCommandTests.Shapeless_stdin_fails_closed_because_writes_ride_this_hook_alone</c>
+/// holds every one of those paths to exit 2, with a well-formed control beside it.
+/// </para>
+/// <para>
+/// What it still does not bound: the tool the model <em>substitutes</em>. A granted <c>Bash</c>
+/// defeats a withheld write/read/network category regardless of what this decides, so this remains
+/// a category gate rather than a security boundary — and the one failure it cannot reach at all is
+/// its own command failing to start, which is measured to fail open on both vendors
+/// (<c>gate.broken-hook-fails-open</c>) and is #532's.
 /// </para>
 /// </remarks>
 public static class HookCheckCommand
 {
     /// <summary>
     /// The environment variable this command reads for the current invocation's denied-tool list,
-    /// comma-joined tool names exactly as <c>BuildDisallowedTools</c> emits them (e.g.
-    /// <c>"Edit,Write,NotebookEdit"</c>). <see cref="Aer.Adapters"/> cannot reference
+    /// comma-joined tool names exactly as <c>BuildHookDeniedTools</c> emits them, vendor-tagged (e.g.
+    /// <c>"claude:Edit,Write,NotebookEdit"</c>). <see cref="Aer.Adapters"/> cannot reference
     /// <see cref="Aer.Cli"/> (the CLI depends on the adapters, never the reverse), so this name is a
     /// plain string contract mirrored on <c>ClaudeWorkerAdapter.DeniedToolsVariable</c> — both sides
     /// assert the literal value in their own test suite, and the two must agree.
@@ -54,11 +61,53 @@ public static class HookCheckCommand
     /// value as parameters, rather than reading <see cref="Console"/>/<see cref="Environment"/>
     /// directly, so the decision logic is testable without a real subprocess.
     /// </summary>
-    public static int Execute(TextReader stdin, TextWriter stderr, string? deniedToolsRaw)
+    /// <param name="outboxDirectory">
+    /// This execution's <c>AER_OUTPUT_DIR</c> (#649). A withheld write whose target resolves inside it
+    /// is allowed: that directory is AER's own, outside the workspace, and withholding "modify the
+    /// workspace" was never meant to withhold "write your report". <see langword="null"/> disables the
+    /// exemption entirely, so a hook that cannot tell where the outbox is denies as before.
+    /// </param>
+    public static int Execute(
+        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(stdin);
         ArgumentNullException.ThrowIfNull(stderr);
 
+        try
+        {
+            return Decide(stdin, stderr, deniedToolsRaw, outboxDirectory);
+        }
+        catch (Exception ex)
+        {
+            // A defect in Decide must not widen the grant it was installed to narrow. Claude Code
+            // treats exit 2 as a blocking denial and *every other* non-zero code as a non-blocking
+            // error it reports and then proceeds past -- so an unhandled exception's own exit code is
+            // an allow. Naming DeniedExitCode here is what makes the failure closed.
+            //
+            // The write is itself guarded: a handler whose closure depends on a write succeeding is
+            // not closed. Losing the reason costs the model an explanation; letting the exception
+            // escape costs the denial itself, because Program.cs deliberately runs this branch
+            // outside the AerFlowException boundary and the process would die with an exit code
+            // claude reads as an allow.
+            try
+            {
+                stderr.WriteLine(
+                    $"AER: the permission gate failed internally ({ex.GetType().Name}) and denied this " +
+                    "call rather than allowing it unchecked.");
+            }
+            catch
+            {
+                // Deliberately swallowed, and the only place in this file that is acceptable: the
+                // return below is the decision, and nothing here may prevent it being reached.
+            }
+
+            return DeniedExitCode;
+        }
+    }
+
+    private static int Decide(
+        TextReader stdin, TextWriter stderr, string? deniedToolsRaw, string? outboxDirectory)
+    {
         // Always drain stdin before deciding anything, even when there is nothing to check
         // against below: Claude Code is the writer on the other end of this pipe, and exiting
         // before reading its full payload risks a broken-pipe/blocked-write on its side for any
@@ -70,7 +119,7 @@ public static class HookCheckCommand
         }
         catch (IOException)
         {
-            return AllowedExitCode;
+            return Deny(stderr, "could not read the hook payload");
         }
 
         var deniedList = DeniedToolList.Parse(deniedToolsRaw, VendorTag);
@@ -92,28 +141,60 @@ public static class HookCheckCommand
 
         if (string.IsNullOrWhiteSpace(input))
         {
-            return AllowedExitCode;
+            return Deny(stderr, "received an empty hook payload");
         }
 
         string? toolName;
+        string? writeTarget = null;
         try
         {
             using var doc = JsonDocument.Parse(input);
             if (doc.RootElement.ValueKind != JsonValueKind.Object ||
                 !doc.RootElement.TryGetProperty("tool_name", out var toolNameProp))
             {
-                return AllowedExitCode;
+                return Deny(stderr, "could not find tool_name in the hook payload");
             }
 
             toolName = toolNameProp.GetString();
+            writeTarget = ReadWriteTarget(doc.RootElement, toolName);
         }
         catch (JsonException)
         {
-            return AllowedExitCode;
+            return Deny(stderr, "could not parse the hook payload");
         }
 
-        if (toolName is not null && denied.Contains(toolName))
+        if (string.IsNullOrEmpty(toolName))
         {
+            return Deny(stderr, "read an empty tool name from the hook payload");
+        }
+
+        if (denied.Contains(toolName))
+        {
+            // #649: the outbox is not the workspace. A withheld write landing in AER_OUTPUT_DIR is the
+            // worker producing its declared output, which is the whole reason it was dispatched --
+            // denying it is what forced every reviewing template to grant a workspace write it never
+            // needed. Anything outside stays denied, and OutboxPath resolves both sides so neither a
+            // traversal nor a link can walk back into the repo.
+            if (OutboxPath.IsInsideOutbox(writeTarget, outboxDirectory))
+            {
+                return AllowedExitCode;
+            }
+
+            // Name the cause when the exemption was unusable rather than the target being outside it.
+            // A non-rooted AER_OUTPUT_DIR denies every outbox write (OutboxPath refuses to resolve one
+            // against this process's inherited cwd), and the generic message above would send an
+            // operator looking at their permission grant for a fault that is in their --task-dir. The
+            // run still fails its contract; it no longer fails without saying why. #668 is the root
+            // cause -- AER emitting a relative path at all.
+            if (outboxDirectory is not null && !Path.IsPathRooted(outboxDirectory))
+            {
+                stderr.WriteLine(
+                    $"AER: the '{toolName}' tool is withheld, and its outbox exemption is unavailable " +
+                    $"because AER_OUTPUT_DIR ('{outboxDirectory}') is not an absolute path — this gate " +
+                    "cannot tell where the outbox is. Re-run with an absolute --task-dir (#668).");
+                return DeniedExitCode;
+            }
+
             stderr.WriteLine(
                 $"AER: the '{toolName}' tool is withheld by this session's permission grant.");
             return DeniedExitCode;
@@ -122,6 +203,71 @@ public static class HookCheckCommand
         return AllowedExitCode;
     }
 
+    /// <summary>
+    /// The fail-closed exits. Every one of these was an <see cref="AllowedExitCode"/> until #649, on
+    /// the argument that <c>--disallowedTools</c> independently covered the same tool names — which
+    /// #649 made false for writes by moving them off that flag onto this hook alone.
+    /// </summary>
+    private static int Deny(TextWriter stderr, string what)
+    {
+        stderr.WriteLine($"AER: the permission gate {what} and denied this call rather than " +
+                         "allowing it unchecked.");
+        return DeniedExitCode;
+    }
+
     /// <summary>Mirrors <c>ClaudeWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
     private const string VendorTag = "claude";
+
+    /// <summary>
+    /// The filesystem path a write-family tool is targeting, or <see langword="null"/> for any other
+    /// tool. Claude Code names it <c>file_path</c> on <c>Write</c>/<c>Edit</c> and
+    /// <c>notebook_path</c> on <c>NotebookEdit</c>.
+    /// </summary>
+    /// <remarks>
+    /// Gated on <paramref name="toolName"/>, not on the presence of the property: <c>Read</c> carries
+    /// a <c>file_path</c> too, so keying off the field alone exempted reads inside the outbox from a
+    /// withheld <c>ReadFiles</c> — a category #649 never meant to touch. The exemption exists because
+    /// a withheld *write* still owes its declared output; nothing else claims it.
+    /// </remarks>
+    private static string? ReadWriteTarget(JsonElement root, string? toolName)
+    {
+        if (toolName is null || !WriteFamilyTools.Contains(toolName))
+        {
+            return null;
+        }
+
+        if (!root.TryGetProperty("tool_input", out var toolInput) ||
+            toolInput.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        foreach (var name in WriteTargetProperties)
+        {
+            if (toolInput.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+            {
+                return value.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static readonly string[] WriteTargetProperties = ["file_path", "notebook_path"];
+
+    /// <summary>
+    /// The tools the outbox exemption applies to — the same names
+    /// <c>ClaudeWorkerAdapter</c> moves off <c>--disallowedTools</c> onto this hook, and no others.
+    /// </summary>
+    /// <remarks>
+    /// Public so one test can see both sides. This is a mirror contract of the same kind as
+    /// <see cref="DeniedToolsEnvironmentVariable"/>: <c>Aer.Adapters</c> cannot reference
+    /// <c>Aer.Cli</c>, so nothing but a test holds the two in agreement, and
+    /// <c>WriteFamilyContractTests</c> derives the adapter's side from a real
+    /// <c>Resolve</c> rather than restating it. A tool added to the adapter's write block and
+    /// forgotten here is not a permission hole — it is the opposite, a withheld write that can no
+    /// longer reach its own outbox, which fails the contract after the run is paid for.
+    /// </remarks>
+    public static readonly IReadOnlySet<string> WriteFamilyTools =
+        new HashSet<string>(StringComparer.Ordinal) { "Edit", "Write", "NotebookEdit" };
 }

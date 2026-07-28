@@ -1752,10 +1752,12 @@ def _agy_hook_malformed():
     still denies and nothing built on this rots. `agy.hook-deny-honoured` is the sentinel that guards
     the channel this depends on.
 
-    It matters more here than the equivalent would on claude: `HookCheckCommand`'s fail-open is
+    It mattered more here than the equivalent did on claude, where `HookCheckCommand`'s fail-open was
     argued as "no worse than --disallowedTools, which covers the same names". agy has no such flag
     (`agy.permissions-are-global-only`, decision 0029), so on this vendor the hook is the only
-    per-worker gate and a fail-open is a total one.
+    per-worker gate and a fail-open is a total one. That asymmetry is gone as of #649: the write tools
+    left --disallowedTools so the hook could allow an outbox write, which voided the claude argument,
+    and both commands now fail closed on every payload they cannot judge.
 
     **The two failure modes are NOT the same, which is the finding.** A hand-run version of this
     probe reported all three malformed arms as fail-open and was wrong: its `unknown-decision` arm
