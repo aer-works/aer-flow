@@ -8,7 +8,7 @@ public class SupplyOptionsParserTests
         var options = SupplyOptionsParser.Parse(
             ["task", "--worker", "human", "--output", "revision.md", "--file", "revised.md", "--bindings", "bindings.json"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
         Assert.Equal("human", options.Worker);
         Assert.Equal("revision.md", options.OutputName);
         Assert.Equal("revised.md", options.SourceFilePath);
@@ -34,7 +34,7 @@ public class SupplyOptionsParserTests
         var options = SupplyOptionsParser.Parse(
             ["--worker", "human", "--output", "revision.md", "--file", "revised.md", "--bindings", "bindings.json", "task"]);
 
-        Assert.Equal("task", options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
     }
 
     [Fact]

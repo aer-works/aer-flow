@@ -66,7 +66,8 @@ public static class CancelOptionsParser
             throw new CliArgumentException($"Missing required option '--bindings <bindings-file>'. {Usage}");
         }
 
-        return new CancelOptions(taskDirectoryPath, executionId, bindingsFilePath, workflowId);
+        return new CancelOptions(
+            TaskDirectoryPath.Resolve(taskDirectoryPath), executionId, bindingsFilePath, workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)
