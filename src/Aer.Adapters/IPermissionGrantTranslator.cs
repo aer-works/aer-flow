@@ -3,10 +3,14 @@ namespace Aer.Adapters;
 /// <summary>
 /// Opt-in capability an <see cref="IWorkerAdapter"/> implements when its vendor CLI's permission
 /// vocabulary can be driven from a structured <see cref="PermissionGrant"/> — the M21 Phase 1
-/// builder UI in Aer.Ui's bindings editor checks for this interface before offering the checkbox
-/// builder for a given adapter, falling back to the raw "Advanced" text field when an adapter
+/// builder UI in Aer.Ui's bindings editor keys two things on it: the inline gap warning
+/// (<c>'{adapter}' has no structured permission builder support</c>) and the Save guard that blocks
+/// persisting a grant the adapter refuses. It does <em>not</em> gate the checkbox builder itself —
+/// the checkboxes render for every adapter, and a grant built on one that does not implement this
 /// (e.g. <see cref="DialogueWorkerAdapter"/>, which never shells out to a permission-gated vendor
-/// CLI at all) doesn't implement it. Kept separate from <see cref="IWorkerAdapter"/> itself rather
+/// CLI at all) is persisted with only that advisory warning. Corrected after measurement: the
+/// earlier wording here claimed the interface gated the builder, and was copied onward on the
+/// strength of it. Kept separate from <see cref="IWorkerAdapter"/> itself rather
 /// than added to that interface, so every existing/future adapter with no vendor permission
 /// vocabulary to translate is never forced to implement a no-op method.
 /// </summary>

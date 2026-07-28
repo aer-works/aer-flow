@@ -12,8 +12,9 @@ namespace Aer.Adapters.Tests;
 /// <remarks>
 /// <para>
 /// <see cref="IPermissionGrantTranslator"/> is how the rest of the product identifies that
-/// population: the bindings editor offers the checkbox builder only for adapters implementing it,
-/// and a bind-time refusal that reads a grant is only meaningful for the same set. The correlation
+/// population — see its own docs for what the bindings editor actually keys on it, which is a warning
+/// and a Save guard rather than the builder. A bind-time refusal that reads a grant is meaningful for
+/// exactly the same set. The correlation
 /// is exact today and stated nowhere, so nothing stops a fifth adapter from breaking it in either
 /// direction — reading a grant without declaring the interface, or declaring it without reading one.
 /// </para>
