@@ -134,7 +134,12 @@ public static class OutboxPath
         var resolved = fullPath;
         for (var pass = 0; pass < MaxLinkHops; pass++)
         {
-            var next = ResolveOnce(resolved);
+            if (ResolveOnce(resolved) is not { } next)
+            {
+                // A hop budget inside the walk was exhausted; see the return below.
+                return null;
+            }
+
             if (string.Equals(next, resolved, StringComparison.Ordinal))
             {
                 return resolved;
