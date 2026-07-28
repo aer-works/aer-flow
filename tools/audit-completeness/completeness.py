@@ -354,6 +354,46 @@ TOKEN_SHAPE = re.compile(r"[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
 PIN_SHAPE = re.compile(r"(?=.*[0-9])[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
 
 
+def register_models():
+    """The `agy models` catalogue as the register records it: `(names, "")`, or `(None, why)`.
+
+    The register records the CLI's own output verbatim in a fenced block. Parsing that block rather
+    than keeping a hand-maintained list here makes re-running `agy models` into the register the
+    single act that updates every caller -- record once, per the gate.
+
+    Residual risk, the only one worth carrying: a second fence added BEFORE the models block, in the
+    SAME section, is still taken instead. The shape arm below is the backstop, and it only catches a
+    block whose tokens are not model names -- a fence holding some OTHER model list parses silently
+    wrong.
+    """
+    caps = read("docs/vendor-capabilities.md")
+    section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
+    if not section:
+        return None, "could not locate the `agy models` section in docs/vendor-capabilities.md"
+    fence = re.search(r"```[a-zA-Z]*\n(.*?)```", section.group(1), re.S)
+    if not fence:
+        return None, "the `agy models` section carries no fenced block"
+    accepted = set(fence.group(1).split())
+
+    # Asserts the PARSE, not just non-emptiness: without it a mis-parse blames every PIN while the
+    # fault is the parse -- the right verdict pointing at the wrong file. (`line()` with no
+    # `expected` prints no marker and returns True, so the count alone cannot catch it.)
+    # Two arms because they support two different conclusions: non-model-shaped tokens DO establish a
+    # bad parse, a surprising COUNT does not -- a catalogue legitimately shrinking to 4 would trip it,
+    # and blaming the parse there would name the wrong file.
+    unshaped = {n for n in accepted if not TOKEN_SHAPE.fullmatch(n)}
+    if unshaped:
+        return None, ("the `agy models` block parsed to token(s) that are not model names -- the"
+                      f" PARSE is wrong, not the pins. Got: {sorted(unshaped)[:8]}")
+    # A smoke alarm, not a diagnosis: wide enough that only a wild parse trips it, and the message
+    # says to go look rather than naming a culprit. The real count is printed by the caller.
+    if not 5 <= len(accepted) <= 40:
+        return None, (f"the `agy models` block parsed to {len(accepted)} names, outside the expected"
+                      " 5..40. Either the catalogue changed dramatically or the parse drifted --"
+                      " check which before trusting any verdict below.")
+    return accepted, ""
+
+
 def step9_pinned_models_exist():
     """Every `agy` model name pinned in a tool is one `agy models` actually lists.
 
@@ -396,42 +436,9 @@ def step9_pinned_models_exist():
         source does not rest on the regex.
     """
     rule("STEP 9 -- every pinned agy model name is one `agy models` lists")
-    caps = read("docs/vendor-capabilities.md")
-
-    # The register records the CLI's own output verbatim in a fenced block. Parse that block rather
-    # than a hand-maintained list here, so re-running `agy models` into the register is the single
-    # act that updates this check -- record once, per the gate.
-    # Residual risk, the only one worth carrying: a second fence added BEFORE the models block, in
-    # the SAME section, is still taken instead. The shape guard below is the backstop, and it only
-    # catches a block whose tokens are not model names -- a fence holding some OTHER model list
-    # parses silently wrong.
-    section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
-    if not section:
-        print("    !! could not locate the `agy models` section in docs/vendor-capabilities.md")
-        return False
-    fence = re.search(r"```[a-zA-Z]*\n(.*?)```", section.group(1), re.S)
-    if not fence:
-        print("    !! the `agy models` section carries no fenced block")
-        return False
-    accepted = set(fence.group(1).split())
-
-    # Asserts the PARSE, not just non-emptiness: without it a mis-parse blames every PIN while the
-    # fault is the parse -- the right verdict pointing at the wrong file. (`line()` with no
-    # `expected` prints no marker and returns True, so the count alone cannot catch it.)
-    shaped = {n for n in accepted if TOKEN_SHAPE.fullmatch(n)}
-    # Two arms because they support two different conclusions: non-model-shaped tokens DO establish
-    # a bad parse, a surprising COUNT does not -- a catalogue legitimately shrinking to 4 would trip
-    # it, and blaming the parse there would name the wrong file.
-    if accepted != shaped:
-        print(f"    !! the `agy models` block parsed to token(s) that are not model names -- the"
-              f" PARSE is wrong, not the pins. Got: {sorted(accepted - shaped)[:8]}")
-        return False
-    # A smoke alarm, not a diagnosis: wide enough that only a wild parse trips it, and the message
-    # says to go look rather than naming a culprit. The real count is printed one line below.
-    if not 5 <= len(accepted) <= 40:
-        print(f"    !! the `agy models` block parsed to {len(accepted)} names, outside the expected"
-              " 5..40. Either the catalogue changed dramatically or the parse drifted -- check which"
-              " before trusting any verdict below.")
+    accepted, why = register_models()
+    if accepted is None:
+        print(f"    !! {why}")
         return False
     line("model names enumerated by the register", len(accepted))
 
@@ -464,9 +471,14 @@ def step9_pinned_models_exist():
         spec.loader.exec_module(mod)
     finally:
         sys.dont_write_bytecode = prior
+    # Resolved through dispatch's own defaults, not read raw: a template that OMITS `adapter` still
+    # dispatches to gemini (BUILT_IN fills it), and `tpl.get("adapter") == "gemini"` would have
+    # skipped exactly that template -- the population shrinking by one, silently, with no bad pin
+    # needed to hide in it.
     for name, tpl in getattr(mod, "TEMPLATES", {}).items():
-        if tpl.get("adapter") == "gemini" and tpl.get("model"):
-            pins.append((f"dispatch.py TEMPLATES[{name!r}]", tpl["model"]))
+        settings = mod.resolve(tpl)
+        if settings["adapter"] == "gemini" and settings["model"]:
+            pins.append((f"dispatch.py TEMPLATES[{name!r}]", settings["model"]))
     if not pins:
         print("    !! dispatch.py loaded but contributed no agy model pin -- TEMPLATES has been"
               " emptied, renamed, or restructured, so this step is no longer checking it")
