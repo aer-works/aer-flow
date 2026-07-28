@@ -87,17 +87,22 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
 
     /// <summary>
     /// A file the probe cannot read counts as differing, so the call falls through to the write
-    /// instead of throwing out of the comparison.
+    /// instead of throwing out of the comparison. Windows arm.
     /// </summary>
     /// <remarks>
     /// The content is <b>identical</b> to what is on disk, which is what discriminates: a probe that
-    /// propagated would throw before the write loop was reached. Holding the file
-    /// <see cref="FileShare.None"/> makes both operations fail, so the assertion is on which one did.
-    /// Control run, not assumed: removing the catch in <c>AlreadyHolds</c> turns this red.
+    /// propagated would throw before the write loop was reached. <see cref="FileShare.None"/> is
+    /// enforced on Windows, so both the read and the rename fail and the assertion is on which one
+    /// did. Control run, not assumed: removing the catch in <c>AlreadyHolds</c> turns this red.
     /// </remarks>
     [Fact]
-    public void A_destination_the_probe_cannot_read_falls_through_to_the_write()
+    public void A_destination_the_probe_cannot_read_falls_through_to_the_write_on_windows()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("FileShare.None is advisory off Windows, so this cannot make a read fail here.");
+        }
+
         var path = Path_("settings.json");
         const string content = """{"hooks":"canonical"}""";
         AtomicLaunchConfigWriter.Write(path, content);
@@ -108,6 +113,40 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
 
         Assert.NotNull(thrown);
         Assert.Contains("Move", thrown.StackTrace ?? string.Empty, StringComparison.Ordinal);
-        Assert.DoesNotContain("ReadAllText", thrown.StackTrace ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The same claim on Unix, where the observable differs: a mode-000 file fails the probe's read
+    /// but not the rename, so the call has to <i>succeed</i> rather than throw from somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// Skips when the read succeeds anyway — running as root defeats the permission bits, and a pass
+    /// under those conditions would prove nothing.
+    /// </remarks>
+    [Fact]
+    public void A_destination_the_probe_cannot_read_falls_through_to_the_write_on_unix()
+    {
+        // Guarded with else rather than an early return so CA1416 can see that SetUnixFileMode is
+        // unreachable on Windows -- Assert.Skip throws, but nothing tells the analyzer that.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Unix mode bits do not apply; the Windows arm covers this platform.");
+        }
+        else
+        {
+            var path = Path_("settings.json");
+            const string content = """{"hooks":"canonical"}""";
+            AtomicLaunchConfigWriter.Write(path, content);
+            File.SetUnixFileMode(path, UnixFileMode.None);
+
+            if (Record.Exception(() => File.ReadAllText(path)) is null)
+            {
+                Assert.Skip("The mode-000 file is still readable (running as root?), so the probe cannot fail.");
+            }
+
+            AtomicLaunchConfigWriter.Write(path, content);
+
+            Assert.Equal(content, File.ReadAllText(path));
+        }
     }
 }
