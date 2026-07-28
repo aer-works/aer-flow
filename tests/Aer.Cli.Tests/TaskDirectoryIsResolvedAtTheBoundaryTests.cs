@@ -3,11 +3,8 @@ using System.Reflection;
 namespace Aer.Cli.Tests;
 
 /// <summary>
-/// #668: a relative <c>--task-dir</c> made AER and the worker disagree about where
-/// <c>AER_OUTPUT_DIR</c> points. AER derived the environment value from the relative form; the
-/// worker resolved it against its own working directory, wrote its declared output there, and the
-/// run was reported as <c>Contract not satisfied</c> — after paying in full, with nothing naming
-/// the cause and presenting exactly like a worker that had ignored its instructions.
+/// #668: what a relative <c>--task-dir</c> cost, and why it is resolved here rather than anywhere
+/// downstream, is recorded on <see cref="TaskDirectoryPath"/>.
 /// </summary>
 /// <remarks>
 /// The population is discovered rather than listed. Four entry points take a task directory today
