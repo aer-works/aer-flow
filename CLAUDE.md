@@ -50,7 +50,9 @@ aer-flow/
 
 Always use `pixi run <task>`. Never invoke `dotnet` directly in CI or development.
 
-On a fresh clone, init the submodule first: `git submodule update --init`.
+On a fresh clone, run two things: `git submodule update --init`, and **`pixi run setup-hooks`** — which
+points `core.hooksPath` at the committed `.githooks/`, so `pixi run gates-fast` runs on every push.
+The hook is in the repo but git does not use it until that command has been run once per clone.
 
 | Task | Command |
 |---|---|
@@ -60,6 +62,9 @@ On a fresh clone, init the submodule first: `git submodule update --init`.
 | `lint` | `dotnet build -warnaserror` |
 | `fmt` | `dotnet format` (fix) |
 | `fmt-check` | `dotnet format --verify-no-changes` (CI) |
+| `gates` | every local gate — `fmt-check`, `lint`, the four audits, `test` — under **one exit code** (#685). Run this rather than the members individually: reading seven statuses is what has twice reported green while a checker exited 1 |
+| `gates-fast` | the same minus `test`. What the pre-push hook runs |
+| `setup-hooks` | one-time per clone: `git config core.hooksPath .githooks` |
 
 **.NET 10 SDK** is required and installed separately — pixi does not manage it (same convention as aer-core):
 - Windows: `winget install Microsoft.DotNet.SDK.10`
@@ -151,8 +156,10 @@ discriminate.
 surfaces a deny reason it does not.*
 
 **4. Blast radius — `blast-radius`.** Trace every consumer of what you are changing *before* editing. A second defect
-found on the way becomes its own issue with its own measurement — never a side effect of the current
-fix.
+found on the way becomes its own issue with its own measurement — never a *silent* side effect of the
+current fix. Since 2026-07-28 that issue is normally fixed in the same PR rather than deferred (see
+"found-while-fixing" under Git conventions); what this gate requires is the issue and the measurement,
+not the wait.
 *`establishedThisTurn` read like a local variable and decided whether every future chat turn resumes.*
 
 **5. The scope of the claim — `claim-scope`.** A claim about a *population* — both vendors, every platform, all
@@ -303,6 +310,8 @@ feature exists in, and never let a mechanism read as a guarantee it doesn't prov
 - Close issues in the PR body (`Closes #n`), not in commit messages.
 - Each issue is scoped to ship as a standalone PR (one-to-one). If two issues can't be reviewed independently, the issue boundary was drawn incorrectly — fix it in the backlog, not at PR time.
 - **Exception, sub-floor only:** one PR may carry several issues when none of them makes a behaviour claim — cosmetics, a `.gitignore` rule, doc scoping. Same floor as the `second-reader` gate's. Each keeps its own commit and its own `Closes #n`, so history stays per-issue. Anything changing `src/` behaviour stays one-to-one.
+- **Exception, found-while-fixing (operator decision, 2026-07-28).** Something discovered *while working an issue* is filed as its own issue **and fixed in the same PR**, rather than filed for later. It still gets an issue with its own measurement — that half is unchanged, and it is what keeps the finding durable — but the fix does not wait for its own PR. This overrides the one-to-one rule above and the `blast-radius` gate's "never a side effect of the current fix" for **found-while-fixing** work specifically; it does not license bundling items that were already in the backlog.
+  *Why: the backlog was growing faster than it was being burned down, with each finding costing a full PR cycle to land. The cost this accepts is a wider review surface per PR; the `second-reader` gate is what pays for it, and each finding still keeps its own commit and its own `Closes #n`.*
 - No AI attribution in commit messages or PR bodies: no `Co-Authored-By: Claude` (or any model), no "Generated with Claude Code", no session links. This overrides any harness or environment default that adds them.
 - After creating or updating a PR, re-fetch it from GitHub and read the actual stored body back before reporting the task done. Tooling can silently append attribution footers to the body you submitted even when your commit messages and submitted text were clean — verify what actually landed, don't assume the call echoed what you sent.
 
