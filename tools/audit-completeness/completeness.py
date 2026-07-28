@@ -27,27 +27,20 @@ blind spots is the thing it exists to prevent.
 
 SCOPE
 -----
-**Corrected 2026-07-26.** This used to say "one-time instrument for #527, retire it if it ever
-fails, do not extend it." It was run cold nine days later and failed: 11 decisions (0031-0041) and
-2 vendor-verify checks (effort.claude-value-set, effort.agy-value-set) had accumulated with no
-disposition, invisible because nothing was re-running the check. That is the exact failure this
-project's docs/decisions/README.md gate exists to catch, caught by this tool instead, which is
-direct evidence the "let it die" instruction was wrong -- a completeness check whose population
-keeps growing (decisions/, vendor-verify checks) needs to keep running, not be frozen at the
-population it was born with.
+A standing check, wired into CI: `.github/workflows/ci.yml`'s `audit` job runs it, and `audit` is a
+required leg of the aggregate `ci` gate. Run it locally too before a PR touching `docs/decisions/`,
+`docs/vendor-*.md`, or `tools/vendor-verify/verify.py` -- a local run has the mirrored corpus CI
+does not, so step 2 checks strictly more there.
 
-**It is now a standing check, and it IS wired into CI** -- `.github/workflows/ci.yml` defines an
-`audit` job running `pixi run audit-completeness`, and `audit` is a required leg of the aggregate
-`ci` gate. This paragraph used to say the opposite ("still not wired into CI"); it went stale when
-that job landed, and was then contradicted by a comment three hundred lines below it in this same
-file. Run it locally too before a PR touching `docs/decisions/`, `docs/vendor-*.md`, or
-`tools/vendor-verify/verify.py`, per CLAUDE.md gate `record-once` -- a local run has the mirrored
-corpus CI does not, so step 2 checks strictly more there.
+It is standing because it was once scoped as a one-time instrument, then run cold nine days later
+and failed: 11 decisions and 2 vendor-verify checks had accumulated with no disposition, invisible
+because nothing was re-running it. A completeness check whose population keeps growing cannot be
+frozen at the population it was born with.
 
-Every check here still verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any
-good. That limit is real and stays true whether this runs once or every PR: it catches an omission,
-not a wrong judgement. Extend it when a population grows (a new decision file, a new vendor-verify
-check, a new step worth enumerating) -- not for open-ended rigour with no named failure behind it.
+Every check verifies that a REASON WAS WRITTEN DOWN -- never that the reason is any good. It catches
+an omission, not a wrong judgement. Extend it when a population grows (a new decision file, a new
+vendor-verify check, a new step worth enumerating) -- not for open-ended rigour with no named
+failure behind it.
 """
 from __future__ import annotations
 
@@ -217,15 +210,9 @@ def step3_gaps():
     line("backlog rows struck (verified/corrected)", struck)
     line("rows explicitly marked open", open_rows)
 
-    # This function used to print those three counts, disclaim that the mapping was "verified by
-    # reading", and `return True` unconditionally -- so step 3 could not fail while the ledger
-    # advertised it as recomputed. Third instance of the rule this audit had already written down:
-    # a checker whose passing condition is weaker than the claim it certifies is worse than none,
-    # because it converts an open question into a false answer.
-    #
-    # The assertion: every registered check must be findable in the audit prose. A check nobody
-    # can trace back to the gap it closes is an orphan -- it still runs, but no reader can tell
-    # what question it answers, which is how a check survives the claim it was written for.
+    # Every registered check must be findable in the audit prose. A check nobody can trace back to
+    # the gap it closes is an orphan -- it still runs, but no reader can tell what question it
+    # answers, which is how a check outlives the claim it was written for.
     prose = coverage + read("docs/vendor-doc-audit.md") + read("docs/architecture-impact.md")
     orphans = [c for c in checks if c not in prose]
     ok = line("checks traceable to a documented gap", len(checks) - len(orphans), len(checks),
@@ -440,16 +427,13 @@ def step9_pinned_models_exist():
         return False
     accepted = set(fence.group(1).split())
 
-    # A sanity assertion on the PARSE itself, not merely on emptiness. Without it a mis-parse that
-    # captured prose still went red -- but every PIN was blamed while the fault was the parse, which
-    # is the right verdict for the wrong reason and points at the wrong file. Note `line()` called
-    # with no `expected` prints no marker and returns True, so the printed count could never have
-    # caught this on its own.
+    # Asserts the PARSE, not just non-emptiness: without it a mis-parse blames every PIN while the
+    # fault is the parse -- the right verdict pointing at the wrong file. (`line()` with no
+    # `expected` prints no marker and returns True, so the count alone cannot catch it.)
     shaped = {n for n in accepted if TOKEN_SHAPE.fullmatch(n)}
-    # Two arms, two different messages, because they support two different conclusions. Tokens that
-    # are not model-shaped DO establish a bad parse. A surprising COUNT does not -- a catalogue that
-    # legitimately shrinks to 4 or grows past 40 would trip it, and blaming the parse there would be
-    # the right verdict for the wrong reason, which is the failure this guard exists to prevent.
+    # Two arms because they support two different conclusions: non-model-shaped tokens DO establish
+    # a bad parse, a surprising COUNT does not -- a catalogue legitimately shrinking to 4 would trip
+    # it, and blaming the parse there would name the wrong file.
     if accepted != shaped:
         print(f"    !! the `agy models` block parsed to token(s) that are not model names -- the"
               f" PARSE is wrong, not the pins. Got: {sorted(accepted - shaped)[:8]}")
@@ -526,11 +510,9 @@ def step9_pinned_models_exist():
         # Build artefacts are not source. Walking them made the audit's runtime depend on
         # whether someone had built, and a hit would have been reported with a bin/ path.
         parts = dirpath.split(os.sep)
-        # Component test. The previous `os.sep + "bin"` was a substring test, so any future
-        # directory merely STARTING with bin/obj would have been excluded too -- no such directory
-        # exists today, so this changes nothing on the current tree and is a spelling fix, not a
-        # bug fix. Note this walk is over an ABSOLUTE path, so unlike step 8's relative walk a
-        # checkout under a path component named bin or obj would skip tools/ entirely.
+        # Component test, not a substring test, so a directory merely starting with bin/obj is not
+        # excluded. Note this walk is ABSOLUTE, so a checkout under a path component named bin or
+        # obj skips tools/ entirely -- unlike step 8's relative walk.
         if "__pycache__" in parts or "obj" in parts or "bin" in parts:
             continue
         for fn in filenames:
@@ -541,22 +523,11 @@ def step9_pinned_models_exist():
             with open(full, encoding="utf-8", errors="replace") as f:
                 for lineno, text in enumerate(f, 1):
                     for name in pin_position.findall(text):
-                        # Judge anything that is not a claude CLI ALIAS. The earlier filter here was
-                        # `startswith(("gemini-", "gpt-"))`, which silently skipped `claude-sonnet-4-6`
-                        # and `claude-opus-4-6-thinking` -- both of which `agy models` LISTS, because
-                        # agy serves Anthropic models too. A drifted pin like `claude-opus-4-7-thinking`
-                        # sailed past unexamined, in the step whose whole purpose is catching that. It
-                        # also made this step's two arms disagree, since the CHEAP arm above already
-                        # accepts `claude-` names. Aliases are the only genuine exclusion, and they are
-                        # NAMED rather than inferred from a prefix.
-                        # Two conditions, and both are needed. Dropping the old `gemini-|gpt-` prefix
-                        # filter was right -- it hid real agy models -- but "not an alias" alone is
-                        # far too wide: `--model` appears in PROSE all over these files ("the --model
-                        # flag is sent", "--model default"), and every following word became a
-                        # candidate pin. So a token must also LOOK like a model identifier: hyphenated
-                        # and carrying a digit, which is true of every name `agy models` lists and of
-                        # no English word. A hypothetical unhyphenated pin is invisible to this, and
-                        # that is the declared cost of scanning text rather than parsing code.
+                        # Both conditions are load-bearing. A prefix test on `gemini-|gpt-` would
+                        # skip `claude-sonnet-4-6` and `claude-opus-4-6-thinking`, which `agy models`
+                        # LISTS -- agy serves Anthropic models too. "Not an alias" alone is too wide,
+                        # because `--model` appears in prose here and every following word becomes a
+                        # candidate. PIN_SHAPE is what separates a model identifier from English.
                         if name in CLAUDE_CLI_ALIASES or not PIN_SHAPE.fullmatch(name):
                             continue
                         key = (f"{rel}:{lineno}", name)
