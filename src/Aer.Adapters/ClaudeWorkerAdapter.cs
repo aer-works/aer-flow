@@ -35,11 +35,19 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             tools.Add("Read");
         }
 
-        if (grant.WriteFiles)
-        {
-            tools.Add("Edit");
-            tools.Add("Write");
-        }
+        // Pre-approved either way (#649). When writes are granted this is the plain case; when they
+        // are withheld the tools must STILL be pre-approved, because the hook is what confines them to
+        // AER_OUTPUT_DIR and it never gets consulted for a tool the model could not invoke. Headless
+        // `-p` has no prompt to answer, so a tool that is neither pre-approved nor denied is simply
+        // unusable — measured: the first live run of this change wrote nothing at all, exited 0, and
+        // failed its contract, which is the exact symptom #629 describes.
+        //
+        // Safe because --allowedTools is pre-approval and not a ceiling
+        // (gate.allowedtools-is-preapproval-not-ceiling). It grants nothing the hook will not take
+        // back, which is the same measured fact that made #611 invalid and #529 necessary.
+        tools.Add("Edit");
+        tools.Add("Write");
+        tools.Add("NotebookEdit");
 
         if (grant.RunShellCommands)
         {
