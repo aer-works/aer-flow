@@ -12,6 +12,7 @@ namespace Aer.Cli.Tests;
 /// silent where it was not, which is the shape of the original defect. <see cref="EveryParser"/>
 /// fails until a new one is covered here.
 /// </remarks>
+[Collection(WorkingDirectoryCollection.Name)]
 public class TaskDirectoryIsResolvedAtTheBoundaryTests
 {
     private const string Relative = "task2";

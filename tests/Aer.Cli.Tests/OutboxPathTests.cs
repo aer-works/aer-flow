@@ -4,6 +4,7 @@ namespace Aer.Cli.Tests;
 /// #649: the check that decides whether a withheld write is nonetheless allowed, because it lands in
 /// the worker's own outbox rather than the workspace. A bug here is a permission hole, not a defect.
 /// </summary>
+[Collection(WorkingDirectoryCollection.Name)]
 public class OutboxPathTests
 {
     private static string Outbox => Path.Combine(Path.GetTempPath(), "aer-task", "artifacts", "execution_1");

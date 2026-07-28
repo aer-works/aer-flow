@@ -1,5 +1,6 @@
 namespace Aer.Cli.Tests;
 
+[Collection(WorkingDirectoryCollection.Name)]
 public class CancelOptionsParserTests
 {
     [Fact]
