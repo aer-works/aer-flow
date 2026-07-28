@@ -65,8 +65,9 @@ namespace Aer.Adapters;
 /// <c>--dangerously-skip-permissions</c> there is no backstop, so a hook that cannot start is a fully
 /// ungated worker rather than a degraded one. Scoping shell patterns is a second gap in the same
 /// direction, and it is why a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> is
-/// now refused rather than resolved to an unscoped shell (#624): a pattern is not a name, so under
-/// this flag there is nowhere for one to take effect.
+/// now refused rather than resolved to an unscoped shell (#624). Refused because AER's hook decides by
+/// tool name alone, <em>not</em> because agy could not express it — the hook payload carries the tool's
+/// arguments, so #659 is a route rather than a dead end.
 /// </para>
 /// </summary>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
@@ -211,15 +212,25 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         // #624, checked before the skip-permissions arm below, which is the one that would otherwise
         // grant every command. Refusing rather than approximating is what IPermissionGrantTranslator
         // requires: granting more than requested is as much a bug as granting less.
+        //
+        // Not implemented, rather than impossible — the distinction matters because the first wording
+        // here claimed the second, in text an operator reads. agy's PreToolUse payload carries
+        // `toolCall.args` (agy__hooks.md, whose worked example is run_command with a CommandLine), and
+        // a hook deny is measured to hold under --dangerously-skip-permissions (agy.hook-deny-honoured,
+        // and see this class's own docs above). An argument-inspecting hook could therefore express
+        // this; AER's reads only toolCall.name and says so. #659 carries the route and its real cost:
+        // `git:*` is claude's Bash(...) grammar, agy's is command(prefix|regex) with per-token anchored
+        // regex, and no mapping between the two exists yet.
         if (grant.RunShellCommands && grant.ShellCommandPatterns is { Count: > 0 })
         {
             resolvedValue = null;
-            gapReason = "agy cannot express a shell grant scoped to ShellCommandPatterns. Its only " +
+            gapReason = "AER cannot yet scope an agy shell grant to ShellCommandPatterns. agy's only " +
                 "auto-approving shell flag is --dangerously-skip-permissions, which approves every " +
-                "command, and under that flag the PreToolUse hook's denied tool NAMES are the whole " +
-                "boundary (#623) — a pattern is not a name, so there is nowhere to put one. Accepting " +
-                "this would hand the worker an unscoped shell in answer to a request to narrow it. " +
-                "Withhold the shell, or use the Advanced raw permission-scope field.";
+                "command, and AER's PreToolUse hook decides by tool name alone — so the patterns would " +
+                "be dropped and the worker would receive an unscoped shell in answer to a request to " +
+                "narrow it. Withhold the shell, or clear the patterns and accept an unscoped one " +
+                "deliberately. The Advanced raw permission-scope field is not a way round this: on agy " +
+                "it sets --mode, which cannot express a scoped shell either. Tracked as #659.";
             return false;
         }
 
