@@ -45,6 +45,13 @@ WHAT IT CANNOT CHECK:
     `.rst`/`.mdx` are not listed because neither exists in this repo; add them with a file, not in
     advance.
   * Whether the surviving copy is the right one. It finds duplicates; it does not rank them.
+  * Whether a marker's ISSUE is real or open. Its canonical PATH is checked -- a marker naming a file
+    that is not there exempts nothing and says so -- but reaching GitHub from a gate would make CI
+    depend on a network call to stay green. #676 lists this; it is deliberately not fixed.
+  * How MANY passages one change exempts. Uncapped, and judged to be correct rather than a gap:
+    each marker now costs a comment beside the passage it covers and names where the fact really
+    lives, so twenty exemptions are twenty visible decisions rather than one line muting a file. A
+    numeric cap would be arbitrary and would fail the change that legitimately needs it.
 """
 from __future__ import annotations
 
@@ -52,11 +59,25 @@ import collections
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-# Escapes one file, for a second copy that is genuinely right -- a decision record and the code it
-# governs. Naming an issue is required so it reads as a decision rather than a mute. The unit is the
-# whole file for this change, which is coarser than the passage it should cover: #676.
-SUPPRESS = re.compile(r"record-once-ok:\s*#(\d{3,})")
+ROOT = Path(__file__).resolve().parents[2]
+
+# Escapes one PASSAGE, for a second copy that is genuinely right -- a decision record and the code it
+# governs. An issue AND a canonical path are both required, so the marker reads as a decision with a
+# destination rather than a mute (#676).
+#
+# The unit is the contiguous run the marker sits in, not the file. As a file-level hatch it was too
+# coarse in one direction and too weak in the other: a marker anywhere in `docs/plan.md` stopped every
+# other passage that change added to plan.md from being compared, and a change could mute every file
+# it touched with one added line each. A run is the passage, so exempting a second one costs a second
+# marker beside it -- which is the point, since each is a separate decision.
+#
+# Read from the file AT HEAD rather than from the diff, which is the other half of #676. Matched
+# among added lines, an exemption granted by an earlier PR exempted nothing later: reword both copies
+# of a deliberately duplicated passage without re-touching the marker line and it was flagged again,
+# so the hatch had to be re-applied to stay applied.
+SUPPRESS = re.compile(r"record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)")
 
 # Long enough that ordinary phrasing does not collide by accident, short enough to catch a restated
 # clause rather than only a whole restated paragraph.
@@ -191,34 +212,53 @@ def prose_runs(path: str, hunks: list[list[str]]) -> list[list[str]]:
     side effect: it is a paragraph break, two paragraphs are two passages, and a sentence cannot
     wrap across one. It can only ever shrink the shingle set, never invent a match.
     """
+    return [words for words, _ in marked_runs(path, hunks)]
+
+
+def marked_runs(path: str, hunks: list[list[str]]) -> list[tuple[list[str], tuple[str, str] | None]]:
+    """Every contiguous run, paired with the `record-once-ok` marker sitting in it, or None.
+
+    The marker is read out of the run's PROSE, never off the raw line, which is #676's context test:
+    the string `record-once-ok: #901 docs/B.md` written as a Python literal is code and exempts
+    nothing, while the same words in a comment are a decision. Before this, any tracked file
+    containing those characters anywhere exempted itself -- `selfcheck.py` had to assemble the string
+    from fragments to be able to have a fixture for the checker at all.
+    """
     if any(GENERATED.search(line) for hunk in hunks for line in hunk[:8]):
         return []
 
     markdown = path.endswith(PROSE_EVERYWHERE)
     line_openers, blocks = language(path)
-    runs: list[list[str]] = []
+    runs: list[tuple[list[str], tuple[str, str] | None]] = []
     for lines in hunks:
         current: list[str] = []
+        marker: tuple[str, str] | None = None
         fenced = False
         comments = [None] * len(lines) if markdown else list(comment_text(lines, line_openers, blocks))
         for line, comment in zip(lines, comments):
             words: list[str] = []
+            prose = None
             if markdown and FENCE.match(line):
                 fenced = not fenced
             elif fenced or (markdown and TABLE_ROW.match(line)):
                 pass
             elif markdown:
-                words = normalise(line)
+                prose = line
             elif comment is not None:
-                words = normalise(comment)
+                prose = comment
+
+            if prose is not None:
+                if (found := SUPPRESS.search(prose)) is not None:
+                    marker = (found.group(1), found.group(2))
+                words = normalise(prose)
 
             if words:
                 current.extend(words)
             elif current:
-                runs.append(current)
-                current = []
+                runs.append((current, marker))
+                current, marker = [], None
         if current:
-            runs.append(current)
+            runs.append((current, marker))
     return runs
 
 
@@ -333,21 +373,68 @@ def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[list[st
     return by_file
 
 
-def groups(by_file: dict[str, list[list[str]]]) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]],
-                                                          list[str]]:
-    """File-sets that share at least one shingle, plus the files a marker took out of the run."""
+def file_at(path: str, rev: str = "HEAD") -> list[str] | None:
+    """One file's full text at a revision, or None when it is not there (a new or deleted file)."""
+    out = subprocess.run(["git", "show", f"{rev}:{path}"], capture_output=True, text=True, check=False)
+    return out.stdout.splitlines() if out.returncode == 0 else None
+
+
+def exemptions(path: str, at) -> tuple[set[tuple[str, ...]], list[tuple[str, str]]]:
+    """Shingles a marker exempts in this file as it stands, and the markers that did the exempting.
+
+    Read from the whole file rather than from the diff. A marker matched among ADDED lines only held
+    for the change that added it, so rewording either copy of a deliberately duplicated passage --
+    without re-touching the marker comment, which `--unified=0` would not show -- brought the finding
+    straight back. An exemption is a decision about a passage, not about one commit.
+    """
+    lines = at(path)
+    if lines is None:
+        return set(), []
+
+    shingles: set[tuple[str, ...]] = set()
+    markers: list[tuple[str, str]] = []
+    for words, marker in marked_runs(path, [lines]):
+        if marker is None:
+            continue
+        issue, canonical = marker
+        # The canonical location has to exist, which is the part of #676's "nothing verifies this"
+        # that needs no network. A marker naming a file that is not there is a typo, and a typo that
+        # silences a gate is worse than no marker -- so it exempts nothing and says so, rather than
+        # being honoured on the strength of matching a regex.
+        if not (ROOT / canonical).exists():
+            markers.append((issue, f"{canonical} !! REFUSED: no such file, so nothing is exempted"))
+            continue
+        markers.append(marker)
+        for i in range(len(words) - SHINGLE + 1):
+            shingles.add(tuple(words[i:i + SHINGLE]))
+    return shingles, markers
+
+
+def groups(by_file: dict[str, list[list[str]]], at=None
+           ) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]], list[str]]:
+    """File-sets that share at least one shingle, plus what a marker exempted.
+
+    `at` is how a file's CURRENT text is fetched -- `path -> lines or None`. A callable rather than
+    a revision so a fixture can supply text directly: markers have to be read from whole files, and a
+    fixture with no git object behind it would otherwise silently fall back to "no exemptions" and
+    look identical to one whose exemption worked. None means no marker source at all.
+    """
     # Shingled across each contiguous run rather than per line, because the measured restatement
     # wrapped mid-sentence in every file it landed in -- and no further than a run, because text
     # joined across a break is text nobody wrote. See `prose_runs`.
     where: dict[tuple[str, ...], set[str]] = collections.defaultdict(set)
     suppressed = []
     for path, hunks in by_file.items():
-        if any(SUPPRESS.search(line) for hunk in hunks for line in hunk):
-            suppressed.append(path)
-            continue
+        exempt, markers = exemptions(path, at) if at else (set(), [])
+        for issue, canonical in markers:
+            suppressed.append(f"{path}: passage(s) exempted by #{issue}, canonical is {canonical}")
         for words in prose_runs(path, hunks):
             for i in range(len(words) - SHINGLE + 1):
-                where[tuple(words[i:i + SHINGLE])].add(path)
+                shingle = tuple(words[i:i + SHINGLE])
+                # Exempted per SHINGLE, so the marked passage stops matching while everything else
+                # this change added to the same file is still compared.
+                if shingle not in exempt:
+                    where[shingle].add(path)
 
     # One entry per set of files, not per shingle: a restated paragraph produces dozens of
     # overlapping shingles and printing each would bury the finding.
@@ -358,8 +445,8 @@ def groups(by_file: dict[str, list[list[str]]]) -> tuple[dict[tuple[str, ...], l
     return by_group, sorted(suppressed)
 
 
-def violations(by_file: dict[str, list[list[str]]]) -> list[str]:
-    by_group, _ = groups(by_file)
+def violations(by_file: dict[str, list[list[str]]], at=None) -> list[str]:
+    by_group, _ = groups(by_file, at)
 
     # A restated passage spanning four files also produces a group for every pair and triple within
     # it, and collapsing those turns two dozen entries back into the handful a person has to fix.
@@ -379,8 +466,8 @@ def violations(by_file: dict[str, list[list[str]]]) -> list[str]:
             + "\n".join(f"      {p}" for p in files)
             + f"\n      e.g. \"{sample}\"\n"
             + "      Keep it in one; link from the rest. A deliberate second copy needs\n"
-            + "      `record-once-ok: #<issue>` in the file holding that copy -- which exempts\n"
-            + "      the whole of that file for this change, and says so in the output.")
+            + "      `record-once-ok: #<issue> <canonical path>` in a comment beside that copy --\n"
+            + "      which exempts that passage only, holds for later changes too, and is reported.")
     return problems
 
 
@@ -417,11 +504,12 @@ def main(argv: list[str]) -> int:
         print(" -- nothing to compare: no file differs from the base")
         return 0
 
-    _, suppressed = groups(by_file)
-    for path in suppressed:
-        print(f" -- suppressed by `record-once-ok`, not compared: {path}")
+    at_head = lambda path: file_at(path, "HEAD")  # noqa: E731
+    _, suppressed = groups(by_file, at_head)
+    for note in suppressed:
+        print(f" -- exempted by `record-once-ok`, not compared: {note}")
 
-    problems = violations(by_file)
+    problems = violations(by_file, at_head)
     if not problems:
         print(" OK no wording was added to more than one file")
         return 0

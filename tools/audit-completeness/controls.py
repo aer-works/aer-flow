@@ -438,6 +438,48 @@ def _recordonce_reads_leaders_only():
         yield
 
 
+@control(RECORDONCE, "one marker mutes a whole file again, so unrelated restatement in it ships green")
+def _recordonce_marker_mutes_file():
+    # #676's primary defect, restored. The dangerous direction of a hatch is that it is too WIDE:
+    # a marker placed for one deliberate second copy stopped every other passage the change added to
+    # that file from being compared, and nothing said so.
+    def file_granular(mod):
+        real = mod.exemptions
+
+        def whole_file(path, at):
+            shingles, markers = real(path, at)
+            if not markers:
+                return shingles, markers
+            every = set()
+            for words in mod.prose_runs(path, [at(path) or []]):
+                for i in range(len(words) - mod.SHINGLE + 1):
+                    every.add(tuple(words[i:i + mod.SHINGLE]))
+            return every, markers
+        replacing(mod, "exemptions", whole_file)
+    with _loading_recordonce_as(file_granular):
+        yield
+
+
+@control(RECORDONCE, "the marker is matched on raw lines, so a code literal silences the checker")
+def _recordonce_marker_ignores_context():
+    # The other half of #676: with no context test, writing the marker's characters anywhere in a
+    # tracked file exempted that file -- including in a string literal in a fixture, which is why
+    # selfcheck.py had to assemble the string from fragments to test the checker at all.
+    def raw_lines(mod):
+        real = mod.marked_runs
+
+        def marks_anything(path, hunks):
+            runs = real(path, hunks)
+            found = next((m for hunk in hunks for line in hunk
+                          if (m := mod.SUPPRESS.search(line)) is not None), None)
+            if found is None:
+                return runs
+            return [(words, (found.group(1), found.group(2))) for words, _ in runs]
+        replacing(mod, "marked_runs", marks_anything)
+    with _loading_recordonce_as(raw_lines):
+        yield
+
+
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
     # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.

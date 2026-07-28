@@ -771,10 +771,13 @@ def _recordonce_discriminates():
     sentence = "the vendor refuses the call before any hook is ever consulted here"
     restated = {"src/A.cs": one(f"// {sentence}"), "docs/B.md": one(sentence)}
 
-    # Assembled, not written out: `SUPPRESS` has no notion of context, so a literal marker in this
-    # file would exempt the whole of this file from the checker it is a fixture for. Same reason
-    # `controls.py` assembles BAD_PIN and interpolates PLANTED_COUNT.
-    marker = "// record-once" + "-ok: #901 canonical is docs/B.md"
+    # Written out as a literal, which #676 is what makes possible: the marker is now read out of a
+    # file's COMMENT PROSE, so these characters sitting in a Python string are code and exempt
+    # nothing. Before that, any tracked file containing them anywhere exempted itself, and this line
+    # had to be assembled from fragments to avoid disabling the checker it is a fixture for.
+    # The canonical path has to be a file that EXISTS -- a marker naming one that does not is
+    # refused, which the last arm below asserts. So the fixture names a real one.
+    marker = "// record-once-ok: #901 canonical is docs/plan.md"
 
     # Genuinely different sentences, as real files citing one issue have -- a fixture that repeated
     # one sentence ten times would be restatement, and the checker would be right to say so.
@@ -855,8 +858,6 @@ def _recordonce_discriminates():
          {"src/Aer.Ui.Core/Generated.cs": [banner], "src/Aer.Mobile/lib/tokens.dart": [banner]}, False),
         ("the same command block fenced in two runbooks",
          {"docs/runbooks/a.md": [fenced], "docs/runbooks/b.md": [fenced]}, False),
-        ("a file a marker exempts",
-         {"src/A.cs": one(f"// {sentence}", marker), "docs/B.md": one(sentence)}, False),
     ]
     for label, by_file, fires in polarities:
         found = rec.violations(by_file)
@@ -865,12 +866,55 @@ def _recordonce_discriminates():
         else:
             assert not found, f"record-once: {label} was rejected -- {found}"
 
-    # The exemption has to be visible, or a silenced run reads exactly like a clean one.
-    assert rec.groups({"src/A.cs": one(marker)})[1] == ["src/A.cs"], (
-        "record-once: a suppressed file was not reported as suppressed")
+    # -- #676, the exemption. Its own table, because every arm needs a marker source: markers are
+    # read from whole files now, not from the diff, so these say what each file CONTAINS as well as
+    # what the change added.
+    marked = {"src/A.cs": [f"// {sentence}", marker], "docs/B.md": [sentence]}
+    added = {"src/A.cs": one(f"// {sentence}"), "docs/B.md": one(sentence)}
+    at = lambda path: marked.get(path)  # noqa: E731
+
+    # The marker is in neither file's ADDED lines. Under the old added-lines match this was flagged
+    # again the moment someone reworded a copy without re-touching the marker -- the "too weak over
+    # time" half of #676. The exemption is a decision about the passage, so it has to outlive the
+    # commit that made it.
+    assert not rec.violations(added, at), (
+        "record-once: an exemption granted by an earlier change no longer holds")
+
+    # And it must be reported, or a silenced run reads exactly like a clean one.
+    notes = rec.groups(added, at)[1]
+    assert notes and "#901" in notes[0] and "docs/plan.md" in notes[0], (
+        f"record-once: the exemption was not reported with its issue and canonical path -- {notes}")
+
+    # PASSAGE-level, not file-level: a second, unmarked restatement in the SAME file is still found.
+    # Under a file-granular hatch one marker in a file stopped everything else in it being compared.
+    other = "a withheld write reaching the outbox is the only exemption that exists"
+    marked_two = {"src/A.cs": [f"// {sentence}", marker, "", f"// {other}"],
+                  "docs/B.md": [sentence], "docs/C.md": [other]}
+    assert rec.violations(
+        {"src/A.cs": one(f"// {sentence}", marker, "", f"// {other}"),
+         "docs/B.md": one(sentence), "docs/C.md": one(other)},
+        lambda path: marked_two.get(path)), (
+        "record-once: a marker exempted a passage it does not sit beside")
+
+    # The context test. The same characters in a code position -- a Python string literal, which is
+    # exactly how this file writes `marker` above -- must exempt nothing.
+    literal = {"tools/x.py": [f'marker = "{marker}"', f"# {sentence}"], "docs/B.md": [sentence]}
+    assert rec.violations({"tools/x.py": one(f'marker = "{marker}"', f"# {sentence}"),
+                           "docs/B.md": one(sentence)}, lambda path: literal.get(path)), (
+        "record-once: a marker written as a code literal silenced the checker")
+
+    # A marker whose canonical location does not exist is a typo, not a decision, and a typo that
+    # silences a gate is worse than no marker. Refused, reported, and nothing is exempted.
+    typo = marker.replace("docs/plan.md", "docs/no-such-file.md")
+    absent = {"src/A.cs": [f"// {sentence}", typo], "docs/B.md": [sentence]}
+    at_typo = lambda path: absent.get(path)  # noqa: E731
+    assert rec.violations(added, at_typo), (
+        "record-once: a marker naming a file that does not exist still exempted the passage")
+    assert "REFUSED" in rec.groups(added, at_typo)[1][0], (
+        "record-once: a refused marker was reported as though it had been honoured")
 
     return (f"{len(polarities)} record-once polarities "
-            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + suppression is reported")
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 6 exemption arms")
 
 
 @check("the record-once checker still finds the passages it found in a real merge")
