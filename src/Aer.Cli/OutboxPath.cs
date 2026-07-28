@@ -64,8 +64,16 @@ public static class OutboxPath
         string resolvedRoot;
         try
         {
-            resolvedCandidate = ResolveLinks(Path.GetFullPath(candidate));
-            resolvedRoot = ResolveLinks(Path.GetFullPath(root));
+            // Null is "this path could not be resolved", never "resolved to nothing" — a link cycle
+            // is the case, and it must not be answered with a half-walked path.
+            if (ResolveLinks(Path.GetFullPath(candidate)) is not { } candidateResolved ||
+                ResolveLinks(Path.GetFullPath(root)) is not { } rootResolved)
+            {
+                return false;
+            }
+
+            resolvedCandidate = candidateResolved;
+            resolvedRoot = rootResolved;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException
                                       or PathTooLongException or IOException or UnauthorizedAccessException)
@@ -111,7 +119,11 @@ public static class OutboxPath
     /// way down.
     /// </para>
     /// </remarks>
-    private static string ResolveLinks(string fullPath)
+    /// <returns>
+    /// The fully resolved path, or <see langword="null"/> when the link budget is exhausted — a cycle,
+    /// or a chain deeper than any real tree.
+    /// </returns>
+    private static string? ResolveLinks(string fullPath)
     {
         // Re-walked until it stops changing, because one pass is not enough: a link whose TARGET
         // path itself contains a link was resolved by ResolveOnce's per-component walk on the way
@@ -131,12 +143,16 @@ public static class OutboxPath
             resolved = next;
         }
 
-        // Budget exhausted: a cycle, or a chain deeper than any real tree. Whatever was reached
-        // cannot match a root prefix by construction, so this denies.
-        return resolved;
+        // Budget exhausted: a cycle, or a chain deeper than any real tree. An earlier version returned
+        // whatever it had reached and asserted that "cannot match a root prefix by construction", which
+        // was simply false — two links inside a root pointing at each other resolve, every pass, to a
+        // path still inside that root, so the half-walked answer would have ALLOWED. Nothing is known
+        // about this path, and the one posture this file holds everywhere else is that an unanswerable
+        // question denies.
+        return null;
     }
 
-    private static string ResolveOnce(string fullPath)
+    private static string? ResolveOnce(string fullPath)
     {
         var root = Path.GetPathRoot(fullPath);
         if (string.IsNullOrEmpty(root))
@@ -157,7 +173,12 @@ public static class OutboxPath
                 ? current + segment
                 : current + Path.DirectorySeparatorChar + segment;
 
-            current = FollowLink(current);
+            if (FollowLink(current) is not { } followed)
+            {
+                return null;
+            }
+
+            current = followed;
         }
 
         return current;
@@ -168,10 +189,12 @@ public static class OutboxPath
     /// </summary>
     /// <remarks>
     /// Hop-limited rather than recursive: a link cycle would otherwise spin here, and this runs on
-    /// every write a withheld-write worker attempts. Exhausting the limit returns whatever was
-    /// reached, which cannot match the outbox prefix and therefore denies.
+    /// every write a withheld-write worker attempts. Exhausting the limit returns <see langword="null"/>
+    /// so the caller denies — returning the path reached is actively wrong for the case that motivates
+    /// the limit, since a two-link cycle lands back on its own starting path after an even number of
+    /// hops, which the caller cannot tell apart from a path that needed no resolving at all.
     /// </remarks>
-    private static string FollowLink(string path)
+    private static string? FollowLink(string path)
     {
         for (var hop = 0; hop < MaxLinkHops; hop++)
         {
@@ -190,7 +213,7 @@ public static class OutboxPath
             path = Path.GetFullPath(target, Path.GetDirectoryName(path) ?? path);
         }
 
-        return path;
+        return null;
     }
 
     private const int MaxLinkHops = 16;

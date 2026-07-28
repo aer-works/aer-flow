@@ -249,6 +249,94 @@ public class OutboxWriteExemptionTests
         }
     }
 
+    [Fact]
+    public void A_link_whose_target_path_contains_another_link_cannot_launder_a_write()
+    {
+        // The measured bypass from #679's review, and the one shape the two tests above cannot reach:
+        // both plant a single link, which one resolution pass handles. Here the FIRST link's target
+        // is `<ws>/pub/x.txt` — a path that is itself routed through a second link. Resolving `hop`
+        // substitutes that target wholesale, and a single-pass walk never revisits `pub`, so the
+        // answer came back `<ws>/pub/x.txt`, prefix-matched the workspace, and reported contained
+        // while the bytes landed outside it.
+        //
+        // The direct form (`<ws>/pub/x.txt`, no `hop`) denied correctly the whole time, which is what
+        // identifies the second link as the launderer rather than the first. It is asserted below as
+        // the discriminating control: a resolver that answers false for everything passes the first
+        // assertion, and one that never regressed passes both.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-chain-").FullName;
+        try
+        {
+            var workspace = Directory.CreateDirectory(Path.Combine(root, "ws")).FullName;
+            var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
+            File.WriteAllText(Path.Combine(outside, "x.txt"), "landed outside");
+
+            var secondLink = Path.Combine(workspace, "pub");
+            var firstLink = Path.Combine(workspace, "hop");
+            try
+            {
+                Directory.CreateSymbolicLink(secondLink, outside);
+                File.CreateSymbolicLink(firstLink, Path.Combine(secondLink, "x.txt"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Windows needs Developer Mode or elevation. Skipped LOUDLY rather than returning
+                // silently like the two tests above: this is the only arm covering a measured escape,
+                // and a silent return makes an uncovered run look identical to a covered one.
+                Assert.Skip("this host cannot create symbolic links; the Linux and macOS legs assert it");
+                return;
+            }
+
+            Assert.False(OutboxPath.IsInside(firstLink, workspace));
+            Assert.False(OutboxPath.IsInside(Path.Combine(secondLink, "x.txt"), workspace));
+            Assert.True(OutboxPath.IsInside(Path.Combine(workspace, "src", "real.cs"), workspace));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_link_cycle_denies_rather_than_resolving_to_where_it_gave_up()
+    {
+        // The hop limit existed to stop this spinning, and both it and the pass limit above then
+        // returned the path they had reached — justified in a comment claiming such a path "cannot
+        // match a root prefix by construction". For a cycle that is false in the worst direction: two
+        // links inside the workspace pointing at each other land back on the starting path after an
+        // even number of hops, so the resolver returned a path inside the root and ALLOWED, and the
+        // outer loop could not tell that from a path needing no resolution at all.
+        //
+        // Denying is the only defensible answer, and it costs nothing real: the OS refuses to open a
+        // cycle anyway, so no legitimate write is being turned away here.
+        var root = Directory.CreateTempSubdirectory("aer-outbox-cycle-").FullName;
+        try
+        {
+            var workspace = Directory.CreateDirectory(Path.Combine(root, "ws")).FullName;
+            var a = Path.Combine(workspace, "a");
+            var b = Path.Combine(workspace, "b");
+            try
+            {
+                Directory.CreateSymbolicLink(a, b);
+                Directory.CreateSymbolicLink(b, a);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("this host cannot create symbolic links; the Linux and macOS legs assert it");
+                return;
+            }
+
+            Assert.False(OutboxPath.IsInside(Path.Combine(a, "x.txt"), workspace));
+            // Both controls matter: the same workspace still admits a real path, and a cycle in the
+            // ROOT is unanswerable too — otherwise only the candidate side would be covered.
+            Assert.True(OutboxPath.IsInside(Path.Combine(workspace, "src", "real.cs"), workspace));
+            Assert.False(OutboxPath.IsInside(Path.Combine(workspace, "src", "real.cs"), a));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     /// <summary>
     /// #679 inverted: a grant decides whether a worker may write, never where. This test asserted the
     /// opposite until the bound existed — it was the characterisation of the defect, and the fix is
