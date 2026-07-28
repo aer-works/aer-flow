@@ -56,7 +56,7 @@ public class AgyHookCheckCommandTests
     [Fact]
     public void A_tool_named_in_the_denied_list_is_denied()
     {
-        Assert.Equal("deny", Decide(Payload("run_command"), "run_command,manage_task"));
+        Assert.Equal("deny", Decide(Payload("run_command"), "agy:run_command,manage_task"));
     }
 
     [Fact]
@@ -64,18 +64,23 @@ public class AgyHookCheckCommandTests
     {
         // Same payload shape and same denied list as the deny case above — only the tool name
         // differs, so neither result can come from a mechanism that ignores the input.
-        Assert.Equal("allow", Decide(Payload("view_file"), "run_command,manage_task"));
+        Assert.Equal("allow", Decide(Payload("view_file"), "agy:run_command,manage_task"));
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void An_absent_or_blank_denied_list_allows_every_tool(string? denied)
+    public void An_absent_or_blank_denied_list_now_denies_because_the_gate_cannot_know(string? denied)
     {
         // A known-empty grant withholds nothing, which is different from being unable to determine
         // what is withheld — the cases below deny for exactly that reason.
-        Assert.Equal("allow", Decide(Payload("run_command"), denied));
+        // #600 inverted this deliberately. It used to allow, so "AER set the list and nothing is
+        // withheld" and "the list never arrived" were the same observable outcome. On this vendor
+        // there is no fail-closed backstop under --dangerously-skip-permissions, so a channel that
+        // silently stopped arriving meant a fully ungated worker. An empty list AER actually sent
+        // still allows; it now arrives tagged (`agy:`), which is what tells the two apart.
+        Assert.Equal("deny", Decide(Payload("run_command"), denied));
     }
 
     [Theory]
@@ -98,7 +103,7 @@ public class AgyHookCheckCommandTests
         // shape, and it must NOT be understood here. If a future refactor merged the two commands,
         // this case would start returning "allow" (claude's field, agy's fail-open) and this test
         // is what would catch it.
-        Assert.Equal("deny", Decide(stdinText, "run_command,manage_task"));
+        Assert.Equal("deny", Decide(stdinText, "agy:run_command,manage_task"));
     }
 
     [Fact]
@@ -107,7 +112,7 @@ public class AgyHookCheckCommandTests
         using var stdin = new StringReader(Payload("run_command"));
         using var stdout = new StringWriter();
 
-        AgyHookCheckCommand.Execute(stdin, stdout, "run_command");
+        AgyHookCheckCommand.Execute(stdin, stdout, "agy:run_command");
 
         using var doc = JsonDocument.Parse(stdout.ToString());
         Assert.Contains("run_command", doc.RootElement.GetProperty("reason").GetString());
@@ -121,7 +126,7 @@ public class AgyHookCheckCommandTests
         // crash-to-allow would be invisible.
         using var stdout = new StringWriter();
 
-        var exitCode = AgyHookCheckCommand.Execute(new ThrowingReader(), stdout, "run_command");
+        var exitCode = AgyHookCheckCommand.Execute(new ThrowingReader(), stdout, "agy:run_command");
 
         Assert.Equal(AgyHookCheckCommand.ExitCode, exitCode);
         using var doc = JsonDocument.Parse(stdout.ToString());
@@ -139,7 +144,7 @@ public class AgyHookCheckCommandTests
         // browser_" -- while enumerating no such tools, so the family cannot be listed by name. The
         // allow rows are the polarity control: a prefix matcher that matched everything would pass
         // the deny rows alone.
-        Assert.Equal(expected, Decide(Payload(toolName), "browser_*,search_web"));
+        Assert.Equal(expected, Decide(Payload(toolName), "agy:browser_*,search_web"));
     }
 
     [Fact]
@@ -148,7 +153,7 @@ public class AgyHookCheckCommandTests
         // Guards the prefix implementation's edge: `entry.Length > 1` means a lone "*" is not
         // treated as a match-all prefix. If it ever were, an adapter bug emitting "*" would silently
         // withhold every tool and break every worker -- loudly, but for a baffling reason.
-        Assert.Equal("allow", Decide(Payload("view_file"), "*"));
+        Assert.Equal("allow", Decide(Payload("view_file"), "agy:*"));
     }
 
     [Fact]

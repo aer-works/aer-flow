@@ -73,9 +73,20 @@ public static class HookCheckCommand
             return AllowedExitCode;
         }
 
-        var denied = ParseDeniedTools(deniedToolsRaw);
+        var deniedList = DeniedToolList.Parse(deniedToolsRaw, VendorTag);
+        if (deniedList.Status != DeniedToolListStatus.Present)
+        {
+            // #600: absent, or another vendor's list. Either way this gate cannot say what is
+            // withheld, and the old behaviour — allow — made a broken channel look like a working one.
+            return DeniedExitCode;
+        }
+
+        var denied = deniedList.Tools;
         if (denied.Count == 0)
         {
+            // AER set the list and nothing is withheld. BuildDisallowedTools returns empty whenever
+            // PermissionGrant is null (the raw PermissionScope escape hatch), which is the ordinary
+            // `aer run` shape, so this must allow.
             return AllowedExitCode;
         }
 
@@ -111,9 +122,6 @@ public static class HookCheckCommand
         return AllowedExitCode;
     }
 
-    private static HashSet<string> ParseDeniedTools(string? raw) =>
-        string.IsNullOrWhiteSpace(raw)
-            ? []
-            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToHashSet(StringComparer.Ordinal);
+    /// <summary>Mirrors <c>ClaudeWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
+    private const string VendorTag = "claude";
 }

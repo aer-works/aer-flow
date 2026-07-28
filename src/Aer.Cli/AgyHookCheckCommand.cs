@@ -136,21 +136,28 @@ public static class AgyHookCheckCommand
                             "this call rather than allowing it unchecked.");
         }
 
-        var denied = ParseDeniedTools(deniedToolsRaw);
+        var deniedList = DeniedToolList.Parse(deniedToolsRaw, VendorTag);
+        if (deniedList.Status != DeniedToolListStatus.Present)
+        {
+            // #600: absent, or claude's list rather than agy's. Either way this gate cannot say what
+            // is withheld. It used to allow, which made a channel that had stopped working look
+            // exactly like one that was — the failure `agy.hook-env-inherited` is a sentinel for. On
+            // this vendor there is no backstop under --dangerously-skip-permissions, so the safe
+            // direction is the only defensible one.
+            return DenyJson(
+                deniedList.Status == DeniedToolListStatus.Absent
+                    ? "AER: the permission gate did not receive its denied-tool list and denied this " +
+                      "call rather than allowing it unchecked."
+                    : "AER: the permission gate received another vendor's denied-tool list, whose tool " +
+                      "names it cannot judge, and denied this call rather than allowing it unchecked.");
+        }
+
+        var denied = deniedList.Tools;
         if (denied.Count == 0)
         {
-            // Nothing is withheld for this invocation, so there is nothing this gate can object to.
-            //
-            // NOTE this is reached identically for an absent variable and a present-but-empty one --
-            // ParseDeniedTools collapses null, "" and "   " to the same empty set, and this check
-            // runs BEFORE any payload validation. So AER cannot currently tell "nothing is withheld"
-            // from "the denied list never arrived". The allow is still right: BuildDeniedTools
-            // returns empty whenever PermissionGrant is null (the raw PermissionScope escape hatch,
-            // which carries no categories), and denying there would break every raw-scope worker.
-            // But if agy ever stopped inheriting the environment -- the failure
-            // `agy.hook-env-inherited` is a sentinel for -- this degrades to a silent total allow.
-            // Making the two distinguishable needs a vendor-tagged sentinel value from both
-            // adapters; tracked in #600.
+            // AER set the list and nothing is withheld. BuildDeniedTools returns empty whenever
+            // PermissionGrant is null (the raw PermissionScope escape hatch), which is the ordinary
+            // `aer run` shape, so denying here would break every raw-scope worker.
             return AllowJson;
         }
 
@@ -200,11 +207,8 @@ public static class AgyHookCheckCommand
     private static string DenyJson(string reason) =>
         JsonSerializer.Serialize(new { decision = "deny", reason });
 
-    private static HashSet<string> ParseDeniedTools(string? raw) =>
-        string.IsNullOrWhiteSpace(raw)
-            ? []
-            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToHashSet(StringComparer.Ordinal);
+    /// <summary>Mirrors <c>GeminiWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
+    private const string VendorTag = "agy";
 
     /// <summary>
     /// True when <paramref name="toolName"/> is withheld: either named exactly, or matched by an
@@ -218,7 +222,7 @@ public static class AgyHookCheckCommand
     /// trailing <c>*</c> rather than full regex: the input is AER's own adapter output, not operator
     /// text, and a regex engine here would be a larger surface than the problem.
     /// </remarks>
-    private static bool IsWithheld(HashSet<string> denied, string toolName)
+    private static bool IsWithheld(IReadOnlySet<string> denied, string toolName)
     {
         if (denied.Contains(toolName))
         {

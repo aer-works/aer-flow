@@ -606,7 +606,7 @@ public class GeminiWorkerAdapterTests
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("write_to_file", denied);
         Assert.Contains("replace_file_content", denied);
@@ -629,7 +629,7 @@ public class GeminiWorkerAdapterTests
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("view_file", denied);
         Assert.Contains("grep_search", denied);
@@ -653,7 +653,7 @@ public class GeminiWorkerAdapterTests
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("run_command", denied);
         Assert.Contains("manage_task", denied);
@@ -682,7 +682,7 @@ public class GeminiWorkerAdapterTests
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable).Split(',');
+        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("search_web", denied);
         Assert.Contains("read_url_content", denied);
@@ -744,7 +744,8 @@ public class GeminiWorkerAdapterTests
         var target = new GeminiWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan."), ArchitectContract);
 
-        Assert.Equal(string.Empty, EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable));
+        // #600: the tag is what makes this an empty list AER actively sent, rather than an absence.
+        Assert.Equal("agy:", EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable));
     }
 
     [Fact]
@@ -860,5 +861,29 @@ public class GeminiWorkerAdapterTests
         using var verdict = System.Text.Json.JsonDocument.Parse(stdout);
         return (verdict.RootElement.GetProperty("decision").GetString()!,
                 verdict.RootElement.TryGetProperty("reason", out var r) ? r.GetString() ?? "" : "");
+    }
+
+    /// <summary>
+    /// #600 tags the denied-tools value with its vendor (<c>agy:</c>) so an absent list, an empty
+    /// one AER set, and another vendor's list are distinguishable. Every assertion below is about the
+    /// tool names, so the tag is removed here rather than repeated in each one — and pinned once, in
+    /// <see cref="The_denied_tools_value_is_tagged_with_this_adapters_vendor"/>.
+    /// </summary>
+    private static string StripVendorTag(string value)
+    {
+        Assert.StartsWith("agy:", value, StringComparison.Ordinal);
+        return value["agy:".Length..];
+    }
+
+    [Fact]
+    public void The_denied_tools_value_is_tagged_with_this_adapters_vendor()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("p", PermissionGrant: new PermissionGrant(ReadFiles: true, WriteFiles: false)),
+            ArchitectContract);
+
+        var value = target.Environment!.Single(v => v.Name == GeminiWorkerAdapter.DeniedToolsVariable).Value;
+
+        Assert.StartsWith("agy:", value, StringComparison.Ordinal);
     }
 }
