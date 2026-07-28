@@ -316,3 +316,32 @@ Split a candidate delegation by whether the subagent's output *is* the deliverab
 - **Don't delegate**: codebase research meant to inform your own implementation. If you need exact signatures, line numbers, or precise API shapes to write correct code against, you will re-read the same files yourself to verify a summary anyway — the delegated research becomes a redundant pass, not a saved one. Read the source directly instead of asking an agent to summarize it for you.
 
 Rule of thumb: delegate mechanical, bounded, low-judgment generation; keep anything requiring ground-truth precision (exact APIs, architectural invariants, spec compliance) in the primary session.
+
+---
+
+## Agent skills
+
+Configuration the installed engineering skills read. Written by `/setup-matt-pocock-skills`.
+
+### Issue tracker
+
+GitHub issues in `aer-works/aer-flow`, via `gh`. See `docs/agents/issue-tracker.md`. Branch, commit,
+and PR rules stay in "Git conventions" above — that file does not restate them.
+
+### Triage labels
+
+The five canonical roles, un-namespaced, and none of them exists on GitHub yet. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. **This repo's decision records live in `docs/decisions/` — do not create
+`docs/adr/`.** Two skills hardcode that path in their own text — `/domain-modeling` (which will
+create it lazily) and `/improve-codebase-architecture` — and it is wrong here: a second ADR
+directory would split a 42-file register in two, which the `record-once` gate exists to stop.
+`/tdd` and `/diagnosing-bugs` say "ADRs" without naming a path, so they need no correction.
+
+There is no `CONTEXT.md`, and four skills look for one by name (the two above, plus `/tdd` and
+`/diagnosing-bugs`). The vocabulary they want is in `docs/decisions/0002-one-vocabulary.md` — code
+and UI use the same words, no translation map. Read that instead, and don't create a `CONTEXT.md`
+that would become a second place the same nouns are defined.
