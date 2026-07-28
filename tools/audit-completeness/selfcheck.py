@@ -760,13 +760,24 @@ def _recordonce_discriminates():
     """
     rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
 
-    sentence = "the vendor refuses the call before any hook is ever consulted here"
-    restated = {"src/A.cs": [f"// {sentence}"], "docs/B.md": [sentence]}
+    # recordonce takes added lines split BY HUNK, so every fixture says which lines are contiguous.
+    # Written out rather than defaulted, because contiguity is now load-bearing: a fixture that
+    # silently rejoined two hunks would exercise the fabricated-shingle path the split exists to
+    # close, and would do it invisibly.
+    def one(*lines: str) -> list[list[str]]:
+        """One hunk: every line contiguous with the next."""
+        return [list(lines)]
 
-    # Assembled, not written out: `SUPPRESS` has no notion of context, so a literal marker in this
-    # file would exempt the whole of this file from the checker it is a fixture for. Same reason
-    # `controls.py` assembles BAD_PIN and interpolates PLANTED_COUNT.
-    marker = "// record-once" + "-ok: #901 canonical is docs/B.md"
+    sentence = "the vendor refuses the call before any hook is ever consulted here"
+    restated = {"src/A.cs": one(f"// {sentence}"), "docs/B.md": one(sentence)}
+
+    # Written out as a literal, which #676 is what makes possible: the marker is now read out of a
+    # file's COMMENT PROSE, so these characters sitting in a Python string are code and exempt
+    # nothing. Before that, any tracked file containing them anywhere exempted itself, and this line
+    # had to be assembled from fragments to avoid disabling the checker it is a fixture for.
+    # The canonical path has to be a file that EXISTS -- a marker naming one that does not is
+    # refused, which the last arm below asserts. So the fixture names a real one.
+    marker = "// record-once-ok: #901 canonical is docs/plan.md"
 
     # Genuinely different sentences, as real files citing one issue have -- a fixture that repeated
     # one sentence ten times would be restatement, and the checker would be right to say so.
@@ -792,27 +803,66 @@ def _recordonce_discriminates():
         # A restatement that reaches a code file only through its comments still has to be found:
         # the measured case spread one corrected fact across `///` comments and markdown alike.
         ("prose restated across a comment and a doc",
-         {"src/C.cs": [f"/// {sentence}"], "docs/D.md": [f"- {sentence}"]}, True),
+         {"src/C.cs": one(f"/// {sentence}"), "docs/D.md": one(f"- {sentence}")}, True),
+        # Guards contiguity from the other side: a break rule that split per line would satisfy every
+        # arm below while losing the only shape the checker was built for. See `groups` in
+        # recordonce.py for why a run spans consecutive comment lines.
+        ("a sentence wrapped across two comment lines",
+         {"src/W.cs": one("/// the vendor refuses the call before any hook",
+                          "/// is ever consulted here at all"),
+          "docs/W.md": one("the vendor refuses the call before any hook is ever consulted here "
+                           "at all")}, True),
+        # Was a FALSE POSITIVE until hunks were split apart, and measured as one: neither hunk holds
+        # nine words, so the only shingle either file can produce is the join -- a word sequence
+        # present in no line of either. Two files "sharing" it shared nothing. The same fabrication
+        # also reached the `e.g. "..."` sample printed under real findings.
+        ("two files sharing only a cross-hunk join",
+         {p: [["/// the gate refuses a payload"], ["/// it cannot judge at all"]]
+          for p in ("src/H1.cs", "src/H2.cs")}, False),
+        # #675's coverage half. None of these carried a leader on the line holding the words, so all
+        # three were invisible to the leader regex -- and a Python docstring is not an exotic case
+        # here: repinning PROVEN_GROUPS on this change was caused by exactly one, in dispatch.py.
+        ("a block-comment body with no leader on its lines",
+         {"src/BC.cs": one("/* the vendor refuses the call before any hook",
+                           "   is ever consulted here at all */"),
+          "docs/BC.md": one(f"{sentence} at all")}, True),
+        ("a python docstring restated into a doc",
+         {"tools/x.py": one("def f():", f'    """{sentence}."""'),
+          "docs/PY.md": one(sentence)}, True),
+        ("an xml comment restated into a doc",
+         {"src/X.csproj": one(f"<!-- {sentence} -->"), "docs/XM.md": one(sentence)}, True),
+        # The other direction of the same change: context means code positions stop being read, and
+        # a `#if` is not a `#` comment. Under the old leader regex this fired.
+        ("a C# preprocessor directive shared by two files",
+         {p: one("#if WINDOWS", "#region the vendor refuses the call before any hook is here",
+                 "#endif") for p in ("src/P1.cs", "src/P2.cs")}, False),
+        # An unanchored opener would find `//` inside every one of these and read the URL as prose.
+        ("the same long url in code in two files",
+         {p: one('var u = "https://example.com/a/b/c/d/e/f/g/h/i/j";')
+          for p in ("src/U1.cs", "src/U2.cs")}, False),
         # Was a false positive under the reference-counting design: one issue cited in many files
         # is the register working, and ten different sentences share no wording.
         ("one issue cited in ten files",
-         {f"src/F{i}.cs": [f"{line} See #901."] for i, line in enumerate(distinct)}, False),
+         {f"src/F{i}.cs": one(f"{line} See #901.") for i, line in enumerate(distinct)}, False),
         # Was a false positive under the first shingling design: duplicated test setup is ordinary.
         ("duplicated test setup code",
-         {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
-                             "using var stderr = new StringWriter();"] for i in range(3)}, False),
+         {f"tests/T{i}.cs": one("var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
+                                "using var stderr = new StringWriter();") for i in range(3)}, False),
         # The three shapes the first draft failed CI on, for the reason recorded beside `TABLE_ROW`
         # in recordonce.py. The first of them fired on every new decision record.
         ("a decision record, its index row and its plan row",
-         {"docs/decisions/0042-x.md": [f"# 0042 - {title}"],
-          "docs/decisions/README.md": [f"| [0042](0042-x.md) | {title} | M26 |"],
-          "docs/plan.md": [f"| 0042 | {title} | done |"]}, False),
+         {"docs/decisions/0042-x.md": one(f"# 0042 - {title}"),
+          "docs/decisions/README.md": one(f"| [0042](0042-x.md) | {title} | M26 |"),
+          "docs/plan.md": one(f"| 0042 | {title} | done |")}, False),
         ("a regenerated banner in two generated files",
-         {"src/Aer.Ui.Core/Generated.cs": banner, "src/Aer.Mobile/lib/tokens.dart": banner}, False),
+         {"src/Aer.Ui.Core/Generated.cs": [banner], "src/Aer.Mobile/lib/tokens.dart": [banner]}, False),
         ("the same command block fenced in two runbooks",
-         {"docs/runbooks/a.md": fenced, "docs/runbooks/b.md": fenced}, False),
-        ("a file a marker exempts",
-         {"src/A.cs": [f"// {sentence}", marker], "docs/B.md": [sentence]}, False),
+         {"docs/runbooks/a.md": [fenced], "docs/runbooks/b.md": [fenced]}, False),
+        # A file with no extension is still a file with comments, and the per-language table read it
+        # as nothing while every arm above stayed green. `NO_EXTENSION` in recordonce.py carries the
+        # measurement; what this arm adds is that a narrowing cannot ship silently again.
+        ("prose in an extensionless file restated into a doc",
+         {".githooks/pre-push": one(f"# {sentence}"), "docs/EX.md": one(sentence)}, True),
     ]
     for label, by_file, fires in polarities:
         found = rec.violations(by_file)
@@ -821,12 +871,76 @@ def _recordonce_discriminates():
         else:
             assert not found, f"record-once: {label} was rejected -- {found}"
 
-    # The exemption has to be visible, or a silenced run reads exactly like a clean one.
-    assert rec.groups({"src/A.cs": [marker]})[1] == ["src/A.cs"], (
-        "record-once: a suppressed file was not reported as suppressed")
+    # -- #676, the exemption. Its own table, because every arm needs a marker source: markers are
+    # read from whole files now, not from the diff, so these say what each file CONTAINS as well as
+    # what the change added.
+    marked = {"src/A.cs": [f"// {sentence}", marker], "docs/B.md": [sentence]}
+    added = {"src/A.cs": one(f"// {sentence}"), "docs/B.md": one(sentence)}
+    at = lambda path: marked.get(path)  # noqa: E731
+
+    # The marker is in neither file's ADDED lines. Under the old added-lines match this was flagged
+    # again the moment someone reworded a copy without re-touching the marker -- the "too weak over
+    # time" half of #676. The exemption is a decision about the passage, so it has to outlive the
+    # commit that made it.
+    assert not rec.violations(added, at), (
+        "record-once: an exemption granted by an earlier change no longer holds")
+
+    # And it must be reported, or a silenced run reads exactly like a clean one.
+    notes = rec.groups(added, at)[1]
+    assert notes and "#901" in notes[0] and "docs/plan.md" in notes[0], (
+        f"record-once: the exemption was not reported with its issue and canonical path -- {notes}")
+
+    # PASSAGE-level, not file-level: a second, unmarked restatement in the SAME file is still found.
+    # Under a file-granular hatch one marker in a file stopped everything else in it being compared.
+    other = "a withheld write reaching the outbox is the only exemption that exists"
+    marked_two = {"src/A.cs": [f"// {sentence}", marker, "", f"// {other}"],
+                  "docs/B.md": [sentence], "docs/C.md": [other]}
+    assert rec.violations(
+        {"src/A.cs": one(f"// {sentence}", marker, "", f"// {other}"),
+         "docs/B.md": one(sentence), "docs/C.md": one(other)},
+        lambda path: marked_two.get(path)), (
+        "record-once: a marker exempted a passage it does not sit beside")
+
+    # The context test. The same characters in a code position -- a Python string literal, which is
+    # exactly how this file writes `marker` above -- must exempt nothing.
+    literal = {"tools/x.py": [f'marker = "{marker}"', f"# {sentence}"], "docs/B.md": [sentence]}
+    assert rec.violations({"tools/x.py": one(f'marker = "{marker}"', f"# {sentence}"),
+                           "docs/B.md": one(sentence)}, lambda path: literal.get(path)), (
+        "record-once: a marker written as a code literal silenced the checker")
+
+    # Prose ABOUT the marker is not a marker. The false positive the anchored SUPPRESS was added
+    # for, and it was live rather than theoretical -- `SUPPRESS` in recordonce.py records which
+    # docstring it was and what it exempted. The second assertion is the load-bearing one: a mention
+    # must be inert, not merely un-honoured, or every document explaining the syntax fails the gate.
+    mention = f"// see {marker[3:]} for the format"
+    describes = {"src/A.cs": [f"// {sentence}", mention], "docs/B.md": [sentence]}
+    at_mention = lambda path: describes.get(path)  # noqa: E731
+    assert rec.violations(added, at_mention), (
+        "record-once: a marker named inside a sentence exempted a passage")
+    assert not rec.groups(added, at_mention)[2], (
+        "record-once: prose describing the marker was reported as a broken one")
+
+    # A marker whose canonical location does not exist, and one that does not parse at all, each
+    # exempt nothing AND fail the run. Both are unambiguous typos, and both previously landed as a
+    # printed note saying the passage had been exempted while it was being compared.
+    typo = marker.replace("docs/plan.md", "docs/no-such-file.md")
+    absent = {"src/A.cs": [f"// {sentence}", typo], "docs/B.md": [sentence]}
+    at_typo = lambda path: absent.get(path)  # noqa: E731
+    assert rec.violations(added, at_typo), (
+        "record-once: a marker naming a file that does not exist still exempted the passage")
+    assert any("does not exist" in b for b in rec.groups(added, at_typo)[2]), (
+        "record-once: a refused marker was reported as though it had been honoured")
+
+    # One file, no shared wording: the ONLY thing wrong is the marker, so a green run here would be
+    # the silent no-op itself rather than any restatement finding masking it.
+    broken = {"src/A.cs": ["// record-once-ok: #901", f"// {sentence}"]}
+    solo = rec.violations({"src/A.cs": one("// record-once-ok: #901", f"// {sentence}")},
+                          lambda path: broken.get(path))
+    assert len(solo) == 1 and "does not parse" in solo[0], (
+        f"record-once: a marker with no canonical path failed silently -- {solo}")
 
     return (f"{len(polarities)} record-once polarities "
-            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + suppression is reported")
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 9 exemption arms")
 
 
 @check("the record-once checker still finds the passages it found in a real merge")

@@ -310,6 +310,22 @@ def _loading_recordonce_as(mutate):
     return swap(selfcheck, "load", patched)
 
 
+def replacing(mod, name, value):
+    """setattr, but refuse to invent an attribute that is not already there.
+
+    A mutation is only a mutation if something reads what it replaced. Renaming `prose_words` to
+    `prose_runs` left `setattr(mod, "prose_words", ...)` quietly defining a function nobody calls, so
+    the arm below ran an UNMUTATED checker and reported the green as evidence the check discriminates.
+    `audit-controls` caught it, one layer up, which is the only reason it is not still there.
+
+    Bare `setattr` cannot tell a rename from a working control, and neither can a reader. This can.
+    """
+    assert hasattr(mod, name), (
+        f"control tried to replace {mod.__name__}.{name}, which does not exist -- renamed? "
+        "A mutation of an attribute nothing reads is not a control.")
+    setattr(mod, name, value)
+
+
 MOBILE_FILTER = "the mobile job's steps live where its path filter can see them"
 
 
@@ -385,7 +401,7 @@ RECORDONCE_PIN = "the record-once checker still finds the passages it found in a
 
 @control(RECORDONCE, "the checker stops finding anything, so every restatement ships green")
 def _recordonce_blind():
-    with _loading_recordonce_as(lambda m: setattr(m, "violations", lambda by_file: [])):
+    with _loading_recordonce_as(lambda m: replacing(m, "violations", lambda by_file: [])):
         yield
 
 
@@ -394,22 +410,120 @@ def _recordonce_reads_code():
     # The false-positive direction, and the one a fires-on-restatement check cannot see alone: a
     # checker that flags every shared `using var stderr = new StringWriter();` blocks real work
     # while looking exactly as healthy as one that works.
+    #
+    # Reads every line as prose while leaving contiguity intact -- one run per hunk, as the real
+    # thing produces. Injecting both faults at once would let a contiguity regression masquerade as
+    # this one, and this arm is named for exactly one of them.
     def read_everything(mod):
-        mod.prose_words = lambda path, lines: [w for line in lines for w in mod.normalise(line)]
+        replacing(mod, "prose_runs",
+                  lambda path, hunks: [[w for line in hunk for w in mod.normalise(line)]
+                                       for hunk in hunks])
     with _loading_recordonce_as(read_everything):
+        yield
+
+
+@control(RECORDONCE, "comment context is lost, so docstrings and block bodies go invisible again")
+def _recordonce_reads_leaders_only():
+    # The pre-#675 reader, verbatim: a leader match per line, with no notion of what a line is inside.
+    # Distinct from the arm above, which is the false-positive direction -- this is the one that
+    # silently NARROWS the population, and narrowing is the failure that ships green. Repinning
+    # PROVEN_GROUPS on #675 was caused by one docstring this cannot see.
+    leader = re.compile(r"^\s*(///|//|/\*|\*|#|--|<!--)")
+
+    def leaders_only(mod):
+        replacing(mod, "comment_text",
+                  lambda lines, openers, blocks:
+                      (line if leader.match(line) else None for line in lines))
+    with _loading_recordonce_as(leaders_only):
+        yield
+
+
+@control(RECORDONCE, "one marker mutes a whole file again, so unrelated restatement in it ships green")
+def _recordonce_marker_mutes_file():
+    # #676's primary defect, restored. The dangerous direction of a hatch is that it is too WIDE:
+    # a marker placed for one deliberate second copy stopped every other passage the change added to
+    # that file from being compared, and nothing said so.
+    def file_granular(mod):
+        real = mod.exemptions
+
+        def whole_file(path, at):
+            shingles, notes, bad = real(path, at)
+            if not notes:
+                return shingles, notes, bad
+            every = set()
+            for words in mod.prose_runs(path, [at(path) or []]):
+                for i in range(len(words) - mod.SHINGLE + 1):
+                    every.add(tuple(words[i:i + mod.SHINGLE]))
+            return every, notes, bad
+        replacing(mod, "exemptions", whole_file)
+    with _loading_recordonce_as(file_granular):
+        yield
+
+
+@control(RECORDONCE, "the marker is matched on raw lines, so a code literal silences the checker")
+def _recordonce_marker_ignores_context():
+    # The other half of #676: with no context test, the marker's characters anywhere in a tracked
+    # file exempted that file. See `marked_runs` in recordonce.py for what that cost.
+    #
+    # Carries the pre-anchor pattern rather than borrowing `mod.SUPPRESS`, because the anchor added
+    # later would refuse `marker = "// record-once-ok: ..."` before the missing context test ever
+    # mattered, and the arm would go green while naming a defect it had stopped modelling. Two
+    # independent defences now stand between a code literal and an exemption; this one is named for
+    # the context test, so it holds the other constant.
+    unanchored = re.compile(r"record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)")
+
+    def raw_lines(mod):
+        real = mod.marked_runs
+
+        def marks_anything(path, hunks):
+            runs = real(path, hunks)
+            found = next((m for hunk in hunks for line in hunk
+                          if (m := unanchored.search(line)) is not None), None)
+            if found is None:
+                return runs
+            return [(words, (found.group(1), found.group(2))) for words, _ in runs]
+        replacing(mod, "marked_runs", marks_anything)
+    with _loading_recordonce_as(raw_lines):
+        yield
+
+
+@control(RECORDONCE, "the marker matches mid-sentence, so prose explaining it becomes a decision")
+def _recordonce_marker_unanchored():
+    # Not hypothetical: this checker's own docstring, describing what the marker looks like, was read
+    # as one naming a file that does not exist -- and the run printed that a passage had been
+    # exempted while comparing it. Documentation about a marker is the text certain to contain it.
+    unanchored = re.compile(r"record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)")
+    with _loading_recordonce_as(lambda m: replacing(m, "SUPPRESS", unanchored)):
+        yield
+
+
+@control(RECORDONCE, "a mistyped marker exempts nothing and says nothing, as it used to")
+def _recordonce_malformed_marker_is_silent():
+    # The `setattr` shape one commit earlier, in the hatch instead of the harness: the author reads a
+    # green gate as their exemption being recorded, the gate reads no marker at all, and the two
+    # states are indistinguishable from either side. A never-matching pattern restores exactly that.
+    with _loading_recordonce_as(lambda m: replacing(m, "SUPPRESS_LOOSE", re.compile(r"(?!)"))):
+        yield
+
+
+@control(RECORDONCE, "an extensionless file reads as nothing, so its comments go uncompared")
+def _recordonce_drops_extensionless():
+    # Restores the narrowing this change was measured to have shipped, by emptying the fallback.
+    # `NO_EXTENSION` in recordonce.py is where the measurement lives.
+    with _loading_recordonce_as(lambda m: replacing(m, "NO_EXTENSION", ())):
         yield
 
 
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
     # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.
-    with _loading_recordonce_as(lambda m: setattr(m, "TABLE_ROW", re.compile(r"(?!)"))):
+    with _loading_recordonce_as(lambda m: replacing(m, "TABLE_ROW", re.compile(r"(?!)"))):
         yield
 
 
 @control(RECORDONCE_PIN, "the pin is emptied, so the checker can stop finding anything and stay green")
 def _recordonce_pin_is_vacuous():
-    with _loading_recordonce_as(lambda m: setattr(m, "PROVEN_GROUPS", ())):
+    with _loading_recordonce_as(lambda m: replacing(m, "PROVEN_GROUPS", ())):
         yield
 
 
