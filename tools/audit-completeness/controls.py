@@ -310,21 +310,41 @@ def _loading_recordonce_as(mutate):
     return swap(selfcheck, "load", patched)
 
 
-@control("the record-once checker fires on restated prose, not on shared references or code",
-         "the checker stops finding anything, so every restatement ships green")
+RECORDONCE = "the record-once checker fires on restated prose, not on text the register prescribes"
+RECORDONCE_PIN = "the record-once checker still finds the passages it found in a real merge"
+
+
+@control(RECORDONCE, "the checker stops finding anything, so every restatement ships green")
 def _recordonce_blind():
     with _loading_recordonce_as(lambda m: setattr(m, "violations", lambda by_file: [])):
         yield
 
 
-@control("the record-once checker fires on restated prose, not on shared references or code",
-         "the checker reads code as prose, so ordinary duplicated test setup is flagged")
+@control(RECORDONCE, "the checker reads code as prose, so ordinary duplicated test setup is flagged")
 def _recordonce_reads_code():
     # The false-positive direction, and the one a fires-on-restatement check cannot see alone: a
     # checker that flags every shared `using var stderr = new StringWriter();` blocks real work
     # while looking exactly as healthy as one that works.
-    with _loading_recordonce_as(lambda m: setattr(m, "is_prose", lambda path, line: True)):
+    def read_everything(mod):
+        mod.prose_words = lambda path, lines: [w for line in lines for w in mod.normalise(line)]
+    with _loading_recordonce_as(read_everything):
         yield
+
+
+@control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
+def _recordonce_reads_index_rows():
+    # The shape that shipped in the first draft of this checker and would have fired on every new
+    # decision record: the index row and the plan row repeat the record's title, and repeating it
+    # there is the link `record-once` asks for.
+    with _loading_recordonce_as(lambda m: setattr(m, "TABLE_ROW", re.compile(r"(?!)"))):
+        yield
+
+
+@control(RECORDONCE_PIN, "the pin is emptied, so the checker can stop finding anything and stay green")
+def _recordonce_pin_is_vacuous():
+    with _loading_recordonce_as(lambda m: setattr(m, "PROVEN_GROUPS", ())):
+        yield
+
 
 def main() -> int:
     print(__doc__.strip().splitlines()[0])

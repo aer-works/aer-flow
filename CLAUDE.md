@@ -238,9 +238,9 @@ checks) is enumerable and its omissions are otherwise invisible.
 **A broken check is fixed in the change that found it, not filed** — until it is, every later change
 ships past it. The single exception to "a second defect becomes its own issue", which is about
 *product* defects. Enforced where it can be: `pixi run audit-controls` fails a checker with no
-discriminating control, and each checker pins a real historical range it must still fire on
-(`recordonce.py`'s `PROVEN_AGAINST`) — fixtures alone have twice certified a checker that was useless
-on real data.
+discriminating control, and `recordonce.py` pins the exact passages it must still find in a real
+merge (`PROVEN_GROUPS`) — fixtures alone have twice certified a checker that was useless on real
+data.
 
 ---
 

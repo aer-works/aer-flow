@@ -642,25 +642,27 @@ def _instruments_self_test():
             "+ control_arm's red baseline")
 
 
-@check("the record-once checker fires on restated prose, not on shared references or code")
+@check("the record-once checker fires on restated prose, not on text the register prescribes")
 def _recordonce_discriminates():
-    """Three polarities, because this design has already been wrong in both directions.
+    """A table, not a run of asserts, so the population line is counted rather than transcribed.
 
-    Counting issue references was tried first: measured against the real merged PR it flagged the
-    issue that PR implemented (30 files) as loudly as the one genuine restatement (5). Then shingling
-    flagged duplicated test setup. Each arm below is one of those mistakes, kept so it cannot recur.
+    `fires=True` means the input must be reported; `fires=False` means it must not. Both directions,
+    because a checker that reported everything would satisfy only the first kind -- and three
+    designs of this one have now been wrong in the second, each time on text whose duplication
+    `record-once` itself prescribes.
     """
     rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
 
-    sentence = "// the vendor refuses the call before any hook is ever consulted here"
-    restated = {"src/A.cs": [sentence], "docs/B.md": [sentence.replace("// ", "")]}
-    assert rec.violations(restated), (
-        "the same sentence in two files was accepted -- the shape this exists for")
+    sentence = "the vendor refuses the call before any hook is ever consulted here"
+    restated = {"src/A.cs": [f"// {sentence}"], "docs/B.md": [sentence]}
 
-    # Was a false positive under the reference-counting design: one issue cited in many files is the
-    # register working, and thirty different sentences share no wording.
+    # Assembled, not written out: `SUPPRESS` has no notion of context, so a literal marker in this
+    # file would exempt the whole of this file from the checker it is a fixture for. Same reason
+    # `controls.py` assembles BAD_PIN and interpolates PLANTED_COUNT.
+    marker = "// record-once" + "-ok: #901 canonical is docs/B.md"
+
     # Genuinely different sentences, as real files citing one issue have -- a fixture that repeated
-    # one sentence thirty times would be restatement, and the checker would be right to say so.
+    # one sentence ten times would be restatement, and the checker would be right to say so.
     distinct = [
         "// Pre-approved either way, because the hook is what confines the target path.",
         "// Refused at bind time rather than discovered after the run is paid for.",
@@ -673,21 +675,68 @@ def _recordonce_discriminates():
         "// Only the deny list enforces; the allow list merely stops the prompt appearing.",
         "// Kept as its own condition so the operator learns which mistake they made.",
     ]
-    references = {f"src/F{i}.cs": [f"{line} See #901."] for i, line in enumerate(distinct)}
-    assert not rec.violations(references), (
-        "citing one issue in ten files was rejected -- that is the register working, and "
-        "rejecting it blocks every substantial PR")
+    title = "A reviewer's verdict is evidence for a human decision, never the decision itself"
+    banner = ["// GENERATED FILE - DO NOT EDIT.", "// Regenerate: pixi run tokens",
+              "// Hand edits are reverted by the next regeneration and fail CI in the meantime."]
+    fenced = ["Run it like this:", "```bash", "pixi run audit-recordonce -- origin/main", "```"]
 
-    # Was a false positive under the first shingling design: duplicated test setup is ordinary.
-    code = {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
-                               "using var stderr = new StringWriter();"] for i in range(3)}
-    assert not rec.violations(code), "duplicated test setup code was rejected -- code is not prose"
+    polarities = [
+        ("one sentence written into two files", restated, True),
+        # A restatement that reaches a code file only through its comments still has to be found:
+        # the measured case spread one corrected fact across `///` comments and markdown alike.
+        ("prose restated across a comment and a doc",
+         {"src/C.cs": [f"/// {sentence}"], "docs/D.md": [f"- {sentence}"]}, True),
+        # Was a false positive under the reference-counting design: one issue cited in many files
+        # is the register working, and ten different sentences share no wording.
+        ("one issue cited in ten files",
+         {f"src/F{i}.cs": [f"{line} See #901."] for i, line in enumerate(distinct)}, False),
+        # Was a false positive under the first shingling design: duplicated test setup is ordinary.
+        ("duplicated test setup code",
+         {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
+                             "using var stderr = new StringWriter();"] for i in range(3)}, False),
+        # The three that shipped as hard CI failures in the first draft, each on text the gate
+        # prescribes. The decision-record one fired on every new record: the index row and the
+        # plan row repeat the record's own title, which is the link the gate asks for.
+        ("a decision record, its index row and its plan row",
+         {"docs/decisions/0042-x.md": [f"# 0042 - {title}"],
+          "docs/decisions/README.md": [f"| [0042](0042-x.md) | {title} | M26 |"],
+          "docs/plan.md": [f"| 0042 | {title} | done |"]}, False),
+        ("a regenerated banner in two generated files",
+         {"src/Aer.Ui.Core/Generated.cs": banner, "src/Aer.Mobile/lib/tokens.dart": banner}, False),
+        ("the same command block fenced in two runbooks",
+         {"docs/runbooks/a.md": fenced, "docs/runbooks/b.md": fenced}, False),
+        ("a file a marker exempts",
+         {"src/A.cs": [f"// {sentence}", marker], "docs/B.md": [sentence]}, False),
+    ]
+    for label, by_file, fires in polarities:
+        found = rec.violations(by_file)
+        if fires:
+            assert found, f"record-once: {label} was accepted -- the shape this exists for"
+        else:
+            assert not found, f"record-once: {label} was rejected -- {found}"
 
-    suppressed = dict(restated)
-    suppressed["src/A.cs"] = [sentence, "// record-once-ok: #901 canonical is docs/B.md"]
-    assert not rec.violations(suppressed), "record-once-ok did not suppress its file"
+    # The exemption has to be visible, or a silenced run reads exactly like a clean one.
+    assert rec.groups({"src/A.cs": [marker]})[1] == ["src/A.cs"], (
+        "record-once: a suppressed file was not reported as suppressed")
 
-    return "4 polarities (restated prose / shared reference / duplicated code / suppressed)"
+    return (f"{len(polarities)} record-once polarities "
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + suppression is reported")
+
+
+@check("the record-once checker still finds the passages it found in a real merge")
+def _recordonce_still_fires_on_real_data():
+    """Fixtures above encode the failures already known. This one runs against a real diff.
+
+    Two designs of that checker passed every fixture written for them and were useless on the merge
+    they existed to catch, so the fixtures cannot be the whole test. Registered here rather than left
+    as a bare CLI mode so `audit-controls` reaches it: an unadjudicated pin would otherwise sit green
+    forever.
+    """
+    rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce_pin")
+    ok, detail = rec.prove(rec.PROVEN_SHA, rec.PROVEN_GROUPS)
+    assert ok, "record-once no longer finds what it found in " + rec.PROVEN_SHA[:7] + ":\n  " \
+        + "\n  ".join(detail)
+    return detail[0]
 
 
 def main() -> int:
@@ -727,7 +776,6 @@ def main() -> int:
     if FAILURES:
         print(f"\n{len(FAILURES)} failing assertion(s).")
         return 1
-    # (checks are registered above; see _recordonce_discriminates)
     print(f"\nAll {len(CHECKS)} assertions hold.")
     return 0
 

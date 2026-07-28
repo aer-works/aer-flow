@@ -1,8 +1,8 @@
 """Fail a change that writes the same passage into more than one file (#671).
 
-`record-once` is the gate with the worst compliance record in this repo and the only one with no
-checker. It is prose enforcing prose, so it fails the way prose does: one change restated a single
-corrected fact into five files, and CI was green throughout.
+`record-once` is the gate with the worst compliance record in this repo, and the half of it that
+concerns restatement had no checker. It is prose enforcing prose, so it fails the way prose does:
+one change restated a single corrected fact into five files, and CI was green throughout.
 
 Operates on the DIFF, never the tree, and on PROSE, not on issue references.
 
@@ -21,8 +21,16 @@ cites no issue at all, which the reference design could not see by construction.
     pixi run audit-recordonce -- <base>  # against any other base
 
 WHAT IT CANNOT CHECK:
+  * A copy of text that ALREADY EXISTS in the tree. The population is added lines, so both copies
+    have to be written in the same change. Pasting a paragraph out of CLAUDE.md into a new doc is
+    invisible -- which is the dominant real shape of the violation. #674.
+  * Which change introduced a duplication. `git diff` emits a modified line as `+`, so touching two
+    files that already shared a passage reads the same as writing it twice. #674.
   * A comment the change FALSIFIED without touching -- absent from the diff by definition. #636's.
-  * The same fact PARAPHRASED. Shingles match text, not meaning.
+  * The same fact PARAPHRASED. Shingles match text, not meaning: nine consecutive words have to
+    match, so one substituted word inside the window defeats it.
+  * Prose that carries no comment leader in a code file -- `/* */` bodies, Python docstrings, string
+    literals. Only leader-led lines are read. #675.
   * Whether the surviving copy is the right one. It finds duplicates; it does not rank them.
 """
 from __future__ import annotations
@@ -33,7 +41,8 @@ import subprocess
 import sys
 
 # Escapes one file, for a second copy that is genuinely right -- a decision record and the code it
-# governs. Naming an issue is required so it reads as a decision rather than a mute.
+# governs. Naming an issue is required so it reads as a decision rather than a mute. The unit is the
+# whole file for this change, which is coarser than the passage it should cover: #676.
 SUPPRESS = re.compile(r"record-once-ok:\s*#(\d{3,})")
 
 # Long enough that ordinary phrasing does not collide by accident, short enough to catch a restated
@@ -50,13 +59,43 @@ NOISE = re.compile(r"#\d{3,}|https?://\S+")
 # Prose only. Duplicated *code* across files is ordinary -- two tests legitimately open with the same
 # `var grant = new PermissionGrant(...)` and the same `using var stderr = new StringWriter()`, and
 # flagging those was the second false-positive class this check produced. In a code file only comment
-# lines are read; markdown is prose throughout.
+# lines are read; markdown is prose apart from the exclusions below.
 PROSE_EVERYWHERE = (".md",)
 COMMENT = re.compile(r"^\s*(///|//|/\*|\*|#|--|<!--)")
 
+# Text whose duplication `record-once` PRESCRIBES, and which therefore cannot be evidence against it.
+#
+#   * A markdown table row. The decision-index row repeats the record's own title verbatim, and
+#     `docs/plan.md` repeats it again -- so adding any decision record produced a three-file group.
+#     That is the register working: the record is canonical, the rows are the links to it.
+#   * A fenced block inside markdown. Two runbooks showing the same `pixi run` invocation are
+#     showing the same command, not restating a fact.
+#   * A generated file. Its single source is a string literal in the generator, invisible here; the
+#     copies are derived. Rewording the banner re-emits it into every generated file at once, and
+#     those files cannot carry a suppression marker -- Aer.Architecture.Tests fails hand edits.
+PATH_PREFIX = re.compile(r"^b/")
+TABLE_ROW = re.compile(r"^\s*\|")
+FENCE = re.compile(r"^\s*(```|~~~)")
+GENERATED = re.compile(r"GENERATED FILE", re.IGNORECASE)
 
-def is_prose(path: str, line: str) -> bool:
-    return path.endswith(PROSE_EVERYWHERE) or bool(COMMENT.match(line))
+
+def prose_words(path: str, lines: list[str]) -> list[str]:
+    """The added text of one file, as a single normalised word stream, exclusions applied."""
+    if any(GENERATED.search(line) for line in lines[:8]):
+        return []
+
+    markdown = path.endswith(PROSE_EVERYWHERE)
+    words: list[str] = []
+    fenced = False
+    for line in lines:
+        if markdown and FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced or (markdown and TABLE_ROW.match(line)):
+            continue
+        if markdown or COMMENT.match(line):
+            words.extend(normalise(line))
+    return words
 
 
 def normalise(line: str) -> list[str]:
@@ -67,26 +106,62 @@ def normalise(line: str) -> list[str]:
     return text.split()
 
 
-# A real historical change this must still fire on, pinned by SHA (`--prove`).
+# A real historical change this must still fire on, pinned by SHA and by exact result (`--prove`).
 #
 # Fixtures are not enough and that is measured, not cautionary: two earlier designs of this checker
 # passed every fixture written for them and were useless against the diff they existed to catch. The
 # first counted issue references and flagged the issue its own PR implemented; the second read
 # duplicated test setup as restatement. Both looked healthy in `selfcheck.py`.
 #
-# fc884cd is the #666 merge, which restated one corrected fact across several files. If a future
-# change to this file stops finding those, it has stopped working -- whatever its fixtures say.
-PROVEN_AGAINST = ("fc884cd6dac19f16d803c28246e101e1c9fef493", 8)
+# fc884cd is the #666 merge, which restated one corrected fact across several files.
+#
+# The pin is the file-sets, not how many there are. A count only ever moves in one direction:
+# `SHINGLE = 3` would satisfy `>= n` while making the tool unusable, and any false positive the pin
+# happened to include would become mandatory -- fixing it would break the pin. Pinning the sets
+# means a change to WHICH passages are found has to be adjudicated line by line, which is the only
+# reading of this list that is worth anything. Each entry below was read; none is boilerplate.
+PROVEN_SHA = "fc884cd6dac19f16d803c28246e101e1c9fef493"
+PROVEN_GROUPS = (
+    ('docs/decisions/0004-permission-scopes.md', 'src/Aer.Adapters/IWorkerAdapter.cs'),
+    ('docs/decisions/0029-the-gate-is-three-mechanisms.md', 'docs/documentation-lessons.md',
+     'src/Aer.Adapters/ClaudeWorkerAdapter.cs', 'tests/Aer.Cli.Tests/HookCheckCommandTests.cs'),
+    ('docs/decisions/0029-the-gate-is-three-mechanisms.md',
+     'tests/Aer.Cli.Tests/HookCheckCommandTests.cs'),
+    ('docs/documentation-lessons.md', 'src/Aer.Adapters/ClaudeWorkerAdapter.cs'),
+    ('docs/documentation-lessons.md', 'tests/Aer.Cli.Tests/HookCheckCommandTests.cs'),
+    ('docs/runbooks/live-claude-smoke.md',
+     'tests/Aer.Cli.SmokeTests/LiveReadOnlyReviewerSmokeTest.cs'),
+    ('docs/vendor-doc-audit.md', 'src/Aer.Cli/HookCheckCommand.cs'),
+    ('src/Aer.Adapters/ClaudeWorkerAdapter.cs', 'tests/Aer.Adapters.Tests/ClaudeWorkerAdapterTests.cs'),
+    ('src/Aer.Adapters/IncoherentPermissionGrantException.cs',
+     'src/Aer.Adapters/WorkerBindingResolver.cs'),
+    ('src/Aer.Adapters/WorkerBindingResolver.cs',
+     'tests/Aer.Adapters.Tests/WorkerBindingResolverTests.cs'),
+    ('src/Aer.Cli/HookCheckCommand.cs', 'src/Aer.Cli/OutboxPath.cs',
+     'tests/Aer.Cli.Tests/OutboxWriteExemptionTests.cs'),
+    ('src/Aer.Cli/HookCheckCommand.cs', 'tests/Aer.Cli.Tests/HookCheckCommandTests.cs'),
+    ('src/Aer.Cli/HookCheckCommand.cs', 'tests/Aer.Cli.Tests/OutboxWriteExemptionTests.cs'),
+    ('src/Aer.Cli/OutboxPath.cs', 'tests/Aer.Cli.Tests/OutboxWriteExemptionTests.cs'),
+    ('tests/Aer.Ui.Tests/SessionAnswerWithoutOutputFileTests.cs',
+     'tests/Aer.Ui.Tests/TestSupport/SessionTurnStubAdapter.cs'),
+)
 
 
-def prove(sha: str, minimum: int) -> tuple[bool, str]:
-    """Run against a recorded historical change and report whether it still fires there."""
+def prove(sha: str, expected: tuple[tuple[str, ...], ...]) -> tuple[bool, list[str]]:
+    """Run against a recorded historical change and report whether it finds the same passages."""
     try:
         by_file = added_lines_by_file(f"{sha}^", head=sha)
     except subprocess.CalledProcessError as exc:
-        return False, f"cannot read {sha[:7]} -- {exc.stderr.strip()}"
-    found = len(violations(by_file))
-    return found >= minimum, f"{found} passage(s) in {sha[:7]}, expected at least {minimum}"
+        return False, [f"cannot read {sha[:7]} -- {exc.stderr.strip()}"]
+
+    found = {tuple(g) for g in groups(by_file)[0]}
+    want = {tuple(g) for g in expected}
+    if found == want:
+        return True, [f"{len(found)} passage(s) in {sha[:7]}, all as pinned"]
+
+    detail = [f"no longer finds in {sha[:7]}:  {g}" for g in sorted(want - found)]
+    detail += [f"now finds in {sha[:7]}, unpinned:  {g}" for g in sorted(found - want)]
+    return False, detail
 
 
 def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[str]]:
@@ -98,21 +173,29 @@ def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[str]]:
     by_file: dict[str, list[str]] = collections.defaultdict(list)
     current = None
     for line in out.splitlines():
-        if line.startswith("+++ b/"):
-            current = line[6:]
-        elif line.startswith("+") and not line.startswith("+++") and current:
+        if line.startswith("+++"):
+            # git quotes a path holding non-ASCII or shell-special characters: `+++ "b/docs/café.md"`.
+            # Matching only `+++ b/` left `current` pointing at the previous file, so that file's
+            # added lines were appended to a stream belonging to a different path.
+            path = line[4:].strip()
+            current = None if path == "/dev/null" else PATH_PREFIX.sub("", path.strip('"'), count=1)
+        elif line.startswith("+") and current:
             by_file[current].append(line[1:])
     return by_file
 
 
-def violations(by_file: dict[str, list[str]]) -> list[str]:
+def groups(by_file: dict[str, list[str]]) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]],
+                                                    list[str]]:
+    """File-sets that share at least one shingle, plus the files a marker took out of the run."""
     # Each file's added text is shingled as one stream rather than per line: the measured
     # restatement wrapped mid-sentence in every file it landed in.
     where: dict[tuple[str, ...], set[str]] = collections.defaultdict(set)
+    suppressed = []
     for path, lines in by_file.items():
         if any(SUPPRESS.search(line) for line in lines):
+            suppressed.append(path)
             continue
-        words = [w for line in lines if is_prose(path, line) for w in normalise(line)]
+        words = prose_words(path, lines)
         for i in range(len(words) - SHINGLE + 1):
             where[tuple(words[i:i + SHINGLE])].add(path)
 
@@ -122,12 +205,20 @@ def violations(by_file: dict[str, list[str]]) -> list[str]:
     for shingle, files in where.items():
         if len(files) > 1:
             by_group[tuple(sorted(files))].append(shingle)
+    return by_group, sorted(suppressed)
+
+
+def violations(by_file: dict[str, list[str]]) -> list[str]:
+    by_group, _ = groups(by_file)
 
     # A restated passage spanning four files also produces a group for every pair and triple within
-    # it. Reporting only the maximal sets turns two dozen entries back into the handful of passages
-    # a person actually has to fix.
+    # it, and collapsing those turns two dozen entries back into the handful a person has to fix.
+    # Collapse only when the smaller group's shingles are also the larger's: two unrelated passages
+    # that happen to nest would otherwise leave one of them unprinted and undiscoverable.
     maximal = [f for f in by_group
-               if not any(other != f and set(f) < set(other) for other in by_group)]
+               if not any(other != f and set(f) < set(other)
+                          and set(by_group[f]) <= set(by_group[other])
+                          for other in by_group)]
 
     problems = []
     for files in sorted(maximal):
@@ -138,18 +229,23 @@ def violations(by_file: dict[str, list[str]]) -> list[str]:
             + "\n".join(f"      {p}" for p in files)
             + f"\n      e.g. \"{sample}\"\n"
             + "      Keep it in one; link from the rest. A deliberate second copy needs\n"
-            + "      `record-once-ok: #<issue>` in the file that keeps it.")
+            + "      `record-once-ok: #<issue>` in the file holding that copy -- which exempts\n"
+            + "      the whole of that file for this change, and says so in the output.")
     return problems
 
 
 def main(argv: list[str]) -> int:
     if len(argv) > 1 and argv[1] == "--prove":
-        ok, detail = prove(*PROVEN_AGAINST)
-        print(f"record-once --prove: {detail}")
+        ok, detail = prove(PROVEN_SHA, PROVEN_GROUPS)
         if not ok:
-            print("!! the checker no longer fires on the change it was built to catch.",
+            print("!! the checker no longer finds what it was built to find.", file=sys.stderr)
+            for line in detail:
+                print(f"   {line}", file=sys.stderr)
+            print("   Adjudicate each line before repinning: a passage that stopped being found is\n"
+                  "   a regression, and one newly found has to be a real restatement.",
                   file=sys.stderr)
             return 1
+        print(f"record-once --prove: {detail[0]}")
         print(" OK still fires on real historical data, not only on its fixtures")
         return 0
 
@@ -163,13 +259,24 @@ def main(argv: list[str]) -> int:
         print("   CI needs actions/checkout with fetch-depth: 0 for this to work.", file=sys.stderr)
         return 1
 
-    problems = violations(by_file)
     print(f"record-once: {len(by_file)} changed file(s) against {base}")
+    if not by_file:
+        # An empty population passing looks exactly like a real pass, which is the failure this
+        # tool's neighbours exist to prevent. Say which one it was. On a push to `main`,
+        # `origin/main...HEAD` is empty and only `--prove` carries the job.
+        print(" -- nothing to compare: no file differs from the base")
+        return 0
+
+    _, suppressed = groups(by_file)
+    for path in suppressed:
+        print(f" -- suppressed by `record-once-ok`, not compared: {path}")
+
+    problems = violations(by_file)
     if not problems:
         print(" OK no wording was added to more than one file")
         return 0
 
-    print(f" !! {len(problems)} restated passage(s)\n", file=sys.stderr)
+    print(f" !! {len(problems)} group(s) of files sharing added wording\n", file=sys.stderr)
     for p in problems:
         print(p, file=sys.stderr)
     return 1

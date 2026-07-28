@@ -355,13 +355,10 @@ jobs:
       # checker that failed.
       - name: Prove those assertions discriminate
         run: pixi run audit-controls
-      # See tools/audit-completeness/recordonce.py (#671).
+      # See tools/audit-completeness/recordonce.py (#671). The pin that keeps this checker honest on
+      # real data runs inside audit-selfcheck above, where audit-controls can reach it.
       - name: No fact is explained in more than one place
         run: pixi run audit-recordonce -- origin/${{ github.base_ref || 'main' }}
-      # Fixtures have twice certified a version of that checker that was useless on real data, so it
-      # also has to still fire on a recorded historical change (its PROVEN_AGAINST pin).
-      - name: The checker still fires on real data
-        run: pixi run audit-recordonce -- --prove
 
   ci:
     needs: [changes, test, mobile, audit]
