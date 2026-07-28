@@ -297,6 +297,71 @@ def _code_tokens_keeps_comments():
         yield
 
 
+# The check under these two loads `recordonce.py` itself, so the fault has to be injected into what
+# `load` hands back rather than onto a module attribute.
+def _loading_recordonce_as(mutate):
+    real = selfcheck.load
+
+    def patched(path, name):
+        mod = real(path, name)
+        if path.name == "recordonce.py":
+            mutate(mod)
+        return mod
+    return swap(selfcheck, "load", patched)
+
+
+BUDGET = "every dispatch tells the worker the budget it is actually given"
+
+
+@control(BUDGET, "the preamble is dropped, so every worker is timed without being told")
+def _dispatch_says_nothing():
+    with swap(selfcheck.dispatch, "budget_preamble", lambda minutes, output: ""):
+        yield
+
+
+@control(BUDGET, "the preamble names a fixed number instead of the budget the binding carries")
+def _dispatch_states_the_wrong_budget():
+    # The direction a "does it mention minutes?" test cannot see. Every template but one would still
+    # read correctly, and the worker that is misinformed is the one with the longest run to lose.
+    with swap(selfcheck.dispatch, "budget_preamble",
+              lambda minutes, output: f"BUDGET: you have 25 minutes. Write {output} early.\n\n"):
+        yield
+
+
+RECORDONCE = "the record-once checker fires on restated prose, not on text the register prescribes"
+RECORDONCE_PIN = "the record-once checker still finds the passages it found in a real merge"
+
+
+@control(RECORDONCE, "the checker stops finding anything, so every restatement ships green")
+def _recordonce_blind():
+    with _loading_recordonce_as(lambda m: setattr(m, "violations", lambda by_file: [])):
+        yield
+
+
+@control(RECORDONCE, "the checker reads code as prose, so ordinary duplicated test setup is flagged")
+def _recordonce_reads_code():
+    # The false-positive direction, and the one a fires-on-restatement check cannot see alone: a
+    # checker that flags every shared `using var stderr = new StringWriter();` blocks real work
+    # while looking exactly as healthy as one that works.
+    def read_everything(mod):
+        mod.prose_words = lambda path, lines: [w for line in lines for w in mod.normalise(line)]
+    with _loading_recordonce_as(read_everything):
+        yield
+
+
+@control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
+def _recordonce_reads_index_rows():
+    # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.
+    with _loading_recordonce_as(lambda m: setattr(m, "TABLE_ROW", re.compile(r"(?!)"))):
+        yield
+
+
+@control(RECORDONCE_PIN, "the pin is emptied, so the checker can stop finding anything and stay green")
+def _recordonce_pin_is_vacuous():
+    with _loading_recordonce_as(lambda m: setattr(m, "PROVEN_GROUPS", ())):
+        yield
+
+
 def main() -> int:
     print(__doc__.strip().splitlines()[0])
     print("=" * 78)
@@ -354,3 +419,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

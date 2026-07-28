@@ -204,6 +204,39 @@ def is_citation(src, m):
 # The enumerable surfaces
 # ---------------------------------------------------------------------------------------------
 
+@check("every dispatch tells the worker the budget it is actually given")
+def _dispatch_states_its_budget():
+    """A worker that does not know it is being timed spends the budget as if it were unbounded.
+
+    Nothing else can catch a preamble that stops being attached: the run still succeeds, and the
+    cost shows up only as a report that was two-thirds written when the process was killed. The
+    minutes are compared against the `Timeout` the same call emits, so a preamble that names a
+    number the binding does not carry fails here rather than misinforming the worker.
+    """
+    body = "-- the operator's own prompt --"
+    assert dispatch.TEMPLATES, "TEMPLATES is empty -- this compared nothing"
+    for name, tpl in resolved_templates().items():
+        output = f"{name}-artifact.md"
+        entry = dispatch.build_bindings(
+            worker_name="w", prompt_text=body, output_name=output,
+            adapter=tpl["adapter"], working_directory=ROOT,
+            timeout_minutes=tpl["timeout_minutes"], model=tpl["model"], effort=tpl["effort"],
+            read_files=tpl["read_files"], write_files=tpl["write_files"],
+            run_shell_commands=tpl["run_shell_commands"], network_access=tpl["network_access"],
+        )["w"]
+        prompt = entry["PromptTemplate"]
+        assert prompt.endswith(body), (
+            f"TEMPLATES[{name!r}]: the operator's prompt no longer arrives intact")
+        hours, minutes, _ = entry["Timeout"].split(":")
+        assert f"{int(hours) * 60 + int(minutes)} minutes" in prompt, (
+            f"TEMPLATES[{name!r}]: the prompt does not state the budget the binding carries "
+            f"({entry['Timeout']}) -- a worker told the wrong number is worse than one told none")
+        assert output in prompt, (
+            f"TEMPLATES[{name!r}]: the prompt never names {output}, so 'write it early' names "
+            "nothing the worker can act on")
+    return f"{len(dispatch.TEMPLATES)} templates x (budget stated = budget bound, prompt intact)"
+
+
 @check("every gemini template pins a model `agy models` lists")
 def _pins_resolve():
     accepted = register_models()
@@ -276,7 +309,7 @@ def _templates_are_dispatchable():
         "template to grant a workspace write it does not need."
     )
     assert dispatch.grant_refusal({**reviewer, "adapter": "gemini"}) is not None, (
-        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #670."
+        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #901."
     )
 
     for label, arm in refusal_arms.items():
@@ -640,6 +673,102 @@ def _instruments_self_test():
     return (f"{len(polarities)} code_tokens polarities "
             f"({sum(1 for p in polarities if not p[3])} must discriminate) "
             "+ control_arm's red baseline")
+
+
+@check("the record-once checker fires on restated prose, not on text the register prescribes")
+def _recordonce_discriminates():
+    """A table, not a run of asserts, so the population line is counted rather than transcribed.
+
+    `fires=True` means the input must be reported; `fires=False` means it must not. Both directions,
+    because a checker that reported everything would satisfy only the first kind -- and three
+    designs of this one have now been wrong in the second, each time on text whose duplication
+    `record-once` itself prescribes.
+    """
+    rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
+
+    sentence = "the vendor refuses the call before any hook is ever consulted here"
+    restated = {"src/A.cs": [f"// {sentence}"], "docs/B.md": [sentence]}
+
+    # Assembled, not written out: `SUPPRESS` has no notion of context, so a literal marker in this
+    # file would exempt the whole of this file from the checker it is a fixture for. Same reason
+    # `controls.py` assembles BAD_PIN and interpolates PLANTED_COUNT.
+    marker = "// record-once" + "-ok: #901 canonical is docs/B.md"
+
+    # Genuinely different sentences, as real files citing one issue have -- a fixture that repeated
+    # one sentence ten times would be restatement, and the checker would be right to say so.
+    distinct = [
+        "// Pre-approved either way, because the hook is what confines the target path.",
+        "// Refused at bind time rather than discovered after the run is paid for.",
+        "// The exemption covers write-family tools only; a read carries a path too.",
+        "// Fails closed on every payload it cannot judge, including its own defects.",
+        "// Resolves every component so a planted link cannot launder the target.",
+        "// Adapter-agnostic, so narrowing this would refuse on one vendor at bind time.",
+        "// Measured live across four consecutive dispatches with distinct task directories.",
+        "// The vendor ignores the process working directory, which is why cwd is not it.",
+        "// Only the deny list enforces; the allow list merely stops the prompt appearing.",
+        "// Kept as its own condition so the operator learns which mistake they made.",
+    ]
+    title = "A reviewer's verdict is evidence for a human decision, never the decision itself"
+    banner = ["// GENERATED FILE - DO NOT EDIT.", "// Regenerate: pixi run tokens",
+              "// Hand edits are reverted by the next regeneration and fail CI in the meantime."]
+    fenced = ["Run it like this:", "```bash", "pixi run audit-recordonce -- origin/main", "```"]
+
+    polarities = [
+        ("one sentence written into two files", restated, True),
+        # A restatement that reaches a code file only through its comments still has to be found:
+        # the measured case spread one corrected fact across `///` comments and markdown alike.
+        ("prose restated across a comment and a doc",
+         {"src/C.cs": [f"/// {sentence}"], "docs/D.md": [f"- {sentence}"]}, True),
+        # Was a false positive under the reference-counting design: one issue cited in many files
+        # is the register working, and ten different sentences share no wording.
+        ("one issue cited in ten files",
+         {f"src/F{i}.cs": [f"{line} See #901."] for i, line in enumerate(distinct)}, False),
+        # Was a false positive under the first shingling design: duplicated test setup is ordinary.
+        ("duplicated test setup code",
+         {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
+                             "using var stderr = new StringWriter();"] for i in range(3)}, False),
+        # The three shapes the first draft failed CI on, for the reason recorded beside `TABLE_ROW`
+        # in recordonce.py. The first of them fired on every new decision record.
+        ("a decision record, its index row and its plan row",
+         {"docs/decisions/0042-x.md": [f"# 0042 - {title}"],
+          "docs/decisions/README.md": [f"| [0042](0042-x.md) | {title} | M26 |"],
+          "docs/plan.md": [f"| 0042 | {title} | done |"]}, False),
+        ("a regenerated banner in two generated files",
+         {"src/Aer.Ui.Core/Generated.cs": banner, "src/Aer.Mobile/lib/tokens.dart": banner}, False),
+        ("the same command block fenced in two runbooks",
+         {"docs/runbooks/a.md": fenced, "docs/runbooks/b.md": fenced}, False),
+        ("a file a marker exempts",
+         {"src/A.cs": [f"// {sentence}", marker], "docs/B.md": [sentence]}, False),
+    ]
+    for label, by_file, fires in polarities:
+        found = rec.violations(by_file)
+        if fires:
+            assert found, f"record-once: {label} was accepted -- the shape this exists for"
+        else:
+            assert not found, f"record-once: {label} was rejected -- {found}"
+
+    # The exemption has to be visible, or a silenced run reads exactly like a clean one.
+    assert rec.groups({"src/A.cs": [marker]})[1] == ["src/A.cs"], (
+        "record-once: a suppressed file was not reported as suppressed")
+
+    return (f"{len(polarities)} record-once polarities "
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + suppression is reported")
+
+
+@check("the record-once checker still finds the passages it found in a real merge")
+def _recordonce_still_fires_on_real_data():
+    """Fixtures above encode the failures already known. This one runs against a real diff.
+
+    Two designs of that checker passed every fixture written for them and were useless on the merge
+    they existed to catch, so the fixtures cannot be the whole test. Registered here rather than left
+    as a bare CLI mode so `audit-controls` reaches it: an unadjudicated pin would otherwise sit green
+    forever.
+    """
+    rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce_pin")
+    ok, detail = rec.prove(rec.PROVEN_SHA, rec.PROVEN_GROUPS)
+    assert ok, "record-once no longer finds what it found in " + rec.PROVEN_SHA[:7] + ":\n  " \
+        + "\n  ".join(detail)
+    return detail[0]
 
 
 def main() -> int:

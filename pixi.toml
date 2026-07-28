@@ -193,6 +193,9 @@ audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
 
+# Needs full history: it diffs against origin/main. See recordonce.py (#671).
+audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }
+
 # The free half of the same suite, and the trigger for the paid half: compares each installed CLI's
 # `--version` against the version recorded in the lock file. Starts no session and spends no quota,
 # so it runs in the ordinary dev loop — `pixi run test` runs the same comparison via

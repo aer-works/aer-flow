@@ -328,6 +328,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The record-once check below diffs against origin/main. A shallow clone cannot see it, and
+          # the check fails closed rather than passing on an unreadable diff -- so the depth is what
+          # makes it run at all.
+          fetch-depth: 0
       # Same setup the test and pack jobs use, for the reason recorded there: pinning a pixi version
       # pinned one too old to read this repo's lock file (version 7), and setup-pixi's own install
       # step fails hard on an empty environment. Let `pixi run` do the implicit install.
@@ -350,6 +355,10 @@ jobs:
       # checker that failed.
       - name: Prove those assertions discriminate
         run: pixi run audit-controls
+      # See tools/audit-completeness/recordonce.py (#671). The pin that keeps this checker honest on
+      # real data runs inside audit-selfcheck above, where audit-controls can reach it.
+      - name: No fact is explained in more than one place
+        run: pixi run audit-recordonce -- origin/${{ github.base_ref || 'main' }}
 
   ci:
     needs: [changes, test, mobile, audit]
