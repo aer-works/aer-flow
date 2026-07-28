@@ -47,7 +47,7 @@ public class WorkerBindingResolverTests
         var binding = (WorkerBinding.Process)bindings["architect"];
         Assert.Equal("echo", binding.Target.Program);
         Assert.Equal(
-            ["Draft a plan.", "claude-opus-4", "write-only", "architect", "goal", "plan"],
+            ["Draft a plan.", "claude-opus-4", "write-only", "(no-permission-grant)", "architect", "goal", "plan"],
             binding.Target.Args);
     }
 
@@ -63,7 +63,9 @@ public class WorkerBindingResolverTests
         var bindings = WorkerBindingResolver.Resolve(config, adapters);
 
         var binding = (WorkerBinding.Process)bindings["architect"];
-        Assert.Equal(["Draft a plan.", "(no-model)", "(no-permission-scope)", "architect", "goal", "plan"], binding.Target.Args);
+        Assert.Equal(
+            ["Draft a plan.", "(no-model)", "(no-permission-scope)", "(no-permission-grant)", "architect", "goal", "plan"],
+            binding.Target.Args);
     }
 
     [Fact]
@@ -373,12 +375,18 @@ public class WorkerBindingResolverTests
     public void A_grant_that_withholds_categories_without_the_shell_resolves()
     {
         // The second control. Withholding writes is perfectly coherent when no shell is granted —
-        // that is the ordinary read-only reviewer, and it must keep working.
+        // #529 is about a shell that defeats a withhold, and there is no shell here to defeat one.
+        //
+        // Deliberately on a contract with no declared outputs. It used to use one that declares
+        // "plan", described as "the ordinary read-only reviewer", and that shape is now refused by
+        // #629's separate rule — a worker that must produce an artifact and cannot write is
+        // unsatisfiable whether or not a shell is involved. Keeping the old contract here would make
+        // this control fail for a reason that has nothing to do with what it controls for.
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: false,
             RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
 
-        var bindings = WorkerBindingResolver.Resolve(ConfigWithGrant(grant), EchoAdapter());
+        var bindings = WorkerBindingResolver.Resolve(ConfigWith(NoOutputsContract, grant), EchoAdapter());
 
         Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
     }
@@ -428,4 +436,138 @@ public class WorkerBindingResolverTests
         Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // #629 — a step that must produce an artifact, bound to a worker that cannot write one.
+    // ---------------------------------------------------------------------------------------
+
+    private static readonly WorkerContract NoOutputsContract = new("architect", ["goal"], [], []);
+
+    private static Dictionary<string, WorkerBindingConfigEntry> ConfigWith(
+        WorkerContract contract, PermissionGrant? grant, string adapter = "echo") =>
+        new()
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                adapter, contract, "Draft a plan.", TimeSpan.FromMinutes(5), PermissionGrant: grant),
+        };
+
+    [Fact]
+    public void A_contract_with_outputs_bound_to_a_grant_that_cannot_write_is_refused()
+    {
+        // The only way a vendor worker satisfies ProducedOutputs is by writing the artifact into
+        // AER_OUTPUT_DIR. Withholding the write tools makes the contract unsatisfiable on its face,
+        // and before this the run was dispatched, paid for in full, and only then failed the check.
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+
+        var thrown = Assert.Throws<UnsatisfiableOutputContractException>(
+            () => WorkerBindingResolver.Resolve(ConfigWith(ArchitectContract, grant), EchoAdapter()));
+
+        Assert.Equal("architect", thrown.WorkerName);
+        Assert.Equal(["plan"], thrown.UnwritableOutputs);
+    }
+
+    [Fact]
+    public void The_refusal_names_every_output_the_worker_cannot_write()
+    {
+        var contract = new WorkerContract(
+            "architect", ["goal"], [new ProducedOutput("plan"), new ProducedOutput("notes.md")], []);
+
+        var thrown = Assert.Throws<UnsatisfiableOutputContractException>(
+            () => WorkerBindingResolver.Resolve(
+                ConfigWith(contract, new PermissionGrant(ReadFiles: true, WriteFiles: false)), EchoAdapter()));
+
+        Assert.Equal(["plan", "notes.md"], thrown.UnwritableOutputs);
+    }
+
+    [Fact]
+    public void An_adapter_that_does_not_consume_a_grant_is_not_refused_for_one()
+    {
+        // The control that killed the first version of this rule. NoOpWorkerAdapter never reads
+        // PermissionGrant — AER builds its dispatch itself and it writes its output regardless — so a
+        // withheld write there withholds nothing and refusing would reject a binding that works.
+        // Unscoped, this rule refused every interactive session, whose anchor is exactly this shape.
+        // WorkerAdapterRegistryTests (#651) is what keeps IPermissionGrantTranslator honest as the
+        // marker for "this adapter's grant is load-bearing".
+        var adapters = new Dictionary<string, IWorkerAdapter>
+        {
+            [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
+        };
+        var grant = new PermissionGrant(ReadFiles: false, WriteFiles: false);
+
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(ArchitectContract, grant, NoOpWorkerAdapter.AdapterName), adapters);
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void The_shell_refusal_is_scoped_to_consuming_adapters_too()
+    {
+        // Pins a production change this PR makes to #529's rule, not #629's. Before it,
+        // RefuseIfShellDefeatsAWithheldCategory ran for EVERY adapter; both refusals are now scoped
+        // to adapters that consume a grant, because the same reasoning applies to both — a grant a
+        // NoOpWorkerAdapter never reads cannot defeat anything, and it writes its output regardless.
+        //
+        // Written because a reviewer showed nothing discriminated it: reverting the narrowing left
+        // the full suite green. Every pre-existing #529 test runs through FakeEchoWorkerAdapter, and
+        // this PR made that fake a translator (it had to, or the #629 tests would never fire), which
+        // silently kept them all passing. One rule's scope should not be decided by a test double's
+        // interface list.
+        var adapters = new Dictionary<string, IWorkerAdapter>
+        {
+            [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
+        };
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: false, RunShellCommands: true, NetworkAccess: true);
+
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(NoOutputsContract, grant, NoOpWorkerAdapter.AdapterName), adapters);
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void A_contract_with_outputs_and_a_grant_that_can_write_resolves()
+    {
+        // Without this the checks above pass on a resolver that refuses every contract carrying an
+        // output, which would make every real workflow undispatchable.
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(ArchitectContract, new PermissionGrant(ReadFiles: true, WriteFiles: true)), EchoAdapter());
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void A_contract_with_no_outputs_at_all_resolves_under_a_read_only_grant()
+    {
+        // The rule kept honest in the other direction: a worker that declares no outputs has nothing
+        // to write, so withholding writes is coherent. This is the shape #650 gave the chat step.
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(NoOutputsContract, new PermissionGrant(ReadFiles: true, WriteFiles: false)), EchoAdapter());
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void An_entry_with_outputs_and_no_structured_grant_resolves()
+    {
+        // An entry using the raw PermissionScope escape hatch carries no grant, so there is nothing
+        // to reconcile against the contract. This is also the interactive anchor's shape today (#651).
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(ArchitectContract, grant: null), EchoAdapter());
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
+    public void The_shell_refusal_wins_when_a_grant_is_both_incoherent_and_unsatisfiable()
+    {
+        // Both faults at once. The shell one is reported, because it names the mistake the operator
+        // actually made: they reached for the shell believing it escaped the write withhold. Told only
+        // that the contract is unsatisfiable, they would grant more shell.
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: false, RunShellCommands: true, NetworkAccess: true);
+
+        Assert.Throws<IncoherentPermissionGrantException>(
+            () => WorkerBindingResolver.Resolve(ConfigWith(ArchitectContract, grant), EchoAdapter()));
+    }
 }

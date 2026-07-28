@@ -1,3 +1,4 @@
+using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 
 namespace Aer.Adapters;
@@ -50,6 +51,10 @@ public static class WorkerBindingResolver
     /// An entry's <see cref="WorkerBindingConfigEntry.PermissionGrant"/> grants the shell while
     /// withholding a category the shell reaches anyway (#529).
     /// </exception>
+    /// <exception cref="UnsatisfiableOutputContractException">
+    /// An entry's <see cref="WorkerBindingConfigEntry.Contract"/> declares outputs its
+    /// <see cref="WorkerBindingConfigEntry.PermissionGrant"/> gives it no way to write (#629).
+    /// </exception>
     public static IReadOnlyDictionary<string, WorkerBinding> Resolve(
         IReadOnlyDictionary<string, WorkerBindingConfigEntry> config,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
@@ -68,7 +73,19 @@ public static class WorkerBindingResolver
                 throw new UnknownWorkerAdapterException(entry.Adapter);
             }
 
-            RefuseIfShellDefeatsAWithheldCategory(workerName, entry.PermissionGrant);
+            // Both refusals read a grant as deciding what the worker can do, which is only true for an
+            // adapter that consumes it. IPermissionGrantTranslator marks that population, and
+            // WorkerAdapterRegistryTests (#651) holds the marker to it by dispatching every registered
+            // adapter under two different grants and checking which ones change.
+            if (adapter is IPermissionGrantTranslator)
+            {
+                // Order matters, and there is a test for it: a grant can carry both faults at once, and
+                // the shell one names the mistake the operator actually made — they reached for the
+                // shell believing it escaped the write withhold. Told only that the contract is
+                // unsatisfiable, they would grant more shell.
+                RefuseIfShellDefeatsAWithheldCategory(workerName, entry.PermissionGrant);
+                RefuseIfTheContractCannotBeWritten(workerName, entry.Contract, entry.PermissionGrant);
+            }
 
             var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
             var invocation = new WorkerInvocation(
@@ -137,6 +154,31 @@ public static class WorkerBindingResolver
         {
             throw new IncoherentPermissionGrantException(workerName, withheld);
         }
+    }
+
+    /// <summary>
+    /// #629: a contract declares outputs the grant gives the worker no way to write. Refused here
+    /// rather than discovered by the contract check after the run has been paid for in full.
+    ///
+    /// <para>
+    /// No shell clause is needed, because <see cref="RefuseIfShellDefeatsAWithheldCategory"/> ran
+    /// first: a grant that withholds writes while granting the shell never reaches this line, so
+    /// anything still here with <see cref="PermissionGrant.WriteFiles"/> withheld has no shell to
+    /// write through either.
+    /// </para>
+    /// </summary>
+    private static void RefuseIfTheContractCannotBeWritten(
+        string workerName, WorkerContract contract, PermissionGrant? grant)
+    {
+        // A null grant is the raw PermissionScope escape hatch — nothing structured to reconcile
+        // against the contract, so there is no claim here to check.
+        if (grant is null || grant.WriteFiles || contract.ProducedOutputs.Count == 0)
+        {
+            return;
+        }
+
+        throw new UnsatisfiableOutputContractException(
+            workerName, [.. contract.ProducedOutputs.Select(o => o.Name)]);
     }
 
     /// <summary>
