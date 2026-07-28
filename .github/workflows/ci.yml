@@ -40,9 +40,12 @@ jobs:
               - 'pixi.lock'
               - '**/packages.lock.json'
               - '.github/workflows/**'
+            # Deliberately NOT '.github/workflows/**': every job shares ci.yml, so that glob ran
+            # the 9-minute Android build for a one-line edit to an unrelated job (#677). The mobile
+            # steps live in their own file precisely so this filter can name them.
             mobile:
               - 'src/Aer.Mobile/**'
-              - '.github/workflows/**'
+              - '.github/workflows/mobile.yml'
 
   test:
     needs: changes
@@ -202,41 +205,7 @@ jobs:
     # !cancelled() makes this a status-check expression, so a skipped `changes` (PR-only, #410)
     # does not skip this job on push.
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.mobile == 'true') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # M21 Phase 7 (#246): the `tailscale` package's native-asset build hook cross-compiles a Go
-      # shared library (for `flutter build apk`'s Android NDK step, and again for `flutter test`'s
-      # host-platform stub) and requires Go 1.26+ itself -- ubuntu-latest's preinstalled toolchain
-      # is older, same reasoning as the `test` job's own `actions/setup-go@v5` step above.
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        run: flutter pub get
-        working-directory: src/Aer.Mobile
-
-      - name: Analyze
-        run: flutter analyze
-        working-directory: src/Aer.Mobile
-
-      # Excludes the `journey` tag: journey tests (#313) are red-specs run on demand via
-      # `pixi run journey-mobile`, not in default CI (the .NET half is excluded by living outside
-      # AerFlow.slnx). See dart_test.yaml and docs/runbooks/journey-tests.md.
-      - name: Test
-        run: flutter test --exclude-tags journey
-        working-directory: src/Aer.Mobile
-
-      - name: Build debug APK
-        run: flutter build apk --debug
-        working-directory: src/Aer.Mobile
+    uses: ./.github/workflows/mobile.yml
 
   # M13 Phase 3 (#109): gathers the native libs the test matrix above built on all three OSes into
   # one fat nupkg — the same install command (`dotnet tool install --global aer`) then works

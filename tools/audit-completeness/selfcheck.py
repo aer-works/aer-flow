@@ -204,6 +204,43 @@ def is_citation(src, m):
 # The enumerable surfaces
 # ---------------------------------------------------------------------------------------------
 
+def ci_workflow() -> dict:
+    """CI's workflow as parsed data. A seam, so a control can hand back a mutated one."""
+    import yaml
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+
+
+@check("the mobile job's steps live where its path filter can see them")
+def _mobile_filter_covers_its_job():
+    """A path filter matches files, so it can only be exact if the job is a file.
+
+    While every job shared `ci.yml` the filter had to list `.github/workflows/**`, and a one-line
+    edit to an unrelated job bought a nine-minute Android build (#677). Moving the steps out made
+    the filter exact -- and moving them back, or adding a second file the job depends on, would
+    silently make it wrong again in the expensive direction or the unvalidated one.
+    """
+    ci = ci_workflow()
+    job = ci["jobs"]["mobile"]
+    called = job.get("uses")
+    assert called, ("ci.yml's mobile job defines its steps inline again. The filter cannot see "
+                    "inside a file, so it now either misses edits to those steps or runs the "
+                    "Android build for every workflow change.")
+    assert "steps" not in job, "a called workflow cannot also carry steps"
+
+    # `on: pull_request` gives the filter no default, so an unlisted file is simply never a trigger.
+    import yaml
+    patterns = next(f["with"]["filters"] for f in ci["jobs"]["changes"]["steps"] if "with" in f)
+    mobile = yaml.safe_load(patterns)["mobile"]
+    target = called.removeprefix("./")
+    assert target in mobile, (
+        f"the mobile job runs {target}, which its filter does not list ({mobile}) -- so an edit to "
+        "those steps does not run them on a pull request")
+    assert not any(p.endswith("workflows/**") for p in mobile), (
+        f"the mobile filter is back to matching every workflow file ({mobile}), which is #677")
+    assert (ROOT / target).is_file(), f"{target} does not exist"
+    return f"mobile -> {target}, listed in a filter of {len(mobile)} pattern(s)"
+
+
 @check("every dispatch tells the worker the budget it is actually given")
 def _dispatch_states_its_budget():
     """A worker that does not know it is being timed spends the budget as if it were unbounded.
