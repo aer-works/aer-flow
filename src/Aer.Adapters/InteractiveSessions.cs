@@ -169,7 +169,13 @@ public static class InteractiveSessionMaterializer
                     OptionalMetadata: []),
                 PromptTemplate: "(no-op bookkeeping step; ignored)",
                 Timeout: TimeSpan.FromSeconds(30),
-                PermissionGrant: new PermissionGrant(ReadFiles: false, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false))
+                // No PermissionGrant, because NoOpWorkerAdapter never reads one (#651): it is not a
+                // vendor CLI, and AER builds its dispatch itself. The all-false grant that used to sit
+                // here constrained nothing while reading as a sandbox — including to a bind-time rule
+                // that took it at face value and would have refused every interactive session.
+                // WorkerAdapterRegistryTests is what keeps "reads a grant" and
+                // "declares IPermissionGrantTranslator" the same set.
+                PermissionGrant: null)
         };
 
         var metadata = new SessionMetadata(
