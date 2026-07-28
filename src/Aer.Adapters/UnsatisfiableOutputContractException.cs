@@ -11,7 +11,10 @@ namespace Aer.Adapters;
 /// A vendor worker satisfies <see cref="Aer.Flow.Domain.WorkerContract.ProducedOutputs"/> in exactly
 /// one way: by writing the named artifact into <c>AER_OUTPUT_DIR</c>. A grant with
 /// <see cref="PermissionGrant.WriteFiles"/> withheld removes the tools that do it, so the combination
-/// cannot succeed no matter what the worker does. Before this refusal AER dispatched it anyway — the
+/// cannot succeed — with one exception, which is why the shell refusal runs first: a granted shell
+/// writes anyway, and a gemini worker with writes withheld but shell and network granted was measured
+/// producing its output and succeeding. <see cref="IncoherentPermissionGrantException"/> refuses that
+/// combination before it reaches here, so anything arriving with writes withheld has no shell either. Before this refusal AER dispatched it anyway — the
 /// worker ran to completion, exited 0, produced nothing, and the contract check failed after the run
 /// had been paid for in full. One measured case cost a nine-minute frontier-model reviewer that
 /// returned nothing.

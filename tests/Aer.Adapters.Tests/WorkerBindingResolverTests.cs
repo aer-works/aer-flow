@@ -500,6 +500,32 @@ public class WorkerBindingResolverTests
     }
 
     [Fact]
+    public void The_shell_refusal_is_scoped_to_consuming_adapters_too()
+    {
+        // Pins a production change this PR makes to #529's rule, not #629's. Before it,
+        // RefuseIfShellDefeatsAWithheldCategory ran for EVERY adapter; both refusals are now scoped
+        // to adapters that consume a grant, because the same reasoning applies to both — a grant a
+        // NoOpWorkerAdapter never reads cannot defeat anything, and it writes its output regardless.
+        //
+        // Written because a reviewer showed nothing discriminated it: reverting the narrowing left
+        // the full suite green. Every pre-existing #529 test runs through FakeEchoWorkerAdapter, and
+        // this PR made that fake a translator (it had to, or the #629 tests would never fire), which
+        // silently kept them all passing. One rule's scope should not be decided by a test double's
+        // interface list.
+        var adapters = new Dictionary<string, IWorkerAdapter>
+        {
+            [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
+        };
+        var grant = new PermissionGrant(
+            ReadFiles: true, WriteFiles: false, RunShellCommands: true, NetworkAccess: true);
+
+        var bindings = WorkerBindingResolver.Resolve(
+            ConfigWith(NoOutputsContract, grant, NoOpWorkerAdapter.AdapterName), adapters);
+
+        Assert.IsType<WorkerBinding.Process>(bindings["architect"]);
+    }
+
+    [Fact]
     public void A_contract_with_outputs_and_a_grant_that_can_write_resolves()
     {
         // Without this the checks above pass on a resolver that refuses every contract carrying an
