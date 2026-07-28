@@ -35,13 +35,18 @@ ISSUE = re.compile(r"#(\d{3,})")
 # be pasted around as a blanket silencer.
 SUPPRESS = re.compile(r"record-once-ok:\s*#(\d{3,})")
 
-# At most one file may EXPLAIN an issue -- carry it on two or more added lines. Everywhere else the
-# reference has to fit on one line, which is what a pointer looks like.
-MAX_EXPLANATORY_SITES = 1
-
-# And a cap on pointer sprawl, because one-line restatements in eight files is still the drift this
-# exists to stop, just spelled differently.
-MAX_FILES = 4
+# How many files one change may newly reference an issue in.
+#
+# Deliberately a count of PLACES, not an attempt to tell an explanation from a pointer. Two proxies
+# for that distinction were tried and both were wrong in a way that shipped: counting lines that
+# mention the issue scores a two-line explanation as one, and weighting by hunk size scores a
+# one-line pointer inside a three-line config block as an explanation. The second one fired on this
+# file's own change, which is how it was caught.
+#
+# So this is coarse on purpose. It catches the shape that actually happened -- one corrected fact
+# typed into five files -- and it does not catch the same fact explained twice. A checker that is
+# honestly blunt beats one whose precision is imagined.
+MAX_FILES = 3
 
 
 def added_hunks_by_file(base: str) -> dict[str, list[list[str]]]:
@@ -74,35 +79,22 @@ def added_hunks_by_file(base: str) -> dict[str, list[list[str]]]:
 
 
 def violations(by_file: dict[str, list[list[str]]]) -> list[str]:
-    sites: dict[str, dict[str, int]] = collections.defaultdict(dict)
+    sites: dict[str, set[str]] = collections.defaultdict(set)
     for path, hunks in by_file.items():
         flat = [line for hunk in hunks for line in hunk]
         suppressed = {m.group(1) for line in flat for m in SUPPRESS.finditer(line)}
-
-        # An issue's weight in a file is the size of the largest added block that mentions it.
-        widest: dict[str, int] = {}
-        for hunk in hunks:
-            mentioned = {i for line in hunk for i in ISSUE.findall(line)}
-            for issue in mentioned:
-                widest[issue] = max(widest.get(issue, 0), len(hunk))
-
-        for issue, n in widest.items():
+        for issue in {i for line in flat for i in ISSUE.findall(line)}:
             if issue not in suppressed:
-                sites[issue][path] = n
+                sites[issue].add(path)
 
     problems = []
-    for issue, per_file in sorted(sites.items(), key=lambda kv: int(kv[0])):
-        explanatory = {p: n for p, n in per_file.items() if n >= 2}
-        if len(explanatory) > MAX_EXPLANATORY_SITES:
-            where = "\n".join(f"      {p} ({n} lines)" for p, n in sorted(explanatory.items()))
+    for issue, files in sorted(sites.items(), key=lambda kv: int(kv[0])):
+        if len(files) > MAX_FILES:
+            where = "\n".join(f"      {p}" for p in sorted(files))
             problems.append(
-                f"  #{issue} is explained in {len(explanatory)} files:\n{where}\n"
-                f"      Keep the explanation in one of them; reduce the rest to `(#{issue})`.")
-        elif len(per_file) > MAX_FILES:
-            where = "\n".join(f"      {p}" for p in sorted(per_file))
-            problems.append(
-                f"  #{issue} is newly referenced in {len(per_file)} files:\n{where}\n"
-                f"      That is restatement even at one line each.")
+                f"  #{issue} is newly referenced in {len(files)} files:\n{where}\n"
+                f"      Keep the explanation in one; reduce the rest to `(#{issue})`, or suppress a\n"
+                f"      deliberate second site with `record-once-ok: #{issue}`.")
     return problems
 
 

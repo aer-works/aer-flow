@@ -651,37 +651,34 @@ def _recordonce_discriminates():
     """
     rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
 
-    restated = {
-        "src/A.cs": [["// #901 says the vendor refuses the write.", "// It does not, measured."]],
-        "docs/B.md": [["#901 records that the vendor does not refuse.", "Measured against the CLI."]],
-    }
-    assert rec.violations(restated), (
-        "two files each explaining #901 was accepted -- the exact shape this exists for, and "
+    # The shape that actually happened: one corrected fact typed into five files.
+    sprawled = {f"src/F{i}.cs": [[f"// #901 says the vendor refuses.", "// It does not."]]
+                for i in range(5)}
+    assert rec.violations(sprawled), (
+        "#901 newly referenced in five files was accepted -- the exact shape this exists for, and "
         "accepting it makes the checker decorative")
 
-    # The control that matters: the FIX for the above must pass, or the checker tells people to
-    # delete their links rather than their duplication.
+    # The control that matters: an explanation plus a couple of pointers must PASS, or the checker
+    # tells people to delete their links rather than their duplication.
     canonical = {
         "src/A.cs": [["// See #901."]],
+        "pixi.toml": [["# See #901."]],
         "docs/B.md": [["#901 records that the vendor does not refuse.", "Measured against the CLI."]],
     }
     assert not rec.violations(canonical), (
-        "one explanation plus one pointer was rejected -- that is the shape record-once ASKS for")
+        "one explanation plus two pointers was rejected -- that is the shape record-once ASKS for")
 
-    suppressed = {
-        "src/A.cs": [["// #901 explained here.", "// record-once-ok: #901 canonical is docs/B.md"]],
-        "docs/B.md": [["#901 explained here too.", "Second line."]],
-    }
+    suppressed = dict(sprawled)
+    suppressed["src/F0.cs"] = [["// #901 here.", "// record-once-ok: #901 canonical is docs/B.md"]]
+    suppressed["src/F1.cs"] = [["// #901 here.", "// record-once-ok: #901 canonical is docs/B.md"]]
     assert not rec.violations(suppressed), "record-once-ok did not suppress its own issue"
 
     # And one escape must not silence everything.
-    wrong_issue = {
-        "src/A.cs": [["// #902 explained here.", "// record-once-ok: #901 unrelated"]],
-        "docs/B.md": [["#902 explained here too.", "Second line."]],
-    }
+    wrong_issue = {f"src/G{i}.cs": [[f"// #902 here.", "// record-once-ok: #901 unrelated"]]
+                   for i in range(5)}
     assert rec.violations(wrong_issue), "record-once-ok for #901 silenced #902"
 
-    return "4 polarities (restated / canonical / suppressed / wrong-issue suppression)"
+    return "4 polarities (sprawl / canonical+pointers / suppressed / wrong-issue suppression)"
 
 
 def main() -> int:
