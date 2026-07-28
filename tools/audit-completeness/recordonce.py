@@ -384,7 +384,7 @@ def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[list[st
     """
     out = subprocess.run(
         ["git", "diff", "--unified=0", f"{base}...{head}"],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True, text=True, check=True, **GIT_TEXT).stdout
 
     by_file: dict[str, list[list[str]]] = collections.defaultdict(list)
     current = None
@@ -407,9 +407,25 @@ def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[list[st
     return by_file
 
 
+# Every `git` read here is UTF-8, decoded leniently. `text=True` alone uses the LOCALE encoding, which
+# on Windows is cp1252 -- and a byte cp1252 has no mapping for (0x90 among them) raises inside
+# subprocess's reader THREAD, where it does not propagate: `run` returns with `stdout` set to None and
+# the traceback lands two calls away as `'NoneType' object has no attribute 'splitlines'`.
+#
+# Found by this checker crashing on a change to `docs/vendor-doc-audit.md`, a register full of em
+# dashes and status glyphs. It went unnoticed until then because `added_lines_by_file` reads only the
+# CHANGED hunks while `file_at` reads whole files at HEAD, so the odds of hitting an unmappable byte
+# are wildly different between the two -- and only the second one is new (#676). Both are fixed:
+# leaving the diff reader alone would be leaving the same defect in place for whichever file trips it
+# first. `errors="replace"` because a mangled character in one word can only cost a shingle match; a
+# crash costs the whole gate, and this gate failing open is the thing it exists to prevent.
+GIT_TEXT = {"encoding": "utf-8", "errors": "replace"}
+
+
 def file_at(path: str, rev: str = "HEAD") -> list[str] | None:
     """One file's full text at a revision, or None when it is not there (a new or deleted file)."""
-    out = subprocess.run(["git", "show", f"{rev}:{path}"], capture_output=True, text=True, check=False)
+    out = subprocess.run(["git", "show", f"{rev}:{path}"],
+                         capture_output=True, text=True, check=False, **GIT_TEXT)
     return out.stdout.splitlines() if out.returncode == 0 else None
 
 

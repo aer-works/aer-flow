@@ -939,8 +939,20 @@ def _recordonce_discriminates():
     assert len(solo) == 1 and "does not parse" in solo[0], (
         f"record-once: a marker with no canonical path failed silently -- {solo}")
 
+    # The locale-decoding crash `GIT_TEXT` in recordonce.py records (#690). Run against a real
+    # tracked file whose bytes are not cp1252-decodable: the defect lives in how a subprocess pipe is
+    # decoded, so no in-memory fixture can reach it, and the second assertion is what stops the arm
+    # quietly ceasing to discriminate if that file is ever rewritten in ASCII.
+    unmappable = "docs/vendor-doc-audit.md"
+    at_head = rec.file_at(unmappable)
+    assert at_head, f"record-once: file_at returned nothing for {unmappable}, so this arm tested nothing"
+    assert any(ord(c) > 255 for line in at_head for c in line), (
+        f"record-once: {unmappable} no longer holds a character outside latin-1, so it cannot "
+        "discriminate the locale-decoding defect -- point this arm at a file that does")
+
     return (f"{len(polarities)} record-once polarities "
-            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 9 exemption arms")
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 9 exemption arms "
+            f"+ a non-cp1252 file read through git")
 
 
 @check("the record-once checker still finds the passages it found in a real merge")

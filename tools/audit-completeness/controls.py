@@ -514,6 +514,14 @@ def _recordonce_drops_extensionless():
         yield
 
 
+@control(RECORDONCE, "git output is decoded with the locale encoding, so the checker dies on Windows")
+def _recordonce_locale_decodes_git():
+    # Emptying GIT_TEXT restores the call exactly as it shipped -- `text=True` with no encoding.
+    # See that constant in recordonce.py for why the resulting failure surfaces nowhere near it.
+    with _loading_recordonce_as(lambda m: replacing(m, "GIT_TEXT", {})):
+        yield
+
+
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
     # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.
