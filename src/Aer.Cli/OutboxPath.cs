@@ -88,8 +88,9 @@ public static class OutboxPath
     }
 
     /// <summary>
-    /// <paramref name="fullPath"/> with every existing path component's link target followed, so a
-    /// link cannot make a path outside the outbox look like one inside it.
+    /// <paramref name="fullPath"/> with every link followed — each component of the path, and each
+    /// component of whatever a link resolves to — so no chain of links makes a path outside a root
+    /// look like one inside it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -111,6 +112,31 @@ public static class OutboxPath
     /// </para>
     /// </remarks>
     private static string ResolveLinks(string fullPath)
+    {
+        // Re-walked until it stops changing, because one pass is not enough: a link whose TARGET
+        // path itself contains a link was resolved by ResolveOnce's per-component walk on the way
+        // down, but the substituted target was then appended without walking ITS components.
+        // Measured bypass, from an independent review of #679 — `<ws>/l` -> `<ws>/pub/x.txt` with
+        // `<ws>/pub` a link out of the workspace was reported inside it, and the bytes landed
+        // outside. The direct form denied correctly, so the second link was what laundered it.
+        var resolved = fullPath;
+        for (var pass = 0; pass < MaxLinkHops; pass++)
+        {
+            var next = ResolveOnce(resolved);
+            if (string.Equals(next, resolved, StringComparison.Ordinal))
+            {
+                return resolved;
+            }
+
+            resolved = next;
+        }
+
+        // Budget exhausted: a cycle, or a chain deeper than any real tree. Whatever was reached
+        // cannot match a root prefix by construction, so this denies.
+        return resolved;
+    }
+
+    private static string ResolveOnce(string fullPath)
     {
         var root = Path.GetPathRoot(fullPath);
         if (string.IsNullOrEmpty(root))

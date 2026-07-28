@@ -72,9 +72,10 @@ namespace Aer.Adapters;
 /// For writes there is no backstop under <c>--mode</c> either (#670), so a hook that cannot start is
 /// a fully ungated worker on every branch of this method. Scoping shell patterns is a second gap in the same
 /// direction, and it is why a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> is
-/// now refused rather than resolved to an unscoped shell (#624). Refused because AER's hook decides by
-/// tool name alone, <em>not</em> because agy could not express it — the hook payload carries the tool's
-/// arguments, so #659 is a route rather than a dead end.
+/// now refused rather than resolved to an unscoped shell (#624). Refused because AER's hook does not
+/// read a shell command's arguments, <em>not</em> because agy could not express it — the payload
+/// carries them, and #679 already reads a write's target out of it, so #659 is a route rather than a
+/// dead end.
 /// </para>
 /// </summary>
 public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
@@ -240,7 +241,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             resolvedValue = null;
             gapReason = "AER cannot yet scope an agy shell grant to ShellCommandPatterns. agy's only " +
                 "auto-approving shell flag is --dangerously-skip-permissions, which approves every " +
-                "command, and AER's PreToolUse hook decides by tool name alone — so the patterns would " +
+                "command, and AER's PreToolUse hook does not read a shell command's arguments — so the patterns would " +
                 "be dropped and the worker would receive an unscoped shell in answer to a request to " +
                 "narrow it. Withhold the shell, or clear the patterns and accept an unscoped one " +
                 "deliberately. The Advanced raw permission-scope field is not a way round this: on agy " +

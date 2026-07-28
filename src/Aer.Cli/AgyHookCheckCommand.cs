@@ -37,10 +37,11 @@ namespace Aer.Cli;
 /// stdout and agy allows. Unavoidable in-process, and stated rather than papered over.
 /// </para>
 /// <para>
-/// Like its claude sibling this enforces category denial by tool name only. It does not inspect tool
-/// arguments and does not attempt to close the substitution gap (#529's claude-side analogue; #596
-/// is the agy-side over-grant this hook is a prerequisite for fixing). Withholding a category while
-/// granting <c>run_command</c> still leaves that category reachable through the shell.
+/// Like its claude sibling this enforces category denial by tool name, and since #679 reads one
+/// argument — a granted write's target, to bound where it may land. It still does not attempt to
+/// close the substitution gap (#529's claude-side analogue; #596 is the agy-side over-grant this hook
+/// is a prerequisite for fixing): withholding a category while granting <c>run_command</c> leaves
+/// that category reachable through the shell, and a granted shell reaches a write this bound refuses.
 /// </para>
 /// </remarks>
 public static class AgyHookCheckCommand
@@ -106,7 +107,10 @@ public static class AgyHookCheckCommand
         }
         catch
         {
-            // Reaching here means a defect in Decide -- but an exception escaping this method would
+            // Reaching here means a defect in Decide -- every payload shape agy can send is answered
+            // there, including a non-string toolCall.name, which is checked at the guard rather than
+            // left to reach this handler by way of GetString's InvalidOperationException. But an
+            // exception escaping this method would
             // print a .NET stack trace to stderr, leave stdout empty, and be read by agy as an ALLOW
             // (`agy.hook-malformed-stdout-fails-open`). On the vendor where this hook is the only
             // gate, a bug must not silently widen the grant it was installed to narrow.
@@ -174,7 +178,8 @@ public static class AgyHookCheckCommand
             if (doc.RootElement.ValueKind != JsonValueKind.Object ||
                 !doc.RootElement.TryGetProperty("toolCall", out var toolCall) ||
                 toolCall.ValueKind != JsonValueKind.Object ||
-                !toolCall.TryGetProperty("name", out var nameProp))
+                !toolCall.TryGetProperty("name", out var nameProp) ||
+                nameProp.ValueKind != JsonValueKind.String)
             {
                 return DenyJson("AER: the permission gate could not find toolCall.name in the hook " +
                                 "payload and denied this call rather than allowing it unchecked.");

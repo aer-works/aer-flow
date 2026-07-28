@@ -296,17 +296,22 @@ public static class HookCheckCommand
     private static readonly string[] WriteTargetProperties = ["file_path", "notebook_path"];
 
     /// <summary>
-    /// The tools the outbox exemption applies to — the same names
-    /// <c>ClaudeWorkerAdapter</c> moves off <c>--disallowedTools</c> onto this hook, and no others.
+    /// The write family this gate judges: the tools the outbox exemption applies to when a write is
+    /// withheld (#649), and since #679 the tools whose target is bounded when one is granted. The
+    /// same names <c>ClaudeWorkerAdapter</c> moves off <c>--disallowedTools</c> onto this hook.
     /// </summary>
     /// <remarks>
-    /// Public so one test can see both sides. This is a mirror contract of the same kind as
+    /// Public so one test can see both sides. A mirror contract of the same kind as
     /// <see cref="DeniedToolsEnvironmentVariable"/>: <c>Aer.Adapters</c> cannot reference
     /// <c>Aer.Cli</c>, so nothing but a test holds the two in agreement, and
-    /// <c>WriteFamilyContractTests</c> derives the adapter's side from a real
-    /// <c>Resolve</c> rather than restating it. A tool added to the adapter's write block and
-    /// forgotten here is not a permission hole — it is the opposite, a withheld write that can no
-    /// longer reach its own outbox, which fails the contract after the run is paid for.
+    /// <c>WriteFamilyContractTests</c> derives the adapter's side from a real <c>Resolve</c> rather
+    /// than restating it.
+    /// <para>
+    /// <b>#679 reversed which way a missing name fails.</b> It used to be a withheld write unable to
+    /// reach its own outbox — a broken run, paid for and failed. It is now also a <em>granted</em>
+    /// write of that tool going unbounded, which is a hole. Same polarity as the agy sibling, which
+    /// was always this way round.
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> WriteFamilyTools =
         new HashSet<string>(StringComparer.Ordinal) { "Edit", "Write", "NotebookEdit" };

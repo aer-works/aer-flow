@@ -22,11 +22,13 @@ namespace Aer.Cli;
 /// is a total allow, so it is worth being unable to happen rather than merely unlikely.
 /// </para>
 /// <para>
-/// An <em>empty tagged</em> list still allows, and must: <c>BuildDeniedTools</c> returns empty
-/// whenever <c>PermissionGrant</c> is null — the raw <c>PermissionScope</c> escape hatch, which
-/// carries no categories at all — and that is the ordinary <c>aer run</c> shape. Denying there would
-/// break every raw-scope worker. What changed is that the allow is now something AER actively said,
-/// rather than an absence.
+/// An <em>empty tagged</em> list withholds no <em>category</em> — <c>BuildDeniedTools</c> returns
+/// empty whenever <c>PermissionGrant</c> is null, the raw <c>PermissionScope</c> escape hatch, which
+/// carries no categories at all. It is not a licence to skip the rest of the check: since #679 both
+/// gates go on to bound a granted <em>write</em>, and this type says only what was withheld by name,
+/// never what may be done with what was granted. An earlier version of this paragraph said an empty
+/// list "still allows, and must" — which is the early return #679 removed, and restoring it on this
+/// paragraph's authority would undo that fix silently.
 /// </para>
 /// </remarks>
 public sealed record DeniedToolList(DeniedToolListStatus Status, IReadOnlySet<string> Tools)

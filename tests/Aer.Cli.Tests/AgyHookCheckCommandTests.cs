@@ -187,6 +187,8 @@ public class AgyHookCheckCommandTests
     [InlineData("""{"toolCall":"not-an-object"}""")]
     [InlineData("""{"tool_name":"run_command"}""")]
     [InlineData("""{"toolCall":{"name":""}}""")]
+    [InlineData("""{"toolCall":{"name":7}}""")]
+    [InlineData("""{"toolCall":{"name":{"tool":"run_command"}}}""")]
     public void Input_it_cannot_judge_is_denied_never_allowed(string stdinText)
     {
         // The core of #554 and the opposite of HookCheckCommand's claude-side posture. claude has
@@ -199,6 +201,29 @@ public class AgyHookCheckCommandTests
         // this case would start returning "allow" (claude's field, agy's fail-open) and this test
         // is what would catch it.
         Assert.Equal("deny", Decide(stdinText, "agy:run_command,manage_task"));
+    }
+
+    [Theory]
+    [InlineData("""{"toolCall":{"name":7}}""")]
+    [InlineData("""{"toolCall":{"name":{"tool":"run_command"}}}""")]
+    public void A_non_string_tool_name_is_answered_by_the_guard_not_the_catch_all(string stdinText)
+    {
+        // The row above proves only that these deny, and BOTH paths deny -- so it cannot tell which
+        // one ran. It matters: JsonElement.GetString throws InvalidOperationException on a non-string,
+        // which `catch (JsonException)` does not catch, so before #679's review this shape escaped
+        // Decide entirely and was caught by Execute's last-resort handler. Safe, but it made that
+        // handler's "reaching here means a defect" comment false and gave the model a reason naming
+        // an internal failure instead of the payload. Asserting the reason is what discriminates.
+        using var stdin = new StringReader(stdinText);
+        using var stdout = new StringWriter();
+
+        AgyHookCheckCommand.Execute(stdin, stdout, "agy:run_command");
+
+        using var doc = JsonDocument.Parse(stdout.ToString());
+        var reason = doc.RootElement.GetProperty("reason").GetString();
+        Assert.Equal("deny", doc.RootElement.GetProperty("decision").GetString());
+        Assert.Contains("toolCall.name", reason);
+        Assert.DoesNotContain("failed internally", reason);
     }
 
     [Fact]
