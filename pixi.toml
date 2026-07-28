@@ -163,9 +163,8 @@ vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
 # Live and paid, per the block above smoke-claude. Checks that would touch the operator's own
 # ~/.claude or ~/.gemini are skipped unless --allow-config-writes is passed.
 #
-# Two rules the checks are built on, both learned by getting them wrong first: one variable per
-# check (always a control arm), and execution proven by a sentinel FILE rather than by the model's
-# prose. See tools/vendor-verify/README.md.
+# The rules every check here is built on are in tools/vendor-verify/README.md § "The three rules",
+# not restated here -- an inline list goes stale the next time one is added.
 #
 # A full run is long -- every arm is a real CLI session -- so run it per group and unbuffered:
 #   pixi run vendor-verify -- --only gate

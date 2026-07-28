@@ -26,9 +26,9 @@ temporary directory that got deleted with the session. That is the exact failure
 `vendor-probe` necessary: decision 0015 inverted its whole mechanism on a `--permission-prompt-tool`
 row that nobody could re-run.
 
-## The two rules
+## The three rules
 
-Both were learned by getting them wrong first, and both are non-negotiable for anything added here.
+Each was learned by getting it wrong first, and all three are non-negotiable for anything added here.
 
 **1. One variable per check — always a control arm.**
 `gate.requires-user-interaction` uses two MCP tools that are byte-identical except for the
@@ -43,6 +43,12 @@ report calling a tool it never called. A hook whose *command* fails looks exactl
 never fired — this audit concluded twice that agy CLI hooks were broken, when the real cause was a
 leading backslash in a JSON-escaped path producing exit 127. The vendor's own logs had said so all
 along.
+
+**3. Never probe a slash command from Git Bash on Windows.**
+MSYS path conversion rewrites a leading `/usage` into `C:/Program Files/Git/usage` **before the CLI
+sees it**, and the model answers about that path — which reads exactly like *"the command does not
+exist."* Use `cmd`/PowerShell, `MSYS_NO_PATHCONV=1`, or a leading `//`. Treat any "the CLI doesn't
+have that" conclusion reached in Git Bash as unproven until re-run somewhere else.
 
 A check that cannot separate its cases must return `INCONCLUSIVE`. That is a real result, and it is
 more useful than a confident wrong one.
