@@ -26,10 +26,18 @@ namespace Aer.Adapters;
 /// <para>
 /// <b>Why no <c>--disallowedTools</c> mirror (unlike Claude, #331):</b> a shell-<em>withheld</em>
 /// grant maps to a plain <c>--mode</c> here, and <c>agy</c> has no deny-list flag — but it does not
-/// need one. Headless <c>agy</c> <em>auto-denies</em> any tool needing a permission it cannot prompt
-/// for (verified against the live CLI across <c>default</c>/<c>plan</c>/<c>accept-edits</c>; see
-/// <c>docs/runbooks/live-claude-smoke.md</c>'s J6 section). Its default is fail-closed — the opposite
-/// of Claude Code's headless auto-<em>approve</em>, which is exactly what made #331 possible there.
+/// need one. Headless <c>agy</c> <em>auto-denies</em> a <b>shell command</b> it cannot prompt for
+/// (<c>agy.fails-closed-headless</c>, measured with <c>node --version</c> across
+/// <c>default</c>/<c>plan</c>/<c>accept-edits</c>; see <c>docs/runbooks/live-claude-smoke.md</c>'s J6
+/// section) — the opposite of Claude Code's headless auto-<em>approve</em>, which is exactly what
+/// made #331 possible there.
+/// </para>
+/// <para>
+/// <b>That is one tool, and it does not generalise — #670.</b> This paragraph used to claim agy
+/// auto-denies <em>any</em> tool needing a permission it cannot prompt for. Measured against the live
+/// CLI: under <c>--mode plan</c>, agy <b>writes a file into an <c>--add-dir</c> path without a prompt
+/// or a refusal</b>, and reports it as succeeded. So the fail-closed default covers the shell arm that
+/// was measured and not the write arm that was assumed.
 /// </para>
 /// <para>
 /// <b>That argument does not reach the <c>--dangerously-skip-permissions</c> branch, and #596 exists
@@ -61,9 +69,8 @@ namespace Aer.Adapters;
 /// <para>
 /// <b>And the hook only takes it back while it runs.</b> On this vendor an absent or unparseable hook
 /// response reads as an <em>allow</em> — see the fail-open note on <see cref="BuildHooksJson"/> below.
-/// Under <c>--mode</c> that is backstopped by agy's own fail-closed default; under
-/// <c>--dangerously-skip-permissions</c> there is no backstop, so a hook that cannot start is a fully
-/// ungated worker rather than a degraded one. Scoping shell patterns is a second gap in the same
+/// For writes there is no backstop under <c>--mode</c> either (#670), so a hook that cannot start is
+/// a fully ungated worker on every branch of this method. Scoping shell patterns is a second gap in the same
 /// direction, and it is why a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> is
 /// now refused rather than resolved to an unscoped shell (#624). Refused because AER's hook decides by
 /// tool name alone, <em>not</em> because agy could not express it — the hook payload carries the tool's

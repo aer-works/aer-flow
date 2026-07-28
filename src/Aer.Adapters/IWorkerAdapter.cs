@@ -98,10 +98,9 @@ public interface IWorkerAdapter
     /// This is the canonical question, asked once by <c>WorkerBindingResolver</c>; each adapter
     /// answers it in its own vendor's terms, which is what Adapter Isolation requires here. The
     /// mechanisms do not resemble each other: on Claude the write tools stay pre-approved on
-    /// <c>--allowedTools</c> and AER's <c>PreToolUse</c> hook confines them to the outbox, while
-    /// <c>agy</c> resolves a withheld write to <c>--mode plan</c> and refuses the tool call itself,
-    /// before any hook is consulted. <c>Aer.Flow</c> learns neither — it learns only whether a
-    /// declared output is reachable.
+    /// <c>--allowedTools</c> and AER's <c>PreToolUse</c> hook confines them to the outbox; <c>agy</c>
+    /// answers no for the reason recorded in #670. <c>Aer.Flow</c> learns neither mechanism — it learns
+    /// only whether a declared output is reachable.
     /// </para>
     /// <para>
     /// <b>Defaults to false, and the direction is deliberate.</b> An adapter that has not been

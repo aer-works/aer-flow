@@ -228,8 +228,8 @@ one is satisfiable without granting a workspace write.
 
 Mirrors the C# capability rather than re-deriving it -- `Aer.Adapters` is the register, and the
 adapter answers there in its own vendor's terms. Membership is the whole difference: on claude the
-write tools stay pre-approved and AER's PreToolUse hook confines them to the outbox, while gemini
-resolves a withheld write to `--mode plan` and refuses the tool call before any hook is consulted.
+write tools stay pre-approved and AER's PreToolUse hook confines them to the outbox; gemini is not a
+member for the reason recorded in #670.
 Empty-by-default is deliberate for the same reason it is in C#: an adapter nobody has measured
 against the outbox path refuses before the run is paid for, not after.
 """

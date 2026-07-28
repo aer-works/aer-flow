@@ -276,9 +276,7 @@ def _templates_are_dispatchable():
         "template to grant a workspace write it does not need."
     )
     assert dispatch.grant_refusal({**reviewer, "adapter": "gemini"}) is not None, (
-        "the same grant dispatches on gemini, where a withheld write resolves to `--mode plan` and "
-        "the vendor refuses the tool call before AER's hook is consulted -- so the contract cannot "
-        "be satisfied and the run burns its budget to fail."
+        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #670."
     )
 
     for label, arm in refusal_arms.items():

@@ -55,11 +55,9 @@ reaches `AER_OUTPUT_DIR`. It did not: [#629](https://github.com/aer-works/aer-fl
 that binding outright, which made the sentence false on every vendor.
 [#649](https://github.com/aer-works/aer-flow/issues/649) made it true on `claude` — the write tools
 stay pre-approved and AER's `PreToolUse` hook confines them to the outbox — and left it false on
-`agy`, where a withheld write resolves to `--mode plan` and the vendor refuses the call before any
-hook is consulted. `IWorkerAdapter.WithheldWritesReachTheOutbox` is where that answer lives, and the
-bind-time refusal still fires for any adapter answering no. Closing the `agy` half needs
-[#532](https://github.com/aer-works/aer-flow/issues/532) first: it would trade the vendor's own
-fail-closed default for AER's hook, which must be proven live per spawn before anything rests on it.
+`agy` for the reason recorded in [#670](https://github.com/aer-works/aer-flow/issues/670).
+`IWorkerAdapter.WithheldWritesReachTheOutbox` is where that answer lives, and the bind-time refusal
+still fires for any adapter answering no.
 
 **App/global stays tiny** — one or two hard floors at most. Anything larger becomes a second
 configuration system nobody reads.
