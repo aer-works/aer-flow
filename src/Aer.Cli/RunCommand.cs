@@ -20,10 +20,12 @@ public static class RunCommand
     private const string ArtifactsDirectoryName = "artifacts";
 
     /// <summary>
-    /// Parses the workflow template and worker-binding config (loading the already-bound snapshot
-    /// instead, when <paramref name="options"/>'s task directory already has one — a resumed run,
-    /// not a fresh one), resolves <paramref name="adapters"/> into <see cref="WorkerBinding"/>s, and
-    /// runs the single mutation surface to a terminal state.
+    /// Parses the workflow template and worker-binding config (binding from the already-persisted
+    /// snapshot instead, when <paramref name="options"/>'s task directory already has one — a
+    /// resumed run, not a fresh one), resolves <paramref name="adapters"/> into
+    /// <see cref="WorkerBinding"/>s, and runs the single mutation surface to a terminal state.
+    /// A resumed run still reads the named template file when one exists, to refuse a directory
+    /// bound to different work (#628); it never binds from it.
     /// </summary>
     /// <exception cref="CliArgumentException">
     /// <paramref name="options"/>'s <c>TaskDirectoryPath</c> has no persisted snapshot yet (a fresh
@@ -34,6 +36,10 @@ public static class RunCommand
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
     /// <exception cref="UnknownWorkerAdapterException">
     /// The worker-binding config names an adapter not present in <paramref name="adapters"/>.
+    /// </exception>
+    /// <exception cref="ResumedTemplateMismatchException">
+    /// <paramref name="options"/>'s task directory is already bound to a snapshot, and the workflow
+    /// file named is a different template (#628).
     /// </exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
@@ -67,9 +73,17 @@ public static class RunCommand
         var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
         var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
 
-        var snapshot = File.Exists(snapshotPath)
-            ? await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false)
-            : await BindAndPersistAsync(RequireWorkflowFilePath(options), snapshotPath, cancellationToken).ConfigureAwait(false);
+        var resumedFromSnapshot = File.Exists(snapshotPath);
+        WorkflowDefinitionSnapshot snapshot;
+        if (resumedFromSnapshot)
+        {
+            snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
+            await RefuseIfTheNamedTemplateIsNotTheBoundOneAsync(options, snapshot, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            snapshot = await BindAndPersistAsync(RequireWorkflowFilePath(options), snapshotPath, cancellationToken).ConfigureAwait(false);
+        }
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
@@ -96,7 +110,51 @@ public static class RunCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot);
+        return new CommandResult(state, snapshot, resumedFromSnapshot);
+    }
+
+    /// <summary>
+    /// #628: resuming the bound snapshot instead of the named file is intended (M15 Phase 1, #137),
+    /// but doing it when the two name different templates ran another task's workflow and reported
+    /// its result — the measured case replayed a prior terminal run's declared outputs, timeout and
+    /// failure reason, wrote no events, and exited non-zero, which is indistinguishable from a
+    /// genuine fresh failure.
+    ///
+    /// <para>
+    /// The named file is parsed in full rather than scraped for its id, so there is one parser for
+    /// workflow files and no second reading of the same format to drift. A resume naming a file that
+    /// exists but is malformed therefore now fails on it, with the same typed
+    /// <see cref="WorkflowDefinitionValidationException"/> a fresh bind would raise; a resume naming
+    /// something that is not a readable file is left alone entirely, for the reason below.
+    /// </para>
+    /// </summary>
+    private static async Task RefuseIfTheNamedTemplateIsNotTheBoundOneAsync(
+        RunOptions options, WorkflowDefinitionSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        // Nothing readable named, nothing to disagree with. Two separate cases, one condition:
+        // WorkflowFilePath is nullable so an in-process caller resuming a known task directory need
+        // not produce one, AND callers that do produce one are not all producing a path — the
+        // desktop falls back to writing the bound template's *id* into its workflow-path box
+        // (MainWindow.axaml.cs, when .aer/workflow-path is absent). Both were harmless while this
+        // value was never read on a resume. Attempting to read them is not: File.ReadAllTextAsync
+        // throws FileNotFoundException, which is not an AerFlowException and so escapes every typed
+        // boundary in the product — on the desktop into an unobserved async void click handler that
+        // leaves "Running…" on screen permanently. Comparing only what can actually be read keeps
+        // this a refusal of disagreement rather than a new way to fail.
+        if (options.WorkflowFilePath is not { } workflowFilePath || !File.Exists(workflowFilePath))
+        {
+            return;
+        }
+
+        var named = await WorkflowDefinitionParser.LoadFromFileAsync(workflowFilePath, cancellationToken)
+            .ConfigureAwait(false);
+        if (named.WorkflowTemplateId == snapshot.WorkflowTemplateId)
+        {
+            return;
+        }
+
+        throw new ResumedTemplateMismatchException(
+            snapshot.WorkflowTemplateId.Value, named.WorkflowTemplateId.Value, options.TaskDirectoryPath);
     }
 
     /// <summary>

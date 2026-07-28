@@ -8,8 +8,22 @@ namespace Aer.Cli;
 /// </summary>
 public static class RunOptionsParser
 {
-    private const string Usage =
+    /// <summary>
+    /// The one copy of <c>aer run</c>'s usage line, printed both from here on an argument error and
+    /// by <c>Program</c> in the full command list.
+    /// </summary>
+    public const string Usage =
         "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>]";
+
+    /// <summary>
+    /// #628: <c>&lt;workflow-file&gt;</c> reads as "this is what runs", and under
+    /// <c>--task-dir</c> it often is not. Printed wherever <see cref="Usage"/> is, since a reader
+    /// who needs the arguments spelled out is exactly the reader whose prior this corrects.
+    /// </summary>
+    public const string ResumeNote =
+        "aer run resumes a --task-dir that already holds a snapshot, running the workflow that " +
+        "directory was first bound to rather than <workflow-file>. It refuses when the two are " +
+        "different templates. Use a fresh --task-dir to start different work.";
 
     public static RunOptions Parse(IReadOnlyList<string> args)
     {
@@ -36,12 +50,12 @@ public static class RunOptionsParser
                 default:
                     if (arg.StartsWith("--", StringComparison.Ordinal))
                     {
-                        throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
+                        throw new CliArgumentException($"Unknown option '{arg}'. {Usage} {ResumeNote}");
                     }
 
                     if (workflowFilePath is not null)
                     {
-                        throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
+                        throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage} {ResumeNote}");
                     }
 
                     workflowFilePath = arg;
@@ -52,12 +66,12 @@ public static class RunOptionsParser
 
         if (workflowFilePath is null)
         {
-            throw new CliArgumentException($"Missing required <workflow-file> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <workflow-file> argument. {Usage} {ResumeNote}");
         }
 
         if (bindingsFilePath is null)
         {
-            throw new CliArgumentException($"Missing required option '--bindings <bindings-file>'. {Usage}");
+            throw new CliArgumentException($"Missing required option '--bindings <bindings-file>'. {Usage} {ResumeNote}");
         }
 
         // Derived from the workflow file's own name when not given, so `aer run workflow.json`
@@ -73,7 +87,7 @@ public static class RunOptionsParser
     {
         if (index + 1 >= args.Count)
         {
-            throw new CliArgumentException($"Option '{optionName}' requires a value. {Usage}");
+            throw new CliArgumentException($"Option '{optionName}' requires a value. {Usage} {ResumeNote}");
         }
 
         var value = args[index + 1];

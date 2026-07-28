@@ -36,8 +36,7 @@ if (args.Length >= 1 && args[0] == "agy-hook-check")
 var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
-    Console.Error.WriteLine(
-        "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>]");
+    Console.Error.WriteLine(RunOptionsParser.Usage);
     Console.Error.WriteLine(
         "       aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine(
@@ -47,6 +46,8 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
         "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine("       aer --version");
+    Console.Error.WriteLine();
+    Console.Error.WriteLine($"  {RunOptionsParser.ResumeNote}");
     return 64;
 }
 
