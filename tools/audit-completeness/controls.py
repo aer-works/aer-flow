@@ -297,6 +297,35 @@ def _code_tokens_keeps_comments():
         yield
 
 
+# The check under these two loads `recordonce.py` itself, so the fault has to be injected into what
+# `load` hands back rather than onto a module attribute.
+def _loading_recordonce_as(mutate):
+    real = selfcheck.load
+
+    def patched(path, name):
+        mod = real(path, name)
+        if path.name == "recordonce.py":
+            mutate(mod)
+        return mod
+    return swap(selfcheck, "load", patched)
+
+
+@control("the record-once checker fires on restated prose, not on shared references or code",
+         "the checker stops finding anything, so every restatement ships green")
+def _recordonce_blind():
+    with _loading_recordonce_as(lambda m: setattr(m, "violations", lambda by_file: [])):
+        yield
+
+
+@control("the record-once checker fires on restated prose, not on shared references or code",
+         "the checker reads code as prose, so ordinary duplicated test setup is flagged")
+def _recordonce_reads_code():
+    # The false-positive direction, and the one a fires-on-restatement check cannot see alone: a
+    # checker that flags every shared `using var stderr = new StringWriter();` blocks real work
+    # while looking exactly as healthy as one that works.
+    with _loading_recordonce_as(lambda m: setattr(m, "is_prose", lambda path, line: True)):
+        yield
+
 def main() -> int:
     print(__doc__.strip().splitlines()[0])
     print("=" * 78)
@@ -354,3 +383,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
