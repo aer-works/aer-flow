@@ -858,6 +858,11 @@ def _recordonce_discriminates():
          {"src/Aer.Ui.Core/Generated.cs": [banner], "src/Aer.Mobile/lib/tokens.dart": [banner]}, False),
         ("the same command block fenced in two runbooks",
          {"docs/runbooks/a.md": [fenced], "docs/runbooks/b.md": [fenced]}, False),
+        # A file with no extension is still a file with comments, and the per-language table read it
+        # as nothing while every arm above stayed green. `NO_EXTENSION` in recordonce.py carries the
+        # measurement; what this arm adds is that a narrowing cannot ship silently again.
+        ("prose in an extensionless file restated into a doc",
+         {".githooks/pre-push": one(f"# {sentence}"), "docs/EX.md": one(sentence)}, True),
     ]
     for label, by_file, fires in polarities:
         found = rec.violations(by_file)
@@ -903,18 +908,39 @@ def _recordonce_discriminates():
                            "docs/B.md": one(sentence)}, lambda path: literal.get(path)), (
         "record-once: a marker written as a code literal silenced the checker")
 
-    # A marker whose canonical location does not exist exempts nothing and is reported as refused;
-    # `exemptions` in recordonce.py carries the reason.
+    # Prose ABOUT the marker is not a marker. The false positive the anchored SUPPRESS was added
+    # for, and it was live rather than theoretical -- `SUPPRESS` in recordonce.py records which
+    # docstring it was and what it exempted. The second assertion is the load-bearing one: a mention
+    # must be inert, not merely un-honoured, or every document explaining the syntax fails the gate.
+    mention = f"// see {marker[3:]} for the format"
+    describes = {"src/A.cs": [f"// {sentence}", mention], "docs/B.md": [sentence]}
+    at_mention = lambda path: describes.get(path)  # noqa: E731
+    assert rec.violations(added, at_mention), (
+        "record-once: a marker named inside a sentence exempted a passage")
+    assert not rec.groups(added, at_mention)[2], (
+        "record-once: prose describing the marker was reported as a broken one")
+
+    # A marker whose canonical location does not exist, and one that does not parse at all, each
+    # exempt nothing AND fail the run. Both are unambiguous typos, and both previously landed as a
+    # printed note saying the passage had been exempted while it was being compared.
     typo = marker.replace("docs/plan.md", "docs/no-such-file.md")
     absent = {"src/A.cs": [f"// {sentence}", typo], "docs/B.md": [sentence]}
     at_typo = lambda path: absent.get(path)  # noqa: E731
     assert rec.violations(added, at_typo), (
         "record-once: a marker naming a file that does not exist still exempted the passage")
-    assert "REFUSED" in rec.groups(added, at_typo)[1][0], (
+    assert any("does not exist" in b for b in rec.groups(added, at_typo)[2]), (
         "record-once: a refused marker was reported as though it had been honoured")
 
+    # One file, no shared wording: the ONLY thing wrong is the marker, so a green run here would be
+    # the silent no-op itself rather than any restatement finding masking it.
+    broken = {"src/A.cs": ["// record-once-ok: #901", f"// {sentence}"]}
+    solo = rec.violations({"src/A.cs": one("// record-once-ok: #901", f"// {sentence}")},
+                          lambda path: broken.get(path))
+    assert len(solo) == 1 and "does not parse" in solo[0], (
+        f"record-once: a marker with no canonical path failed silently -- {solo}")
+
     return (f"{len(polarities)} record-once polarities "
-            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 6 exemption arms")
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 9 exemption arms")
 
 
 @check("the record-once checker still finds the passages it found in a real merge")

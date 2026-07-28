@@ -447,14 +447,14 @@ def _recordonce_marker_mutes_file():
         real = mod.exemptions
 
         def whole_file(path, at):
-            shingles, markers = real(path, at)
-            if not markers:
-                return shingles, markers
+            shingles, notes, bad = real(path, at)
+            if not notes:
+                return shingles, notes, bad
             every = set()
             for words in mod.prose_runs(path, [at(path) or []]):
                 for i in range(len(words) - mod.SHINGLE + 1):
                     every.add(tuple(words[i:i + mod.SHINGLE]))
-            return every, markers
+            return every, notes, bad
         replacing(mod, "exemptions", whole_file)
     with _loading_recordonce_as(file_granular):
         yield
@@ -464,18 +464,53 @@ def _recordonce_marker_mutes_file():
 def _recordonce_marker_ignores_context():
     # The other half of #676: with no context test, the marker's characters anywhere in a tracked
     # file exempted that file. See `marked_runs` in recordonce.py for what that cost.
+    #
+    # Carries the pre-anchor pattern rather than borrowing `mod.SUPPRESS`, because the anchor added
+    # later would refuse `marker = "// record-once-ok: ..."` before the missing context test ever
+    # mattered, and the arm would go green while naming a defect it had stopped modelling. Two
+    # independent defences now stand between a code literal and an exemption; this one is named for
+    # the context test, so it holds the other constant.
+    unanchored = re.compile(r"record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)")
+
     def raw_lines(mod):
         real = mod.marked_runs
 
         def marks_anything(path, hunks):
             runs = real(path, hunks)
             found = next((m for hunk in hunks for line in hunk
-                          if (m := mod.SUPPRESS.search(line)) is not None), None)
+                          if (m := unanchored.search(line)) is not None), None)
             if found is None:
                 return runs
             return [(words, (found.group(1), found.group(2))) for words, _ in runs]
         replacing(mod, "marked_runs", marks_anything)
     with _loading_recordonce_as(raw_lines):
+        yield
+
+
+@control(RECORDONCE, "the marker matches mid-sentence, so prose explaining it becomes a decision")
+def _recordonce_marker_unanchored():
+    # Not hypothetical: this checker's own docstring, describing what the marker looks like, was read
+    # as one naming a file that does not exist -- and the run printed that a passage had been
+    # exempted while comparing it. Documentation about a marker is the text certain to contain it.
+    unanchored = re.compile(r"record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)")
+    with _loading_recordonce_as(lambda m: replacing(m, "SUPPRESS", unanchored)):
+        yield
+
+
+@control(RECORDONCE, "a mistyped marker exempts nothing and says nothing, as it used to")
+def _recordonce_malformed_marker_is_silent():
+    # The `setattr` shape one commit earlier, in the hatch instead of the harness: the author reads a
+    # green gate as their exemption being recorded, the gate reads no marker at all, and the two
+    # states are indistinguishable from either side. A never-matching pattern restores exactly that.
+    with _loading_recordonce_as(lambda m: replacing(m, "SUPPRESS_LOOSE", re.compile(r"(?!)"))):
+        yield
+
+
+@control(RECORDONCE, "an extensionless file reads as nothing, so its comments go uncompared")
+def _recordonce_drops_extensionless():
+    # Restores the narrowing this change was measured to have shipped, by emptying the fallback.
+    # `NO_EXTENSION` in recordonce.py is where the measurement lives.
+    with _loading_recordonce_as(lambda m: replacing(m, "NO_EXTENSION", ())):
         yield
 
 

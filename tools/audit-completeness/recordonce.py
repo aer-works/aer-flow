@@ -44,6 +44,10 @@ WHAT IT CANNOT CHECK:
   * `.json`, `.txt` and the VALUES in `.yml`/`.toml`/`.csproj` -- data positions, not comments.
     `.rst`/`.mdx` are not listed because neither exists in this repo; add them with a file, not in
     advance.
+  * A file whose EXTENSION is not in LANGUAGES -- a `.rb`, a `.lua` -- reads as nothing, silently.
+    Extensionless files do not; see `NO_EXTENSION` for what that fallback is and what found it.
+    An unknown extension is not given the same treatment, since guessing `#` on a data format would
+    read values as prose. Adding one is one LANGUAGES row.
   * Whether the surviving copy is the right one. It finds duplicates; it does not rank them.
   * Whether a marker's ISSUE is real or open. Its canonical PATH is checked -- a marker naming a file
     that is not there exempts nothing and says so -- but reaching GitHub from a gate would make CI
@@ -77,7 +81,22 @@ ROOT = Path(__file__).resolve().parents[2]
 # among added lines, an exemption granted by an earlier PR exempted nothing later: reword both copies
 # of a deliberately duplicated passage without re-touching the marker line and it was flagged again,
 # so the hatch had to be re-applied to stay applied.
-SUPPRESS = re.compile(r"record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)")
+# Anchored to the START of the comment, so a marker is a comment line and not a phrase inside one.
+# Measured on this file: the docstring below explaining that `record-once-ok: #901 docs/B.md` written
+# as a Python literal exempts nothing was itself read as a marker naming `docs/B.md``, backtick and
+# all, the moment #675 made docstrings visible. Prose ABOUT the marker is the one text guaranteed to
+# contain it, so an unanchored match turns every explanation into a decision.
+SUPPRESS = re.compile(r"^\s*record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?(\S+)\s*$")
+
+# Anything opening a comment with `record-once-ok` that SUPPRESS then refuses to parse -- a missing
+# path, a missing issue, a block closer trailing on the line. Without this a mistyped marker is a
+# silent no-op: no exemption, no message, and an author who believes a decision was recorded facing
+# a gate that believes nothing was said -- the failure `replacing()` in controls.py records.
+SUPPRESS_LOOSE = re.compile(r"^\s*record-once-ok\b")
+
+# The issue field of a marker that announced itself and did not parse. Not a real issue number, and
+# it never reaches the exempting path -- it exists so one code path carries both author errors.
+MALFORMED = "?"
 
 # Long enough that ordinary phrasing does not collide by accident, short enough to catch a restated
 # clause rather than only a whole restated paragraph.
@@ -122,6 +141,14 @@ LANGUAGES = (
 )
 LINE_OPENER = re.compile(r"^\s*")
 
+# A file with no extension at all -- `.githooks/pre-push`, a `Dockerfile`, a `Makefile` -- is read as
+# `#`-commented rather than as nothing. Measured on the file that prompted it: `.githooks/pre-push`
+# went from 11 of its 12 lines read to 0 the moment the table above replaced the single leader regex,
+# and nothing said so. `#` only, which is narrower than the leader regex it restores: an extensionless
+# file that turns out to be C-like is read by nothing here, and unread is the direction to be wrong in.
+# An UNKNOWN extension still reads as nothing -- add it to LANGUAGES; see WHAT IT CANNOT CHECK.
+NO_EXTENSION = ("#",)
+
 # Text whose duplication `record-once` PRESCRIBES, and which therefore cannot be evidence against it.
 #
 #   * A markdown table row. The decision-index row repeats the record's own title verbatim, and
@@ -139,10 +166,15 @@ GENERATED = re.compile(r"GENERATED FILE", re.IGNORECASE)
 
 
 def language(path: str) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
-    """This file's line-comment openers and block-comment delimiters, or empty for both if unknown."""
+    """This file's line-comment openers and block-comment delimiters.
+
+    An extensionless file falls back to `NO_EXTENSION`; an unrecognised extension reads as nothing.
+    """
     for extensions, line_openers, blocks in LANGUAGES:
         if path.endswith(extensions):
             return line_openers, blocks
+    if Path(path).suffix == "":
+        return NO_EXTENSION, ()
     return (), ()
 
 
@@ -250,6 +282,8 @@ def marked_runs(path: str, hunks: list[list[str]]) -> list[tuple[list[str], tupl
             if prose is not None:
                 if (found := SUPPRESS.search(prose)) is not None:
                     marker = (found.group(1), found.group(2))
+                elif SUPPRESS_LOOSE.search(prose) is not None:
+                    marker = (MALFORMED, prose.strip())
                 words = normalise(prose)
 
             if words:
@@ -379,8 +413,13 @@ def file_at(path: str, rev: str = "HEAD") -> list[str] | None:
     return out.stdout.splitlines() if out.returncode == 0 else None
 
 
-def exemptions(path: str, at) -> tuple[set[tuple[str, ...]], list[tuple[str, str]]]:
-    """Shingles a marker exempts in this file as it stands, and the markers that did the exempting.
+def exemptions(path: str, at) -> tuple[set[tuple[str, ...]], list[str], list[str]]:
+    """Shingles a marker exempts in this file as it stands, what exempted them, and author errors.
+
+    Three returns, not two, because a marker that does not take effect has to reach the exit code
+    rather than a printed note. Both bad cases are unambiguous typos with a cheap fix, and both
+    previously read as an exemption that happened: the note said "exempted ... not compared" over a
+    passage that was compared.
 
     Read from the whole file rather than from the diff. A marker matched among ADDED lines only held
     for the change that added it, so rewording either copy of a deliberately duplicated passage --
@@ -389,30 +428,37 @@ def exemptions(path: str, at) -> tuple[set[tuple[str, ...]], list[tuple[str, str
     """
     lines = at(path)
     if lines is None:
-        return set(), []
+        return set(), [], []
 
     shingles: set[tuple[str, ...]] = set()
-    markers: list[tuple[str, str]] = []
+    notes: list[str] = []
+    bad: list[str] = []
     for words, marker in marked_runs(path, [lines]):
         if marker is None:
             continue
         issue, canonical = marker
+        if issue == MALFORMED:
+            bad.append(f"{path}: a comment opens `record-once-ok` and does not parse, so it\n"
+                       f"      exempts nothing: \"{canonical}\"\n"
+                       "      Expected `record-once-ok: #<issue> <canonical path>`, alone on the line.")
+            continue
         # The canonical location has to exist, which is the part of #676's "nothing verifies this"
         # that needs no network. A marker naming a file that is not there is a typo, and a typo that
         # silences a gate is worse than no marker -- so it exempts nothing and says so, rather than
         # being honoured on the strength of matching a regex.
         if not (ROOT / canonical).exists():
-            markers.append((issue, f"{canonical} !! REFUSED: no such file, so nothing is exempted"))
+            bad.append(f"{path}: marker #{issue} names `{canonical}`, which does not exist, so it\n"
+                       "      exempts nothing.")
             continue
-        markers.append(marker)
+        notes.append(f"{path}: passage(s) exempted by #{issue}, canonical is {canonical}")
         for i in range(len(words) - SHINGLE + 1):
             shingles.add(tuple(words[i:i + SHINGLE]))
-    return shingles, markers
+    return shingles, notes, bad
 
 
 def groups(by_file: dict[str, list[list[str]]], at=None
-           ) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]], list[str]]:
-    """File-sets that share at least one shingle, plus what a marker exempted.
+           ) -> tuple[dict[tuple[str, ...], list[tuple[str, ...]]], list[str], list[str]]:
+    """File-sets that share at least one shingle, what a marker exempted, and markers that failed.
 
     `at` is how a file's CURRENT text is fetched -- `path -> lines or None`. A callable rather than
     a revision so a fixture can supply text directly: markers have to be read from whole files, and a
@@ -423,11 +469,12 @@ def groups(by_file: dict[str, list[list[str]]], at=None
     # wrapped mid-sentence in every file it landed in -- and no further than a run, because text
     # joined across a break is text nobody wrote. See `prose_runs`.
     where: dict[tuple[str, ...], set[str]] = collections.defaultdict(set)
-    suppressed = []
+    suppressed: list[str] = []
+    bad: list[str] = []
     for path, hunks in by_file.items():
-        exempt, markers = exemptions(path, at) if at else (set(), [])
-        for issue, canonical in markers:
-            suppressed.append(f"{path}: passage(s) exempted by #{issue}, canonical is {canonical}")
+        exempt, notes, failed = exemptions(path, at) if at else (set(), [], [])
+        suppressed.extend(notes)
+        bad.extend(failed)
         for words in prose_runs(path, hunks):
             for i in range(len(words) - SHINGLE + 1):
                 shingle = tuple(words[i:i + SHINGLE])
@@ -442,11 +489,11 @@ def groups(by_file: dict[str, list[list[str]]], at=None
     for shingle, files in where.items():
         if len(files) > 1:
             by_group[tuple(sorted(files))].append(shingle)
-    return by_group, sorted(suppressed)
+    return by_group, sorted(suppressed), sorted(bad)
 
 
 def violations(by_file: dict[str, list[list[str]]], at=None) -> list[str]:
-    by_group, _ = groups(by_file, at)
+    by_group, _, bad = groups(by_file, at)
 
     # A restated passage spanning four files also produces a group for every pair and triple within
     # it, and collapsing those turns two dozen entries back into the handful a person has to fix.
@@ -457,7 +504,11 @@ def violations(by_file: dict[str, list[list[str]]], at=None) -> list[str]:
                           and set(by_group[f]) <= set(by_group[other])
                           for other in by_group)]
 
-    problems = []
+    # A marker that announces an exemption and does not deliver one fails the run rather than
+    # printing among the notes. It is an author error with a one-line fix, and the alternative is a
+    # gate whose own output has to be read to learn that nothing was exempted -- which is exactly
+    # how `audit-completeness` once shipped a false 16/16 while exiting 1.
+    problems = [f"  {note}" for note in bad]
     for files in sorted(maximal):
         shingles = by_group[files]
         sample = " ".join(sorted(shingles)[0])
@@ -505,7 +556,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     at_head = lambda path: file_at(path, "HEAD")  # noqa: E731
-    _, suppressed = groups(by_file, at_head)
+    _, suppressed, _ = groups(by_file, at_head)
     for note in suppressed:
         print(f" -- exempted by `record-once-ok`, not compared: {note}")
 
@@ -514,7 +565,8 @@ def main(argv: list[str]) -> int:
         print(" OK no wording was added to more than one file")
         return 0
 
-    print(f" !! {len(problems)} group(s) of files sharing added wording\n", file=sys.stderr)
+    print(f" !! {len(problems)} problem(s): shared added wording, or a marker that exempts "
+          "nothing\n", file=sys.stderr)
     for p in problems:
         print(p, file=sys.stderr)
     return 1
