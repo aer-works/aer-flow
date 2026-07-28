@@ -5,23 +5,23 @@ platforms = ["win-64", "linux-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
+# Every toolchain below (Rust, Go, Flutter/Dart, .NET) is installed separately and is NOT
+# pixi-managed. CLAUDE.md's "Running tasks" section owns that fact and the install instructions;
+# stated here once rather than re-explained per task.
+#
 # Builds external/aer-core's native library. The Aer.Core.csproj ProjectReference (Aer.Flow ->
 # Aer.Core, M7 Phase 6's Core Dispatcher) copies this binary from external/aer-core/target/debug/
 # into the output directory only if it already exists there, so this must run before any dotnet
-# task that touches Aer.Flow. Requires a Rust toolchain on PATH — installed separately, not pixi-
-# managed (same convention as the .NET SDK below); GitHub Actions' standard runner images already
-# have one.
+# task that touches Aer.Flow.
 build-core = { cmd = "cargo build", cwd = "external/aer-core" }
 
 # M21 Phase 5 (#242): the tsnet-embedding sidecar Aer.Daemon spawns as a child process in --remote
-# mode. Go-only (no .NET tsnet binding exists) — a separate toolchain, same convention as the Rust
-# one above: installed separately, not pixi-managed locally (Windows: `winget install GoLang.Go`);
-# CI installs it explicitly via actions/setup-go (ci.yml) rather than assuming a runner image
-# already has one — that assumption turned out false for macos-latest. No dotnet build depends on
-# this at compile time (Aer.Daemon only needs the compiled binary present at runtime, when it
-# actually spawns it), but it's part of the full verification loop below. Output name has no .exe
-# on linux-64/osx-arm64 (overridden below) — Aer.Daemon.csproj's copy-if-exists looks for plain
-# `aer-sidecar` on non-Windows, matching Go's own native naming convention.
+# mode. Go-only (no .NET tsnet binding exists). CI installs Go explicitly via actions/setup-go
+# rather than assuming a runner image has one — that assumption turned out false for macos-latest.
+# No dotnet build depends on this at compile time (Aer.Daemon only needs the binary present at
+# runtime, when it actually spawns it), but it's part of the full verification loop below. Output
+# name has no .exe on linux-64/osx-arm64 (overridden below) — Aer.Daemon.csproj's copy-if-exists
+# looks for plain `aer-sidecar` on non-Windows, matching Go's own naming convention.
 build-sidecar = { cmd = "go build -o bin/aer-sidecar .", cwd = "src/Aer.Sidecar" }
 test-sidecar = { cmd = "go test ./...", cwd = "src/Aer.Sidecar" }
 lint-sidecar = { cmd = "go vet ./...", cwd = "src/Aer.Sidecar" }
@@ -47,9 +47,8 @@ fmt-check = { cmd = "dotnet format --verify-no-changes", depends-on = ["fmt-chec
 tokens = "dotnet run --project tools/Aer.DesignTokens"
 lint = { cmd = "dotnet build -warnaserror", depends-on = ["build-core", "lint-sidecar"] }
 
-# M21 Phase 2 (#232): Flutter/Dart aren't pixi-managed — installed separately, on PATH, same
-# convention as the .NET SDK and Rust toolchain above. mobile-build produces a debug APK only:
-# Aer.Mobile is sideload-only for this milestone (no Play Store signing/release config exists).
+# M21 Phase 2 (#232): mobile-build produces a debug APK only — Aer.Mobile is sideload-only for this
+# milestone (no Play Store signing/release config exists).
 mobile-analyze = { cmd = "flutter analyze", cwd = "src/Aer.Mobile" }
 # Excludes the `journey` tag: journey tests (#313) are red-specs run separately via
 # `pixi run journey-mobile`, so the default suite stays green (see dart_test.yaml).
@@ -86,33 +85,34 @@ pack = { cmd = "dotnet pack src/Aer.Cli/Aer.Cli.csproj -o bin/pack", depends-on 
 # prints what it CANNOT check as well as what it did, so passing it is never read as "all clear".
 smoke-preflight = { cmd = "python -u tools/smoke-preflight/preflight.py" }
 
-# M11 Phase 4 (#87), the milestone's completion gate: a real draft → review workflow run through
-# `aer run` against the real, authenticated `claude` CLI, never `pixi run test`'s stub/shell-stub
-# path, and never invoked from CI. Requires a `claude` CLI on PATH already logged in (or an API
-# key configured for it) and outbound network access. `Aer.Cli.SmokeTests` is deliberately absent
-# from AerFlow.slnx so it never builds or runs as a side effect of `build`/`test`/`lint`. See
-# docs/runbooks/live-claude-smoke.md before running this.
+# LIVE AND PAID -- smoke-claude, smoke-mixed-vendor, smoke-dialogue, smoke-session, vendor-probe and
+# vendor-verify drive real authenticated vendor CLIs and spend real subscription usage. They never
+# run in CI and are permanently a human action item; an agent session cannot close one. CLAUDE.md's
+# "Live-vendor smoke tests" section owns that rule and the reasoning; each task below adds only what
+# is specific to IT, and names the runbook to read first. `Aer.Cli.SmokeTests` sits outside
+# AerFlow.slnx so none of it runs as a side effect of `build`/`test`/`lint`.
+#
+# Not in that set, despite the neighbouring names: smoke-preflight, vendor-survey and vendor-check
+# are all free and start no billable session -- each says so where it is defined.
+#
+# M11 Phase 4 (#87), the milestone's completion gate: a real draft → review workflow through
+# `aer run` against `claude`, never `pixi run test`'s stub/shell-stub path.
+# docs/runbooks/live-claude-smoke.md
 smoke-claude = { cmd = "dotnet test tests/Aer.Cli.SmokeTests", depends-on = ["build-core", "smoke-preflight"] }
 
 # M12 Phase 4 (#98), this milestone's completion gate: a real draft (`claude`) → review (`agy`)
-# workflow, paused at review's declared PausePoint and resumed via `aer decide`, run through the
-# real, authenticated `claude` and `agy` CLIs. Same CI exclusion as smoke-claude above — requires
-# both CLIs on PATH already logged in (or API keys configured) and outbound network access to both
-# vendors' APIs. See docs/runbooks/live-mixed-vendor-smoke.md before running this.
+# workflow, paused at review's declared PausePoint and resumed via `aer decide`. Needs BOTH vendors.
+# docs/runbooks/live-mixed-vendor-smoke.md
 smoke-mixed-vendor = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveMixedVendorPausedRunSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
 
 # M17 Phase 5 (#168), this milestone's completion gate: a real, bounded Claude <-> agy dialogue
-# exchange, run through the dialogue worker (Aer.Workers.Dialogue) via the "dialogue" adapter, driven
-# through `aer run` against both real, authenticated CLIs. Same CI exclusion as smoke-claude/
-# smoke-mixed-vendor above -- requires both CLIs on PATH already logged in (or API keys configured)
-# and outbound network access to both vendors' APIs. See docs/runbooks/live-dialogue-smoke.md before
-# running this.
+# exchange through the dialogue worker (Aer.Workers.Dialogue) via the "dialogue" adapter. Both
+# vendors. docs/runbooks/live-dialogue-smoke.md
 smoke-dialogue = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveDialogueSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
 
 # M24 Phase 1/2 (#262/#263) completion gate, added retroactively: a ~50-turn interactive-session
-# stress run plus a compact round trip, driven directly against Aer.Daemon's real HTTP surface
-# (sessions have no `aer` CLI command) with the real, authenticated `claude` CLI. Same CI exclusion
-# as smoke-claude above. See docs/runbooks/live-session-smoke.md before running this.
+# stress run plus a compact round trip, driven directly against Aer.Daemon's real HTTP surface --
+# sessions have no `aer` CLI command. docs/runbooks/live-session-smoke.md
 smoke-session = { cmd = "dotnet test tests/Aer.Cli.SmokeTests --filter FullyQualifiedName~LiveSessionSmokeTest", depends-on = ["build-core", "smoke-preflight"] }
 
 # Journey tests (#313): the product-journey harness (spec/journeys.md). Two in-process runners —
@@ -133,8 +133,7 @@ journey-reconcile = { cmd = "dotnet test tests/Aer.Journeys.Tests --filter Categ
 
 # Vendor probe (#504): establishes what each vendor CLI can actually do, and writes both the
 # findings matrix and docs/vendor-probe.lock.json (the versions those findings were established
-# against). NEVER runs in CI — it drives live authenticated CLIs and spends real subscription usage,
-# the same permanent-human-action-item rule as smoke-* above. It exists because
+# against). Live and paid, per the block above smoke-claude. It exists because
 # docs/vendor-capabilities.md always said "re-run the probes after a vendor update" while the probes
 # were ad-hoc shell, written once and thrown away; several rows were wrong as a result, most
 # expensively `--permission-prompt-tool`, which decision 0015 inverted its whole mechanism on.
@@ -161,9 +160,8 @@ vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
 # audit that produced them found four vendor statements to be wrong and two that contradicted each
 # other — so a doc page changing is a reason to re-run this, not a reason to trust the new page.
 #
-# NEVER runs in CI: it drives live authenticated CLIs and spends real subscription usage, same
-# permanent-human-action-item rule as smoke-* and vendor-probe. Checks that would touch the
-# operator's own ~/.claude or ~/.gemini are skipped unless --allow-config-writes is passed.
+# Live and paid, per the block above smoke-claude. Checks that would touch the operator's own
+# ~/.claude or ~/.gemini are skipped unless --allow-config-writes is passed.
 #
 # Two rules the checks are built on, both learned by getting them wrong first: one variable per
 # check (always a control arm), and execution proven by a sentinel FILE rather than by the model's
@@ -185,8 +183,8 @@ vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 # STANDING CHECK (re-scoped 2026-07-26 -- see the SCOPE note in the script; it was run cold nine
 # days after #527 and caught 11 undispositioned decisions and 2 orphaned vendor-verify checks).
 # Run before a PR touching docs/decisions/, docs/vendor-*.md, or tools/vendor-verify/verify.py
-# ships -- CLAUDE.md gate 8. Free except step 4 (closed-issue citation check), which needs `gh` and
-# the network and skips loudly rather than failing when neither is available.
+# ships -- CLAUDE.md gate `record-once`. Free except step 4 (closed-issue citation check), which
+# needs `gh` and the network and skips loudly rather than failing when neither is available.
 audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }

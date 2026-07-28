@@ -418,6 +418,46 @@ def _shapes_discriminate():
                    if blind else "; no catalogue entry is digit-free, so the walk's blind spot is empty")
 
 
+@check("the gate-citation lint separates a slug from an ordinal")
+def _gate_lint_discriminates():
+    # Step 10's population is the whole repo, so it can only ever report "0 faults" -- which is what
+    # a lint pointed at nothing also reports. `gate_citation_faults` is pure for exactly this
+    # reason: drive it with planted input and both directions become checkable.
+    slugs = completeness.gate_slugs(completeness.read("CLAUDE.md"))
+    assert slugs, "CLAUDE.md defines no gate slugs -- the lint has no expected set to judge against"
+
+    # ASSEMBLED, NOT SPELLED OUT -- the fifth fixture in this pair of files to need it. Every checker
+    # here scans the directory it lives in, so a fault written as a literal IS a fault, in a real
+    # file, and the checker reports itself. Step 10 did exactly that on these two lines. The rule:
+    # a fixture for a checker must not be readable BY that checker.
+    ordinal = "run this before shipping -- CLAUDE.md gate " + "8."
+    absent_slug = "see gate " + "`record-twice` for the rule."
+
+    # MUST be caught. The first is what `pixi.toml` actually carried; the second is what renaming a
+    # gate would leave behind everywhere.
+    caught = {"an ordinal": ordinal, "a slug that does not exist": absent_slug}
+    for label, text in caught.items():
+        faults = completeness.gate_citation_faults({"planted.md": text}, slugs)
+        assert faults, f"the lint does not flag {label}: {text!r}"
+
+    # MUST NOT be caught. A lint that fires on correct prose gets deleted, and each of these was a
+    # real false positive or a near-miss: `DependsOn` is a validity gate in milestone-history.md and
+    # not a shipping gate at all, and it only matched because a blanket re.I made `[a-z]` match
+    # capitals too.
+    ignored = {
+        "a correct slug citation": f"see gate `{sorted(slugs)[0]}` for the rule.",
+        "an unrelated capitalised gate name": "the validity gate `DependsOn` walks ancestors.",
+        "a hyphenated ordinal": "the gate-7 branch is unrelated.",
+        "the bare word": "this Gate is a different thing entirely.",
+    }
+    for label, text in ignored.items():
+        faults = completeness.gate_citation_faults({"planted.md": text}, slugs)
+        assert not faults, f"the lint fires on {label}: {text!r} -> {faults}"
+
+    return (f"{len(slugs)} slugs; {len(caught)} fault shapes caught, "
+            f"{len(ignored)} correct shapes ignored")
+
+
 @check("step 9 fails CLOSED when either of its two file sources goes unreadable")
 def _step9_fails_closed():
     # TWO of step 9's four sources, and the title says two rather than implying all four. The

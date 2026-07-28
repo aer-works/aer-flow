@@ -193,6 +193,24 @@ def _pin_shape_matches_english():
         yield
 
 
+@control("the gate-citation lint separates a slug from an ordinal",
+         "the lint stops flagging anything (a numeric citation walks past it)")
+def _gate_lint_blind():
+    with swap(selfcheck.completeness, "gate_citation_faults", lambda files, slugs: []):
+        yield
+
+
+@control("the gate-citation lint separates a slug from an ordinal",
+         "the lint flags everything (correct slug citations become faults)")
+def _gate_lint_cries_wolf():
+    # The direction that gets a lint DELETED rather than the one that lets a fault through, and the
+    # one it actually shipped with: a blanket re.I made `[a-z]` match capitals, so prose about a
+    # validity gate named in CamelCase was reported as citing a gate that does not exist.
+    with swap(selfcheck.completeness, "gate_citation_faults",
+              lambda files, slugs: [("planted.md", 1, "everything is a fault", "x", "x")]):
+        yield
+
+
 @control("step 9 fails CLOSED when either of its two file sources goes unreadable",
          "step 9 returns True regardless of what it can read")
 def _step9_always_true():

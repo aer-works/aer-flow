@@ -678,6 +678,83 @@ def step4_stale_citations():
     return ok
 
 
+GATE_HEADING = re.compile(r"^\*\*\d+\..*?—\s*`([a-z][a-z-]+)`", re.M)
+# The word "gate" followed by a bare number, in any casing. Not `gate-<n>` and not `Gate` alone.
+# Written without a literal example: this file is inside the population it scans, and spelling one
+# out made the lint report its own documentation as four violations.
+NUMERIC_GATE = re.compile(r"\bgates?\s+\d+", re.I)
+# A backticked slug in the same breath as the word "gate", which is how every real citation reads.
+# The slug group is deliberately CASE-SENSITIVE while the word is not: under a blanket re.I the
+# `[a-z]` class also matches capitals, and prose about a "validity gate `DependsOn`" -- not a
+# shipping gate at all -- was reported as citing a gate that does not exist.
+CITED_SLUG = re.compile(r"(?i:\bgates?)\s+`([a-z][a-z-]+)`")
+GATE_SCAN_DIRS = ("docs", "spec", "src", "tools", "tests", ".github")
+GATE_SCAN_FILES = ("CLAUDE.md", "README.md", "pixi.toml")
+GATE_SCAN_EXCLUDE = ("docs/archive",)
+GATE_SCAN_SUFFIXES = (".md", ".py", ".cs", ".toml", ".yml", ".yaml", ".rs", ".go")
+
+
+def gate_slugs(claude_md: str) -> set[str]:
+    """The gate slugs CLAUDE.md actually defines, from its own headings."""
+    return set(GATE_HEADING.findall(claude_md))
+
+
+def gate_citation_faults(files: dict, slugs: set[str]) -> list:
+    """Every gate citation that cannot survive a renumbering, or names a gate that does not exist.
+
+    `files` maps a display path to its text. Pure, so a checker can drive it with planted input --
+    a lint that can only be run against the real tree cannot be shown to discriminate.
+
+    Two faults, one cause. CLAUDE.md's own gate list says to cite a gate by its slug and never its
+    number, because numbers are positional and merging two gates once already invalidated every
+    citation in the repo. That instruction had been prose for months, and prose does not renumber
+    citations: `pixi.toml` cited a gate ordinal past the end of the list.
+    """
+    faults = []
+    for path, text in sorted(files.items()):
+        for lineno, raw in enumerate(text.splitlines(), start=1):
+            for m in NUMERIC_GATE.finditer(raw):
+                faults.append((path, lineno, "cites a gate by NUMBER", m.group(0), raw.strip()[:90]))
+            for m in CITED_SLUG.finditer(raw):
+                if m.group(1) not in slugs:
+                    faults.append((path, lineno, "cites a gate slug that does not exist",
+                                   m.group(1), raw.strip()[:90]))
+    return faults
+
+
+def step10_gate_citations():
+    """No file cites a shipping gate by a number, or by a slug CLAUDE.md does not define."""
+    rule("STEP 10 -- every gate citation survives the list being renumbered")
+    slugs = gate_slugs(read("CLAUDE.md"))
+    if not slugs:
+        print("    !! no gate headings found in CLAUDE.md -- the expected set is empty, so this"
+              " step cannot judge any citation")
+        return False
+
+    files = {}
+    for name in GATE_SCAN_FILES:
+        files[name] = read(name)
+    for base in GATE_SCAN_DIRS:
+        for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, base)):
+            dirnames[:] = [d for d in dirnames if d not in (".git", "bin", "obj", "__pycache__")]
+            for fn in filenames:
+                if not fn.endswith(GATE_SCAN_SUFFIXES):
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, fn), ROOT).replace("\\", "/")
+                if any(rel.startswith(x) for x in GATE_SCAN_EXCLUDE):
+                    continue
+                files[rel] = read(rel)
+
+    line("gate slugs defined by CLAUDE.md", len(slugs))
+    line("files scanned for gate citations", len(files))
+    faults = gate_citation_faults(files, slugs)
+    ok = line("citations that cannot survive a renumbering", len(faults), 0,
+              "a number is positional; the slug is what survives the next restructure")
+    for path, lineno, why, what, snippet in faults:
+        print(f"      {path}:{lineno}  {why}: {what!r}  -- {snippet}")
+    return ok
+
+
 def _shutil_which(name):
     import shutil
     return shutil.which(name)
@@ -701,7 +778,7 @@ def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
-               step9_pinned_models_exist()]
+               step9_pinned_models_exist(), step10_gate_citations()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
@@ -720,6 +797,9 @@ def main() -> int:
         "  the register is a recording, and re-running `agy models` is what refreshes it.",
         "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
         "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
+        "Step 10 only sees citations that use the WORD 'gate'. Referring to a gate by its title,",
+        "  its position ('the sixth one'), or by quoting its text goes unnoticed -- and a slug that",
+        "  is correct is not thereby CITED CORRECTLY: this checks the shape, never the aptness.",
     ]:
         print(f"    - {x}")
     print()
