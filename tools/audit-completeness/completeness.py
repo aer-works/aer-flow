@@ -6,8 +6,8 @@ WHY THIS EXISTS
 lets someone check it. This is that artifact for the #527 audit chain.
 
 Each step takes a population that can be ENUMERATED and asserts every member carries a disposition.
-`main()` is the list of them -- do not restate it here; a copy of it stood at "eight steps" while
-`main()` ran nine.
+`main()` is the list of them; do not restate it here -- a restated count is one `selfcheck.py`
+now asserts against the code.
 
 This script recomputes what is mechanically recomputable (populations, and which members carry a
 disposition) and prints what it CANNOT check, because a completeness checker that hides its own
@@ -354,6 +354,46 @@ TOKEN_SHAPE = re.compile(r"[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
 PIN_SHAPE = re.compile(r"(?=.*[0-9])[a-z][a-z0-9.]*(?:-[a-z0-9.]+)+")
 
 
+def register_models():
+    """The `agy models` catalogue as the register records it: `(names, "")`, or `(None, why)`.
+
+    The register records the CLI's own output verbatim in a fenced block. Parsing that block rather
+    than keeping a hand-maintained list here makes re-running `agy models` into the register the
+    single act that updates every caller -- record once, per the gate.
+
+    Residual risk, the only one worth carrying: a second fence added BEFORE the models block, in the
+    SAME section, is still taken instead. The shape arm below is the backstop, and it only catches a
+    block whose tokens are not model names -- a fence holding some OTHER model list parses silently
+    wrong.
+    """
+    caps = read("docs/vendor-capabilities.md")
+    section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
+    if not section:
+        return None, "could not locate the `agy models` section in docs/vendor-capabilities.md"
+    fence = re.search(r"```[a-zA-Z]*\n(.*?)```", section.group(1), re.S)
+    if not fence:
+        return None, "the `agy models` section carries no fenced block"
+    accepted = set(fence.group(1).split())
+
+    # Asserts the PARSE, not just non-emptiness: without it a mis-parse blames every PIN while the
+    # fault is the parse -- the right verdict pointing at the wrong file. (`line()` with no
+    # `expected` prints no marker and returns True, so the count alone cannot catch it.)
+    # Two arms because they support two different conclusions: non-model-shaped tokens DO establish a
+    # bad parse, a surprising COUNT does not -- a catalogue legitimately shrinking to 4 would trip it,
+    # and blaming the parse there would name the wrong file.
+    unshaped = {n for n in accepted if not TOKEN_SHAPE.fullmatch(n)}
+    if unshaped:
+        return None, ("the `agy models` block parsed to token(s) that are not model names -- the"
+                      f" PARSE is wrong, not the pins. Got: {sorted(unshaped)[:8]}")
+    # A smoke alarm, not a diagnosis: wide enough that only a wild parse trips it, and the message
+    # says to go look rather than naming a culprit. The real count is printed by the caller.
+    if not 5 <= len(accepted) <= 40:
+        return None, (f"the `agy models` block parsed to {len(accepted)} names, outside the expected"
+                      " 5..40. Either the catalogue changed dramatically or the parse drifted --"
+                      " check which before trusting any verdict below.")
+    return accepted, ""
+
+
 def step9_pinned_models_exist():
     """Every `agy` model name pinned in a tool is one `agy models` actually lists.
 
@@ -396,42 +436,9 @@ def step9_pinned_models_exist():
         source does not rest on the regex.
     """
     rule("STEP 9 -- every pinned agy model name is one `agy models` lists")
-    caps = read("docs/vendor-capabilities.md")
-
-    # The register records the CLI's own output verbatim in a fenced block. Parse that block rather
-    # than a hand-maintained list here, so re-running `agy models` into the register is the single
-    # act that updates this check -- record once, per the gate.
-    # Residual risk, the only one worth carrying: a second fence added BEFORE the models block, in
-    # the SAME section, is still taken instead. The shape guard below is the backstop, and it only
-    # catches a block whose tokens are not model names -- a fence holding some OTHER model list
-    # parses silently wrong.
-    section = re.search(r"##\s+`agy models`[^\n]*\n(.*?)(?=\n##\s|\Z)", caps, re.S)
-    if not section:
-        print("    !! could not locate the `agy models` section in docs/vendor-capabilities.md")
-        return False
-    fence = re.search(r"```[a-zA-Z]*\n(.*?)```", section.group(1), re.S)
-    if not fence:
-        print("    !! the `agy models` section carries no fenced block")
-        return False
-    accepted = set(fence.group(1).split())
-
-    # Asserts the PARSE, not just non-emptiness: without it a mis-parse blames every PIN while the
-    # fault is the parse -- the right verdict pointing at the wrong file. (`line()` with no
-    # `expected` prints no marker and returns True, so the count alone cannot catch it.)
-    shaped = {n for n in accepted if TOKEN_SHAPE.fullmatch(n)}
-    # Two arms because they support two different conclusions: non-model-shaped tokens DO establish
-    # a bad parse, a surprising COUNT does not -- a catalogue legitimately shrinking to 4 would trip
-    # it, and blaming the parse there would name the wrong file.
-    if accepted != shaped:
-        print(f"    !! the `agy models` block parsed to token(s) that are not model names -- the"
-              f" PARSE is wrong, not the pins. Got: {sorted(accepted - shaped)[:8]}")
-        return False
-    # A smoke alarm, not a diagnosis: wide enough that only a wild parse trips it, and the message
-    # says to go look rather than naming a culprit. The real count is printed one line below.
-    if not 5 <= len(accepted) <= 40:
-        print(f"    !! the `agy models` block parsed to {len(accepted)} names, outside the expected"
-              " 5..40. Either the catalogue changed dramatically or the parse drifted -- check which"
-              " before trusting any verdict below.")
+    accepted, why = register_models()
+    if accepted is None:
+        print(f"    !! {why}")
         return False
     line("model names enumerated by the register", len(accepted))
 
@@ -464,9 +471,14 @@ def step9_pinned_models_exist():
         spec.loader.exec_module(mod)
     finally:
         sys.dont_write_bytecode = prior
+    # Resolved through dispatch's own defaults, not read raw: a template that OMITS `adapter` still
+    # dispatches to gemini (BUILT_IN fills it), and `tpl.get("adapter") == "gemini"` would have
+    # skipped exactly that template -- the population shrinking by one, silently, with no bad pin
+    # needed to hide in it.
     for name, tpl in getattr(mod, "TEMPLATES", {}).items():
-        if tpl.get("adapter") == "gemini" and tpl.get("model"):
-            pins.append((f"dispatch.py TEMPLATES[{name!r}]", tpl["model"]))
+        settings = mod.resolve(tpl)
+        if settings["adapter"] == "gemini" and settings["model"]:
+            pins.append((f"dispatch.py TEMPLATES[{name!r}]", settings["model"]))
     if not pins:
         print("    !! dispatch.py loaded but contributed no agy model pin -- TEMPLATES has been"
               " emptied, renamed, or restructured, so this step is no longer checking it")
@@ -666,6 +678,83 @@ def step4_stale_citations():
     return ok
 
 
+GATE_HEADING = re.compile(r"^\*\*\d+\..*?—\s*`([a-z][a-z-]+)`", re.M)
+# The word "gate" followed by a bare number, in any casing. Not `gate-<n>` and not `Gate` alone.
+# Written without a literal example: this file is inside the population it scans, and spelling one
+# out made the lint report its own documentation as four violations.
+NUMERIC_GATE = re.compile(r"\bgates?\s+\d+", re.I)
+# A backticked slug in the same breath as the word "gate", which is how every real citation reads.
+# The slug group is deliberately CASE-SENSITIVE while the word is not: under a blanket re.I the
+# `[a-z]` class also matches capitals, and prose about a "validity gate `DependsOn`" -- not a
+# shipping gate at all -- was reported as citing a gate that does not exist.
+CITED_SLUG = re.compile(r"(?i:\bgates?)\s+`([a-z][a-z-]+)`")
+GATE_SCAN_DIRS = ("docs", "spec", "src", "tools", "tests", ".github")
+GATE_SCAN_FILES = ("CLAUDE.md", "README.md", "pixi.toml")
+GATE_SCAN_EXCLUDE = ("docs/archive",)
+GATE_SCAN_SUFFIXES = (".md", ".py", ".cs", ".toml", ".yml", ".yaml", ".rs", ".go")
+
+
+def gate_slugs(claude_md: str) -> set[str]:
+    """The gate slugs CLAUDE.md actually defines, from its own headings."""
+    return set(GATE_HEADING.findall(claude_md))
+
+
+def gate_citation_faults(files: dict, slugs: set[str]) -> list:
+    """Every gate citation that cannot survive a renumbering, or names a gate that does not exist.
+
+    `files` maps a display path to its text. Pure, so a checker can drive it with planted input --
+    a lint that can only be run against the real tree cannot be shown to discriminate.
+
+    Two faults, one cause. CLAUDE.md's own gate list says to cite a gate by its slug and never its
+    number, because numbers are positional and merging two gates once already invalidated every
+    citation in the repo. That instruction had been prose for months, and prose does not renumber
+    citations: `pixi.toml` cited a gate ordinal past the end of the list.
+    """
+    faults = []
+    for path, text in sorted(files.items()):
+        for lineno, raw in enumerate(text.splitlines(), start=1):
+            for m in NUMERIC_GATE.finditer(raw):
+                faults.append((path, lineno, "cites a gate by NUMBER", m.group(0), raw.strip()[:90]))
+            for m in CITED_SLUG.finditer(raw):
+                if m.group(1) not in slugs:
+                    faults.append((path, lineno, "cites a gate slug that does not exist",
+                                   m.group(1), raw.strip()[:90]))
+    return faults
+
+
+def step10_gate_citations():
+    """No file cites a shipping gate by a number, or by a slug CLAUDE.md does not define."""
+    rule("STEP 10 -- every gate citation survives the list being renumbered")
+    slugs = gate_slugs(read("CLAUDE.md"))
+    if not slugs:
+        print("    !! no gate headings found in CLAUDE.md -- the expected set is empty, so this"
+              " step cannot judge any citation")
+        return False
+
+    files = {}
+    for name in GATE_SCAN_FILES:
+        files[name] = read(name)
+    for base in GATE_SCAN_DIRS:
+        for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, base)):
+            dirnames[:] = [d for d in dirnames if d not in (".git", "bin", "obj", "__pycache__")]
+            for fn in filenames:
+                if not fn.endswith(GATE_SCAN_SUFFIXES):
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, fn), ROOT).replace("\\", "/")
+                if any(rel.startswith(x) for x in GATE_SCAN_EXCLUDE):
+                    continue
+                files[rel] = read(rel)
+
+    line("gate slugs defined by CLAUDE.md", len(slugs))
+    line("files scanned for gate citations", len(files))
+    faults = gate_citation_faults(files, slugs)
+    ok = line("citations that cannot survive a renumbering", len(faults), 0,
+              "a number is positional; the slug is what survives the next restructure")
+    for path, lineno, why, what, snippet in faults:
+        print(f"      {path}:{lineno}  {why}: {what!r}  -- {snippet}")
+    return ok
+
+
 def _shutil_which(name):
     import shutil
     return shutil.which(name)
@@ -689,7 +778,7 @@ def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
-               step9_pinned_models_exist()]
+               step9_pinned_models_exist(), step10_gate_citations()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
@@ -708,6 +797,9 @@ def main() -> int:
         "  the register is a recording, and re-running `agy models` is what refreshes it.",
         "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
         "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
+        "Step 10 only sees citations that use the WORD 'gate'. Referring to a gate by its title,",
+        "  its position ('the sixth one'), or by quoting its text goes unnoticed -- and a slug that",
+        "  is correct is not thereby CITED CORRECTLY: this checks the shape, never the aptness.",
     ]:
         print(f"    - {x}")
     print()

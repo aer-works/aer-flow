@@ -35,11 +35,13 @@ Usage:
         --working-directory <abs path> [--adapter gemini] [--model <name>] [--effort <level>] \
         [--read-files|--no-read-files] [--write-files|--no-write-files] \
         [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
-        [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>]
+        [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>] \
+        [--dry-run]
 
-Prints the produced output file's content to stdout on success. On failure, prints whatever
-`aer run` reported plus the raw `flow.jsonl` event log (there is usually more diagnostic detail
-there than in the CLI's own terminal summary) to stderr, and exits non-zero.
+Prints the produced output file's content to stdout on success -- or, under `--dry-run`, the dry-run
+report instead, having dispatched nothing. On failure, prints whatever `aer run` reported plus the
+raw `flow.jsonl` event log (there is usually more diagnostic detail there than in the CLI's own
+terminal summary) to stderr, and exits non-zero.
 """
 from __future__ import annotations
 
@@ -134,9 +136,9 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
 #
 # Every template grants WriteFiles, the reviewing ones included. A worker satisfies its
 # ProducedOutputs contract only by writing the artifact into AER_OUTPUT_DIR, and the three read-only
-# templates withhold the shell as well, so anything less cannot report at all -- see the guard in
-# main() for the arm-by-arm scope. #629 is AER accepting that combination rather than refusing it at
-# bind time.
+# templates withhold the shell as well, so anything less cannot report at all -- see
+# `grant_refusal()` for the arm-by-arm scope. #629 is AER accepting that combination rather than
+# refusing it at bind time.
 #
 # Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
 # translation and the path #596, #611, #623 and #624 all came from. A session that only ever
@@ -190,18 +192,98 @@ TEMPLATES = {
 # NOTHING. There is deliberately no template for that case: running a cheap reviewer out of habit is
 # the ceremony the gates exist to cut, and a template would make it look sanctioned.
 
+# Precedence: an explicit flag beats the template, the template beats these. The tri-state argparse
+# defaults (None rather than True/False) are what make "was this passed?" answerable at all -- with
+# `default=True` a template could never turn a permission OFF, which is exactly the direction that
+# matters for a permission grant.
+BUILT_IN = {
+    "adapter": "gemini", "model": None, "effort": None,
+    "read_files": True, "write_files": True,
+    "run_shell_commands": False, "network_access": False,
+    "timeout_minutes": 20,
+}
 
-def main() -> int:
-    # Windows' default console codepage (cp1252) can't represent most Unicode -- a dispatched
-    # worker's own output (a box-drawing table character, an emoji, anything non-Latin-1) crashed
-    # this function's own success-path print, after the workflow itself had already succeeded.
-    for stream in (sys.stdout, sys.stderr):
-        stream.reconfigure(encoding="utf-8", errors="replace")
 
+def resolve(template: dict) -> dict:
+    """What a bare `--template X` resolves to: its settings over the built-in defaults.
+
+    Every template currently spells out every key in `BUILT_IN`, so nothing is filled today. Read one
+    anyway: `TEMPLATES[name].get("adapter")` on a template that omits it returns None while the
+    dispatch it is describing runs on gemini, which is how a model-pin check came to skip a template
+    it should have validated.
+    """
+    return {k: template.get(k, v) for k, v in BUILT_IN.items()}
+
+
+def grant_refusal(grant: dict) -> str | None:
+    """Why this permission grant is refused before it can spend, or None if it is dispatchable.
+
+    One copy, called rather than restated. A checker restating the second condition as `write_files
+    is True` asserted a stricter rule than this enforces, in a message contradicting what #529
+    measured -- and printed OK.
+    """
+    if grant["run_shell_commands"] and not grant["network_access"]:
+        return (
+            "RunShellCommands without NetworkAccess is not honorable by the gemini adapter as of "
+            "this writing (--dangerously-skip-permissions is the only non-interactive shell unlock, "
+            "and it unlocks network too) -- the adapter refuses this combination rather than "
+            "over-granting. Pass --network-access too, or drop --run-shell-commands."
+        )
+
+    if not grant["write_files"] and not grant["run_shell_commands"]:
+        # BOTH conditions. Refusing on `not write_files` alone was wrong: #529 measured, on claude,
+        # that a withheld-write grant with the shell granted produced the file anyway via Bash. So
+        # that combination is satisfiable and is allowed through.
+        #
+        # Scope, since only one arm is measured:
+        #   * claude, write+shell withheld -> `Contract not satisfied`; with --write-files ->
+        #     `Succeeded`. Same prompt, one flag changed. This is the arm the guard fires on.
+        #   * claude, write withheld + shell granted -> satisfiable, measured (#529).
+        #   * gemini, write withheld + shell + network granted -> SATISFIABILITY measured
+        #     2026-07-27: `--no-write-files --run-shell-commands --network-access` produced the
+        #     contract output and `executionSucceeded`. The MECHANISM is NOT established. AER's
+        #     event model carries no tool calls at all (`FlowEvent.cs` / `CoreEvent.cs`), so the
+        #     artifact cannot name the tool that wrote the file -- #638.
+        #     Two explanations survive that evidence, and this comment does not choose between them:
+        #       - the hook denied the write tools and the shell wrote the file (#529's substitution);
+        #       - the hook never fired, so nothing was denied and agy's own write tool wrote it.
+        #     The second is live rather than theoretical: see `GeminiWorkerAdapter`'s
+        #     `BuildDeniedTools` paragraph AND the fail-open one after it -- the hook only withholds
+        #     while it runs, and under `--dangerously-skip-permissions`, which is what this grant
+        #     translates to, there is no backstop behind it. So do not read this run as evidence
+        #     that the over-grant WAS taken back.
+        #   * gemini, write + shell both withheld -> still INFERRED. This is the arm the guard
+        #     fires on, so it is the one a run cannot reach.
+        #
+        # This bit the review dispatch for the change that added these templates: a 9-minute opus run
+        # produced nothing. AER accepting the unsatisfiable combination rather than refusing it at
+        # bind time is #629; that shell defeats a withheld write at all is #529.
+        return (
+            "nothing here can write the output. A worker satisfies its ProducedOutputs contract by "
+            "writing the artifact into AER_OUTPUT_DIR, and this grant withholds both the write tools "
+            "and the shell -- so the run would burn its full budget and then fail the contract "
+            "check. Pass --write-files, or --run-shell-commands --network-access (both -- shell "
+            "alone is refused above), which #529 measured as defeating a withheld write anyway. "
+            "See #629."
+        )
+
+    return None
+
+
+def build_parser(argv=None) -> argparse.ArgumentParser:
+    """The command line, built rather than described, so a checker can parse a grant instead of
+    grepping for one. A substring test for `"--no-write-files"` passes on a source file that
+    declares the arms in the order argparse silently mis-defaults.
+    """
+    argv = sys.argv if argv is None else argv
+    # `--list` and `--list-t` are valid abbreviations -- argparse's allow_abbrev defaults to True and
+    # accepts any unambiguous prefix. A literal `"--list-templates" not in argv` test does not see
+    # them, so asking for the catalogue got "the following arguments are required: --prompt-file".
+    listing = any(a.startswith("--list") for a in argv)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--prompt-file", required=("--list-templates" not in sys.argv), type=Path, help="Path to the prompt text sent to the worker.")
-    parser.add_argument("--output-name", required=("--list-templates" not in sys.argv), help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
-    parser.add_argument("--working-directory", required=("--list-templates" not in sys.argv), type=Path, help="Absolute path the dispatched worker treats as its project root.")
+    parser.add_argument("--prompt-file", required=not listing, type=Path, help="Path to the prompt text sent to the worker.")
+    parser.add_argument("--output-name", required=not listing, help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
+    parser.add_argument("--working-directory", required=not listing, type=Path, help="Absolute path the dispatched worker treats as its project root.")
     parser.add_argument("--template", choices=sorted(TEMPLATES), default=None,
                         help="Role preset supplying adapter/model/effort/permissions/timeout. Explicit flags still win. See --list-templates.")
     parser.add_argument("--list-templates", action="store_true", help="Print each template, what it is for, and what it resolves to, then exit.")
@@ -222,9 +304,21 @@ def main() -> int:
     parser.add_argument("--network-access", action="store_true", default=None)
     parser.add_argument("--no-network-access", dest="network_access", action="store_false")
     parser.add_argument("--timeout-minutes", type=int, default=None)
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Resolve the template, run every guard, generate workflow/bindings, then stop without dispatching. Spends nothing.")
     parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
     parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: <repo>/src/Aer.Cli/bin/Debug/net10.0/Aer.Cli.exe.")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    # Windows' default console codepage (cp1252) can't represent most Unicode -- a dispatched
+    # worker's own output (a box-drawing table character, an emoji, anything non-Latin-1) crashed
+    # this function's own success-path print, after the workflow itself had already succeeded.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
+    args = build_parser().parse_args()
 
     if args.list_templates:
         for name in sorted(TEMPLATES):
@@ -243,65 +337,22 @@ def main() -> int:
         return 0
 
     # Precedence: an explicit flag beats the template, the template beats the built-in default.
-    # The tri-state defaults above (None rather than True/False) are what make "was this passed?"
-    # answerable at all -- with `default=True` a template could never turn a permission OFF, which is
-    # exactly the direction that matters for a permission grant.
-    BUILT_IN = {
-        "adapter": "gemini", "model": None, "effort": None,
-        "read_files": True, "write_files": True,
-        "run_shell_commands": False, "network_access": False,
-        "timeout_minutes": 20,
-    }
-    template = TEMPLATES.get(args.template, {})
-    for key, fallback in BUILT_IN.items():
+    for key, value in resolve(TEMPLATES.get(args.template, {})).items():
         if getattr(args, key) is None:
-            setattr(args, key, template.get(key, fallback))
+            setattr(args, key, value)
 
     repo_root = Path(__file__).resolve().parents[2]
     cli_path = args.cli_path or _default_cli_path(repo_root)
-    if not cli_path.exists():
+    # A dry run REPORTS the CLI's absence instead of failing on it. Requiring a built Aer.Cli.exe
+    # would put --dry-run out of reach of CI's `audit` job, which has no .NET and no build -- and
+    # being reachable there is the whole point (#639).
+    if not cli_path.exists() and not args.dry_run:
         print(f"error: Aer.Cli.exe not found at {cli_path} -- build it first (pixi run build).", file=sys.stderr)
         return 2
 
-    if args.run_shell_commands and not args.network_access:
-        print(
-            "error: RunShellCommands without NetworkAccess is not honorable by the gemini adapter "
-            "as of this writing (--dangerously-skip-permissions is the only non-interactive shell "
-            "unlock, and it unlocks network too) -- the adapter refuses this combination rather "
-            "than over-granting. Pass --network-access too, or drop --run-shell-commands.",
-            file=sys.stderr,
-        )
-        return 2
-
-    if not args.write_files and not args.run_shell_commands:
-        # BOTH conditions. Refusing on `not write_files` alone was wrong: #529 measured, on claude,
-        # that a withheld-write grant with the shell granted produced the file anyway via Bash. So
-        # that combination is satisfiable and is allowed through.
-        #
-        # Scope, since only one arm is measured:
-        #   * claude, write+shell withheld -> `Contract not satisfied`; with --write-files ->
-        #     `Succeeded`. Same prompt, one flag changed. This is the arm the guard fires on.
-        #   * claude, write withheld + shell granted -> satisfiable, measured (#529).
-        #   * gemini, either arm -> INFERRED, not measured. Do not read
-        #     `--dangerously-skip-permissions` as handing the writes over: GeminiWorkerAdapter's
-        #     fourth doc paragraph retracts that for AER's path -- the PreToolUse hook derives its
-        #     deny list from all four grant categories and takes the over-grant back, measured by
-        #     `agy.hook-deny-honoured`. What makes it satisfiable there is instead that a granted
-        #     shell is absent from the deny list, which is the same substitution argument as #529
-        #     rather than a measurement.
-        #
-        # This bit the review dispatch for this very change: a 9-minute opus run produced nothing.
-        # AER accepting the unsatisfiable combination rather than refusing it at bind time is #629;
-        # that shell defeats a withheld write at all is #529.
-        print(
-            "error: nothing here can write the output. A worker satisfies its ProducedOutputs "
-            "contract by writing the artifact into AER_OUTPUT_DIR, and this grant withholds both "
-            "the write tools and the shell -- so the run would burn its full budget and then fail "
-            "the contract check. Pass --write-files, or --run-shell-commands --network-access "
-            "(both -- shell alone is refused above), which #529 measured as defeating a withheld "
-            "write anyway. See #629.",
-            file=sys.stderr,
-        )
+    refusal = grant_refusal(vars(args))
+    if refusal:
+        print(f"error: {refusal}", file=sys.stderr)
         return 2
 
     run_id = uuid.uuid4().hex[:12]
@@ -345,8 +396,12 @@ def main() -> int:
     # AER's side picked it. Saying that precisely matters here -- `gemini-3-flash` once sat in fixtures
     # and runbooks pinning nothing while the repo read as though a model had been chosen.
     print(
-        "[dispatch.py] about to dispatch: adapter={adapter} model={model} effort={effort} "
+        # "would dispatch" under --dry-run. The banner exists to announce a spend before it happens,
+        # and a dry run has none -- so saying "about to dispatch" and then dispatching nothing would
+        # make this line assert what the code does not do.
+        "[dispatch.py] {verb}: adapter={adapter} model={model} effort={effort} "
         "timeout={timeout}m".format(
+            verb="WOULD dispatch" if args.dry_run else "about to dispatch",
             adapter=args.adapter,
             model=args.model if args.model else "<none pinned -- the vendor CLI's own default>",
             # Deliberately says what is SENT, not what the vendor will do with the absence. For an
@@ -359,6 +414,22 @@ def main() -> int:
         ),
         file=sys.stderr,
     )
+
+    if args.dry_run:
+        # Stops HERE, after the JSON is generated, not before. The three bugs this script exists to
+        # stop -- an int WorkflowTemplateVersion, arrays rather than objects, an absolute task-dir --
+        # all live in the build above, so a dry run that skipped it would validate the half that was
+        # never the problem.
+        print("[dispatch.py] DRY RUN -- nothing was dispatched and nothing was spent.")
+        print(f"    workflow:   {workflow_path}")
+        print(f"    bindings:   {bindings_path}")
+        print(f"    task-dir:   {_forward_slashes(task_dir)}")
+        print(f"    Aer.Cli:    {cli_path}"
+              f"{'' if cli_path.exists() else '   <-- NOT BUILT; a real run would fail here'}")
+        print("    grant:      " + " ".join(
+            f"{k}={getattr(args, k)}" for k in
+            ("read_files", "write_files", "run_shell_commands", "network_access")))
+        return 0
 
     # Captured BEFORE the run. A reused --scratch-root carries a previous dispatch's log, and
     # printing it on failure hands over another run's PID and exit reason as this run's diagnostics

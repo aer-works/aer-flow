@@ -11,7 +11,7 @@ pixi run aer-dispatch -- \
     [--adapter gemini] [--model <name>] [--effort <level>] \
     [--read-files|--no-read-files] [--write-files|--no-write-files] \
     [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
-    [--timeout-minutes 20]
+    [--timeout-minutes 20] [--dry-run]
 ```
 
 Prints the produced output file's content to stdout. On failure, prints `aer run`'s own output plus
@@ -65,6 +65,23 @@ Two things worth knowing before reaching for one:
 
 A pinned `agy` model name is checked against `agy models` by STEP 9 of
 `pixi run audit-completeness`.
+
+## `--dry-run` — resolve, guard, generate, stop
+
+Applies flag precedence, runs every guard, writes `workflow.json`/`bindings.json`, prints the
+resolved grant, and exits **without calling `aer run`**. Spends nothing, and does not need a built
+`Aer.Cli.exe` — it reports its absence instead of failing, which is what lets
+`pixi run audit-selfcheck` dry-run every template in CI.
+
+It stops *after* the JSON is generated, not before, because all three bugs in "Why this exists" live
+in that build. A dry run that skipped it would validate only the half that was never the problem.
+
+Grants the guards **refuse** still exit 2 under `--dry-run` — it reports what a real run would do,
+and a real run would be refused. That is the property that makes it a test surface: exit 0 means
+dispatchable, exit 2 means refused, and both are now free to ask.
+[#639](https://github.com/aer-works/aer-flow/issues/639) is why it exists: before it, only the
+refused combinations could be checked without paying, so verifying that an *allowed* grant is
+allowed cost a live run — and the one time that was checked, it did.
 
 ## Using this for an advisor consult
 
