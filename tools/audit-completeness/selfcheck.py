@@ -642,43 +642,52 @@ def _instruments_self_test():
             "+ control_arm's red baseline")
 
 
-@check("the record-once checker fires on restatement and not on pointers")
+@check("the record-once checker fires on restated prose, not on shared references or code")
 def _recordonce_discriminates():
-    """Both polarities, because a checker that never fires reads exactly like a clean repo.
+    """Three polarities, because this design has already been wrong in both directions.
 
-    Fed constructed diffs rather than the live one: the live diff is whatever today's branch happens
-    to contain, so asserting on it would go green or red for reasons unrelated to the checker.
+    Counting issue references was tried first: measured against the real merged PR it flagged the
+    issue that PR implemented (30 files) as loudly as the one genuine restatement (5). Then shingling
+    flagged duplicated test setup. Each arm below is one of those mistakes, kept so it cannot recur.
     """
     rec = load(ROOT / "tools" / "audit-completeness" / "recordonce.py", "_selfcheck_recordonce")
 
-    # The shape that actually happened: one corrected fact typed into five files.
-    sprawled = {f"src/F{i}.cs": [[f"// #901 says the vendor refuses.", "// It does not."]]
-                for i in range(5)}
-    assert rec.violations(sprawled), (
-        "#901 newly referenced in five files was accepted -- the exact shape this exists for, and "
-        "accepting it makes the checker decorative")
+    sentence = "// the vendor refuses the call before any hook is ever consulted here"
+    restated = {"src/A.cs": [sentence], "docs/B.md": [sentence.replace("// ", "")]}
+    assert rec.violations(restated), (
+        "the same sentence in two files was accepted -- the shape this exists for")
 
-    # The control that matters: an explanation plus a couple of pointers must PASS, or the checker
-    # tells people to delete their links rather than their duplication.
-    canonical = {
-        "src/A.cs": [["// See #901."]],
-        "pixi.toml": [["# See #901."]],
-        "docs/B.md": [["#901 records that the vendor does not refuse.", "Measured against the CLI."]],
-    }
-    assert not rec.violations(canonical), (
-        "one explanation plus two pointers was rejected -- that is the shape record-once ASKS for")
+    # Was a false positive under the reference-counting design: one issue cited in many files is the
+    # register working, and thirty different sentences share no wording.
+    # Genuinely different sentences, as real files citing one issue have -- a fixture that repeated
+    # one sentence thirty times would be restatement, and the checker would be right to say so.
+    distinct = [
+        "// Pre-approved either way, because the hook is what confines the target path.",
+        "// Refused at bind time rather than discovered after the run is paid for.",
+        "// The exemption covers write-family tools only; a read carries a path too.",
+        "// Fails closed on every payload it cannot judge, including its own defects.",
+        "// Resolves every component so a planted link cannot launder the target.",
+        "// Adapter-agnostic, so narrowing this would refuse on one vendor at bind time.",
+        "// Measured live across four consecutive dispatches with distinct task directories.",
+        "// The vendor ignores the process working directory, which is why cwd is not it.",
+        "// Only the deny list enforces; the allow list merely stops the prompt appearing.",
+        "// Kept as its own condition so the operator learns which mistake they made.",
+    ]
+    references = {f"src/F{i}.cs": [f"{line} See #901."] for i, line in enumerate(distinct)}
+    assert not rec.violations(references), (
+        "citing one issue in ten files was rejected -- that is the register working, and "
+        "rejecting it blocks every substantial PR")
 
-    suppressed = dict(sprawled)
-    suppressed["src/F0.cs"] = [["// #901 here.", "// record-once-ok: #901 canonical is docs/B.md"]]
-    suppressed["src/F1.cs"] = [["// #901 here.", "// record-once-ok: #901 canonical is docs/B.md"]]
-    assert not rec.violations(suppressed), "record-once-ok did not suppress its own issue"
+    # Was a false positive under the first shingling design: duplicated test setup is ordinary.
+    code = {f"tests/T{i}.cs": ["var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);",
+                               "using var stderr = new StringWriter();"] for i in range(3)}
+    assert not rec.violations(code), "duplicated test setup code was rejected -- code is not prose"
 
-    # And one escape must not silence everything.
-    wrong_issue = {f"src/G{i}.cs": [[f"// #902 here.", "// record-once-ok: #901 unrelated"]]
-                   for i in range(5)}
-    assert rec.violations(wrong_issue), "record-once-ok for #901 silenced #902"
+    suppressed = dict(restated)
+    suppressed["src/A.cs"] = [sentence, "// record-once-ok: #901 canonical is docs/B.md"]
+    assert not rec.violations(suppressed), "record-once-ok did not suppress its file"
 
-    return "4 polarities (sprawl / canonical+pointers / suppressed / wrong-issue suppression)"
+    return "4 polarities (restated prose / shared reference / duplicated code / suppressed)"
 
 
 def main() -> int:
