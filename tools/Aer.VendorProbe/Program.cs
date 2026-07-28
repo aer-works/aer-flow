@@ -71,8 +71,15 @@ public static class Program
             }
         }
 
+        // #647: a narrowed run must not drop the vendor it did not look at. The lock file already
+        // merged, so before this the free staleness check went on reporting the other vendor as
+        // current while the evidence matrix no longer mentioned it.
+        var carriedFrom = writeTo is not null ? Previous(writeTo) : [];
+        var published = ProbeMerge.Carry(carriedFrom, findings, vendors);
+        var carriedCount = published.Count - findings.Count;
+
         var json = JsonSerializer.Serialize(
-            new ProbeRun(DateTimeOffset.Now, Environment.OSVersion.VersionString, findings),
+            new ProbeRun(DateTimeOffset.Now, Environment.OSVersion.VersionString, published),
             new JsonSerializerOptions { WriteIndented = true, Converters = { new JsonStringEnumConverter() } });
 
         if (writeTo is not null)
@@ -80,13 +87,19 @@ public static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(writeTo))!);
             File.WriteAllText(writeTo, json, Utf8NoBom);
             var md = Path.ChangeExtension(writeTo, ".md");
-            File.WriteAllText(md, Matrix(findings), Utf8NoBom);
+            File.WriteAllText(md, Matrix(published, vendors), Utf8NoBom);
             Console.WriteLine($"\nwrote {writeTo}\nwrote {md}");
+            if (carriedCount > 0)
+            {
+                Console.WriteLine(
+                    $"carried {carriedCount} finding(s) forward for vendor(s) this run did not probe — "
+                    + "their rows keep the version they were established against");
+            }
         }
         else
         {
             Console.WriteLine();
-            Console.WriteLine(Matrix(findings));
+            Console.WriteLine(Matrix(published, vendors));
         }
 
         // Recorded whether or not --out was given: the versions these findings were established
@@ -94,8 +107,14 @@ public static class Program
         Staleness.Write(lockPath, findings);
         Console.WriteLine($"recorded probed versions in {lockPath}");
 
+        // Counts this run's own findings, never the published total — the published file may carry
+        // rows from an earlier run, and a single number covering both would read as "12 established
+        // today" on a run that established six.
         var negatives = findings.Count(f => f.Evidence == Evidence.NotFound);
-        Console.WriteLine($"\n{findings.Count} findings · {negatives} negative, each carrying the surfaces it was established on.");
+        var scope = carriedCount > 0 ? $" (published file also holds {carriedCount} carried)" : "";
+        Console.WriteLine(
+            $"\n{findings.Count} findings established this run · {negatives} negative, each carrying "
+            + $"the surfaces it was established on{scope}.");
         return 0;
     }
 
@@ -147,10 +166,48 @@ public static class Program
     private sealed record ProbeRun(DateTimeOffset RanAt, string Host, IReadOnlyList<Finding> Findings);
 
     /// <summary>
+    /// The findings already on disk at <paramref name="writeTo"/>, or empty when there is no usable
+    /// prior file.
+    /// </summary>
+    /// <remarks>
+    /// Empty on a missing or unreadable file rather than throwing: a first run has nothing to carry,
+    /// and a corrupt one must not block a probe the operator has already paid for. It says so on
+    /// stderr — silently carrying nothing is how a merge stops merging without anyone noticing,
+    /// which is the same shape as the truncation this exists to fix.
+    /// </remarks>
+    private static IReadOnlyList<Finding> Previous(string writeTo)
+    {
+        if (!File.Exists(writeTo))
+        {
+            return [];
+        }
+
+        try
+        {
+            var prior = JsonSerializer.Deserialize<ProbeRun>(
+                File.ReadAllText(writeTo),
+                new JsonSerializerOptions { Converters = { new JsonStringEnumConverter() } });
+            return prior?.Findings ?? [];
+        }
+        catch (JsonException e)
+        {
+            Console.Error.WriteLine(
+                $"warning: {writeTo} could not be read as a prior probe run ({e.Message}), so nothing "
+                + "is carried forward. A narrowed run will publish only the vendor it probed.");
+            return [];
+        }
+    }
+
+    /// <summary>
     /// The matrix, generated. Kept close to <c>docs/vendor-capabilities.md</c>'s shape so the doc can
     /// be gate-checked against a real run rather than hand-maintained beside one.
     /// </summary>
-    private static string Matrix(IReadOnlyList<Finding> findings)
+    /// <param name="probedThisRun">
+    /// The vendors this run actually probed (#647). Every other column is carried from a previous
+    /// run and is marked as such — without the mark, a merged matrix is indistinguishable from a
+    /// fully re-probed one, and a reader would take a carried row as freshly established.
+    /// </param>
+    private static string Matrix(IReadOnlyList<Finding> findings, IReadOnlyCollection<string> probedThisRun)
     {
         var vendors = findings.Select(f => f.Vendor).Distinct().ToList();
         var caps = findings.Select(f => f.Capability).Distinct().ToList();
@@ -159,7 +216,8 @@ public static class Program
         sb.AppendLine("| | " + string.Join(" | ", vendors.Select(v =>
         {
             var version = findings.First(f => f.Vendor == v).VendorVersion;
-            return $"`{v}` {version ?? "(not installed)"}";
+            var carried = probedThisRun.Contains(v) ? "" : " *(carried, not re-probed)*";
+            return $"`{v}` {version ?? "(not installed)"}{carried}";
         })) + " |");
         sb.AppendLine("|---|" + string.Concat(vendors.Select(_ => "---|")));
 

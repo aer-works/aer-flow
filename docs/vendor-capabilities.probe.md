@@ -1,4 +1,4 @@
-| | `claude` 2.1.220 (Claude Code) | `agy` 1.1.7 |
+| | `claude` 2.1.220 (Claude Code) *(carried, not re-probed)* | `agy` 1.1.8 |
 |---|---|---|
 | plan usage & reset | **`/usage` — 78% used, with reset times** | not found on: --help, subcommand list, in-session slash command |
 | per-turn cost | **`total_cost_usd` in every result event** | not found on: structured output stream, --help |
@@ -16,7 +16,7 @@ point, because every wrong row this suite was built after was a negative from on
 - **claude · extra directories** — Read from help. On `agy` this is load-bearing rather than optional: `-p` ignores the process working directory entirely (#491), so the room's folder must be bound explicitly.
 - **agy · plan usage & reset** — `--help` carries no usage/quota flag, no such subcommand exists, and `agy -p "/usage"` produced no percentage — the model answered conversationally rather than the CLI reporting. Help mentioned 'usage' 1 time(s), all of them the synopsis line.
 - **agy · per-turn cost** — No `total_cost_usd` in a `stream-json` run, and no cost flag in `--help`. The run produced output, but carried no cost field.
-- **agy · structured output** — No structured stdout: `--output-format stream-json` exited 0. But the CLI starts a local server on every run — "listening on random port at 63519 for HTTPS" — so this is **not found on stdout**, not an absence of structured events. The service and method names are not yet enumerated; until they are, treat this as the highest-value open probe rather than a settled negative.
+- **agy · structured output** — No structured stdout: `--output-format stream-json` exited 0. But the CLI starts a local server on every run — "listening on random port at 58240 for HTTPS" — so this is **not found on stdout**, not an absence of structured events. The service and method names are not yet enumerated; until they are, treat this as the highest-value open probe rather than a settled negative.
 - **agy · --permission-prompt-tool** — **Undocumented in `--help`** — which is why help text alone was never enough. Rejected: exit 2, "flags provided but not defined: -permission-prompt-tool". The control flag exits 2, so this CLI does discriminate — the rejection is real.
 - **agy · effort** — Read from help: "--effort Reasoning effort for the current CLI session (low|medium|high)". Help names the accepted values, but naming is not behaviour: 0023 declines to assert a mapping until each value is shown to be accepted AND to behave distinctly.
 - **agy · extra directories** — Read from help. On `agy` this is load-bearing rather than optional: `-p` ignores the process working directory entirely (#491), so the room's folder must be bound explicitly.

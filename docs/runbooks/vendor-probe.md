@@ -71,9 +71,14 @@ Then **read the diff against `docs/vendor-capabilities.md` and update it by hand
 matrix is deliberately not the published document: the published one carries reasoning, corrections
 and design consequences that no probe can produce. The generated one is the evidence you edit from.
 
-Narrow a run with `--vendor claude` when only one CLI moved. Partial runs merge into the lock file
-rather than replacing it, so probing one vendor never silently downgrades the other to "never
-probed".
+Narrow a run with `--vendor claude` when only one CLI moved. The unprobed vendor is carried through
+all three files: it keeps its recorded version in the lock, and its rows stay in the matrix marked
+**`(carried, not re-probed)`**. So a narrowed run never downgrades the other vendor to "never
+probed", and never lets a carried row pass as freshly established.
+
+A vendor that *is* probed is replaced wholesale rather than row-merged. A capability the probe no
+longer emits has been deliberately removed; resurrecting it from the previous file would republish a
+finding nothing currently establishes, which is worse than a missing row because it looks measured.
 
 ## Reading a result
 
