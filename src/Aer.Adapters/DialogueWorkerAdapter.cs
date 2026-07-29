@@ -228,17 +228,90 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
         return false;
     }
 
-    /// <summary>Shell switches whose NEXT argument is a command line rather than an ordinary value.</summary>
+    /// <summary>
+    /// Shell switches whose NEXT argument is a command line rather than an ordinary value.
+    /// </summary>
+    /// <remarks>
+    /// POSIX short flags cluster, so the literal list cannot be the whole test — <c>sh -lc</c> and
+    /// <c>bash -ec</c> are what people actually type, and a review found both walking straight past
+    /// the first version of this. <see cref="IsShellCommandSwitch"/> is the real predicate;
+    /// this array is only the non-clustering spellings.
+    /// </remarks>
     private static readonly string[] ShellCommandSwitches = ["-c", "/c", "/k", "-Command", "-EncodedCommand"];
+
+    /// <summary>Programs whose clustered short flags can carry a command string.</summary>
+    private static readonly string[] PosixShells = ["sh", "bash", "zsh", "dash", "ksh", "ash", "busybox"];
+
+    /// <summary>
+    /// Whether <paramref name="arg"/> is a shell switch whose next argument is a command line.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Beyond the literal spellings, any POSIX short-flag cluster ENDING in <c>c</c> — <c>-lc</c>,
+    /// <c>-ec</c>, <c>-lic</c> — takes a command string, because <c>c</c> is the flag that consumes
+    /// it and clustering puts it last.
+    /// </para>
+    /// <para>
+    /// <b>The cluster rule applies only when the program is a POSIX shell</b>, and that restriction
+    /// is not caution — the unrestricted version was written first and turned this test suite's own
+    /// control red. <c>powershell -File s.ps1 -abc "claude is a model"</c> matched <c>-abc</c> as a
+    /// cluster, scanned the following argument, found <c>claude</c> in its first position and refused
+    /// a participant that only MENTIONS a vendor. A false positive here is not a safe direction to
+    /// err in: it refuses a legitimate config with an error about permission gates that has nothing
+    /// to do with what the author wrote.
+    /// </para>
+    /// </remarks>
+    private static bool IsShellCommandSwitch(string command, string arg)
+    {
+        if (ShellCommandSwitches.Contains(arg, StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var program = Path.GetFileNameWithoutExtension(command.Trim('"', '\''));
+        return PosixShells.Contains(program, StringComparer.OrdinalIgnoreCase)
+            && arg.Length > 2 && arg[0] == '-' && arg[1] != '-'
+            && arg.EndsWith('c') && arg[1..^1].All(char.IsLetter);
+    }
+
+    /// <summary>
+    /// Shell words that stand in FRONT of the command they run, so the executable is the next word
+    /// rather than the first one.
+    /// </summary>
+    /// <remarks>
+    /// <c>exec agy -p …</c> reaches agy exactly as <c>agy -p …</c> does, and scanning only a
+    /// segment's first token stops at <c>exec</c>. Variable assignments (<c>FOO=1 claude …</c>) are
+    /// the same shape and are handled by pattern rather than by list.
+    /// </remarks>
+    private static readonly string[] TransparentCommandPrefixes =
+        ["exec", "env", "command", "nohup", "time", "sudo", "doas", "builtin", "eval"];
+
+    /// <summary>Whether a token is a prefix word rather than the executable itself.</summary>
+    private static bool IsTransparentPrefix(string token) =>
+        TransparentCommandPrefixes.Contains(token, StringComparer.OrdinalIgnoreCase)
+        || (token.IndexOf('=') > 0 && char.IsLetter(token[0])
+            && token[..token.IndexOf('=')].All(c => char.IsLetterOrDigit(c) || c == '_'));
+
+    /// <summary>Shell operators that end one command and begin another within a single string.</summary>
+    private static readonly string[] CommandSeparators = ["&&", "||", ";", "|", "&", "\n", "\r"];
 
     /// <summary>
     /// The tokens in an invocation that could name an executable — deliberately not "every word".
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Splitting every argument on whitespace would refuse a participant whose PROMPT merely mentions
     /// a vendor by name, which is both common and harmless. So a whole argument is a candidate, and
-    /// only the FIRST token of an argument is additionally considered when the preceding argument was
-    /// a shell's command switch — the <c>sh -c "agy -p …"</c> shape.
+    /// the executable position of each COMMAND inside an argument is additionally considered when the
+    /// preceding argument was a shell's command switch — the <c>sh -c "agy -p …"</c> shape.
+    /// </para>
+    /// <para>
+    /// "Each command", not "the first token", because a review found three accidental shapes walking
+    /// past the first version: <c>cd /repo &amp;&amp; claude …</c> (the vendor is not in the first
+    /// segment), <c>exec agy …</c> (not the first token of its segment), and <c>sh -lc</c> (the
+    /// switch spelling was matched literally). None of those is adversarial — they are what someone
+    /// writes by habit, and the suite's own fixture was one character from the first.
+    /// </para>
     /// </remarks>
     private static IEnumerable<string> CommandPositions(DialogueParticipant participant)
     {
@@ -249,13 +322,68 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
             var arg = participant.Args[i];
             yield return arg;
 
-            if (i > 0 && ShellCommandSwitches.Contains(participant.Args[i - 1], StringComparer.OrdinalIgnoreCase))
+            if (i == 0 || !IsShellCommandSwitch(participant.Command, participant.Args[i - 1]))
             {
-                var first = arg.TrimStart().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
-                if (first.Length > 0)
+                continue;
+            }
+
+            foreach (var position in ExecutablePositionsIn(DecodeIfEncoded(participant.Args[i - 1], arg)))
+            {
+                yield return position;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The argument after <c>-EncodedCommand</c> is base64 UTF-16, so scanning it as text can never
+    /// match a vendor name — it was listed as a handled switch while structurally doing nothing.
+    /// </summary>
+    /// <remarks>
+    /// A malformed blob is returned unchanged rather than thrown on: this is a mistake-catcher, and
+    /// refusing to resolve a config because its base64 does not decode would be a worse failure than
+    /// the one being caught.
+    /// </remarks>
+    private static string DecodeIfEncoded(string precedingSwitch, string arg)
+    {
+        if (!precedingSwitch.Equals("-EncodedCommand", StringComparison.OrdinalIgnoreCase))
+        {
+            return arg;
+        }
+
+        try
+        {
+            return System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(arg));
+        }
+        catch (FormatException)
+        {
+            return arg;
+        }
+        catch (ArgumentException)
+        {
+            return arg;
+        }
+    }
+
+    /// <summary>
+    /// Every position within a shell command STRING that names an executable: the first non-prefix
+    /// word of each <c>&amp;&amp;</c>/<c>||</c>/<c>;</c>/<c>|</c>-separated segment.
+    /// </summary>
+    private static IEnumerable<string> ExecutablePositionsIn(string commandLine)
+    {
+        foreach (var segment in commandLine.Split(CommandSeparators, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var words = segment.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var word in words)
+            {
+                if (IsTransparentPrefix(word))
                 {
-                    yield return first[0];
+                    continue;
                 }
+
+                // The first word that is not a prefix IS the executable; anything after it is an
+                // argument, and scanning those is what would refuse a prompt mentioning a vendor.
+                yield return word;
+                break;
             }
         }
     }

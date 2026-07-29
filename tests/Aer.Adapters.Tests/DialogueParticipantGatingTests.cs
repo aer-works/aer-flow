@@ -158,6 +158,21 @@ public class DialogueParticipantGatingTests : IDisposable
     // shell -c string embeds its placeholder inside one.
     [InlineData("sh", new[] { "-c", "agy -p {PROMPT_FILE}" })]
     [InlineData("npx", new[] { "claude", "-p", "{PROMPT}" })]
+    // Everything below this line reached a real vendor CLI UNREFUSED until a reviewer of #705
+    // constructed them against the shipped code. None is adversarial — each is what someone writes
+    // by habit, and the first is one character from the `sh -c` fixture three lines up.
+    [InlineData("sh", new[] { "-lc", "agy -p {PROMPT_FILE}" })]          // clustered short flags
+    [InlineData("bash", new[] { "-ec", "claude -p {PROMPT_FILE}" })]     // ditto, other order
+    [InlineData("sh", new[] { "-c", "cd /repo && claude -p {PROMPT_FILE}" })]  // not the first segment
+    [InlineData("sh", new[] { "-c", "exec agy -p {PROMPT_FILE}" })]      // not the first token
+    [InlineData("sh", new[] { "-c", "FOO=1 claude -p {PROMPT_FILE}" })]  // assignment prefix
+    [InlineData("sh", new[] { "-c", "true; agy -p {PROMPT_FILE}" })]     // second statement
+    // Base64 UTF-16 for `claude -p hi`. -EncodedCommand was LISTED as handled while structurally
+    // unable to match anything, which is the documentation defect of a true sentence read wrongly.
+    // {PROMPT} rides as its own argument because the parser requires a VISIBLE placeholder — which
+    // is itself a second, independent reason this shape cannot reach a vendor, found by writing the
+    // test: without it the config is refused, but for placeholder reasons and not gate reasons.
+    [InlineData("powershell", new[] { "-EncodedCommand", "YwBsAGEAdQBkAGUAIAAtAHAAIABoAGkA", "{PROMPT}" })]
     public void A_vendor_CLI_named_in_Args_behind_a_wrapper_is_refused(string command, string[] args)
     {
         var authored = WriteConfig(new DialogueParticipant(
@@ -167,6 +182,33 @@ public class DialogueParticipantGatingTests : IDisposable
             () => new DialogueWorkerAdapter().Resolve(new WorkerInvocation(authored), DebateContract));
 
         Assert.Contains("invokes a vendor CLI", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// THE CONTROL for the refusal above, and the reason it does not simply scan every word.
+    /// </summary>
+    /// <remarks>
+    /// Widening the scan is only safe while it stays in executable POSITIONS. A participant whose
+    /// prompt or arguments merely mention a vendor is common and harmless, and refusing it would make
+    /// the whole mechanism unusable — so each of these must resolve. If a future widening turns any
+    /// of them red, the widening went too far, which is a defect and not an acceptable cost.
+    /// </remarks>
+    [Theory]
+    [InlineData("powershell", new[] { "-File", "s.ps1", "{PROMPT}" })]
+    // The vendor name in an ARGUMENT position of a shell string, never the executable position.
+    [InlineData("sh", new[] { "-c", "echo 'argue as claude would' > {PROMPT_FILE}" })]
+    [InlineData("sh", new[] { "-c", "./stub.sh --persona agy --input {PROMPT_FILE}" })]
+    // A value that merely starts with a dash and ends in c must not read as a shell command switch.
+    [InlineData("powershell", new[] { "-File", "s.ps1", "-abc", "claude is a model", "{PROMPT}" })]
+    public void A_participant_that_only_MENTIONS_a_vendor_is_not_refused(string command, string[] args)
+    {
+        var authored = WriteConfig(new DialogueParticipant(
+            "mentions", "stub", Model: null, "You reply.", command, args));
+
+        var participant = Resolved(authored).Participants[0];
+
+        Assert.Equal(args, participant.Args);
+        Assert.Null(participant.Environment);
     }
 
     /// <summary>
