@@ -578,6 +578,40 @@ a **stronger** always-fires guarantee than anything claude documents, if it hold
 they load from `<workspace>/.agents/hooks.json` and from `~/.gemini/config/hooks.json`, fire
 `PreToolUse`, and enforce `deny`. **The gate is symmetric across vendors.**
 
+**Proving the gate fired is asymmetric across the two vendors, and on `agy` it is UNRESOLVED
+(2026-07-28).** [#532](https://github.com/aer-works/aer-flow/issues/532) proposes proving the
+mandatory hook can execute by probing on claude's `SessionStart` "at zero model cost". Two things the
+documented surface above settles, and one it does not:
+
+- **Settled.** None of the five events is *session-level* — every one sits inside an invocation. There
+  is no `SessionStart` here to probe.
+- **Settled.** `PreInvocation` fires before the model is called, but its only documented output field
+  is `injectSteps`: **nothing in its contract can stop the invocation it precedes.** (`decision` is
+  `PreToolUse`'s; `terminationBehavior` is `PostInvocation`'s.)
+- **NOT settled.** An injected step may be a **`toolCall`** — *"a tool call to execute"* — so the
+  documented surface does contain a route to firing `PreToolUse` before the model call. Nothing
+  documentary closes it.
+
+An earlier version of this section asserted that "`PreToolUse` needs a tool call, which needs a turn"
+and concluded the premise was false on agy **"whatever the claude measurement returns"**. Both are
+withdrawn: the first is contradicted by the `toolCall` step kind, and the second was an absolutism
+the first was carrying.
+
+The obvious rescue does not work either. The capability table below records `❌ PreInvocation.
+injectSteps did not inject under -p` — right configuration, since `-p` is how AER dispatches agy —
+but **it does not record which step kind it injected**, and the vendor's own worked example injects
+an `ephemeralMessage`. An unobserved ephemeral message is a weaker negative than an unexecuted
+`toolCall`, so that row narrows the question without closing it. Reading it as closure would be this
+register's recurring error: a zero from a condition that may never have arisen.
+
+**What is actually owed**: a measurement of `PreInvocation.injectSteps` carrying a `toolCall` under
+`-p`. Until then agy's half of #532 is open, not settled. The claude half is separately open and is
+`gate.sessionstart-without-a-turn`, written and awaiting a live run.
+
+An `OnSessionStartHook` does appear once in the vendor's changelog, in a note about routing lifecycle
+hooks through their Python-side `HookRouter`. That is product internals, not a `hooks.json` event —
+recorded here so the next reader who greps for it does not read it as a configurable surface.
+
 ### The Python SDK answers all three of #508's open questions
 
 `pip install google-antigravity` — a Python framework, documented as exposing:

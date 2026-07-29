@@ -514,6 +514,31 @@ def _recordonce_drops_extensionless():
         yield
 
 
+@control(RECORDONCE, "git output is decoded with a codec that cannot represent it")
+def _recordonce_hostile_codec_decodes_git():
+    # A PROXY for the shipped defect, not the shipped defect itself, and the difference is the whole
+    # reason this arm is written this way.
+    #
+    # What shipped was `text=True` with no `encoding`, which decodes with the LOCALE codec. Emptying
+    # GIT_TEXT restores that call exactly -- and on a UTF-8 host it injects nothing at all, because
+    # the locale codec then decodes the bytes fine. CI runs `audit-controls` on ubuntu-latest, where
+    # that is the case, so the faithful injection is a no-op there and this arm would report STAYED
+    # GREEN: a control failing for a reason with nothing to do with the defect it names.
+    #
+    # Pinning cp1252 models the general fault the shipped one was an instance of -- git output
+    # decoded by a codec that cannot represent it -- and does so identically on every platform. The
+    # surfaced SHAPE still differs by platform (see GIT_TEXT in recordonce.py); this arm only needs
+    # the checker to go red, and both shapes do.
+    #
+    # It buys that at a cost worth naming: discrimination now depends on the target file holding a
+    # byte cp1252 REJECTS, which is a narrower property than "not ASCII". The selfcheck arm's guard
+    # is what holds that, so that guard is a precondition of this arm rather than an independent
+    # check -- if it ever weakens to "some non-ASCII character", this arm can pass while testing
+    # nothing.
+    with _loading_recordonce_as(lambda m: replacing(m, "GIT_TEXT", {"encoding": "cp1252"})):
+        yield
+
+
 @control(RECORDONCE, "an index row counts as prose, so adding a decision record fails CI")
 def _recordonce_reads_index_rows():
     # Why a row is excluded at all is recorded beside `TABLE_ROW` in recordonce.py.

@@ -421,7 +421,7 @@ def _templates_dry_run():
                    "--prompt-file", str(ROOT / "CLAUDE.md"), "--output-name", "out",
                    "--working-directory", str(ROOT), "--scratch-root", scratch,
                    "--dry-run", *extra]
-            return subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
+            return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
 
         for name in sorted(dispatch.TEMPLATES):
             done = dry_run("--template", name)
@@ -939,8 +939,32 @@ def _recordonce_discriminates():
     assert len(solo) == 1 and "does not parse" in solo[0], (
         f"record-once: a marker with no canonical path failed silently -- {solo}")
 
+    # The locale-decoding crash `GIT_TEXT` in recordonce.py records (#690). Run against a real
+    # tracked file whose bytes are not cp1252-decodable: the defect lives in how a subprocess pipe is
+    # decoded, so no in-memory fixture can reach it, and the second assertion is what stops the arm
+    # quietly ceasing to discriminate if that file is ever rewritten in ASCII.
+    unmappable = "docs/vendor-doc-audit.md"
+    at_head = rec.file_at(unmappable)
+    assert at_head, f"record-once: file_at returned nothing for {unmappable}, so this arm tested nothing"
+    # The property has to be "holds a byte cp1252 REJECTS", not "holds a non-ASCII character", and
+    # the difference is not pedantic: cp1252 rejects exactly these five bytes, so an em dash
+    # (`e2 80 94`) or a check mark (`e2 9c 85`) decodes cleanly under it while satisfying any
+    # "outside latin-1" test. An earlier version of this guard asserted `ord(c) > 255` and would have
+    # gone on passing after every rejecting character was edited out, leaving both this arm and the
+    # `audit-controls` arm that depends on it silently testing nothing.
+    #
+    # Today the file qualifies on U+274C CROSS MARK (x10), U+2190 LEFTWARDS ARROW and U+23F8 -- the
+    # arrow being the `0x90` in the crash that found the defect. Deliberately not pinned to those
+    # characters: any rejecting byte does, and naming them would make an ordinary edit look like a
+    # regression.
+    CP1252_REJECTS = {0x81, 0x8D, 0x8F, 0x90, 0x9D}
+    assert any(b in CP1252_REJECTS for line in at_head for b in line.encode("utf-8")), (
+        f"record-once: {unmappable} no longer holds a byte cp1252 rejects, so neither this arm nor "
+        "`audit-controls`' hostile-codec arm discriminates -- point both at a file that does")
+
     return (f"{len(polarities)} record-once polarities "
-            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 9 exemption arms")
+            f"({sum(1 for p in polarities if not p[2])} must NOT fire) + 9 exemption arms "
+            f"+ a non-cp1252 file read through git")
 
 
 @check("the record-once checker still finds the passages it found in a real merge")

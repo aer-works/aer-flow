@@ -58,7 +58,7 @@ OK, BAD, WARN = "ok", "FAIL", "warn"
 
 def run(cmd, timeout=90):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
         return p.returncode, p.stdout or "", p.stderr or ""
     except Exception as exc:                                                   # noqa: BLE001
         return 127, "", repr(exc)

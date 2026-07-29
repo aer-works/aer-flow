@@ -148,7 +148,7 @@ def run(cmd, timeout=300, cwd=None, extra_env=None):
     try:
         # stdin must be closed, not inherited: the CLI waits 3s for piped input on every
         # invocation otherwise, and warns about it.
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=e,
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd, env=e,
                            stdin=subprocess.DEVNULL)
         return p.returncode, (p.stdout or ""), (p.stderr or "")
     except subprocess.TimeoutExpired:
@@ -920,6 +920,161 @@ def _event_surface():
                       f"fired={live}")
     return PASS, (f"FIRED under -p ({len(live)}): {live} || SILENT despite the condition arising: "
                   f"{silent_despite_condition} || condition never created here, so untested: {untested}")
+
+
+def reported_turn(stdout):
+    """`(num_turns, total_cost_usd)` exactly as the CLI reported them, or `(None, None)`.
+
+    Reported, never inferred. Reading an unparseable payload as "no turn was taken" is the
+    zero-from-a-condition-that-never-arose error this whole suite is built to avoid -- and it would
+    fail in the expensive direction, certifying a per-spawn probe as free.
+
+    THE KEY NAMES ARE ASSUMED, and the caller's control arm is what catches it if they are wrong.
+    `claude__agent-sdk__agent-loop.md:307` documents `total_cost_usd`, `usage` and `num_turns` on the
+    **Agent SDK's** result message; that the CLI's `--output-format json` uses the same names is an
+    inference, because nothing in the corpus documents the CLI's result shape and no check here had
+    ever parsed it. If the inference is wrong every arm reads `(None, None)` alike, which is why the
+    caller refuses to publish a finding unless a run it KNOWS took a turn reported one.
+
+    `total_cost_usd` is additionally documented as a client-side estimate rather than billing data
+    (`claude__agent-sdk__cost-tracking.md:14`), so it is reported for scale and never used as the
+    verdict; `num_turns` is what the decision reads.
+    """
+    try:
+        payload = json.loads(stdout)
+    except (ValueError, TypeError):
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    return payload.get("num_turns"), payload.get("total_cost_usd")
+
+
+@check("gate.sessionstart-without-a-turn", "gate",
+       "on CLAUDE ONLY: whether a spawn can fire SessionStart and TERMINATE WITHOUT A MODEL TURN -- "
+       "the cost premise of #532's per-spawn gate probe, which nothing had measured. agy has no "
+       "session-level event and its half of the question is separately OPEN; see the body")
+def _sessionstart_without_a_turn():
+    """#532 proposes proving the mandatory `PreToolUse` hook can execute by probing on `SessionStart`
+    instead, "at zero model cost", citing `gate.headless-event-surface`.
+
+    That check establishes `SessionStart` FIRES under `-p`. It does not establish this one. Read its
+    body: it fires the event inside a full task -- write a file, read it back, run a shell command,
+    launch a subagent -- and is in `NEEDS_CAPABILITY` for exactly that reason. A turn was paid for in
+    every run that produced the finding, so whether the event is reachable WITHOUT one was never
+    asked. For a probe that runs on every worker spawn the difference is whether AER pays nothing or
+    pays a turn on everything it dispatches, which is not a detail to assume either way.
+
+    CLAUDE ONLY, and the scope is the finding. #532 covers every worker AER spawns and both adapters
+    write the hook; this measures one vendor. On `agy` the question is genuinely different and is
+    still OPEN -- see `docs/vendor-doc-audit.md` § "Proving the gate fired is asymmetric", which
+    holds what documentation settles there and what it does not. Whatever this run returns, it
+    says nothing about agy, and nothing here should be read as covering both.
+
+    THE CONTROL CARRIES THE CHECK, on two channels rather than one:
+
+      * the EVENT channel -- a cheap arm that logs nothing has two causes this run cannot separate:
+        the invocation does not fire `SessionStart`, or the settings file never loaded and nothing
+        here could have fired at all.
+      * the COST channel -- `reported_turn`'s key names are inferred from the Agent SDK's result
+        message, not from any documentation of the CLI's own JSON. If they are wrong, every arm reads
+        `None`, no arm can qualify as free, and the check would publish "the premise is false" on the
+        strength of a payload nobody could parse. A run that certainly took a turn must report one.
+
+    Both are the same rule twice, and it is the rule `gate.permission-denied-fires` exists because of:
+    a zero from a condition that never arose is not evidence of anything.
+
+    An arm that never started a session is reported as such and is barred from supporting the
+    verdict. `-p ""` may simply be rejected by argument parsing, and "the CLI refused this" is not
+    "no zero-turn invocation exists" -- treating it as such would close #532's cheap path on evidence
+    that never tested it.
+    """
+    arms = [("control (takes a turn)", ["-p", "Reply with the single word OK."]),
+            ("empty prompt", ["-p", ""]),
+            ("no prompt, stdin closed", ["-p"])]
+
+    results, detail = [], []
+    for label, invocation in arms:
+        wd = tempfile.mkdtemp(prefix="v-ss0-")
+        try:
+            log = os.path.join(wd, "SessionStart.log").replace("\\", "/")
+            hk = os.path.join(wd, "ss.sh").replace("\\", "/")
+            hook_script(hk, log, "exit 0")
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": {"SessionStart": [
+                {"hooks": [{"type": "command", "command": "sh %s" % hk}]}]}}, open(st, "w"))
+
+            code, out, _ = run(["claude", *invocation, "--settings", st, "--output-format", "json"],
+                               timeout=180, cwd=wd)
+            turns, cost = reported_turn(out)
+            results.append({"label": label, "fired": fired(log), "turns": turns, "cost": cost,
+                            "code": code})
+            detail.append(f"{label}: fired={fired(log)} num_turns={turns} cost={cost} exit={code}")
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    control, candidates = results[0], results[1:]
+    joined = "; ".join(detail)
+
+    # Control, event channel: did the settings file load at all?
+    if not control["fired"]:
+        return INCONCLUSIVE, ("the turn-taking control never fired SessionStart, so the settings "
+                              f"file did not load and no zero below is evidence -- {joined}")
+
+    # Control, cost channel: this run certainly took a turn, so a readable payload has to say so.
+    # Without this the check reports "the premise is false" whenever `reported_turn`'s inferred key
+    # names are wrong -- a harness defect published as a vendor finding, which is the exact failure
+    # `gate.permission-denied-fires` carries on its own record.
+    if control["turns"] is None:
+        return INCONCLUSIVE, ("the control took a turn and reported no readable num_turns, so the "
+                              "CLI's JSON does not use the Agent SDK's key names and the cost "
+                              f"channel is unreadable -- fix reported_turn before trusting this. {joined}")
+    if control["turns"] == 0:
+        return INCONCLUSIVE, ("the control took a turn and reported num_turns=0, so that field does "
+                              f"not mean what this check reads it to mean -- {joined}")
+
+    # ORDERED buckets, not four predicates -- `code is None` is tested first because a timed-out arm
+    # also looks like "fired with an unreadable turn count", and only one of those descriptions is
+    # true of it. Every candidate lands in exactly one.
+    #
+    # Only `evidence` may be cited by a verdict. The other three are reported BY NAME as untested,
+    # because each has a different reason for being uninformative and collapsing them would let a
+    # run that established nothing read as a run that found nothing.
+    timed_out, unreadable, silent, evidence = [], [], [], []
+    for r in candidates:
+        if r["code"] is None:                      # timeout or the binary never ran
+            timed_out.append(r)
+        elif r["fired"] and r["turns"] is not None:
+            evidence.append(r)
+        elif r["fired"]:                           # fired, cost channel unreadable
+            unreadable.append(r)
+        else:                                      # never fired -- with or without a turn count
+            silent.append(r)
+
+    def names(bucket):
+        return ", ".join(r["label"] for r in bucket) or "none"
+
+    untested = (f"NOT tested -- timed out: {names(timed_out)}; fired but cost unreadable: "
+                f"{names(unreadable)}; never fired: {names(silent)}")
+
+    # `turns == 0` counts only where the CLI actually SAID zero, on an arm that also fired.
+    free = [r for r in evidence if r["turns"] == 0]
+    if free:
+        return PASS, (f"SessionStart IS reachable with no model turn on the invocation(s): "
+                      f"{names(free)}. NOT proved: that a reported num_turns of 0 means nothing was "
+                      f"billed -- the control establishes the field is readable and non-zero when a "
+                      f"turn did occur, which cannot rule out a zero reported for a charged turn. "
+                      f"|| {untested} || {joined}")
+
+    if not evidence:
+        return INCONCLUSIVE, ("no candidate invocation both started a session and reported a "
+                              "readable turn count, so nothing here tested whether a free one "
+                              f"exists || {untested} || {joined}")
+
+    return PASS, ("#532's zero-cost premise is FALSE for the invocation shapes measured here "
+                  f"({names(evidence)}): each fired SessionStart only by taking a turn. SCOPE -- "
+                  "this is a claim about those shapes, not about every shape a probe could use; "
+                  "`--max-turns`, a non-`-p` mode and a resumed session are untested and a free one "
+                  f"among them would change the answer. || {untested} || {joined}")
 
 
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",
