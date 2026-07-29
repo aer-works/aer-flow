@@ -699,35 +699,47 @@ def gate_slugs(claude_md: str) -> set[str]:
     return set(GATE_HEADING.findall(claude_md))
 
 
-# GitHub matches a closing keyword and a reference and IGNORES ANY NEGATION AROUND IT, so
-# "does not close #532" and "filed, not fixed: #688" each close the issue on merge. Both are real
-# and both cost a reopen, an explanatory comment and a correction to the record (#684 closed #688,
-# #692 closed #532). A note in CLAUDE.md did not stop the second: prose cannot, because an author
-# writing "not fixed" believes they have already said the right thing.
+# GitHub closes an issue whenever a closing keyword sits beside a reference. It does not care about
+# negation, tense, or whether the text is in a table cell, a quotation or a code span. THREE real
+# incidents, each costing a reopen, an explanatory comment and a correction to the record:
 #
-# `n't` carries NO left word boundary -- inside "isn't" it follows a letter, so `\bn't` never matches
-# and the contraction form walks straight through. Found by a polarity arm, not by reading.
+#   #684  "filed, not fixed: #NNN"          negated
+#   #692  "Does not close #NNN or #MMM"     negated
+#   #694  "| #NNN | ... | closed #MMM |"    DESCRIPTIVE, past tense, in a table -- and #694 was the
+#                                           PR adding this very lint, which passed while doing it
 #
-# `\W{0,3}` between keyword and reference mirrors what GitHub itself requires -- the keyword has to
-# sit immediately before the number. "fixed BY #99" closes nothing, so this must stay silent on it:
-# a lint that fires where the parser does not would train authors to reword around a phantom.
-NEGATED_CLOSE = re.compile(
-    r"(?:\bnot\b|n't\b|\bnever\b|\bwithout\b)[^.\n#]{0,40}?"
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\W{0,3}#(\d+)",
-    re.IGNORECASE)
+# The first version keyed on NEGATION, because that was the shape of the two incidents in front of
+# it. That is scoping a check to the symptom: the mechanism never involved negation at all. The rule
+# below keys on POSITION instead, which is the only thing that distinguishes a deliberate
+# declaration from an accident.
+#
+# A line BEGINNING with a closing keyword is a declaration and is exempt in full -- including a
+# second occurrence on that line, since `Closes #675. Closes #676.` is one deliberate act. Anywhere
+# else is flagged. `\W{0,3}` mirrors what GitHub itself requires, the keyword immediately before the
+# number: "fixed BY #99" closes nothing, so this stays silent on it. A lint that fires where the
+# parser does not would train authors to reword around a phantom.
+CLOSING_KEYWORD = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\W{0,3}#(\d+)", re.IGNORECASE)
+DECLARATION_LINE = re.compile(
+    r"^\s*(?:[*_]{1,2})?(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b", re.IGNORECASE)
 
 
 def negated_close_faults(body: str) -> list:
-    """Issue numbers a PR body says it does NOT close, and which GitHub will close anyway.
+    """Issue numbers a PR body will close that it does not mean to.
+
+    Named for the negated case it was first written for; it now covers every accidental form, which
+    is what the name would say if renaming it were free of churn across CI and two arm files.
 
     Pure, and takes the body as text rather than reaching for the GitHub API, for the same reason
     `gate_citation_faults` does: a lint that can only run against a real PR cannot be shown to
-    discriminate. `selfcheck.py` drives it with both incident bodies verbatim.
-
-    Deliberately silent on a plain `Closes #n` -- that convention is the point, and flagging it would
-    make the lint noise. Only the negated form is a defect.
+    discriminate. `selfcheck.py` drives it with all three incident bodies verbatim.
     """
-    return [int(n) for n in NEGATED_CLOSE.findall(body or "")]
+    faults = []
+    for line in (body or "").splitlines():
+        if DECLARATION_LINE.match(line):
+            continue
+        faults.extend(int(n) for n in CLOSING_KEYWORD.findall(line))
+    return faults
 
 
 def gate_citation_faults(files: dict, slugs: set[str]) -> list:
@@ -813,14 +825,16 @@ def pr_body_mode() -> int:
     """
     faults = negated_close_faults(sys.stdin.read())
     if not faults:
-        print("OK no negated closing keyword; nothing will close by accident.")
+        print("OK every closing keyword is on a declaration line; nothing closes by accident.")
         return 0
-    print("!! this PR body tells GitHub to CLOSE issue(s) it says it does not close:")
-    for n in faults:
+    print("!! this PR body will CLOSE issue(s) from a keyword that is not a declaration:")
+    for n in dict.fromkeys(faults):          # first-seen order, one line per issue
         print(f"   #{n}")
-    print("   GitHub matches the keyword and the number and ignores the negation.")
-    print("   Rewrite so no closing keyword sits beside the number -- `#123 remains open`,")
-    print("   or `filed separately: #123`. A deliberate `Closes #n` is untouched by this.")
+    print("   GitHub closes on a keyword beside a number regardless of negation, tense, or")
+    print("   the text being in a table, a quotation or a code span.")
+    print("   Either move the close onto its own line starting `Closes #n` -- which is exempt")
+    print("   in full -- or reword so no keyword sits beside the number: `#123 remains open`,")
+    print("   `filed separately: #123`, or a `#NNN` placeholder when quoting an example.")
     return 1
 
 
