@@ -13,8 +13,10 @@ public class DialogueRunnerTests
         StopSentinel: stopSentinel,
         Participants:
         [
-            new DialogueParticipant("initiator", "claude", null, "Initiator preamble", "stub-claude", ["{PROMPT}"]),
-            new DialogueParticipant("responder", "gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]),
+            // These exercise turn sequencing and never needed a vendor identity; stub-claude is not
+            // claude. See DialogueWorkerAdapter.Gate for what declaring one now costs (#703).
+            new DialogueParticipant("initiator", "stub-claude", null, "Initiator preamble", "stub-claude", ["{PROMPT}"]),
+            new DialogueParticipant("responder", "stub-gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]),
         ]);
 
     private static DialogueWorkerConfig BuildConfig(int turnBudget, IReadOnlyList<DialogueParticipant> participants, string? stopSentinel = null) => new(
@@ -36,7 +38,9 @@ public class DialogueRunnerTests
 
             Assert.Equal(4, turns.Count);
             Assert.Equal(["initiator", "responder", "initiator", "responder"], turns.Select(t => t.Role));
-            Assert.Equal(["claude", "gemini", "claude", "gemini"], turns.Select(t => t.Vendor));
+            // Two distinct stub vendors rather than one repeated, so alternation stays visible without
+            // either participant claiming to be a vendor it is not (#703).
+            Assert.Equal(["stub-claude", "stub-gemini", "stub-claude", "stub-gemini"], turns.Select(t => t.Vendor));
             Assert.Equal([1, 2, 3, 4], turns.Select(t => t.Sequence));
         }
         finally

@@ -269,6 +269,106 @@ public class CoreDispatcherTests
         ? new CoreDispatchTarget("cmd", ["/c", "echo hello > %AER_OUTPUT_DIR%\\hello.txt"])
         : new CoreDispatchTarget("sh", ["-c", "echo hello > \"$AER_OUTPUT_DIR/hello.txt\""]);
 
+    /// <summary>
+    /// #549: a variable the operator's shell exports must NOT reach a worker unless it is
+    /// allowlisted. <c>CLAUDE_CODE_SIMPLE</c> is the concrete hazard <c>InheritedEnvironment</c>
+    /// records; this is the arm that proves the exclusion actually happens.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Polarity in both directions, because "the child saw nothing" is also what a broken harness
+    /// produces: the same dispatch is asked for an ALLOWLISTED variable, which must arrive. If both
+    /// arms come back empty the test is measuring its own plumbing rather than the allowlist.
+    /// </para>
+    /// <para>
+    /// <b>The <c>NUGET_HTTP_CACHE_PATH</c> arm is a control on the PLANT, not on the allowlist.</b>
+    /// The negative arms prove nothing unless <c>Environment.SetEnvironmentVariable</c> actually
+    /// reaches the spawned child, and the <c>PATH</c> arm cannot establish that: <c>PATH</c> is in
+    /// the native block before this process starts, so it discriminates "the harness spawns and
+    /// echoes", not "an operator-set variable can reach this child". This arm plants an
+    /// <b>allowlisted</b> name by the same mechanism the negative arms use and requires the sentinel
+    /// to <b>arrive</b>. Red here means every negative arm on that platform is vacuous — read this
+    /// failure before concluding anything about the allowlist.
+    /// </para>
+    /// <para>
+    /// <b>It exists because a reviewer argued the negative arms could not fail on Linux or macOS,
+    /// and running it settled that they can.</b> The argument was that .NET on Unix does not call
+    /// <c>setenv</c> for <c>SetEnvironmentVariable</c> — it mutates a managed dictionary — while the
+    /// child is spawned by aer-core in Rust from the native <c>environ</c>, so the sentinel would
+    /// never arrive whether or not <see cref="Aer.Core.AerTask.WithClearEnv"/> were called. All four
+    /// arms pass on ubuntu-latest (CI run 30472390670), so the plant does reach the child and the
+    /// negative arms were never vacuous. Recorded because the hypothesis was specific and plausible
+    /// enough to be worth someone else's time, and the measurement is cheaper than the argument.
+    /// </para>
+    /// <para>
+    /// <c>LC_CTYPE</c> carries the sentinel because it is on the allowlist for its own reasons and
+    /// nothing in this child reads it, so overwriting it changes no behaviour — unlike <c>PATH</c>,
+    /// which cannot be overwritten without breaking the spawn the other control depends on. It
+    /// replaced <c>NUGET_HTTP_CACHE_PATH</c>, which this test had come to be the only justification
+    /// for: an allowlist entry held in place by a test is the wrong way round.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("CLAUDE_CODE_SIMPLE", false, true, "the real hazard — disables hooks exactly as --bare does")]
+    [InlineData("AER_549_NOT_ALLOWLISTED", false, true, "an arbitrary name, so the result is about the list and not this one variable")]
+    [InlineData("LC_CTYPE", true, true, "allowlisted AND planted the same way the negative arms are — the control on the plant")]
+    [InlineData("PATH", true, false, "allowlisted, and load-bearing: AER spawns vendor CLIs by name")]
+    public async Task An_inherited_variable_reaches_the_worker_only_when_it_is_allowlisted(
+        string variableName, bool expectedToArrive, bool plantSentinel, string what)
+    {
+        Assert.NotEmpty(what);
+
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        var original = Environment.GetEnvironmentVariable(variableName);
+        const string Sentinel = "inherited-from-the-operator-shell";
+        try
+        {
+            // Set on THIS process, which is what a worker would otherwise inherit. PATH is left alone
+            // — overwriting it would break the spawn the control arm depends on — so its arrival is
+            // checked by presence rather than by a sentinel.
+            if (plantSentinel)
+            {
+                Environment.SetEnvironmentVariable(variableName, Sentinel);
+            }
+
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer).DispatchAsync(
+                request, EchoEnvVarToOutputFile(variableName, environment: null), TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var written = await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken);
+
+            if (expectedToArrive && plantSentinel)
+            {
+                // The control on the plant. Red here means SetEnvironmentVariable never reached the
+                // spawned child on this platform, so every negative arm is vacuous here too — read
+                // this failure before concluding anything about the allowlist.
+                Assert.Contains(Sentinel, written, StringComparison.Ordinal);
+            }
+            else if (expectedToArrive)
+            {
+                // An unexpanded "%PATH%" (cmd) or empty line (sh) is what absence looks like.
+                Assert.DoesNotContain($"%{variableName}%", written, StringComparison.Ordinal);
+                Assert.True(written.Trim().Length > 0, $"{variableName} did not reach the child at all.");
+            }
+            else
+            {
+                Assert.DoesNotContain(Sentinel, written, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, original);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
     private static CoreDispatchTarget EchoEnvVarToOutputFile(
         string variableName, IReadOnlyList<(string Name, string Value)>? environment) => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget(

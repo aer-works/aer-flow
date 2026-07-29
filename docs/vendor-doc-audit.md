@@ -1711,6 +1711,32 @@ Note the direct contradiction with `gate.add-dir-loads-no-config`, which measure
 the claude behaviour unscoped, and is [cross-referenced there](https://github.com/aer-works/aer-flow/issues/533#issuecomment-5079218678)
 so the spawn path carries the asymmetry rather than one rule.
 
+### Environment starvation: `agy` needs `USERPROFILE`, `claude` needs nothing (#549, 2026-07-29)
+
+Measured on Windows while building the environment allowlist, because an advisory pass asserted that
+both CLIs need `HOME`/`USERPROFILE`/`APPDATA`/`LOCALAPPDATA`/`XDG_*` to find their credentials. They
+do not, and the two vendors differ in the direction that decides how tight the allowlist can be.
+
+| | under `env -i` (only `SYSTEMROOT`, `WINDIR`, `MSYSTEM` present) |
+|---|---|
+| `claude auth status` | **succeeds** — `loggedIn: true`, exit 0, full org/subscription payload |
+| `agy models` | **fails** — `%userprofile% is not defined`, dying in startup before any work |
+
+`USERPROFILE` **alone** is sufficient for `agy`; adding `SYSTEMROOT`, `PATH`, `APPDATA` and
+`LOCALAPPDATA` changed nothing. `claude` resolves its config through Win32 APIs off the process
+token rather than from the environment.
+
+**Why it is worth recording rather than leaving in a commit message.** It makes `agy` the only
+**discriminating control** available for anything about the spawned environment. `claude` cannot go
+red on env starvation at all, so an allowlist validated against `claude` alone would be a green from
+an instrument with no failure mode — the trap this audit's own §"prove the instrument works before
+believing a zero" describes. Anything later claiming "the worker environment is sufficient" has to
+say which vendor it measured.
+
+**Scope.** Windows only, `claude` 2.x / `agy` 1.1.8, `auth status` and `models` specifically — not a
+claim about a full turn, and not measured on Linux or macOS. `env -i` was verified to actually clear
+(three surviving variables, all MSYS-injected) rather than assumed.
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls

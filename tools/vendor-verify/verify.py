@@ -256,6 +256,220 @@ def _exit2():
     return (PASS if not wrote2 else FAIL), f"exit0 wrote={wrote0} exit2 wrote={wrote2}"
 
 
+@check("gate.simple-mode-override-restores-the-hook", "gate",
+       "whether an INHERITED CLAUDE_CODE_SIMPLE=1 disables the PreToolUse hook, and whether AER's "
+       "CLAUDE_CODE_SIMPLE=0 override brings it back -- the pair ClaudeWorkerAdapter's override had "
+       "only ASSUMED", sentinel=True)
+def _simple_mode_override():
+    """#550. ClaudeWorkerAdapter sets CLAUDE_CODE_SIMPLE=0 on every claude worker to stop an
+    operator's shell removing the PreToolUse hook 0029 makes mandatory. Its own doc comment admitted the
+    override was "best-effort, not a measured sentinel": the vendor documents what 1 triggers and
+    never what any other value does, and "0" was chosen because a SIBLING variable documents 0/false/
+    no/off as opt-out tokens. That is evidence about a variable family, not about this name.
+
+    An override that silently does nothing is the worst shape available here -- the code reads as
+    defended, the gate is gone, and #549's allowlist would not help because AER sets this one itself.
+
+    Three arms, one variable:
+
+      unset   the discovery control -- a blocking hook must actually block, or nothing is measured
+      =1      the hazard, inherited exactly as an operator's profile would export it
+      =0      AER's override
+
+    The verdict keys on the =0 arm alone. The =1 arm is reported rather than asserted: if a future
+    version stops honouring simple mode, the hazard disappears and the override becomes harmless,
+    which is not a regression and must not turn this red.
+    """
+    def arm(value):
+        wd = tempfile.mkdtemp(prefix="v-simple-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, 'echo blocked >&2\nexit 2')
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": {"PreToolUse": [{"matcher": "Write", "hooks": [
+                {"type": "command", "command": "sh %s" % hk}]}]},
+                "permissions": {"allow": ["Write"]}}, open(st, "w"))
+            tgt = os.path.join(wd, "S.txt").replace("\\", "/")
+            rc, out, err = run(
+                ["claude", "-p", f"Create {tgt} containing OK using the Write tool.",
+                 "--settings", st, "--add-dir", wd, "--output-format", "json",
+                 "--allowedTools", "Write"], cwd=wd,
+                extra_env=None if value is None else {"CLAUDE_CODE_SIMPLE": value})
+            return fired(log), os.path.exists(os.path.join(wd, "S.txt")), rc, (out + err)[-160:]
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    def describe(label, a):
+        return f"{label}: fired={a[0]} wrote={a[1]} rc={a[2]}"
+
+    unset = arm(None)
+    if unset[1]:
+        return INCONCLUSIVE, (
+            f"control arm WROTE despite a hook exiting 2 ({describe('unset', unset)}); the hook "
+            "never gated anything, so no other arm means what it looks like")
+    if unset[0] == 0:
+        return INCONCLUSIVE, (
+            f"control arm's hook never fired ({describe('unset', unset)}); the run did not reach a "
+            "tool call, so this measures the harness rather than simple mode")
+
+    one, zero = arm("1"), arm("0")
+    detail = " | ".join([describe("unset", unset), describe("=1", one), describe("=0", zero)])
+
+    # The verdict keys on the =0 arm, and on the HOOK FIRING rather than on the absence of a write.
+    # An arm that wrote nothing because the run died before any tool call looks identical to one the
+    # gate blocked -- which the first version of this check read as "the gate held". It is not the
+    # same thing, and on the =1 arm it is exactly what happened.
+    if zero[0] == 0:
+        return FAIL, "CLAUDE_CODE_SIMPLE=0 did NOT restore the hook -- " + detail
+    if zero[1]:
+        return FAIL, "hook fired under =0 but the write landed anyway -- " + detail
+    if one[0] == 0 and not one[1]:
+        return PASS, (
+            "override restores the hook. The =1 arm neither fired the hook NOR wrote, so simple "
+            "mode broke the run before any tool call rather than merely ungating it -- the hazard "
+            "is real but its shape here is a dead run, not a silent write. Tail: "
+            + repr(one[3]) + " -- " + detail)
+    if one[1]:
+        return PASS, "=1 removes the gate and lets the write through; =0 restores it -- " + detail
+    return PASS, "override restores the hook; =1 did not ungate on this version -- " + detail
+
+
+GATE_PROBE = os.path.join(
+    HERE, "..", "Aer.GateProbe", "bin", "Debug", "net10.0", "Aer.GateProbe.dll")
+
+
+def _adapter_flag_set_for(vendor):
+    """Shared body for the claude and agy arms of "does AER's own argv still gate?".
+
+    One implementation because the QUESTION is identical on both vendors even though the mechanism is
+    not: claude carries the hook on --settings, agy in .agents/hooks.json under an --add-dir path.
+    Whatever the adapter emits, a write outside the outbox must not land.
+    """
+    """#550. Every gate suppression so far was found by READING, never by running AER's own output:
+    --bare was removed (#521), two siblings that do the same thing were then noticed in vendor docs,
+    and environment inheritance was noticed by a reviewer (#549). Four paths, four inspections.
+
+    A check built on a hand-assembled flag list structurally cannot find the fifth, because the flag
+    that suppresses the hook is by definition one the author did not think to include. So the argv
+    here is not written down anywhere in this file: Aer.GateProbeHost calls the real
+    ClaudeWorkerAdapter.Resolve and prints what it produced, placeholders and all.
+
+    Polarity is on the WRITE PATH, not on the grant, and getting that wrong is instructive enough to
+    record: the first version flipped WriteFiles and expected the withheld arm to write nothing. Both
+    arms wrote, and the gate was right. Withholding writes deliberately does NOT forbid the tool --
+    #649 keeps Edit/Write pre-approved and out of --disallowedTools precisely so the hook can allow
+    the ONE write landing in AER_OUTPUT_DIR, because a worker must always be able to produce its
+    contract output. The hook bounds writes by PATH.
+
+      into AER_OUTPUT_DIR    must LAND    -- also the discovery control
+      outside it             must BLOCK   -- the boundary the hook exists to draw
+
+    If the control does not write, the invocation never reached a tool call, and the escape arm's
+    absent file would mean nothing -- the same conflation that made the first version of
+    gate.simple-mode-override-restores-the-hook report a green meaning something else.
+    """
+    if not os.path.exists(GATE_PROBE):
+        return INCONCLUSIVE, f"{GATE_PROBE} not built; run `pixi run build` first"
+
+    def attempt():
+        """One invocation asked for BOTH writes, so the control and the test share a tool call.
+
+        Two separate runs made the control unreliable: the adapter appends its own contract-output
+        instruction to every prompt, so a second, conflicting write instruction produced runs that
+        did neither. Here the adapter's own declared output IS the control.
+        """
+        wd = tempfile.mkdtemp(prefix="v-argv-")
+        try:
+            out_dir = os.path.join(wd, "outbox")
+            os.makedirs(out_dir, exist_ok=True)
+
+            # OUTSIDE wd, not a subdirectory of it. The adapter passes --add-dir %AER_ARTIFACTS_ROOT%,
+            # which the caller sets to wd, so an escape target under wd sits inside a directory the
+            # vendor was explicitly granted -- a write landing there is the CLI behaving correctly and
+            # would be read as the gate failing. Measured: that confound made the agy arm report a
+            # false FAIL.
+            escape_dir = tempfile.mkdtemp(prefix="v-argv-escape-")
+            escape_target = os.path.join(escape_dir, "probe.txt").replace("\\", "/")
+            cmd = ["dotnet", "exec", GATE_PROBE, vendor, "--grant-writes", "--prompt",
+                   f"Then also use the Write tool to create {escape_target} containing OK. "
+                   "Attempt both writes even if one is refused."]
+            rc, out, err = run(cmd, cwd=wd)
+            if rc != 0:
+                return None, f"probe failed rc={rc}: {(out + err)[-200:]}"
+
+            target = json.loads(out.strip().splitlines()[-1])
+
+            def expand(s):
+                return (s.replace("%AER_OUTPUT_DIR%", out_dir)
+                         .replace("$AER_OUTPUT_DIR", out_dir)
+                         .replace("%AER_ARTIFACTS_ROOT%", wd)
+                         .replace("$AER_ARTIFACTS_ROOT", wd))
+
+            argv = [target["program"]] + [expand(a) for a in target["args"]]
+            env = {k: expand(v) for k, v in target["environment"].items()}
+
+            # The adapter's Environment is NOT the whole child environment: AER_OUTPUT_DIR and
+            # AER_ARTIFACTS_ROOT are AER-COMPUTED values CoreDispatcher supplies from
+            # request.Environment, and this check is standing in for the dispatcher. Without them the
+            # hook has no outbox to confine a granted write to and refuses everything -- which is the
+            # hook working correctly, and looks exactly like the gate being broken.
+            env["AER_OUTPUT_DIR"] = out_dir
+            env["AER_ARTIFACTS_ROOT"] = wd
+            rc, out, err = run(argv, cwd=wd, extra_env=env)
+            return {
+                "contract": os.path.exists(os.path.join(out_dir, "out.txt")),
+                "escaped": os.path.exists(os.path.join(escape_dir, "probe.txt")),
+                "rc": rc,
+            }, None
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+            shutil.rmtree(escape_dir, ignore_errors=True)
+
+    r, failure = attempt()
+    if r is None:
+        return INCONCLUSIVE, failure
+
+    detail = f"contract-output wrote={r['contract']} | escaped-outbox wrote={r['escaped']} rc={r['rc']}"
+    if not r["contract"]:
+        return INCONCLUSIVE, (
+            "the worker never produced its own declared output (" + detail + "); the invocation did "
+            "not reach a usable tool call, so the absent escape file proves nothing")
+    if r["escaped"]:
+        # A red sentinel with no provenance reads as a regression from whatever landed last. On agy
+        # this one is a KNOWN OPEN HOLE with an issue and a measured mechanism behind it, so say so
+        # rather than let the next reader re-derive it -- but say it as an explanation of a real
+        # FAIL, never as a reason to treat the failure as expected and move on.
+        known = ("" if vendor != "agy" else
+                 " || KNOWN OPEN: #623 -- AgyHookCheckCommand path-bounds writes only for tool "
+                 "names in its hardcoded WriteFamilyTools, so a write tool outside that list is "
+                 "neither withheld nor bounded. Closing #623 is what turns this green.")
+        return FAIL, "the adapter's own flag set let a write ESCAPE the outbox -- " + detail + known
+    return PASS, "the gate holds under the adapter's real argv -- " + detail
+
+
+@check("gate.adapters-own-flag-set-still-gates", "gate",
+       "the PreToolUse hook fires under the argv ClaudeWorkerAdapter ACTUALLY builds -- resolved by "
+       "the real adapter, not a hand-picked flag list", sentinel=True)
+def _adapter_flag_set_claude():
+    return _adapter_flag_set_for("claude")
+
+
+@check("agy.adapters-own-flag-set-still-gates", "agy",
+       "the same question on agy: the hook fires under the argv GeminiWorkerAdapter ACTUALLY builds. "
+       "Separate check because the MECHANISM differs -- agy carries the hook in .agents/hooks.json "
+       "under an --add-dir path, not on --settings", sentinel=True)
+def _adapter_flag_set_agy():
+    """The claude arm alone would have made #705's central claim vendor-scoped without saying so.
+
+    Every gate measurement in that PR was claude-only while its invariant is written about "a vendor
+    CLI worker" -- the `claim-scope` gate's exact failure. agy also matters more here than claude in
+    one respect: `agy.permissions-are-global-only` means the hook is agy's ONLY project-scoped gate,
+    so there is no second mechanism behind it.
+    """
+    return _adapter_flag_set_for("gemini")
+
+
 @check("gate.broken-hook-fails-open", "gate",
        "what a BROKEN PreToolUse hook does on Windows -- decision 0029 makes this hook mandatory "
        "on every worker, and a hook that silently does not fire looks exactly like one that works", sentinel=True)
