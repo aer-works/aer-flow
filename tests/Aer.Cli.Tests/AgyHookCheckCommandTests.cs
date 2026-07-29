@@ -191,11 +191,10 @@ public class AgyHookCheckCommandTests
     }
 
     /// <summary>
-    /// A <c>generate_image</c> payload, whose argument names come from
-    /// <c>.vendor-survey/corpus/agy__hooks.md</c> — <c>Prompt</c>/<c>ImageName</c>/<c>ImagePaths</c>,
-    /// with no <c>TargetFile</c>. Corpus-derived rather than observed on a live call, unlike
-    /// <see cref="WritePayload"/>'s; see <c>AgyHookCheckCommand.WriteTargetFields</c> for why that
-    /// distinction is kept visible.
+    /// A <c>generate_image</c> payload, with the argument names a REAL call was observed to carry —
+    /// exactly <c>{ ImageName, Prompt }</c>, no <c>TargetFile</c>, and no <c>ImagePaths</c> despite
+    /// the corpus listing one. Captured the same way <see cref="WritePayload"/>'s names were, so
+    /// neither fixture rests on documentation.
     /// </summary>
     private static string ImagePayload(string imageName) =>
         JsonSerializer.Serialize(new

@@ -273,12 +273,14 @@ public static class AgyHookCheckCommand
     /// than silently always-denied.
     /// </para>
     /// <para>
-    /// <b>Measured for <c>write_to_file</c> only.</b> <c>TargetFile</c> came from a live payload
-    /// (<c>agy.hook-payload-carries-write-path</c>); <c>generate_image</c>'s <c>ImageName</c> comes
-    /// from <c>.vendor-survey/corpus/agy__hooks.md</c>, which is documentation, and this same CLI's
-    /// documentation is recorded wrong twice in <c>docs/vendor-doc-audit.md</c>. Treat the
-    /// <c>generate_image</c> entry as provisional until a real payload is observed; the failure
-    /// direction if it is wrong is unchanged from today's — denied for want of a readable path.
+    /// <b>Both entries are payload-measured, not read off documentation.</b> <c>TargetFile</c> came
+    /// from a live <c>write_to_file</c> call (<c>agy.hook-payload-carries-write-path</c>).
+    /// <c>generate_image</c> was captured the same way on 2026-07-29 — a logging hook over a real
+    /// image-generation call — and its arguments arrived as exactly
+    /// <c>{ ImageName, Prompt }</c>: <b>no <c>TargetFile</c>, and no <c>ImagePaths</c></b> despite the
+    /// corpus listing one. The corpus happened to be right about <c>ImageName</c>; it was still worth
+    /// measuring, because this CLI's documentation is recorded wrong twice in
+    /// <c>docs/vendor-doc-audit.md</c> and "the docs agreed" is not a reason to believe the third.
     /// </para>
     /// </remarks>
     private static string? ReadWriteTarget(JsonElement toolCall, string? toolName)
@@ -341,7 +343,8 @@ public static class AgyHookCheckCommand
             ["write_to_file"] = ["TargetFile"],
             ["replace_file_content"] = ["TargetFile"],
             ["multi_replace_file_content"] = ["TargetFile"],
-            // Corpus-derived, not payload-measured -- see the remark above.
+            // Measured: a real call carried exactly { ImageName, Prompt }. TargetFile is kept as a
+            // fallback only because it costs nothing and agy has renamed payload fields before.
             ["generate_image"] = ["ImageName", "TargetFile"],
         };
 
