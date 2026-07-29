@@ -699,6 +699,37 @@ def gate_slugs(claude_md: str) -> set[str]:
     return set(GATE_HEADING.findall(claude_md))
 
 
+# GitHub matches a closing keyword and a reference and IGNORES ANY NEGATION AROUND IT, so
+# "does not close #532" and "filed, not fixed: #688" each close the issue on merge. Both are real
+# and both cost a reopen, an explanatory comment and a correction to the record (#684 closed #688,
+# #692 closed #532). A note in CLAUDE.md did not stop the second: prose cannot, because an author
+# writing "not fixed" believes they have already said the right thing.
+#
+# `n't` carries NO left word boundary -- inside "isn't" it follows a letter, so `\bn't` never matches
+# and the contraction form walks straight through. Found by a polarity arm, not by reading.
+#
+# `\W{0,3}` between keyword and reference mirrors what GitHub itself requires -- the keyword has to
+# sit immediately before the number. "fixed BY #99" closes nothing, so this must stay silent on it:
+# a lint that fires where the parser does not would train authors to reword around a phantom.
+NEGATED_CLOSE = re.compile(
+    r"(?:\bnot\b|n't\b|\bnever\b|\bwithout\b)[^.\n#]{0,40}?"
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\W{0,3}#(\d+)",
+    re.IGNORECASE)
+
+
+def negated_close_faults(body: str) -> list:
+    """Issue numbers a PR body says it does NOT close, and which GitHub will close anyway.
+
+    Pure, and takes the body as text rather than reaching for the GitHub API, for the same reason
+    `gate_citation_faults` does: a lint that can only run against a real PR cannot be shown to
+    discriminate. `selfcheck.py` drives it with both incident bodies verbatim.
+
+    Deliberately silent on a plain `Closes #n` -- that convention is the point, and flagging it would
+    make the lint noise. Only the negated form is a defect.
+    """
+    return [int(n) for n in NEGATED_CLOSE.findall(body or "")]
+
+
 def gate_citation_faults(files: dict, slugs: set[str]) -> list:
     """Every gate citation that cannot survive a renumbering, or names a gate that does not exist.
 
@@ -774,7 +805,28 @@ def git_state():
         line(label, out)
 
 
+def pr_body_mode() -> int:
+    """`--pr-body`: read a PR body on stdin and refuse a negated closing keyword.
+
+    Its own mode rather than a step, because the body is not in the tree -- only CI has it, and only
+    while the PR is still editable, which is the one moment the fault is free to fix.
+    """
+    faults = negated_close_faults(sys.stdin.read())
+    if not faults:
+        print("OK no negated closing keyword; nothing will close by accident.")
+        return 0
+    print("!! this PR body tells GitHub to CLOSE issue(s) it says it does not close:")
+    for n in faults:
+        print(f"   #{n}")
+    print("   GitHub matches the keyword and the number and ignores the negation.")
+    print("   Rewrite so no closing keyword sits beside the number -- `#123 remains open`,")
+    print("   or `filed separately: #123`. A deliberate `Closes #n` is untouched by this.")
+    return 1
+
+
 def main() -> int:
+    if "--pr-body" in sys.argv:
+        return pr_body_mode()
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
