@@ -334,11 +334,16 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
     /// <summary>
     /// Live validation the builder UI shows inline (M21 Phase 1's "surface that gap in the UI
     /// explicitly rather than silently dropping or downgrading it") — re-run on every field that
-    /// feeds a <see cref="Adapters.PermissionGrant"/>, plus <see cref="Adapter"/> itself since the
-    /// gap is adapter-specific. Empty whenever there's nothing to warn about: Advanced mode, an
-    /// adapter name not found in the registry (nothing to check yet), or an adapter with no
-    /// <see cref="IPermissionGrantTranslator"/> at all (<see cref="PermissionGrantGapWarning"/>
-    /// still fires here, but as "no builder support" rather than a per-category refusal).
+    /// feeds a <see cref="Adapters.PermissionGrant"/>, plus <see cref="Adapter"/> itself since one of
+    /// the refusals is adapter-specific.
+    /// <para>
+    /// Three things it can say, in the order they are asked. The adapter <b>does not enforce grants
+    /// at all</b> — nothing ticked would reach dispatch (#657). The grant is <b>incoherent</b> —
+    /// its shell defeats a withheld category, which is true on every adapter and so is asked before
+    /// anything vendor-specific (#645). The adapter <b>cannot express</b> this grant — the vendor gap
+    /// its own translator reports. Empty otherwise, including in Advanced mode and for an adapter
+    /// name not in the registry, where there is nothing to check yet.
+    /// </para>
     /// </summary>
     private void RecomputePermissionGrantGapWarning()
     {
@@ -381,10 +386,8 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
         if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
         {
             PermissionGrantGapWarning =
-                $"Granting the shell also grants {NaturalList(defeated)}, which "
-                + $"{(defeated.Count == 1 ? "is" : "are")} unticked — a shell command reaches "
-                + "them and AER enforces by tool name, so it cannot tell them apart. The engine "
-                + "refuses this at bind time; tick them, or untick the shell.";
+                $"These permissions can't be saved: {PermissionGrantWording.ShellDefeats(defeated)} "
+                + "Tick them, or untick the shell.";
             return;
         }
 
@@ -392,25 +395,6 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             ? string.Empty
             : gapReason ?? "This adapter cannot express the selected permissions.";
     }
-
-    /// <summary>Renders the category names as prose — this line is read by a person, not parsed.</summary>
-    private static string NaturalList(IReadOnlyList<string> names)
-    {
-        var spaced = names.Select(SpaceOutPascalCase).ToList();
-        return spaced.Count switch
-        {
-            1 => spaced[0],
-            2 => $"{spaced[0]} and {spaced[1]}",
-            _ => $"{string.Join(", ", spaced.Take(spaced.Count - 1))} and {spaced[^1]}",
-        };
-    }
-
-    /// <summary>
-    /// <c>ReadFiles</c> → <c>read files</c>. The categories are named for the code; the warning is
-    /// named for the checkbox beside it.
-    /// </summary>
-    private static string SpaceOutPascalCase(string name) =>
-        string.Concat(name.Select((c, i) => i > 0 && char.IsUpper(c) ? " " + char.ToLowerInvariant(c) : $"{char.ToLowerInvariant(c)}"));
 
     private PermissionGrant BuildPermissionGrant() => new(
         GrantReadFiles,
@@ -493,9 +477,8 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
                     if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
                     {
                         entry = null;
-                        error = $"Permission grant for '{WorkerName}' can't be saved: the shell is granted "
-                            + $"while {NaturalList(defeated)} {(defeated.Count == 1 ? "is" : "are")} withheld, "
-                            + "and a shell command reaches them anyway. The engine refuses this at bind time.";
+                        error = $"Permission grant for '{WorkerName}' can't be saved: "
+                            + PermissionGrantWording.ShellDefeats(defeated);
                         return false;
                     }
 

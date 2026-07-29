@@ -97,9 +97,4 @@ public sealed record PermissionGrant(
         }
     }
 
-    /// <summary>
-    /// True when a granted shell would defeat a category this grant withholds — the condition
-    /// <c>WorkerBindingResolver.Resolve</c> refuses on. See <see cref="CategoriesDefeatedByTheShell"/>.
-    /// </summary>
-    public bool IsIncoherent => CategoriesDefeatedByTheShell.Count > 0;
 }
