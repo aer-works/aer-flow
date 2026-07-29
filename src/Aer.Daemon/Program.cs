@@ -1207,17 +1207,13 @@ namespace Aer.Daemon
                 }
 
                 var directoryPath = resolved.Value.DirectoryPath;
-                var grant = request.Mode?.Trim().ToLowerInvariant() switch
-                {
-                    "auto" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
-                    "plan" => new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
-                    "default" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
-                    _ => (PermissionGrant?)null,
-                };
-
+                // #645: the mapping and its mode set live on InteractiveSessions so a test can assert
+                // a property across every mode. Inline here, nothing could enumerate them.
+                var grant = InteractiveSessionMaterializer.GrantForMode(request.Mode);
                 if (grant == null)
                 {
-                    return Results.BadRequest("Mode must be one of: auto, default, plan.");
+                    return Results.BadRequest(
+                        $"Mode must be one of: {string.Join(", ", InteractiveSessionMaterializer.KnownModes)}.");
                 }
 
                 var bindingsFilePath = Path.Combine(directoryPath, "bindings.json");
@@ -1257,17 +1253,13 @@ namespace Aer.Daemon
                     return Results.NotFound();
                 }
 
-                var mode = existingEntry.PermissionGrant is { } grant
-                    ? grant switch
-                    {
-                        { ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true } => "auto",
-                        { ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false } => "plan",
-                        { ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false } => "default",
-                        _ => "custom",
-                    }
-                    : "custom";
-
-                return Results.Ok(new { Mode = mode });
+                // #645: asked of the same mapping POST uses, rather than restating the three grants
+                // here as this endpoint used to. What that second copy cost is recorded on
+                // InteractiveSessionMaterializer.ModeForGrant.
+                return Results.Ok(new
+                {
+                    Mode = InteractiveSessionMaterializer.ModeForGrant(existingEntry.PermissionGrant),
+                });
             });
 
             // #286: "clear" (unlike compact) never talks to the vendor -- it's a purely local reset

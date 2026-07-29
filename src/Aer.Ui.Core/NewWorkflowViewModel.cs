@@ -190,6 +190,17 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
         var grant = BuildPermissionGrant();
         if (!grant.IsEmpty)
         {
+            // #645, asked before the loop and before anything vendor-specific. Why that order, and
+            // why the rule lives on PermissionGrant, are recorded once -- on
+            // PermissionGrant.CategoriesDefeatedByTheShell and at the bindings editor's own call
+            // site. What is particular to THIS surface: Save & Run dispatches immediately, so a
+            // grant that slips through is discovered one click later, at bind time.
+            if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
+            {
+                yield return "The permissions above can't be saved: "
+                    + PermissionGrantWording.ShellDefeats(defeated);
+            }
+
             var adapterNamesInUse = Steps
                 .Where(step => !step.IsDialogue)
                 .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini")
@@ -203,7 +214,8 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 
                 if (adapter is not IPermissionGrantTranslator translator)
                 {
-                    yield return $"'{adapterName}' has no structured permission builder support, so the permissions above won't apply to its steps.";
+                    yield return $"'{adapterName}' does not enforce permission grants — the permissions "
+                        + "above would be ignored at dispatch for its steps, not applied.";
                     continue;
                 }
 

@@ -334,11 +334,16 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
     /// <summary>
     /// Live validation the builder UI shows inline (M21 Phase 1's "surface that gap in the UI
     /// explicitly rather than silently dropping or downgrading it") — re-run on every field that
-    /// feeds a <see cref="Adapters.PermissionGrant"/>, plus <see cref="Adapter"/> itself since the
-    /// gap is adapter-specific. Empty whenever there's nothing to warn about: Advanced mode, an
-    /// adapter name not found in the registry (nothing to check yet), or an adapter with no
-    /// <see cref="IPermissionGrantTranslator"/> at all (<see cref="PermissionGrantGapWarning"/>
-    /// still fires here, but as "no builder support" rather than a per-category refusal).
+    /// feeds a <see cref="Adapters.PermissionGrant"/>, plus <see cref="Adapter"/> itself since one of
+    /// the refusals is adapter-specific.
+    /// <para>
+    /// Three things it can say, in the order they are asked. The adapter <b>does not enforce grants
+    /// at all</b> — nothing ticked would reach dispatch (#657). The grant is <b>incoherent</b> —
+    /// its shell defeats a withheld category, which is true on every adapter and so is asked before
+    /// anything vendor-specific (#645). The adapter <b>cannot express</b> this grant — the vendor gap
+    /// its own translator reports. Empty otherwise, including in Advanced mode and for an adapter
+    /// name not in the registry, where there is nothing to check yet.
+    /// </para>
     /// </summary>
     private void RecomputePermissionGrantGapWarning()
     {
@@ -356,7 +361,14 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
 
         if (adapter is not IPermissionGrantTranslator translator)
         {
-            PermissionGrantGapWarning = $"'{Adapter}' has no structured permission builder support — use Advanced instead.";
+            // #657: the old wording — "no structured permission builder support, use Advanced
+            // instead" — read as a note about the EDITOR, so an operator who ticked four boxes on a
+            // dialogue or noop worker had been told nothing that reads as "these will not apply".
+            // They do not: neither adapter reads WorkerInvocation.PermissionGrant at all, and
+            // WorkerAdapterRegistryTests (#651) holds that population to IPermissionGrantTranslator.
+            PermissionGrantGapWarning =
+                $"'{Adapter}' does not enforce permission grants — anything ticked here would be "
+                + "ignored at dispatch, not applied. Use Advanced to set a vendor's own flags.";
             return;
         }
 
@@ -364,6 +376,18 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
         if (grant.IsEmpty)
         {
             PermissionGrantGapWarning = string.Empty;
+            return;
+        }
+
+        // #645: adapter-independent, and checked BEFORE translation because an incoherent grant is
+        // wrong on every adapter -- reporting a vendor's expressiveness gap first would send an
+        // operator to fix the wrong thing. The rule itself lives on PermissionGrant; restating its
+        // conditions here is what would let this surface and the engine drift apart.
+        if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
+        {
+            PermissionGrantGapWarning =
+                $"These permissions can't be saved: {PermissionGrantWording.ShellDefeats(defeated)} "
+                + "Tick them, or untick the shell.";
             return;
         }
 
@@ -430,14 +454,40 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             if (!grant.IsEmpty)
             {
                 // Mirrors PermissionGrantUnsupportedException's precedent (defense in depth at
-                // dispatch time) one layer earlier, at Save time, so the gap RecomputePermissionGrantGapWarning
-                // already shows inline also blocks persisting a grant the selected adapter can't honor.
-                if (_adapterRegistry.TryGetValue(Adapter, out var adapter) && adapter is IPermissionGrantTranslator translator
-                    && !translator.TryTranslatePermissionGrant(grant, out _, out var gapReason))
+                // dispatch time) one layer earlier, at Save time, so the gaps RecomputePermissionGrantGapWarning
+                // already shows inline also block persisting a grant that is not what it looks like.
+                if (_adapterRegistry.TryGetValue(Adapter, out var adapter))
                 {
-                    entry = null;
-                    error = $"Permission grant for '{WorkerName}' can't be saved: {gapReason}";
-                    return false;
+                    // #657: the ORDER of these two conjuncts was the defect. `adapter is
+                    // IPermissionGrantTranslator translator && !translator.TryTranslate…` short-circuits
+                    // for an adapter that implements nothing, so the guard never ran and the grant was
+                    // persisted -- inert, but indistinguishable in the file from an enforced one.
+                    if (adapter is not IPermissionGrantTranslator translator)
+                    {
+                        entry = null;
+                        error = $"Permission grant for '{WorkerName}' can't be saved: '{Adapter}' does not "
+                            + "enforce permission grants, so these values would be stored as though they "
+                            + "constrained the worker while being ignored at dispatch.";
+                        return false;
+                    }
+
+                    // #645: same rule as the engine's, asked of the same object one layer earlier.
+                    // Why it lives on PermissionGrant rather than in the resolver is recorded once,
+                    // on PermissionGrant.CategoriesDefeatedByTheShell.
+                    if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
+                    {
+                        entry = null;
+                        error = $"Permission grant for '{WorkerName}' can't be saved: "
+                            + PermissionGrantWording.ShellDefeats(defeated);
+                        return false;
+                    }
+
+                    if (!translator.TryTranslatePermissionGrant(grant, out _, out var gapReason))
+                    {
+                        entry = null;
+                        error = $"Permission grant for '{WorkerName}' can't be saved: {gapReason}";
+                        return false;
+                    }
                 }
 
                 permissionGrant = grant;

@@ -412,8 +412,15 @@ public class MainWindowBindingsEditorTests
             entry.Adapter = "claude";
             entry.PromptTemplate = "Draft a plan.";
             entry.TimeoutText = "00:05:00";
+            // Read and network are ticked because the shell is. This fixture used to grant the shell
+            // with both withheld -- a grant WorkerBindingResolver.Resolve THROWS on (#529), so the
+            // test was round-tripping a binding that could never start, and passed only because the
+            // editor did not check. That is #645 in one fixture. Round-trip fidelity is still what
+            // this asserts; it just no longer rides on an unstartable grant.
+            entry.GrantReadFiles = true;
             entry.GrantWriteFiles = true;
             entry.GrantRunShellCommands = true;
+            entry.GrantNetworkAccess = true;
             entry.ShellCommandPatternsText = "git:*, npm:*";
 
             await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
@@ -424,15 +431,17 @@ public class MainWindowBindingsEditorTests
             Assert.Null(saved.PermissionScope);
             Assert.NotNull(saved.PermissionGrant);
             Assert.True(saved.PermissionGrant!.WriteFiles);
-            Assert.False(saved.PermissionGrant.ReadFiles);
+            Assert.True(saved.PermissionGrant.ReadFiles);
             Assert.Equal(["git:*", "npm:*"], saved.PermissionGrant.ShellCommandPatterns);
 
             // Reopening lands back in Builder mode with the same checkboxes — round-trip fidelity.
             await window.OpenBindingsInEditorAsync(path, TestContext.Current.CancellationToken);
             var reopened = window.ViewModel.BindingsEditor.Entries[0];
             Assert.False(reopened.IsAdvancedPermissionScope);
+            Assert.True(reopened.GrantReadFiles);
             Assert.True(reopened.GrantWriteFiles);
             Assert.True(reopened.GrantRunShellCommands);
+            Assert.True(reopened.GrantNetworkAccess);
             Assert.Equal("git:*, npm:*", reopened.ShellCommandPatternsText);
         }
         finally
@@ -515,14 +524,57 @@ public class MainWindowBindingsEditorTests
 
         Assert.False(entry.HasPermissionGrantGapWarning);
 
+        // A COHERENT grant that agy still cannot express, so what surfaces is the vendor gap rather
+        // than #645's rule. Shell alone no longer reaches this assertion: it is incoherent under #529
+        // and the adapter-independent problem is reported first, deliberately -- see the coherence
+        // test below. Patterns are agy's own refusal (#624).
+        entry.GrantReadFiles = true;
+        entry.GrantWriteFiles = true;
+        entry.GrantNetworkAccess = true;
         entry.GrantRunShellCommands = true;
+        entry.ShellCommandPatternsText = "git:*";
 
         Assert.True(entry.HasPermissionGrantGapWarning);
         Assert.Contains("agy", entry.PermissionGrantGapWarning);
     }
 
+    /// <summary>
+    /// #645: the coherence rule the engine refuses on, surfaced where the grant is authored rather
+    /// than as a bind-time exception on a workflow already committed to.
+    /// </summary>
     [AvaloniaFact]
-    public void An_adapter_with_no_translator_shows_a_no_builder_support_gap_warning()
+    public void Granting_the_shell_while_withholding_what_it_reaches_warns_inline()
+    {
+        var window = NewWindow();
+        window.NewBindings();
+        window.ViewModel.BindingsEditor.AddEntry();
+        var entry = window.ViewModel.BindingsEditor.Entries[0];
+        entry.Adapter = "claude";
+
+        entry.GrantWriteFiles = true;
+        Assert.False(entry.HasPermissionGrantGapWarning);
+
+        // One click, and the config can no longer start.
+        entry.GrantRunShellCommands = true;
+
+        Assert.True(entry.HasPermissionGrantGapWarning);
+        Assert.Contains("read files", entry.PermissionGrantGapWarning);
+        Assert.Contains("network access", entry.PermissionGrantGapWarning);
+        Assert.DoesNotContain("write files", entry.PermissionGrantGapWarning);
+
+        // POLARITY: ticking what the shell reaches clears it, so the warning tracks the rule rather
+        // than merely appearing whenever the shell is on.
+        entry.GrantReadFiles = true;
+        entry.GrantNetworkAccess = true;
+        Assert.False(entry.HasPermissionGrantGapWarning);
+    }
+
+    /// <summary>
+    /// #657. What the old wording was and why it misled is recorded once, beside the string itself
+    /// in <c>WorkerBindingEntryViewModel</c>'s <c>PermissionGrantGapWarning</c> assignment.
+    /// </summary>
+    [AvaloniaFact]
+    public void An_adapter_that_ignores_grants_says_so_rather_than_blaming_the_builder()
     {
         var window = NewWindow();
         window.NewBindings();
@@ -533,7 +585,74 @@ public class MainWindowBindingsEditorTests
         entry.GrantReadFiles = true;
 
         Assert.True(entry.HasPermissionGrantGapWarning);
-        Assert.Contains("no structured permission builder support", entry.PermissionGrantGapWarning);
+        Assert.Contains("does not enforce permission grants", entry.PermissionGrantGapWarning);
+        Assert.Contains("ignored at dispatch", entry.PermissionGrantGapWarning);
+    }
+
+    /// <summary>
+    /// #645, at Save. The inline warning is advisory; this is what stops an unstartable binding
+    /// reaching disk.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Saving_a_grant_the_engine_refuses_at_bind_time_is_refused_here_and_writes_nothing()
+    {
+        var path = TempBindingsPath();
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "architect";
+            entry.Adapter = "claude";
+            entry.PromptTemplate = "Draft a plan.";
+            entry.TimeoutText = "00:05:00";
+            entry.GrantWriteFiles = true;
+            entry.GrantRunShellCommands = true;
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            Assert.Contains("can't be saved", window.ViewModel.BindingsEditor.StatusText);
+            Assert.Contains("read files", window.ViewModel.BindingsEditor.StatusText);
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// #657: an inert grant is not persisted as though it were a constraint. The CONTROL that this
+    /// is about the ADAPTER and not about grants in general is the round-trip test above, which
+    /// saves the same four categories on <c>claude</c> and succeeds.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Saving_a_grant_onto_an_adapter_that_ignores_it_is_refused_and_writes_nothing()
+    {
+        var path = TempBindingsPath();
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "debate";
+            entry.Adapter = "dialogue";
+            entry.PromptTemplate = "dialogue-config.json";
+            entry.TimeoutText = "00:05:00";
+            entry.GrantReadFiles = true;
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            Assert.Contains("can't be saved", window.ViewModel.BindingsEditor.StatusText);
+            Assert.Contains("does not enforce permission grants", window.ViewModel.BindingsEditor.StatusText);
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [AvaloniaFact]
