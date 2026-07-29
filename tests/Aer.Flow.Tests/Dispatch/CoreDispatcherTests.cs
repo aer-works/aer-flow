@@ -567,6 +567,54 @@ public class CoreDispatcherTests
         Assert.Single(lines);
     }
 
+    /// <summary>
+    /// A worker killed mid-character leaves a partial sequence in the decoder, and flushing has to
+    /// surface it as U+FFFD rather than drop it.
+    /// </summary>
+    /// <remarks>
+    /// This is the end-of-stream axis, and it is the one a chunk-boundary test structurally cannot
+    /// reach: no mutation of <c>Append</c> makes it red, which is exactly why the omission survived a
+    /// mutation pass that turned five of ten arms red on the axis it was aimed at.
+    /// <para>
+    /// The second arm is the sharp one. With bytes left in the <c>StringBuilder</c> a missing drain
+    /// merely truncates; with the partial sequence being ALL that remains, the buffer is empty, the
+    /// length guard never fires, and the worker's last line vanishes — strictly worse than the
+    /// stateless decode this replaced, on the diagnostic path where it matters most.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(new byte[] { 0x61, 0x62, 0xC3 }, "ab�", "a truncated sequence after text")]
+    [InlineData(new byte[] { 0xC3 }, "�", "a truncated sequence and NOTHING else")]
+    public void A_trailing_partial_sequence_is_surfaced_on_flush_rather_than_dropped(
+        byte[] truncated, string expected, string what)
+    {
+        Assert.NotEmpty(what);
+
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+
+        // The lead byte of é with its continuation byte never written — the worker died mid-write.
+        buffer.Append(truncated, lines.Add);
+        Assert.Empty(lines);
+
+        buffer.Flush(lines.Add);
+        Assert.Equal(expected, Assert.Single(lines));
+    }
+
+    /// <summary>
+    /// The CONTROL for the theory above, on the path that already drained its decoder: identical
+    /// input, and it has to stay green. Both going red would mean the harness misunderstands
+    /// <c>Decoder</c> flushing rather than that stdout was dropping bytes.
+    /// </summary>
+    [Fact]
+    public void Stderr_surfaces_a_trailing_partial_sequence_when_the_tail_is_read()
+    {
+        var tail = new StderrTailBuffer();
+        tail.Append([0x61, 0x62, 0xC3]);
+
+        Assert.Equal("ab�", tail.ToTailOrNull());
+    }
+
     [Theory]
     // One offset interior to each of the three sequence lengths present, named by what it splits
     // rather than derived from the end of the array. The first version of this test computed all

@@ -280,6 +280,21 @@ internal sealed class StdoutLineBuffer
     public void Flush(Action<string> onLine)
     {
         ArgumentNullException.ThrowIfNull(onLine);
+
+        // Draining the decoder is what makes a stateful decode safe at end-of-stream, and it is the
+        // half a chunk-boundary test cannot reach: no mutation of Append turns this red. Without it a
+        // stateful decode is STRICTLY WORSE here than the stateless one it replaced — bytes the
+        // decoder is holding for a sequence the worker never finished are simply dropped, and when
+        // they are all that is left the final line disappears entirely rather than arriving as U+FFFD.
+        // See StderrTailBuffer.ToTailOrNull, which has always done this, for why visible beats silent.
+        var maxChars = decoder.GetCharCount([], 0, 0, flush: true);
+        if (maxChars > 0)
+        {
+            var chars = new char[maxChars];
+            var written = decoder.GetChars([], 0, 0, chars, 0, flush: true);
+            buffer.Append(chars, 0, written);
+        }
+
         if (buffer.Length > 0)
         {
             onLine(buffer.ToString());
