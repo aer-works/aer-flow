@@ -16,6 +16,81 @@ public class WorkerBindingResolverTests
     private static readonly WorkerContract ArchitectContract = new(
         "architect", ["goal"], [new ProducedOutput("plan")], []);
 
+    /// <summary>
+    /// #645: every session mode <c>POST /api/sessions/{id}/mode</c> accepts must produce a grant
+    /// <see cref="WorkerBindingResolver.Resolve"/> accepts.
+    /// </summary>
+    /// <remarks>
+    /// All three are coherent today, so this is red under no change anyone has made — which is
+    /// exactly why it is worth having. The mapping used to be an inline literal inside the endpoint's
+    /// lambda, where a fourth mode could be written with nothing checking this property and nothing
+    /// failing until an operator picked it and their session refused to start. Driving it from
+    /// <see cref="InteractiveSessionMaterializer.KnownModes"/> rather than a list repeated here is what makes a
+    /// new mode covered on the day it is added rather than the day someone remembers this file.
+    /// </remarks>
+    [Fact]
+    public void Every_session_mode_produces_a_grant_the_engine_will_bind()
+    {
+        Assert.NotEmpty(InteractiveSessionMaterializer.KnownModes);
+
+        foreach (var mode in InteractiveSessionMaterializer.KnownModes)
+        {
+            var grant = InteractiveSessionMaterializer.GrantForMode(mode);
+            Assert.NotNull(grant);
+            Assert.Empty(grant.CategoriesDefeatedByTheShell);
+
+            // Not just the predicate -- the actual refusal, so this cannot pass while Resolve
+            // refuses for a reason the predicate does not model.
+            //
+            // ChatWorkerContract, not an arbitrary one, because these modes are only ever bound to
+            // the chat worker. Writing this with a contract that DECLARES an output failed on `plan`
+            // via #629's separate rule -- correctly: plan withholds writes, so a declared output
+            // could never be produced. ChatWorkerContract declares none for exactly that reason
+            // (#650), which is what makes a read-only mode legal at all. Asserting over the real
+            // contract is the difference between testing the modes and testing a fixture.
+            var config = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                [InteractiveSessionMaterializer.DefaultWorkerName] = new WorkerBindingConfigEntry(
+                    "echo", InteractiveSessionMaterializer.ChatWorkerContract, "Say hello.",
+                    TimeSpan.FromMinutes(5), Model: null, PermissionScope: null, PermissionGrant: grant),
+            };
+            var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+
+            var bindings = WorkerBindingResolver.Resolve(config, adapters);
+            Assert.True(
+                bindings.ContainsKey(InteractiveSessionMaterializer.DefaultWorkerName),
+                $"Mode '{mode}' produced a grant Resolve refused.");
+        }
+    }
+
+    /// <summary>
+    /// The CONTROL for the above: <see cref="InteractiveSessionMaterializer.GrantForMode"/> is not a function
+    /// that says yes to everything, and an incoherent grant really is refused — so the test above
+    /// passing means the modes are coherent rather than that nothing is checked.
+    /// </summary>
+    [Fact]
+    public void An_unknown_mode_yields_no_grant_and_an_incoherent_grant_is_refused()
+    {
+        Assert.Null(InteractiveSessionMaterializer.GrantForMode("accept-edits"));  // agy's vocabulary, not AER's
+        Assert.Null(InteractiveSessionMaterializer.GrantForMode("custom"));        // GET-only, never an instruction
+        Assert.Null(InteractiveSessionMaterializer.GrantForMode(null));
+
+        var incoherent = new PermissionGrant(
+            ReadFiles: false, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true);
+        Assert.NotEmpty(incoherent.CategoriesDefeatedByTheShell);
+
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            [InteractiveSessionMaterializer.DefaultWorkerName] = new WorkerBindingConfigEntry(
+                "echo", InteractiveSessionMaterializer.ChatWorkerContract, "Say hello.",
+                TimeSpan.FromMinutes(5), Model: null, PermissionScope: null, PermissionGrant: incoherent),
+        };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["echo"] = new FakeEchoWorkerAdapter() };
+
+        // Same contract as the test above, so the only difference between them is the grant.
+        Assert.Throws<IncoherentPermissionGrantException>(() => WorkerBindingResolver.Resolve(config, adapters));
+    }
+
     [Fact]
     public void An_entry_resolves_to_a_Process_binding_via_its_named_adapter()
     {

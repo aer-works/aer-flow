@@ -38,4 +38,68 @@ public sealed record PermissionGrant(
     /// </summary>
     public bool IsEmpty => !ReadFiles && !WriteFiles && !RunShellCommands && !NetworkAccess
         && (ShellCommandPatterns is null || ShellCommandPatterns.Count == 0);
+
+    /// <summary>
+    /// The categories this grant WITHHOLDS that a granted shell reaches anyway — empty when the
+    /// grant is coherent. #529.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A granted shell reaches three of the four categories, and both places AER enforces a grant
+    /// decide by tool <em>name</em>: <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> emits
+    /// <c>--disallowedTools</c>, and the <c>PreToolUse</c> hook check inspects the tool name. Neither
+    /// can tell <c>Bash("cat x")</c> from <c>Read("x")</c>. The hook additionally reads a write's
+    /// target path (#649), which exempts the outbox and reaches nothing inside a shell command. So a
+    /// grant withholding any of these while granting the shell does not actually withhold it.
+    /// </para>
+    /// <para>
+    /// <see cref="ShellCommandPatterns"/> is deliberately <em>not</em> an exemption. A pattern list
+    /// only reaches the <c>--allowedTools</c> string, and
+    /// <c>gate.allowedtools-is-preapproval-not-ceiling</c> measured that list to be pre-approval
+    /// rather than a ceiling; the <c>--disallowedTools</c> side has no narrowed <c>Bash(…)</c> form
+    /// at all. A pattern list changes what is pre-approved, never what is reachable.
+    /// </para>
+    /// <para>
+    /// <b>This lives here, on the grant, because three surfaces need the same answer and #645 was
+    /// filed about two of them getting it late or not at all.</b> The engine refuses at bind time
+    /// (<c>WorkerBindingResolver</c>), which is the right choke point for execution and the wrong one
+    /// for learning: an operator authoring in the bindings editor found out only when a workflow they
+    /// had already committed to failed to start. A rule restated per surface is a rule that drifts on
+    /// all but one of them, so every surface calls this and none re-derives the conditions.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> CategoriesDefeatedByTheShell
+    {
+        get
+        {
+            if (!RunShellCommands)
+            {
+                return [];
+            }
+
+            List<string> withheld = [];
+            if (!ReadFiles)
+            {
+                withheld.Add(nameof(ReadFiles));
+            }
+
+            if (!WriteFiles)
+            {
+                withheld.Add(nameof(WriteFiles));
+            }
+
+            if (!NetworkAccess)
+            {
+                withheld.Add(nameof(NetworkAccess));
+            }
+
+            return withheld;
+        }
+    }
+
+    /// <summary>
+    /// True when a granted shell would defeat a category this grant withholds — the condition
+    /// <c>WorkerBindingResolver.Resolve</c> refuses on. See <see cref="CategoriesDefeatedByTheShell"/>.
+    /// </summary>
+    public bool IsIncoherent => CategoriesDefeatedByTheShell.Count > 0;
 }

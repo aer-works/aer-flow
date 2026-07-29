@@ -112,46 +112,13 @@ public static class WorkerBindingResolver
     }
 
     /// <summary>
-    /// #529: a granted shell reaches three of <see cref="PermissionGrant"/>'s four categories, so a
-    /// grant that withholds one of those while granting the shell does not actually withhold it.
-    /// Both places AER enforces a grant decide by tool <em>name</em> —
-    /// <c>ClaudeWorkerAdapter.BuildDisallowedTools</c> emits <c>--disallowedTools</c> and the
-    /// <c>PreToolUse</c> hook check inspects the tool name — and neither can tell
-    /// <c>Bash("cat x")</c> from <c>Read("x")</c>. The hook additionally reads a write's target path
-    /// (#649), which exempts the outbox and reaches nothing inside a shell command.
-    ///
-    /// <para>
-    /// <see cref="PermissionGrant.ShellCommandPatterns"/> is deliberately <em>not</em> an exemption.
-    /// A pattern list only reaches the <c>--allowedTools</c> string, and
-    /// <c>gate.allowedtools-is-preapproval-not-ceiling</c> measured that list to be pre-approval
-    /// rather than a ceiling; the <c>--disallowedTools</c> side has no narrowed <c>Bash(…)</c> form
-    /// at all. So a pattern list changes what is pre-approved, never what is reachable.
-    /// </para>
+    /// #529, refused at the execution choke point. The rule itself lives on
+    /// <see cref="PermissionGrant.CategoriesDefeatedByTheShell"/> — every surface that needs the same
+    /// answer asks it there rather than restating the conditions (#645).
     /// </summary>
     private static void RefuseIfShellDefeatsAWithheldCategory(string workerName, PermissionGrant? grant)
     {
-        if (grant is null || !grant.RunShellCommands)
-        {
-            return;
-        }
-
-        List<string> withheld = [];
-        if (!grant.ReadFiles)
-        {
-            withheld.Add(nameof(PermissionGrant.ReadFiles));
-        }
-
-        if (!grant.WriteFiles)
-        {
-            withheld.Add(nameof(PermissionGrant.WriteFiles));
-        }
-
-        if (!grant.NetworkAccess)
-        {
-            withheld.Add(nameof(PermissionGrant.NetworkAccess));
-        }
-
-        if (withheld.Count > 0)
+        if (grant?.CategoriesDefeatedByTheShell is { Count: > 0 } withheld)
         {
             throw new IncoherentPermissionGrantException(workerName, withheld);
         }

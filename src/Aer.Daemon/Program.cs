@@ -1207,17 +1207,13 @@ namespace Aer.Daemon
                 }
 
                 var directoryPath = resolved.Value.DirectoryPath;
-                var grant = request.Mode?.Trim().ToLowerInvariant() switch
-                {
-                    "auto" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
-                    "plan" => new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
-                    "default" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
-                    _ => (PermissionGrant?)null,
-                };
-
+                // #645: the mapping and its mode set live on InteractiveSessions so a test can assert
+                // a property across every mode. Inline here, nothing could enumerate them.
+                var grant = InteractiveSessionMaterializer.GrantForMode(request.Mode);
                 if (grant == null)
                 {
-                    return Results.BadRequest("Mode must be one of: auto, default, plan.");
+                    return Results.BadRequest(
+                        $"Mode must be one of: {string.Join(", ", InteractiveSessionMaterializer.KnownModes)}.");
                 }
 
                 var bindingsFilePath = Path.Combine(directoryPath, "bindings.json");

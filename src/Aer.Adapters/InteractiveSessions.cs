@@ -122,6 +122,58 @@ public static class InteractiveSessionMaterializer
             : new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
 
     /// <summary>
+    /// The session-mode vocabulary <c>POST /api/sessions/{id}/mode</c> accepts, and the only place it
+    /// is written down. #645.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Enumerable on purpose.</b> The mapping was an inline <c>switch</c> literal inside the
+    /// endpoint's lambda, which meant nothing could assert a property across it — and the property
+    /// that matters is that every mode produces a grant <see cref="WorkerBindingResolver.Resolve"/>
+    /// accepts. All three were coherent, so nothing was broken; a fourth mode written straight into a
+    /// lambda is how that stops being true silently. A test over <see cref="KnownModes"/> covers a new
+    /// mode the day it is added here, which an inline literal could never offer.
+    /// </para>
+    /// <para>
+    /// Reverse-mapped by the endpoint's <c>GET</c> counterpart back to one of these names, or
+    /// <c>custom</c> for a grant matching none — see #286. <c>custom</c> is GET-only and is
+    /// deliberately not a member here: it is an OBSERVATION about a grant, never an instruction.
+    /// </para>
+    /// <para>
+    /// <b>Do not read this list next to a vendor's own mode names and assume the shared words
+    /// agree.</b> Both vendors have a mode vocabulary and both include an accept-edits mode — agy's
+    /// <c>--mode</c> takes <c>default</c>/<c>accept-edits</c>/<c>plan</c>, claude's
+    /// <c>--permission-mode</c> takes <c>default</c>/<c>acceptEdits</c>/<c>plan</c>/
+    /// <c>bypassPermissions</c>. The overlap with the names here is a coincidence of English, not a
+    /// mapping: <see cref="GeminiWorkerAdapter.TryTranslatePermissionGrant"/> resolves AER's
+    /// <c>default</c> (write, no shell) to agy's <b><c>accept-edits</c></b>, not to agy's
+    /// <c>default</c>. Only <c>plan</c> happens to line up.
+    /// </para>
+    /// <para>
+    /// And the two adapters do not even use the same MECHANISM, which is the part most likely to
+    /// mislead: <c>ClaudeWorkerAdapter</c> never emits <c>--permission-mode</c> at all — it expresses
+    /// a grant as <c>--allowedTools</c>/<c>--disallowedTools</c> plus the <c>PreToolUse</c> hook, so
+    /// claude's mode vocabulary is unused rather than translated. This is Adapter Isolation working
+    /// as intended; it is written down because "both vendors have accept-edits" invites the
+    /// conclusion that AER maps onto it on both sides, and it does not.
+    /// </para>
+    /// </remarks>
+    public static readonly IReadOnlyList<string> KnownModes = ["auto", "default", "plan"];
+
+    /// <summary>
+    /// The <see cref="PermissionGrant"/> a mode name means, or <see langword="null"/> when the name is
+    /// not one of <see cref="KnownModes"/>. Case- and whitespace-insensitive, matching what the
+    /// endpoint accepted before this moved.
+    /// </summary>
+    public static PermissionGrant? GrantForMode(string? mode) => mode?.Trim().ToLowerInvariant() switch
+    {
+        "auto" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
+        "plan" => new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+        "default" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+        _ => null,
+    };
+
+    /// <summary>
     /// The directory a session's vendor process runs in (its cwd). When the session is attached to a
     /// codebase that working directory is used; when it is directory-less the process runs in the
     /// session's own directory (its task dir under <c>~/.aer/sessions/</c>) rather than inheriting the
