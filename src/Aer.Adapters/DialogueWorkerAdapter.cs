@@ -79,7 +79,8 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
 
         var isWindows = OperatingSystem.IsWindows();
         var resolvedConfigPath = ResolveConfigPath(invocation.PromptTemplate, invocation.BindingsFileDirectory);
-        var gatedConfigPath = GateParticipants(resolvedConfigPath, invocation.PermissionGrant);
+        var gatedConfigPath = GateParticipants(
+            resolvedConfigPath, invocation.PermissionGrant, invocation.WorkingDirectory);
         var configPath = EscapeUserContent(gatedConfigPath, isWindows);
 
         return isWindows
@@ -113,7 +114,7 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
     /// written for it.
     /// </para>
     /// </remarks>
-    private static string GateParticipants(string configPath, PermissionGrant? grant)
+    private static string GateParticipants(string configPath, PermissionGrant? grant, string? workspace)
     {
         if (!File.Exists(configPath))
         {
@@ -123,7 +124,7 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
         }
 
         var config = DialogueWorkerConfigParser.Parse(File.ReadAllText(configPath));
-        var gated = config.Participants.Select(participant => Gate(participant, grant)).ToList();
+        var gated = config.Participants.Select(participant => Gate(participant, grant, workspace)).ToList();
         if (gated.SequenceEqual(config.Participants))
         {
             return configPath;
@@ -146,9 +147,9 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
     /// <summary>
     /// One participant's gated invocation, or a refusal when it names a vendor CLI AER cannot reach.
     /// </summary>
-    private static DialogueParticipant Gate(DialogueParticipant participant, PermissionGrant? grant)
+    private static DialogueParticipant Gate(DialogueParticipant participant, PermissionGrant? grant, string? workspace)
     {
-        if (VendorGate.For(participant.Vendor, grant) is { } gate)
+        if (VendorGate.For(participant.Vendor, grant, workspace) is { } gate)
         {
             // The invocation is AER's to build, not the author's. A declared vendor that could still
             // run an arbitrary command would let AER install claude's gate onto a process that never

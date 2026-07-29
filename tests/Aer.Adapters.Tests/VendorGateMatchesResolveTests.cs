@@ -9,9 +9,18 @@ namespace Aer.Adapters.Tests;
 /// not carry. These fail when the two drift.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The direction matters: everything the gate claims to install must actually be in the dispatch
 /// path's output. A gate arg missing from <c>Resolve</c> means one of the two spawn paths is
 /// ungated, which is the entire defect #703 exists to close.
+/// </para>
+/// <para>
+/// <b>For the ENVIRONMENT the check runs in both directions, and the first version did not.</b>
+/// Checking only <c>gate ⊆ Resolve</c> cannot see an omission, and one was there — see
+/// <see cref="VendorGate.For"/>, which records what was missing and what it cost. A reviewer found
+/// it by reading; nothing here could have. Set equality rather than containment, because the two
+/// environments ARE identical today and anything weaker leaves room for the same shape to recur.
+/// </para>
 /// </remarks>
 [Collection(LaunchConfigCollection.Name)]
 public class VendorGateMatchesResolveTests
@@ -41,14 +50,27 @@ public class VendorGateMatchesResolveTests
         {
             Assert.Contains((name, value), resolved);
         }
+
+        // The reverse. Anything Resolve sets that the gate does not is a mechanism a non-Flow caller
+        // silently does without -- which is how the workspace bound went missing.
+        foreach (var (name, value) in resolved)
+        {
+            Assert.True(
+                gate.Environment.TryGetValue(name, out var fromGate) && fromGate == value,
+                $"Resolve sets '{name}' but the gate does not, so a caller installing only the gate "
+                + "gets a worker configured differently from a dispatched one.");
+        }
     }
+
+    /// <summary>A workspace, because its ABSENCE from the gate is the omission these tests missed.</summary>
+    private static readonly string Workspace = OperatingSystem.IsWindows() ? @"C:\rooms\r1" : "/rooms/r1";
 
     [Fact]
     public void Claude_gate_is_every_gate_mechanism_Resolve_installs()
     {
-        var gate = ClaudeWorkerAdapter.BuildGate(Restrictive);
+        var gate = ClaudeWorkerAdapter.BuildGate(Restrictive, Workspace);
         var target = new ClaudeWorkerAdapter().Resolve(
-            new WorkerInvocation("Draft a plan.", PermissionGrant: Restrictive), Contract);
+            new WorkerInvocation("Draft a plan.", PermissionGrant: Restrictive, WorkingDirectory: Workspace), Contract);
 
         AssertGateIsInstalled(gate, target);
 
@@ -62,15 +84,39 @@ public class VendorGateMatchesResolveTests
     [Fact]
     public void Agy_gate_is_every_gate_mechanism_Resolve_installs()
     {
-        var gate = GeminiWorkerAdapter.BuildGate(Restrictive);
+        var gate = GeminiWorkerAdapter.BuildGate(Restrictive, Workspace);
         var target = new GeminiWorkerAdapter().Resolve(
-            new WorkerInvocation("Draft a plan.", PermissionGrant: Restrictive), Contract);
+            new WorkerInvocation("Draft a plan.", PermissionGrant: Restrictive, WorkingDirectory: Workspace), Contract);
 
         AssertGateIsInstalled(gate, target);
 
         // agy discovers hooks ONLY from an --add-dir path, so this pair IS the gate on this vendor.
         Assert.Equal("--add-dir", gate.Args[0]);
         Assert.Contains(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, gate.Args[1]);
+    }
+
+    /// <summary>
+    /// Polarity on the workspace bound specifically, in both directions, because the omission this
+    /// records was invisible to a one-directional check.
+    /// </summary>
+    /// <remarks>
+    /// The null arm asserts a REAL NARROWING rather than a harmless default: per
+    /// <c>HookCheckCommand.Execute</c>, no workspace means a granted write is confined to the outbox.
+    /// It is pinned here so that a caller passing null is doing so knowingly — the direction is
+    /// fail-closed, which is why it is permitted at all, but silent is what made it a defect.
+    /// </remarks>
+    [Theory]
+    [InlineData("claude")]
+    [InlineData("gemini")]
+    public void The_workspace_bound_reaches_the_gate_when_given_and_is_absent_when_not(string vendor)
+    {
+        var withWorkspace = VendorGate.For(vendor, Restrictive, Workspace);
+        Assert.NotNull(withWorkspace);
+        Assert.Equal(Workspace, withWorkspace.Environment[WorkerEnvironment.WorkspaceVariable]);
+
+        var without = VendorGate.For(vendor, Restrictive);
+        Assert.NotNull(without);
+        Assert.DoesNotContain(WorkerEnvironment.WorkspaceVariable, without.Environment.Keys);
     }
 
     /// <summary>

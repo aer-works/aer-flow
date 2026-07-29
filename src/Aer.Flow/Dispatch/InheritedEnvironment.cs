@@ -32,6 +32,16 @@ namespace Aer.Flow.Dispatch;
 /// here because the first version of this file read as if the whole allowlist were evidence-backed:
 /// only <c>USERPROFILE</c> carries a measurement, and it is a Windows entry.
 /// </para>
+/// <para>
+/// <b><c>CLAUDE_CONFIG_DIR</c> is deliberately absent.</b> Architecture Rule 4's 2026-07-25
+/// correction permits it, and per-worker config roots are a live design option — so its absence
+/// here is a decision and not an oversight. A config root AER did not choose is a gate surface AER
+/// did not choose, which is the same argument the rest of this list rests on. A per-worker root is
+/// set by an adapter's own <c>Environment</c>, which is applied after this and therefore wins. The
+/// cost is real and worth naming: on a host where only an alternate root holds a subscription
+/// login, every worker now dies at <c>Not logged in</c> — loud, which is the direction this file
+/// chooses everywhere.
+/// </para>
 /// </remarks>
 internal static class InheritedEnvironment
 {
@@ -91,6 +101,16 @@ internal static class InheritedEnvironment
     /// that are unset are skipped rather than passed as empty — an empty <c>USERPROFILE</c> is a
     /// different failure from an absent one, and neither is worth inventing.
     /// </summary>
+    /// <remarks>
+    /// <b>One exception, and it is the only one on this list:</b> under POSIX <c>TZ=""</c> means UTC
+    /// while an absent <c>TZ</c> means system local time, so collapsing empty into absent silently
+    /// moves an operator who exported <c>TZ=</c> back onto local time. Every other candidate checked
+    /// — <c>LC_ALL</c>, <c>NO_PROXY</c>, <c>HTTP_PROXY</c>, <c>TMPDIR</c>,
+    /// <c>DOTNET_CLI_TELEMETRY_OPTOUT</c> — means the same thing empty as absent. Recorded rather
+    /// than fixed: the blast radius of an empty-string pass-through across the whole list is worse
+    /// than one wrong timezone, and a false absolute in a file whose subject is honesty about what
+    /// was measured is the part actually worth removing.
+    /// </remarks>
     public static IEnumerable<(string Name, string Value)> Resolve()
     {
         foreach (var name in Names)

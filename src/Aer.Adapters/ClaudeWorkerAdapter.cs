@@ -88,7 +88,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// loads the hook at all. <c>VendorGateMatchesResolveTests</c> holds this and <see cref="Resolve"/>
     /// in step.
     /// </remarks>
-    internal static VendorGate BuildGate(PermissionGrant? grant)
+    internal static VendorGate BuildGate(PermissionGrant? grant, string? workspace = null)
     {
         var (settingsPath, mcpConfigPath) = EnsureLaunchConfigFiles();
         List<string> args = ["--settings", settingsPath, "--mcp-config", mcpConfigPath];
@@ -100,14 +100,21 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             args.Add(disallowed);
         }
 
-        return new VendorGate(
-            args,
-            new Dictionary<string, string>
-            {
-                [MaxSubagentSpawnDepthVariable] = "1",
-                [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(grant)}",
-                [SimpleModeVariable] = "0",
-            });
+        var environment = new Dictionary<string, string>
+        {
+            [MaxSubagentSpawnDepthVariable] = "1",
+            [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(grant)}",
+            [SimpleModeVariable] = "0",
+        };
+
+        // Must mirror Resolve's own workspace clause below. Omitting it here does not fail closed in
+        // a harmless direction -- it silently narrows a granted write to the outbox. See VendorGate.For.
+        if (workspace is not null)
+        {
+            environment[WorkerEnvironment.WorkspaceVariable] = workspace;
+        }
+
+        return new VendorGate(args, environment);
     }
 
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
