@@ -414,6 +414,50 @@ public class CoreDispatcherTests
     }
 
     /// <summary>
+    /// #713: pins all three shapes of the token grammar <c>CoreDispatcher.VariableToken</c>
+    /// defines -- its xmldoc is the one home for what the grammar is and what the old code did to
+    /// a prompt. Red first against the unbounded form: one assertion diff showed the braced form
+    /// left literal and the prose word spliced.
+    /// </summary>
+    [Fact]
+    public async Task Variable_expansion_stops_at_an_identifier_boundary_and_accepts_the_braced_form()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var environment = ArtifactManager.BuildEnvironment(["/inputs/goal.md"], outputDirectory, artifactsRoot)
+                // One known name a strict prefix of another, so the boundary rule -- not
+                // longest-first ordering -- is what has to pick the right one.
+                .Append(new EnvironmentVariable.AerComputed("AER_INPUT_0_ARCHIVED", "/archive/goal.md"))
+                .ToList();
+            var request = MakeRequest(environment);
+            var target = EchoHelloToOutputFile() with
+            {
+                PromptText = "Write to ${AER_OUTPUT_DIR}. Mention $AER_OUTPUT_DIRECTORY verbatim. "
+                    + "Read $AER_INPUT_0_ARCHIVED, not $AER_INPUT_0X.",
+            };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            var writtenPrompt = await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, ArtifactManager.PromptFileName),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(
+                $"Write to {outputDirectory}. Mention $AER_OUTPUT_DIRECTORY verbatim. "
+                + "Read /archive/goal.md, not $AER_INPUT_0X.",
+                writtenPrompt);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
     /// Written before the worker spawns (§7-style intent-first ordering), so the prompt stays
     /// available for audit even when the worker itself exits nonzero -- exactly the "present even if
     /// the execution later fails" guarantee issue #292 asks for.

@@ -649,14 +649,27 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown AerExitReason."),
     };
 
-    private static string ExpandVariables(string arg, Dictionary<string, string> vars)
-    {
-        var sortedVars = vars.OrderByDescending(v => v.Key.Length).ToList();
-        foreach (var (name, value) in sortedVars)
-        {
-            arg = arg.Replace($"%{name}%", value)  // Windows syntax
-                     .Replace($"${name}", value);  // Unix syntax
-        }
-        return arg;
-    }
+    /// <summary>
+    /// One token grammar, defined here and nowhere else (#713): <c>%NAME%</c>, <c>${NAME}</c>, or
+    /// <c>$NAME</c> where the name ends at the first non-identifier character. A name that is not
+    /// an AER-computed variable stays literal — this expands AER's own placeholders, it is not a
+    /// shell.
+    /// </summary>
+    /// <remarks>
+    /// The <c>$NAME</c> form previously had no boundary — a bare <c>Replace</c> — so any longer
+    /// word beginning with a variable's name got the value spliced in mid-word
+    /// (<c>$AER_OUTPUT_DIRECTORY</c> became the path plus <c>ECTORY</c>), and <c>${NAME}</c>, the
+    /// ordinary way to disambiguate, was not recognised at all. One pass over the string rather
+    /// than one pass per variable also means a substituted <em>value</em> is never itself
+    /// re-scanned, and the boundary makes longest-name-first ordering unnecessary: a name that is
+    /// a prefix of a longer identifier simply does not match it.
+    /// </remarks>
+    private static readonly System.Text.RegularExpressions.Regex VariableToken = new(
+        @"%(?<name>\w+)%|\$\{(?<name>\w+)\}|\$(?<name>\w+)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string ExpandVariables(string arg, Dictionary<string, string> vars) =>
+        VariableToken.Replace(
+            arg,
+            match => vars.TryGetValue(match.Groups["name"].Value, out var value) ? value : match.Value);
 }
