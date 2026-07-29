@@ -1253,17 +1253,13 @@ namespace Aer.Daemon
                     return Results.NotFound();
                 }
 
-                var mode = existingEntry.PermissionGrant is { } grant
-                    ? grant switch
-                    {
-                        { ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true } => "auto",
-                        { ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false } => "plan",
-                        { ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false } => "default",
-                        _ => "custom",
-                    }
-                    : "custom";
-
-                return Results.Ok(new { Mode = mode });
+                // #645: asked of the same mapping POST uses, rather than restating the three grants
+                // here. This was a second copy of the mode vocabulary, and a fourth mode would have
+                // left GET reporting "custom" for something POST accepted.
+                return Results.Ok(new
+                {
+                    Mode = InteractiveSessionMaterializer.ModeForGrant(existingEntry.PermissionGrant),
+                });
             });
 
             // #286: "clear" (unlike compact) never talks to the vendor -- it's a purely local reset

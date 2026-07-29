@@ -64,6 +64,77 @@ public class WorkerBindingResolverTests
     }
 
     /// <summary>
+    /// The round trip: every mode's grant maps back to that same mode name, and a grant belonging to
+    /// no mode reads as <c>custom</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>GET /api/sessions/{id}/mode</c> used to restate the three grants as its own inline
+    /// <c>switch</c>, so the vocabulary had two homes and a fourth mode would have been accepted by
+    /// <c>POST</c> while <c>GET</c> reported <c>custom</c> for it. Both directions now come off one
+    /// dictionary; this asserts they agree, for every mode, driven from the list rather than a copy.
+    /// </remarks>
+    [Fact]
+    public void Every_mode_round_trips_through_the_reverse_mapping()
+    {
+        foreach (var mode in InteractiveSessionMaterializer.KnownModes)
+        {
+            var grant = InteractiveSessionMaterializer.GrantForMode(mode);
+            Assert.NotNull(grant);
+            Assert.Equal(mode, InteractiveSessionMaterializer.ModeForGrant(grant));
+        }
+
+        // A DIFFERENT INSTANCE carrying the same values, because the first version of ModeForGrant
+        // used record equality and PermissionGrant's ShellCommandPatterns is a collection -- whose
+        // equality is by reference, so two empty lists never matched and every grant read as
+        // `custom`. Comparing a freshly constructed grant is what makes that unrepeatable here.
+        var rebuilt = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false);
+        Assert.Equal("default", InteractiveSessionMaterializer.ModeForGrant(rebuilt));
+
+        // A scoped shell is not `auto`, however its booleans read: the modes never carry patterns,
+        // and reporting a pattern-restricted grant as `auto` tells an operator it is unrestricted.
+        var scopedShell = new PermissionGrant(
+            ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: ["git *"], NetworkAccess: true);
+        Assert.Equal(InteractiveSessionMaterializer.CustomMode, InteractiveSessionMaterializer.ModeForGrant(scopedShell));
+
+        // The control: a grant matching no mode is reported as custom rather than mis-attributed to
+        // whichever mode happens to be checked first.
+        var unmapped = new PermissionGrant(
+            ReadFiles: false, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: true);
+        Assert.DoesNotContain(unmapped, InteractiveSessionMaterializer.KnownModes
+            .Select(InteractiveSessionMaterializer.GrantForMode));
+        Assert.Equal(InteractiveSessionMaterializer.CustomMode, InteractiveSessionMaterializer.ModeForGrant(unmapped));
+        Assert.Equal(InteractiveSessionMaterializer.CustomMode, InteractiveSessionMaterializer.ModeForGrant(null));
+    }
+
+    /// <summary>
+    /// A caller that is not a UI cannot store an incoherent grant either. <c>POST
+    /// /api/sessions/start</c> takes one straight from the request body, and the per-turn rewrite
+    /// reads it back out and re-persists it — so one accepted at creation would fail every turn of
+    /// that session until someone changed the mode. Checked in <c>Materialize</c>, the last point
+    /// every persist path passes through.
+    /// </summary>
+    [Fact]
+    public void Materializing_a_session_with_an_incoherent_grant_is_refused()
+    {
+        var incoherent = new PermissionGrant(
+            ReadFiles: false, WriteFiles: false, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: false);
+
+        var thrown = Assert.Throws<ArgumentException>(() => InteractiveSessionMaterializer.Materialize(
+            "sess1234", Path.Combine(Path.GetTempPath(), $"aer-mat-{Guid.NewGuid():N}"),
+            "claude", workingDirectory: Path.GetTempPath(), grant: incoherent));
+        Assert.Contains("shell is granted while", thrown.Message, StringComparison.Ordinal);
+
+        // The control: the same call with a coherent grant materializes, so the refusal is about the
+        // grant rather than about anything else in this argument list.
+        var coherent = InteractiveSessionMaterializer.GrantForMode("default");
+        var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
+            "sess1234", Path.Combine(Path.GetTempPath(), $"aer-mat-{Guid.NewGuid():N}"),
+            "claude", workingDirectory: Path.GetTempPath(), grant: coherent);
+        Assert.Equal(coherent, bindings[InteractiveSessionMaterializer.DefaultWorkerName].PermissionGrant);
+    }
+
+    /// <summary>
     /// The CONTROL for the above: <see cref="InteractiveSessionMaterializer.GrantForMode"/> is not a function
     /// that says yes to everything, and an incoherent grant really is refused — so the test above
     /// passing means the modes are coherent rather than that nothing is checked.

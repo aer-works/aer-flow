@@ -158,20 +158,85 @@ public static class InteractiveSessionMaterializer
     /// conclusion that AER maps onto it on both sides, and it does not.
     /// </para>
     /// </remarks>
-    public static readonly IReadOnlyList<string> KnownModes = ["auto", "default", "plan"];
+    /// <remarks>
+    /// <b>One dictionary, not a list beside a switch.</b> The first version of this had
+    /// <see cref="KnownModes"/> as a literal and the mapping as a <c>switch</c>, which could
+    /// disagree: the endpoint rejects on <see cref="GrantForMode"/> returning null rather than on
+    /// list membership, so a case added to the switch alone would have been accepted while the 400
+    /// message listed it as invalid. Deriving both from one dictionary makes that divergence
+    /// unrepresentable rather than merely tested for.
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<string, PermissionGrant> ModeGrants =
+        new Dictionary<string, PermissionGrant>(StringComparer.Ordinal)
+        {
+            ["auto"] = new(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
+            ["default"] = new(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+            ["plan"] = new(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
+        };
+
+    public static readonly IReadOnlyList<string> KnownModes = [.. ModeGrants.Keys];
 
     /// <summary>
     /// The <see cref="PermissionGrant"/> a mode name means, or <see langword="null"/> when the name is
     /// not one of <see cref="KnownModes"/>. Case- and whitespace-insensitive, matching what the
     /// endpoint accepted before this moved.
     /// </summary>
-    public static PermissionGrant? GrantForMode(string? mode) => mode?.Trim().ToLowerInvariant() switch
+    public static PermissionGrant? GrantForMode(string? mode) =>
+        mode is not null && ModeGrants.TryGetValue(mode.Trim().ToLowerInvariant(), out var grant)
+            ? grant
+            : null;
+
+    /// <summary>
+    /// The mode name a grant corresponds to, or <c>custom</c> for one matching none — what
+    /// <c>GET /api/sessions/{id}/mode</c> reports.
+    /// </summary>
+    /// <remarks>
+    /// Derived from <see cref="ModeGrants"/> rather than restating the three grants inline, which is
+    /// what the GET endpoint did. That inline copy was a second home for the vocabulary: adding a
+    /// fourth mode would have left GET reporting <c>custom</c> for it while POST accepted it, which
+    /// is the same silent drift moving the mapping out of the lambda was meant to end — on the other
+    /// half of the endpoint pair.
+    /// <para>
+    /// <b>One deliberate behaviour change.</b> The inline version matched on the four booleans and
+    /// ignored <see cref="PermissionGrant.ShellCommandPatterns"/>, so a grant giving a <i>scoped</i>
+    /// shell reported as <c>auto</c> — which reads to an operator as unrestricted. A grant carrying
+    /// patterns is none of these modes, and now says so.
+    /// </para>
+    /// </remarks>
+    public static string ModeForGrant(PermissionGrant? grant)
     {
-        "auto" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, ShellCommandPatterns: [], NetworkAccess: true),
-        "plan" => new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
-        "default" => new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, ShellCommandPatterns: [], NetworkAccess: false),
-        _ => null,
-    };
+        if (grant is null)
+        {
+            return CustomMode;
+        }
+
+        foreach (var (name, known) in ModeGrants)
+        {
+            // Field by field, NOT record equality. PermissionGrant is a record whose
+            // ShellCommandPatterns is a collection, and the compiler-generated Equals uses the
+            // member's own equality -- which for a list is REFERENCE equality, so two empty lists
+            // never match and every grant read as `custom`. Caught by
+            // DaemonIntegrationTests.SetSessionMode_ThenGetSessionMode_ReflectsTheChange.
+            if (known.ReadFiles == grant.ReadFiles
+                && known.WriteFiles == grant.WriteFiles
+                && known.RunShellCommands == grant.RunShellCommands
+                && known.NetworkAccess == grant.NetworkAccess
+                // Null and empty both mean "no scoping", and the property is nullable.
+                && (grant.ShellCommandPatterns?.Count ?? 0) == 0)
+            {
+                return name;
+            }
+        }
+
+        return CustomMode;
+    }
+
+    /// <summary>
+    /// What <see cref="ModeForGrant"/> reports for a grant matching no mode. GET-only, and
+    /// deliberately not a member of <see cref="KnownModes"/>: it is an OBSERVATION about a grant,
+    /// never an instruction.
+    /// </summary>
+    public const string CustomMode = "custom";
 
     /// <summary>
     /// The directory a session's vendor process runs in (its cwd). When the session is attached to a
@@ -199,6 +264,26 @@ public static class InteractiveSessionMaterializer
     {
         var normalizedAdapter = string.IsNullOrWhiteSpace(adapter) ? "claude" : adapter.Trim().ToLowerInvariant();
         var defaultGrant = grant ?? DefaultGrantForWorkingDirectory(workingDirectory);
+
+        // #645 at the last choke point before a caller-supplied grant is written to bindings.json.
+        // The UI surfaces check this too, and they must -- an operator needs to hear it while
+        // authoring, not as a rejected request. This is here for the callers that are not a UI:
+        // `POST /api/sessions/start` takes a grant straight from the request body, and the per-turn
+        // rewrite reads whatever that wrote back out and re-persists it, so an incoherent grant
+        // accepted once would fail every turn of that session until someone changed the mode.
+        //
+        // Throws rather than silently repairing: which category the operator actually meant to grant
+        // is not knowable here, and quietly widening a permission is the wrong direction to guess in.
+        // Why the rule lives on PermissionGrant is recorded once, on CategoriesDefeatedByTheShell.
+        if (defaultGrant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
+        {
+            throw new ArgumentException(
+                $"This session's permission grant cannot be stored: the shell is granted while "
+                + $"{string.Join(", ", defeated)} {(defeated.Count == 1 ? "is" : "are")} withheld, and a "
+                + "shell command reaches them anyway. The engine refuses this at bind time, so a "
+                + "session created with it could never run a turn.",
+                nameof(grant));
+        }
 
         var definition = new WorkflowDefinition(
             WorkflowTemplateId: new WorkflowTemplateId("interactive-session-template"),
