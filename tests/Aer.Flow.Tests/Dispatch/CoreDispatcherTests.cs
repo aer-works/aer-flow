@@ -301,15 +301,17 @@ public class CoreDispatcherTests
     /// enough to be worth someone else's time, and the measurement is cheaper than the argument.
     /// </para>
     /// <para>
-    /// <c>NUGET_HTTP_CACHE_PATH</c> carries the sentinel because it is on the allowlist and nothing
-    /// in the child reads it, so overwriting it changes no behaviour — unlike <c>PATH</c>, which
-    /// cannot be overwritten without breaking the spawn the other control depends on.
+    /// <c>LC_CTYPE</c> carries the sentinel because it is on the allowlist for its own reasons and
+    /// nothing in this child reads it, so overwriting it changes no behaviour — unlike <c>PATH</c>,
+    /// which cannot be overwritten without breaking the spawn the other control depends on. It
+    /// replaced <c>NUGET_HTTP_CACHE_PATH</c>, which this test had come to be the only justification
+    /// for: an allowlist entry held in place by a test is the wrong way round.
     /// </para>
     /// </remarks>
     [Theory]
     [InlineData("CLAUDE_CODE_SIMPLE", false, true, "the real hazard — disables hooks exactly as --bare does")]
     [InlineData("AER_549_NOT_ALLOWLISTED", false, true, "an arbitrary name, so the result is about the list and not this one variable")]
-    [InlineData("NUGET_HTTP_CACHE_PATH", true, true, "allowlisted AND planted the same way the negative arms are — the control on the plant")]
+    [InlineData("LC_CTYPE", true, true, "allowlisted AND planted the same way the negative arms are — the control on the plant")]
     [InlineData("PATH", true, false, "allowlisted, and load-bearing: AER spawns vendor CLIs by name")]
     public async Task An_inherited_variable_reaches_the_worker_only_when_it_is_allowlisted(
         string variableName, bool expectedToArrive, bool plantSentinel, string what)

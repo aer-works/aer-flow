@@ -55,18 +55,23 @@ internal static class InheritedEnvironment
         // DOTNET_ROOT locates the host itself, so the dialogue worker (`dotnet exec`) cannot start
         // without it on a machine where dotnet is not on PATH by absolute path.
         "DOTNET_ROOT", "DOTNET_ROOT(x86)",
-        // EXPERIMENT IN PROGRESS -- do not copy this comment forward without reading the result.
-        // The first-run suppressors (DOTNET_CLI_HOME, DOTNET_NOLOGO, DOTNET_SKIP_FIRST_TIME_EXPERIENCE,
-        // DOTNET_MULTILEVEL_LOOKUP, DOTNET_CLI_TELEMETRY_OPTOUT, NUGET_PACKAGES) were added in the same
-        // commit as the Windows profile block below, when clearing the environment timed the dialogue
-        // e2e tests out at their 30s limit on Windows CI while they passed locally in 2s. The comment
-        // then credited the DOTNET_* half with the fix. A reviewer pointed out that `dotnet exec` is
-        // the HOST, not the SDK CLI -- it runs no first-run experience, emits no logo, sends no CLI
-        // telemetry and resolves no NuGet -- so none of those can plausibly be worth 28 seconds, while
-        // the profile block genuinely is load-bearing for the `powershell -File` participants. The two
-        // sets were never separated, so the causal claim was a guess presented as a measurement.
-        // This removal is the discrimination: if Windows CI stays green, the DOTNET_* half was inert.
-        "NUGET_HTTP_CACHE_PATH",
+        // NOT the .NET first-run suppressors, and their absence is measured rather than assumed.
+        // When clearing the environment timed the dialogue e2e tests out at their 30s limit on
+        // Windows CI (passing locally in 2s), DOTNET_CLI_HOME/DOTNET_NOLOGO/
+        // DOTNET_SKIP_FIRST_TIME_EXPERIENCE/DOTNET_MULTILEVEL_LOOKUP/DOTNET_CLI_TELEMETRY_OPTOUT/
+        // NUGET_PACKAGES went in alongside the Windows profile block below, and this comment credited
+        // the DOTNET_* half with the fix. A reviewer pointed out that `dotnet exec` is the HOST, not
+        // the SDK CLI: no first-run experience, no logo, no CLI telemetry, no NuGet resolution -- so
+        // none of them could be worth 28 seconds, while the profile block genuinely is load-bearing
+        // for the `powershell -File` participants. Removing them and re-running Windows CI settled
+        // it: green, with Aer.Cli.Tests at 15s for the whole assembly against the 30s per-step
+        // ceiling (CI run 30473155421). They were inert. The profile block is the real fix.
+        // NUGET_HTTP_CACHE_PATH went with them, for the same reason and one more: it had come to be
+        // held here by CoreDispatcherTests planting its sentinel in it, which is a production entry
+        // justified by a test. The test now plants LC_CTYPE, which is on this list on its own merits.
+        //
+        // Keep the reasoning, not just the outcome: a variable belongs here because something on the
+        // spawn path reads it, and "it was in the commit that fixed something" is not that.
 
         // REACHABILITY. Both vendor CLIs are network clients, and on a corporate network these are
         // the whole of how they reach anything. Omitting them was a regression this file introduced
