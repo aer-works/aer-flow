@@ -92,7 +92,7 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
     /// <c>Command</c> — the check that stops a config reaching one of them ungated by labelling its
     /// <c>Vendor</c> as something AER does not recognise (#703).
     /// </summary>
-    private static readonly string[] GatedVendorCommands = ["claude", "agy"];
+    internal static readonly string[] GatedVendorCommands = ["claude", "agy"];
 
     /// <summary>
     /// Rewrites every participant AER can gate into its gated invocation, returning the path the
@@ -179,21 +179,85 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
         }
 
         // An unrecognised Vendor is ordinarily a stub or a local script and is left alone. It stops
-        // being ordinary when the Command is a real vendor CLI: that combination is the one shape
-        // that reaches claude or agy with no gate, and relabelling the vendor is all it would take.
-        var command = Path.GetFileNameWithoutExtension(participant.Command);
-        if (GatedVendorCommands.Contains(command, StringComparer.OrdinalIgnoreCase))
+        // being ordinary when a real vendor CLI is named anywhere in the invocation — Command OR
+        // Args, because `Command: "cmd", Args: ["/c", "claude", …]` reaches claude with no gate just
+        // as cheaply as relabelling the vendor does, and scanning only Command missed it.
+        if (NamesAGatedVendorCli(participant))
         {
             throw new DialogueWorkerConfigException(
-                $"Participant '{participant.Role}' runs '{participant.Command}' but declares Vendor "
-                + $"'{participant.Vendor}', which AER has no permission gate for — so it would reach a "
-                + "vendor CLI with none of the tool restrictions the room grants.\n\n"
+                $"Participant '{participant.Role}' invokes a vendor CLI — '{participant.Command} "
+                + $"{string.Join(' ', participant.Args)}' — but declares Vendor '{participant.Vendor}', "
+                + "which AER has no permission gate for, so it would run with none of the tool "
+                + "restrictions the room grants.\n\n"
                 + $"Set Vendor to one of: {string.Join(", ", DialogueParticipantPresets.KnownVendors)}. "
                 + "AER then builds the invocation, and the gate arrives with it — you do not need to "
                 + "write the vendor's flags yourself.");
         }
 
         return participant;
+    }
+
+    /// <summary>
+    /// Whether this participant names a vendor CLI AER ships a gate for, anywhere in its command line.
+    /// </summary>
+    /// <remarks>
+    /// <b>THIS IS A MISTAKE-CATCHER, NOT A BOUNDARY, and the difference is the whole point.</b> An
+    /// author who wants an ungated vendor CLI can always have one — a wrapper script named anything,
+    /// a shell built from a variable, a symlink, a copy of the binary under another name. This
+    /// refuses the shapes someone reaches for by accident or by one obvious indirection; it does not
+    /// and cannot make the invariant hold against an author who is trying to defeat it.
+    /// <para>
+    /// What DOES hold structurally is narrower and worth not confusing with this: a participant
+    /// declaring a known <c>Vendor</c> gets an invocation AER built, and every path through
+    /// <see cref="CoreDispatcher"/> carries the gate. Named false negatives, in the spirit of
+    /// <c>VendorSpawnGateTests</c> naming its own: a renamed or copied binary, a wrapper script, a
+    /// command assembled at runtime by the shell, and any vendor CLI AER ships no gate for.
+    /// </para>
+    /// </remarks>
+    private static bool NamesAGatedVendorCli(DialogueParticipant participant)
+    {
+        foreach (var candidate in CommandPositions(participant))
+        {
+            var name = Path.GetFileNameWithoutExtension(candidate.Trim('"', '\''));
+            if (GatedVendorCommands.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Shell switches whose NEXT argument is a command line rather than an ordinary value.</summary>
+    private static readonly string[] ShellCommandSwitches = ["-c", "/c", "/k", "-Command", "-EncodedCommand"];
+
+    /// <summary>
+    /// The tokens in an invocation that could name an executable — deliberately not "every word".
+    /// </summary>
+    /// <remarks>
+    /// Splitting every argument on whitespace would refuse a participant whose PROMPT merely mentions
+    /// a vendor by name, which is both common and harmless. So a whole argument is a candidate, and
+    /// only the FIRST token of an argument is additionally considered when the preceding argument was
+    /// a shell's command switch — the <c>sh -c "agy -p …"</c> shape.
+    /// </remarks>
+    private static IEnumerable<string> CommandPositions(DialogueParticipant participant)
+    {
+        yield return participant.Command;
+
+        for (var i = 0; i < participant.Args.Count; i++)
+        {
+            var arg = participant.Args[i];
+            yield return arg;
+
+            if (i > 0 && ShellCommandSwitches.Contains(participant.Args[i - 1], StringComparer.OrdinalIgnoreCase))
+            {
+                var first = arg.TrimStart().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (first.Length > 0)
+                {
+                    yield return first[0];
+                }
+            }
+        }
     }
 
     /// <summary>

@@ -126,7 +126,51 @@ public class DialogueParticipantGatingTests : IDisposable
     }
 
     /// <summary>
-    /// Relabelling the vendor is the one move that would otherwise reach a real vendor CLI ungated,
+    /// Three lists must move together, and prose saying so is not a check (#703). Add a vendor to
+    /// the presets and forget <see cref="VendorGate"/>, and a participant declaring it takes the
+    /// unrecognised-vendor branch and runs UNGATED, silently — the exact defect this all exists to
+    /// close, reintroduced by an omission with nothing red anywhere.
+    /// </summary>
+    [Fact]
+    public void Every_known_vendor_has_a_gate_and_a_refusable_command_name()
+    {
+        Assert.NotEmpty(DialogueParticipantPresets.KnownVendors);
+
+        foreach (var vendor in DialogueParticipantPresets.KnownVendors)
+        {
+            Assert.NotNull(VendorGate.For(vendor, grant: null));
+
+            // And the command that vendor's preset actually runs must be one the refusal recognises,
+            // or a participant could name it under a bogus vendor label and pass through untouched.
+            var command = Path.GetFileNameWithoutExtension(
+                DialogueParticipantPresets.For(vendor, "role", "preamble", model: null).Command);
+            Assert.Contains(command, DialogueWorkerAdapter.GatedVendorCommands, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
+    /// A shell wrapper reaches a vendor CLI as cheaply as relabelling does, and the first version of
+    /// this refusal scanned only <c>Command</c> — so <c>cmd /c claude …</c> went straight through.
+    /// </summary>
+    [Theory]
+    [InlineData("cmd", new[] { "/c", "claude", "-p", "{PROMPT}" })]
+    // {PROMPT_FILE} rather than {PROMPT}: the parser requires {PROMPT} to be a whole argument, and a
+    // shell -c string embeds its placeholder inside one.
+    [InlineData("sh", new[] { "-c", "agy -p {PROMPT_FILE}" })]
+    [InlineData("npx", new[] { "claude", "-p", "{PROMPT}" })]
+    public void A_vendor_CLI_named_in_Args_behind_a_wrapper_is_refused(string command, string[] args)
+    {
+        var authored = WriteConfig(new DialogueParticipant(
+            "wrapped", "definitely-not-a-vendor", Model: null, "p", command, args));
+
+        var error = Assert.Throws<DialogueWorkerConfigException>(
+            () => new DialogueWorkerAdapter().Resolve(new WorkerInvocation(authored), DebateContract));
+
+        Assert.Contains("invokes a vendor CLI", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Relabelling the vendor is one move that would otherwise reach a real vendor CLI ungated,
     /// so it is refused rather than passed through as an unrecognised vendor.
     /// </summary>
     [Theory]

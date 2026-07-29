@@ -22,10 +22,15 @@ namespace Aer.Flow.Dispatch;
 /// contradicts.
 /// </para>
 /// <para>
-/// Entries beyond that measured minimum are ordinary OS and toolchain plumbing, included to keep the
-/// blast radius of clearing the environment small. None of them is known to influence a permission
-/// gate; anything that does belongs in an adapter's own explicit <c>Environment</c>, which is applied
-/// after this and therefore wins.
+/// Entries beyond that measured minimum are ordinary OS, toolchain and network-reachability
+/// plumbing, included to keep the blast radius of clearing the environment small. None of them is
+/// known to influence a permission gate; anything that does belongs in an adapter's own explicit
+/// <c>Environment</c>, which is applied after this and therefore wins.
+/// </para>
+/// <para>
+/// <b>The measurement is Windows-only, and the Unix list is reasoned rather than measured.</b> Said
+/// here because the first version of this file read as if the whole allowlist were evidence-backed:
+/// only <c>USERPROFILE</c> carries a measurement, and it is a Windows entry.
 /// </para>
 /// </remarks>
 internal static class InheritedEnvironment
@@ -37,17 +42,37 @@ internal static class InheritedEnvironment
         // fails before any vendor question arises.
         "PATH",
         "LANG", "LC_ALL", "LC_CTYPE", "TZ",
-        // The .NET host reads these; the dialogue worker is `dotnet exec`.
-        "DOTNET_ROOT", "DOTNET_CLI_TELEMETRY_OPTOUT", "NUGET_PACKAGES",
+        // The .NET host reads these; the dialogue worker is `dotnet exec`, which then spawns its own
+        // participant children, so any per-spawn setup cost is paid three times per run. Omitting the
+        // first-run suppressors and DOTNET_CLI_HOME timed the dialogue e2e tests out at their 30s
+        // binding limit on Windows CI while they still passed locally in 2s -- a cleared environment
+        // is not free, and the margin that absorbed it locally did not exist on a cold runner.
+        "DOTNET_ROOT", "DOTNET_ROOT(x86)", "DOTNET_CLI_HOME", "DOTNET_CLI_TELEMETRY_OPTOUT",
+        "DOTNET_NOLOGO", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "DOTNET_MULTILEVEL_LOOKUP",
+        "NUGET_PACKAGES", "NUGET_HTTP_CACHE_PATH",
+
+        // REACHABILITY. Both vendor CLIs are network clients, and on a corporate network these are
+        // the whole of how they reach anything. Omitting them was a regression this file introduced
+        // and did not notice: the allowlist was measured on a host that needs none of them, so every
+        // arm passed while an operator behind a proxy would have had every vendor call fail with no
+        // network and no TLS trust. Measured-on-one-machine is not measured (`claim-scope`).
+        // Lowercase forms are separate variables on POSIX and several clients read only those.
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+        "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+        "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
     ];
 
     private static readonly string[] Windows =
     [
         // USERPROFILE is the measured one (agy). The rest are what a Windows process and cmd.exe
         // assume exist; SYSTEMROOT in particular is required for socket and crypto initialisation.
-        "USERPROFILE", "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE",
-        "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)",
+        "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE",
+        "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ALLUSERSPROFILE",
+        "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432",
         "COMSPEC", "PATHEXT", "TEMP", "TMP",
+        // powershell.exe resolves its own modules through this; the dialogue worker's participants
+        // are powershell on Windows.
+        "PSMODULEPATH",
         "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
     ];
 
