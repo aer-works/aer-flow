@@ -569,6 +569,55 @@ def _shapes_discriminate():
                    if blind else "; no catalogue entry is digit-free, so the walk's blind spot is empty")
 
 
+@check("a PR body that says it does not close an issue is caught before it closes one")
+def _negated_close_lint():
+    """Both must-fire fixtures are REAL BODIES, verbatim from the merges that auto-closed an issue.
+
+    `NEGATED_CLOSE` in completeness.py carries which merges those were and what each cost. What
+    matters here is that a CLAUDE.md note sat between the two incidents and did not prevent the
+    second, so the fixtures are the incidents rather than invented shapes.
+
+    The must-NOT-fire half carries as much weight. A deliberate `Closes #n` is the convention this
+    repo runs on, and a lint that flagged it would be turned off within a week.
+    """
+    must_fire = [
+        ("#692's body, verbatim", "**Does not close #532 or #550** - it is the measurement"),
+        ("#684's body, verbatim", "filed, not fixed: #688"),
+        ("contraction", "The root cause isn't fixed: #99."),
+        ("uppercase", "This does NOT resolve #123."),
+        ("never", "Found but never closed #77"),
+    ]
+    must_not_fire = [
+        ("the convention itself", "Closes #675. Closes #676."),
+        ("the safe rewording", "#532 remains open - see the comment thread."),
+        ("the other safe rewording", "filed separately: #691"),
+        ("a bare reference", "Related: #504, 0023, #479."),
+        # The negation has to reach the keyword. A sentence boundary ends it, and `[^.\n#]` is what
+        # stops the match walking across one -- without that, any body containing both a negation
+        # and a later legitimate `Closes #n` would be refused.
+        ("negation ends at the stop", "It does not change behaviour. Closes #12."),
+        ("no keyword at all", "Not the same as #345, which is a different concern."),
+        # GitHub links a keyword only when it sits immediately before the reference, so this closes
+        # nothing and the lint must agree. Firing here would teach authors to reword around a
+        # phantom, and a lint nobody believes is worse than none.
+        ("'by' - GitHub ignores it", "The root cause is not fixed by #99 either."),
+    ]
+    for label, body in must_fire:
+        assert completeness.negated_close_faults(body), (
+            f"negated-close lint: [{label}] was accepted -- GitHub would close the issue: {body!r}")
+    for label, body in must_not_fire:
+        assert not completeness.negated_close_faults(body), (
+            f"negated-close lint: [{label}] was refused, and GitHub closes nothing here: {body!r}")
+
+    # The numbers themselves, not merely that something fired -- a lint reporting the wrong issue
+    # sends the author to edit a line that is not the problem.
+    assert completeness.negated_close_faults("Does not close #532 or #550") == [532], (
+        "negated-close lint: reported the wrong issue number, or more than the keyword binds to")
+
+    return (f"{len(must_fire)} must fire ({sum(1 for l, _ in must_fire if 'verbatim' in l)} real "
+            f"incident bodies) + {len(must_not_fire)} must NOT fire")
+
+
 @check("the gate-citation lint separates a slug from an ordinal")
 def _gate_lint_discriminates():
     # Step 10's population is the whole repo, so it can only ever report "0 faults" -- which is what

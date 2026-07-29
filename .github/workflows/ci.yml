@@ -328,6 +328,16 @@ jobs:
       # real data runs inside audit-selfcheck above, where audit-controls can reach it.
       - name: No fact is explained in more than one place
         run: pixi run audit-recordonce -- origin/${{ github.base_ref || 'main' }}
+      # Logic and reasoning live in `negated_close_faults` in completeness.py; its polarity arms run
+      # in audit-selfcheck above, driven by both incident bodies verbatim.
+      #
+      # Body only, and pull_request only. A commit message with the same shape is a separate defect
+      # this cannot reach: the merge squashes them, and the body is what GitHub actually reads.
+      - name: A negated closing keyword still closes the issue
+        if: github.event_name == 'pull_request'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$BODY" | pixi run audit-completeness -- --pr-body
 
   ci:
     needs: [changes, test, mobile, audit]
