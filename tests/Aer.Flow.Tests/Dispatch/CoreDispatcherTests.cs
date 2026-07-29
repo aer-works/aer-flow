@@ -269,6 +269,69 @@ public class CoreDispatcherTests
         ? new CoreDispatchTarget("cmd", ["/c", "echo hello > %AER_OUTPUT_DIR%\\hello.txt"])
         : new CoreDispatchTarget("sh", ["-c", "echo hello > \"$AER_OUTPUT_DIR/hello.txt\""]);
 
+    /// <summary>
+    /// #549: a variable the operator's shell exports must NOT reach a worker unless it is
+    /// allowlisted. <c>CLAUDE_CODE_SIMPLE</c> is the concrete hazard <c>InheritedEnvironment</c>
+    /// records; this is the arm that proves the exclusion actually happens.
+    /// </summary>
+    /// <remarks>
+    /// Polarity in both directions, because "the child saw nothing" is also what a broken harness
+    /// produces: the same dispatch is asked for an ALLOWLISTED variable, which must arrive. If both
+    /// arms come back empty the test is measuring its own plumbing rather than the allowlist.
+    /// </remarks>
+    [Theory]
+    [InlineData("CLAUDE_CODE_SIMPLE", false, "the real hazard — disables hooks exactly as --bare does")]
+    [InlineData("AER_549_NOT_ALLOWLISTED", false, "an arbitrary name, so the result is about the list and not this one variable")]
+    [InlineData("PATH", true, "allowlisted, and load-bearing: AER spawns vendor CLIs by name")]
+    public async Task An_inherited_variable_reaches_the_worker_only_when_it_is_allowlisted(
+        string variableName, bool expectedToArrive, string what)
+    {
+        Assert.NotEmpty(what);
+
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        var original = Environment.GetEnvironmentVariable(variableName);
+        const string Sentinel = "inherited-from-the-operator-shell";
+        try
+        {
+            // Set on THIS process, which is what a worker would otherwise inherit. PATH is left alone
+            // — overwriting it would break the spawn the control arm depends on — so its arrival is
+            // checked by presence rather than by a sentinel.
+            if (!expectedToArrive)
+            {
+                Environment.SetEnvironmentVariable(variableName, Sentinel);
+            }
+
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer).DispatchAsync(
+                request, EchoEnvVarToOutputFile(variableName, environment: null), TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var written = await File.ReadAllTextAsync(
+                Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken);
+
+            if (expectedToArrive)
+            {
+                // An unexpanded "%PATH%" (cmd) or empty line (sh) is what absence looks like.
+                Assert.DoesNotContain($"%{variableName}%", written, StringComparison.Ordinal);
+                Assert.True(written.Trim().Length > 0, $"{variableName} did not reach the child at all.");
+            }
+            else
+            {
+                Assert.DoesNotContain(Sentinel, written, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variableName, original);
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
     private static CoreDispatchTarget EchoEnvVarToOutputFile(
         string variableName, IReadOnlyList<(string Name, string Value)>? environment) => OperatingSystem.IsWindows()
         ? new CoreDispatchTarget(

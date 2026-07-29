@@ -514,11 +514,24 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         // cost nothing, which would have been read as "we checked".
         task.WithCaptureOutput(true);
 
+        // #549: the child inherited the operator's ENTIRE environment until this line existed, so a
+        // CLAUDE_CODE_SIMPLE=1 exported anywhere in the shell that started the daemon disabled the
+        // mandatory gate on every worker, silently. WithClearEnv means the child sees only what is
+        // set below — see InheritedEnvironment for what survives and what was measured to be
+        // load-bearing.
+        task.WithClearEnv();
+        foreach (var (name, value) in InheritedEnvironment.Resolve())
+        {
+            task.WithEnv(name, value);
+        }
+
+        // Applied AFTER the inherited set, deliberately, so an AER-computed value and an adapter's
+        // gate variables win — the ordering ClaudeWorkerAdapter.SimpleModeVariable depends on.
         foreach (var environmentVariable in request.Environment)
         {
-            // PassThrough variable *values* are resolved by whatever wires a concrete worker
-            // adapter (Aer.Adapters, no milestone yet — spec §3) — out of scope here. Only
-            // AER-computed variables (paths the Artifact Manager already resolved) are set.
+            // PassThrough variable *values* are resolved by whatever wires a concrete worker adapter
+            // (spec §3) — out of scope here. Only AER-computed variables (paths the Artifact Manager
+            // already resolved) are set.
             if (environmentVariable is EnvironmentVariable.AerComputed aerComputed)
             {
                 task.WithEnv(aerComputed.Name, aerComputed.Value);
