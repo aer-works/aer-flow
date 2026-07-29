@@ -766,7 +766,7 @@ def git_state():
                        ("commits ahead of main", ["git", "rev-list", "--count", "origin/main..HEAD"]),
                        ("uncommitted files", ["git", "status", "--porcelain"])]:
         try:
-            out = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT).stdout.strip()
+            out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT).stdout.strip()
         except OSError:
             out = "?"
         if label == "uncommitted files":

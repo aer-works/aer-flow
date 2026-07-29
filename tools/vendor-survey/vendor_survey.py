@@ -178,8 +178,8 @@ def fetch_cli_help(corpus: str, refetch: bool) -> None:
 
     def helptext(argv):
         try:
-            p = subprocess.run(argv, capture_output=True, text=True, timeout=60, env=env,
-                               stdin=subprocess.DEVNULL)
+            p = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=60, env=env, stdin=subprocess.DEVNULL)
             return (p.stdout or "") + (p.stderr or "")
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return ""

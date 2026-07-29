@@ -407,18 +407,29 @@ def added_lines_by_file(base: str, head: str = "HEAD") -> dict[str, list[list[st
     return by_file
 
 
-# Every `git` read here is UTF-8, decoded leniently. `text=True` alone uses the LOCALE encoding, which
-# on Windows is cp1252 -- and a byte cp1252 has no mapping for (0x90 among them) raises inside
-# subprocess's reader THREAD, where it does not propagate: `run` returns with `stdout` set to None and
-# the traceback lands two calls away as `'NoneType' object has no attribute 'splitlines'`.
+# Every `git` read here is UTF-8, decoded leniently. `text=True` alone uses the LOCALE codec, which
+# on Windows is cp1252 -- and cp1252 rejects exactly five bytes: 0x81, 0x8D, 0x8F, 0x90, 0x9D.
 #
-# Found by this checker crashing on a change to `docs/vendor-doc-audit.md`, a register full of em
-# dashes and status glyphs. It went unnoticed until then because `added_lines_by_file` reads only the
-# CHANGED hunks while `file_at` reads whole files at HEAD, so the odds of hitting an unmappable byte
-# are wildly different between the two -- and only the second one is new (#676). Both are fixed:
-# leaving the diff reader alone would be leaving the same defect in place for whichever file trips it
-# first. `errors="replace"` because a mangled character in one word can only cost a shingle match; a
-# crash costs the whole gate, and this gate failing open is the thing it exists to prevent.
+# THE SHAPE DIFFERS BY PLATFORM, which matters when reading a bug report against this:
+#   * Windows -- the decode happens in subprocess's reader THREAD, so the UnicodeDecodeError does not
+#     propagate. `run` returns with `stdout` set to None and what stops the process is an
+#     `AttributeError` two calls away. The thread's own traceback IS printed by `threading.excepthook`
+#     first, so the cause is on screen -- just detached from the traceback that ends the run, above
+#     it, and attributed to a thread the reader never started.
+#   * POSIX -- the decode happens in the caller, so it raises `UnicodeDecodeError` directly.
+#
+# Found by this checker crashing on a change to `docs/vendor-doc-audit.md`. Note which characters
+# actually did it, because the obvious guess is wrong: an em dash is `e2 80 94` and decodes cleanly
+# under cp1252. What tripped it was one U+2190 LEFTWARDS ARROW (`e2 86 90` -- the 0x90 in the error),
+# alongside ten U+274C CROSS MARK (`e2 9d 8c`) and a U+23F8. A guard written against "non-ASCII" or
+# "outside latin-1" therefore does not hold this; see `CP1252_REJECTS` in selfcheck.py.
+#
+# It went unnoticed because `added_lines_by_file` reads only the CHANGED hunks while `file_at` reads
+# whole files at HEAD, so the two have wildly different odds of meeting a rejected byte -- and only
+# the second is new (#676). Both are fixed, along with every other such call in `tools/`: leaving one
+# alone leaves the same defect for whichever file trips it first. `errors="replace"` rather than
+# strict because a mangled character can cost at most a shingle match, while a raised exception costs
+# the whole gate -- and a gate that cannot run is what this one exists to prevent.
 GIT_TEXT = {"encoding": "utf-8", "errors": "replace"}
 
 

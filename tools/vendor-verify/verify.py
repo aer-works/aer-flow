@@ -148,7 +148,7 @@ def run(cmd, timeout=300, cwd=None, extra_env=None):
     try:
         # stdin must be closed, not inherited: the CLI waits 3s for piped input on every
         # invocation otherwise, and warns about it.
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=e,
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=cwd, env=e,
                            stdin=subprocess.DEVNULL)
         return p.returncode, (p.stdout or ""), (p.stderr or "")
     except subprocess.TimeoutExpired:
@@ -952,7 +952,7 @@ def reported_turn(stdout):
 @check("gate.sessionstart-without-a-turn", "gate",
        "on CLAUDE ONLY: whether a spawn can fire SessionStart and TERMINATE WITHOUT A MODEL TURN -- "
        "the cost premise of #532's per-spawn gate probe, which nothing had measured. agy has no "
-       "such event and is answered from its documented surface instead; see the body")
+       "session-level event and its half of the question is separately OPEN; see the body")
 def _sessionstart_without_a_turn():
     """#532 proposes proving the mandatory `PreToolUse` hook can execute by probing on `SessionStart`
     instead, "at zero model cost", citing `gate.headless-event-surface`.
@@ -965,11 +965,10 @@ def _sessionstart_without_a_turn():
     pays a turn on everything it dispatches, which is not a detail to assume either way.
 
     CLAUDE ONLY, and the scope is the finding. #532 covers every worker AER spawns and both adapters
-    write the hook, but `agy` has no session-level event to probe and no route to proving the gate
-    that avoids a turn. That half is settled from the documented surface at no cost, so it is
-    recorded in `docs/vendor-doc-audit.md` § "The symmetry stops at proving the gate fired" rather
-    than restated or measured here. What it means for this check is only the scope: whatever this
-    run returns, the zero-cost premise is already false on agy.
+    write the hook; this measures one vendor. On `agy` the question is genuinely different and is
+    still OPEN -- see `docs/vendor-doc-audit.md` § "Proving the gate fired is asymmetric", which
+    holds what documentation settles there and what it does not. Whatever this run returns, it
+    says nothing about agy, and nothing here should be read as covering both.
 
     THE CONTROL CARRIES THE CHECK, on two channels rather than one:
 
@@ -1033,28 +1032,49 @@ def _sessionstart_without_a_turn():
         return INCONCLUSIVE, ("the control took a turn and reported num_turns=0, so that field does "
                               f"not mean what this check reads it to mean -- {joined}")
 
-    # An arm the CLI refused never started a session, so it tested nothing. Counting it as evidence
-    # that no free invocation exists would close #532's cheap path on a run that never reached it.
-    started = [r for r in candidates if r["fired"] or r["turns"] is not None]
-    refused = [r for r in candidates if r not in started]
+    # ORDERED buckets, not four predicates -- `code is None` is tested first because a timed-out arm
+    # also looks like "fired with an unreadable turn count", and only one of those descriptions is
+    # true of it. Every candidate lands in exactly one.
+    #
+    # Only `evidence` may be cited by a verdict. The other three are reported BY NAME as untested,
+    # because each has a different reason for being uninformative and collapsing them would let a
+    # run that established nothing read as a run that found nothing.
+    timed_out, unreadable, silent, evidence = [], [], [], []
+    for r in candidates:
+        if r["code"] is None:                      # timeout or the binary never ran
+            timed_out.append(r)
+        elif r["fired"] and r["turns"] is not None:
+            evidence.append(r)
+        elif r["fired"]:                           # fired, cost channel unreadable
+            unreadable.append(r)
+        else:                                      # never fired -- with or without a turn count
+            silent.append(r)
 
-    # `turns == 0` counts only where the CLI actually SAID zero.
-    free = [r for r in started if r["fired"] and r["turns"] == 0]
+    def names(bucket):
+        return ", ".join(r["label"] for r in bucket) or "none"
+
+    untested = (f"NOT tested -- timed out: {names(timed_out)}; fired but cost unreadable: "
+                f"{names(unreadable)}; never fired: {names(silent)}")
+
+    # `turns == 0` counts only where the CLI actually SAID zero, on an arm that also fired.
+    free = [r for r in evidence if r["turns"] == 0]
     if free:
-        return PASS, (f"SessionStart IS reachable with no model turn, via: "
-                      f"{', '.join(r['label'] for r in free)} || {joined}")
+        return PASS, (f"SessionStart IS reachable with no model turn on the invocation(s): "
+                      f"{names(free)}. NOT proved: that a reported num_turns of 0 means nothing was "
+                      f"billed -- the control establishes the field is readable and non-zero when a "
+                      f"turn did occur, which cannot rule out a zero reported for a charged turn. "
+                      f"|| {untested} || {joined}")
 
-    if not started:
-        return INCONCLUSIVE, ("every candidate invocation was refused before a session existed, so "
-                              "nothing here tested whether a free one exists. The agy half stands "
-                              f"regardless; see this check's body || refused: "
-                              f"{', '.join(r['label'] for r in refused)} || {joined}")
+    if not evidence:
+        return INCONCLUSIVE, ("no candidate invocation both started a session and reported a "
+                              "readable turn count, so nothing here tested whether a free one "
+                              f"exists || {untested} || {joined}")
 
-    return PASS, ("#532's zero-cost premise is FALSE on claude for every invocation that started a "
-                  f"session here ({', '.join(r['label'] for r in started)}): each fired SessionStart "
-                  f"only by taking a turn. A per-spawn probe costs a turn per spawn. NOT tested: "
-                  f"invocations refused before a session existed "
-                  f"({', '.join(r['label'] for r in refused) or 'none'}) || {joined}")
+    return PASS, ("#532's zero-cost premise is FALSE for the invocation shapes measured here "
+                  f"({names(evidence)}): each fired SessionStart only by taking a turn. SCOPE -- "
+                  "this is a claim about those shapes, not about every shape a probe could use; "
+                  "`--max-turns`, a non-`-p` mode and a resumed session are untested and a free one "
+                  f"among them would change the answer. || {untested} || {joined}")
 
 
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",
