@@ -29,7 +29,24 @@ fmt-sidecar = { cmd = "gofmt -w .", cwd = "src/Aer.Sidecar" }
 fmt-check-sidecar = { cmd = "test -z \"$(gofmt -l .)\"", cwd = "src/Aer.Sidecar" }
 
 build = { cmd = "dotnet build", depends-on = ["build-core", "build-sidecar"] }
-test = { cmd = "dotnet test", depends-on = ["build-core", "test-sidecar"] }
+# The rebuild is FORCED and then the test run is told not to build again (#688). MSBuild skips a
+# project whose source is older than the assembly built from it, so a plain `dotnet test` can run the
+# suite against an assembly that does not correspond to the checkout -- every assertion passing or
+# failing according to code that is not there, with nothing printed and nothing to distinguish it
+# from a correct run. #687 was the loud half of the same mechanism, on `lint`.
+#
+# Reachable rather than theoretical, and by following this repo's own discipline: mutation testing
+# edits a source, builds, runs, and restores -- and the restored file can predate the mutant's
+# output. The trap is that the arm you TRUST is the final green one, which is exactly the run that
+# can be reading the mutant's build.
+#
+# `dotnet test --no-incremental` does not exist -- MSBuild answers `MSB1001: Unknown switch` -- so
+# the force has to be a separate build step, and `--no-build` is what stops the second one undoing
+# it. MEASURED on this machine: 66s incremental after touching one file, 85s this way (19s build +
+# 66s test), so about +19s or 29% per run. Paid on every iteration deliberately: `pixi run gates`
+# already forced a rebuild via `lint`, so the protection existed where the risk was lowest and was
+# absent from the inner loop, where a session runs this dozens of times.
+test = { cmd = "dotnet build --no-incremental && dotnet test --no-build", depends-on = ["build-core", "test-sidecar"] }
 # Coverage report (#199): collects per-test-project Cobertura via coverlet, merges into an HTML
 # report + text summary at artifacts/coverage/report/ (open index.html, or read Summary.txt).
 # Results are wiped first so stale collections never skew the merge. Excludes source-generated
