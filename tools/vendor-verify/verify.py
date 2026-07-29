@@ -166,10 +166,21 @@ def mcp_config(path, server, sentinel_dir, extra_env=None):
 
 
 def hook_script(path, log, body):
+    """Write a probe handler that records its stdin to `log`, then runs `body`.
+
+    SINGLE quotes around the log path, and that is load-bearing rather than style. `sh` expands `$`
+    inside double quotes, so a log path under a directory named `has$dollar` was being redirected to
+    a DIFFERENT file -- the handler started fine and `fired()` still read 0.
+
+    That produced a wrong measurement, not just a noisy one: the `$` arm of
+    `agy.hook-command-survives-a-metacharacter-in-its-path` reported the shipped hook command failing
+    on `$` paths, and it was this helper's redirect failing instead. Ordinary temp paths carry no `$`,
+    so it never bit until a check deliberately put one there.
+    """
     with open(path, "w", newline="\n") as f:
         f.write("#!/bin/sh\n")
-        f.write('cat >> "%s"\n' % log)
-        f.write('printf "\\n" >> "%s"\n' % log)
+        f.write("cat >> '%s'\n" % log)
+        f.write("printf '\\n' >> '%s'\n" % log)
         f.write(body + "\n")
     os.chmod(path, 0o755)
 
@@ -2468,9 +2479,13 @@ def _agy_hook_write_path():
             # allow would confound it with `agy.hook-malformed-stdout-fails-open`.
             f.write("""echo '{"decision":"allow"}'\n""")
         os.chmod(os.path.join(wd, "h.sh"), 0o755)
-        # The write tools GeminiWorkerAdapter.WriteTools names, as a regex over agy's own tool names.
+        # ALL FOUR write tools GeminiWorkerAdapter.WriteTools names, as a regex over agy's own tool
+        # names. `generate_image` was excluded here, and that exclusion is why #708 stayed hidden:
+        # it is the one member of the family whose payload does NOT carry `TargetFile`, so it was
+        # denied on every call -- even when writes were granted -- while this check stayed green over
+        # the three that behave. The member most likely to differ is the one an exclusion hides.
         _agy_hook_json(wd, "sh %s" % hk,
-                       matcher="write_to_file|replace_file_content|multi_replace_file_content")
+                       matcher="write_to_file|replace_file_content|multi_replace_file_content|generate_image")
         run(["agy", "-p",
              f"Write the text {token} to the file {target}. Report SUCCEEDED or REFUSED.",
              "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
