@@ -275,16 +275,39 @@ public class CoreDispatcherTests
     /// records; this is the arm that proves the exclusion actually happens.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Polarity in both directions, because "the child saw nothing" is also what a broken harness
     /// produces: the same dispatch is asked for an ALLOWLISTED variable, which must arrive. If both
     /// arms come back empty the test is measuring its own plumbing rather than the allowlist.
+    /// </para>
+    /// <para>
+    /// <b>The <c>NUGET_HTTP_CACHE_PATH</c> arm is the one that makes the negative arms mean
+    /// anything, and it exists because a reviewer showed the first version of this test could not
+    /// fail on two of the three CI platforms.</b> The negative arms plant their sentinel with
+    /// <c>Environment.SetEnvironmentVariable</c> — but on Unix .NET does not call <c>setenv</c> for
+    /// that, it mutates a managed dictionary only, while the child here is spawned by aer-core in
+    /// Rust from the native <c>environ</c>. So on Linux and macOS the sentinel would never reach the
+    /// child <i>whether or not <see cref="Aer.Core.AerTask.WithClearEnv"/> were called</i>, and both
+    /// negative arms would pass against unfixed code. The <c>PATH</c> control does not catch it:
+    /// <c>PATH</c> is in the native block already, so it discriminates "the harness spawns and
+    /// echoes", not "an operator-set variable can reach this child".
+    /// </para>
+    /// <para>
+    /// This arm plants an ALLOWLISTED name by the same mechanism the negative arms use and requires
+    /// the sentinel to <b>arrive</b>. It is therefore a control on the plant itself: if it goes red
+    /// on a platform, every negative arm on that platform is vacuous and this test is certifying
+    /// nothing there. <c>NUGET_HTTP_CACHE_PATH</c> carries it because it is on the allowlist and
+    /// nothing in the child reads it, so overwriting it changes no behaviour — unlike <c>PATH</c>,
+    /// which cannot be overwritten without breaking the spawn the control depends on.
+    /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("CLAUDE_CODE_SIMPLE", false, "the real hazard — disables hooks exactly as --bare does")]
-    [InlineData("AER_549_NOT_ALLOWLISTED", false, "an arbitrary name, so the result is about the list and not this one variable")]
-    [InlineData("PATH", true, "allowlisted, and load-bearing: AER spawns vendor CLIs by name")]
+    [InlineData("CLAUDE_CODE_SIMPLE", false, true, "the real hazard — disables hooks exactly as --bare does")]
+    [InlineData("AER_549_NOT_ALLOWLISTED", false, true, "an arbitrary name, so the result is about the list and not this one variable")]
+    [InlineData("NUGET_HTTP_CACHE_PATH", true, true, "allowlisted AND planted the same way the negative arms are — the control on the plant")]
+    [InlineData("PATH", true, false, "allowlisted, and load-bearing: AER spawns vendor CLIs by name")]
     public async Task An_inherited_variable_reaches_the_worker_only_when_it_is_allowlisted(
-        string variableName, bool expectedToArrive, string what)
+        string variableName, bool expectedToArrive, bool plantSentinel, string what)
     {
         Assert.NotEmpty(what);
 
@@ -297,7 +320,7 @@ public class CoreDispatcherTests
             // Set on THIS process, which is what a worker would otherwise inherit. PATH is left alone
             // — overwriting it would break the spawn the control arm depends on — so its arrival is
             // checked by presence rather than by a sentinel.
-            if (!expectedToArrive)
+            if (plantSentinel)
             {
                 Environment.SetEnvironmentVariable(variableName, Sentinel);
             }
@@ -313,7 +336,14 @@ public class CoreDispatcherTests
             var written = await File.ReadAllTextAsync(
                 Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken);
 
-            if (expectedToArrive)
+            if (expectedToArrive && plantSentinel)
+            {
+                // The control on the plant. Red here means SetEnvironmentVariable never reached the
+                // spawned child on this platform, so every negative arm is vacuous here too — read
+                // this failure before concluding anything about the allowlist.
+                Assert.Contains(Sentinel, written, StringComparison.Ordinal);
+            }
+            else if (expectedToArrive)
             {
                 // An unexpanded "%PATH%" (cmd) or empty line (sh) is what absence looks like.
                 Assert.DoesNotContain($"%{variableName}%", written, StringComparison.Ordinal);
