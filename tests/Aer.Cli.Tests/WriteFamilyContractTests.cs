@@ -99,19 +99,10 @@ public class WriteFamilyContractTests
     /// the field is NOT uniform across the family.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <c>ReadWriteTarget</c> read <c>TargetFile</c> for the whole family. Three of the four carry
-    /// it; <c>generate_image</c> does not — its arguments are <c>Prompt</c>/<c>ImageName</c>/
-    /// <c>ImagePaths</c>. So it resolved to null every time and the caller denied it
-    /// <b>unconditionally, including when writes were granted</b>, with a reason that blamed the
-    /// target for landing outside the outbox when no target had been read at all.
-    /// </para>
-    /// <para>
-    /// Fail-closed, so nothing was unsafe and nothing was loud — which is exactly why a granted
-    /// capability stayed broken. This makes the omission structural: add a tool to
-    /// <see cref="AgyHookCheckCommand.WriteFamilyTools"/> without naming its target field and this
-    /// goes red, rather than that tool becoming silently always-denied.
-    /// </para>
+    /// What went wrong and why it stayed hidden is recorded once, on
+    /// <see cref="AgyHookCheckCommand.WriteTargetFields"/>. This test is the structural half: add a
+    /// tool to <see cref="AgyHookCheckCommand.WriteFamilyTools"/> without naming the argument that
+    /// carries its target and this goes red, rather than that tool becoming silently always-denied.
     /// </remarks>
     [Fact]
     public void Every_agy_write_family_tool_names_the_argument_that_carries_its_target()

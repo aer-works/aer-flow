@@ -2013,10 +2013,10 @@ def _agy_hook_metacharacter_path():
                            choice of quote style should be re-measured rather than assumed still right.
 
     Each runs against a plain path and against one containing a SPACE, because a space is why single
-    quotes were chosen over bare -- `AppContext.BaseDirectory` sits under the user profile, where
-    `C:/Users/First Last` is ordinary. `$` and `%` are also covered: both are legal path characters
-    (a directory named `100%` is unremarkable) and both are expanded by some shells inside some
-    quote styles.
+    quotes were chosen over bare -- see `GeminiWorkerAdapter.BuildHooksJson` for where the handler's
+    path comes from and why spaces in it are ordinary. `$` and `%` are also covered: both are legal
+    path characters (a directory named `100%` is unremarkable) and both are expanded by some shells
+    inside some quote styles.
 
     A sentinel: if agy changes which shell it uses, a path AER already ships could silently stop
     resolving, and per the fail-open above nothing would say so.

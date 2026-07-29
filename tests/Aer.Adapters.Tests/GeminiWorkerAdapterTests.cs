@@ -831,12 +831,13 @@ public class GeminiWorkerAdapterTests
             .GetProperty("hooks")[0]
             .GetProperty("command").GetString()!;
 
-        // agy hands this string to something that is NOT a POSIX shell -- it strips single quotes
-        // but not double ones, and expands `$` inside single quotes. So this splits the shape
-        // BuildHooksJson actually ships, `dotnet '<path>' agy-hook-check`, rather than pretending to
-        // know a shell's rules. This test proves the *assembly and arguments* launch and behave; that
-        // agy can parse the quoting is a separate, live question owned by
-        // `agy.hook-command-survives-a-metacharacter-in-its-path`.
+        // agy hands this string to something that is NOT a POSIX shell. So this splits the shape
+        // BuildHooksJson actually ships rather than pretending to know a shell's rules -- see that
+        // method for what was measured. This test proves the *assembly and arguments* launch and
+        // behave; whether agy can parse the quoting is a separate, live question owned by
+        // record-once-ok: #706 src/Aer.Adapters/GeminiWorkerAdapter.cs
+        // `agy.hook-command-survives-a-metacharacter-in-its-path` -- cited here as a pointer, since a
+        // reader of this regex needs to know which check owns the half it does not cover.
         //
         // The quote character here is deliberately exact rather than `["']`. It was `"` until #706,
         // where the double-quoted form turned out never to start the handler at all -- so this

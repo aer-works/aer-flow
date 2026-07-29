@@ -168,9 +168,8 @@ public class AgyHookCheckCommandTests
     /// operator had granted writes.
     /// </summary>
     /// <remarks>
-    /// The denial was not merely wrong, it was misdirecting: it reported the target as resolving
-    /// outside the workspace and the outbox, when no target had been read at all. An operator
-    /// debugging that goes and looks at their outbox.
+    /// See <see cref="AgyHookCheckCommand.WriteTargetFields"/> for why it failed and why it stayed
+    /// hidden. This is the behavioural half — the allow arm below was impossible before the fix.
     /// </remarks>
     [Fact]
     public void A_granted_generate_image_inside_the_outbox_is_allowed_and_outside_it_is_denied()

@@ -172,6 +172,9 @@ public static class AgyHookCheckCommand
 
         string? toolName;
         string? writeTarget = null;
+        // Captured here because the JsonDocument is disposed before the denial below is built, and
+        // a denial that cannot name what the payload carried is the misdirection #708 was made of.
+        var argKeys = "no args object at all";
         try
         {
             using var doc = JsonDocument.Parse(input);
@@ -187,6 +190,7 @@ public static class AgyHookCheckCommand
 
             toolName = nameProp.GetString();
             writeTarget = ReadWriteTarget(toolCall, toolName);
+            argKeys = DescribeArgKeys(toolCall);
         }
         catch (JsonException)
         {
@@ -215,11 +219,28 @@ public static class AgyHookCheckCommand
                 return AllowJson;
             }
 
+            // Two DIFFERENT failures, and reporting them as one is what made #708 take two months
+            // to notice. "Your target is outside the outbox" is actionable. "Your target is outside
+            // the outbox" when no target was ever read sends the reader to inspect their outbox
+            // configuration, which is fine, and their write path, which is fine, while the real
+            // cause is that this gate does not know which argument of this tool carries a path.
+            //
+            // So when the target is unreadable, name the argument keys that WERE present. The next
+            // tool whose payload shape AER has not seen then self-diagnoses on first contact,
+            // instead of presenting as a mysterious always-denied capability.
+            if (writeTarget is null)
+            {
+                return DenyJson(
+                    $"AER: the '{toolName}' tool is granted, but this gate could not read the path it " +
+                    "writes to, so it cannot confirm the write lands in this worker's workspace or " +
+                    $"outbox. Tried {FormatFields(toolName)}; the call carried {argKeys}. " +
+                    "If one of those names the target, add it to AgyHookCheckCommand.WriteTargetFields.");
+            }
+
             return DenyJson(
-                $"AER: the '{toolName}' tool is granted, but its target " +
-                $"({writeTarget ?? "unreadable from the payload"}) resolves outside both this " +
-                "worker's workspace and its outbox. A grant decides whether a worker may write, not " +
-                "where.");
+                $"AER: the '{toolName}' tool is granted, but its target ({writeTarget}) resolves " +
+                "outside both this worker's workspace and its outbox. A grant decides whether a " +
+                "worker may write, not where.");
         }
 
         return AllowJson;
@@ -282,6 +303,27 @@ public static class AgyHookCheckCommand
         }
 
         return null;
+    }
+
+    /// <summary>The argument names this gate tried for a tool, for a denial reason a person can act on.</summary>
+    private static string FormatFields(string toolName) =>
+        WriteTargetFields.TryGetValue(toolName, out var fields)
+            ? string.Join(", ", fields)
+            : "(no argument names are configured for this tool)";
+
+    /// <summary>
+    /// The argument names a payload actually carried. Names only — a value could hold a prompt or
+    /// file content, and a denial reason is not a place to echo either back.
+    /// </summary>
+    private static string DescribeArgKeys(JsonElement toolCall)
+    {
+        if (!toolCall.TryGetProperty("args", out var args) || args.ValueKind != JsonValueKind.Object)
+        {
+            return "no args object at all";
+        }
+
+        var keys = args.EnumerateObject().Select(p => p.Name).ToArray();
+        return keys.Length == 0 ? "an empty args object" : string.Join(", ", keys);
     }
 
     /// <summary>
