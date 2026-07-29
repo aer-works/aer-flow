@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
@@ -78,11 +79,100 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
 
         var isWindows = OperatingSystem.IsWindows();
         var resolvedConfigPath = ResolveConfigPath(invocation.PromptTemplate, invocation.BindingsFileDirectory);
-        var configPath = EscapeUserContent(resolvedConfigPath, isWindows);
+        var gatedConfigPath = GateParticipants(resolvedConfigPath, invocation.PermissionGrant);
+        var configPath = EscapeUserContent(gatedConfigPath, isWindows);
 
         return isWindows
             ? ResolveWindows(configPath, invocation.WorkingDirectory)
             : ResolveUnix(configPath, invocation.WorkingDirectory);
+    }
+
+    /// <summary>
+    /// Vendor CLI names AER ships a <see cref="VendorGate"/> for, as they appear in a participant's
+    /// <c>Command</c> — the check that stops a config reaching one of them ungated by labelling its
+    /// <c>Vendor</c> as something AER does not recognise (#703).
+    /// </summary>
+    private static readonly string[] GatedVendorCommands = ["claude", "agy"];
+
+    /// <summary>
+    /// Rewrites every participant AER can gate into its gated invocation, returning the path the
+    /// worker should read (#703).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The dialogue worker spawns vendor CLIs itself, through a bare <c>ProcessStartInfo</c> that
+    /// never carried <c>--settings</c>, a denied-tools channel, or anything else 0029's mandatory
+    /// hook needs. It cannot acquire them on its own: <c>Aer.Workers.Dialogue</c> declares no project
+    /// references and <c>Aer.Adapters</c> references it, so vendor knowledge cannot travel in that
+    /// direction — and Architecture Rule 2 says it should not. So the gating happens HERE, on the
+    /// authored config, and the worker reads a config whose participants are already gated.
+    /// </para>
+    /// <para>
+    /// Returns the original path untouched when nothing needed rewriting, so a config of stub
+    /// participants (every test in this repo, and any local script) still runs with no AER-owned copy
+    /// written for it.
+    /// </para>
+    /// </remarks>
+    private static string GateParticipants(string configPath, PermissionGrant? grant)
+    {
+        if (!File.Exists(configPath))
+        {
+            // Not this method's error to report. The worker opens the same path moments later and
+            // says so far better, naming the file and what it was resolved from.
+            return configPath;
+        }
+
+        var config = DialogueWorkerConfigParser.Parse(File.ReadAllText(configPath));
+        var gated = config.Participants.Select(participant => Gate(participant, grant)).ToList();
+        if (gated.SequenceEqual(config.Participants))
+        {
+            return configPath;
+        }
+
+        var resolved = config with { Participants = gated };
+        var json = JsonSerializer.Serialize(resolved);
+
+        // Named from the content it holds, so two rooms gating the same config share one file and a
+        // changed authored config never reads a stale gated one. Written through the same atomic
+        // writer as the other launch configs, into the same AER-owned root -- the operator's own
+        // directory is not somewhere AER writes (#533).
+        var name = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(json)))[..16];
+        var path = Path.Combine(AerPaths.WorkerLaunchConfig, "dialogue-gated", $"{name}.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        AtomicLaunchConfigWriter.Write(path, json);
+        return path;
+    }
+
+    /// <summary>
+    /// One participant's gated invocation, or a refusal when it names a vendor CLI AER cannot reach.
+    /// </summary>
+    private static DialogueParticipant Gate(DialogueParticipant participant, PermissionGrant? grant)
+    {
+        if (VendorGate.For(participant.Vendor, grant) is { } gate)
+        {
+            return participant with
+            {
+                Args = [.. participant.Args, .. gate.Args],
+                Environment = gate.Environment,
+            };
+        }
+
+        // An unrecognised Vendor is ordinarily a stub or a local script and is left alone. It stops
+        // being ordinary when the Command is a real vendor CLI: that combination is the one shape
+        // that reaches claude or agy with no gate, and relabelling the vendor is all it would take.
+        var command = Path.GetFileNameWithoutExtension(participant.Command);
+        if (GatedVendorCommands.Contains(command, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new DialogueWorkerConfigException(
+                $"Participant '{participant.Role}' runs '{participant.Command}' but declares Vendor "
+                + $"'{participant.Vendor}', which AER has no permission gate for — so it would reach a "
+                + "vendor CLI with none of the tool restrictions the room grants.\n\n"
+                + $"Set Vendor to one of: {string.Join(", ", DialogueParticipantPresets.KnownVendors)}. "
+                + "AER then builds the invocation, and the gate arrives with it — you do not need to "
+                + "write the vendor's flags yourself.");
+        }
+
+        return participant;
     }
 
     /// <summary>
