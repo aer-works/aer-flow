@@ -137,12 +137,12 @@ mcp	seps__2148-contributor-ladder	27182	2	15	PENDING-DEPTH
 mcp	seps__2243-http-standardization	46516	2	30	PENDING-DEPTH
 mcp	seps__2663-tasks-extension	55070	2	18	PENDING-DEPTH
 claude	claude-platform-on-aws	18692	3	34	SCAN-ONLY
+claude	cli-help	187305	1	356	SCAN-ONLY
 claude	common-workflows	18533	1	27	SCAN-ONLY
 mcp	docs__develop__build-client	80021	1	92	SCAN-ONLY
 agy	cli__subagents	4973	1	26	SCAN-ONLY
 claude	advisor	16021	1	25	SCAN-ONLY
 claude	agent-sdk__hosting	23109	1	71	SCAN-ONLY
-claude	cli-help	184991	1	351	SCAN-ONLY
 claude	costs	29678	1	95	SCAN-ONLY
 claude	deep-links	14835	2	10	SCAN-ONLY
 claude	prompt-library	56216	1	24	SCAN-ONLY
@@ -176,6 +176,7 @@ claude	whats-new__2026-w22	7321	1	10	SCAN-ONLY
 mcp	specification__2025-11-25__architecture__index	5946	1	7	SCAN-ONLY
 mcp	specification__2025-11-25__basic__lifecycle	9684	2	15	SCAN-ONLY
 mcp	specification__2025-11-25__basic__utilities__cancellation	2921	2	6	SCAN-ONLY
+agy	cli-help	2280	1	14	SCAN-ONLY
 agy	sdk__overview	3394	1	6	SCAN-ONLY
 claude	mobile	8510	1	14	SCAN-ONLY
 claude	plugin-dependencies	21370	1	17	SCAN-ONLY
@@ -185,7 +186,6 @@ mcp	seps__2577-deprecate-roots-sampling-and-logging	14744	1	9	SCAN-ONLY
 mcp	specification__2025-11-25__basic__transports	16189	1	18	SCAN-ONLY
 mcp	specification__2025-11-25__client__sampling	17943	1	23	SCAN-ONLY
 agy	agent-settings	961	2	6	SCAN-ONLY
-agy	cli-help	2005	1	8	SCAN-ONLY
 agy	cli__commands__permissions	3557	1	28	SCAN-ONLY
 agy	cli__sandbox	2667	1	14	SCAN-ONLY
 agy	ide__implementation-plan	1562	1	6	SCAN-ONLY
@@ -245,6 +245,7 @@ agy	features	4121	0	9	SCAN-ONLY
 agy	firebase-studio-migration	6251	0	2	SCAN-ONLY
 agy	getting-started	2855	0	5	SCAN-ONLY
 agy	home	7146	0	0	NO-SIGNAL
+agy	hooks-embedded	10738	0	33	SCAN-ONLY
 agy	hooks	13687	0	72	SCAN-ONLY
 agy	ide__agent-side-panel	512	0	1	SCAN-ONLY
 agy	ide__browser-recordings	527	0	2	SCAN-ONLY
@@ -381,4 +382,3 @@ mcp	specification__2025-11-25__server__tools	14058	0	30	SCAN-ONLY
 mcp	specification__2025-11-25__server__utilities__completion	5042	0	1	SCAN-ONLY
 mcp	specification__2025-11-25__server__utilities__logging	4004	0	3	SCAN-ONLY
 mcp	specification__2025-11-25__server__utilities__pagination	2598	0	1	SCAN-ONLY
-agy	hooks-embedded	11068	0	95	PENDING-DEPTH

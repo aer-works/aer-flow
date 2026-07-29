@@ -578,9 +578,10 @@ a **stronger** always-fires guarantee than anything claude documents, if it hold
 they load from `<workspace>/.agents/hooks.json` and from `~/.gemini/config/hooks.json`, fire
 `PreToolUse`, and enforce `deny`.
 
-**That is a fact about agy's mechanism, and for eight months it was read as a fact about AER's gate.
-It is not** — see the section below. The sentence that used to end this paragraph, *"The gate is
-symmetric across vendors"*, is true of what the two vendors offer and was false of what AER shipped.
+**That is a fact about agy's mechanism, and from the day #603 shipped AER's gate it was read as a
+fact about that gate. It is not** — see the section below. The sentence that used to end this
+paragraph, *"The gate is symmetric across vendors"*, is true of what the two vendors offer and was
+false of what AER shipped.
 
 ### The hook spec is inside the binary, and it settles the command-string question (#710)
 

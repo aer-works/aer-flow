@@ -177,7 +177,9 @@ is enforced, not merely displayed.
   is the only mechanism covering vendor tools, exit-2 blocks even against an allow rule, and it is
   now mandatory on every spawned worker. Gaps: `agy` has no deny-list flag, so
   `GeminiWorkerAdapter` fails closed by throwing `PermissionGrantUnsupportedException` — correct per
-  decision 0004, and **untested**; and the end-to-end refusal has never been run live.
+  decision 0004, and **untested**; the end-to-end refusal has never been run live; and the agy hook
+  command is fixed and measured **on Windows only** — the Unix form is read from `sh`'s grammar, not
+  from a run, because no Unix host has measured it.
   *This line said "the hook is not yet shipped" long after #554 shipped it, and the tree elsewhere
   said it was confirmed working. Both were wrong in opposite directions, and #710 measured the
   truth: it shipped, and on Windows it never started, because agy runs the command through `cmd /c`

@@ -226,8 +226,9 @@ public static class AgyHookCheckCommand
                 return AllowJson;
             }
 
-            // Two DIFFERENT failures, and reporting them as one is what made #708 take two months
-            // to notice. "Your target is outside the outbox" is actionable. "Your target is outside
+            // Two DIFFERENT failures, and reporting them as one is why #708 needed a dedicated
+            // audit pass to notice rather than the deny report pointing straight at itself.
+            // "Your target is outside the outbox" is actionable. "Your target is outside
             // the outbox" when no target was ever read sends the reader to inspect their outbox
             // configuration, which is fine, and their write path, which is fine, while the real
             // cause is that this gate does not know which argument of this tool carries a path.
