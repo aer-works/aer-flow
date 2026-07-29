@@ -2111,12 +2111,22 @@ def _agy_hook_metacharacter_path():
                                cwd=wd,
                                extra_env={"AER_HOOK_DENIED_TOOLS":
                                           AGY_DENIED_TOOLS_FOR_A_SHELL_WITHHELD_GRANT})
-            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
-            # No tee'd log to count: the real handler writes only its verdict, and wrapping it to
-            # get one would put a shell back in front of it -- the exact substitution that made this
-            # check meaningless before. `ran` alone carries the signal, and its polarity is the same:
-            # the handler denies `run_command`, so a version string means the gate did not stop it.
-            return (0 if ran else 1), ran
+            blob = out + err
+            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", blob))
+
+            # TWO positive signals, never "absence of a version string". There is no tee'd log here
+            # -- wrapping the handler to get one would put a shell back in front of it, the exact
+            # substitution that made this check meaningless -- so the block has to be observed
+            # directly, and it is: the real handler's reason for a withheld tool is distinctive, and
+            # agy surfaces a consumed deny's reason in its own output.
+            #
+            # Reading `not ran` as "blocked" would be the silent-green failure this check exists to
+            # end: a run where the model simply made NO tool call produces no version string either,
+            # and would score exactly like a successful gate. `fired` counts only the observed deny,
+            # so that run scores (0, False) -- neither signal -- which is what
+            # arm_until_a_tool_call retries rather than reports.
+            denied = "withheld by this session" in blob
+            return (1 if denied else 0), ran
         finally:
             shutil.rmtree(parent, ignore_errors=True)
 
@@ -2135,10 +2145,24 @@ def _agy_hook_metacharacter_path():
                 return f, r
         return 0, False
 
-    # `ran` is the signal in every arm: the handler denies `run_command`, so a version string in
-    # agy's output means the gate did not stop it. `blocked` reads better than `not ran` below.
+    # `ran` is the load-bearing signal, and the discrimination comes from the CONTRAST between arms
+    # rather than from any one arm's silence.
+    #
+    # On its own, "no version string" is ambiguous -- the gate blocked the call, or the model simply
+    # never made one -- and reading the second as the first would be the silent green this check
+    # exists to end. What removes the ambiguity is that the arms expected to FAIL do run the command:
+    # if a quoted form executed `node --version` in this same scenario, the model plainly does reach
+    # for the tool, so the shipped form's silence is a block and not an absence. If nothing ran
+    # anywhere, nothing was exercised, and the verdict below says so instead of passing.
+    #
+    # A deny observed in agy's own output corroborates it when present, but is not required: whether
+    # the model echoes the reason is its choice, and resting the check on that would make it flaky in
+    # the false-green direction.
+    results = {}
+
     def blocked(shape, form):
-        _, ran = arm_until_a_tool_call(shape, form)
+        denied, ran = arm_until_a_tool_call(shape, form)
+        results[(shape, form)] = (denied, ran)
         return not ran
 
     # The three vendor facts this check exists to pin, each stated as an expectation so a change in
@@ -2150,7 +2174,16 @@ def _agy_hook_metacharacter_path():
     double_plain = blocked("plain", "double")
 
     note = (f"blocked? bare/plain={bare_plain}, bare/spaced={bare_spaced}, "
-            f"single-quoted/plain={single_plain}, double-quoted/plain={double_plain}")
+            f"single-quoted/plain={single_plain}, double-quoted/plain={double_plain}"
+            + " | deny seen in agy's output for: "
+            + (", ".join(f"{s}/{f}" for (s, f), (d, _) in results.items() if d) or "none"))
+
+    # 0. Nothing ran anywhere -> the scenario never exercised the tool, so every "blocked" below is
+    #    an absence rather than a block and none of it means anything.
+    if not any(ran for _, ran in results.values()):
+        return INCONCLUSIVE, ("no arm ran the denied command even after retries, so the model never "
+                              "reached for the tool and no arm's silence can be read as a block. "
+                              f"{note}")
 
     # 1. The shipped shape must gate. Everything else here is context for this line.
     if not bare_plain:
