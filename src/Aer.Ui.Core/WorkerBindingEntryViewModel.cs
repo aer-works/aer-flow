@@ -487,10 +487,9 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
                         return false;
                     }
 
-                    // #645: the engine refuses this in WorkerBindingResolver.Resolve, which is the
-                    // right choke point for EXECUTION and the wrong one for learning about it -- a
-                    // bind-time exception on a workflow already committed to. Same rule, asked of the
-                    // same object, one layer earlier.
+                    // #645: same rule as the engine's, asked of the same object one layer earlier.
+                    // Why it lives on PermissionGrant rather than in the resolver is recorded once,
+                    // on PermissionGrant.CategoriesDefeatedByTheShell.
                     if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
                     {
                         entry = null;

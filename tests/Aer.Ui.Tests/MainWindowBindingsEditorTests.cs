@@ -570,8 +570,8 @@ public class MainWindowBindingsEditorTests
     }
 
     /// <summary>
-    /// #657. The old wording — "no structured permission builder support, use Advanced instead" —
-    /// read as a note about the EDITOR, not about the ticked values being ignored at dispatch.
+    /// #657. What the old wording was and why it misled is recorded once, beside the string itself
+    /// in <c>WorkerBindingEntryViewModel</c>'s <c>PermissionGrantGapWarning</c> assignment.
     /// </summary>
     [AvaloniaFact]
     public void An_adapter_that_ignores_grants_says_so_rather_than_blaming_the_builder()
