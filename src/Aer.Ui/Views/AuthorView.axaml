@@ -103,8 +103,11 @@
                two guidance lines by construction, so the loudest color in the app was the very
                first thing a new user saw, and it stayed that loud as more lines stacked up while
                filling the form in normally. Secondary/caption styling with a plain dash marker
-               reads as gentle in-progress hints, matching what these actually are (Validate() has
-               no severity tier — they're all the same kind of "not done yet" fact). -->
+               reads as gentle in-progress hints, which is what the lines were then.
+               #645 broke that premise: Validate() now emits one line that is not a "not done yet"
+               fact but a refusal — it does not resolve by continuing to fill the form in. The
+               uniformity is knowingly kept here rather than quietly reversed, because the loudness
+               it avoids is the owner feedback above. #714 carries the measurement and the decision. -->
           <ItemsControl x:Name="GuidanceList" ItemsSource="{Binding NewWorkflow.GuidanceMessages}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="x:String">
