@@ -517,9 +517,10 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// mandatory gate has never fired on a Windows agy worker.
     /// </para>
     /// <para>
-    /// <b>On Windows the token must be bare, and therefore free of spaces.</b> Three constraints,
-    /// each measured end to end through agy against an install directory containing a space, and each
-    /// with a control that failed:
+    /// <b>On Windows the token must be bare, and therefore free of anything <c>cmd</c> splits on.</b>
+    /// Three constraints decide the shape. The first two were measured end to end through agy against
+    /// an install directory containing a space, each with a control that failed; the third is a .NET
+    /// assembly-resolution fact, measured by launching <c>dotnet</c> directly:
     /// <list type="number">
     /// <item>Quoting never helps. Single and double quotes both leave the path unresolved.</item>
     /// <item>A bare path containing a space resolves when it is the whole command and fails as soon
@@ -534,9 +535,19 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// does not resolve even with the file sitting in that directory.
     /// </para>
     /// <para>
-    /// <b>Non-Windows keeps single quotes</b>, which is what <c>sh -c</c> strips, and where a space
-    /// needs no special handling. The 8.3 step is a Windows mechanism and is scoped to Windows rather
-    /// than applied as a general rule.
+    /// Only the <b>space</b> was measured through agy. The other characters
+    /// <see cref="CmdSplitsBareTokensOn"/> guards are read from <c>cmd</c>'s grammar, not measured:
+    /// <c>&amp;</c> and <c>^</c> are operators and <c>,</c> <c>;</c> <c>=</c> are argument delimiters,
+    /// all legal in a Windows directory name, and any of them mid-token turns the command into one
+    /// that never starts — which on this vendor is an <em>allow</em>. Routing them through the same
+    /// 8.3 step errs fail-closed: at worst a path that might have worked is shortened or refused
+    /// loudly, never silently emitted broken.
+    /// </para>
+    /// <para>
+    /// <b>Non-Windows keeps single quotes</b>, which is what <c>sh -c</c> strips by POSIX grammar,
+    /// and where a space then needs no special handling. Read from the embedded spec and from POSIX;
+    /// not yet measured through agy on a Unix host — no such host has run these probes. The 8.3 step
+    /// is a Windows mechanism and is scoped to Windows rather than applied as a general rule.
     /// </para>
     /// <para>
     /// <b>Why this throws rather than falling back.</b> 8.3 name generation can be disabled per
@@ -546,7 +557,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// happens before any worker is dispatched.
     /// </para>
     /// </remarks>
-    private static string HookAssemblyToken(string hookAssemblyPath)
+    internal static string HookAssemblyToken(string hookAssemblyPath)
     {
         // Forward slashes throughout: the command is shell-parsed, and a Windows path's `\U`, `\t`
         // and friends are escape sequences to `sh`.
@@ -557,28 +568,40 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             return $"'{path}'";
         }
 
-        if (!path.Contains(' ', StringComparison.Ordinal))
+        if (path.IndexOfAny(CmdSplitsBareTokensOn) < 0)
         {
             return path;
         }
 
         var shortened = ShortDirectoryPath(hookAssemblyPath);
-        if (shortened is null || shortened.Contains(' ', StringComparison.Ordinal))
+        if (shortened is null || shortened.IndexOfAny(CmdSplitsBareTokensOn) >= 0)
         {
             throw new InvalidOperationException(
                 $"Cannot write the mandatory PreToolUse hook (decision 0029): '{hookAssemblyPath}' " +
-                "contains a space, and agy runs the hook command through `cmd /c`, which resolves " +
-                "neither a quoted path nor a bare one containing a space. The usual remedy -- the " +
-                "8.3 short name of the containing directory -- is unavailable here, which means 8.3 " +
-                "name generation is disabled on that volume (`fsutil 8dot3name query <drive>`). " +
-                "AER will not emit a hook command it has measured cannot start: on agy a hook that " +
-                "cannot start is read as an ALLOW (agy.hook-malformed-stdout-fails-open), so a " +
-                "silent fallback would be an ungated worker. Install AER under a path with no " +
-                "space, or re-enable 8.3 name generation on that volume.");
+                "contains a character `cmd` splits a bare token on (a space, or one of `& ^ , ; =`), " +
+                "and agy runs the hook command through `cmd /c`, which resolves neither a quoted " +
+                "path nor a bare one containing such a character. The usual remedy -- the 8.3 short " +
+                "name of the containing directory -- did not produce a clean name here: either 8.3 " +
+                "name generation is disabled on that volume (`fsutil 8dot3name query <drive>`), or " +
+                "the short form itself still carries the character. AER will not emit a hook command " +
+                "it has measured cannot start: on agy a hook that cannot start is read as an ALLOW " +
+                "(agy.hook-malformed-stdout-fails-open), so a silent fallback would be an ungated " +
+                "worker. Install AER under a plain path, or re-enable 8.3 name generation on that " +
+                "volume.");
         }
 
         return shortened.Replace('\\', '/');
     }
+
+    /// <summary>
+    /// Characters that break a bare <c>cmd</c> token mid-path: the space (measured through agy — see
+    /// <see cref="HookAssemblyToken"/>), and cmd's operators and argument delimiters that are legal
+    /// in Windows directory names (read from cmd's grammar, not measured). Deliberately not a wider
+    /// net: every character here forces the 8.3 detour and, when the short form still carries it, a
+    /// hard refusal — so listing a character that is actually harmless would turn a working install
+    /// into a refused one.
+    /// </summary>
+    private static readonly char[] CmdSplitsBareTokensOn = [' ', '&', '^', ',', ';', '='];
 
     /// <summary>
     /// The path with its directory replaced by that directory's 8.3 short form, keeping the real file
