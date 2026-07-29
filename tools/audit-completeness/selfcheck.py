@@ -569,7 +569,7 @@ def _shapes_discriminate():
                    if blind else "; no catalogue entry is digit-free, so the walk's blind spot is empty")
 
 
-@check("a PR body that says it does not close an issue is caught before it closes one")
+@check("a PR body closes only the issues it declares, whatever the grammar around a keyword")
 def _negated_close_lint():
     """Both must-fire fixtures are REAL BODIES, verbatim from the merges that auto-closed an issue.
 
@@ -583,19 +583,26 @@ def _negated_close_lint():
     must_fire = [
         ("#692's body, verbatim", "**Does not close #532 or #550** - it is the measurement"),
         ("#684's body, verbatim", "filed, not fixed: #688"),
+        # #694's, and the reason this lint keys on POSITION rather than on negation: past tense,
+        # about a different PR, inside a table cell -- it passed the negation-only version while
+        # closing #532 for the second time, in the PR that added the lint.
+        ("#694's body, verbatim", "| #692 | `Does not close` | closed #532 |"),
         ("contraction", "The root cause isn't fixed: #99."),
         ("uppercase", "This does NOT resolve #123."),
         ("never", "Found but never closed #77"),
+        ("descriptive, no negation", "The crash was fixed #690 in an earlier commit."),
+        ("second one on a non-declaration line", "It changes nothing. Closes #12."),
     ]
     must_not_fire = [
         ("the convention itself", "Closes #675. Closes #676."),
         ("the safe rewording", "#532 remains open - see the comment thread."),
         ("the other safe rewording", "filed separately: #691"),
         ("a bare reference", "Related: #504, 0023, #479."),
-        # The negation has to reach the keyword. A sentence boundary ends it, and `[^.\n#]` is what
-        # stops the match walking across one -- without that, any body containing both a negation
-        # and a later legitimate `Closes #n` would be refused.
-        ("negation ends at the stop", "It does not change behaviour. Closes #12."),
+        # A declaration line is exempt IN FULL, second occurrence included -- `Closes #675. Closes
+        # #676.` is one deliberate act, and flagging its tail would refuse the repo's own convention.
+        # The mirror case, a `Closes #n` buried mid-line, is in must_fire: under the position rule it
+        # is flagged, and correctly, since a close that is meant belongs on a line of its own.
+        ("bold declaration", "**Closes #12.** The rest of the body follows."),
         ("no keyword at all", "Not the same as #345, which is a different concern."),
         # GitHub links a keyword only when it sits immediately before the reference, so this closes
         # nothing and the lint must agree. Firing here would teach authors to reword around a
