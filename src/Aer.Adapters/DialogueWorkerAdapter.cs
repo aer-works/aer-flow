@@ -150,9 +150,30 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
     {
         if (VendorGate.For(participant.Vendor, grant) is { } gate)
         {
-            return participant with
+            // The invocation is AER's to build, not the author's. A declared vendor that could still
+            // run an arbitrary command would let AER install claude's gate onto a process that never
+            // honours it — reporting an enforcement it does not have, which is worse than a known gap.
+            var preset = DialogueParticipantPresets.For(
+                participant.Vendor, participant.Role, participant.Preamble, participant.Model);
+
+            if (!string.Equals(participant.Command, preset.Command, StringComparison.OrdinalIgnoreCase))
             {
-                Args = [.. participant.Args, .. gate.Args],
+                throw new DialogueWorkerConfigException(
+                    $"Participant '{participant.Role}' declares Vendor '{participant.Vendor}' but runs "
+                    + $"'{participant.Command}'. A declared vendor means AER builds the invocation, so the "
+                    + $"only command it can run is '{preset.Command}' — otherwise AER would apply "
+                    + $"{participant.Vendor}'s permission gate to a process that ignores it.\n\n"
+                    + "Either drop Command so AER builds it, or, if this is a stub or a local script, "
+                    + "give it a Vendor of its own rather than one of "
+                    + $"{string.Join(", ", DialogueParticipantPresets.KnownVendors)} — an unrecognised "
+                    + "vendor runs exactly as authored.");
+            }
+
+            // Args come from the preset too: an authored `--bare` or `--mode yolo` would sit alongside
+            // the gate and undo it, and this worker is not the place that knows which flags do that.
+            return preset with
+            {
+                Args = [.. preset.Args, .. gate.Args],
                 Environment = gate.Environment,
             };
         }

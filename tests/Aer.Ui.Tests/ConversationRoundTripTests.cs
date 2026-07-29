@@ -67,7 +67,7 @@ public class ConversationRoundTripTests
             var headers = turnPanels
                 .Select(panel => panel.Children.OfType<TextBlock>().First().Text)
                 .ToList();
-            Assert.Equal(["1 · initiator (claude)", "2 · responder (gemini)"], headers);
+            Assert.Equal(["1 · initiator (stub-a)", "2 · responder (stub-b)"], headers);
 
             var texts = turnPanels
                 .Select(panel => panel.Children.OfType<TextBlock>().Last().Text!)
@@ -122,7 +122,7 @@ public class ConversationRoundTripTests
             // malformed marker — the failing turn was never appended (M17 Phase 3's decision).
             var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
             var turnPanel = (StackPanel)Assert.Single(conversationPanel.Children.OfType<Border>()).Child!;
-            Assert.Equal("1 · initiator (claude)", turnPanel.Children.OfType<TextBlock>().First().Text);
+            Assert.Equal("1 · initiator (stub-a)", turnPanel.Children.OfType<TextBlock>().First().Text);
             Assert.DoesNotContain(conversationPanel.Children.OfType<TextBlock>(),
                 block => block.Text!.Contains("not a schema-valid turn"));
         }
@@ -154,8 +154,10 @@ public class ConversationRoundTripTests
             StopSentinel: null,
             Participants:
             [
-                EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for.", fails: false),
-                EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against.", responderFails),
+                // Two distinct stub labels, so the projection still renders alternating speakers
+                // without either script claiming a vendor it is not (#703).
+                EchoingParticipant(scriptDirectory, "initiator", "stub-a", "You argue for.", fails: false),
+                EchoingParticipant(scriptDirectory, "responder", "stub-b", "You argue against.", responderFails),
             ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");

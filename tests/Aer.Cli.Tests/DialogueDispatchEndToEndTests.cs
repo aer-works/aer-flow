@@ -35,8 +35,7 @@ public class DialogueDispatchEndToEndTests
             var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
-            var stepState = Assert.Single(finalState.Steps);
-            Assert.Equal(StepStatus.Succeeded, stepState.Status);
+            var stepState = AssertStepSucceeded(finalState);
 
             var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
 
@@ -83,8 +82,7 @@ public class DialogueDispatchEndToEndTests
                 options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
-            var stepState = Assert.Single(finalState.Steps);
-            Assert.Equal(StepStatus.Succeeded, stepState.Status);
+            var stepState = AssertStepSucceeded(finalState);
 
             var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
 
@@ -133,7 +131,7 @@ public class DialogueDispatchEndToEndTests
                 new RunOptions(workflowFilePath, originalBindingsFilePath, firstTaskDirectory), WorkerAdapterRegistry.Default,
                 cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, firstState.Status);
-            Assert.Equal(StepStatus.Succeeded, Assert.Single(firstState.Steps).Status);
+            AssertStepSucceeded(firstState);
 
             // Only bindings.json and its sidecar move — never the scripts, never the workflow file.
             File.Copy(originalBindingsFilePath, Path.Combine(copiedDirectory, "bindings.json"));
@@ -147,13 +145,47 @@ public class DialogueDispatchEndToEndTests
                 cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, secondState.Status);
-            Assert.Equal(StepStatus.Succeeded, Assert.Single(secondState.Steps).Status);
+            AssertStepSucceeded(secondState);
         }
         finally
         {
             DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
+
+    /// <summary>
+    /// Asserts the single step succeeded, and on failure says WHY (#702).
+    /// </summary>
+    /// <remarks>
+    /// A bare <c>Assert.Equal(Succeeded, status)</c> discards <see cref="StepState.LatestFailureClassification"/>
+    /// and <see cref="StepState.LatestFailureReason"/>, both of which are populated on this path —
+    /// <c>CoreDispatcher</c> maps an expiry to <c>CoreExitReason.TimedOut</c> and returns the captured
+    /// stderr tail with it. These tests reproduce on no developer machine and on only one CI platform,
+    /// so the CI report is the entire evidence available, and it used to read "Expected: Succeeded,
+    /// Actual: Failed" and nothing else.
+    /// </remarks>
+    private static StepState AssertStepSucceeded(FlowState state)
+    {
+        var step = Assert.Single(state.Steps);
+        Assert.True(
+            step.Status == StepStatus.Succeeded,
+            $"Expected the step to have Succeeded but it was {step.Status}. "
+            + $"Classification: {step.LatestFailureClassification?.ToString() ?? "(none recorded)"}. "
+            + $"Reason: {step.LatestFailureReason ?? "(none recorded)"}.");
+
+        return step;
+    }
+
+
+    // Proving the gate reaches a real vendor PROCESS is the live-vendor instrument's job (#550), not
+    // this file's. It briefly lived here as a stub declaring Vendor "claude" while running powershell,
+    // which worked only because a stub could claim a vendor it was not — the exact shape #703 now
+    // refuses. A claim about what a vendor CLI receives is verified against the vendor CLI; a stub
+    // asserting it is the same instrument twice.
+    //
+    // What this file still proves is unchanged and worth keeping separate: that a dialogue step runs
+    // to terminal through the real engine, adapter and worker binary.
+
 
     /// <summary>Same shape as <see cref="WriteDialogueBindingsAsync"/>, except the entry's PromptTemplate is a bare relative file name instead of an absolute path — the portable shape M23 Phase 3's fix resolves.</summary>
     private static async Task<string> WriteRelativeDialogueBindingsAsync(string directory)
@@ -166,8 +198,8 @@ public class DialogueDispatchEndToEndTests
             StopSentinel: null,
             Participants:
             [
-                EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for."),
-                EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against."),
+                EchoingParticipant(scriptDirectory, "initiator", "stub", "You argue for."),
+                EchoingParticipant(scriptDirectory, "responder", "stub", "You argue against."),
             ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
@@ -197,9 +229,9 @@ public class DialogueDispatchEndToEndTests
             StopSentinel: null,
             Participants:
             [
-                EchoingParticipant(scriptDirectory, "architect", "claude", "You design."),
-                EchoingParticipant(scriptDirectory, "critic", "gemini", "You critique."),
-                EchoingParticipant(scriptDirectory, "arbiter", "claude", "You decide."),
+                EchoingParticipant(scriptDirectory, "architect", "stub", "You design."),
+                EchoingParticipant(scriptDirectory, "critic", "stub", "You critique."),
+                EchoingParticipant(scriptDirectory, "arbiter", "stub", "You decide."),
             ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");
@@ -241,8 +273,8 @@ public class DialogueDispatchEndToEndTests
             StopSentinel: null,
             Participants:
             [
-                EchoingParticipant(scriptDirectory, "initiator", "claude", "You argue for."),
-                EchoingParticipant(scriptDirectory, "responder", "gemini", "You argue against."),
+                EchoingParticipant(scriptDirectory, "initiator", "stub", "You argue for."),
+                EchoingParticipant(scriptDirectory, "responder", "stub", "You argue against."),
             ]);
 
         var dialogueConfigPath = Path.Combine(directory, "dialogue-config.json");

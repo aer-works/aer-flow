@@ -68,8 +68,29 @@ public class DialogueParticipantGatingTests : IDisposable
         Assert.NotNull(participant.Environment);
         Assert.Equal("0", participant.Environment[ClaudeWorkerAdapter.SimpleModeVariable]);
 
-        // The authored args survive; the gate is added, never a replacement for what was written.
-        Assert.Contains("--allowedTools", participant.Args);
+        // Args come from the preset, NOT from the config. An authored --bare or --mode yolo would sit
+        // beside the gate and undo it, so a declared vendor means AER owns the whole invocation.
+        var preset = DialogueParticipantPresets.For("claude", "initiator", "You argue for.", model: null);
+        Assert.Equal(preset.Args, participant.Args.Take(preset.Args.Count));
+    }
+
+    /// <summary>
+    /// The other half of the same rule: a declared vendor may not run an arbitrary command. Without
+    /// this, AER would install claude's gate onto a process that ignores it and report an enforcement
+    /// it does not have — worse than a known gap, because it reads as covered.
+    /// </summary>
+    [Fact]
+    public void Declaring_a_vendor_while_running_something_else_is_refused()
+    {
+        var authored = WriteConfig(new DialogueParticipant(
+            "initiator", "claude", Model: null, "You argue for.", "powershell",
+            ["-File", "pretend.ps1", "{PROMPT}"]));
+
+        var error = Assert.Throws<DialogueWorkerConfigException>(
+            () => new DialogueWorkerAdapter().Resolve(new WorkerInvocation(authored), DebateContract));
+
+        Assert.Contains("the only command it can run is 'claude'", error.Message, StringComparison.Ordinal);
+        Assert.Contains("give it a Vendor of its own", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
