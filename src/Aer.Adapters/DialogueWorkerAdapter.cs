@@ -50,14 +50,16 @@ namespace Aer.Adapters;
 /// here would be a redundant (and differently-shaped) duplicate, not a gap.
 /// </para>
 /// <para>
-/// <b>Only <c>AER_OUTPUT_DIR</c> needs shell-expanded env-var interpolation.</b> The config path is
-/// static per-role config (see above), so, unlike <see cref="ClaudeWorkerAdapter"/>/
-/// <see cref="GeminiWorkerAdapter"/>, this adapter needs neither stdin redirection (the dialogue
-/// executable never reads <c>Console.In</c> — its <c>Program.cs</c> is argument-driven only) nor
-/// Windows' newline-collapsing (its two arguments are never multi-line). The shell wrap exists solely
-/// to expand <c>$AER_OUTPUT_DIR</c>/<c>%AER_OUTPUT_DIR%</c> into the real, execution-specific
-/// directory at spawn time — the same "resolved once per binding, expanded per dispatch" split every
-/// other adapter in this file uses. Windows tokens are still never pre-quoted into one string, for the
+/// <b>The shell wrap's original justification is retired (#713's review).</b> This paragraph used
+/// to say the wrap exists solely so the shell expands <c>$AER_OUTPUT_DIR</c>/<c>%AER_OUTPUT_DIR%</c>
+/// at spawn time — but <c>CoreDispatcher</c> expands every <c>Args</c> placeholder <em>before</em>
+/// the process is created (its <c>VariableToken</c> is the grammar's one home), so the shell never
+/// sees one and expands nothing. The wrap is kept because removing it is a spawn-shape change this
+/// adapter's tests have never run without, not because it does anything — #716. The rest holds:
+/// unlike <see cref="ClaudeWorkerAdapter"/>/<see cref="GeminiWorkerAdapter"/>, this adapter needs
+/// neither stdin redirection (the dialogue executable never reads <c>Console.In</c> — its
+/// <c>Program.cs</c> is argument-driven only) nor Windows' newline-collapsing (its two arguments
+/// are never multi-line), and Windows tokens are still never pre-quoted into one string, for the
 /// identical reason <see cref="ClaudeWorkerAdapter"/>'s remarks record.
 /// </para>
 /// </remarks>
