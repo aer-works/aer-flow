@@ -42,6 +42,7 @@ Every check spends real subscription usage, so this NEVER runs in CI -- same rul
 from __future__ import annotations
 
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -50,6 +51,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SERVERS = os.path.join(HERE, "servers")
@@ -1982,8 +1984,19 @@ def _agy_deny_under_accept_edits():
         finally:
             shutil.rmtree(wd, ignore_errors=True)
 
-    skip_ran, skip_fired = arm(["--dangerously-skip-permissions"])
-    ae_ran, ae_fired = arm(["--mode", "accept-edits"])
+    def arm_until_a_signal(mode_args, attempts=3):
+        """fired=0 with nothing run is also what a run where the model never reached for the tool
+        looks like, and whether it does is a coin flip -- the sibling metacharacter check observed
+        per-run tool-call counts of zero. Retrying only the no-signal case keeps that coin flip
+        from being reported as a mode-scoped regression (rule `ae_fired == 0` below is a FAIL)."""
+        for _ in range(attempts):
+            ran, n = arm(mode_args)
+            if n or ran:
+                return ran, n
+        return False, 0
+
+    skip_ran, skip_fired = arm_until_a_signal(["--dangerously-skip-permissions"])
+    ae_ran, ae_fired = arm_until_a_signal(["--mode", "accept-edits"])
     note = (f"skip: fired={skip_fired} ran={skip_ran} | "
             f"accept-edits: fired={ae_fired} ran={ae_ran}")
 
@@ -2002,10 +2015,12 @@ def _agy_deny_under_accept_edits():
 
 
 @check("agy.hook-command-survives-a-metacharacter-in-its-path", "agy",
-       "agy runs a hook command through `cmd /c`/`sh -c`, so the BARE form GeminiWorkerAdapter "
-       "ships starts the real handler and blocks a denied call; a bare path containing a space "
-       "does not resolve once an argument follows it; and neither quoted form resolves at all. "
-       "Runs the shipped `dotnet <dll> agy-hook-check` command, not an `sh` stand-in",
+       "on Windows agy runs a hook command through `cmd /c`, so the bare form GeminiWorkerAdapter "
+       "ships -- read out of the hooks.json the real adapter writes, never restated here -- starts "
+       "the real handler and observably blocks a denied call; a bare path containing a space does "
+       "not resolve once an argument follows it; and neither quoted form resolves. Windows-scoped: "
+       "under `sh -c` the single-quoted rows are expected to INVERT, and no Unix host has measured "
+       "its table",
        sentinel=True)
 def _agy_hook_metacharacter_path():
     """#601 part 3, and the regression pin for #706. agy offers no exec form -- claude's hook ships
@@ -2017,34 +2032,35 @@ def _agy_hook_metacharacter_path():
     ungated and nothing says so. The `File.Exists` guard in the adapter checks the UNQUOTED path and
     therefore proves nothing about whether the assembled string can run. That is not hypothetical:
     it is #706, where a double-quoted path meant decision 0029's mandatory gate never fired on any
-    agy worker for two months while six agy hook checks passed.
+    agy worker -- from the day #603 shipped it -- while six agy hook checks passed. Two days on the
+    calendar, and it would have stayed dead indefinitely: nothing that existed could see it.
 
-    **The arms track what production ACTUALLY ships, and getting that wrong once already is why this
-    paragraph exists.** The first version of this check tested `bare` versus `double-quoted` -- and
-    was written in the same working tree that changed production to SINGLE quotes. So the check meant
-    to pin the #706 fix was pinning the broken form instead, and its prose asserted production shipped
-    double quotes after that had stopped being true. A reviewer caught it. The arms now are:
+    **The arms track what production ACTUALLY ships, and getting that wrong TWICE is why the shipped
+    form is now read out of the adapter's own hooks.json instead of written down here.** The first
+    version of this check tested `bare` versus `double-quoted` -- written in the same working tree
+    that changed production to SINGLE quotes, so the check meant to pin the #706 fix was pinning the
+    broken form instead. A reviewer caught it. The rewrite then described single quotes as "THE arm
+    that matters" -- in the same working tree that changed production to BARE (#710). A reviewer
+    caught that too, along with the fact that nothing tied any arm to the adapter: FORMS was a
+    literal, so a regression to the quoted form would have sailed past a check whose docstring calls
+    itself the regression pin. Now the check runs the real `GeminiWorkerAdapter.Resolve` via
+    Aer.GateProbe, reads the command out of the hooks.json it writes, FAILS if that command is no
+    longer the bare three-token shape, and derives every arm from it:
 
-    - `bare`            -- the control. Every pre-existing agy hook check in this file uses it, which
-                           is exactly why none of them caught #706.
-    - `single-quoted`   -- what `GeminiWorkerAdapter.BuildHooksJson` ships. THE arm that matters.
-    - `double-quoted`   -- #706's broken form, kept so the regression is pinned rather than described.
-                           Expected NOT to fire; if it starts firing, agy's parser changed and the
-                           choice of quote style should be re-measured rather than assumed still right.
+    - shipped/bare      -- production's own command string, path substituted. The arm that matters.
+    - shipped + a SPACE -- why the adapter 8.3-shortens a spaced directory; must stay dead or the
+                           shortening machinery has lost its reason.
+    - single-quoted     -- #706's "fix", retracted by #710. Expected dead under `cmd`.
+    - double-quoted     -- the original #706 defect. Expected dead under `cmd`.
 
-    Each runs against a plain path and against one containing a SPACE, because a space is why single
-    quotes were chosen over bare -- see `GeminiWorkerAdapter.BuildHooksJson` for where the handler's
-    path comes from and why spaces in it are ordinary. `$` and `%` are also covered: both are legal
-    path characters (a directory named `100%` is unremarkable) and both are expanded by some shells
-    inside some quote styles.
+    If a dead arm starts resolving, agy's parsing changed and the adapter's choice should be
+    re-measured rather than assumed still right. `$` and `%` were covered by an earlier version of
+    this check THROUGH `sh`, which made those results claims about `sh`; they have not been
+    re-measured through the real chain and are not claimed here. The name's "metacharacter" is the
+    space -- the one character measured to break the shipped shape.
 
     A sentinel: if agy changes which shell it uses, a path AER already ships could silently stop
     resolving, and per the fail-open above nothing would say so.
-
-    The bare arm is the control. Without it a non-firing arm is indistinguishable from a harness that
-    never worked -- and reading the second as the first is how this file's own
-    `gate.simple-mode-override-restores-the-hook` check once certified the opposite of what it
-    measured.
     """
     # THE COMMAND SHAPE, not an `sh` stand-in -- and this is the correction that matters most here.
     #
@@ -2059,20 +2075,57 @@ def _agy_hook_metacharacter_path():
     # `'C:/.../Aer.Cli.dll'` it cannot find. The gate never fired on Windows, and this check said the
     # opposite while passing.
     #
-    # The arms now use the real program-plus-argument shape: a bare program token (`dotnet`) with the
-    # assembly as an argument and `agy-hook-check` after it, which is what the adapter emits and where
-    # the whole difficulty lives -- a lone quoted path behaves differently from one followed by an
-    # argument. #710.
-    FORMS = {
-        "bare": "dotnet %s agy-hook-check",
-        "single": "dotnet '%s' agy-hook-check",
-        "double": 'dotnet "%s" agy-hook-check',
-    }
+    # Every expectation below is `cmd /c`'s. Under `sh -c` POSIX strips the single quotes, so the
+    # single-quoted arm is EXPECTED to resolve there and rule 3 would report agy's parser changed
+    # when nothing did. A Unix host needs its own measured table before this check can run on one.
+    if os.name != "nt":
+        return INCONCLUSIVE, ("this check's expected table was measured under `cmd /c` and inverts "
+                              "under `sh -c` (which strips single quotes by POSIX grammar); it is "
+                              "Windows-scoped until a Unix host measures its own table")
 
     # Now that the arms run the REAL handler, a stale binary makes them measure some past build --
     # which is #707 exactly, and it already once turned a correct fix into an apparent failure.
     if (failure := build_gate_probe()) is not None:
         return INCONCLUSIVE, failure
+
+    # The shipped command comes FROM production -- the hooks.json the real Resolve() writes -- not
+    # from a string in this file. This check was twice authored alongside the very change that made
+    # its hardcoded "shipped" arm stale (see the docstring), and a hardcoded form also cannot fail
+    # when the adapter regresses: the old literal would have kept passing against a
+    # BuildHooksJson that went back to quotes.
+    wd = tempfile.mkdtemp(prefix="v-agyship-")
+    try:
+        rc, out, err = run(["dotnet", "exec", GATE_PROBE, "gemini", "--prompt", "Say OK."], cwd=wd)
+        if rc != 0:
+            return INCONCLUSIVE, f"Aer.GateProbe failed rc={rc}: {(out + err)[-200:]}"
+        target = json.loads(out.strip().splitlines()[-1])
+        workspace = next(
+            (a for a in target["args"]
+             if a.replace("\\", "/").rstrip("/").endswith("/agy-workspace")), None)
+        if workspace is None:
+            return INCONCLUSIVE, "the resolved argv no longer carries an agy-workspace --add-dir; find where hooks.json moved"
+        with open(os.path.join(workspace, ".agents", "hooks.json"), encoding="utf-8") as f:
+            hook_config = json.load(f)
+        shipped_command = next(iter(hook_config.values()))["PreToolUse"][0]["hooks"][0]["command"]
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+
+    shape = re.fullmatch(r"(\S+) (\S+) (\S+)", shipped_command)
+    if shape is None or "'" in shipped_command or '"' in shipped_command:
+        return FAIL, ("the hook command GeminiWorkerAdapter writes is no longer the bare "
+                      f"three-token shape measured to start under `cmd /c`: {shipped_command!r}. "
+                      "A quote or a space here is #706/#710 again -- a command that never starts, "
+                      "which this vendor reads as an allow")
+
+    # Production's own string with the path substituted; the quoted arms are the same string with
+    # the dead quoting styles reintroduced, so all arms move together if the adapter's verb or
+    # program changes.
+    shipped_form = f"{shape.group(1)} %s {shape.group(3)}"
+    FORMS = {
+        "bare": shipped_form,
+        "single": shipped_form.replace("%s", "'%s'"),
+        "double": shipped_form.replace("%s", '"%s"'),
+    }
 
     def arm(dirname, form):
         """Returns (fired, ran). BOTH are needed, and using `fired` alone was a real defect here.
@@ -2106,6 +2159,7 @@ def _agy_hook_metacharacter_path():
             _agy_hook_json(wd, FORMS[form] % dll)
             # extra_env, not a whole environment: it is applied after this harness's own env strip,
             # so the check sets the one variable it is testing with and inherits nothing else.
+            since = time.time() - 1
             rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
                                 "--add-dir", wd, "--dangerously-skip-permissions"],
                                cwd=wd,
@@ -2116,16 +2170,18 @@ def _agy_hook_metacharacter_path():
 
             # TWO positive signals, never "absence of a version string". There is no tee'd log here
             # -- wrapping the handler to get one would put a shell back in front of it, the exact
-            # substitution that made this check meaningless -- so the block has to be observed
-            # directly, and it is: the real handler's reason for a withheld tool is distinctive, and
-            # agy surfaces a consumed deny's reason in its own output.
+            # substitution that made this check meaningless -- so a consumed deny is observed where
+            # agy itself records it: the brain transcript logs `tool call denied with reason` when a
+            # hook verdict is consumed (the mechanism that proved #710's fix in the first place),
+            # and the model sometimes also echoes the handler's distinctive reason in its output.
             #
             # Reading `not ran` as "blocked" would be the silent-green failure this check exists to
             # end: a run where the model simply made NO tool call produces no version string either,
             # and would score exactly like a successful gate. `fired` counts only the observed deny,
             # so that run scores (0, False) -- neither signal -- which is what
             # arm_until_a_tool_call retries rather than reports.
-            denied = "withheld by this session" in blob
+            denied = ("withheld by this session" in blob
+                      or _agy_brain_recorded_a_deny(since, os.path.basename(wd)))
             return (1 if denied else 0), ran
         finally:
             shutil.rmtree(parent, ignore_errors=True)
@@ -2145,19 +2201,21 @@ def _agy_hook_metacharacter_path():
                 return f, r
         return 0, False
 
-    # `ran` is the load-bearing signal, and the discrimination comes from the CONTRAST between arms
-    # rather than from any one arm's silence.
+    # The shipped arm must show a POSITIVE deny, never a silence read charitably.
     #
     # On its own, "no version string" is ambiguous -- the gate blocked the call, or the model simply
     # never made one -- and reading the second as the first would be the silent green this check
-    # exists to end. What removes the ambiguity is that the arms expected to FAIL do run the command:
-    # if a quoted form executed `node --version` in this same scenario, the model plainly does reach
-    # for the tool, so the shipped form's silence is a block and not an absence. If nothing ran
-    # anywhere, nothing was exercised, and the verdict below says so instead of passing.
+    # exists to end. The first version of this rewrite leaned on contrast between arms (if a dead
+    # arm ran the command, the model plainly reaches for the tool, so the shipped arm's silence is
+    # probably a block) -- and a reviewer pointed out that "probably" is carrying a mandatory gate:
+    # observed tool-call counts include zero, so three silent attempts can still be three runs where
+    # the model never tried, scored as a pass. The transcript deny closes that: agy's own brain log
+    # records a consumed verdict deterministically, unlike the model's optional echo of the reason.
+    # Requiring it errs RED -- a no-signal run becomes INCONCLUSIVE, never a pass.
     #
-    # A deny observed in agy's own output corroborates it when present, but is not required: whether
-    # the model echoes the reason is its choice, and resting the check on that would make it flaky in
-    # the false-green direction.
+    # The dead arms keep the silence-based reading: for them `ran` is the failure signal and a
+    # silent run is retried, and over-reporting "blocked" on a dead arm errs toward rule 3's FAIL,
+    # not toward a false green.
     results = {}
 
     def blocked(shape, form):
@@ -2191,6 +2249,15 @@ def _agy_hook_metacharacter_path():
                       "handler, and the denied command RAN -- decision 0029's mandatory gate is "
                       f"absent on every agy worker. {note}")
 
+    # 1b. And it must gate OBSERVABLY -- a consumed deny in agy's own record, not a silence
+    #     scored charitably. Without this line, three runs where the model never reached for the
+    #     tool would certify the mandatory gate green having observed neither a handler start nor
+    #     a block (a reviewer's finding, and the observed tool-call counts include zero).
+    if not results[("plain", "bare")][0]:
+        return INCONCLUSIVE, ("the shipped arm did not run the denied command, but no consumed deny "
+                              "appears in agy's brain transcript or output either -- a silence, and "
+                              f"a silence is not a measured block. {note}")
+
     # 2. A bare path with a SPACE must still fail, because that is the whole reason the adapter
     #    shortens the directory to its 8.3 form. If agy starts tolerating it, the shortening -- and
     #    its P/Invoke, and its loud failure when 8.3 is disabled -- can go.
@@ -2209,10 +2276,10 @@ def _agy_hook_metacharacter_path():
                       "changed. #710 rests on it not doing so -- re-measure the whole shape before "
                       f"relying on this. {note}")
 
-    return PASS, ("the bare form AER ships starts the real handler and blocks the denied call; a "
-                  "bare path with a space does not resolve (which is why the adapter 8.3-shortens "
-                  "the directory); and neither quoted form resolves, so #706's single quotes were "
-                  f"never runnable under `cmd /c`. {note}")
+    return PASS, ("the bare form AER ships starts the real handler and blocks the denied call, with "
+                  "the consumed deny observed in agy's own record; a bare path with a space does "
+                  "not resolve (which is why the adapter 8.3-shortens the directory); and neither "
+                  f"quoted form resolves, so #706's single quotes were never runnable under `cmd /c`. {note}")
 
 
 @check("agy.broken-hook-fails-open", "agy",
@@ -2342,6 +2409,31 @@ def _agy_hook_json(wd, command, event="PreToolUse", matcher="run_command"):
         if event == "PreToolUse" else
         {event: [{"type": "command", "command": command, "timeout": 25}]})
     json.dump({"aer": body}, open(os.path.join(wd, ".agents", "hooks.json"), "w"))
+
+
+def _agy_brain_recorded_a_deny(since, needle):
+    """True when agy's own brain transcript records a consumed hook deny for a run mentioning
+    `needle` (the run's unique temp-directory name) at or after `since`.
+
+    This is the deterministic record of a CONSUMED verdict: agy writes `tool call denied with
+    reason` into `brain/<id>/.system_generated/logs/transcript.jsonl` when a PreToolUse deny is
+    honoured, independent of whether the model chooses to echo the reason in its answer. Reading
+    the transcript is what proved #710's fix end to end, so a check resting on it is resting on
+    the same instrument. Read-only, and scoped by mtime + needle so a concurrent agy session's
+    transcripts are never misattributed to this run.
+    """
+    pattern = os.path.expanduser(os.path.join(
+        "~", ".gemini", "antigravity-cli", "brain", "*", ".system_generated", "logs", "transcript.jsonl"))
+    for transcript in glob.glob(pattern):
+        try:
+            if os.path.getmtime(transcript) < since:
+                continue
+            body = open(transcript, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        if needle in body and "tool call denied with reason" in body:
+            return True
+    return False
 
 
 @check("agy.hooks-load-from-add-dir-not-only-cwd", "agy",
