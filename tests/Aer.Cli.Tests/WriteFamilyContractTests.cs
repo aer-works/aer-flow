@@ -95,6 +95,46 @@ public class WriteFamilyContractTests
     }
 
     /// <summary>
+    /// #708: every agy write-family tool must say which argument names the path it writes to, because
+    /// the field is NOT uniform across the family.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ReadWriteTarget</c> read <c>TargetFile</c> for the whole family. Three of the four carry
+    /// it; <c>generate_image</c> does not — its arguments are <c>Prompt</c>/<c>ImageName</c>/
+    /// <c>ImagePaths</c>. So it resolved to null every time and the caller denied it
+    /// <b>unconditionally, including when writes were granted</b>, with a reason that blamed the
+    /// target for landing outside the outbox when no target had been read at all.
+    /// </para>
+    /// <para>
+    /// Fail-closed, so nothing was unsafe and nothing was loud — which is exactly why a granted
+    /// capability stayed broken. This makes the omission structural: add a tool to
+    /// <see cref="AgyHookCheckCommand.WriteFamilyTools"/> without naming its target field and this
+    /// goes red, rather than that tool becoming silently always-denied.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Every_agy_write_family_tool_names_the_argument_that_carries_its_target()
+    {
+        Assert.NotEmpty(AgyHookCheckCommand.WriteFamilyTools);
+
+        foreach (var tool in AgyHookCheckCommand.WriteFamilyTools)
+        {
+            Assert.True(
+                AgyHookCheckCommand.WriteTargetFields.TryGetValue(tool, out var fields),
+                $"'{tool}' is bounded by the gate but names no argument carrying its write target, "
+                + "so every call to it resolves to a null path and is denied even when granted (#708).");
+            Assert.NotEmpty(fields);
+        }
+
+        // The reverse, so the map cannot drift into naming tools the gate never consults.
+        foreach (var tool in AgyHookCheckCommand.WriteTargetFields.Keys)
+        {
+            Assert.Contains(tool, AgyHookCheckCommand.WriteFamilyTools);
+        }
+    }
+
+    /// <summary>
     /// Both adapters tell the gate where the workspace is (#679), under the one name each side spells
     /// out independently — see <see cref="WorkerEnvironment.WorkspaceVariable"/> for which way a
     /// mismatch fails.

@@ -162,6 +162,58 @@ public class AgyHookCheckCommandTests
             workspacePaths = new[] { "C:/x" },
         });
 
+    /// <summary>
+    /// <c>generate_image</c> carries its target in <c>ImageName</c>, not <c>TargetFile</c> — and
+    /// until #708 the gate read only the latter, so every call to it was denied even when the
+    /// operator had granted writes.
+    /// </summary>
+    /// <remarks>
+    /// The denial was not merely wrong, it was misdirecting: it reported the target as resolving
+    /// outside the workspace and the outbox, when no target had been read at all. An operator
+    /// debugging that goes and looks at their outbox.
+    /// </remarks>
+    [Fact]
+    public void A_granted_generate_image_inside_the_outbox_is_allowed_and_outside_it_is_denied()
+    {
+        // The arm that was impossible before: an ordinary granted image write into the outbox.
+        Assert.Equal(
+            "allow",
+            Decide(ImagePayload(Outbox + "/diagram.png"), "agy:run_command", Outbox, Workspace));
+
+        // Polarity, so this cannot pass by the gate having simply stopped bounding the tool.
+        Assert.Equal(
+            "deny",
+            Decide(ImagePayload("C:/somewhere/else/entirely.png"), "agy:run_command", Outbox, Workspace));
+
+        // And the withheld arm still wins over the path, as for every other write-family tool.
+        Assert.Equal(
+            "deny",
+            Decide(ImagePayload(Outbox + "/diagram.png"), "agy:generate_image", Outbox, Workspace));
+    }
+
+    /// <summary>
+    /// A <c>generate_image</c> payload, whose argument names come from
+    /// <c>.vendor-survey/corpus/agy__hooks.md</c> — <c>Prompt</c>/<c>ImageName</c>/<c>ImagePaths</c>,
+    /// with no <c>TargetFile</c>. Corpus-derived rather than observed on a live call, unlike
+    /// <see cref="WritePayload"/>'s; see <c>AgyHookCheckCommand.WriteTargetFields</c> for why that
+    /// distinction is kept visible.
+    /// </summary>
+    private static string ImagePayload(string imageName) =>
+        JsonSerializer.Serialize(new
+        {
+            artifactDirectoryPath = "C:/x/brain/abc",
+            conversationId = "abc",
+            modelName = "gemini-3.6-flash-medium",
+            stepIdx = 3,
+            toolCall = new
+            {
+                args = new { Prompt = "a diagram", ImageName = imageName },
+                name = "generate_image",
+            },
+            transcriptPath = "C:/x/transcript_full.jsonl",
+            workspacePaths = new[] { "C:/x" },
+        });
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

@@ -237,16 +237,32 @@ public static class AgyHookCheckCommand
     /// other places about this same CLI.
     /// </para>
     /// <para>
-    /// <b>Measured for <c>write_to_file</c> only</b> — see <c>docs/vendor-capabilities.md</c> for what
-    /// that leaves open about its three siblings, which are listed anyway so such a call is
-    /// <i>denied</i> for want of a readable path rather than passing a gate that knows one tool.
-    /// Gated on the tool name and not the field's presence, for the reason
-    /// <c>HookCheckCommand.ReadWriteTarget</c> gives.
+    /// <b>The field is per-tool, and assuming it was not cost a granted capability (#708).</b> This
+    /// read <c>TargetFile</c> for every write-family tool. Three of the four carry that field;
+    /// <c>generate_image</c> does not — its arguments are <c>Prompt</c>/<c>ImageName</c>/
+    /// <c>ImagePaths</c> — so it resolved to <see langword="null"/> every time and the caller denied
+    /// it unconditionally, including when the operator had granted writes. The denial even blamed the
+    /// target for resolving outside the outbox, when the truth was that no target had been read.
+    /// Fail-closed, which is why it survived unnoticed.
+    /// </para>
+    /// <para>
+    /// <see cref="WriteTargetFields"/> is therefore explicit per tool, and
+    /// <c>AgyHookCheckCommandTests</c> holds every <see cref="WriteFamilyTools"/> member to having an
+    /// entry — so adding a write tool without saying which argument names its target is red rather
+    /// than silently always-denied.
+    /// </para>
+    /// <para>
+    /// <b>Measured for <c>write_to_file</c> only.</b> <c>TargetFile</c> came from a live payload
+    /// (<c>agy.hook-payload-carries-write-path</c>); <c>generate_image</c>'s <c>ImageName</c> comes
+    /// from <c>.vendor-survey/corpus/agy__hooks.md</c>, which is documentation, and this same CLI's
+    /// documentation is recorded wrong twice in <c>docs/vendor-doc-audit.md</c>. Treat the
+    /// <c>generate_image</c> entry as provisional until a real payload is observed; the failure
+    /// direction if it is wrong is unchanged from today's — denied for want of a readable path.
     /// </para>
     /// </remarks>
     private static string? ReadWriteTarget(JsonElement toolCall, string? toolName)
     {
-        if (toolName is null || !WriteFamilyTools.Contains(toolName))
+        if (toolName is null || !WriteTargetFields.TryGetValue(toolName, out var fields))
         {
             return null;
         }
@@ -256,10 +272,36 @@ public static class AgyHookCheckCommand
             return null;
         }
 
-        return args.TryGetProperty("TargetFile", out var target) && target.ValueKind == JsonValueKind.String
-            ? target.GetString()
-            : null;
+        foreach (var field in fields)
+        {
+            if (args.TryGetProperty(field, out var target) && target.ValueKind == JsonValueKind.String
+                && target.GetString() is { Length: > 0 } value)
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
+
+    /// <summary>
+    /// For each write-family tool, the argument names that can carry the path it writes to, in
+    /// priority order. #708.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by tool because agy's payloads are not uniform: the three text-editing tools name their
+    /// target <c>TargetFile</c> and <c>generate_image</c> does not carry that field at all. A single
+    /// field name for the whole family reads as a tidy simplification and is how #708 happened.
+    /// </remarks>
+    public static readonly IReadOnlyDictionary<string, string[]> WriteTargetFields =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["write_to_file"] = ["TargetFile"],
+            ["replace_file_content"] = ["TargetFile"],
+            ["multi_replace_file_content"] = ["TargetFile"],
+            // Corpus-derived, not payload-measured -- see the remark above.
+            ["generate_image"] = ["ImageName", "TargetFile"],
+        };
 
     /// <summary>
     /// Mirrors <c>GeminiWorkerAdapter.WriteTools</c> — the agy tools whose target #679 bounds.
