@@ -190,15 +190,11 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
         var grant = BuildPermissionGrant();
         if (!grant.IsEmpty)
         {
-            // Asked BEFORE anything vendor-specific, and before the loop, because the rule is not
-            // vendor-specific: a grant whose shell defeats a withheld category is refused by the
-            // engine on every adapter. Reporting a vendor's expressiveness gap first would send the
-            // operator to fix the wrong thing. Why the rule lives on PermissionGrant rather than in
-            // the resolver is recorded once, on PermissionGrant.CategoriesDefeatedByTheShell.
-            //
-            // This surface needs it as much as the bindings editor does and is easier to reach:
-            // Save & Run dispatches immediately, so without this the operator learns at bind time,
-            // one click after committing.
+            // #645, asked before the loop and before anything vendor-specific. Why that order, and
+            // why the rule lives on PermissionGrant, are recorded once -- on
+            // PermissionGrant.CategoriesDefeatedByTheShell and at the bindings editor's own call
+            // site. What is particular to THIS surface: Save & Run dispatches immediately, so a
+            // grant that slips through is discovered one click later, at bind time.
             if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
             {
                 yield return "The permissions above can't be saved: "

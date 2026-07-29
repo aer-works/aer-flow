@@ -340,12 +340,10 @@ public class GuidedAuthoringTests
     /// was given one home: it built a grant, validated registry membership and vendor translation,
     /// and never asked whether the grant was coherent at all.
     /// <para>
-    /// It is the surface where the gap costs most. <c>Save &amp; Run</c> dispatches immediately, so
-    /// without this the operator learns at bind time — one click after committing — that the workflow
-    /// they just authored cannot start. Claude is the adapter here deliberately:
-    /// <c>ClaudeWorkerAdapter</c> never refuses a translation, so nothing else on this path would
-    /// have caught it. On gemini a shell-only grant happens to be stopped by the vendor gap instead,
-    /// which is coincidence rather than coverage.
+    /// Claude is the adapter here deliberately: <c>ClaudeWorkerAdapter</c> never refuses a
+    /// translation, so nothing else on this path would have caught it. On gemini a shell-only grant
+    /// happens to be stopped by the vendor gap instead, which is coincidence rather than coverage.
+    /// What this surface costs when the check is missing is recorded at the check itself.
     /// </para>
     /// </summary>
     [Fact]

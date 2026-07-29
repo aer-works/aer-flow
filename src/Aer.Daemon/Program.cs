@@ -1254,8 +1254,8 @@ namespace Aer.Daemon
                 }
 
                 // #645: asked of the same mapping POST uses, rather than restating the three grants
-                // here. This was a second copy of the mode vocabulary, and a fourth mode would have
-                // left GET reporting "custom" for something POST accepted.
+                // here as this endpoint used to. What that second copy cost is recorded on
+                // InteractiveSessionMaterializer.ModeForGrant.
                 return Results.Ok(new
                 {
                     Mode = InteractiveSessionMaterializer.ModeForGrant(existingEntry.PermissionGrant),

@@ -108,11 +108,10 @@ public class WorkerBindingResolverTests
     }
 
     /// <summary>
-    /// A caller that is not a UI cannot store an incoherent grant either. <c>POST
-    /// /api/sessions/start</c> takes one straight from the request body, and the per-turn rewrite
-    /// reads it back out and re-persists it — so one accepted at creation would fail every turn of
-    /// that session until someone changed the mode. Checked in <c>Materialize</c>, the last point
-    /// every persist path passes through.
+    /// A caller that is not a UI cannot store an incoherent grant either — <c>POST
+    /// /api/sessions/start</c> takes one straight from the request body. Why the check sits in
+    /// <c>Materialize</c> rather than at the endpoint, and what a grant accepted there would cost, is
+    /// recorded once beside the check itself.
     /// </summary>
     [Fact]
     public void Materializing_a_session_with_an_incoherent_grant_is_refused()
