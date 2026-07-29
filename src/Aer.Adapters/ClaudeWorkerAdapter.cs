@@ -255,16 +255,23 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
     /// <summary>
     /// Overrides an inherited <c>CLAUDE_CODE_SIMPLE=1</c> (see the comment above on why that
-    /// disables hooks the same way <c>--bare</c> does) so an operator's shell cannot silently reach
-    /// the spawned <c>claude</c> process and remove the gate. <b>Best-effort, not a measured
-    /// sentinel</b>: the vendor docs state what <c>1</c> triggers but never what any other value of
-    /// <i>this specific</i> variable does. <c>"0"</c> is chosen over an empty string because the
-    /// sibling <c>CLAUDE_CODE_SIMPLE_SYSTEM_PROMPT</c> documents <c>0</c>/<c>false</c>/<c>no</c>/
-    /// <c>off</c> as its own recognized opt-out values -- evidence this variable family parses a
-    /// deliberate "off" token, not just proof this exact name does. No live run against the
-    /// installed CLI has confirmed the parsing here. Filed as the honest scope of what this
-    /// override actually proves, per 0029/#532's own discipline of stating what a check does not
-    /// prove rather than only what it does.
+    /// disables hooks the same way <c>--bare</c> does) so an operator's shell cannot reach the
+    /// spawned <c>claude</c> process and remove the gate.
+    /// <para>
+    /// <b>Measured, and it is now a sentinel</b> — <c>gate.simple-mode-override-restores-the-hook</c>
+    /// (#550). This carried an admission that no live run had confirmed <c>"0"</c> is even parsed,
+    /// with the value chosen by analogy to a sibling variable's documented opt-out tokens. Three
+    /// arms against the installed CLI settled it: unset fires the hook, <c>=0</c> fires the hook, so
+    /// the override does what it claims.
+    /// </para>
+    /// <para>
+    /// The same run corrected the <i>hazard's shape</i>. An inherited <c>=1</c> does not produce a
+    /// quietly ungated worker here: the hook never fires and nothing is written, because the run dies
+    /// at <c>Not logged in</c> with <c>rc=1</c> — the keychain skip reason 1 above predicts for
+    /// <c>--bare</c>. Loud, not silent. <b>Scoped to a host holding a subscription login</b>, which
+    /// is what AER exists to drive; nothing here establishes what an API-key host does, and that is
+    /// the case where the failure could stay quiet.
+    /// </para>
     /// </summary>
     public const string SimpleModeVariable = "CLAUDE_CODE_SIMPLE";
 

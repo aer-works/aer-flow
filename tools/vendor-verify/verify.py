@@ -256,6 +256,85 @@ def _exit2():
     return (PASS if not wrote2 else FAIL), f"exit0 wrote={wrote0} exit2 wrote={wrote2}"
 
 
+@check("gate.simple-mode-override-restores-the-hook", "gate",
+       "whether an INHERITED CLAUDE_CODE_SIMPLE=1 disables the PreToolUse hook, and whether AER's "
+       "CLAUDE_CODE_SIMPLE=0 override brings it back -- the pair ClaudeWorkerAdapter's override had "
+       "only ASSUMED", sentinel=True)
+def _simple_mode_override():
+    """#550. ClaudeWorkerAdapter sets CLAUDE_CODE_SIMPLE=0 on every claude worker to stop an
+    operator's shell removing the PreToolUse hook 0029 makes mandatory. Its own doc comment admitted the
+    override was "best-effort, not a measured sentinel": the vendor documents what 1 triggers and
+    never what any other value does, and "0" was chosen because a SIBLING variable documents 0/false/
+    no/off as opt-out tokens. That is evidence about a variable family, not about this name.
+
+    An override that silently does nothing is the worst shape available here -- the code reads as
+    defended, the gate is gone, and #549's allowlist would not help because AER sets this one itself.
+
+    Three arms, one variable:
+
+      unset   the discovery control -- a blocking hook must actually block, or nothing is measured
+      =1      the hazard, inherited exactly as an operator's profile would export it
+      =0      AER's override
+
+    The verdict keys on the =0 arm alone. The =1 arm is reported rather than asserted: if a future
+    version stops honouring simple mode, the hazard disappears and the override becomes harmless,
+    which is not a regression and must not turn this red.
+    """
+    def arm(value):
+        wd = tempfile.mkdtemp(prefix="v-simple-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, 'echo blocked >&2\nexit 2')
+            st = os.path.join(wd, "s.json")
+            json.dump({"hooks": {"PreToolUse": [{"matcher": "Write", "hooks": [
+                {"type": "command", "command": "sh %s" % hk}]}]},
+                "permissions": {"allow": ["Write"]}}, open(st, "w"))
+            tgt = os.path.join(wd, "S.txt").replace("\\", "/")
+            rc, out, err = run(
+                ["claude", "-p", f"Create {tgt} containing OK using the Write tool.",
+                 "--settings", st, "--add-dir", wd, "--output-format", "json",
+                 "--allowedTools", "Write"], cwd=wd,
+                extra_env=None if value is None else {"CLAUDE_CODE_SIMPLE": value})
+            return fired(log), os.path.exists(os.path.join(wd, "S.txt")), rc, (out + err)[-160:]
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    def describe(label, a):
+        return f"{label}: fired={a[0]} wrote={a[1]} rc={a[2]}"
+
+    unset = arm(None)
+    if unset[1]:
+        return INCONCLUSIVE, (
+            f"control arm WROTE despite a hook exiting 2 ({describe('unset', unset)}); the hook "
+            "never gated anything, so no other arm means what it looks like")
+    if unset[0] == 0:
+        return INCONCLUSIVE, (
+            f"control arm's hook never fired ({describe('unset', unset)}); the run did not reach a "
+            "tool call, so this measures the harness rather than simple mode")
+
+    one, zero = arm("1"), arm("0")
+    detail = " | ".join([describe("unset", unset), describe("=1", one), describe("=0", zero)])
+
+    # The verdict keys on the =0 arm, and on the HOOK FIRING rather than on the absence of a write.
+    # An arm that wrote nothing because the run died before any tool call looks identical to one the
+    # gate blocked -- which the first version of this check read as "the gate held". It is not the
+    # same thing, and on the =1 arm it is exactly what happened.
+    if zero[0] == 0:
+        return FAIL, "CLAUDE_CODE_SIMPLE=0 did NOT restore the hook -- " + detail
+    if zero[1]:
+        return FAIL, "hook fired under =0 but the write landed anyway -- " + detail
+    if one[0] == 0 and not one[1]:
+        return PASS, (
+            "override restores the hook. The =1 arm neither fired the hook NOR wrote, so simple "
+            "mode broke the run before any tool call rather than merely ungating it -- the hazard "
+            "is real but its shape here is a dead run, not a silent write. Tail: "
+            + repr(one[3]) + " -- " + detail)
+    if one[1]:
+        return PASS, "=1 removes the gate and lets the write through; =0 restores it -- " + detail
+    return PASS, "override restores the hook; =1 did not ungate on this version -- " + detail
+
+
 @check("gate.broken-hook-fails-open", "gate",
        "what a BROKEN PreToolUse hook does on Windows -- decision 0029 makes this hook mandatory "
        "on every worker, and a hook that silently does not fire looks exactly like one that works", sentinel=True)
