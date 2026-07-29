@@ -347,6 +347,15 @@ def _simple_mode_override():
 
 
 GATE_PROBE_PROJECT = os.path.join(HERE, "..", "Aer.GateProbe", "Aer.GateProbe.csproj")
+
+# The real hook handler, next to the probe's own output. `GeminiWorkerAdapter.BuildHooksJson` names
+# exactly this assembly, so a check that runs it is running what ships rather than a stand-in.
+GATE_PROBE_HOOK_DLL = os.path.join(
+    HERE, "..", "Aer.GateProbe", "bin", "Debug", "net10.0", "Aer.Cli.dll")
+
+# What the adapter puts in AER_HOOK_DENIED_TOOLS for a grant withholding the shell. The real handler
+# fail-closes without it (`agy.hook-env-inherited`), which would deny for the wrong reason.
+AGY_DENIED_TOOLS_FOR_A_SHELL_WITHHELD_GRANT = "agy:run_command"
 GATE_PROBE = os.path.join(
     HERE, "..", "Aer.GateProbe", "bin", "Debug", "net10.0", "Aer.GateProbe.dll")
 
@@ -1993,10 +2002,10 @@ def _agy_deny_under_accept_edits():
 
 
 @check("agy.hook-command-survives-a-metacharacter-in-its-path", "agy",
-       "the SINGLE-QUOTED command form GeminiWorkerAdapter ships starts a handler whose path "
-       "contains a space, `$` or `%` -- and the double-quoted form it used to ship still does not. "
-       "Establishes agy's command-string parsing by BEHAVIOUR; agy documents only 'The shell "
-       "command to execute'",
+       "agy runs a hook command through `cmd /c`/`sh -c`, so the BARE form GeminiWorkerAdapter "
+       "ships starts the real handler and blocks a denied call; a bare path containing a space "
+       "does not resolve once an argument follows it; and neither quoted form resolves at all. "
+       "Runs the shipped `dotnet <dll> agy-hook-check` command, not an `sh` stand-in",
        sentinel=True)
 def _agy_hook_metacharacter_path():
     """#601 part 3, and the regression pin for #706. agy offers no exec form -- claude's hook ships
@@ -2037,12 +2046,33 @@ def _agy_hook_metacharacter_path():
     `gate.simple-mode-override-restores-the-hook` check once certified the opposite of what it
     measured.
     """
-    # Mirrors GeminiWorkerAdapter.BuildHooksJson's own quoting choice. `single` is production.
+    # THE COMMAND SHAPE, not an `sh` stand-in -- and this is the correction that matters most here.
+    #
+    # Every arm of this check used to be `sh <script>`, and its prose called the single-quoted arm
+    # "production". That was a tautology: the token agy's shell runs is `sh`, and **`sh` strips its
+    # own single quotes** by POSIX grammar, on either platform. So the check measured `sh`, concluded
+    # something about agy, and could not fail the way production fails no matter what agy did.
+    #
+    # It mattered, because the conclusion was wrong. agy runs the command via `cmd /c` on Windows
+    # (agy's own embedded spec -- `.vendor-survey/corpus/agy__hooks-embedded.md`), `cmd` does not
+    # treat `'` as quoting, and the single-quoted form #706 introduced hands `dotnet` a literal
+    # `'C:/.../Aer.Cli.dll'` it cannot find. The gate never fired on Windows, and this check said the
+    # opposite while passing.
+    #
+    # The arms now use the real program-plus-argument shape: a bare program token (`dotnet`) with the
+    # assembly as an argument and `agy-hook-check` after it, which is what the adapter emits and where
+    # the whole difficulty lives -- a lone quoted path behaves differently from one followed by an
+    # argument. #710.
     FORMS = {
-        "bare": "sh %s",
-        "single": "sh '%s'",
-        "double": 'sh "%s"',
+        "bare": "dotnet %s agy-hook-check",
+        "single": "dotnet '%s' agy-hook-check",
+        "double": 'dotnet "%s" agy-hook-check',
     }
+
+    # Now that the arms run the REAL handler, a stale binary makes them measure some past build --
+    # which is #707 exactly, and it already once turned a correct fix into an apparent failure.
+    if (failure := build_gate_probe()) is not None:
+        return INCONCLUSIVE, failure
 
     def arm(dirname, form):
         """Returns (fired, ran). BOTH are needed, and using `fired` alone was a real defect here.
@@ -2066,13 +2096,27 @@ def _agy_hook_metacharacter_path():
         wd = os.path.join(parent, dirname)
         try:
             os.makedirs(wd)
-            log = os.path.join(wd, "h.log").replace("\\", "/")
-            hk = os.path.join(wd, "h.sh").replace("\\", "/")
-            hook_script(hk, log, """echo '{"decision":"deny","reason":"AER_VERIFY_TOKEN"}'""")
-            _agy_hook_json(wd, FORMS[form] % hk)
+            # The handler is the SHIPPED one, copied so its path carries the shape under test. It
+            # must be the whole publish directory: .NET resolves dependencies by file name, so
+            # carrying Aer.Cli.dll alone leaves it hunting an Aer.Cli.deps.json that is not there.
+            handler_dir = os.path.join(wd, "gate")
+            shutil.copytree(os.path.dirname(os.path.abspath(GATE_PROBE_HOOK_DLL)), handler_dir)
+            dll = os.path.join(handler_dir, "Aer.Cli.dll").replace("\\", "/")
+
+            _agy_hook_json(wd, FORMS[form] % dll)
+            # extra_env, not a whole environment: it is applied after this harness's own env strip,
+            # so the check sets the one variable it is testing with and inherits nothing else.
             rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
-                                "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
-            return fired(log), bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+                                "--add-dir", wd, "--dangerously-skip-permissions"],
+                               cwd=wd,
+                               extra_env={"AER_HOOK_DENIED_TOOLS":
+                                          AGY_DENIED_TOOLS_FOR_A_SHELL_WITHHELD_GRANT})
+            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+            # No tee'd log to count: the real handler writes only its verdict, and wrapping it to
+            # get one would put a shell back in front of it -- the exact substitution that made this
+            # check meaningless before. `ran` alone carries the signal, and its polarity is the same:
+            # the handler denies `run_command`, so a version string means the gate did not stop it.
+            return (0 if ran else 1), ran
         finally:
             shutil.rmtree(parent, ignore_errors=True)
 
@@ -2091,61 +2135,51 @@ def _agy_hook_metacharacter_path():
                 return f, r
         return 0, False
 
-    SHAPES = (("plain", "plain"), ("space", "has space"), ("$", "has$dollar"), ("%", "has%percent"))
-    prod = {shape: arm_until_a_tool_call(dirname, "single") for shape, dirname in SHAPES}
+    # `ran` is the signal in every arm: the handler denies `run_command`, so a version string in
+    # agy's output means the gate did not stop it. `blocked` reads better than `not ran` below.
+    def blocked(shape, form):
+        _, ran = arm_until_a_tool_call(shape, form)
+        return not ran
 
-    # #706's broken form, pinned rather than described. Given the PLAIN path -- the shape most
-    # favourable to it -- so a pass here is not luck.
-    double_fired, double_ran = arm_until_a_tool_call("plain", "double")
+    # The three vendor facts this check exists to pin, each stated as an expectation so a change in
+    # agy flips a result rather than going unnoticed. The adapter's own choices follow FROM these --
+    # it emits the bare form, and 8.3-shortens a spaced directory precisely because of row 2.
+    bare_plain = blocked("plain", "bare")
+    bare_spaced = blocked("has space", "bare")
+    single_plain = blocked("plain", "single")
+    double_plain = blocked("plain", "double")
 
-    note = ("shipped single-quoted form, per path shape (fired/ran): "
-            + ", ".join(f"{s}={prod[s][0]}/{prod[s][1]}" for s, _ in SHAPES)
-            + f" | #706's double-quoted form on a plain path={double_fired}/{double_ran}")
+    note = (f"blocked? bare/plain={bare_plain}, bare/spaced={bare_spaced}, "
+            f"single-quoted/plain={single_plain}, double-quoted/plain={double_plain}")
 
-    # Directly observed failures first: the gate did not start AND the call went through.
-    escaped = [s for s, _ in SHAPES if not prod[s][0] and prod[s][1]]
-    if escaped:
-        severity = ("AER's agy gate does not run at all -- #706's severity"
-                    if "plain" in escaped else
-                    f"the gate is silently absent for anyone whose install path contains "
-                    f"{', '.join(escaped)}")
-        return FAIL, (f"the shipped form did not start the handler and the denied command RAN for "
-                      f"{', '.join(escaped)}, so {severity}. {note}")
+    # 1. The shipped shape must gate. Everything else here is context for this line.
+    if not bare_plain:
+        return FAIL, ("the command form `GeminiWorkerAdapter.BuildHooksJson` ships did not start the "
+                      "handler, and the denied command RAN -- decision 0029's mandatory gate is "
+                      f"absent on every agy worker. {note}")
 
-    if double_fired == 0 and double_ran:
-        pass  # #706's form still dead, as expected -- observed, not assumed.
-    elif double_fired:
-        return FAIL, ("#706's double-quoted form has started working, so agy's command parsing "
-                      "changed. Nothing is broken now, but the quote style was chosen BY MEASUREMENT "
-                      f"and that measurement no longer holds -- re-run it. {note}")
+    # 2. A bare path with a SPACE must still fail, because that is the whole reason the adapter
+    #    shortens the directory to its 8.3 form. If agy starts tolerating it, the shortening -- and
+    #    its P/Invoke, and its loud failure when 8.3 is disabled -- can go.
+    if bare_spaced:
+        return FAIL, ("a bare path containing a space now resolves, so agy's argument splitting "
+                      "changed. Nothing is broken, but GeminiWorkerAdapter.HookAssemblyToken carries "
+                      "an 8.3 short-name step and a hard failure that exist ONLY for this case -- "
+                      f"re-measure before keeping them. {note}")
 
-    # A shape that produced no tool call even after retries is UNEXERCISED, not failing -- nothing
-    # escaped, because nothing was attempted. Reporting the whole check INCONCLUSIVE for it would
-    # bury the part that IS measured, and a check that is permanently inconclusive gets read exactly
-    # as often as one that is permanently red. So the verdict states what it proved and carries its
-    # own narrowing, per CLAUDE.md's rule that a result narrower than its question says so itself.
-    quiet = [s for s, _ in SHAPES if not prod[s][0] and not prod[s][1]]
-    if "plain" in quiet:
-        return INCONCLUSIVE, (f"the PLAIN shape produced no tool call after retries, so the primary "
-                              f"claim was never exercised and nothing here means anything. {note}")
+    # 3. Neither quoted form may start working silently. #706 chose single quotes by measuring `sh`,
+    #    which strips them itself, and shipped a command `cmd /c` could never run (#710). If agy
+    #    begins unquoting, that is a real vendor change and the adapter has simpler options again.
+    if single_plain or double_plain:
+        started = ", ".join(n for n, b in (("single", single_plain), ("double", double_plain)) if b)
+        return FAIL, (f"a QUOTED command path now resolves ({started}), so agy's command parsing "
+                      "changed. #710 rests on it not doing so -- re-measure the whole shape before "
+                      f"relying on this. {note}")
 
-    proved = [s for s, _ in SHAPES if prod[s][0]]
-    verdict = ("the shipped single-quoted form starts the handler and blocks the denied call for "
-               f"{', '.join(proved)}, and #706's double-quoted form still does not start (its call "
-               "ran, directly observing the fail-open). ")
-    if quiet:
-        verdict += (f"NOT PROVED for {', '.join(quiet)}: no tool call happened there even after "
-                    "retries, so those shapes are unexercised rather than passing. `$` in particular "
-                    "has stayed silent across runs while every other shape fired, which is more "
-                    "likely a harness limit than a vendor one -- a standalone probe DID start a "
-                    "handler on a `$` path -- but the two have not been reconciled. ")
-    return PASS, verdict + note
-    if double:
-        return FAIL, ("#706's double-quoted form has started working, which means agy's command "
-                      "parsing changed. Nothing is broken right now, but the quote style was chosen "
-                      f"BY MEASUREMENT and that measurement no longer holds -- re-run it. {note}")
-    return PASS, ("the shipped single-quoted form starts the handler for every path shape that has "
-                  f"to work, and #706's double-quoted form still does not. {note}")
+    return PASS, ("the bare form AER ships starts the real handler and blocks the denied call; a "
+                  "bare path with a space does not resolve (which is why the adapter 8.3-shortens "
+                  "the directory); and neither quoted form resolves, so #706's single quotes were "
+                  f"never runnable under `cmd /c`. {note}")
 
 
 @check("agy.broken-hook-fails-open", "agy",
