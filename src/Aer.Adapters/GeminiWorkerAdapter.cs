@@ -385,6 +385,21 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             Environment: [.. environment]);
     }
 
+    /// <summary>The agy <see cref="VendorGate"/>.</summary>
+    /// <remarks>
+    /// <c>--add-dir</c> IS the gate on this vendor: agy discovers hooks only from a directory handed
+    /// to it that way (<c>agy.hooks-load-from-add-dir-not-only-cwd</c>), so dropping the pair yields
+    /// an ungated worker rather than a narrower one. <c>VendorGateMatchesResolveTests</c> holds this
+    /// and <see cref="Resolve"/> in step.
+    /// </remarks>
+    internal static VendorGate BuildGate(PermissionGrant? grant) =>
+        new(
+            ["--add-dir", EnsureAgyWorkspace()],
+            new Dictionary<string, string>
+            {
+                [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildDeniedTools(grant)}",
+            });
+
     /// <summary>
     /// Creates the AER-owned agy workspace and rewrites its <c>.agents/hooks.json</c> with canonical
     /// content, returning the directory to hand to <c>--add-dir</c>.

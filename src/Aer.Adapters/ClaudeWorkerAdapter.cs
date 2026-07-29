@@ -82,6 +82,34 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         return true;
     }
 
+    /// <summary>The claude <see cref="VendorGate"/>.</summary>
+    /// <remarks>
+    /// <c>--settings</c> is the load-bearing pair here: it is the only route by which <c>claude</c>
+    /// loads the hook at all. <c>VendorGateMatchesResolveTests</c> holds this and <see cref="Resolve"/>
+    /// in step.
+    /// </remarks>
+    internal static VendorGate BuildGate(PermissionGrant? grant)
+    {
+        var (settingsPath, mcpConfigPath) = EnsureLaunchConfigFiles();
+        List<string> args = ["--settings", settingsPath, "--mcp-config", mcpConfigPath];
+
+        var disallowed = BuildDisallowedTools(grant);
+        if (disallowed.Length > 0)
+        {
+            args.Add("--disallowedTools");
+            args.Add(disallowed);
+        }
+
+        return new VendorGate(
+            args,
+            new Dictionary<string, string>
+            {
+                [MaxSubagentSpawnDepthVariable] = "1",
+                [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(grant)}",
+                [SimpleModeVariable] = "0",
+            });
+    }
+
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
     {
         ArgumentNullException.ThrowIfNull(invocation);
