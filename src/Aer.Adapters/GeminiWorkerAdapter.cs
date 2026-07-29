@@ -484,7 +484,23 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
                 "before any worker is dispatched.");
         }
 
-        var command = $"dotnet \"{hookAssemblyPath.Replace('\\', '/')}\" agy-hook-check";
+        // SINGLE quotes, and this is measured rather than stylistic (#706). Double quotes -- which
+        // this shipped until 2026-07-29 -- are NOT stripped by whatever parses agy's command string,
+        // so the handler was invoked with a literal `"C:/.../Aer.Cli.dll"` argument, never resolved,
+        // and produced no stdout. Per `agy.hook-malformed-stdout-fails-open` that reads as an ALLOW,
+        // so decision 0029's mandatory gate was absent on every agy worker AER ever spawned, silently.
+        //
+        // Four forms were measured against a plain path and a path containing a SPACE, because
+        // AppContext.BaseDirectory sits under the user profile where `C:/Users/First Last` is
+        // ordinary. Only single quotes carry both: bare and backslash-escaped resolve a plain path
+        // and fail on a space; double quotes fail on both. Pinned by
+        // `agy.hook-command-survives-a-metacharacter-in-its-path`, because this is a vendor behaviour
+        // AER cannot control and would not otherwise notice changing.
+        //
+        // A path containing a literal apostrophe would still break. Untested, and left that way
+        // deliberately -- inventing an escape for it without measuring which one agy accepts is how
+        // the double-quoted form got here.
+        var command = $"dotnet '{hookAssemblyPath.Replace('\\', '/')}' agy-hook-check";
         var hooks = new Dictionary<string, object>
         {
             ["aer-permission-gate"] = new

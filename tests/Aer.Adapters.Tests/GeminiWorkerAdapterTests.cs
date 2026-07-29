@@ -831,13 +831,19 @@ public class GeminiWorkerAdapterTests
             .GetProperty("hooks")[0]
             .GetProperty("command").GetString()!;
 
-        // agy hands this string to a shell. Which shell is not established anywhere in the repo
-        // (see the note in BuildHooksJson), so this splits the documented shape --
-        // `dotnet "<path>" agy-hook-check` -- rather than pretending to know. That means this test
-        // proves the *assembly and arguments* launch and behave, not that any particular shell
-        // parses the quoting correctly; the quoting itself is tracked separately.
-        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+)\s+""([^""]+)""\s+(\S+)$");
-        Assert.True(match.Success, $"hook command is not the expected `exe \"path\" arg` shape: {command}");
+        // agy hands this string to something that is NOT a POSIX shell -- it strips single quotes
+        // but not double ones, and expands `$` inside single quotes. So this splits the shape
+        // BuildHooksJson actually ships, `dotnet '<path>' agy-hook-check`, rather than pretending to
+        // know a shell's rules. This test proves the *assembly and arguments* launch and behave; that
+        // agy can parse the quoting is a separate, live question owned by
+        // `agy.hook-command-survives-a-metacharacter-in-its-path`.
+        //
+        // The quote character here is deliberately exact rather than `["']`. It was `"` until #706,
+        // where the double-quoted form turned out never to start the handler at all -- so this
+        // assertion doubles as a pin on the shipped quote style, and a permissive pattern would have
+        // let that regression through silently.
+        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+)\s+'([^']+)'\s+(\S+)$");
+        Assert.True(match.Success, $"hook command is not the expected `exe 'path' arg` shape: {command}");
 
         var startInfo = new ProcessStartInfo(match.Groups[1].Value)
         {
