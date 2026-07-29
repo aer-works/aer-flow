@@ -307,8 +307,13 @@ public class GuidedAuthoringTests
         Assert.Null(await flow.SaveAsync(TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// #657's wording fix reaches this surface too. The old phrasing blamed the builder; what the
+    /// operator needs to know is that the values would be ignored at dispatch — recorded once, beside
+    /// the string in <c>WorkerBindingEntryViewModel</c>.
+    /// </summary>
     [Fact]
-    public void An_adapter_with_no_structured_permission_builder_support_is_flagged_in_guidance()
+    public void An_adapter_that_ignores_grants_says_so_in_guidance_rather_than_blaming_the_builder()
     {
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
         flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["claude"] = new NoTranslatorWorkerAdapter() });
@@ -322,8 +327,74 @@ public class GuidedAuthoringTests
 
         Assert.Contains(
             flow.GuidanceMessages,
+            message => message.Contains("does not enforce permission grants", StringComparison.Ordinal)
+                       && message.Contains("ignored at dispatch", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            flow.GuidanceMessages,
             message => message.Contains("no structured permission builder support", StringComparison.Ordinal));
         Assert.False(flow.CanSave);
+    }
+
+    /// <summary>
+    /// #645 on the guided wizard, which is a fourth authoring surface and was missed when the rule
+    /// was given one home: it built a grant, validated registry membership and vendor translation,
+    /// and never asked whether the grant was coherent at all.
+    /// <para>
+    /// It is the surface where the gap costs most. <c>Save &amp; Run</c> dispatches immediately, so
+    /// without this the operator learns at bind time — one click after committing — that the workflow
+    /// they just authored cannot start. Claude is the adapter here deliberately:
+    /// <c>ClaudeWorkerAdapter</c> never refuses a translation, so nothing else on this path would
+    /// have caught it. On gemini a shell-only grant happens to be stopped by the vendor gap instead,
+    /// which is coincidence rather than coverage.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_grant_the_engine_refuses_at_bind_time_blocks_save_in_the_wizard()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["claude"] = new ClaudeWorkerAdapter() });
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Claude;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        // The shell reaches reads, writes and the network, and all three are unticked.
+        flow.GrantRunShellCommands = true;
+
+        Assert.Contains(
+            flow.GuidanceMessages,
+            message => message.Contains("shell is granted while", StringComparison.Ordinal)
+                       && message.Contains("bind time", StringComparison.Ordinal));
+        Assert.False(flow.CanSave);
+        Assert.Null(await flow.SaveAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// The control for the test above: a coherent grant on the same adapter and the same step still
+    /// saves. Without this, a validator that refused everything would pass the test above.
+    /// </summary>
+    [Fact]
+    public async Task A_coherent_grant_still_saves_in_the_wizard()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["claude"] = new ClaudeWorkerAdapter() });
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Claude;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        flow.GrantRunShellCommands = true;
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+
+        Assert.DoesNotContain(
+            flow.GuidanceMessages,
+            message => message.Contains("shell is granted while", StringComparison.Ordinal));
+        Assert.True(flow.CanSave);
+        Assert.NotNull(await flow.SaveAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

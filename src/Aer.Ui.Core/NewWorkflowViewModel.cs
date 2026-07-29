@@ -190,6 +190,21 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
         var grant = BuildPermissionGrant();
         if (!grant.IsEmpty)
         {
+            // Asked BEFORE anything vendor-specific, and before the loop, because the rule is not
+            // vendor-specific: a grant whose shell defeats a withheld category is refused by the
+            // engine on every adapter. Reporting a vendor's expressiveness gap first would send the
+            // operator to fix the wrong thing. Why the rule lives on PermissionGrant rather than in
+            // the resolver is recorded once, on PermissionGrant.CategoriesDefeatedByTheShell.
+            //
+            // This surface needs it as much as the bindings editor does and is easier to reach:
+            // Save & Run dispatches immediately, so without this the operator learns at bind time,
+            // one click after committing.
+            if (grant.CategoriesDefeatedByTheShell is { Count: > 0 } defeated)
+            {
+                yield return "The permissions above can't be saved: "
+                    + PermissionGrantWording.ShellDefeats(defeated);
+            }
+
             var adapterNamesInUse = Steps
                 .Where(step => !step.IsDialogue)
                 .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini")
@@ -203,7 +218,8 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 
                 if (adapter is not IPermissionGrantTranslator translator)
                 {
-                    yield return $"'{adapterName}' has no structured permission builder support, so the permissions above won't apply to its steps.";
+                    yield return $"'{adapterName}' does not enforce permission grants — the permissions "
+                        + "above would be ignored at dispatch for its steps, not applied.";
                     continue;
                 }
 
