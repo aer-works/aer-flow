@@ -191,10 +191,10 @@ public class AgyHookCheckCommandTests
     }
 
     /// <summary>
-    /// A <c>generate_image</c> payload, with the argument names a REAL call was observed to carry —
-    /// exactly <c>{ ImageName, Prompt }</c>, no <c>TargetFile</c>, and no <c>ImagePaths</c> despite
-    /// the corpus listing one. Captured the same way <see cref="WritePayload"/>'s names were, so
-    /// neither fixture rests on documentation.
+    /// A <c>generate_image</c> payload carrying the argument names a REAL call was observed to
+    /// carry, captured the same way <see cref="WritePayload"/>'s were — so neither fixture rests on
+    /// documentation. What the observation was, and how it differed from the corpus, is recorded on
+    /// <c>AgyHookCheckCommand.WriteTargetFields</c>.
     /// </summary>
     private static string ImagePayload(string imageName) =>
         JsonSerializer.Serialize(new

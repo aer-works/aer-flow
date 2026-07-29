@@ -175,10 +175,14 @@ is enforced, not merely displayed.
   made this Partial never enforced the promise as written above.
   [0029](../docs/decisions/0029-the-gate-is-three-mechanisms.md) is the answer: a `PreToolUse` hook
   is the only mechanism covering vendor tools, exit-2 blocks even against an allow rule, and it is
-  now mandatory on every spawned worker. Three gaps remain: the hook is not yet shipped; `agy` has no
-  deny-list flag, so `GeminiWorkerAdapter` fails closed by throwing
-  `PermissionGrantUnsupportedException` — correct per decision 0004, and **untested**; and the
-  end-to-end refusal has never been run live.
+  now mandatory on every spawned worker. Gaps: `agy` has no deny-list flag, so
+  `GeminiWorkerAdapter` fails closed by throwing `PermissionGrantUnsupportedException` — correct per
+  decision 0004, and **untested**; and the end-to-end refusal has never been run live.
+  *This line said "the hook is not yet shipped" long after #554 shipped it, and the tree elsewhere
+  said it was confirmed working. Both were wrong in opposite directions, and #710 measured the
+  truth: it shipped, and on Windows it never started, because agy runs the command through `cmd /c`
+  and the path was quoted. One mechanism, three recorded states — which is the failure this journey
+  file exists to prevent, occurring in it.*
   *This status was `Fails` for a day after #331 merged with the engine test passing — the drift the
   reconcile gate now runs in CI to catch (#489). It has now been wrong in the other direction too:
   green on the mechanism, silent on whether the mechanism bounded anything.*

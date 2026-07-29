@@ -508,8 +508,8 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// <remarks>
     /// <para>
     /// <b>agy runs the command through a shell</b> — <c>sh -c</c> on Unix, <c>cmd /c</c> on Windows —
-    /// stated in agy's own embedded specification, extracted verbatim to
-    /// <c>.vendor-survey/corpus/agy__hooks-embedded.md</c>. Which shell it is decides everything
+    /// stated in agy's own embedded specification; where that came from and what else it says is
+    /// recorded in <c>docs/vendor-doc-audit.md</c>. Which shell it is decides everything
     /// below, and getting it wrong is what #710 was: this shipped a single-quoted path, and
     /// <c>cmd</c> does not treat <c>'</c> as a quoting character, so <c>dotnet</c> received a literal
     /// <c>'C:/…/Aer.Cli.dll'</c>, failed to find it, and wrote nothing to stdout. Per

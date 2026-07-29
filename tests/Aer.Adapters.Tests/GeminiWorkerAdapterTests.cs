@@ -759,19 +759,31 @@ public class GeminiWorkerAdapterTests
 
     // Everything above asserts against the C# objects Resolve() builds and the JSON it writes --
     // all of which would pass equally against a hook command that looks correct on paper and fails
-    // the instant agy spawns it. These spawn the command string out of the written hooks.json as a
-    // real child process, fed a real agy payload and the real environment variable.
+    // the instant agy spawns it. These take the command out of the written hooks.json, split it, and
+    // launch the assembly directly with a real agy payload and the real environment variable.
     //
-    // This matters more here than on the claude side, where the equivalent pair already exists
-    // (ClaudeWorkerAdapterTests.RunResolvedHookCommand). agy's handler has no exec form -- only a
+    // WHAT THEY DO NOT COVER, and #710 is what happens when that is forgotten. They spawn via
+    // ProcessStartInfo.ArgumentList, so the arguments go to the child verbatim. agy does not: it
+    // hands the whole string to `cmd /c` on Windows or `sh -c` on Unix, and the shell decides what
+    // the arguments even are. These tests therefore prove the assembly and its arguments behave;
+    // they are structurally incapable of catching a command string the shell cannot parse, which is
+    // exactly the defect that left the gate dead for months while they passed.
+    //
+    // That half belongs to a vendor check that runs the shipped command through agy itself, named
+    // here because a reader of this pair needs to know it is one of two halves, not the whole:
+    // record-once-ok: #710 tools/vendor-verify/verify.py
+    // `agy.hook-command-survives-a-metacharacter-in-its-path`.
+    //
+    // Why it matters more here than on the claude side, where the equivalent pair already exists
+    // (ClaudeWorkerAdapterTests.RunResolvedHookCommand): agy's handler has no exec form -- only a
     // single shell-parsed `command` string -- and a hook that cannot start produces no stdout, which
     // `agy.hook-malformed-stdout-fails-open` measured as an ALLOW. So on this vendor a hook that
     // fails to launch is an ungated worker, silently, with no --disallowedTools backstop
     // (`agy.permissions-are-global-only`). The `File.Exists` guard in BuildHooksJson checks the
-    // unquoted path and proves nothing about whether the assembled command can actually run.
+    // path and proves nothing about whether the assembled command can actually run.
 
     [Fact]
-    public void The_written_hook_command_actually_denies_a_withheld_tool_when_spawned_for_real()
+    public void The_written_hook_commands_assembly_denies_a_withheld_tool_when_launched_directly()
     {
         var (decision, reason) = RunWrittenHookCommand(
             new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false),
@@ -782,7 +794,7 @@ public class GeminiWorkerAdapterTests
     }
 
     [Fact]
-    public void The_written_hook_command_actually_allows_a_granted_tool_when_spawned_for_real()
+    public void The_written_hook_commands_assembly_allows_a_granted_tool_when_launched_directly()
     {
         // Same grant, same payload shape, different tool -- so neither verdict can come from a
         // command that answers unconditionally.
@@ -831,20 +843,20 @@ public class GeminiWorkerAdapterTests
             .GetProperty("hooks")[0]
             .GetProperty("command").GetString()!;
 
-        // agy hands this string to something that is NOT a POSIX shell. So this splits the shape
-        // BuildHooksJson actually ships rather than pretending to know a shell's rules -- see that
-        // method for what was measured. This test proves the *assembly and arguments* launch and
-        // behave; whether agy can parse the quoting is a separate, live question owned by
-        // record-once-ok: #706 src/Aer.Adapters/GeminiWorkerAdapter.cs
-        // `agy.hook-command-survives-a-metacharacter-in-its-path` -- cited here as a pointer, since a
-        // reader of this regex needs to know which check owns the half it does not cover.
+        // Three bare, whitespace-free tokens, and the pattern is deliberately strict rather than
+        // permissive. The shape is a measured constraint of agy's shell, not a style: `cmd /c`
+        // resolves neither a quoted path nor a bare one containing a space once an argument follows,
+        // so a command that grew a quote or a space would be one that never starts -- and on this
+        // vendor a hook that never starts is an ALLOW. A tolerant regex would let that through
+        // silently, which is what happened twice: `"` until #706, then `'` until #710.
         //
-        // The quote character here is deliberately exact rather than `["']`. It was `"` until #706,
-        // where the double-quoted form turned out never to start the handler at all -- so this
-        // assertion doubles as a pin on the shipped quote style, and a permissive pattern would have
-        // let that regression through silently.
-        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+)\s+'([^']+)'\s+(\S+)$");
-        Assert.True(match.Success, $"hook command is not the expected `exe 'path' arg` shape: {command}");
+        // This assertion pins the SHAPE. Whether agy's shell really resolves it is a vendor question
+        // this test cannot reach -- see the note above the pair, and
+        // `agy.hook-command-survives-a-metacharacter-in-its-path`, which runs it through agy.
+        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+) (\S+) (\S+)$");
+        Assert.True(match.Success,
+            $"hook command is not the expected bare `exe path arg` shape -- a quote or a space here "
+            + $"is a command agy's shell cannot start, which reads as an allow: {command}");
 
         var startInfo = new ProcessStartInfo(match.Groups[1].Value)
         {

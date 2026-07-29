@@ -7,6 +7,13 @@ namespace Aer.Cli;
 /// <see cref="Aer.Adapters.GeminiWorkerAdapter"/> writes into every spawned agy worker's workspace
 /// <c>.agents/hooks.json</c>. Not an operator-facing subcommand — <c>agy</c> invokes it itself, on
 /// every matched tool call, and it receives the event JSON on stdin.
+/// <para>
+/// <b>Whether agy invokes it at all depends on how the command string is spelled, which is not this
+/// command's business but is its precondition.</b> This code was correct throughout #710 and never
+/// ran on Windows: agy passes the command to <c>cmd /c</c>, the assembly path was quoted, and
+/// <c>dotnet</c> could not find it. See <c>GeminiWorkerAdapter.HookAssemblyToken</c>, which owns
+/// every constraint on that spelling and is where a change to it belongs.
+/// </para>
 /// </summary>
 /// <remarks>
 /// <para>
