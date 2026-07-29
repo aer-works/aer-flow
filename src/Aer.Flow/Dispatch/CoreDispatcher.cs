@@ -225,6 +225,71 @@ internal sealed class StderrTailBuffer
 }
 
 /// <summary>
+/// Accumulates a worker's stdout and hands back whole lines, decoding STATEFULLY across chunks
+/// (#642).
+/// </summary>
+/// <remarks>
+/// Extracted from <c>RunAsync</c>'s event loop so it can be driven at chosen byte offsets. The
+/// decode used to sit inline as a stateless <c>Encoding.UTF8.GetString</c> per chunk, which was
+/// unreachable from a test: a pipe splits where it likes, so the defect needed a boundary landing
+/// mid-character and could not be provoked deterministically through a real process.
+/// <para>
+/// <see cref="StderrTailBuffer"/> had carried a <c>Decoder</c> since it was written and this path
+/// never did. That asymmetry is the wrong way round: stdout is the worker's own output, the text
+/// rendered in the Conversation tab, so it had the weaker treatment where it mattered more.
+/// </para>
+/// <para>
+/// NOT thread-safe, deliberately and like its stderr sibling — the caller already holds a lock for
+/// the line buffer, and the decoder's cross-chunk state has to be inside that same lock rather than
+/// beside it.
+/// </para>
+/// </remarks>
+internal sealed class StdoutLineBuffer
+{
+    private readonly System.Text.StringBuilder buffer = new();
+    private readonly System.Text.Decoder decoder = System.Text.Encoding.UTF8.GetDecoder();
+
+    /// <summary>Decodes one chunk and emits every complete line it completes.</summary>
+    public void Append(byte[] data, Action<string> onLine)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(onLine);
+
+        // GetChars runs even when the count is zero. GetCharCount is a pure calculation and does NOT
+        // hand the bytes to the decoder, so returning early on a zero count would discard the partial
+        // sequence the decoder is meant to be holding — the defect StderrTailBuffer records having
+        // shipped, and the reason the 2-byte split arm exists in both theories.
+        var maxChars = decoder.GetCharCount(data, 0, data.Length, flush: false);
+        var chars = new char[maxChars];
+        var written = decoder.GetChars(data, 0, data.Length, chars, 0, flush: false);
+        buffer.Append(chars, 0, written);
+
+        var content = buffer.ToString();
+        int newlineIndex;
+        while ((newlineIndex = content.IndexOf('\n', StringComparison.Ordinal)) >= 0)
+        {
+            onLine(content[..newlineIndex].TrimEnd('\r'));
+            content = content[(newlineIndex + 1)..];
+        }
+
+        buffer.Clear();
+        buffer.Append(content);
+    }
+
+    /// <summary>Emits whatever is left when the stream ends without a trailing newline.</summary>
+    public void Flush(Action<string> onLine)
+    {
+        ArgumentNullException.ThrowIfNull(onLine);
+        if (buffer.Length > 0)
+        {
+            onLine(buffer.ToString());
+            buffer.Clear();
+        }
+    }
+}
+
+
+/// <summary>
 /// Calls the aer-core M5 <c>AerTask</c> binding with an <see cref="ExecutionRequest"/> and records
 /// Core's lifecycle events to the combined log (M7 Phase 6). This is the P/Invoke Layer
 /// <c>CLAUDE.md</c> requires: the only place in <c>Aer.Flow</c> that touches <c>Aer.Core</c>
@@ -456,7 +521,7 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         var exitCode = 0;
         var reason = CoreExitReason.Natural;
         var pendingLogWrites = new List<Task>();
-        var stdoutBuffer = new System.Text.StringBuilder();
+        var stdoutLines = new StdoutLineBuffer();
         var stdoutLock = new object();
 
         // #563.
@@ -481,20 +546,14 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                 case AerTaskEventKind.StdoutChunk:
                     if (target.OnStdoutLine is not null && e.Data is { Length: > 0 })
                     {
-                        var text = System.Text.Encoding.UTF8.GetString(e.Data);
+                        // The decode is inside the lock, unlike the stateless GetString it replaces:
+                        // the buffer now carries decoder state between chunks, so two callbacks
+                        // decoding concurrently would interleave into one another's partial
+                        // sequences. The lock was already here for the line buffer; the decode joins
+                        // it rather than sitting beside it.
                         lock (stdoutLock)
                         {
-                            stdoutBuffer.Append(text);
-                            var content = stdoutBuffer.ToString();
-                            int newlineIndex;
-                            while ((newlineIndex = content.IndexOf('\n')) >= 0)
-                            {
-                                var line = content[..newlineIndex].TrimEnd('\r');
-                                target.OnStdoutLine(line);
-                                content = content[(newlineIndex + 1)..];
-                            }
-                            stdoutBuffer.Clear();
-                            stdoutBuffer.Append(content);
+                            stdoutLines.Append(e.Data, target.OnStdoutLine);
                         }
                     }
                     break;
@@ -538,10 +597,9 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
 
         lock (stdoutLock)
         {
-            if (target.OnStdoutLine is not null && stdoutBuffer.Length > 0)
+            if (target.OnStdoutLine is not null)
             {
-                target.OnStdoutLine(stdoutBuffer.ToString());
-                stdoutBuffer.Clear();
+                stdoutLines.Flush(target.OnStdoutLine);
             }
         }
 

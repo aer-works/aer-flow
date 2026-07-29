@@ -488,6 +488,85 @@ public class CoreDispatcherTests
     /// chunk, never reaches the boundary case, and would pass against the naive implementation this
     /// is written to exclude. Splitting the sequence by hand is what makes the test discriminate.
     /// </remarks>
+    /// <summary>
+    /// The same theory, on the path that had the WEAKER treatment (#642) — <c>StdoutLineBuffer</c>
+    /// carries which path that was and why the asymmetry ran the wrong way.
+    /// </summary>
+    /// <remarks>
+    /// Its stderr twin above is the CONTROL and has to keep passing: identical input, identical split
+    /// offsets, on a path that was already correct. If both go red the harness is at fault rather
+    /// than the decoder, which a one-sided test could not tell apart.
+    /// <para>
+    /// A trailing newline is appended because this buffer emits by LINE, where the stderr one retains
+    /// a tail — the only difference between the two, and it is about how each surfaces text rather
+    /// than about the decode under test.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(1, "inside the 2-byte é")]
+    [InlineData(3, "inside the 3-byte —")]
+    [InlineData(6, "inside the 4-byte 🚨")]
+    [InlineData(7, "inside the 4-byte 🚨, one byte later")]
+    public void Stdout_decoding_survives_a_multi_byte_sequence_split_across_two_chunks(int splitAt, string what)
+    {
+        Assert.NotEmpty(what);
+
+        // Same 9 bytes as the stderr theory: é at [0,2), — at [2,5), 🚨 at [5,9).
+        const string payload = "é—🚨";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(payload + "\n");
+        Assert.Equal(10, bytes.Length);
+
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+        buffer.Append(bytes[..splitAt], lines.Add);
+        buffer.Append(bytes[splitAt..], lines.Add);
+
+        var line = Assert.Single(lines);
+        Assert.Equal(payload, line);
+        Assert.DoesNotContain('�', line);
+    }
+
+    /// <summary>
+    /// A chunk that decodes to NOTHING still has to reach the decoder — see <c>StdoutLineBuffer</c>
+    /// for why returning early on a zero count loses the partial sequence.
+    /// </summary>
+    /// <remarks>
+    /// Its own test rather than an assumed consequence of the theories above: the case is only
+    /// reachable when a stream OPENS on a split character, which no split-offset arm reproduces.
+    /// </remarks>
+    [Fact]
+    public void A_first_chunk_that_decodes_to_nothing_still_hands_its_bytes_to_the_decoder()
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes("é\n");
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+
+        // One byte of a 2-byte sequence: decodes to zero characters, and the decoder must keep it.
+        buffer.Append(bytes[..1], lines.Add);
+        Assert.Empty(lines);
+
+        buffer.Append(bytes[1..], lines.Add);
+        Assert.Equal("é", Assert.Single(lines));
+    }
+
+    /// <summary>Text with no trailing newline is emitted on flush, not silently dropped.</summary>
+    [Fact]
+    public void Stdout_without_a_trailing_newline_is_emitted_when_the_stream_ends()
+    {
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+        buffer.Append(System.Text.Encoding.UTF8.GetBytes("no newline here"), lines.Add);
+        Assert.Empty(lines);
+
+        buffer.Flush(lines.Add);
+        Assert.Equal("no newline here", Assert.Single(lines));
+
+        // Flushing again emits nothing: the buffer was cleared, so a second flush cannot duplicate
+        // the final line into the transcript.
+        buffer.Flush(lines.Add);
+        Assert.Single(lines);
+    }
+
     [Theory]
     // One offset interior to each of the three sequence lengths present, named by what it splits
     // rather than derived from the end of the array. The first version of this test computed all
