@@ -335,8 +335,34 @@ def _simple_mode_override():
     return PASS, "override restores the hook; =1 did not ungate on this version -- " + detail
 
 
+GATE_PROBE_PROJECT = os.path.join(HERE, "..", "Aer.GateProbe", "Aer.GateProbe.csproj")
 GATE_PROBE = os.path.join(
     HERE, "..", "Aer.GateProbe", "bin", "Debug", "net10.0", "Aer.GateProbe.dll")
+
+
+def build_gate_probe():
+    """Rebuild the probe before using it, and fail the check if it cannot be built. #707.
+
+    These arms exist BECAUSE a hand-written flag list cannot contain the flag its author did not
+    think of -- their whole value is running the argv the real adapter produces *right now*. A stale
+    binary silently turns them into checks against whatever the adapter looked like at some unknown
+    past build, which is the one thing they were built not to be.
+
+    Not hypothetical. Immediately after #706's fix landed in `GeminiWorkerAdapter`, this arm was
+    re-run and reported the same failure as before the fix -- because the probe binary still held the
+    old double-quoted hook command. It looked exactly like an ordinary unchanged result, and nearly
+    became evidence that a correct fix had not worked.
+
+    A comment telling the operator to build first would not have prevented that: the arm's docstring
+    already ran to several paragraphs nobody re-read before running it. So this builds.
+    """
+    proc = subprocess.run(
+        ["dotnet", "build", GATE_PROBE_PROJECT, "--nologo", "-v", "q"],
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        tail = (proc.stdout + proc.stderr).strip()[-400:]
+        return f"could not build Aer.GateProbe, so this arm would measure a stale binary: {tail}"
+    return None
 
 
 def _adapter_flag_set_for(vendor):
@@ -369,8 +395,12 @@ def _adapter_flag_set_for(vendor):
     absent file would mean nothing -- the same conflation that made the first version of
     gate.simple-mode-override-restores-the-hook report a green meaning something else.
     """
+    # #707: BUILD it, never merely check it exists. An existing-but-stale binary is the dangerous
+    # case and the old guard passed it straight through.
+    if (failure := build_gate_probe()) is not None:
+        return INCONCLUSIVE, failure
     if not os.path.exists(GATE_PROBE):
-        return INCONCLUSIVE, f"{GATE_PROBE} not built; run `pixi run build` first"
+        return INCONCLUSIVE, f"{GATE_PROBE} missing even after a successful build -- check the csproj output path"
 
     def attempt():
         """One invocation asked for BOTH writes, so the control and the test share a tool call.
@@ -1897,6 +1927,214 @@ def _agy_deny():
                       f"{'AER_VERIFY_TOKEN' in blob} (reported, not claimed)")
     finally:
         shutil.rmtree(wd, ignore_errors=True)
+
+
+@check("agy.hook-deny-holds-under-the-mode-production-uses", "agy",
+       "an agy PreToolUse deny still BLOCKS under `--mode accept-edits` -- the flag production "
+       "actually defaults to. Every other agy hook arm runs --dangerously-skip-permissions, which "
+       "production reaches only when shell AND network are both granted",
+       sentinel=True)
+def _agy_deny_under_accept_edits():
+    """#601 part 2. `GeminiWorkerAdapter.DefaultPermissionScope` is `accept-edits`, and until this
+    existed not one agy hook arm ran under it -- all of them passed `--dangerously-skip-permissions`.
+
+    Not idle caution, and this is the specific reason it is a sentinel rather than a settled note:
+    `agy.force-ask-defeated-by-skip` is direct evidence that hook-verdict semantics on THIS VENDOR
+    change between skip and non-skip modes. So "deny blocks under skip, therefore deny blocks under
+    accept-edits" is exactly the cross-mode inference decision 0029 forbids, even though the
+    direction (skip being the permissive end) makes it feel safe.
+
+    The skip arm is the CONTROL, not a second question: it reproduces `agy.hook-deny-honoured`'s
+    known-good arrangement, so a block that fails in both arms is a harness problem and a block that
+    fails only under accept-edits is the finding.
+    """
+    def arm(mode_args):
+        wd = tempfile.mkdtemp(prefix="v-agyae-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, """echo '{"decision":"deny","reason":"AER_VERIFY_TOKEN"}'""")
+            _agy_hook_json(wd, "sh %s" % hk)
+            rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
+                                "--add-dir", wd] + mode_args, cwd=wd)
+            ran = bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+            return ran, fired(log)
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    skip_ran, skip_fired = arm(["--dangerously-skip-permissions"])
+    ae_ran, ae_fired = arm(["--mode", "accept-edits"])
+    note = (f"skip: fired={skip_fired} ran={skip_ran} | "
+            f"accept-edits: fired={ae_fired} ran={ae_ran}")
+
+    if skip_fired == 0:
+        return INCONCLUSIVE, f"the CONTROL arm's hook never fired, so nothing here is about mode. {note}"
+    if skip_ran:
+        return INCONCLUSIVE, ("the control arm's deny did not block, which contradicts "
+                              f"agy.hook-deny-honoured -- fix that before reading this. {note}")
+    if ae_fired == 0:
+        return FAIL, ("the hook does not fire AT ALL under the mode production defaults to, so every "
+                      f"other agy hook measurement is scoped to a flag production rarely passes. {note}")
+    if ae_ran:
+        return FAIL, ("a deny is honoured under --dangerously-skip-permissions and IGNORED under "
+                      f"--mode accept-edits, which is the mode production uses. {note}")
+    return PASS, f"a deny blocks under both the measured flag and the production one. {note}"
+
+
+@check("agy.hook-command-survives-a-metacharacter-in-its-path", "agy",
+       "the SINGLE-QUOTED command form GeminiWorkerAdapter ships starts a handler whose path "
+       "contains a space, `$` or `%` -- and the double-quoted form it used to ship still does not. "
+       "Establishes agy's command-string parsing by BEHAVIOUR; agy documents only 'The shell "
+       "command to execute'",
+       sentinel=True)
+def _agy_hook_metacharacter_path():
+    """#601 part 3, and the regression pin for #706. agy offers no exec form -- claude's hook ships
+    `args` and is spawned directly, with nothing to quote for -- so `GeminiWorkerAdapter` assembles
+    ONE string and something parses it.
+
+    The failure mode is the worst available on this vendor: the command does not start, produces no
+    stdout, and `agy.hook-malformed-stdout-fails-open` measured THAT as an allow. So the worker runs
+    ungated and nothing says so. The `File.Exists` guard in the adapter checks the UNQUOTED path and
+    therefore proves nothing about whether the assembled string can run. That is not hypothetical:
+    it is #706, where a double-quoted path meant decision 0029's mandatory gate never fired on any
+    agy worker for two months while six agy hook checks passed.
+
+    **The arms track what production ACTUALLY ships, and getting that wrong once already is why this
+    paragraph exists.** The first version of this check tested `bare` versus `double-quoted` -- and
+    was written in the same working tree that changed production to SINGLE quotes. So the check meant
+    to pin the #706 fix was pinning the broken form instead, and its prose asserted production shipped
+    double quotes after that had stopped being true. A reviewer caught it. The arms now are:
+
+    - `bare`            -- the control. Every pre-existing agy hook check in this file uses it, which
+                           is exactly why none of them caught #706.
+    - `single-quoted`   -- what `GeminiWorkerAdapter.BuildHooksJson` ships. THE arm that matters.
+    - `double-quoted`   -- #706's broken form, kept so the regression is pinned rather than described.
+                           Expected NOT to fire; if it starts firing, agy's parser changed and the
+                           choice of quote style should be re-measured rather than assumed still right.
+
+    Each runs against a plain path and against one containing a SPACE, because a space is why single
+    quotes were chosen over bare -- `AppContext.BaseDirectory` sits under the user profile, where
+    `C:/Users/First Last` is ordinary. `$` and `%` are also covered: both are legal path characters
+    (a directory named `100%` is unremarkable) and both are expanded by some shells inside some
+    quote styles.
+
+    A sentinel: if agy changes which shell it uses, a path AER already ships could silently stop
+    resolving, and per the fail-open above nothing would say so.
+
+    The bare arm is the control. Without it a non-firing arm is indistinguishable from a harness that
+    never worked -- and reading the second as the first is how this file's own
+    `gate.simple-mode-override-restores-the-hook` check once certified the opposite of what it
+    measured.
+    """
+    # Mirrors GeminiWorkerAdapter.BuildHooksJson's own quoting choice. `single` is production.
+    FORMS = {
+        "bare": "sh %s",
+        "single": "sh '%s'",
+        "double": 'sh "%s"',
+    }
+
+    def arm(dirname, form):
+        """Returns (fired, ran). BOTH are needed, and using `fired` alone was a real defect here.
+
+        `fired == 0` is ambiguous on its own: the handler could not start, OR the model simply made
+        no tool call that run. The prompt asks for one; it does not guarantee one, and observed
+        counts across arms ran 0, 3, 4 and 8.
+
+        `ran` disambiguates it without needing a control arm. The handler denies, so:
+          fired, not ran  -> the gate started and blocked. Working.
+          not fired, ran  -> the gate did NOT start and agy allowed the call through. THE failure,
+                             directly observed rather than inferred from a silence
+                             (`agy.hook-malformed-stdout-fails-open`).
+          not fired, not ran -> no tool call happened. Says nothing either way.
+
+        A bare-form control was tried first and is wrong by construction: bare cannot carry a path
+        with a space, so on that shape it reports 0 while production reports 4 -- the "control"
+        failing where the thing under test succeeds.
+        """
+        parent = tempfile.mkdtemp(prefix="v-agymc-")
+        wd = os.path.join(parent, dirname)
+        try:
+            os.makedirs(wd)
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            hook_script(hk, log, """echo '{"decision":"deny","reason":"AER_VERIFY_TOKEN"}'""")
+            _agy_hook_json(wd, FORMS[form] % hk)
+            rc, out, err = run(["agy", "-p", "Run this shell command: node --version",
+                                "--add-dir", wd, "--dangerously-skip-permissions"], cwd=wd)
+            return fired(log), bool(re.search(r"\bv?\d+\.\d+\.\d+", out + err))
+        finally:
+            shutil.rmtree(parent, ignore_errors=True)
+
+    def arm_until_a_tool_call(dirname, form, attempts=3):
+        """Retry a shape that produced no tool call at all.
+
+        Whether the model invokes a tool is nondeterministic, and a shape that is never exercised
+        reports the same `fired == 0` as one whose handler could not start. Retrying only the
+        no-signal case costs nothing when the first run works and stops the check reporting a coin
+        flip as a result -- which it did, twice, once as a spurious `$` failure and once as an
+        INCONCLUSIVE on an otherwise clean run.
+        """
+        for _ in range(attempts):
+            f, r = arm(dirname, form)
+            if f or r:
+                return f, r
+        return 0, False
+
+    SHAPES = (("plain", "plain"), ("space", "has space"), ("$", "has$dollar"), ("%", "has%percent"))
+    prod = {shape: arm_until_a_tool_call(dirname, "single") for shape, dirname in SHAPES}
+
+    # #706's broken form, pinned rather than described. Given the PLAIN path -- the shape most
+    # favourable to it -- so a pass here is not luck.
+    double_fired, double_ran = arm_until_a_tool_call("plain", "double")
+
+    note = ("shipped single-quoted form, per path shape (fired/ran): "
+            + ", ".join(f"{s}={prod[s][0]}/{prod[s][1]}" for s, _ in SHAPES)
+            + f" | #706's double-quoted form on a plain path={double_fired}/{double_ran}")
+
+    # Directly observed failures first: the gate did not start AND the call went through.
+    escaped = [s for s, _ in SHAPES if not prod[s][0] and prod[s][1]]
+    if escaped:
+        severity = ("AER's agy gate does not run at all -- #706's severity"
+                    if "plain" in escaped else
+                    f"the gate is silently absent for anyone whose install path contains "
+                    f"{', '.join(escaped)}")
+        return FAIL, (f"the shipped form did not start the handler and the denied command RAN for "
+                      f"{', '.join(escaped)}, so {severity}. {note}")
+
+    if double_fired == 0 and double_ran:
+        pass  # #706's form still dead, as expected -- observed, not assumed.
+    elif double_fired:
+        return FAIL, ("#706's double-quoted form has started working, so agy's command parsing "
+                      "changed. Nothing is broken now, but the quote style was chosen BY MEASUREMENT "
+                      f"and that measurement no longer holds -- re-run it. {note}")
+
+    # A shape that produced no tool call even after retries is UNEXERCISED, not failing -- nothing
+    # escaped, because nothing was attempted. Reporting the whole check INCONCLUSIVE for it would
+    # bury the part that IS measured, and a check that is permanently inconclusive gets read exactly
+    # as often as one that is permanently red. So the verdict states what it proved and carries its
+    # own narrowing, per CLAUDE.md's rule that a result narrower than its question says so itself.
+    quiet = [s for s, _ in SHAPES if not prod[s][0] and not prod[s][1]]
+    if "plain" in quiet:
+        return INCONCLUSIVE, (f"the PLAIN shape produced no tool call after retries, so the primary "
+                              f"claim was never exercised and nothing here means anything. {note}")
+
+    proved = [s for s, _ in SHAPES if prod[s][0]]
+    verdict = ("the shipped single-quoted form starts the handler and blocks the denied call for "
+               f"{', '.join(proved)}, and #706's double-quoted form still does not start (its call "
+               "ran, directly observing the fail-open). ")
+    if quiet:
+        verdict += (f"NOT PROVED for {', '.join(quiet)}: no tool call happened there even after "
+                    "retries, so those shapes are unexercised rather than passing. `$` in particular "
+                    "has stayed silent across runs while every other shape fired, which is more "
+                    "likely a harness limit than a vendor one -- a standalone probe DID start a "
+                    "handler on a `$` path -- but the two have not been reconciled. ")
+    return PASS, verdict + note
+    if double:
+        return FAIL, ("#706's double-quoted form has started working, which means agy's command "
+                      "parsing changed. Nothing is broken right now, but the quote style was chosen "
+                      f"BY MEASUREMENT and that measurement no longer holds -- re-run it. {note}")
+    return PASS, ("the shipped single-quoted form starts the handler for every path shape that has "
+                  f"to work, and #706's double-quoted form still does not. {note}")
 
 
 @check("agy.broken-hook-fails-open", "agy",
