@@ -394,6 +394,27 @@ def register_models():
     return accepted, ""
 
 
+# A model name a check passes DELIBERATELY because the catalogue does not list it. Step 9's whole
+# job is to fail an uncatalogued name, so a probe whose entire point is rejection reads as the defect
+# it is testing for -- `effort.agy-rejection-is-per-model` exists to establish what agy does with
+# `gemini-3-pro`, which by construction cannot be a catalogued name.
+#
+# Per-line and explicit rather than a name list: a list would exempt that string everywhere,
+# including somewhere it really was a stale pin. The marker sits on the line it excuses, so the
+# intent is readable where the reader is, and `grep` finds every one.
+UNCATALOGUED_ON_PURPOSE = "aer-uncatalogued-on-purpose"
+
+
+def is_probe_input(line: str) -> bool:
+    """Whether this line's model name is a deliberately-invalid probe input.
+
+    Pure, so `selfcheck.py` can hold BOTH directions -- that a marked line is exempt, and that an
+    unmarked uncatalogued name still fails. An exemption with only the first half asserted is a
+    switch for turning the step off.
+    """
+    return UNCATALOGUED_ON_PURPOSE in line
+
+
 def step9_pinned_models_exist():
     """Every `agy` model name pinned in a tool is one `agy models` actually lists.
 
@@ -522,6 +543,8 @@ def step9_pinned_models_exist():
             rel = os.path.relpath(full, ROOT).replace("\\", "/")
             with open(full, encoding="utf-8", errors="replace") as f:
                 for lineno, text in enumerate(f, 1):
+                    if is_probe_input(text):
+                        continue
                     for name in pin_position.findall(text):
                         # Both conditions are load-bearing. A prefix test on `gemini-|gpt-` would
                         # skip `claude-sonnet-4-6` and `claude-opus-4-6-thinking`, which `agy models`

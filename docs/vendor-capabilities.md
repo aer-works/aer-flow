@@ -314,6 +314,13 @@ Two things the design assumed otherwise:
     about `--effort` at all.
   - **Precedence is unprobed** — when both are given and both accepted, which one wins is unknown.
     That, and only that, is what [#510](https://github.com/aer-works/aer-flow/issues/510) tracks.
+    A check now exists for it, `effort.agy-precedence`, **written and not yet run**: it reads the
+    hook payload's undocumented `modelName` with and without `--effort`, because a behavioural study
+    cannot be made to discriminate at any sane cost. Its no-`--effort` arm is the control that
+    decides whether that field resolves the model or merely echoes the argument — this page records
+    that the field exists and has never recorded its value.
+    The missing control named above also has one now, `effort.agy-rejection-is-per-model`, written
+    to the specification in that paragraph rather than to a fresh guess.
   - **A second suffixed model reached effort-value validation**, which is further evidence for
     acceptance: the divergence recorded below on this page was measured while building
     `effort.agy-value-set`, whose probe passes an invalid `--effort` to `gemini-3.6-flash-low` and

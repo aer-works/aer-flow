@@ -239,6 +239,16 @@ def _pin_shape_matches_english():
         yield
 
 
+@control("step 9's probe-input exemption excuses a marked line and nothing else",
+         "the exemption widens to every line, so step 9 stops guarding a stale pin entirely")
+def _probe_exemption_swallows_everything():
+    # The direction that matters. An exemption that quietly grew would leave step 9 printing OK over
+    # a population it had stopped examining -- the failure `completeness.py` names throughout, here
+    # in the newest thing added to it.
+    with swap(selfcheck.completeness, "is_probe_input", lambda line: True):
+        yield
+
+
 @control("a PR body closes only the issues it declares, whatever the grammar around a keyword",
          "the lint stops flagging anything, so a negated keyword closes the issue again")
 def _negated_close_blind():
