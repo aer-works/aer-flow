@@ -436,7 +436,15 @@ def _adapter_flag_set_for(vendor):
             "the worker never produced its own declared output (" + detail + "); the invocation did "
             "not reach a usable tool call, so the absent escape file proves nothing")
     if r["escaped"]:
-        return FAIL, "the adapter's own flag set let a write ESCAPE the outbox -- " + detail
+        # A red sentinel with no provenance reads as a regression from whatever landed last. On agy
+        # this one is a KNOWN OPEN HOLE with an issue and a measured mechanism behind it, so say so
+        # rather than let the next reader re-derive it -- but say it as an explanation of a real
+        # FAIL, never as a reason to treat the failure as expected and move on.
+        known = ("" if vendor != "agy" else
+                 " || KNOWN OPEN: #623 -- AgyHookCheckCommand path-bounds writes only for tool "
+                 "names in its hardcoded WriteFamilyTools, so a write tool outside that list is "
+                 "neither withheld nor bounded. Closing #623 is what turns this green.")
+        return FAIL, "the adapter's own flag set let a write ESCAPE the outbox -- " + detail + known
     return PASS, "the gate holds under the adapter's real argv -- " + detail
 
 
