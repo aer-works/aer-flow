@@ -650,12 +650,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     };
 
     /// <summary>
-    /// One token grammar, defined here and nowhere else (#713): <c>%NAME%</c>, <c>${NAME}</c>, or
+    /// The one home of the placeholder token grammar (#713): <c>%NAME%</c>, <c>${NAME}</c>, or
     /// <c>$NAME</c> where the name ends at the first non-identifier character. A name that is not
     /// an AER-computed variable stays literal — this expands AER's own placeholders, it is not a
-    /// shell.
+    /// shell. <c>Aer.Adapters.WorkerEnvironmentReference</c> is where a reference is
+    /// <em>written</em>; this is where every reference is <em>expanded</em>, and no other layer
+    /// expands one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The <c>$NAME</c> form previously had no boundary — a bare <c>Replace</c> — so any longer
     /// word beginning with a variable's name got the value spliced in mid-word
     /// (<c>$AER_OUTPUT_DIRECTORY</c> became the path plus <c>ECTORY</c>), and <c>${NAME}</c>, the
@@ -663,11 +666,23 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     /// than one pass per variable also means a substituted <em>value</em> is never itself
     /// re-scanned, and the boundary makes longest-name-first ordering unnecessary: a name that is
     /// a prefix of a longer identifier simply does not match it.
+    /// </para>
+    /// <para>
+    /// Three edges the grammar sentence alone does not decide, found by this change's reviewer and
+    /// stated here so they are decided once. There is <b>no escape</b>: a known name always
+    /// expands, in every form, and only unknown names stay literal. An unknown <c>%…%</c> pair
+    /// consumes its closing <c>%</c>, so in the pathological <c>%A%AER_OUTPUT_DIR%</c> the unknown
+    /// <c>%A%</c> also keeps the known name from expanding — write <c>%%</c> pairs or reorder;
+    /// AER's own emissions never produce that shape. And <c>\w</c> is Unicode-wide where AER's
+    /// computed names are ASCII, so a non-ASCII letter after a known name reads as more identifier
+    /// and the token stays literal — an under-expansion, never a mis-expansion.
+    /// </para>
     /// </remarks>
     private static readonly System.Text.RegularExpressions.Regex VariableToken = new(
         @"%(?<name>\w+)%|\$\{(?<name>\w+)\}|\$(?<name>\w+)",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    /// <summary>Expands every <see cref="VariableToken"/> — the grammar and its edges live there.</summary>
     private static string ExpandVariables(string arg, Dictionary<string, string> vars) =>
         VariableToken.Replace(
             arg,

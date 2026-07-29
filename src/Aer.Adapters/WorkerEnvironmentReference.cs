@@ -1,8 +1,12 @@
 namespace Aer.Adapters;
 
 /// <summary>
-/// How an AER-computed environment variable is written into prompt text for a worker to expand
-/// (<c>%AER_OUTPUT_DIR%</c> on Windows, <c>$AER_OUTPUT_DIR</c> elsewhere).
+/// How an AER-computed environment variable reference is written into prompt text
+/// (<c>%AER_OUTPUT_DIR%</c> on Windows, <c>$AER_OUTPUT_DIR</c> elsewhere). Writing only — the
+/// expansion, and the full token grammar including the <c>${NAME}</c> form this helper never emits,
+/// live in one place: <c>CoreDispatcher.VariableToken</c>, which expands args and prompt text at
+/// dispatch. The worker's shell is not the expander, though the same names are also set in the
+/// child environment.
 /// </summary>
 /// <remarks>
 /// One copy, because there were three: both vendor adapters carried an identical private helper, and
