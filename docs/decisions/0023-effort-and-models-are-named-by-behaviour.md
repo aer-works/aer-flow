@@ -69,6 +69,27 @@ distinguishable behaviour, and shipped the canonical mapping with `vendor-verify
 it (`docs/vendor-capabilities.md`). `#498` is the remaining UI/adapter work that consumes it — not a
 reopening of the mapping question.
 
+**4. Effort × model is not a grid, and the available set is enumerated per model, never assumed.**
+*Amended 2026-07-28 (`#510`).* The empirical table above compares the two `--effort` flags as though
+each vendor had one effort control. **`agy` has two**, and the combinations its CLI accepts have
+**holes** — `docs/vendor-capabilities.md` § "`agy models`" enumerates both, and is the canonical
+record. A surface presenting effort × model as a matrix would offer combinations the vendor rejects.
+
+This does not reopen the decision; naming by behaviour is what makes it survivable. It sharpens what
+the adapter owes: the canonical word maps to *whatever that model actually accepts*, so **a level
+unavailable on the chosen model is a collapse, and constraint 2 already governs it** — disclose it at
+the point of choosing rather than silently substituting a neighbour. Enumerate from the vendor
+(`agy models` is machine-readable; `claude` has no equivalent subcommand, so the two sets come from
+different surfaces and both need re-establishing after a vendor self-update).
+
+`docs/vendor-capabilities.md` § "`agy models`" is the canonical record of what is measured here and
+what is still open — including which of the two controls wins when both are given, which is not yet
+known. Nothing in AER's vocabulary depends on that answer; a *surface offering both controls* would,
+which is why the question is tracked rather than closed.
+
+**Also corrected:** `agy` serves Anthropic and OpenAI models too, so "the Gemini worker" is the wrong
+mental model for it, and any UI copy saying so is wrong.
+
 ## Consequences
 
 **Easier.** The person asks one question — *how hard should this think?* — and gets one answer, in the

@@ -569,6 +569,34 @@ def _shapes_discriminate():
                    if blind else "; no catalogue entry is digit-free, so the walk's blind spot is empty")
 
 
+@check("step 9's probe-input exemption excuses a marked line and nothing else")
+def _probe_input_exemption():
+    """An exemption asserted in ONE direction is a switch for turning the step off.
+
+    Step 9 fails an agy model name the catalogue does not list. `effort.agy-rejection-is-per-model`
+    has to pass a name the catalogue cannot list -- that is the measurement -- so the marker exists.
+    What makes it safe rather than a hole is that the unmarked case still fails, which is the arm
+    below that would go quiet if the exemption ever widened.
+    """
+    # The fixture model name is DIGIT-FREE on purpose. A realistic one here would be an unmarked
+    # uncatalogued name sitting in `--model` position in a tracked file, so step 9 would flag this
+    # very fixture -- and the unmarked arm cannot carry the marker without ceasing to be the unmarked
+    # arm. `PIN_SHAPE` requires a digit, and no catalogue entry is digit-free, so a digit-free name is
+    # outside the walk's population by construction rather than by an exemption.
+    marked = '    run(["agy", "--model", "aer-fixture-model"])  # ' + completeness.UNCATALOGUED_ON_PURPOSE
+    unmarked = '    run(["agy", "--model", "aer-fixture-model"])'
+    assert completeness.is_probe_input(marked), (
+        "step 9: a line carrying the marker was not exempted, so a deliberate probe input fails CI")
+    assert not completeness.is_probe_input(unmarked), (
+        "step 9: an UNMARKED uncatalogued name was exempted -- the exemption has stopped being an "
+        "exemption and step 9 no longer guards a stale pin")
+    # A marker anywhere on the line counts, deliberately -- it may sit in a trailing comment or in a
+    # docstring line quoting an error message. What must not count is a line without it.
+    assert completeness.is_probe_input(f"# {completeness.UNCATALOGUED_ON_PURPOSE} explains why"), (
+        "step 9: the marker stopped being recognised in a leading comment")
+    return "3 arms: marked exempt, unmarked still fails, marker position free"
+
+
 @check("a PR body closes only the issues it declares, whatever the grammar around a keyword")
 def _negated_close_lint():
     """Both must-fire fixtures are REAL BODIES, verbatim from the merges that auto-closed an issue.

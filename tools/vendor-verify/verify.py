@@ -2416,6 +2416,131 @@ def _effort_agy_set():
     return _effort_set_result(found, EFFORT_VALUES["agy"])
 
 
+@check("effort.agy-rejection-is-per-model", "effort",
+       "whether agy's `--effort is not supported for model X` names the real cause, or whether X was "
+       "simply not a model -- the one dispatch that separates them")
+def _effort_agy_rejection_isolated():
+    """`docs/vendor-capabilities.md` records a measured rejection and names this exact control as
+    missing, so this is written to that specification rather than to a fresh guess:
+
+        Error: invalid model selection (--model "gemini-3-pro" --effort "high"):  # aer-uncatalogued-on-purpose
+        --effort is not supported for model "gemini-3-pro"
+
+    The wording blames the flag. But `gemini-3-pro` is absent from `agy models`, and a combined
+    model+effort validator could plausibly emit that sentence for a model that was never valid. So
+    the datum establishes the failure SHAPE -- agy errors rather than ignoring the flag -- and not
+    that rejection is per-model.
+
+    ONE VARIABLE: drop `--effort` and change nothing else.
+
+      * runs, or fails on something other than the model -> `gemini-3-pro` is a usable model and the
+        rejection genuinely was about `--effort`. Per-model support is real.
+      * fails naming the model -> the original datum was never about `--effort` at all, and any
+        design resting on "this model does not support effort" rests on a misread.
+
+    The catalogued control is what makes either reading safe: if `gemini-3.6-flash-low` also fails
+    with no `--effort`, this harness cannot invoke agy at all and neither arm means anything.
+    """
+    probe = ["-p", "reply with exactly the word PONG"]
+    # `--model` is set on both arms, so `run`'s cheap-model injection stays out of the way.
+    rc_ctl, out_ctl, err_ctl = run(["agy", *probe, "--model", "gemini-3.6-flash-low"])
+    if rc_ctl != 0:
+        return INCONCLUSIVE, ("the CATALOGUED control failed with no --effort, so this harness "
+                              f"cannot invoke agy and neither arm is evidence -- rc={rc_ctl} "
+                              f"{(err_ctl or out_ctl).strip()[:200]}")
+
+    # `gemini-3-pro` is absent from `agy models` BY DESIGN -- this arm exists to learn what agy does
+    # with it, so step 9 must not read it as a stale pin. The marker is per-LINE, so it goes on the
+    # line carrying the name rather than in this explanation above it.
+    rc, out, err = run(["agy", *probe, "--model", "gemini-3-pro"])  # aer-uncatalogued-on-purpose
+    text = (out + err)
+    blames_model = re.search(r"invalid model|unknown model|not a valid model|model \"gemini-3-pro\"",
+                             text, re.IGNORECASE) is not None
+    if rc == 0:
+        return PASS, ("`gemini-3-pro` RUNS with no --effort, so the recorded rejection was genuinely "
+                      "about --effort: effort support is per-model, and a UI must enumerate it "
+                      f"|| control rc=0 || {text.strip()[:200]}")
+    if blames_model:
+        return PASS, ("`gemini-3-pro` FAILS with no --effort at all, naming the model -- so the "
+                      "recorded `--effort is not supported for model` datum does not establish "
+                      "per-model effort support, and anything resting on it rests on a misread "
+                      f"|| rc={rc} || {text.strip()[:200]}")
+    return INCONCLUSIVE, (f"`gemini-3-pro` failed for a reason this arm cannot attribute -- rc={rc} "
+                          f"|| {text.strip()[:200]}")
+
+
+@check("effort.agy-precedence", "effort",
+       "when a suffixed model and --effort are BOTH given and both accepted, which one the run "
+       "actually used -- the only part of #510 still open")
+def _effort_agy_precedence():
+    """agy has two controls over one behaviour -- see `docs/vendor-capabilities.md` § "`agy models`"
+    for the shape of that and for what is already measured about it. What is open is which one WINS,
+    and a UI cannot honestly offer both without knowing.
+
+    Read through the hook payload rather than through the model's behaviour, for the reason that
+    page records. The payload's undocumented `modelName` field (measured present on `PreToolUse`,
+    `PreInvocation` and `Stop`) is a direct readout of what the run resolved to.
+
+    TWO ARMS, ONE VARIABLE, and the first arm is the control that decides whether the instrument
+    works at all. The register records that `modelName` EXISTS; it never records its VALUE, so
+    whether the field reports the resolved model or merely echoes the `--model` argument is unknown.
+    That distinction is the whole check:
+
+      * arm A: `--model gemini-3.6-flash-low`, no `--effort`
+      * arm B: the same, plus `--effort high`
+
+    A == B means the field cannot answer the question -- it echoes the argument, or effort does not
+    rewrite the model name -- and this reports INCONCLUSIVE for precedence while still recording a
+    real finding about the field. Only A != B measures precedence, and then B's value names the
+    winner directly.
+    """
+    def arm(extra):
+        wd = tempfile.mkdtemp(prefix="v-agyprec-")
+        try:
+            log = os.path.join(wd, "h.log").replace("\\", "/")
+            hk = os.path.join(wd, "h.sh").replace("\\", "/")
+            with open(os.path.join(wd, "h.sh"), "w", newline="\n") as f:
+                f.write("#!/bin/sh\n")
+                f.write('cat >> "%s"\n' % log)
+                f.write('printf "\\n" >> "%s"\n' % log)
+                # Explicit allow, for the reason `agy.hook-env-inherited` records: an implicit one
+                # would confound this with the fail-open behaviour.
+                f.write("""echo '{"decision":"allow"}'\n""")
+            os.chmod(os.path.join(wd, "h.sh"), 0o755)
+            _agy_hook_json(wd, "sh %s" % hk)
+            run(["agy", "-p", "Run this shell command: node --version",
+                 "--model", "gemini-3.6-flash-low", "--add-dir", wd, *extra],
+                timeout=300, cwd=wd)
+            seen = open(log, encoding="utf-8", errors="replace").read() if os.path.exists(log) else ""
+            names = re.findall(r'"modelName"\s*:\s*"([^"]+)"', seen)
+            return (names[0] if names else None), bool(seen.strip())
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    baseline, fired_a = arm([])
+    if not fired_a:
+        return INCONCLUSIVE, ("the hook never fired on the control arm, so nothing here observed a "
+                              "run at all -- fix that before reading anything into the other arm")
+    if baseline is None:
+        return INCONCLUSIVE, ("the hook fired but the payload carries no `modelName`, so the "
+                              "instrument this check depends on is gone; the field was measured "
+                              "present on PreToolUse when the register was written")
+
+    with_effort, fired_b = arm(["--effort", "high"])
+    if not fired_b:
+        return INCONCLUSIVE, (f"the control resolved modelName={baseline!r}, but the --effort arm "
+                              "never fired its hook, so the two are not comparable")
+
+    if with_effort == baseline:
+        return PASS, (f"`modelName` is {baseline!r} with AND without `--effort high`, so it does not "
+                      "discriminate: either the field echoes the --model argument or effort does not "
+                      "rewrite it. PRECEDENCE REMAINS UNMEASURED, and this instrument cannot settle "
+                      "it -- a different readout is needed")
+    return PASS, (f"PRECEDENCE MEASURED: modelName is {baseline!r} alone and {with_effort!r} with "
+                  f"`--effort high`, so the FLAG wins over the model-name suffix. A surface offering "
+                  f"both controls is offering one behaviour twice")
+
+
 def project_slug_root():
     """Claude records a transcript per working directory under the config root.
 
