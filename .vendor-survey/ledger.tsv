@@ -381,3 +381,4 @@ mcp	specification__2025-11-25__server__tools	14058	0	30	SCAN-ONLY
 mcp	specification__2025-11-25__server__utilities__completion	5042	0	1	SCAN-ONLY
 mcp	specification__2025-11-25__server__utilities__logging	4004	0	3	SCAN-ONLY
 mcp	specification__2025-11-25__server__utilities__pagination	2598	0	1	SCAN-ONLY
+agy	hooks-embedded	11068	0	95	PENDING-DEPTH
