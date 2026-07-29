@@ -294,33 +294,44 @@ Two things the design assumed otherwise:
 
 - **Effort is baked into the model name**, *and* `--effort low|medium|high` exists as a separate flag.
   Two overlapping controls. What is now known, split from what is not:
-  - **Acceptance, measured.** `agy` accepts both together on a suffixed model — a real dispatch of
-    `gemini-3.1-pro-high --effort high` ran and answered
-    ([`tools/aer-agy-loop/README.md`](../tools/aer-agy-loop/README.md), "Using this for an advisor
-    consult").
-  - **Rejection is LOUD, measured. Whether it is *per-model* is an inference, not measured.** A real
-    dispatch failed with `Error: invalid model selection (--model "gemini-3-pro" --effort "high"):
+  - **They are ONE control with two spellings, and must AGREE. Measured 2026-07-28.**
+
+    ```
+    agy --model gemini-3.6-flash-low --effort high
+    Error: invalid model selection (--model "gemini-3.6-flash-low" --effort "high"):
+    --model gemini-3.6-flash-low conflicts with --effort=high
+
+    agy --model gemini-3.1-pro-high --effort high
+    PONG
+    ```
+
+    So there is **no precedence to establish** — a disagreement is refused at bind time, before any
+    run. This replaces an "acceptance" bullet that stood here: it was measured on
+    `gemini-3.1-pro-high --effort high`, an *agreeing* pair, and generalised to the combination.
+    True as measured, wider as written.
+
+    Guarded by the sentinel `effort.agy-effort-and-suffix-must-agree`; that check's own docstring
+    carries why it earns sentinel status and what a UI must therefore not do.
+  - **The rejection datum was never about `--effort` at all. Resolved 2026-07-28.** A real dispatch
+    had failed with `Error: invalid model selection (--model "gemini-3-pro" --effort "high"):
     --effort is not supported for model "gemini-3-pro"` — recorded in
     [`OutcomeClassifierTests`](../tests/Aer.Flow.Tests/Outcomes/OutcomeClassifierTests.cs), which
-    pins it as the stderr AER must surface. What that establishes is the *failure shape*: agy errors
-    out rather than ignoring the flag.
+    pins it as the stderr AER must surface. This page then read it as evidence that effort support is
+    *per-model*, while flagging that reading as an inference and naming the control that would settle
+    it: the same dispatch with `--effort` dropped.
 
-    It does **not** isolate "this model does not support `--effort`" from "this model is not valid".
-    agy's own wording attributes the failure to the flag — `--effort is not supported for model` — but
-    `gemini-3-pro` is absent from the catalogue above, which this page says "enumerates what the CLI
-    will actually accept", and a combined model+effort validator could plausibly emit that wording for
-    an uncatalogued model. **The missing control is one dispatch:** `agy --model gemini-3-pro` with
-    *no* `--effort`. If it runs, rejection is genuinely per-model. If it fails, the datum was never
-    about `--effort` at all.
-  - **Precedence is unprobed** — when both are given and both accepted, which one wins is unknown.
-    That, and only that, is what [#510](https://github.com/aer-works/aer-flow/issues/510) tracks.
-    A check now exists for it, `effort.agy-precedence`, **written and not yet run**: it reads the
-    hook payload's undocumented `modelName` with and without `--effort`, because a behavioural study
-    cannot be made to discriminate at any sane cost. Its no-`--effort` arm is the control that
-    decides whether that field resolves the model or merely echoes the argument — this page records
-    that the field exists and has never recorded its value.
-    The missing control named above also has one now, `effort.agy-rejection-is-per-model`, written
-    to the specification in that paragraph rather than to a fresh guess.
+    That control is `effort.agy-rejection-is-per-model`, and it has now been run:
+
+    ```
+    agy --model gemini-3-pro          (no --effort)
+    Error: ... model gemini-3-pro is not recognized as a known model or custom model in settings
+    ```
+
+    So `gemini-3-pro` fails on its own. The original error's wording blamed the flag, but the cause
+    was an unknown model, and **nothing here establishes per-model effort support.** Any design
+    resting on "this model does not support effort" rests on a misread. The stderr pin in
+    `OutcomeClassifierTests` is unaffected — it pins what AER must surface, not why agy said it.
+
   - **A second suffixed model reached effort-value validation**, which is further evidence for
     acceptance: the divergence recorded below on this page was measured while building
     `effort.agy-value-set`, whose probe passes an invalid `--effort` to `gemini-3.6-flash-low` and
