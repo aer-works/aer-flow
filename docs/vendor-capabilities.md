@@ -63,7 +63,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | Structured output | `--output-format stream-json --verbose` | **a local gRPC/HTTP server** — reachable, service surface not yet enumerated |
 | Running-session registry | **`claude agents --json`** | not found on: `--help`, subcommand list |
 | Permission policy engine | **`claude auto-mode`** — allow / soft_deny / hard_deny | not found on: `--help`, subcommand list |
-| Always-fires gate hook | **`PreToolUse` hook — first of six evaluation steps, applies even in `bypassPermissions`** | **`PreToolUse` hook — confirmed working, denies** |
+| Always-fires gate hook | **`PreToolUse` hook — first of six evaluation steps, applies even in `bypassPermissions`** | **`PreToolUse` hook — the vendor mechanism denies; what AER shipped never ran on Windows until #710 (the only platform measured — `sh` would have stripped the quotes `cmd` chokes on)** |
 | Model enumeration | not found on: `--help`, subcommand list | **`agy models`** |
 | Plan usage & reset | **`/usage` (and `/cost`) — works headlessly, see below** | **none** — `/usage` is not a real command |
 | Per-turn cost | **`total_cost_usd` in every `stream-json` result** | none |
@@ -211,7 +211,12 @@ the more convenient mode is the one that removes the control.
 **This callback is not the gate's primary mechanism — a `PreToolUse` hook is.** A hook resolves at
 step 1 of `claude`'s six-step permission evaluation order and holds even in `bypassPermissions`;
 `--permission-prompt-tool` is step 6 and is exactly the callback `auto` routes around above. `agy`'s
-own `PreToolUse` hook is confirmed working and denies. The full mechanism table, the measurements
+own `PreToolUse` hook is confirmed working and denies — **which is a fact about the vendor, not about
+AER's gate, and reading it as the latter is how #710 stayed invisible.** What AER actually shipped
+never ran on a Windows worker — the only platform measured; `sh -c` strips the quotes `cmd /c`
+chokes on, so a Unix worker is expected to have been fine and has not been measured — and the
+measurement and its consequences are in
+[`vendor-doc-audit.md`](vendor-doc-audit.md). The full mechanism table, the measurements
 behind it, and why the hook is mandatory on every spawned worker live in
 [0029](decisions/0029-the-gate-is-three-mechanisms.md) — read that, not this section, before
 building the gate.

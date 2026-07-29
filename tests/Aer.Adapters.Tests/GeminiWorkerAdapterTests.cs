@@ -759,19 +759,31 @@ public class GeminiWorkerAdapterTests
 
     // Everything above asserts against the C# objects Resolve() builds and the JSON it writes --
     // all of which would pass equally against a hook command that looks correct on paper and fails
-    // the instant agy spawns it. These spawn the command string out of the written hooks.json as a
-    // real child process, fed a real agy payload and the real environment variable.
+    // the instant agy spawns it. These take the command out of the written hooks.json, split it, and
+    // launch the assembly directly with a real agy payload and the real environment variable.
     //
-    // This matters more here than on the claude side, where the equivalent pair already exists
-    // (ClaudeWorkerAdapterTests.RunResolvedHookCommand). agy's handler has no exec form -- only a
+    // WHAT THEY DO NOT COVER, and #710 is what happens when that is forgotten. They spawn via
+    // ProcessStartInfo.ArgumentList, so the arguments go to the child verbatim. agy does not: it
+    // hands the whole string to `cmd /c` on Windows or `sh -c` on Unix, and the shell decides what
+    // the arguments even are. These tests therefore prove the assembly and its arguments behave;
+    // they are structurally incapable of catching a command string the shell cannot parse, which is
+    // exactly the defect that left the gate dead for months while they passed.
+    //
+    // That half belongs to a vendor check that runs the shipped command through agy itself, named
+    // here because a reader of this pair needs to know it is one of two halves, not the whole:
+    // record-once-ok: #710 tools/vendor-verify/verify.py
+    // `agy.hook-command-survives-a-metacharacter-in-its-path`.
+    //
+    // Why it matters more here than on the claude side, where the equivalent pair already exists
+    // (ClaudeWorkerAdapterTests.RunResolvedHookCommand): agy's handler has no exec form -- only a
     // single shell-parsed `command` string -- and a hook that cannot start produces no stdout, which
     // `agy.hook-malformed-stdout-fails-open` measured as an ALLOW. So on this vendor a hook that
     // fails to launch is an ungated worker, silently, with no --disallowedTools backstop
     // (`agy.permissions-are-global-only`). The `File.Exists` guard in BuildHooksJson checks the
-    // unquoted path and proves nothing about whether the assembled command can actually run.
+    // path and proves nothing about whether the assembled command can actually run.
 
     [Fact]
-    public void The_written_hook_command_actually_denies_a_withheld_tool_when_spawned_for_real()
+    public void The_written_hook_commands_assembly_denies_a_withheld_tool_when_launched_directly()
     {
         var (decision, reason) = RunWrittenHookCommand(
             new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: false, NetworkAccess: false),
@@ -782,7 +794,7 @@ public class GeminiWorkerAdapterTests
     }
 
     [Fact]
-    public void The_written_hook_command_actually_allows_a_granted_tool_when_spawned_for_real()
+    public void The_written_hook_commands_assembly_allows_a_granted_tool_when_launched_directly()
     {
         // Same grant, same payload shape, different tool -- so neither verdict can come from a
         // command that answers unconditionally.
@@ -804,6 +816,121 @@ public class GeminiWorkerAdapterTests
 
         Assert.True(File.Exists(runtimeConfigPath),
             $"'{runtimeConfigPath}' is missing, so `dotnet \"{assemblyPath}\"` cannot start the hook");
+    }
+
+    // HookAssemblyToken's branches, exercised with real directories rather than left to the one
+    // shape this machine's install path happens to have -- on a spaceless install every production
+    // call takes the bare-path early return, so without these the 8.3 branch and the refusal never
+    // run under test at all. Why each shape is required is the method's own xmldoc; these only pin
+    // that the code does what it says there.
+
+    [Fact]
+    public void The_hook_token_is_the_bare_forward_slash_path_when_it_is_clean_on_windows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the bare-token rule is cmd's, not sh's");
+
+        Assert.Equal("C:/plain/Aer.Cli.dll",
+            GeminiWorkerAdapter.HookAssemblyToken(@"C:\plain\Aer.Cli.dll"));
+    }
+
+    [Fact]
+    public void The_hook_token_is_single_quoted_on_unix()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "sh strips single quotes; cmd does not");
+
+        Assert.Equal("'/opt/aer flow/Aer.Cli.dll'",
+            GeminiWorkerAdapter.HookAssemblyToken("/opt/aer flow/Aer.Cli.dll"));
+    }
+
+    [Fact]
+    public void A_spaced_windows_directory_yields_a_clean_token_for_the_same_file()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the 8.3 detour is a Windows mechanism");
+
+        var (directory, assemblyPath) = TempHookAssemblyUnder("aer flow probe-");
+        try
+        {
+            string token;
+            try
+            {
+                token = GeminiWorkerAdapter.HookAssemblyToken(assemblyPath);
+            }
+            catch (InvalidOperationException)
+            {
+                // The method's contract when the volume cannot produce a clean 8.3 form is a loud
+                // refusal, and that is the right behaviour -- but on such a volume this test cannot
+                // observe the clean-token half, and pretending it did would be the false green.
+                Assert.Skip("this volume has 8.3 name generation disabled, so only the refusal branch is reachable");
+                return;
+            }
+
+            AssertCmdCanTokenize(token);
+            Assert.EndsWith("/Aer.Cli.dll", token, StringComparison.Ordinal);
+            Assert.True(File.Exists(token),
+                $"the token must still resolve to the same file, or the hook dies at spawn: {token}");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void An_ampersand_directory_is_never_emitted_as_a_token_cmd_would_split()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "`&` is an operator to cmd, not to sh");
+
+        // `&` is legal in an 8.3 name, so unlike a space the short form may keep it -- Windows
+        // preserves it when it falls inside the retained prefix and drops it with the truncated
+        // tail otherwise. Both outcomes honour the contract; what the contract forbids is the
+        // third one: returning a token that still carries the character, silently, for cmd to
+        // split into a command that never starts and an allow nobody sees.
+        var (directory, assemblyPath) = TempHookAssemblyUnder("a&b probe-");
+        try
+        {
+            string token;
+            try
+            {
+                token = GeminiWorkerAdapter.HookAssemblyToken(assemblyPath);
+            }
+            catch (InvalidOperationException refusal)
+            {
+                Assert.Contains("decision 0029", refusal.Message);
+                return;
+            }
+
+            AssertCmdCanTokenize(token);
+            Assert.True(File.Exists(token),
+                $"the token must still resolve to the same file, or the hook dies at spawn: {token}");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static (string Directory, string AssemblyPath) TempHookAssemblyUnder(string prefix)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), prefix + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var assemblyPath = Path.Combine(directory, "Aer.Cli.dll");
+        File.WriteAllText(assemblyPath, "not a real assembly; only existence matters here");
+        return (directory, assemblyPath);
+    }
+
+    private static void AssertCmdCanTokenize(string token) =>
+        Assert.DoesNotContain(token, t => t is ' ' or '&' or '^' or ',' or ';' or '=');
+
+    [Fact]
+    public void A_spaced_path_with_no_directory_to_shorten_is_refused_loudly()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "on sh the quotes make the same input fine");
+
+        // No directory component, so the 8.3 remedy has nothing to shorten -- the contract is a
+        // loud refusal, never a command that is emitted and then silently reads as an allow.
+        var refusal = Assert.Throws<InvalidOperationException>(
+            () => GeminiWorkerAdapter.HookAssemblyToken("Aer Cli.dll"));
+        Assert.Contains("decision 0029", refusal.Message);
     }
 
     /// <summary>
@@ -831,13 +958,27 @@ public class GeminiWorkerAdapterTests
             .GetProperty("hooks")[0]
             .GetProperty("command").GetString()!;
 
-        // agy hands this string to a shell. Which shell is not established anywhere in the repo
-        // (see the note in BuildHooksJson), so this splits the documented shape --
-        // `dotnet "<path>" agy-hook-check` -- rather than pretending to know. That means this test
-        // proves the *assembly and arguments* launch and behave, not that any particular shell
-        // parses the quoting correctly; the quoting itself is tracked separately.
-        var match = System.Text.RegularExpressions.Regex.Match(command, @"^(\S+)\s+""([^""]+)""\s+(\S+)$");
-        Assert.True(match.Success, $"hook command is not the expected `exe \"path\" arg` shape: {command}");
+        // The pattern pins the shape PER SHELL, deliberately strict rather than permissive, because
+        // the token the assembly path may wear is a measured constraint of the shell agy uses on
+        // each platform, not a style. On Windows the token must be bare: `cmd /c` resolves neither a
+        // quoted path nor a bare one containing a space once an argument follows, so a command that
+        // grew a quote here would be one that never starts -- and on this vendor a hook that never
+        // starts is an ALLOW. A tolerant regex would let that through silently, which is what
+        // happened twice: `"` until #706, then `'` until #710. On Unix the token must be
+        // single-quoted, because `sh -c` strips those quotes and a space then needs no special
+        // handling -- and the capture is the text INSIDE them, which is what `sh` hands `dotnet`.
+        // Passing the quotes through to ArgumentList would feed `dotnet` a literal quoted filename
+        // no shell ever produces, which is how this pair first went red on the Linux CI leg.
+        //
+        // This assertion pins the SHAPE. Whether agy's shell really resolves it is a vendor question
+        // this test cannot reach -- see the note above the pair, and
+        // `agy.hook-command-survives-a-metacharacter-in-its-path`, which runs it through agy.
+        var pattern = OperatingSystem.IsWindows() ? @"^(\S+) (\S+) (\S+)$" : @"^(\S+) '([^']+)' (\S+)$";
+        var match = System.Text.RegularExpressions.Regex.Match(command, pattern);
+        Assert.True(match.Success,
+            $"hook command does not have the shape this platform's shell was measured to resolve "
+            + $"(bare on Windows, single-quoted on Unix) -- the wrong token here is a command agy's "
+            + $"shell cannot start, which reads as an allow: {command}");
 
         var startInfo = new ProcessStartInfo(match.Groups[1].Value)
         {

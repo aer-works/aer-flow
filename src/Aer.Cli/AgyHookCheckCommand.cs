@@ -7,6 +7,13 @@ namespace Aer.Cli;
 /// <see cref="Aer.Adapters.GeminiWorkerAdapter"/> writes into every spawned agy worker's workspace
 /// <c>.agents/hooks.json</c>. Not an operator-facing subcommand — <c>agy</c> invokes it itself, on
 /// every matched tool call, and it receives the event JSON on stdin.
+/// <para>
+/// <b>Whether agy invokes it at all depends on how the command string is spelled, which is not this
+/// command's business but is its precondition.</b> This code was correct throughout #710 and never
+/// ran on Windows: agy passes the command to <c>cmd /c</c>, the assembly path was quoted, and
+/// <c>dotnet</c> could not find it. See <c>GeminiWorkerAdapter.HookAssemblyToken</c>, which owns
+/// every constraint on that spelling and is where a change to it belongs.
+/// </para>
 /// </summary>
 /// <remarks>
 /// <para>
@@ -172,6 +179,9 @@ public static class AgyHookCheckCommand
 
         string? toolName;
         string? writeTarget = null;
+        // Captured here because the JsonDocument is disposed before the denial below is built, and
+        // a denial that cannot name what the payload carried is the misdirection #708 was made of.
+        var argKeys = "no args object at all";
         try
         {
             using var doc = JsonDocument.Parse(input);
@@ -187,6 +197,7 @@ public static class AgyHookCheckCommand
 
             toolName = nameProp.GetString();
             writeTarget = ReadWriteTarget(toolCall, toolName);
+            argKeys = DescribeArgKeys(toolCall);
         }
         catch (JsonException)
         {
@@ -215,11 +226,29 @@ public static class AgyHookCheckCommand
                 return AllowJson;
             }
 
+            // Two DIFFERENT failures, and reporting them as one is why #708 needed a dedicated
+            // audit pass to notice rather than the deny report pointing straight at itself.
+            // "Your target is outside the outbox" is actionable. "Your target is outside
+            // the outbox" when no target was ever read sends the reader to inspect their outbox
+            // configuration, which is fine, and their write path, which is fine, while the real
+            // cause is that this gate does not know which argument of this tool carries a path.
+            //
+            // So when the target is unreadable, name the argument keys that WERE present. The next
+            // tool whose payload shape AER has not seen then self-diagnoses on first contact,
+            // instead of presenting as a mysterious always-denied capability.
+            if (writeTarget is null)
+            {
+                return DenyJson(
+                    $"AER: the '{toolName}' tool is granted, but this gate could not read the path it " +
+                    "writes to, so it cannot confirm the write lands in this worker's workspace or " +
+                    $"outbox. Tried {FormatFields(toolName)}; the call carried {argKeys}. " +
+                    "If one of those names the target, add it to AgyHookCheckCommand.WriteTargetFields.");
+            }
+
             return DenyJson(
-                $"AER: the '{toolName}' tool is granted, but its target " +
-                $"({writeTarget ?? "unreadable from the payload"}) resolves outside both this " +
-                "worker's workspace and its outbox. A grant decides whether a worker may write, not " +
-                "where.");
+                $"AER: the '{toolName}' tool is granted, but its target ({writeTarget}) resolves " +
+                "outside both this worker's workspace and its outbox. A grant decides whether a " +
+                "worker may write, not where.");
         }
 
         return AllowJson;
@@ -237,16 +266,34 @@ public static class AgyHookCheckCommand
     /// other places about this same CLI.
     /// </para>
     /// <para>
-    /// <b>Measured for <c>write_to_file</c> only</b> — see <c>docs/vendor-capabilities.md</c> for what
-    /// that leaves open about its three siblings, which are listed anyway so such a call is
-    /// <i>denied</i> for want of a readable path rather than passing a gate that knows one tool.
-    /// Gated on the tool name and not the field's presence, for the reason
-    /// <c>HookCheckCommand.ReadWriteTarget</c> gives.
+    /// <b>The field is per-tool, and assuming it was not cost a granted capability (#708).</b> This
+    /// read <c>TargetFile</c> for every write-family tool. Three of the four carry that field;
+    /// <c>generate_image</c> does not — its arguments are <c>Prompt</c>/<c>ImageName</c>/
+    /// <c>ImagePaths</c> — so it resolved to <see langword="null"/> every time and the caller denied
+    /// it unconditionally, including when the operator had granted writes. The denial even blamed the
+    /// target for resolving outside the outbox, when the truth was that no target had been read.
+    /// Fail-closed, which is why it survived unnoticed.
+    /// </para>
+    /// <para>
+    /// <see cref="WriteTargetFields"/> is therefore explicit per tool, and
+    /// <c>AgyHookCheckCommandTests</c> holds every <see cref="WriteFamilyTools"/> member to having an
+    /// entry — so adding a write tool without saying which argument names its target is red rather
+    /// than silently always-denied.
+    /// </para>
+    /// <para>
+    /// <b>Both entries are payload-measured, not read off documentation.</b> <c>TargetFile</c> came
+    /// from a live <c>write_to_file</c> call (<c>agy.hook-payload-carries-write-path</c>).
+    /// <c>generate_image</c> was captured the same way on 2026-07-29 — a logging hook over a real
+    /// image-generation call — and its arguments arrived as exactly
+    /// <c>{ ImageName, Prompt }</c>: <b>no <c>TargetFile</c>, and no <c>ImagePaths</c></b> despite the
+    /// corpus listing one. The corpus happened to be right about <c>ImageName</c>; it was still worth
+    /// measuring, because this CLI's documentation is recorded wrong twice in
+    /// <c>docs/vendor-doc-audit.md</c> and "the docs agreed" is not a reason to believe the third.
     /// </para>
     /// </remarks>
     private static string? ReadWriteTarget(JsonElement toolCall, string? toolName)
     {
-        if (toolName is null || !WriteFamilyTools.Contains(toolName))
+        if (toolName is null || !WriteTargetFields.TryGetValue(toolName, out var fields))
         {
             return null;
         }
@@ -256,10 +303,58 @@ public static class AgyHookCheckCommand
             return null;
         }
 
-        return args.TryGetProperty("TargetFile", out var target) && target.ValueKind == JsonValueKind.String
-            ? target.GetString()
-            : null;
+        foreach (var field in fields)
+        {
+            if (args.TryGetProperty(field, out var target) && target.ValueKind == JsonValueKind.String
+                && target.GetString() is { Length: > 0 } value)
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
+
+    /// <summary>The argument names this gate tried for a tool, for a denial reason a person can act on.</summary>
+    private static string FormatFields(string toolName) =>
+        WriteTargetFields.TryGetValue(toolName, out var fields)
+            ? string.Join(", ", fields)
+            : "(no argument names are configured for this tool)";
+
+    /// <summary>
+    /// The argument names a payload actually carried. Names only — a value could hold a prompt or
+    /// file content, and a denial reason is not a place to echo either back.
+    /// </summary>
+    private static string DescribeArgKeys(JsonElement toolCall)
+    {
+        if (!toolCall.TryGetProperty("args", out var args) || args.ValueKind != JsonValueKind.Object)
+        {
+            return "no args object at all";
+        }
+
+        var keys = args.EnumerateObject().Select(p => p.Name).ToArray();
+        return keys.Length == 0 ? "an empty args object" : string.Join(", ", keys);
+    }
+
+    /// <summary>
+    /// For each write-family tool, the argument names that can carry the path it writes to, in
+    /// priority order. #708.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by tool because agy's payloads are not uniform: the three text-editing tools name their
+    /// target <c>TargetFile</c> and <c>generate_image</c> does not carry that field at all. A single
+    /// field name for the whole family reads as a tidy simplification and is how #708 happened.
+    /// </remarks>
+    public static readonly IReadOnlyDictionary<string, string[]> WriteTargetFields =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["write_to_file"] = ["TargetFile"],
+            ["replace_file_content"] = ["TargetFile"],
+            ["multi_replace_file_content"] = ["TargetFile"],
+            // Measured: a real call carried exactly { ImageName, Prompt }. TargetFile is kept as a
+            // fallback only because it costs nothing and agy has renamed payload fields before.
+            ["generate_image"] = ["ImageName", "TargetFile"],
+        };
 
     /// <summary>
     /// Mirrors <c>GeminiWorkerAdapter.WriteTools</c> — the agy tools whose target #679 bounds.

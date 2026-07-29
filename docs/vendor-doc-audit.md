@@ -576,7 +576,52 @@ a **stronger** always-fires guarantee than anything claude documents, if it hold
 
 **Confirmed working, not just documented** — see [§5 below](#5-agys-cli-hooks-work--and-the-gate-is-symmetric):
 they load from `<workspace>/.agents/hooks.json` and from `~/.gemini/config/hooks.json`, fire
-`PreToolUse`, and enforce `deny`. **The gate is symmetric across vendors.**
+`PreToolUse`, and enforce `deny`.
+
+**That is a fact about agy's mechanism, and from the day #603 shipped AER's gate it was read as a
+fact about that gate. It is not** — see the section below. The sentence that used to end this
+paragraph, *"The gate is symmetric across vendors"*, is true of what the two vendors offer and was
+false of what AER shipped.
+
+### The hook spec is inside the binary, and it settles the command-string question (#710)
+
+`agy.exe` embeds its own complete `hooks.json` specification as plaintext. Extracted verbatim to
+`.vendor-survey/corpus/agy__hooks-embedded.md` (`agy/hooks-embedded` in the ledger) — a spec taken out
+of the shipped binary cannot be stale relative to that binary, which is a stronger guarantee than any
+mirrored web page here carries. Re-extract after an agy upgrade.
+
+The line that matters, and that no web page states:
+
+> **`command`** (string, required): The shell command to execute (run via `sh -c` on Unix, **`cmd /c`
+> on Windows**). `~` is expanded to the home directory. **The working directory is set to the
+> directory containing `hooks.json`.**
+
+Consequences, each measured end to end against the live CLI rather than reasoned from the sentence:
+
+| | |
+|---|---|
+| `cmd` does not treat `'` as quoting | the single-quoted path AER shipped never resolved, so the handler never ran, and `agy.hook-malformed-stdout-fails-open` made that an **allow** |
+| a quoted **program token** is never unquoted | not in either quote style — a `.cmd` at a quoted path does not run at all |
+| a **bare** path with a space resolves alone and fails once an argument follows | and the real command always has `agy-hook-check` after it |
+| `GetShortPathName` over the whole path yields `AERCLI~1.DLL` | .NET's assembly resolution is name-based, so it then hunts `AERCLI~1.deps.json` and dies `0x80008083`; shortening the **directory** and keeping the file name works |
+| a **relative** name does not resolve under `cmd /c` | even with the file in the working directory, and the working-directory claim above is itself verified true |
+
+Also in the embedded spec and absent from our records — read, not measured, and each needs its own
+check before anything rests on it:
+
+- **`overwrite`** — an object shallow-merged into a tool call's arguments *before it runs*. A gate
+  could rewrite an out-of-bounds write target instead of denying it.
+- `decision` also accepts `ask` and `force_ask`; the binary's own JSON schema additionally carries
+  `deny_unless_prior_grant`.
+- Named hooks **merge**, and `"enabled": false` disables one — so AER cannot assume its gate is the
+  only hook present in a workspace.
+- `PostToolUse` expects `{}`; `PostInvocation` can force continuation via `terminationBehavior`.
+- Stated limitation: hooks run synchronously and block the agent loop.
+
+Separately measured and documented nowhere: **agy reads hook stdout to EOF**, so a handler that
+prints a valid verdict and leaves any process holding that handle fails open. Reproduced with
+`sleep 6 &` and no .NET involved, and fixed by closing the handle. It is not what broke production —
+that was the quoting above — but it is a live trap for any future handler that backgrounds anything.
 
 **Proving the gate fired is asymmetric across the two vendors, and on `agy` it is UNRESOLVED
 (2026-07-28).** [#532](https://github.com/aer-works/aer-flow/issues/532) proposes proving the

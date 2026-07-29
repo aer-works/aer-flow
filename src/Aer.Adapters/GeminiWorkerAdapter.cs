@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using Aer.Flow.Dispatch;
@@ -451,16 +453,10 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     /// file, which nests them under a <c>hooks</c> key. <b>The matcher is a regex over agy's own
     /// tool names</b>, so <c>"*"</c> here means every tool, and a claude tool name would match
     /// nothing. <b>There is no exec form</b>: agy documents only a single <c>command</c> string
-    /// (<c>.vendor-survey/corpus/agy__hooks.md</c>), where claude's handler accepts an <c>args</c>
-    /// array that bypasses shell parsing entirely. That last one is why the path is quoted and
-    /// forward-slashed below.
-    /// </para>
-    /// <para>
-    /// <b>Backslashes are normalised to forward slashes</b> because the command string is
-    /// shell-parsed and a Windows path's <c>\U</c>, <c>\t</c> and friends are escape sequences to a
-    /// shell — the same reason <c>tools/vendor-verify/verify.py</c> normalises every hook path it
-    /// writes. Forward slashes were confirmed working on Windows by
-    /// <c>agy.hook-env-inherited</c>, which spawns its hook this way.
+    /// (<c>.vendor-survey/corpus/agy__hooks-embedded.md</c>), where claude's handler accepts an
+    /// <c>args</c> array that bypasses shell parsing entirely. That last one is why the path's
+    /// spelling is load-bearing rather than cosmetic — see <see cref="HookAssemblyToken"/>, which
+    /// owns every constraint on it.
     /// </para>
     /// <para>
     /// Invoked as <c>dotnet &lt;Aer.Cli.dll&gt;</c> rather than a native apphost, for the deployment
@@ -484,7 +480,7 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
                 "before any worker is dispatched.");
         }
 
-        var command = $"dotnet \"{hookAssemblyPath.Replace('\\', '/')}\" agy-hook-check";
+        var command = $"dotnet {HookAssemblyToken(hookAssemblyPath)} agy-hook-check";
         var hooks = new Dictionary<string, object>
         {
             ["aer-permission-gate"] = new
@@ -505,6 +501,144 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         return JsonSerializer.Serialize(hooks);
     }
+
+    /// <summary>
+    /// How the assembly path is spelled inside the hook command string, so agy's shell resolves it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>agy runs the command through a shell</b> — <c>sh -c</c> on Unix, <c>cmd /c</c> on Windows —
+    /// stated in agy's own embedded specification; where that came from and what else it says is
+    /// recorded in <c>docs/vendor-doc-audit.md</c>. Which shell it is decides everything
+    /// below, and getting it wrong is what #710 was: this shipped a single-quoted path, and
+    /// <c>cmd</c> does not treat <c>'</c> as a quoting character, so <c>dotnet</c> received a literal
+    /// <c>'C:/…/Aer.Cli.dll'</c>, failed to find it, and wrote nothing to stdout. Per
+    /// <c>agy.hook-malformed-stdout-fails-open</c> that is an <b>allow</b>, so decision 0029's
+    /// mandatory gate has never fired on a Windows agy worker.
+    /// </para>
+    /// <para>
+    /// <b>On Windows the token must be bare, and therefore free of anything <c>cmd</c> splits on.</b>
+    /// Three constraints decide the shape. The first two were measured end to end through agy against
+    /// an install directory containing a space, each with a control that failed; the third is a .NET
+    /// assembly-resolution fact, measured by launching <c>dotnet</c> directly:
+    /// <list type="number">
+    /// <item>Quoting never helps. Single and double quotes both leave the path unresolved.</item>
+    /// <item>A bare path containing a space resolves when it is the whole command and fails as soon
+    /// as an argument follows it — and the real command always has <c>agy-hook-check</c> after it.</item>
+    /// <item>Shortening the <b>directory</b> only. <c>GetShortPathName</c> over the full path yields
+    /// <c>AERCLI~1.DLL</c>, and .NET's assembly resolution is name-based: it then looks for
+    /// <c>AERCLI~1.deps.json</c>, does not find it, and the handler dies with <c>0x80008083</c>.
+    /// Keeping the real file name under an 8.3 directory is both space-free and resolvable.</item>
+    /// </list>
+    /// A relative name is not an option either, despite agy setting the hook's working directory to
+    /// the directory holding <c>hooks.json</c> (verified true): <c>cmd /c &lt;relative name&gt;</c>
+    /// does not resolve even with the file sitting in that directory.
+    /// </para>
+    /// <para>
+    /// Only the <b>space</b> was measured through agy. The other characters
+    /// <see cref="CmdSplitsBareTokensOn"/> guards are read from <c>cmd</c>'s grammar, not measured:
+    /// <c>&amp;</c> and <c>^</c> are operators and <c>,</c> <c>;</c> <c>=</c> are argument delimiters,
+    /// all legal in a Windows directory name, and any of them mid-token turns the command into one
+    /// that never starts — which on this vendor is an <em>allow</em>. Routing them through the same
+    /// 8.3 step errs fail-closed: at worst a path that might have worked is shortened or refused
+    /// loudly, never silently emitted broken.
+    /// </para>
+    /// <para>
+    /// <b>Non-Windows keeps single quotes</b>, which is what <c>sh -c</c> strips by POSIX grammar,
+    /// and where a space then needs no special handling. Read from the embedded spec and from POSIX;
+    /// not yet measured through agy on a Unix host — no such host has run these probes. The 8.3 step
+    /// is a Windows mechanism and is scoped to Windows rather than applied as a general rule.
+    /// </para>
+    /// <para>
+    /// <b>Why this throws rather than falling back.</b> 8.3 name generation can be disabled per
+    /// volume, and then <c>GetShortPathName</c> returns the long path unchanged and no working
+    /// command exists. Emitting one anyway would produce a hook that cannot start, which on this
+    /// vendor is an allow — the exact failure this method exists to prevent. Failing here is loud and
+    /// happens before any worker is dispatched.
+    /// </para>
+    /// </remarks>
+    internal static string HookAssemblyToken(string hookAssemblyPath)
+    {
+        // Forward slashes throughout: the command is shell-parsed, and a Windows path's `\U`, `\t`
+        // and friends are escape sequences to `sh`.
+        var path = hookAssemblyPath.Replace('\\', '/');
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return $"'{path}'";
+        }
+
+        if (path.IndexOfAny(CmdSplitsBareTokensOn) < 0)
+        {
+            return path;
+        }
+
+        var shortened = ShortDirectoryPath(hookAssemblyPath);
+        if (shortened is null || shortened.IndexOfAny(CmdSplitsBareTokensOn) >= 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot write the mandatory PreToolUse hook (decision 0029): '{hookAssemblyPath}' " +
+                "contains a character `cmd` splits a bare token on (a space, or one of `& ^ , ; =`), " +
+                "and agy runs the hook command through `cmd /c`, which resolves neither a quoted " +
+                "path nor a bare one containing such a character. The usual remedy -- the 8.3 short " +
+                "name of the containing directory -- did not produce a clean name here: either 8.3 " +
+                "name generation is disabled on that volume (`fsutil 8dot3name query <drive>`), or " +
+                "the short form itself still carries the character. AER will not emit a hook command " +
+                "it has measured cannot start: on agy a hook that cannot start is read as an ALLOW " +
+                "(agy.hook-malformed-stdout-fails-open), so a silent fallback would be an ungated " +
+                "worker. Install AER under a plain path, or re-enable 8.3 name generation on that " +
+                "volume.");
+        }
+
+        return shortened.Replace('\\', '/');
+    }
+
+    /// <summary>
+    /// Characters that break a bare <c>cmd</c> token mid-path: the space (measured through agy — see
+    /// <see cref="HookAssemblyToken"/>), and cmd's operators and argument delimiters that are legal
+    /// in Windows directory names (read from cmd's grammar, not measured). Deliberately not a wider
+    /// net: every character here forces the 8.3 detour and, when the short form still carries it, a
+    /// hard refusal — so listing a character that is actually harmless would turn a working install
+    /// into a refused one.
+    /// </summary>
+    private static readonly char[] CmdSplitsBareTokensOn = [' ', '&', '^', ',', ';', '='];
+
+    /// <summary>
+    /// The path with its directory replaced by that directory's 8.3 short form, keeping the real file
+    /// name. Returns <see langword="null"/> when Windows reports no short name.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    private static string? ShortDirectoryPath(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(directory))
+        {
+            return null;
+        }
+
+        var buffer = new char[MaxExtendedPath];
+        var written = GetShortPathNameW(directory, buffer, (uint)buffer.Length);
+
+        // 0 is the documented failure return; a value at or past the buffer length means the call
+        // wanted more room than it was given, and neither result is a usable path.
+        if (written == 0 || written >= buffer.Length)
+        {
+            return null;
+        }
+
+        return Path.Combine(new string(buffer, 0, (int)written), Path.GetFileName(path));
+    }
+
+    /// <summary>Room for a Windows extended-length path, which is what the short-name API can return.</summary>
+    private const int MaxExtendedPath = 32768;
+
+    // DllImport rather than LibraryImport: the source-generated form requires AllowUnsafeBlocks on
+    // the whole project, and enabling unsafe code across Aer.Adapters to spell one path is a far
+    // wider change than this call is worth. Nothing here is hot -- it runs once per worker spawn.
+    [SupportedOSPlatform("windows")]
+    [DllImport("kernel32.dll", EntryPoint = "GetShortPathNameW", CharSet = CharSet.Unicode,
+               ExactSpelling = true, SetLastError = true)]
+    private static extern uint GetShortPathNameW(string longPath, [Out] char[] shortPath, uint bufferLength);
 
     /// <summary>
     /// Seconds agy waits for the hook before giving up. agy's documented default is 30; this is set

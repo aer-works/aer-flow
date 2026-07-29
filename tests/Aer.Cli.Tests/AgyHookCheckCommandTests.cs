@@ -162,6 +162,56 @@ public class AgyHookCheckCommandTests
             workspacePaths = new[] { "C:/x" },
         });
 
+    /// <summary>
+    /// <c>generate_image</c> carries its target in <c>ImageName</c>, not <c>TargetFile</c> — and
+    /// until #708 the gate read only the latter, so every call to it was denied even when the
+    /// operator had granted writes.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="AgyHookCheckCommand.WriteTargetFields"/> for why it failed and why it stayed
+    /// hidden. This is the behavioural half — the allow arm below was impossible before the fix.
+    /// </remarks>
+    [Fact]
+    public void A_granted_generate_image_inside_the_outbox_is_allowed_and_outside_it_is_denied()
+    {
+        // The arm that was impossible before: an ordinary granted image write into the outbox.
+        Assert.Equal(
+            "allow",
+            Decide(ImagePayload(Outbox + "/diagram.png"), "agy:run_command", Outbox, Workspace));
+
+        // Polarity, so this cannot pass by the gate having simply stopped bounding the tool.
+        Assert.Equal(
+            "deny",
+            Decide(ImagePayload("C:/somewhere/else/entirely.png"), "agy:run_command", Outbox, Workspace));
+
+        // And the withheld arm still wins over the path, as for every other write-family tool.
+        Assert.Equal(
+            "deny",
+            Decide(ImagePayload(Outbox + "/diagram.png"), "agy:generate_image", Outbox, Workspace));
+    }
+
+    /// <summary>
+    /// A <c>generate_image</c> payload carrying the argument names a REAL call was observed to
+    /// carry, captured the same way <see cref="WritePayload"/>'s were — so neither fixture rests on
+    /// documentation. What the observation was, and how it differed from the corpus, is recorded on
+    /// <c>AgyHookCheckCommand.WriteTargetFields</c>.
+    /// </summary>
+    private static string ImagePayload(string imageName) =>
+        JsonSerializer.Serialize(new
+        {
+            artifactDirectoryPath = "C:/x/brain/abc",
+            conversationId = "abc",
+            modelName = "gemini-3.6-flash-medium",
+            stepIdx = 3,
+            toolCall = new
+            {
+                args = new { Prompt = "a diagram", ImageName = imageName },
+                name = "generate_image",
+            },
+            transcriptPath = "C:/x/transcript_full.jsonl",
+            workspacePaths = new[] { "C:/x" },
+        });
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

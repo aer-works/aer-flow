@@ -122,8 +122,9 @@ Index: `https://antigravity.google/llms.txt` + `sitemap.xml` — **77 doc pages,
 ### Not read — Tier 1, load-bearing
 
 `R` **`/docs/hooks`** — `agy` documents `PreToolUse` with `allow`/`deny`/`ask`/`force_ask`, five
-events, `hooks.json` in `.agents/` or `~/.gemini/config/`. **The gate is symmetric across vendors**
-(confirmed working, see `vendor-doc-audit.md`).
+events, `hooks.json` in `.agents/` or `~/.gemini/config/`. The two vendors offer equivalent gate
+mechanisms; **that is not the same as AER's gate working on both**, and reading it as such is how
+#710 went unseen. See `vendor-doc-audit.md`, and the binary's own embedded spec extracted beside it.
 `R` **`/docs/sdk/overview`** — `pip install google-antigravity`. Per-turn and cumulative token
 usage, streamed structured events, Pydantic-typed results, `deny()`/`allow()`/`ask_user()`, headless.
 Evaluated and rejected as an integration path — API-key-only, see `vendor-doc-audit.md` § SDK.
