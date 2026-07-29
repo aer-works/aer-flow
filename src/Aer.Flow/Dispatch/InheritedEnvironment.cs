@@ -52,14 +52,21 @@ internal static class InheritedEnvironment
         // fails before any vendor question arises.
         "PATH",
         "LANG", "LC_ALL", "LC_CTYPE", "TZ",
-        // The .NET host reads these; the dialogue worker is `dotnet exec`, which then spawns its own
-        // participant children, so any per-spawn setup cost is paid three times per run. Omitting the
-        // first-run suppressors and DOTNET_CLI_HOME timed the dialogue e2e tests out at their 30s
-        // binding limit on Windows CI while they still passed locally in 2s -- a cleared environment
-        // is not free, and the margin that absorbed it locally did not exist on a cold runner.
-        "DOTNET_ROOT", "DOTNET_ROOT(x86)", "DOTNET_CLI_HOME", "DOTNET_CLI_TELEMETRY_OPTOUT",
-        "DOTNET_NOLOGO", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "DOTNET_MULTILEVEL_LOOKUP",
-        "NUGET_PACKAGES", "NUGET_HTTP_CACHE_PATH",
+        // DOTNET_ROOT locates the host itself, so the dialogue worker (`dotnet exec`) cannot start
+        // without it on a machine where dotnet is not on PATH by absolute path.
+        "DOTNET_ROOT", "DOTNET_ROOT(x86)",
+        // EXPERIMENT IN PROGRESS -- do not copy this comment forward without reading the result.
+        // The first-run suppressors (DOTNET_CLI_HOME, DOTNET_NOLOGO, DOTNET_SKIP_FIRST_TIME_EXPERIENCE,
+        // DOTNET_MULTILEVEL_LOOKUP, DOTNET_CLI_TELEMETRY_OPTOUT, NUGET_PACKAGES) were added in the same
+        // commit as the Windows profile block below, when clearing the environment timed the dialogue
+        // e2e tests out at their 30s limit on Windows CI while they passed locally in 2s. The comment
+        // then credited the DOTNET_* half with the fix. A reviewer pointed out that `dotnet exec` is
+        // the HOST, not the SDK CLI -- it runs no first-run experience, emits no logo, sends no CLI
+        // telemetry and resolves no NuGet -- so none of those can plausibly be worth 28 seconds, while
+        // the profile block genuinely is load-bearing for the `powershell -File` participants. The two
+        // sets were never separated, so the causal claim was a guess presented as a measurement.
+        // This removal is the discrimination: if Windows CI stays green, the DOTNET_* half was inert.
+        "NUGET_HTTP_CACHE_PATH",
 
         // REACHABILITY. Both vendor CLIs are network clients, and on a corporate network these are
         // the whole of how they reach anything. Omitting them was a regression this file introduced

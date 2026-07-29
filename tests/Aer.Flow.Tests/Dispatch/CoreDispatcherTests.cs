@@ -281,24 +281,29 @@ public class CoreDispatcherTests
     /// arms come back empty the test is measuring its own plumbing rather than the allowlist.
     /// </para>
     /// <para>
-    /// <b>The <c>NUGET_HTTP_CACHE_PATH</c> arm is the one that makes the negative arms mean
-    /// anything, and it exists because a reviewer showed the first version of this test could not
-    /// fail on two of the three CI platforms.</b> The negative arms plant their sentinel with
-    /// <c>Environment.SetEnvironmentVariable</c> — but on Unix .NET does not call <c>setenv</c> for
-    /// that, it mutates a managed dictionary only, while the child here is spawned by aer-core in
-    /// Rust from the native <c>environ</c>. So on Linux and macOS the sentinel would never reach the
-    /// child <i>whether or not <see cref="Aer.Core.AerTask.WithClearEnv"/> were called</i>, and both
-    /// negative arms would pass against unfixed code. The <c>PATH</c> control does not catch it:
-    /// <c>PATH</c> is in the native block already, so it discriminates "the harness spawns and
-    /// echoes", not "an operator-set variable can reach this child".
+    /// <b>The <c>NUGET_HTTP_CACHE_PATH</c> arm is a control on the PLANT, not on the allowlist.</b>
+    /// The negative arms prove nothing unless <c>Environment.SetEnvironmentVariable</c> actually
+    /// reaches the spawned child, and the <c>PATH</c> arm cannot establish that: <c>PATH</c> is in
+    /// the native block before this process starts, so it discriminates "the harness spawns and
+    /// echoes", not "an operator-set variable can reach this child". This arm plants an
+    /// <b>allowlisted</b> name by the same mechanism the negative arms use and requires the sentinel
+    /// to <b>arrive</b>. Red here means every negative arm on that platform is vacuous — read this
+    /// failure before concluding anything about the allowlist.
     /// </para>
     /// <para>
-    /// This arm plants an ALLOWLISTED name by the same mechanism the negative arms use and requires
-    /// the sentinel to <b>arrive</b>. It is therefore a control on the plant itself: if it goes red
-    /// on a platform, every negative arm on that platform is vacuous and this test is certifying
-    /// nothing there. <c>NUGET_HTTP_CACHE_PATH</c> carries it because it is on the allowlist and
-    /// nothing in the child reads it, so overwriting it changes no behaviour — unlike <c>PATH</c>,
-    /// which cannot be overwritten without breaking the spawn the control depends on.
+    /// <b>It exists because a reviewer argued the negative arms could not fail on Linux or macOS,
+    /// and running it settled that they can.</b> The argument was that .NET on Unix does not call
+    /// <c>setenv</c> for <c>SetEnvironmentVariable</c> — it mutates a managed dictionary — while the
+    /// child is spawned by aer-core in Rust from the native <c>environ</c>, so the sentinel would
+    /// never arrive whether or not <see cref="Aer.Core.AerTask.WithClearEnv"/> were called. All four
+    /// arms pass on ubuntu-latest (CI run 30472390670), so the plant does reach the child and the
+    /// negative arms were never vacuous. Recorded because the hypothesis was specific and plausible
+    /// enough to be worth someone else's time, and the measurement is cheaper than the argument.
+    /// </para>
+    /// <para>
+    /// <c>NUGET_HTTP_CACHE_PATH</c> carries the sentinel because it is on the allowlist and nothing
+    /// in the child reads it, so overwriting it changes no behaviour — unlike <c>PATH</c>, which
+    /// cannot be overwritten without breaking the spawn the other control depends on.
     /// </para>
     /// </remarks>
     [Theory]
