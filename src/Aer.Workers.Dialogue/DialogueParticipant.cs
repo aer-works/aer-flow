@@ -37,13 +37,28 @@ namespace Aer.Workers.Dialogue;
 /// no shell is involved, so no quoting/escaping question exists for this skeleton the way it does
 /// for <c>Aer.Adapters</c>'s shell-wrapped invocations.
 /// </param>
+/// <param name="Environment">
+/// Extra environment variables to set on this participant's spawned process, or <see langword="null"/>
+/// to add none. Opaque here by design: the names and values are a vendor concern
+/// (<c>CLAUDE.md</c> Architecture Rule 2), so <c>Aer.Adapters</c> computes them and this worker only
+/// applies them. It is how the gate's denied-tools channel and its
+/// <c>CLAUDE_CODE_SIMPLE=0</c> neutralisation reach a participant's process (#703) — the parts of the
+/// gate that do travel in the environment, as opposed to <c>claude</c>'s <c>--settings</c> argument
+/// and <c>agy</c>'s workspace <c>.agents/hooks.json</c>, which do not and are carried by
+/// <see cref="Command"/>/<see cref="Args"/> instead.
+/// <para>
+/// Added rather than replacing the inherited environment: narrowing what a worker can see is
+/// #549's question and is decided for every spawn path at once, not here.
+/// </para>
+/// </param>
 public sealed record DialogueParticipant(
     string Role,
     string Vendor,
     string? Model,
     string Preamble,
     string Command,
-    IReadOnlyList<string> Args)
+    IReadOnlyList<string> Args,
+    IReadOnlyDictionary<string, string>? Environment = null)
 {
     /// <summary>The literal <see cref="Args"/> token <see cref="ProcessVendorTurnClient"/> substitutes with the actual prompt text.</summary>
     public const string PromptPlaceholder = "{PROMPT}";

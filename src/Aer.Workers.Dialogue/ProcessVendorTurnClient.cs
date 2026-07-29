@@ -74,6 +74,15 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                 UseShellExecute = false,
             };
 
+            // Applied before the args are built purely for readability; ProcessStartInfo.Environment
+            // is a plain dictionary and order carries no meaning. Set rather than merged: a value
+            // AER computed for the gate has to win over an inherited one of the same name, which is
+            // the entire point of CLAUDE_CODE_SIMPLE=0 (#703).
+            foreach (var (name, value) in participant.Environment ?? new Dictionary<string, string>())
+            {
+                startInfo.Environment[name] = value;
+            }
+
             foreach (var arg in participant.Args)
             {
                 var substituted = arg;
