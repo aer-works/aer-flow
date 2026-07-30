@@ -71,7 +71,8 @@ WorkerContract
  ├── WorkerName
  ├── RequiredInputs[]    (named file roles, e.g. "goal", "plan-to-review")
  ├── ProducedOutputs[]   (named file roles, e.g. "plan", "review")
- │    └── Condition?     (optional — see §4.1)
+ │    ├── Condition?     (optional — see §4.1)
+ │    └── Schema?        (optional — see §4.2)
  └── OptionalMetadata[]  (e.g. a structured .json summary alongside the primary artifact)
 
 OutputCondition
@@ -102,6 +103,31 @@ A condition that cannot be *evaluated* at all — a `Path` that is not a well-fo
 **Evaluation happens exactly once.** Flow evaluates conditions at outcome-classification time (§8), reading the artifact from disk, and records the verdict as the durable `ExecutionSucceeded`/`ExecutionFailed` event. Replay never re-evaluates a condition — artifacts are not part of the Event Store, and the projection (§12, §13) trusts the recorded classification. A later mutation of an artifact on disk cannot retroactively change history.
 
 **Deliberate exclusions.** No comparison operators beyond equality, no boolean composition, no regex, no numeric ranges, no JSONPath queries. The reasoning is §8.1's, applied again: a richer condition language becomes a de facto DSL whose exact spelling Flow's scheduling behavior depends on, and which must then be versioned, documented, and maintained forever. A worker that needs a complex judgment ("are all tests green and coverage above 80%?") computes it inside the worker boundary (§18.2) and writes a scalar verdict field — `{"status": "approved"}` — for the contract to check. This is precisely the shape §10.1's retry-as-self-iteration pattern requires, and nothing in that pattern needs more.
+
+### 4.2 Output schemas (shape, not just existence)
+
+A `ProducedOutputs` entry may optionally declare one `Schema`, naming a member of a closed set of
+document shapes the engine knows how to parse. Declaring one extends the contract from "this file
+must exist" to "this file must exist and *be* this shape." The set currently has one member,
+`ReviewVerdict` — a review worker's structured findings; the canonical field-level definition is the
+typed record in code (`Aer.Flow.Domain.ReviewVerdict` and its `ReviewVerdictSchema.TryParse`), not
+restated here.
+
+**Satisfaction.** A schema'd output satisfies the contract exactly when the file exists and parses
+per the named schema's `TryParse`. Failure is classified exactly like a missing required output
+(§8): `ExecutionFailed` even on clean exit 0, with the parser's one-sentence why in the failure's
+`Reason` (§8.2). An output that fails its schema is reported once — its `Condition`, if it also
+declares one, is not separately evaluated, since both would name the same output in one diagnostic.
+Evaluation happens exactly once, at outcome-classification time, under §4.1's rule — replay trusts
+the recorded classification and never re-reads the artifact.
+
+**Validation is parse-only, and that is the boundary, not an economy.** The engine checks that the
+document *is* the shape; it never reads the shape's content — a finding's severity, a verdict's
+conclusions — to schedule, route, retry, or decide anything (decision 0043, which applies decision
+0038's evidence/decision boundary to structured findings). A structured verdict exists so the
+*human* deciding at a `PausePoint`, and the surfaces that serve them, can consume findings without
+re-reading prose — the discipline/intelligence split of §1 is unchanged by structure arriving in
+the artifact.
 
 ---
 

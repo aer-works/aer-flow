@@ -256,6 +256,8 @@ public static class OutcomeClassifier
             : $"'{output.Name}': JSON Pointer '{output.ConditionPath}' resolved to {output.ActualValue}, expected {output.ExpectedValue}",
         UnsatisfiedOutputReason.MalformedCondition =>
             $"'{output.Name}': condition cannot be evaluated — {output.Detail}",
+        UnsatisfiedOutputReason.SchemaViolation =>
+            $"'{output.Name}' is not a valid document of its declared schema — {output.Detail}",
         _ => throw new ArgumentOutOfRangeException(nameof(output), output.Reason, "Unknown UnsatisfiedOutputReason."),
     };
 

@@ -15,7 +15,30 @@ public sealed record WorkerContract(
     IReadOnlyList<string> OptionalMetadata);
 
 /// <summary>A named output file role a <see cref="WorkerContract"/> requires (spec §4).</summary>
-public sealed record ProducedOutput(string Name, OutputCondition? Condition = null);
+/// <param name="Schema">
+/// A declared document shape the file must parse as (spec §4.2, decision 0043) — the structural
+/// sibling of <paramref name="Condition"/>. Serialized only when set, so contracts that predate
+/// the field round-trip byte-identically.
+/// </param>
+public sealed record ProducedOutput(
+    string Name,
+    OutputCondition? Condition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] OutputSchema Schema = OutputSchema.None);
+
+/// <summary>
+/// The closed set of shapes a <see cref="ProducedOutput"/> can declare (spec §4.2). Validation is
+/// parse-only in every case: the engine checks the file <i>is</i> the shape, and never reads its
+/// content to route (Architecture Rule 1; decision 0043's boundary).
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<OutputSchema>))]
+public enum OutputSchema
+{
+    /// <summary>No declared shape — existence (plus any <see cref="OutputCondition"/>) suffices.</summary>
+    None,
+
+    /// <summary>The output must parse per <see cref="ReviewVerdictSchema.TryParse"/>.</summary>
+    ReviewVerdict,
+}
 
 /// <summary>
 /// Extends a <see cref="ProducedOutput"/>'s contract from "this file must exist" to "this file
