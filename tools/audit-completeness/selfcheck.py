@@ -1052,6 +1052,18 @@ def _recordonce_discriminates():
     assert not rec.groups(added, at_md_mention)[2], (
         "record-once: prose describing the markdown marker form was reported as a broken one")
 
+    # Buried markers -- a list bullet or a doubled opener in front of the comment, the two shapes
+    # the #691 review measured as fully silent. Never honoured (the own-line rule stands), never
+    # silent (both land in the malformed report). What separates these from the inert mid-sentence
+    # mention above is that the bullet or the opener OPENS the line.
+    for buried in (f"- {md_marker}", f"<!-- {md_marker}"):
+        md_buried = {"docs/B.md": [sentence, buried], "src/A.cs": [f"// {sentence}"]}
+        at_buried = lambda path, m=md_buried: m.get(path)  # noqa: E731
+        assert rec.violations(added, at_buried), (
+            f"record-once: a buried marker ({buried!r}) exempted a passage the own-line rule refuses")
+        assert rec.groups(added, at_buried)[2], (
+            f"record-once: a buried marker ({buried!r}) failed silently instead of being reported")
+
     # The locale-decoding crash `GIT_TEXT` in recordonce.py records (#690). Run against a real
     # tracked file whose bytes are not cp1252-decodable: the defect lives in how a subprocess pipe is
     # decoded, so no in-memory fixture can reach it, and the second assertion is what stops the arm
