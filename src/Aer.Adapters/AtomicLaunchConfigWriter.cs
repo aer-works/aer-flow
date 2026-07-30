@@ -47,9 +47,10 @@ namespace Aer.Adapters;
 /// <b>A losing rename is not a losing writer (#682):</b> the first resolve against a fresh or
 /// drifted file still writes, and enough concurrent cold-start writers exhausted <see
 /// cref="MaxAttempts"/> before every failed rename re-checked <see cref="AlreadyHolds"/> -- the
-/// content-identity argument above applies to the loser too, not only to the skip. Raising
-/// <see cref="MaxAttempts"/> would have moved the threshold rather than removed it, which is why the
-/// budget itself is unchanged.
+/// content-identity argument above applies to the loser too, not only to the skip. Measured on the
+/// same platform, and under the same "Why the retry" sharing violation, as the paragraph above.
+/// Raising <see cref="MaxAttempts"/> would have moved the threshold rather than removed it, which is
+/// why the budget itself is unchanged.
 /// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter

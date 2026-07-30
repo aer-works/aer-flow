@@ -11,7 +11,16 @@ namespace Aer.Adapters.Tests;
 /// assembly gave five failures across three classes, every one an <c>UnauthorizedAccessException</c>
 /// out of <see cref="AtomicLaunchConfigWriter"/>'s <c>File.Move</c> with its attempts spent. #667's
 /// skip makes every resolve after the first a no-op, but at assembly start there is no file, so every
-/// class racing to its own first resolve is a writer at once — and that budget is exhaustible (#682).
+/// class racing to its own first resolve is a writer at once — and that budget was exhaustible (fixed
+/// by #682, whose remarks carry the mechanism).
+/// </para>
+/// <para>
+/// <b>Still kept after #682.</b> Re-enabling parallelization no longer reproduces that
+/// <c>UnauthorizedAccessException</c> across repeated runs, but it does reliably cost
+/// <see cref="LaunchConfigRewriteTests"/>'s own reader/writer measurement its thread-pool capacity,
+/// which the assertion needs to observe any reads at all. Left in place rather than folded into
+/// #682's fix — that is a harness-contention question about this collection's own classes, not the
+/// writer defect #682 measured.
 /// </para>
 /// <para>
 /// Eight classes rather than the original two: three of the failures were in classes never covered.

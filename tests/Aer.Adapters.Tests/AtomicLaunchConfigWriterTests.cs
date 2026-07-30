@@ -117,6 +117,39 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
     }
 
     /// <summary>
+    /// The polarity arm of the #682 fix: a rename that fails is not on its own grounds to return, or
+    /// the early return would reopen the #543 invariant it sits next to -- a stale file must not stay
+    /// installed with the gate silently off. <see cref="FileShare.Read"/> is what discriminates from
+    /// the probe-cannot-read test above: it lets <c>AlreadyHolds</c>'s read succeed while still
+    /// denying the rename, so the comparison runs against real, differing content instead of being
+    /// skipped for being unreadable.
+    /// </summary>
+    /// <remarks>
+    /// Windows arm, for the same reason as its sibling: the sharing violation this depends on is not
+    /// established as portable (see this type's own remarks).
+    /// </remarks>
+    [Fact]
+    public void A_destination_holding_different_content_still_throws_when_the_rename_cannot_land()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("FileShare.Read only blocks a rename's delete-share requirement on Windows.");
+        }
+
+        var path = Path_("settings.json");
+        const string stale = """{"hooks":{"PreToolUse":[{"stale":"pre-543-content"}]}}""";
+        File.WriteAllText(path, stale);
+
+        using var readable = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var thrown = Record.Exception(
+            () => AtomicLaunchConfigWriter.Write(path, """{"hooks":"canonical"}"""));
+
+        Assert.NotNull(thrown);
+        Assert.Contains("Move", thrown.StackTrace ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// #682: enough concurrent cold-start writers -- no file on disk yet, so every one of them is a
     /// first writer -- exhausts <c>MaxAttempts</c> on this machine. Every writer's content is
     /// byte-identical (the real caller's is a deterministic function of
