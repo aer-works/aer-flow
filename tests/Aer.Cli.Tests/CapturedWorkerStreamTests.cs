@@ -265,4 +265,43 @@ public class CapturedWorkerStreamTests
         var truncated = StatusCommand.EscapeNonPrintable(new byte[] { (byte)'A', 0xC3 });
         Assert.Equal("A�", truncated);
     }
+
+    [Fact]
+    public void TailStreams_AcrossRollover_DeliversContinuedContent()
+    {
+        // The lane review's medium finding: the reader-side rollover branch had zero coverage --
+        // only the writer half was asserted. This drives StatusCommand.TailStreams across a real
+        // rollover and requires the tail to keep delivering without dropping the post-rollover
+        // content.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"tail-rollover-{Guid.NewGuid():N}");
+        var execDir = Path.Combine(testRoot, "execution_tail");
+        Directory.CreateDirectory(execDir);
+        try
+        {
+            const long cap = 100;
+            var logger = new ExecutionStreamLogger(execDir, maxSizeBytes: cap);
+            var offsets = new Dictionary<string, long>(StringComparer.Ordinal);
+
+            var chunkA = System.Text.Encoding.UTF8.GetBytes(new string('A', 60));
+            logger.AppendStdout(chunkA);
+
+            var firstRead = new StringWriter();
+            StatusCommand.TailStreams(firstRead, testRoot, offsets);
+            Assert.Contains(new string('A', 60), firstRead.ToString());
+
+            // Crossing the cap rolls the file; the next tail must surface the new content.
+            var chunkB = System.Text.Encoding.UTF8.GetBytes(new string('B', 60));
+            logger.AppendStdout(chunkB);
+
+            var secondRead = new StringWriter();
+            StatusCommand.TailStreams(secondRead, testRoot, offsets);
+            var secondText = secondRead.ToString();
+            Assert.Contains(new string('B', 60), secondText);
+            Assert.DoesNotContain(new string('A', 60), secondText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
 }

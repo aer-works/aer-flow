@@ -142,7 +142,9 @@ public static class StatusCommand
         }
     }
 
-    private static void TailStreams(TextWriter output, string artifactsDir, Dictionary<string, long> streamOffsets)
+    // Public as a test seam, matching FormatStepStatus and EscapeNonPrintable: the reader-side
+    // rollover behavior is asserted directly (the lane review's medium finding).
+    public static void TailStreams(TextWriter output, string artifactsDir, Dictionary<string, long> streamOffsets)
     {
         if (!Directory.Exists(artifactsDir))
         {
@@ -173,22 +175,32 @@ public static class StatusCommand
         }
 
         streamOffsets.TryGetValue(logPath, out var offset);
-        var fi = new FileInfo(logPath);
 
-        if (fi.Length < offset)
+        // Rollover detection keys on the rollover FILE'S identity (its mtime advances every time
+        // the writer rolls), never on a length comparison: a fresh file whose length equals the
+        // stored offset made `length < offset` miss the rollover entirely and silently drop the
+        // new content -- found by the reader-side test the lane review demanded. The rollover
+        // path doubles as its own dict key; log and rollover paths are distinct strings.
+        if (File.Exists(rolloverPath))
         {
-            if (File.Exists(rolloverPath))
+            streamOffsets.TryGetValue(rolloverPath, out var seenRolloverTicks);
+            var rolloverFi = new FileInfo(rolloverPath);
+            var ticks = rolloverFi.LastWriteTimeUtc.Ticks;
+            if (ticks != seenRolloverTicks)
             {
-                var rolloverFi = new FileInfo(rolloverPath);
+                // The rolled file IS the previous current file: emit its unseen tail, then the
+                // fresh file reads from the start.
                 if (rolloverFi.Length > offset)
                 {
                     ReadAndOutputBytes(output, rolloverPath, offset, rolloverFi.Length - offset);
                 }
-            }
 
-            offset = 0;
+                offset = 0;
+                streamOffsets[rolloverPath] = ticks;
+            }
         }
 
+        var fi = new FileInfo(logPath);
         if (fi.Length > offset)
         {
             var bytesRead = ReadAndOutputBytes(output, logPath, offset, fi.Length - offset);
