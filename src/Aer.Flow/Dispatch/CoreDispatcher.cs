@@ -246,6 +246,29 @@ internal sealed class StderrTailBuffer
 /// </remarks>
 internal sealed class StdoutLineBuffer
 {
+    /// <summary>
+    /// The ceiling on a newline-free run this buffer will hold before splitting it (#701).
+    /// </summary>
+    /// <remarks>
+    /// Measured before chosen (#701 required exactly that order): the longest single line across
+    /// 68,399 lines of the vendor CLIs' own JSONL streams on the measuring machine was 1,346,950
+    /// bytes — a <c>claude</c> stream-json line; <c>agy</c>'s longest was 8,529. This ceiling is
+    /// roughly six times that worst case, so no legitimately long line observed to date comes near
+    /// a split, while a runaway newline-free stream (a <c>\r</c> progress bar, binary on the wrong
+    /// descriptor) is bounded inside the daemon's process. Split-with-marker was chosen over the
+    /// stderr sibling's keep-the-tail because stdout is what the Conversation tab renders and is
+    /// read top-down: every character still arrives, in order, and the fabricated boundary is the
+    /// marked thing rather than the dropped thing.
+    /// </remarks>
+    public const int MaxBufferedLineLength = 8_000_000;
+
+    /// <summary>
+    /// Appended to every synthetic line the ceiling fabricates, so an operator reading a fragment
+    /// can tell it is one — the silent-fragment outcome is the one #701 names as unacceptable.
+    /// </summary>
+    public static readonly string SplitMarker =
+        $" ⟦AER: no newline for {MaxBufferedLineLength:N0} characters — line split by the engine⟧";
+
     private readonly System.Text.StringBuilder buffer = new();
     private readonly System.Text.Decoder decoder = System.Text.Encoding.UTF8.GetDecoder();
 
@@ -270,6 +293,26 @@ internal sealed class StdoutLineBuffer
         {
             onLine(content[..newlineIndex].TrimEnd('\r'));
             content = content[(newlineIndex + 1)..];
+        }
+
+        // The remainder is a line still waiting for its newline, and a worker that never sends one
+        // must not grow it forever — see MaxBufferedLineLength for the measurement behind the
+        // ceiling and why splitting beats retaining a tail here. Strictly greater than: a run
+        // exactly AT the ceiling is still a legitimate line waiting, never split.
+        while (content.Length > MaxBufferedLineLength)
+        {
+            // The cut index counts UTF-16 chars, and a code point above the BMP is a surrogate
+            // PAIR — cutting between its halves emits a lone surrogate that any downstream UTF-8
+            // re-encode silently replaces with U+FFFD, breaking "every character still arrives".
+            // Same guard StderrTailBuffer has always had at its own cut point: back off by one.
+            var cut = MaxBufferedLineLength;
+            if (char.IsHighSurrogate(content[cut - 1]))
+            {
+                cut--;
+            }
+
+            onLine(content[..cut] + SplitMarker);
+            content = content[cut..];
         }
 
         buffer.Clear();
