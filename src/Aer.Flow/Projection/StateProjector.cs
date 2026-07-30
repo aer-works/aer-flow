@@ -268,13 +268,7 @@ public static class StateProjector
         // waiting on a human read as Running — the operator's decision surface keys on Paused, and
         // the pump deliberately returns rather than waits while any step is paused (#712). A
         // deferral only means Running when nothing needs a person first.
-        var workflowStatus = steps.Any(step => step.Status == StepStatus.Running)
-            ? WorkflowStatus.Running
-            : steps.Any(step => step.Status == StepStatus.Paused)
-                ? WorkflowStatus.Paused
-                : steps.Any(step => step.RetryNotBefore != null)
-                    ? WorkflowStatus.Running
-                    : WorkflowStatus.Terminal;
+        var workflowStatus = DeriveWorkflowStatus(steps, snapshot);
 
         // Still pending: accepted, but no terminal event recorded for it yet — exactly the same
         // "no terminal event means Running-or-crashed" rule §6 already applies to step-tied
@@ -295,5 +289,78 @@ public static class StateProjector
             workflowStatus,
             pendingStepLessExecutions,
             unfulfilledCancellationRequestExecutionIds);
+    }
+
+    /// <summary>
+    /// <see cref="WorkflowStatus.Terminal"/> promises "nothing further to dispatch", and this is
+    /// where that clause is actually checked (#810). The old derivation only asked
+    /// Running/Paused/deferred, so every reader saw a phantom Terminal in two live windows: between
+    /// one step's success and the next step's <see cref="FlowEvent.ExecutionRequestAccepted"/>, and
+    /// after a failure whose retry the pump had not yet scheduled. The pump never consumes this
+    /// value (it re-derives readiness), which is why the gap survived unseen until a follow exited
+    /// mid-run. Pure over state + snapshot — no clock, so the resolver's time-gated readiness is
+    /// deliberately NOT consulted (§13); a deferred retry reads Running however far away its
+    /// <see cref="StepState.RetryNotBefore"/> is.
+    /// </summary>
+    private static WorkflowStatus DeriveWorkflowStatus(
+        IReadOnlyList<StepState> steps, WorkflowDefinitionSnapshot snapshot)
+    {
+        if (steps.Any(step => step.Status == StepStatus.Running))
+        {
+            return WorkflowStatus.Running;
+        }
+
+        if (steps.Any(step => step.Status == StepStatus.Paused))
+        {
+            return WorkflowStatus.Paused;
+        }
+
+        var stepById = steps.ToDictionary(step => step.StepId);
+        var definitionById = snapshot.Steps.ToDictionary(definition => definition.StepId);
+
+        // A step that can still progress on its own: a scheduled deferral, a failure the
+        // RetryPolicy (or 0026's ExhaustedUntil exemption) still permits another attempt for, or a
+        // decision consequence awaiting its dispatch (§17.2/§17.5).
+        bool CanProgressAlone(StepState step) =>
+            step.RetryNotBefore is not null
+            || (step.Status == StepStatus.Failed
+                && Scheduling.RetryEngine.MayRetry(step, definitionById[step.StepId].RetryPolicy))
+            || step.PendingSupplementaryExecutionId is not null
+            || step.IsPendingSupersedeTarget;
+
+        if (steps.Any(CanProgressAlone))
+        {
+            return WorkflowStatus.Running;
+        }
+
+        // A Pending step is alive exactly when every upstream dependency can still deliver its
+        // inputs — Succeeded already has, and a Pending-or-progressing chain still might. A chain
+        // dead at any link (permanent/exhausted failure, cancellation, rejection) leaves its
+        // dependents Pending forever, and THAT is the legitimate Terminal-with-Pending-steps case.
+        // Memoized; the validator forbids dependency cycles, and the false-before-recursing seed
+        // makes an impossible cycle read as dead rather than looping.
+        var aliveByStepId = new Dictionary<StepId, bool>();
+        bool IsAlive(StepId stepId)
+        {
+            if (aliveByStepId.TryGetValue(stepId, out var known))
+            {
+                return known;
+            }
+
+            aliveByStepId[stepId] = false;
+            var step = stepById[stepId];
+            var alive = step.Status switch
+            {
+                StepStatus.Succeeded => true,
+                StepStatus.Pending => definitionById[stepId].DependsOn.All(IsAlive),
+                _ => CanProgressAlone(step),
+            };
+            aliveByStepId[stepId] = alive;
+            return alive;
+        }
+
+        return steps.Any(step => step.Status == StepStatus.Pending && IsAlive(step.StepId))
+            ? WorkflowStatus.Running
+            : WorkflowStatus.Terminal;
     }
 }
