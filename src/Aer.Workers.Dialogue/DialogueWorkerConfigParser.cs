@@ -22,7 +22,10 @@ public static class DialogueWorkerConfigParser
         }
         catch (JsonException ex)
         {
-            throw new DialogueWorkerConfigException($"Malformed dialogue-worker config JSON: {ex.Message}", ex);
+            var message = ex.Message.StartsWith("Dialogue-worker config", StringComparison.Ordinal)
+                ? ex.Message
+                : $"Malformed dialogue-worker config JSON: {ex.Message}";
+            throw new DialogueWorkerConfigException(message, ex);
         }
 
         if (config is null)

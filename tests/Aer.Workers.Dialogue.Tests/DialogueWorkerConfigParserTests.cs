@@ -98,6 +98,7 @@ public class DialogueWorkerConfigParserTests
 
         var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
 
+        Assert.DoesNotContain("Malformed", ex.Message);
         Assert.Contains("FinalOutputMode", ex.Message);
         Assert.Contains("Bogus", ex.Message);
         Assert.Contains("FinalTurn", ex.Message);
@@ -109,6 +110,26 @@ public class DialogueWorkerConfigParserTests
     {
         var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse("{ not json"));
         Assert.Contains("Malformed", ex.Message);
+    }
+
+    /// <summary>
+    /// The #761 review's off-list gap: a wrong-TYPE value for the enum (number, boolean, object)
+    /// was correct only by code inspection. Same contract as the unknown-string arm — the message
+    /// names the field, never claims the JSON is malformed.
+    /// </summary>
+    [Theory]
+    [InlineData("5")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    public void A_wrong_typed_FinalOutputMode_value_names_the_field_not_malformed_JSON(string wrongTyped)
+    {
+        var json = ValidJson.Replace(
+            "\"TurnBudget\": 4,", $"\"TurnBudget\": 4, \"FinalOutputMode\": {wrongTyped},");
+
+        var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
+
+        Assert.DoesNotContain("Malformed", ex.Message);
+        Assert.Contains("FinalOutputMode", ex.Message);
     }
 
     [Fact]
