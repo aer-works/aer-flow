@@ -147,7 +147,12 @@ public class CapturedOutputEncodingEndToEndTests
                 f.write(b'done')
             """;
         var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(pythonCode));
-        var command = $"python -c exec(__import__('base64').b64decode('{b64}'))";
+        // The -c argument must be quoted per shell: sh treats bare parentheses as a syntax error
+        // (this exact line, unquoted, broke only on the Linux CI leg — the Windows-local green was
+        // the platform trap). The base64 payload is [A-Za-z0-9+/=], safe inside either quote style.
+        var command = OperatingSystem.IsWindows()
+            ? $"python -c \"exec(__import__('base64').b64decode('{b64}'))\""
+            : $"python -c 'exec(__import__(\"base64\").b64decode(\"{b64}\"))'";
 
         var config = new Dictionary<string, WorkerBindingConfigEntry>
         {
