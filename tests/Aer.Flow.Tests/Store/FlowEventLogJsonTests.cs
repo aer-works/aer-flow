@@ -38,6 +38,7 @@ public class FlowEventLogJsonTests
         new FlowEvent.WorkflowPaused(ExecutionId, StepId),
         new FlowEvent.ExternalDecisionRecorded(DecisionId, ExecutionId, DecisionType.Resume, StepId, null),
         new FlowEvent.WorkflowResumed(DecisionId),
+        new FlowEvent.StepRetryScheduled(StepId, ExecutionId, DateTimeOffset.UtcNow, 100),
     ];
 
     /// <summary>

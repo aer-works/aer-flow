@@ -70,6 +70,7 @@ that bounds the *documentation*, not reality.
 | 0039 | unaffected | Dialogue turns resume the vendor's own session. Built on #527's measured session-continuation facts (`--resume`, `-c`/`--continue`, `--session-id` as an existence check rather than a lock) from the start, so nothing in the audit reaches it retroactively — but it has no `Rests on` table of its own to name those facts explicitly. Tracked in #589. |
 | 0040 | unaffected | Within "needs you," gates group by kind. UI-grouping rule, no vendor dependency. |
 | 0041 | unaffected | Phone template authoring ships with the shapes milestone. Scope/timing rule, no vendor dependency. |
+| 0042 | unaffected | Retry backoff is a derived obligation with a steady default. Written after #527 against the engine's own event log and clock ownership; the only vendor-adjacent fact (rate-limited CLIs punish hot retry loops) motivates it but nothing in it depends on a vendor mechanism. |
 
 ## Decisions whose dependencies are now recorded
 

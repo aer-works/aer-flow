@@ -8,6 +8,11 @@ public class DependencyResolverTests
     private static readonly StepId Architect = new("architect");
     private static readonly StepId Critic = new("critic");
 
+    // Any fixed instant works for tests with no deferral in play; `now` is a required parameter
+    // because a defaulted one silently releases every deferral -- the reasoning lives on
+    // GetReadySteps itself.
+    private static readonly DateTimeOffset Now = new(2026, 7, 29, 12, 0, 0, TimeSpan.Zero);
+
     private static WorkflowDefinitionSnapshot TwoStepSnapshot(int architectMaxAttempts = 1) => new(
         new WorkflowDefinitionSnapshotId("snapshot-1"),
         new WorkflowTemplateId("architect-critic"),
@@ -28,6 +33,49 @@ public class DependencyResolverTests
     private static StepState Failed(StepId stepId, ExecutionId executionId, int consecutiveFailureCount, FailureClassification? classification = null) =>
         new(stepId, StepStatus.Failed, executionId, NoUpstream, consecutiveFailureCount, classification);
 
+    private static StepState Deferred(StepId stepId, ExecutionId executionId, DateTimeOffset notBefore, int delayMs) =>
+        new(stepId, StepStatus.Failed, executionId, NoUpstream, ConsecutiveFailureCount: 1,
+            RetryNotBefore: notBefore, RetryDelayMs: delayMs);
+
+    // #712's readiness clamp, pinned at the resolver directly: before the deadline the step is not
+    // ready, at it the step is, and a deadline further away than the delay that produced it -- only
+    // reachable via a backwards clock jump -- releases rather than strands.
+
+    [Fact]
+    public void A_deferred_step_is_not_ready_before_its_deadline()
+    {
+        var state = new FlowState(new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Deferred(Architect, new ExecutionId("e1"), Now.AddSeconds(30), delayMs: 30_000), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2), Now);
+
+        Assert.DoesNotContain(Architect, ready);
+    }
+
+    [Fact]
+    public void A_deferred_step_is_ready_at_its_deadline()
+    {
+        var state = new FlowState(new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Deferred(Architect, new ExecutionId("e1"), Now, delayMs: 30_000), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2), Now);
+
+        Assert.Contains(Architect, ready);
+    }
+
+    [Fact]
+    public void A_backwards_clock_jump_releases_a_deferred_step_instead_of_stranding_it()
+    {
+        // The deadline sits 60 s out while the delay that produced it was 30 s -- impossible unless
+        // the clock moved backwards after scheduling, so the clamp treats the step as ready.
+        var state = new FlowState(new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [Deferred(Architect, new ExecutionId("e1"), Now.AddSeconds(60), delayMs: 30_000), Pending(Critic)]);
+
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2), Now);
+
+        Assert.Contains(Architect, ready);
+    }
+
     private static StepState SucceededUsing(StepId stepId, ExecutionId executionId, StepId dependencyStepId, ExecutionId upstreamExecutionId) =>
         new(stepId, StepStatus.Succeeded, executionId, new Dictionary<StepId, ExecutionId> { [dependencyStepId] = upstreamExecutionId });
 
@@ -36,7 +84,7 @@ public class DependencyResolverTests
     {
         var state = new FlowState(new WorkflowDefinitionSnapshotId("snapshot-1"), [Pending(Architect), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.Contains(Architect, ready);
     }
@@ -48,7 +96,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Succeeded, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.Contains(Critic, ready);
     }
@@ -60,7 +108,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Failed, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Critic, ready);
     }
@@ -76,7 +124,7 @@ public class DependencyResolverTests
                 SucceededUsing(Critic, new ExecutionId("C1"), Architect, architectExecutionId),
             ]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Critic, ready);
     }
@@ -96,7 +144,7 @@ public class DependencyResolverTests
                 SucceededUsing(Critic, new ExecutionId("C1"), Architect, supersededArchitectExecutionId),
             ]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.Contains(Critic, ready);
     }
@@ -108,7 +156,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Running, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -120,7 +168,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Paused, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -132,7 +180,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Succeeded, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -144,7 +192,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 1), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2));
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2), Now);
 
         Assert.Contains(Architect, ready);
     }
@@ -156,7 +204,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 2), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2));
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -168,7 +216,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 0, FailureClassification.Permanent), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5));
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -180,7 +228,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Cancelled, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5));
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -192,7 +240,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Rejected, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5));
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 5), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }
@@ -204,7 +252,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Rejected, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Critic, ready);
     }
@@ -216,7 +264,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Failed(Architect, new ExecutionId("A1"), consecutiveFailureCount: 1), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2));
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(architectMaxAttempts: 2), Now);
 
         Assert.DoesNotContain(Critic, ready);
     }
@@ -233,7 +281,7 @@ public class DependencyResolverTests
                 Pending(Critic),
             ]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.Contains(Architect, ready);
     }
@@ -245,7 +293,7 @@ public class DependencyResolverTests
             new WorkflowDefinitionSnapshotId("snapshot-1"),
             [Terminal(Architect, StepStatus.Succeeded, new ExecutionId("A1")), Pending(Critic)]);
 
-        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot());
+        var ready = DependencyResolver.GetReadySteps(state, TwoStepSnapshot(), Now);
 
         Assert.DoesNotContain(Architect, ready);
     }

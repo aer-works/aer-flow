@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Aer.Flow.Domain;
 
 /// <summary>
@@ -21,7 +23,69 @@ public sealed record WorkflowStepDefinition(
     PausePoint? PausePoint = null);
 
 /// <summary>Governs whether a failure triggers a new <see cref="ExecutionRequest"/> (spec §10).</summary>
-public sealed record RetryPolicy(int MaxAttempts);
+[method: JsonConstructor]
+public sealed record RetryPolicy(int MaxAttempts, BackoffPolicy Backoff)
+{
+    /// <summary>Backoff policy applied between retry attempts. Defaults to <see cref="BackoffPolicy.Default"/>.</summary>
+    public BackoffPolicy Backoff { get; init; } = Backoff ?? BackoffPolicy.Default;
+
+    /// <summary>Constructs a <see cref="RetryPolicy"/> with default backoff strategy (<see cref="BackoffPolicy.Default"/>).</summary>
+    public RetryPolicy(int MaxAttempts) : this(MaxAttempts, BackoffPolicy.Default) { }
+}
+
+/// <summary>Controls the random jitter applied to retry backoff delays (#712; spec §10).</summary>
+public enum JitterMode
+{
+    /// <summary>No jitter is applied; delays are deterministic exponential intervals.</summary>
+    None,
+
+    /// <summary>Delay is uniformly randomized in [delay / 2, delay].</summary>
+    Half
+}
+
+/// <summary>Configures backoff growth, cap, and jitter strategy for retry delays (#712; spec §10).</summary>
+[JsonConverter(typeof(BackoffPolicyJsonConverter))]
+public sealed record BackoffPolicy(TimeSpan Initial, double Multiplier, TimeSpan Cap, JitterMode Jitter)
+{
+    /// <summary>Preset zero-delay policy (Initial = 0, Multiplier = 1, Cap = 0, Jitter = None).</summary>
+    public static readonly BackoffPolicy None = new(TimeSpan.Zero, 1, TimeSpan.Zero, JitterMode.None);
+
+    /// <summary>Preset brisk policy (Initial = 200 ms, Multiplier = 2, Cap = 5 s, Jitter = Half).</summary>
+    public static readonly BackoffPolicy Brisk = new(TimeSpan.FromMilliseconds(200), 2, TimeSpan.FromSeconds(5), JitterMode.Half);
+
+    /// <summary>Preset steady policy (Initial = 1 s, Multiplier = 3, Cap = 60 s, Jitter = Half).</summary>
+    public static readonly BackoffPolicy Steady = new(TimeSpan.FromSeconds(1), 3, TimeSpan.FromSeconds(60), JitterMode.Half);
+
+    /// <summary>Preset patient policy (Initial = 5 s, Multiplier = 3, Cap = 15 min, Jitter = Half).</summary>
+    public static readonly BackoffPolicy Patient = new(TimeSpan.FromSeconds(5), 3, TimeSpan.FromMinutes(15), JitterMode.Half);
+
+    /// <summary>Default backoff policy applied when backoff is omitted in workflow templates.</summary>
+    public static BackoffPolicy Default => Steady;
+
+    /// <summary>
+    /// Computes the pure delay for attempt index <paramref name="attempt"/> (1-based: delay before attempt n+1),
+    /// using exponential growth, cap clamp, and jitter from caller-supplied <paramref name="sample"/> in [0, 1).
+    /// </summary>
+    public TimeSpan DelayFor(int attempt, double sample)
+    {
+        if (Cap == TimeSpan.Zero || Initial == TimeSpan.Zero)
+        {
+            return TimeSpan.Zero;
+        }
+
+        int exponent = Math.Max(0, attempt - 1);
+        double rawMs = Initial.TotalMilliseconds * Math.Pow(Multiplier, exponent);
+        double cappedMs = Math.Min(rawMs, Cap.TotalMilliseconds);
+
+        double finalMs = Jitter switch
+        {
+            JitterMode.Half => cappedMs * (0.5 + 0.5 * Math.Clamp(sample, 0.0, 1.0)),
+            _ => cappedMs
+        };
+
+        return TimeSpan.FromMilliseconds(finalMs);
+    }
+}
 
 /// <summary>
 /// Distinguishes <em>why</em> a <see cref="PausePoint"/> stopped the DAG, so the two human acts a
