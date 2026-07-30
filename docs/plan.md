@@ -156,6 +156,15 @@ any route it might reach the same effect through**, not just the one flag that n
 ([0029](decisions/0029-the-gate-is-three-mechanisms.md), [J6](../spec/journeys.md) — journeys.md's own
 framing: first-class, not an edge-condition inside the happy path).
 
+**The demo bar (operator decision, 2026-07-30, #806):** the milestone is demonstrated as
+[J19](../spec/journeys.md) — a multi-lane room **operated from the phone**: lane-terminal and
+needs-you moments delivered to a paired phone by AER's own notifier, decisions answered there
+advancing the room, the desktop untouched after initiation. This pulls the *delivery slice* of
+M28's needs-you surface into M26 — the delivery pipeline only, not the permission/decision/action
+taxonomy, which stays M28. The reason is measured, not aesthetic: the operator runs ~90% of this
+project's construction from a phone (#806), so a room demonstrated only at a desk is demonstrated
+where its operator isn't.
+
 **Depends on** nothing but the seam work M25 already landed. It is first because every other milestone
 renders inside it — including, now, whether the room can be trusted and reached at all.
 

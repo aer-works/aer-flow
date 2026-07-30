@@ -36,6 +36,13 @@ all — a model denied `Write` writes the file through `Bash`
 as well as too stale**, and a green test on the mechanism is what hid it. The reconcile gate (#489)
 compares declared status against test results; it cannot catch a test that asserts the wrong thing.
 
+**Revised 2026-07-30 (#806) — Fails 17 · Partial 2 · Passes 0.** J19 was added and J2 amended after
+the operating-surface audit (#806, measurement there): the phone turned out to be where the
+operator actually runs things, while these journeys' phone was an approve-and-author surface —
+never the place a room is *run* from. J19 names the operating loop (its absence meant that path was
+nobody's deliverable, the exact failure this file's preamble warns about); J2 stops assuming the
+desk is where you talk; J9, J14 and J16 each gained a phone clause in Verify.
+
 **J10–J18 were added 2026-07-24** from the M25 design corpus, whose nine claims it states are
 *“journey-shaped on purpose”* — each a claim plus the condition under which it counts as
 demonstrated. They are **additive**: two look like duplicates of J1 and J6 and are not, for reasons
@@ -71,12 +78,14 @@ You point the product at a directory and start talking to an agent. When it's wo
 another worker into the room or spin off a gated review as a child — and the chat stays the place you
 are. It never becomes the review.
 
-- **Spans** — desktop · *the room model: a session is a multi-participant conversation that spawns
-  child sessions (decisions 0001 / 0008 / 0009)*
+- **Spans** — desktop or phone — the chat is wherever you are holding it (#806) · *the room model: a
+  session is a multi-participant conversation that spawns child sessions (decisions 0001 / 0008 /
+  0009)*
 - **Passes when** — from a live chat you can either **add a second worker to the same room** or
   **spin off a clearly-marked child** (draft→review→gate) that reports its result back into the chat;
   the chat stays live throughout (async), and the child shows both inline and in the inbox, marked as
-  a child.
+  a child. The chat surface may be the desktop or a paired phone; the promise does not shrink with
+  the screen.
 - **Path** *(illustrative)* — open a folder · chat with the agent · add a reviewer to the room, or
   spin off a two-vendor review as a child · it runs (you can watch and interject) · it reports back at
   its gate.
@@ -242,7 +251,9 @@ worker-to-worker exchanges don't spend blindly.
 - **Path** *(illustrative)* — open the usage view · see per-vendor consumption across your workers · it
   reads the same whichever runtime path is in play.
 - **Verify** — aggregation and display automated; per-vendor figures are only as rich as each CLI
-  exposes (best-effort, and labelled as such).
+  exposes (best-effort, and labelled as such). The per-vendor state renders on the phone too — an
+  exhausted vendor's *"resumes after 14:00"* (decision 0026) matters most to someone who is away
+  (#806).
 - **Today** — no cross-vendor usage view exists; usage is invisible across the workers AER runs.
 - **Serves** — #360, #338, decision 0008
 
@@ -338,7 +349,8 @@ One worker writes something, another edits it, and you can read the difference.
 - **Path** *(illustrative)* — a worker writes a plan · attach it and hand it to the other vendor · it
   returns an edited version · compare the two.
 - **Verify** — the attachment is explicit and visible **before** sending, so "which version did it
-  actually see" stays answerable. No execution directory or execution number appears anywhere.
+  actually see" stays answerable. No execution directory or execution number appears anywhere. The
+  diff stays legible on a phone screen — side-by-side is a desktop luxury, not the promise (#806).
 - **Today** — the engine stores artifacts per execution, but they are not objects a person can pick
   up, version, attribute or hand over.
 - **Serves** — #377, #455, decision 0021
@@ -379,7 +391,8 @@ what you agreed to.
 - **Verify** — this is the **grant** path and is distinct from **J6**, which is deny-enforcement. Where
   a rung is advisory rather than enforceable on the chosen vendor, that is stated at the moment of
   granting — `agy` matches command rules literally, so a family-shaped grant is not expressible there
-  (`docs/vendor-capabilities.md`).
+  (`docs/vendor-capabilities.md`). The standing-grants list is reachable from the phone as well —
+  three weeks later you are as likely to be holding it as sitting at the desk (#806).
 - **Today** — permissions are advisory and unenforced (#331), there is no ladder, and there is no
   Settings surface to list or revoke anything (#338).
 - **Serves** — #445, #481, #338, decisions 0004, 0022
@@ -424,6 +437,34 @@ case that pays for the whole idea.
   Broadcasting declines to choose a recipient, so it never becomes routing-by-inference (Rule 1).
 - **Today** — there is no command palette, no namespacing, and no multi-worker room to broadcast into.
 - **Serves** — #386, #424, decision 0024
+
+## J19 — Run the room for a day from your pocket
+
+**Status:** Fails — automated + human
+
+Work you started runs as several lanes while you're away. Each moment that needs or informs you — a
+lane finished, failed, or waiting on your call — reaches your phone without you asking; acting from
+the phone keeps the room moving; and at no point after initiation is the desktop required.
+
+- **Spans** — daemon → paired phone → daemon · *the operating loop: wake events out, decisions back
+  (#778's fast-fire orchestrator turns, #799's wake-bridge, decision 0030's AER-as-notifier)*
+- **Passes when** — a multi-lane room, initiated from either surface, delivers lane-terminal and
+  needs-you events to a paired phone via AER's own notifier; a decision answered from the phone
+  advances the room; and the cycle repeats at least twice with the desktop untouched after
+  initiation. The notification informs and opens, never carries the verdict (decision 0018).
+- **Path** *(illustrative)* — dispatch two lanes · pocket the phone · a lane finishes and the phone
+  says so · a review verdict needs you; the phone opens it; you answer · the room dispatches the
+  follow-up · the second lane's moment arrives the same way · the desk was never touched.
+- **Verify** — the phone half is a human walk (real device, real notification); the daemon-side
+  event→notification pipeline and the decision round-trip are automated. "Nothing needed you" must
+  be evidenced by AER's own gate state, never by the absence of a notification — J3's 0030 rule,
+  verbatim.
+- **Today** — nothing delivers. Push exists on no surface, lane events are relayed by a human
+  orchestrator hand-tailing journals, and the decision inbox is scoped to a single open task. #806
+  records the measured session behind this journey — a full build day driven from a pocket through
+  a harness never designed for it, every workaround in it a requirement here. `docs/plan.md` §M26
+  names this journey as the milestone's demo bar.
+- **Serves** — #799, #806, #337, decisions 0018, 0030
 
 ---
 
