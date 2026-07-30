@@ -1,10 +1,10 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Parsed arguments for <c>aer status</c> (#730): a read-only projection of a task directory's
-/// recorded events, never a mutation surface — so unlike every other command in this namespace it
-/// takes no <c>--bindings</c> file at all (it never resolves a worker binding, spec §730's own
-/// scope) and no <c>--workflow-id</c> (nothing here dispatches, so there is nothing to label).
+/// Parsed arguments for <c>aer status</c> — see <see cref="StatusCommand"/> for what the command
+/// does. Unlike every other command in this namespace, this takes no <c>--bindings</c> file at all
+/// (it never resolves a worker binding) and no <c>--workflow-id</c> (nothing here dispatches, so
+/// there is nothing to label).
 /// </summary>
 /// <param name="TaskDirectoryPath">
 /// An already-started task's durable state directory. <c>aer status</c> never binds a fresh
