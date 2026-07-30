@@ -15,6 +15,7 @@ namespace Aer.Flow.Domain;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "owner")]
 [JsonDerivedType(typeof(FlowLogEntry), "flow")]
 [JsonDerivedType(typeof(CoreLogEntry), "core")]
+[JsonDerivedType(typeof(RoomLogEntry), "room")]
 public abstract record LogEntry
 {
     private LogEntry()
@@ -29,4 +30,8 @@ public abstract record LogEntry
     /// owner) — Flow never originates these, it only durably records what Core reported.
     /// </summary>
     public sealed record CoreLogEntry(CoreEvent Event) : LogEntry;
+
+    /// <summary>A line written by the holding room's engine (spec §5.1's <c>room.jsonl</c> owner).</summary>
+    public sealed record RoomLogEntry(RoomEvent Event) : LogEntry;
 }
+

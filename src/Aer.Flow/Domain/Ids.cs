@@ -109,3 +109,18 @@ public readonly record struct DecisionId(string Value)
         protected override string GetValue(DecisionId id) => id.Value;
     }
 }
+
+/// <summary>Identifies a held-work reference (lane directory path or lane reference ID).</summary>
+[JsonConverter(typeof(Converter))]
+public readonly record struct HeldWorkRef(string Value)
+{
+    public string LaneDirectoryPath => Value;
+    public override string ToString() => Value;
+
+    private sealed class Converter : StringIdJsonConverter<HeldWorkRef>
+    {
+        protected override HeldWorkRef Create(string value) => new(value);
+        protected override string GetValue(HeldWorkRef id) => id.Value;
+    }
+}
+
