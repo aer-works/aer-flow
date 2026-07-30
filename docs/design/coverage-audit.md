@@ -60,7 +60,7 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 | **Models are offered by purpose** — deep / balanced / fast. Nobody should need this month's model string. | 04 | **→ extends 0017.** Absent. |
 | Two workers may share a vendor at different models/efforts — a normal room, not an edge case | 04, 07 | ✅ **landed** — 0017. |
 | **Context is per worker**, and running out is offered as a choice before it becomes an event. | 04 | **→ `#395`** — scope extended: per-worker headroom, and the choice offered before the event. |
-| **Limits, not dollars.** Spend shown against the subscription's own limits. | 04 | **→ `#479`.** The unit this product actually runs on. What each CLI reports about quota is still unprobed. |
+| **Limits, not dollars.** Spend shown against the subscription's own limits. | 04 | **→ `#751`** (umbrella). The unit this product actually runs on. What each CLI reports about quota is still unprobed. |
 
 ## 5 · Commands and skills
 
