@@ -862,6 +862,11 @@ def pr_body_mode() -> int:
 
 
 def main() -> int:
+    # A snippet quoted from a UTF-8 doc must survive a cp1252 console: STEP 4 once found its
+    # stale citation and then died PRINTING it, reporting the count but never the culprit.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     if "--pr-body" in sys.argv:
         return pr_body_mode()
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
