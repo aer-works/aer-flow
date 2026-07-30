@@ -36,7 +36,10 @@ public static class WorkflowDefinitionParser
         }
         catch (JsonException ex)
         {
-            throw new WorkflowDefinitionValidationException([BuildMalformedJsonMessage(ex, sourcePath)], ex);
+            var message = IsConverterErrorMessage(ex.Message)
+                ? ex.Message
+                : BuildMalformedJsonMessage(ex, sourcePath);
+            throw new WorkflowDefinitionValidationException([message], ex);
         }
 
         if (definition is null)
@@ -104,5 +107,28 @@ public static class WorkflowDefinitionParser
         }
 
         return wholeDocumentShape;
+    }
+
+    private static readonly string[] ConverterMessagePrefixes =
+    [
+        "Unknown Backoff preset",
+        "Invalid Jitter mode",
+        "Unexpected end of JSON object when reading BackoffPolicy",
+        "Unexpected JSON token",
+        "Expected a string for",
+        "Expected a string property name for"
+    ];
+
+    private static bool IsConverterErrorMessage(string message)
+    {
+        foreach (var prefix in ConverterMessagePrefixes)
+        {
+            if (message.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

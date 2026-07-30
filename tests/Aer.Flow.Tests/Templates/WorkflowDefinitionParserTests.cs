@@ -309,4 +309,42 @@ public class WorkflowDefinitionParserTests
 
         Assert.Equal(3, parsed.Steps.Count);
     }
+
+    [Fact]
+    public void An_unknown_Backoff_preset_surfaces_converter_message_without_malformed_preamble()
+    {
+        var json = """
+            {
+              "WorkflowTemplateId": "x",
+              "WorkflowTemplateVersion": 1,
+              "Steps": [
+                {
+                  "StepId": "a",
+                  "Worker": "w",
+                  "Inputs": [],
+                  "Outputs": [],
+                  "DependsOn": [],
+                  "RetryPolicy": { "MaxAttempts": 3, "Backoff": "unknown_preset" }
+                }
+              ]
+            }
+            """;
+
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(json));
+
+        var error = Assert.Single(ex.Errors);
+        Assert.StartsWith("Unknown Backoff preset 'unknown_preset' for field 'Backoff'", error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Malformed template JSON", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Truncated_or_malformed_json_retains_malformed_preamble()
+    {
+        var json = """{"WorkflowTemplateId":"x","WorkflowTemplateVersion":1,"Steps":[{"StepId":"a","Worker":""";
+
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(json));
+
+        var error = Assert.Single(ex.Errors);
+        Assert.StartsWith("Malformed template JSON", error, StringComparison.Ordinal);
+    }
 }
