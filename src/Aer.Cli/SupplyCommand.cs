@@ -36,7 +36,8 @@ public static class SupplyCommand
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
     /// <exception cref="UnknownWorkerAdapterException">
-    /// The worker-binding config names an adapter not present in <paramref name="adapters"/>.
+    /// An adapter the bindings file names is missing from <paramref name="adapters"/> — raised
+    /// only when the resume pump first looks that worker up (<see cref="WorkerBindingResolver.ResolveLazily"/>, #662).
     /// </exception>
     /// <exception cref="FileNotFoundException"><see cref="SupplyOptions.SourceFilePath"/> does not exist.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
@@ -71,11 +72,15 @@ public static class SupplyCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
-        var workerBindings = new Dictionary<string, WorkerBinding>(WorkerBindingResolver.Resolve(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath)));
+        // Lazy (#662, same reasoning as CancelCommand): materializing this into a plain Dictionary to
+        // add the NonProcess override below would enumerate — and so eagerly resolve and refuse —
+        // every other entry in the file, reintroducing the defect for a bindings file naming a worker
+        // 'aer supply' never touches.
+        var workerBindings = WorkerBindingResolver.ResolveLazily(
+            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
 
         var contract = new WorkerContract(options.Worker, RequiredInputs: [], [new ProducedOutput(options.OutputName)], OptionalMetadata: []);
-        workerBindings[options.Worker] = new WorkerBinding.NonProcess(contract);
+        workerBindings = new WorkerBindingOverride(workerBindings, options.Worker, new WorkerBinding.NonProcess(contract));
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
 

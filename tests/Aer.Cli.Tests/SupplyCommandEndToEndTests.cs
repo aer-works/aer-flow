@@ -51,6 +51,44 @@ public class SupplyCommandEndToEndTests
     }
 
     [Fact]
+    public async Task Supplying_against_a_bindings_file_that_also_names_an_unresolvable_worker_still_succeeds()
+    {
+        // #662, supply's half of the same defect CancelCommandEndToEndTests covers: a bindings file
+        // naming a worker "human" never dispatches (here, an entry whose contract and grant make it
+        // permanently unresolvable) must not block supplying an artifact for a different worker.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            var sourceFilePath = Path.Combine(testRoot, "revision.txt");
+            await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
+            var unresolvableBindingsFilePath = await WriteSingleStepBindingsWithAnUnresolvableEntryAsync(testRoot);
+            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, unresolvableBindingsFilePath);
+
+            var adapters = new Dictionary<string, IWorkerAdapter>
+            {
+                ["shell"] = new ShellCommandWorkerAdapter(),
+                ["unsatisfiable"] = new UnsatisfiableContractWorkerAdapter(),
+            };
+
+            var result = await SupplyCommand.ExecuteAsync(supplyOptions, adapters, TestContext.Current.CancellationToken);
+
+            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == result.ExecutionId);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
     public async Task A_missing_source_file_throws_before_minting_anything()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
@@ -121,6 +159,27 @@ public class SupplyCommandEndToEndTests
         };
 
         var path = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
+        return path;
+    }
+
+    private static async Task<string> WriteSingleStepBindingsWithAnUnresolvableEntryAsync(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["a"] = new WorkerBindingConfigEntry(
+                "shell", new WorkerContract("a", [], [new ProducedOutput("out_a")], []),
+                WriteFileCommand("out_a", "a-out"), TimeSpan.FromSeconds(30)),
+            ["reviewer"] = new WorkerBindingConfigEntry(
+                "unsatisfiable",
+                new WorkerContract("reviewer", [], [new ProducedOutput("review.md")], []),
+                "irrelevant — never dispatched",
+                TimeSpan.FromSeconds(30),
+                PermissionGrant: new PermissionGrant(ReadFiles: true, WriteFiles: false)),
+        };
+
+        var path = Path.Combine(directory, "bindings-with-unresolvable-entry.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
         return path;
     }

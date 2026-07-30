@@ -13,6 +13,46 @@ public class CancelCommandEndToEndTests
     private static readonly IReadOnlyDictionary<string, IWorkerAdapter> Adapters =
         new Dictionary<string, IWorkerAdapter> { ["shell"] = new ShellCommandWorkerAdapter() };
 
+    private static readonly IReadOnlyDictionary<string, IWorkerAdapter> AdaptersWithUnsatisfiable =
+        new Dictionary<string, IWorkerAdapter>
+        {
+            ["shell"] = new ShellCommandWorkerAdapter(),
+            ["unsatisfiable"] = new UnsatisfiableContractWorkerAdapter(),
+        };
+
+    [Fact]
+    public async Task Cancelling_a_task_directory_whose_bindings_file_also_names_an_unresolvable_worker_still_succeeds()
+    {
+        // #662, pinning the rationale CancelCommand's own lazy-resolve comment carries: "reviewer"
+        // is never used by the three-step workflow below — it stands in for a worker whose contract
+        // and grant became unsatisfiable after this run started, and the cancel must proceed
+        // regardless.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+
+            var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
+            Assert.NotNull(architectExecutionId);
+
+            var unresolvableBindingsFilePath = await WriteThreeStepBindingsWithAnUnresolvableEntryAsync(testRoot);
+            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, unresolvableBindingsFilePath);
+            var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, AdaptersWithUnsatisfiable, TestContext.Current.CancellationToken)).State;
+
+            Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
     [Fact]
     public async Task Cancelling_an_already_succeeded_execution_is_a_too_late_no_op_reported_as_success()
     {
@@ -157,6 +197,39 @@ public class CancelCommandEndToEndTests
         };
 
         var path = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
+        return path;
+    }
+
+    private static async Task<string> WriteThreeStepBindingsWithAnUnresolvableEntryAsync(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                WriteFileCommand("plan", "the-plan"),
+                TimeSpan.FromSeconds(30)),
+            ["critic"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
+                CopyFirstInputCommand("review"),
+                TimeSpan.FromSeconds(30)),
+            ["publisher"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
+                CopyFirstInputCommand("summary"),
+                TimeSpan.FromSeconds(30)),
+            ["reviewer"] = new WorkerBindingConfigEntry(
+                "unsatisfiable",
+                new WorkerContract("reviewer", [], [new ProducedOutput("review.md")], []),
+                "irrelevant — never dispatched",
+                TimeSpan.FromSeconds(30),
+                PermissionGrant: new PermissionGrant(ReadFiles: true, WriteFiles: false)),
+        };
+
+        var path = Path.Combine(directory, "bindings-with-unresolvable-entry.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
         return path;
     }
