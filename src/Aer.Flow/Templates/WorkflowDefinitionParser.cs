@@ -18,11 +18,16 @@ namespace Aer.Flow.Templates;
 public static class WorkflowDefinitionParser
 {
     /// <summary>Parses and validates a template from a JSON string.</summary>
+    /// <param name="json">The template document.</param>
+    /// <param name="sourcePath">
+    /// The file <paramref name="json"/> was read from, named in the error when the JSON is
+    /// malformed (#562) — <c>null</c> for callers with no file, e.g. an in-memory template.
+    /// </param>
     /// <exception cref="WorkflowDefinitionValidationException">
     /// The JSON is malformed, empty, or the parsed <see cref="WorkflowDefinition"/> fails
     /// structural validation (see <see cref="WorkflowDefinitionValidator.Validate"/>).
     /// </exception>
-    public static WorkflowDefinition Parse(string json)
+    public static WorkflowDefinition Parse(string json, string? sourcePath = null)
     {
         WorkflowDefinition? definition;
         try
@@ -31,12 +36,13 @@ public static class WorkflowDefinitionParser
         }
         catch (JsonException ex)
         {
-            throw new WorkflowDefinitionValidationException([$"Malformed template JSON: {ex.Message}"], ex);
+            throw new WorkflowDefinitionValidationException([BuildMalformedJsonMessage(ex, sourcePath)], ex);
         }
 
         if (definition is null)
         {
-            throw new WorkflowDefinitionValidationException(["Template file did not contain a WorkflowDefinition object."]);
+            var location = sourcePath is null ? string.Empty : $" '{sourcePath}'";
+            throw new WorkflowDefinitionValidationException([$"Template file{location} did not contain a WorkflowDefinition object."]);
         }
 
         WorkflowDefinitionValidator.Validate(definition);
@@ -47,6 +53,56 @@ public static class WorkflowDefinitionParser
     public static async Task<WorkflowDefinition> LoadFromFileAsync(string path, CancellationToken cancellationToken = default)
     {
         var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-        return Parse(json);
+        return Parse(json, path);
+    }
+
+    /// <summary>
+    /// Builds a <see cref="WorkflowDefinitionValidationException"/> message for a malformed
+    /// template (#562): the source file (when known), the raw <see cref="JsonException"/> (never
+    /// swallowed — it stays the inner exception too), and a hint at the shape the author should
+    /// have written, since <see cref="JsonException.Message"/> alone names the .NET type and JSON
+    /// path but never what a valid document looks like.
+    /// </summary>
+    private static string BuildMalformedJsonMessage(JsonException ex, string? sourcePath)
+    {
+        var location = sourcePath is null ? string.Empty : $" in '{sourcePath}'";
+        return $"Malformed template JSON{location}: {ex.Message} {ExplainShapeHint(ex.Path)}";
+    }
+
+    /// <summary>
+    /// Maps a <see cref="JsonException.Path"/> to a plain-language description of the shape that
+    /// path expects, for the mistakes #562 reported hand-authoring a template against
+    /// <c>tests/Aer.Cli.SmokeTests/Fixtures/draft-review-workflow.json</c>: a quoted
+    /// <c>WorkflowTemplateVersion</c> ("1.0.0" instead of 1), and an object <c>Inputs</c>/
+    /// <c>Outputs</c>/<c>DependsOn</c> ({} instead of []). Falls back to the whole-document shape
+    /// for any path not covered — the field-level mistake is not known, but the correct shape
+    /// still is.
+    /// </summary>
+    private static string ExplainShapeHint(string? jsonPath)
+    {
+        const string wholeDocumentShape =
+            "A valid WorkflowDefinition looks like: "
+            + "{ \"WorkflowTemplateId\": \"<string>\", \"WorkflowTemplateVersion\": <integer>, "
+            + "\"Steps\": [ { \"StepId\": \"<string>\", \"Worker\": \"<string>\", \"Inputs\": [<strings>], "
+            + "\"Outputs\": [<strings>], \"DependsOn\": [<StepId strings>], \"RetryPolicy\": { \"MaxAttempts\": <integer> } } ] }.";
+
+        if (jsonPath is null)
+        {
+            return wholeDocumentShape;
+        }
+
+        if (jsonPath == "$.WorkflowTemplateVersion")
+        {
+            return "Expected a plain integer (e.g. \"WorkflowTemplateVersion\": 1), not a quoted string.";
+        }
+
+        if (jsonPath.EndsWith(".Inputs", StringComparison.Ordinal)
+            || jsonPath.EndsWith(".Outputs", StringComparison.Ordinal)
+            || jsonPath.EndsWith(".DependsOn", StringComparison.Ordinal))
+        {
+            return $"Expected a JSON array of strings at {jsonPath} (e.g. [] or [\"draft\"]), not an object.";
+        }
+
+        return wholeDocumentShape;
     }
 }
