@@ -164,9 +164,13 @@ public class CapturedWorkerStreamTests
                 1,
                 [new WorkflowStepDefinition(new StepId("worker"), "worker", [], ["out.txt"], [], new RetryPolicy(1))]);
 
+            // printf, not echo: C# has no octal escapes, so a "\033" literal is NUL + "33" -- the
+            // embedded NUL truncated the spawned command line and no stream file was ever written
+            // (caught by this test's first Linux CI run). "\\033" hands printf a literal backslash
+            // sequence, and printf -- unlike POSIX echo -- is required to interpret it as ESC.
             var cmdLine = OperatingSystem.IsWindows()
                 ? "powershell -NoProfile -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAoAFsAYwBoAGEAcgBdADIANwAgACsAIAAnAFsAMwAxAG0AUgBlAGQAJwAgACsAIABbAGMAaABhAHIAXQAyADcAIAArACAAJwBbADAAbQAnACkA & echo Red > %AER_OUTPUT_DIR%\\out.txt"
-                : "echo '\033[31mRed\033[0m' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
+                : "printf '\\033[31mRed\\033[0m\\n' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
 
             var bindings = new Dictionary<string, WorkerBindingConfigEntry>
             {
@@ -185,7 +189,10 @@ public class CapturedWorkerStreamTests
             var runOptions = new RunOptions(workflowFile, bindingsFile, taskDirectory);
             var runResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
+            // Succeeded, not just Terminal: a failed run is also Terminal, and that weaker assert
+            // let the broken command line above fall through to a misleading missing-file failure.
             Assert.Equal(WorkflowStatus.Terminal, runResult.State.Status);
+            Assert.Equal(StepStatus.Succeeded, runResult.State.Steps[0].Status);
 
             var execId = runResult.State.Steps[0].LatestExecutionId!.Value.Value;
             var execDir = Path.Combine(taskDirectory, "artifacts", $"execution_{execId}");
@@ -226,6 +233,7 @@ public class CapturedWorkerStreamTests
             var runResult2 = await RunCommand.ExecuteAsync(runOptions2, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, runResult2.State.Status);
+            Assert.Equal(StepStatus.Succeeded, runResult2.State.Steps[0].Status);
 
             var execId2 = runResult2.State.Steps[0].LatestExecutionId!.Value.Value;
             var execDir2 = Path.Combine(taskDirectory2, "artifacts", $"execution_{execId2}");
