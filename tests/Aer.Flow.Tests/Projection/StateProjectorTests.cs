@@ -309,11 +309,15 @@ public class StateProjectorTests
     }
 
     [Fact]
-    public void An_all_pending_workflow_projects_WorkflowStatus_Terminal()
+    public void An_all_pending_workflow_projects_WorkflowStatus_Running()
     {
+        // Flipped by #810 (the pin carried no rationale): an empty journal on a started run means
+        // "accepted, first dispatch imminent" — or crashed before it, which §6 already reads as
+        // in-flight. Terminal's contract is "nothing further to dispatch", and a root step with
+        // satisfiable dependencies is exactly further-to-dispatch.
         var state = StateProjector.Project([], TwoStepSnapshot());
 
-        Assert.Equal(WorkflowStatus.Terminal, state.Status);
+        Assert.Equal(WorkflowStatus.Running, state.Status);
     }
 
     [Fact]
@@ -768,4 +772,145 @@ public class StateProjectorTests
         Assert.Empty(state.CancellationRequestedExecutionIds);
         Assert.Equal(StepStatus.Cancelled, StepFor(state, Architect).Status);
     }
+
+    // #810: these pin the phantom-Terminal windows (the why and the live capture live on
+    // StateProjector.DeriveWorkflowStatus's doc) plus the polarities that keep genuinely-dead
+    // workflows Terminal.
+
+    [Fact]
+    public void A_workflow_between_steps_is_Running_not_Terminal()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionSucceeded(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(StepStatus.Pending, StepFor(state, Critic).Status);
+        Assert.Equal(WorkflowStatus.Running, state.Status);
+    }
+
+    [Fact]
+    public void A_failed_step_with_retry_budget_keeps_the_workflow_Running_before_its_retry_is_scheduled()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable),
+        };
+
+        var state = StateProjector.Project(events, ThreeAttemptSnapshot());
+
+        Assert.Null(StepFor(state, Architect).RetryNotBefore);
+        Assert.Equal(WorkflowStatus.Running, state.Status);
+    }
+
+    [Fact]
+    public void An_ExhaustedUntil_step_keeps_the_workflow_Running_never_Terminal()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.ExhaustedUntil, "quota", DateTimeOffset.UnixEpoch),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Running, state.Status);
+    }
+
+    [Fact]
+    public void A_retry_eligible_step_below_a_dead_chain_is_dead_too_and_the_workflow_Terminal()
+    {
+        // The #810 review's high finding, reconstructed: Critic fails with budget left (MayRetry
+        // true), then a Supersede reopens Architect and its fresh attempt fails permanently.
+        // Critic is locally retry-eligible forever, but DependencyResolver will never dispatch it
+        // (its dependency is not Succeeded) — so local eligibility without the dependency cascade
+        // read this workflow as Running for eternity. It is Terminal: nothing can ever dispatch.
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+            new FlowEvent.ExecutionSucceeded(new ExecutionId("a-1")),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("c-1"), Critic)),
+            new FlowEvent.ExecutionFailed(new ExecutionId("c-1"), FailureClassification.Retryable),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("o-1"), Observer)),
+            new FlowEvent.ExecutionSucceeded(new ExecutionId("o-1")),
+            new FlowEvent.WorkflowPaused(new ExecutionId("o-1"), Observer),
+            new FlowEvent.ExternalDecisionRecorded(
+                new DecisionId("decision-1"), new ExecutionId("o-1"), DecisionType.Supersede, Architect, new ExecutionId("o-1")),
+            new FlowEvent.WorkflowResumed(new DecisionId("decision-1")),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-2"), Architect)),
+            new FlowEvent.ExecutionFailed(new ExecutionId("a-2"), FailureClassification.Permanent),
+        };
+
+        var state = StateProjector.Project(events, ThreeStepPausingSnapshot());
+
+        var critic = StepFor(state, Critic);
+        Assert.Equal(StepStatus.Failed, critic.Status);
+        Assert.Equal(WorkflowStatus.Terminal, state.Status);
+    }
+
+    [Fact]
+    public void A_pending_step_below_a_budget_exhausted_failure_is_dead_and_the_workflow_Terminal()
+    {
+        // The polarity that keeps this fix honest: Pending alone must NOT mean Running. Architect
+        // fails with no budget left (MaxAttempts 1) and no retry eligibility; Critic can never
+        // receive its inputs, so the workflow genuinely has nothing further to dispatch.
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.Retryable),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(StepStatus.Pending, StepFor(state, Critic).Status);
+        Assert.Equal(WorkflowStatus.Terminal, state.Status);
+    }
+
+    [Fact]
+    public void A_pending_step_below_a_cancelled_step_is_dead_and_the_workflow_Terminal()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionCancelled(executionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        Assert.Equal(WorkflowStatus.Terminal, state.Status);
+    }
+
+    private static readonly StepId Observer = new("observer");
+
+    // Critic carries retry budget (the local-eligibility arm under test); Observer is an
+    // independent step whose pause hosts the Supersede decision.
+    private static WorkflowDefinitionSnapshot ThreeStepPausingSnapshot() => new(
+        new WorkflowDefinitionSnapshotId("snapshot-3p"),
+        new WorkflowTemplateId("architect-critic-observer"),
+        WorkflowTemplateVersion: 1,
+        Steps:
+        [
+            new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(1)),
+            new WorkflowStepDefinition(Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(3)),
+            new WorkflowStepDefinition(Observer, "observer", ["goal"], ["notes"], DependsOn: [], RetryPolicy: new RetryPolicy(1)),
+        ]);
+
+    private static WorkflowDefinitionSnapshot ThreeAttemptSnapshot() => new(
+        new WorkflowDefinitionSnapshotId("snapshot-3a"),
+        new WorkflowTemplateId("architect-critic-retrying"),
+        WorkflowTemplateVersion: 1,
+        Steps:
+        [
+            new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(3)),
+            new WorkflowStepDefinition(Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(3)),
+        ]);
 }
