@@ -72,6 +72,72 @@ public class McpServerHostTests
         Assert.Empty(responses);
     }
 
+    [Fact]
+    public async Task UnknownMethod_ReturnsMethodNotFoundEnvelope()
+    {
+        var responses = await RunAsync(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"nope/nope\",\"params\":{}}");
+
+        Assert.Single(responses);
+        Assert.False(responses[0].ContainsKey("result"));
+        Assert.Equal(-32601, (int)responses[0]["error"]!["code"]!);
+        Assert.Equal("Method not found", (string)responses[0]["error"]!["message"]!);
+    }
+
+    [Fact]
+    public async Task NonStringMethod_DoesNotCrashLoop_ReturnsMethodNotFound()
+    {
+        // "method" is a number, not a string — a naive JsonNode.GetValue<string>() throws here.
+        var responses = await RunAsync(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":42,\"params\":{}}");
+
+        Assert.Single(responses);
+        Assert.Equal(-32601, (int)responses[0]["error"]!["code"]!);
+    }
+
+    [Fact]
+    public async Task NonStringParamsName_DoesNotCrashLoop_ReturnsIsErrorResult()
+    {
+        // "params.name" is a number, not a string — must not throw out of the request loop.
+        var responses = await RunAsync(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":42,\"arguments\":{}}}");
+
+        Assert.Single(responses);
+        Assert.True((bool)responses[0]["result"]!["isError"]!);
+    }
+
+    [Fact]
+    public async Task ToolsCall_ToolThrows_ReturnsIsErrorResult_LoopSurvives()
+    {
+        var throwingTool = new ThrowingTool();
+        var host = new McpServerHost("aer-mcp-host-test", "1.0.0", [throwingTool]);
+        var input = new StringReader(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"boom\",\"arguments\":{}}}\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n");
+        var output = new StringWriter();
+
+        await host.RunAsync(input, output);
+
+        var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var responses = lines.Select(l => System.Text.Json.Nodes.JsonNode.Parse(l)!.AsObject()).ToList();
+
+        Assert.Equal(2, responses.Count);
+        Assert.True((bool)responses[0]["result"]!["isError"]!);
+        Assert.Contains("boom", (string)responses[0]["result"]!["content"]![0]!["text"]!, StringComparison.OrdinalIgnoreCase);
+        // Second request still gets answered — the throw in request 1 did not kill the loop.
+        Assert.Single(responses[1]["result"]!["tools"]!.AsArray());
+    }
+
+    private sealed class ThrowingTool : IMcpTool
+    {
+        public string Name => "boom";
+        public string Description => "Always throws.";
+        public string InputSchemaJson => "{\"type\":\"object\"}";
+
+        public McpToolCallResult Call(System.Text.Json.JsonElement arguments) =>
+            throw new InvalidOperationException("boom exploded");
+    }
+
     private static async Task<List<System.Text.Json.Nodes.JsonObject>> RunAsync(string requestLine)
     {
         var host = new McpServerHost("aer-mcp-host-test", "1.0.0", [new YieldTool(Path.GetTempFileName())]);

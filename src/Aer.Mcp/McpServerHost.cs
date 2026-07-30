@@ -17,9 +17,19 @@ namespace Aer.Mcp;
 /// identifies the caller.
 /// <para>
 /// One request in, one line out: this host is a per-invocation stdio server, matching how a vendor
-/// CLI itself spawns an MCP server subprocess for the lifetime of one <c>-p</c> turn (see the
-/// Aer.Workers.Dialogue wiring) — it does not hold connections open across turns, and exits when its
-/// input stream closes.
+/// CLI itself spawns an MCP server subprocess for the lifetime of one <c>-p</c> turn — it does not
+/// hold connections open across turns, and exits when its input stream closes. As of #585's wiring
+/// half, <c>Aer.Workers.Dialogue</c> spawns this host per participant: claude participants via
+/// <c>--mcp-config</c>/<c>--strict-mcp-config</c> (<see cref="Aer.Adapters.ClaudeWorkerAdapter"/>),
+/// agy participants via a per-run workspace's <c>.agents/mcp_config.json</c> reached with
+/// <c>--add-dir</c>. See <c>DialogueRunner</c> for the capture-file mechanism that reads a
+/// participant's yield call back out once its turn process exits.
+/// </para>
+/// <para>
+/// Request handling never lets one bad request take down the loop: a request whose <c>method</c> or
+/// <c>params.name</c> is not the JSON type expected is read defensively (never throws), and a tool's
+/// <see cref="IMcpTool.Call"/> throwing is caught and turned into an <c>isError: true</c> result for
+/// that one request rather than propagating out of <see cref="RunAsync"/>.
 /// </para>
 /// </summary>
 public sealed class McpServerHost(string serverName, string serverVersion, IReadOnlyList<IMcpTool> tools)
@@ -49,13 +59,15 @@ public sealed class McpServerHost(string serverName, string serverVersion, IRead
                 continue;
             }
 
-            if (request is null)
+            if (request is not JsonObject requestObject)
             {
+                // A syntactically valid JSON line that isn't a JSON-RPC object (e.g. a bare
+                // scalar or array) has no id to answer against — drop it, keep reading.
                 continue;
             }
 
-            var method = request["method"]?.GetValue<string>();
-            var hasId = request.AsObject().TryGetPropertyValue("id", out var idNode);
+            var method = TryGetString(TryGetProperty(requestObject, "method"));
+            var hasId = requestObject.TryGetPropertyValue("id", out var idNode);
 
             // notifications/* carry no id and expect no response, per JSON-RPC 2.0.
             if (!hasId)
@@ -67,7 +79,7 @@ public sealed class McpServerHost(string serverName, string serverVersion, IRead
             {
                 "initialize" => BuildInitializeResult(),
                 "tools/list" => BuildToolsListResult(),
-                "tools/call" => BuildToolsCallResult(request),
+                "tools/call" => BuildToolsCallResult(requestObject),
                 _ => BuildMethodNotFound(),
             };
 
@@ -109,25 +121,32 @@ public sealed class McpServerHost(string serverName, string serverVersion, IRead
 
     private JsonNode BuildToolsCallResult(JsonNode request)
     {
-        var paramsNode = request["params"];
-        var name = paramsNode?["name"]?.GetValue<string>();
+        var paramsNode = TryGetProperty(request, "params");
+        var name = TryGetString(TryGetProperty(paramsNode, "name"));
         var tool = tools.FirstOrDefault(t => t.Name == name);
 
         if (tool is null)
         {
-            return new JsonObject
-            {
-                ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = $"Unknown tool '{name}'." }),
-                ["isError"] = true,
-            };
+            return ToolCallError($"Unknown tool '{name}'.");
         }
 
-        var argumentsNode = paramsNode?["arguments"];
-        var argumentsElement = argumentsNode is null
-            ? JsonDocument.Parse("{}").RootElement
-            : JsonDocument.Parse(argumentsNode.ToJsonString()).RootElement;
+        var argumentsNode = TryGetProperty(paramsNode, "arguments");
+        using var argumentsDocument = argumentsNode is null
+            ? JsonDocument.Parse("{}")
+            : JsonDocument.Parse(argumentsNode.ToJsonString());
 
-        var callResult = tool.Call(argumentsElement);
+        McpToolCallResult callResult;
+        try
+        {
+            callResult = tool.Call(argumentsDocument.RootElement);
+        }
+        catch (Exception ex)
+        {
+            // Deliberately broad: an IMcpTool implementation (e.g. YieldTool's file write) can throw
+            // anything, and one bad tools/call must become this request's isError:true result, not
+            // take down the stdio loop for every other participant/turn sharing this process.
+            return ToolCallError($"Tool '{name}' threw {ex.GetType().Name}: {ex.Message}");
+        }
 
         return new JsonObject
         {
@@ -136,9 +155,21 @@ public sealed class McpServerHost(string serverName, string serverVersion, IRead
         };
     }
 
+    private static JsonNode ToolCallError(string message) => new JsonObject
+    {
+        ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = message }),
+        ["isError"] = true,
+    };
+
     private static JsonNode BuildMethodNotFound() => new JsonObject
     {
         ["code"] = -32601,
         ["message"] = "Method not found",
     };
+
+    private static JsonNode? TryGetProperty(JsonNode? node, string propertyName) =>
+        node is JsonObject obj && obj.TryGetPropertyValue(propertyName, out var value) ? value : null;
+
+    private static string? TryGetString(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue<string>(out var s) ? s : null;
 }
