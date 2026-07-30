@@ -7,9 +7,7 @@ namespace Aer.Workers.Dialogue;
 /// #270): turns round-robin through <see cref="DialogueWorkerConfig.Participants"/> in list order
 /// starting from index 0, writing each turn to <c>transcript.jsonl</c> as it happens and, once the
 /// exchange ends, writing <see cref="DialogueWorkerConfig.FinalOutputName"/> per
-/// <see cref="DialogueWorkerConfig.FinalOutputMode"/> (#736) — the last turn's text by default, or
-/// the full role-attributed exchange in <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/>
-/// mode. Ends on
+/// <see cref="Aer.Workers.Dialogue.FinalOutputMode"/> (#736; see that type for what each value writes). Ends on
 /// any of three conditions — the ceiling-clamped <see cref="DialogueWorkerConfig.TurnBudget"/> turns
 /// having run (see <see cref="DialogueWorkerConfig.HardTurnCeiling"/>), or a participant's turn
 /// containing <see cref="DialogueWorkerConfig.StopSentinel"/> — and fails the whole exchange
@@ -129,11 +127,9 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
     }
 
     /// <summary>
-    /// Renders the exchange already accumulated in <paramref name="turns"/> as the full
-    /// role-attributed transcript for <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/>:
-    /// every turn, in order, each prefixed with its speaker's role — the same "Role: Text" line
-    /// shape <see cref="BuildPrompt"/> already threads into each next turn's prompt via
-    /// <see cref="FormatTurnLine"/>, reused here rather than rendered a second way.
+    /// Renders <paramref name="turns"/> for <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/>
+    /// (see that member for the output shape), via the same <see cref="FormatTurnLine"/>
+    /// <see cref="BuildPrompt"/> already uses for context-threading.
     /// </summary>
     private static string RenderTranscript(IReadOnlyList<TranscriptTurn> turns)
     {

@@ -23,8 +23,8 @@ namespace Aer.Workers.Dialogue;
 /// <param name="FinalOutputName">
 /// The declared output file name this worker writes on completion — the "declared final output" the
 /// phase plan names, present so a caller's <c>WorkerContract</c> has something to validate once
-/// Phase 4 wires dispatch up. What it contains is <see cref="FinalOutputMode"/>'s call: the last
-/// turn's text by default, or the full role-attributed exchange in <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/> mode.
+/// Phase 4 wires dispatch up. What it contains is <see cref="FinalOutputMode"/>'s call — see that
+/// parameter.
 /// </param>
 /// <param name="StopSentinel">
 /// A literal string a turn's text may contain to signal the exchange is done early (M17 Phase 3,
@@ -44,10 +44,9 @@ namespace Aer.Workers.Dialogue;
 /// (defaulting to 5 minutes if omitted or non-positive).
 /// </param>
 /// <param name="FinalOutputMode">
-/// What <see cref="FinalOutputName"/> carries (#736, field note 7 on #665): <see cref="Dialogue.FinalOutputMode.FinalTurn"/>
-/// (the default, and this worker's original behavior) writes only the last turn's text;
-/// <see cref="Dialogue.FinalOutputMode.Transcript"/> writes the full role-attributed exchange instead.
-/// Defaults to <see cref="Dialogue.FinalOutputMode.FinalTurn"/> if omitted.
+/// Which <see cref="Aer.Workers.Dialogue.FinalOutputMode"/> this dialogue uses (#736) — see that
+/// type for what each value writes to <see cref="FinalOutputName"/>. Defaults to
+/// <see cref="Aer.Workers.Dialogue.FinalOutputMode.FinalTurn"/> when omitted.
 /// </param>
 public sealed record DialogueWorkerConfig(
     string SeedPrompt,
