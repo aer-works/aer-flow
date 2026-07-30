@@ -27,7 +27,8 @@
     "path": "docs/decision-audit.md",
     "disposition": "fix",
     "evidence": "Stale sentence L4: \"Population: every numbered record in decisions/, currently 41.\" Table below (L73) and `docs/decisions/` directory contain 42 records (0001-0042).",
-    "status": "pending"
+    "status": "done",
+    "evidence_link": "docs/decision-audit.md@f5d7ab109be121487f1bfa3767e7bd2649be1835"
   },
   {
     "path": "docs/decisions/0001-two-nouns-workflow-and-session.md",
@@ -417,7 +418,8 @@
     "path": "docs/vendor-capabilities.md",
     "disposition": "fix",
     "evidence": "Stale sentence L15: \"| 2026-07-25, #527 | claude 2.1.220, agy 1.1.7 | ...\". `vendor-capabilities.probe.md` L1 records `agy` at version `1.1.8`.",
-    "status": "pending"
+    "status": "done",
+    "evidence_link": "docs/vendor-capabilities.md@f5d7ab109be121487f1bfa3767e7bd2649be1835"
   },
   {
     "path": "docs/vendor-capabilities.probe.md",
@@ -429,13 +431,15 @@
     "path": "docs/vendor-coverage.md",
     "disposition": "fix",
     "evidence": "Stale sentence L7: \"against `claude` 2.1.220 and `agy` 1.1.7.\" `vendor-capabilities.probe.md` L1 records `agy` at version `1.1.8`.",
-    "status": "pending"
+    "status": "done",
+    "evidence_link": "docs/vendor-coverage.md@f5d7ab109be121487f1bfa3767e7bd2649be1835"
   },
   {
     "path": "docs/vendor-doc-audit.md",
     "disposition": "fix",
     "evidence": "Stale sentence L3: \"Measured against `claude` 2.1.220 and `agy` 1.1.7.\" `vendor-capabilities.probe.md` L1 records `agy` at version `1.1.8`. Register maintenance contract followed.",
-    "status": "pending"
+    "status": "done",
+    "evidence_link": "docs/vendor-doc-audit.md@f5d7ab109be121487f1bfa3767e7bd2649be1835"
   },
   {
     "path": "spec/AER Overview.md",
