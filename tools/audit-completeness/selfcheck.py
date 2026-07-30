@@ -31,6 +31,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -548,10 +549,14 @@ def _workspace_truth_probe_failures_are_loud():
         repo.mkdir()
 
         def git(*argv):
+            # GIT_* scrubbed: under the pre-push hook git exports GIT_DIR/GIT_INDEX_FILE, which
+            # redirect this harness's commits at the OUTER repo. Passed standalone, failed only
+            # inside the hook -- the exact env leak the vendor loop already strips for.
+            env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
             done = subprocess.run(
                 ["git", "-C", str(repo), "-c", "user.email=selfcheck@localhost",
                  "-c", "user.name=selfcheck", *argv],
-                capture_output=True, text=True, encoding="utf-8", errors="replace")
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
             assert done.returncode == 0, f"harness git {argv} failed: {done.stderr.strip()[:200]}"
             return done.stdout.strip()
 

@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -151,11 +152,19 @@ def provision_worktree(repo: Path, branch: str) -> Path:
 
 
 def _git_cmd(workdir: Path, *argv: str, timeout: int = 30) -> tuple[str | None, str | None]:
-    """One git read against workdir. Returns (stdout, None) on success or (None, reason) on failure."""
+    """One git read against workdir. Returns (stdout, None) on success or (None, reason) on failure.
+
+    GIT_* is scrubbed from the environment: an inherited GIT_DIR/GIT_INDEX_FILE (a git hook
+    exports both) overrides `-C`'s repo discovery, and the truth block would then report some
+    OTHER repository's state as this workdir's -- a wrong answer, delivered confidently, from
+    the one probe whose whole job is to be trustworthy.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         result = subprocess.run(
             ["git", "-C", str(workdir), *argv],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+            env=env)
     except OSError as exc:
         return None, f"git execution error: {exc}"
     except subprocess.TimeoutExpired:
