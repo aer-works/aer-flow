@@ -32,7 +32,7 @@ public static class SnapshotBinder
     }
 
     /// <summary>Bounded retry budget for a rename that loses a transient sharing violation (see remarks).</summary>
-    private const int MaxRenameAttempts = 5;
+    private const int MaxRenameAttempts = 10;
 
     /// <summary>
     /// Persists <paramref name="snapshot"/> as JSON at <paramref name="snapshotFilePath"/>, creating
@@ -88,7 +88,7 @@ public static class SnapshotBinder
                         throw;
                     }
 
-                    await Task.Delay(10 * attempt, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(15 * attempt, cancellationToken).ConfigureAwait(false);
                 }
             }
         }

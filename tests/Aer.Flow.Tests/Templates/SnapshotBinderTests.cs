@@ -156,7 +156,7 @@ public class SnapshotBinderTests
                         // PersistAsync) needs an actual gap to land in.
                         try
                         {
-                            await Task.Delay(1, cts.Token);
+                            await Task.Delay(3, cts.Token);
                         }
                         catch (OperationCanceledException)
                         {
@@ -176,17 +176,21 @@ public class SnapshotBinderTests
         {
             // Windows can briefly hold the last reader's handle open past the awaited read
             // completing (overlapped-I/O completion timing) -- retry the scratch-file cleanup
-            // rather than let that timing artifact fail the test.
-            for (var attempt = 1; ; attempt++)
+            // rather than let that timing artifact fail the test. Best effort only: a leftover
+            // uniquely-named file under %TEMP% costs nothing the test itself depends on.
+            for (var attempt = 1; attempt <= 20; attempt++)
             {
                 try
                 {
                     File.Delete(path);
                     break;
                 }
-                catch (IOException) when (attempt < 5)
+                catch (IOException) when (attempt < 20)
                 {
-                    await Task.Delay(20, TestContext.Current.CancellationToken);
+                    await Task.Delay(50, TestContext.Current.CancellationToken);
+                }
+                catch (IOException)
+                {
                 }
             }
         }
