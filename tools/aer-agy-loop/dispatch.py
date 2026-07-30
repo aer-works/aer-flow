@@ -216,17 +216,26 @@ def _print_workspace_truth(workdir: Path, head_before: str | None, head_before_e
     """
     print(f"\n[dispatch.py] workspace truth ({workdir}):", file=sys.stderr)
     if head_before_err or head_before is None:
-        err_msg = head_before_err or "git rev-parse HEAD failed"
-        print(f"  truth unavailable: initial HEAD check failed ({err_msg})", file=sys.stderr)
-        return False
+        head_err = f"initial HEAD check failed ({head_before_err or 'git rev-parse HEAD failed'})"
+    else:
+        head_err = None
 
     truth_ok = True
     for label, argv in (
+        # The status probe does not depend on head_before, so it still runs -- and still
+        # reports -- when the HEAD check failed: what a worker left uncommitted in a repo
+        # whose HEAD could not be read is recoverable diagnostic, not part of the failure.
         ("uncommitted", ("status", "--short")),
         ("commits added", ("log", "--oneline", f"{head_before}..HEAD")),
         ("diff --stat", ("diff", "--stat", f"{head_before}..HEAD")),
     ):
+        if head_err is not None and label != "uncommitted":
+            truth_ok = False
+            print(f"  {label}: truth unavailable: {head_err}", file=sys.stderr)
+            continue
         value, err = _git_cmd(workdir, *argv)
+        if head_err is not None:
+            truth_ok = False
         if err:
             truth_ok = False
             print(f"  {label}: truth unavailable: {err}", file=sys.stderr)
@@ -1022,7 +1031,10 @@ def main() -> int:
         )
         if engine_stdout:
             print(engine_stdout, end="")
-        _print_workspace_truth(working_directory, head_before)
+        # Return value deliberately unused: this path already exits 1. Passing the HEAD error
+        # keeps the rendering honest -- without it a failed HEAD probe reads as a clean tree,
+        # the exact #780 defect, on the one path where the tree is most likely to be mid-work.
+        _print_workspace_truth(working_directory, head_before, head_before_err)
         if engine_stderr:
             print(engine_stderr, file=sys.stderr, end="")
         _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
