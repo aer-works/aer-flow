@@ -153,27 +153,20 @@ public class CapturedWorkerStreamTests
         {
             Directory.CreateDirectory(testRoot);
 
-            // Polarity 1: Real worker process emitting ANSI escape sequences + non-UTF-8 bytes
-            // Command writes ANSI red escape sequence "\x1b[31mANSI_RED\x1b[0m" and newline
-            var rawBytes = new byte[]
+            // Polarity 1: Real worker process emitting known bytes INCLUDING ANSI escape sequences + non-UTF-8 bytes
+            var expectedRawBytes = new byte[]
             {
-                0x1B, (byte)'[', (byte)'3', (byte)'1', (byte)'m', (byte)'R', (byte)'E', (byte)'D',
-                0x1B, (byte)'[', (byte)'0', (byte)'m', (byte)'\n', 0x80, (byte)'\n'
+                0x1B, 0x5B, 0x33, 0x31, 0x6D, 0x52, 0x65, 0x64, 0x1B, 0x5B, 0x30, 0x6D, 0x0A, 0x80, 0x0A
             };
 
-            // Test render-time escaping function directly on rawBytes
-            var escapedRender = StatusCommand.EscapeNonPrintable(rawBytes);
-            Assert.Contains("\\x1b[31mRED\\x1b[0m\n", escapedRender);
-
-            // Real execution with shell worker emitting raw output
             var definition = new WorkflowDefinition(
                 new WorkflowTemplateId("roundtrip-flow"),
                 1,
                 [new WorkflowStepDefinition(new StepId("worker"), "worker", [], ["out.txt"], [], new RetryPolicy(1))]);
 
             var cmdLine = OperatingSystem.IsWindows()
-                ? "echo Hello World & echo \u001b[31mRed\u001b[0m & echo Red > %AER_OUTPUT_DIR%\\out.txt"
-                : "echo Hello World && echo '\033[31mRed\033[0m' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
+                ? "powershell -NoProfile -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAoAFsAYwBoAGEAcgBdADIANwAgACsAIAAnAFsAMwAxAG0AUgBlAGQAJwAgACsAIABbAGMAaABhAHIAXQAyADcAIAArACAAJwBbADAAbQAnACkA & echo Red > %AER_OUTPUT_DIR%\\out.txt"
+                : "echo '\033[31mRed\033[0m' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
 
             var bindings = new Dictionary<string, WorkerBindingConfigEntry>
             {
@@ -203,17 +196,51 @@ public class CapturedWorkerStreamTests
             var stdoutContent = File.ReadAllBytes(stdoutFile);
             Assert.NotEmpty(stdoutContent);
 
-            // Render with StatusCommand
+            // Render with StatusCommand --follow and verify neutralized output
             var output = new StringWriter();
             await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory, Follow: true), output, TestContext.Current.CancellationToken);
             var statusText = output.ToString();
 
             Assert.Contains("Workflow status: Terminal", statusText);
+            Assert.Contains("\\x1b[31mRed\\x1b[0m", statusText);
 
-            // Polarity 2: Normal printable text
-            var normalBytes = "Normal printable text\twith tab\n"u8.ToArray();
-            var normalEscaped = StatusCommand.EscapeNonPrintable(normalBytes);
-            Assert.Equal("Normal printable text\twith tab\n", normalEscaped);
+            // Polarity 2: Normal printable text from a real worker process
+            var taskDirectory2 = Path.Combine(testRoot, "task2");
+            var cmdLineNormal = OperatingSystem.IsWindows()
+                ? "powershell -NoProfile -Command \"Write-Output 'Normal text'\" & echo Red > %AER_OUTPUT_DIR%\\out.txt"
+                : "echo 'Normal text' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
+
+            var bindings2 = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                ["worker"] = new WorkerBindingConfigEntry(
+                    "shell",
+                    new WorkerContract("worker", [], [new ProducedOutput("out.txt")], []),
+                    cmdLineNormal,
+                    TimeSpan.FromSeconds(30))
+            };
+
+            var bindingsFile2 = Path.Combine(testRoot, "bindings2.json");
+            await File.WriteAllTextAsync(bindingsFile2, JsonSerializer.Serialize(bindings2), TestContext.Current.CancellationToken);
+
+            var runOptions2 = new RunOptions(workflowFile, bindingsFile2, taskDirectory2);
+            var runResult2 = await RunCommand.ExecuteAsync(runOptions2, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Terminal, runResult2.State.Status);
+
+            var execId2 = runResult2.State.Steps[0].LatestExecutionId!.Value.Value;
+            var execDir2 = Path.Combine(taskDirectory2, "artifacts", $"execution_{execId2}");
+            var stdoutFile2 = Path.Combine(execDir2, ExecutionStreamLogger.StdoutLogFileName);
+
+            Assert.True(File.Exists(stdoutFile2), $"Expected stream log file at {stdoutFile2}");
+
+            var stdoutContent2 = File.ReadAllBytes(stdoutFile2);
+            Assert.NotEmpty(stdoutContent2);
+
+            var output2 = new StringWriter();
+            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory2, Follow: true), output2, TestContext.Current.CancellationToken);
+            var statusText2 = output2.ToString();
+
+            Assert.Contains("Normal text", statusText2);
         }
         finally
         {

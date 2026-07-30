@@ -67,13 +67,12 @@ public static class StatusCommand
 
         PrintState(output, state, logPath, events);
 
-        // A task directory whose snapshot is bound but has recorded zero events yet -- never
-        // started via `aer run` -- projects as WorkflowStatus.Terminal by StateProjector's own
-        // deliberate, already-tested rule (StateProjectorTests.An_all_pending_workflow_projects_WorkflowStatus_Terminal):
-        // "nothing running, nothing paused" is trivially true before anything has ever dispatched.
-        // So `aer status --follow` against a not-yet-started task prints once and exits immediately
-        // rather than waiting for it to begin -- the same fact any other reader of this projection
-        // already lives with, not something particular to --follow.
+        if (options.Follow)
+        {
+            var artifactsDir = Path.Combine(options.TaskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+            TailStreams(output, artifactsDir, new Dictionary<string, long>(StringComparer.Ordinal));
+        }
+
         if (!options.Follow || state.Status == WorkflowStatus.Terminal)
         {
             return;
