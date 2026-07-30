@@ -1735,9 +1735,19 @@ as "none emitted".
 **Why it matters past the tests.** AER pins a model per worker. On `agy` a pin that goes stale is
 accepted rather than rejected, so any AER cost or model-attribution surface would report the pinned
 model with no way to confirm what ran — and agy's catalogue includes `claude-opus-4-6-thinking`, so
-the drift is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures;
-**nothing guards the product**, and no issue owns that gap — a `vendor-verify` sentinel was
-considered and is tracked in #547.
+the drift is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures.
+
+**Update (#547).** A second, independent probe (`effort.agy-rejection-is-per-model`, 2026-07-28)
+measured a DIFFERENT unlisted name — `gemini-3-pro` — and found the opposite outcome: rejected, by
+name. The two data points read as a contradiction because nothing ran them under one shared control
+until now. `tools/vendor-verify/verify.py` carries the sentinel
+`agy.unlisted-model-acceptance-is-per-name`, written to settle it: control arm a catalogued model,
+then both unlisted names under the same invocation shape. **Not yet run** — this entry states what
+the check tests, not a result; see
+[`architecture-impact.md`](architecture-impact.md) § agy, whose row is explicit that nothing here is
+measured until the operator runs it. The product-side half — nothing validates a model name a
+worker binding or a room actually carries, before it reaches `agy` — is filed as its own issue,
+#726, rather than built inside #547.
 
 **2. `claude` has no model-catalogue command, and `claude models` spends usage.** There is no such
 subcommand — the words are taken as a *prompt* and answered, costing a turn. So claude's valid model

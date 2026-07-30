@@ -2979,6 +2979,101 @@ def _agy_allow():
             print(f"  !! RESTORE MISMATCH -- backup kept at {backup}", file=sys.stderr)
 
 
+def _classify_model_outcome(rc, text):
+    """accepted / rejected-naming-model / ambiguous, for one --model <unlisted-name> arm.
+
+    "ambiguous" exists because a non-zero rc that does NOT name the model proves nothing about model
+    validation at all -- it could be a network hiccup, a timeout, anything. Only a rejection that
+    NAMES the model is evidence the CLI validated the name and refused it.
+    """
+    if rc == 0:
+        return "accepted"
+    if re.search(r"not recognized as a known model|invalid model|unknown model|not a valid model",
+                 text, re.IGNORECASE):
+        return "rejected-naming-model"
+    return "ambiguous"
+
+
+@check("agy.unlisted-model-acceptance-is-per-name", "agy",
+       "tests whether agy's handling of an unlisted --model name is per-name rather than a blanket "
+       "accept-or-reject -- two prior single-day probes disagreed (`gemini-3-flash` at rc=0, "
+       "`gemini-3-pro` refused by name) with no shared control between them; this reruns both under "
+       "one, which is what AER's cost/model-attribution surfaces need true if they are to trust a "
+       "pinned name", sentinel=True)
+def _agy_unlisted_model_acceptance():
+    """#547. Two measurements already sit in the register, three days apart, and read as a flat
+    contradiction until put side by side under one control:
+
+      docs/vendor-doc-audit.md:1716-1733 (2026-07-25, #538) -- `agy -p ... --model gemini-3-flash` (aer-uncatalogued-on-purpose)
+      returned rc=0 with output produced. That name is not, and has never been, in `agy models` --
+      it had sat in a binding fixture, two dialogue participants and two runbooks, pinning nothing,
+      for months.
+
+      docs/vendor-capabilities.md section "`agy models`" (2026-07-28, from
+      effort.agy-rejection-is-per-model) -- `agy -p ... --model gemini-3-pro` (aer-uncatalogued-on-purpose, also never catalogued)
+      with NO --effort failed: "model gemini-3-pro is not recognized as a known model or custom
+      model in settings".
+
+    Same shape of input -- an unlisted, unsuffixed name -- opposite outcomes. Neither measurement is
+    wrong. Nobody had run both under one shared control before this check, so nothing distinguished
+    "agy accepts unlisted models" from "agy accepts THIS unlisted model" -- the exact two-causes-one-
+    observation trap this suite exists to avoid, reintroduced by reading one probe as the whole
+    story.
+
+    THREE arms, not the two the issue asked for, and that widening is deliberate: a single unlisted
+    arm cannot be believed either way with nothing else unlisted to compare it against. Without
+    `gemini-3-pro`'s recorded rejection, `gemini-3-flash`'s recorded acceptance is equally consistent
+    with "agy validates model names" (and flash happens to slip past whatever the validator does)
+    and "agy validates nothing here" (and pro's earlier failure was about something else entirely).
+    Running the pro arm here, under the SAME control, is what turns two irreconcilable-looking data
+    points into one settled shape: acceptance is per-name.
+
+      control   gemini-3.6-flash-low (catalogued) -- must succeed, or this harness cannot invoke
+                agy with --model at all and neither unlisted arm is evidence for anything
+      flash     gemini-3-flash  -- the historically-accepted unlisted name (#538)
+      pro       gemini-3-pro    -- the historically-rejected unlisted name
+                                   (effort.agy-rejection-is-per-model)
+
+    NOT CLAIMED, because it is not measurable here: WHICH model actually served the accepted
+    request. AER has no attribution surface -- the same reason docs/vendor-doc-audit.md's own scope
+    note declines to say this "routes silently to the default". Nor does this claim an absence of a
+    warning: "no warning" would need a positive control for a warning actually firing on some other
+    input, which does not exist. The detail string below prints the raw tail of what agy said, so a
+    reader can look for one, rather than asserting there is none.
+
+    SENTINEL, decided explicitly rather than inherited from the issue. The direction that matters is
+    ACCEPTANCE, not rejection: a future agy erroring on `gemini-3-flash` is not silent -- a dispatch
+    pinned to it would fail LOUDLY, which is not the failure mode AER's cost/attribution assumption
+    depends on. But agy WIDENING acceptance (`gemini-3-pro` starting to succeed too, or any other
+    unlisted shape joining `gemini-3-flash`'s side) would silently make that assumption wronger, with
+    nothing else in this repo positioned to notice. That is the vendor-changing-silently-under-a-
+    committed-design bar the README sets, so this is a sentinel for the ACCEPT side of the asymmetry.
+    """
+    probe = ["-p", "reply with exactly the word PONG"]
+
+    rc_ctl, out_ctl, err_ctl = run(["agy", *probe, "--model", "gemini-3.6-flash-low"])
+    if rc_ctl != 0:
+        return INCONCLUSIVE, ("the CATALOGUED control failed, so this harness cannot invoke agy "
+                              f"with --model at all and neither unlisted arm is evidence -- "
+                              f"rc={rc_ctl} {(err_ctl or out_ctl).strip()[:200]}")
+
+    rc_f, out_f, err_f = run(["agy", *probe, "--model", "gemini-3-flash"])  # aer-uncatalogued-on-purpose
+    rc_p, out_p, err_p = run(["agy", *probe, "--model", "gemini-3-pro"])  # aer-uncatalogued-on-purpose
+    text_f, text_p = (out_f + err_f), (out_p + err_p)
+    class_f, class_p = _classify_model_outcome(rc_f, text_f), _classify_model_outcome(rc_p, text_p)
+
+    detail = (f"flash: rc={rc_f} {class_f} tail={text_f.strip()[-160:]!r} || "
+              f"pro: rc={rc_p} {class_p} tail={text_p.strip()[-160:]!r}")
+
+    if "ambiguous" in (class_f, class_p):
+        return INCONCLUSIVE, ("at least one unlisted arm's outcome cannot be attributed to model "
+                              "validation (neither rc=0 nor a message naming the model) -- " + detail)
+    if class_f == "accepted" and class_p == "rejected-naming-model":
+        return PASS, ("baseline confirmed: agy's handling of an unlisted --model is PER-NAME -- " +
+                      detail)
+    return FAIL, ("the recorded per-name baseline moved -- " + detail)
+
+
 # ==================================================================== effort
 # 0023 requires the canonical (quick/standard/careful/exhaustive) -> vendor effort mapping to rest
 # on the vendor's OWN documented set, not a measured behavioural study -- but that only stays true
