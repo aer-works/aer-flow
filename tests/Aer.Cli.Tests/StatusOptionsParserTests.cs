@@ -1,0 +1,50 @@
+namespace Aer.Cli.Tests;
+
+[Collection(WorkingDirectoryCollection.Name)]
+public class StatusOptionsParserTests
+{
+    [Fact]
+    public void A_bare_task_directory_parses_with_follow_false()
+    {
+        var options = StatusOptionsParser.Parse(["task"]);
+
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.False(options.Follow);
+    }
+
+    [Fact]
+    public void The_follow_flag_parses_to_true()
+    {
+        var options = StatusOptionsParser.Parse(["task", "--follow"]);
+
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.True(options.Follow);
+    }
+
+    [Fact]
+    public void The_follow_flag_may_precede_the_positional_task_directory()
+    {
+        var options = StatusOptionsParser.Parse(["--follow", "task"]);
+
+        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.True(options.Follow);
+    }
+
+    [Fact]
+    public void A_missing_task_directory_throws()
+    {
+        Assert.Throws<CliArgumentException>(() => StatusOptionsParser.Parse(["--follow"]));
+    }
+
+    [Fact]
+    public void An_unknown_option_throws()
+    {
+        Assert.Throws<CliArgumentException>(() => StatusOptionsParser.Parse(["task", "--nope"]));
+    }
+
+    [Fact]
+    public void A_second_positional_argument_throws()
+    {
+        Assert.Throws<CliArgumentException>(() => StatusOptionsParser.Parse(["task", "extra"]));
+    }
+}
