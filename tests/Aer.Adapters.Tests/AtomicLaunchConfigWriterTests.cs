@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Aer.Adapters.Tests.TestSupport;
 
 namespace Aer.Adapters.Tests;
@@ -113,6 +114,43 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
 
         Assert.NotNull(thrown);
         Assert.Contains("Move", thrown.StackTrace ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #682: enough concurrent cold-start writers -- no file on disk yet, so every one of them is a
+    /// first writer -- exhausts <c>MaxAttempts</c> on this machine. Every writer's content is
+    /// byte-identical (the real caller's is a deterministic function of
+    /// <see cref="AppContext.BaseDirectory"/>; this test fixes that by construction), which is the
+    /// premise the fix rests on: a writer that loses the rename does not need to win it, it needs the
+    /// file to already hold what it wanted to write.
+    /// </summary>
+    [Fact]
+    public async Task Many_concurrent_cold_start_writers_with_identical_content_do_not_throw()
+    {
+        var path = Path_("settings.json");
+        const string content = """{"hooks":"canonical"}""";
+        const int writerCount = 40;
+
+        using var barrier = new Barrier(writerCount);
+        var exceptions = new ConcurrentBag<Exception>();
+
+        var writers = Enumerable.Range(0, writerCount).Select(_ => Task.Run(() =>
+        {
+            barrier.SignalAndWait();
+            try
+            {
+                AtomicLaunchConfigWriter.Write(path, content);
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
+        }));
+
+        await Task.WhenAll(writers);
+
+        Assert.Empty(exceptions);
+        Assert.Equal(content, File.ReadAllText(path));
     }
 
     /// <summary>

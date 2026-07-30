@@ -44,9 +44,12 @@ namespace Aer.Adapters;
 /// failed a sharing violation under four concurrent resolvers.
 /// </para>
 /// <para>
-/// This bounds the window rather than closing it: the first resolve against a fresh or drifted file
-/// still writes, which is why the retry stays, and why enough concurrent cold-start writers can still
-/// exhaust it (#682).
+/// <b>A losing rename is not a losing writer (#682):</b> the first resolve against a fresh or
+/// drifted file still writes, and enough concurrent cold-start writers exhausted <see
+/// cref="MaxAttempts"/> before every failed rename re-checked <see cref="AlreadyHolds"/> -- the
+/// content-identity argument above applies to the loser too, not only to the skip. Raising
+/// <see cref="MaxAttempts"/> would have moved the threshold rather than removed it, which is why the
+/// budget itself is unchanged.
 /// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter
@@ -81,6 +84,16 @@ internal static class AtomicLaunchConfigWriter
                 // exception this catch is handling -- a leftover .tmp file is a far smaller problem
                 // than losing the reason a retry was needed.
                 TryDeleteTemp(tempPath);
+
+                // #682: a losing rename did not need to win -- if some other writer's identical
+                // content already landed, this attempt's goal is already satisfied, regardless of
+                // how many attempts remain. Checked on every failure, not only at MaxAttempts, so a
+                // large cold-start herd stops contending as soon as one of them succeeds.
+                if (AlreadyHolds(path, content))
+                {
+                    return;
+                }
+
                 if (attempt >= MaxAttempts)
                 {
                     throw;
