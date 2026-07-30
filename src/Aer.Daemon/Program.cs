@@ -179,6 +179,12 @@ namespace Aer.Daemon
             builder.Services.AddSingleton<MainWindowViewModel>();
             builder.Services.AddSingleton<PairedClientsStore>();
 
+            // #799: the room wake-bridge — pure derivation of the wake set plus a read-only lane
+            // probe, no persisted queue. RoomWakeBridgeState is the thin settable pointer to which
+            // room directory to watch; the hosted RoomWakeBridge recomputes the wake set on it.
+            builder.Services.AddSingleton<RoomWakeBridgeState>();
+            builder.Services.AddHostedService<RoomWakeBridge>();
+
             // Thread-safe container for bindings path
             var bindingsPathHolder = new BindingsPathHolder();
             builder.Services.AddSingleton(bindingsPathHolder);
@@ -621,6 +627,28 @@ namespace Aer.Daemon
                     return Results.Json(new { Error = $"sidecar unreachable: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
                 }
             });
+
+            // #799: room wake-bridge surface — J19's "event→notification pipeline" leg's first
+            // piece. Watch is a thin pointer-set (like pathHolder.BindingsFilePath above); wakes
+            // reads back whatever RoomWakeBridge's background loop last derived. Neither endpoint
+            // stores a wake itself -- resolving the held-work ref (RoomMutationInterface, not this
+            // surface) is what clears one.
+            app.MapPost("/api/rooms/watch", ([FromBody] WatchRoomRequest request, RoomWakeBridgeState wakeState) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.RoomDirectoryPath))
+                {
+                    return Results.BadRequest("RoomDirectoryPath is required.");
+                }
+
+                wakeState.RoomDirectoryPath = request.RoomDirectoryPath;
+                return Results.Ok();
+            });
+
+            app.MapGet("/api/rooms/wakes", (RoomWakeBridgeState wakeState) => Results.Ok(new
+            {
+                RoomDirectoryPath = wakeState.RoomDirectoryPath,
+                Wakes = wakeState.CurrentWakes.Select(w => new { Ref = w.Ref.Value, Kind = w.Kind.ToString() }).ToList(),
+            }));
 
             // REST endpoints
             app.MapGet("/api/templates", () =>
@@ -2173,4 +2201,7 @@ namespace Aer.Daemon
     /// "default" (this session's original grant), or "plan" (read-only -- <see cref="PermissionGrant.WriteFiles"/>/<see cref="PermissionGrant.RunShellCommands"/> both off).
     /// </summary>
     public record SetSessionModeRequest(string Mode);
+
+    /// <summary>#799: points <see cref="RoomWakeBridge"/> at the room directory to watch.</summary>
+    public record WatchRoomRequest(string RoomDirectoryPath);
 }
