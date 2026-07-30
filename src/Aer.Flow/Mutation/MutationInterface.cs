@@ -373,7 +373,7 @@ public static class MutationInterface
                         var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
                         var classification = OutcomeClassifier.Classify(
-                            new CoreDispatchResult(exit.ExitCode, exit.Reason), contract, outputDirectory);
+                            new CoreDispatchResult(exit.ExitCode, exit.Reason, exit.StderrTail), contract, outputDirectory);
 
                         await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
                             .ConfigureAwait(false);

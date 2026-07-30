@@ -642,8 +642,13 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                 case AerTaskEventKind.Exited:
                     exitCode = e.ExitCode;
                     reason = ToCoreExitReason(e.ExitReason);
+                    string? capturedStderrTail;
+                    lock (stderrLock)
+                    {
+                        capturedStderrTail = stderrTail.ToTailOrNull();
+                    }
                     pendingLogWrites.Add(coreEventLogWriter.AppendAsync(
-                        new CoreEvent.ExecutionExited(request.ExecutionId, e.ExitCode, reason), CancellationToken.None));
+                        new CoreEvent.ExecutionExited(request.ExecutionId, e.ExitCode, reason, capturedStderrTail), CancellationToken.None));
                     break;
             }
         };

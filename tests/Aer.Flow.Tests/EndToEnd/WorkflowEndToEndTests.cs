@@ -455,6 +455,61 @@ public class WorkflowEndToEndTests
         }
     }
 
+    [Fact]
+    public async Task ExecutionFailed_event_records_stderr_fragment_when_real_worker_exits_1_with_stderr()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+        try
+        {
+            var step = new WorkflowStepDefinition(
+                new StepId("failing_step"),
+                Worker: "failing_worker",
+                Inputs: [],
+                Outputs: [],
+                DependsOn: [],
+                RetryPolicy: new RetryPolicy(1));
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-stderr"),
+                new WorkflowTemplateId("wf-stderr-test"),
+                WorkflowTemplateVersion: 1,
+                Steps: [step]);
+            await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
+
+            var distinctiveStderr = "DISTINCTIVE_STDERR_FAILURE_FRAGMENT_759";
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", $"echo {distinctiveStderr} 1>&2 & exit 1"])
+                : new CoreDispatchTarget("sh", ["-c", $"echo {distinctiveStderr} >&2; exit 1"]);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["failing_worker"] = new WorkerBinding.Process(
+                    new WorkerContract("failing_worker", [], [], []),
+                    target,
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            var finalState = await MutationInterface.StartWorkflowAsync(
+                new WorkflowId("wf-stderr-test"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var failedEvent = events.OfType<FlowEvent.ExecutionFailed>().Single();
+
+            Assert.NotNull(failedEvent.Reason);
+            Assert.Contains(distinctiveStderr, failedEvent.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
     private static IReadOnlyList<ExecutionId> GetAcceptedExecutionIds(IReadOnlyList<FlowEvent> events, StepId stepId) => events
         .OfType<FlowEvent.ExecutionRequestAccepted>()
         .Where(e => e.Request.StepId == stepId)

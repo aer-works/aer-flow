@@ -150,6 +150,39 @@ public class CoreDispatcherTests
     }
 
     [Fact]
+    public async Task DispatchAsync_records_StderrTail_in_ExecutionExited_CoreEvent_when_process_writes_to_stderr_and_exits_non_zero()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var distinctiveStderr = "DISTINCTIVE_STDERR_TAIL_759";
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", $"echo {distinctiveStderr} 1>&2 & exit 1"])
+                : new CoreDispatchTarget("sh", ["-c", $"echo {distinctiveStderr} >&2; exit 1"]);
+
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await new CoreDispatcher(writer).DispatchAsync(request, target, TestContext.Current.CancellationToken);
+            }
+
+            var reader = new FlowEventLogReader(logPath);
+            var coreEvents = await reader.ReadAllCoreEventsAsync(TestContext.Current.CancellationToken);
+            var exited = Assert.Single(coreEvents.OfType<CoreEvent.ExecutionExited>());
+            Assert.Equal(1, exited.ExitCode);
+            Assert.NotNull(exited.StderrTail);
+            Assert.Contains(distinctiveStderr, exited.StderrTail);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
     public async Task DispatchAsync_surfaces_a_non_zero_exit_code_without_throwing()
     {
         var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");

@@ -180,6 +180,46 @@ public class MutationInterfaceCrashRecoveryTests
     }
 
     [Fact]
+    public async Task StartWorkflowAsync_classifies_a_recorded_nonzero_exit_with_stderr_as_Failed_with_stderr_reason()
+    {
+        var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 2));
+
+        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        try
+        {
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var bindings = MakeBindings();
+            var workflowId = new WorkflowId("wf");
+
+            var executionId = await AcceptRequestAsync(writer, workflowId, artifactsRoot, A);
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 1, CoreExitReason.Natural, StderrTail: "crash-recovered-stderr-fragment"), TestContext.Current.CancellationToken);
+
+            var stub = new StubCoreDispatcher();
+            var retryResult = stub.EnqueueResult(A);
+
+            var runTask = MutationInterface.StartWorkflowAsync(
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(A, await ReadNextDispatchAsync(stub));
+            retryResult.SetResult(Succeeded);
+            var state = await runTask;
+
+            Assert.Equal(StepStatus.Succeeded, state.Steps.Single().Status);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var failedEvent = Assert.Single(events.OfType<FlowEvent.ExecutionFailed>());
+            Assert.Equal(executionId, failedEvent.ExecutionId);
+            Assert.NotNull(failedEvent.Reason);
+            Assert.Contains("crash-recovered-stderr-fragment", failedEvent.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
     public async Task StartWorkflowAsync_finalizes_an_orphan_as_a_retryable_failed_attempt_and_retries_it()
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 2));
