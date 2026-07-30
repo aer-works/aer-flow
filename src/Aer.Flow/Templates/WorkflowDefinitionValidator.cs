@@ -53,6 +53,17 @@ public static class WorkflowDefinitionValidator
             {
                 errors.Add($"Duplicate StepId '{step.StepId}'.");
             }
+
+            if (step.Outputs is not null)
+            {
+                foreach (var output in step.Outputs)
+                {
+                    if (output is not null && output.StartsWith('.'))
+                    {
+                        errors.Add($"Step '{step.StepId}' declares output '{output}', which is rejected: names starting with '.' are reserved for engine stream logs.");
+                    }
+                }
+            }
         }
 
         foreach (var step in definition.Steps)

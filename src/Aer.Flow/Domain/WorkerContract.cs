@@ -20,10 +20,29 @@ public sealed record WorkerContract(
 /// sibling of <paramref name="Condition"/>. Serialized only when set, so contracts that predate
 /// the field round-trip byte-identically.
 /// </param>
-public sealed record ProducedOutput(
-    string Name,
-    OutputCondition? Condition = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] OutputSchema Schema = OutputSchema.None);
+public sealed record ProducedOutput
+{
+    public string Name { get; init; } = string.Empty;
+    public OutputCondition? Condition { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public OutputSchema Schema { get; init; }
+
+    [JsonConstructor]
+    public ProducedOutput(string Name, OutputCondition? Condition = null, OutputSchema Schema = OutputSchema.None)
+    {
+        if (Name is not null && Name.StartsWith('.'))
+        {
+            throw new ArgumentException(
+                $"ProducedOutput name '{Name}' is invalid: names starting with '.' are reserved for engine stream logs.",
+                nameof(Name));
+        }
+
+        this.Name = Name ?? string.Empty;
+        this.Condition = Condition;
+        this.Schema = Schema;
+    }
+}
 
 /// <summary>
 /// The closed set of shapes a <see cref="ProducedOutput"/> can declare (spec §4.2). Validation is

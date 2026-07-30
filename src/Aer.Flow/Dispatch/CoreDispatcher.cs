@@ -599,6 +599,10 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         var stderrTail = new StderrTailBuffer();
         var stderrLock = new object();
 
+        ExecutionStreamLogger? streamLogger = pathVariables.TryGetValue("AER_OUTPUT_DIR", out var outputDir)
+            ? new ExecutionStreamLogger(outputDir)
+            : null;
+
         task.EventRaised += (_, e) =>
         {
             switch (e.Kind)
@@ -615,16 +619,20 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                     break;
 
                 case AerTaskEventKind.StdoutChunk:
-                    if (target.OnStdoutLine is not null && e.Data is { Length: > 0 })
+                    if (e.Data is { Length: > 0 })
                     {
-                        // The decode is inside the lock, unlike the stateless GetString it replaces:
-                        // the buffer now carries decoder state between chunks, so two callbacks
-                        // decoding concurrently would interleave into one another's partial
-                        // sequences. The lock was already here for the line buffer; the decode joins
-                        // it rather than sitting beside it.
-                        lock (stdoutLock)
+                        streamLogger?.AppendStdout(e.Data);
+                        if (target.OnStdoutLine is not null)
                         {
-                            stdoutLines.Append(e.Data, target.OnStdoutLine);
+                            // The decode is inside the lock, unlike the stateless GetString it replaces:
+                            // the buffer now carries decoder state between chunks, so two callbacks
+                            // decoding concurrently would interleave into one another's partial
+                            // sequences. The lock was already here for the line buffer; the decode joins
+                            // it rather than sitting beside it.
+                            lock (stdoutLock)
+                            {
+                                stdoutLines.Append(e.Data, target.OnStdoutLine);
+                            }
                         }
                     }
                     break;
@@ -632,6 +640,7 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                 case AerTaskEventKind.StderrChunk:
                     if (e.Data is { Length: > 0 })
                     {
+                        streamLogger?.AppendStderr(e.Data);
                         lock (stderrLock)
                         {
                             stderrTail.Append(e.Data);
@@ -640,6 +649,7 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                     break;
 
                 case AerTaskEventKind.Exited:
+                    streamLogger?.MarkTerminal();
                     exitCode = e.ExitCode;
                     reason = ToCoreExitReason(e.ExitReason);
                     string? capturedStderrTail;
@@ -667,6 +677,10 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         catch (AerCancelException)
         {
             reason = CoreExitReason.CancelRequested;
+        }
+        finally
+        {
+            streamLogger?.MarkTerminal();
         }
 
         await Task.WhenAll(pendingLogWrites).ConfigureAwait(false);
