@@ -3,7 +3,9 @@
 **Status: scheduling chapter of `aer-room-spec-v1.0.md`, which supersedes this document at the
 system level.** §§3–18 here remain the authoritative engine contract, cited by the room spec rather
 than restated. §14, §20 and §21 contain statements the tree has overtaken (the daemon, named
-clients, the pump, the read strategy); the room spec's §5 and §7 are the corrected record, and
+clients, the pump, the read strategy) — and §17.1's passing "daemon's session materializer"
+reference, which contradicted §20 inside this document, turns out to have been the honest side of
+that contradiction. The room spec's §5 and §7 are the corrected record, and
 those sections are retained here unedited as provenance, not authority.
 
 This document is the authoritative definition of what AER Flow guarantees at the engine level. It assumes AER Core v1.1 (see `aer-core-behavioral-spec-v1.1.md`) as a dependency and does not redefine anything Core already guarantees.

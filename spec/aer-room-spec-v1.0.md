@@ -59,8 +59,8 @@ the engine has no notion of an archived room.
 The **turn** is the unit of a room's conversation: a worker runs to completion, its output lands as
 an event and artifacts, and the room either proceeds (the definition's graph has more to schedule),
 waits for a decision (a `PausePoint` fired), or is done. The engine spec's §17 is the full contract
-for pausing and deciding; the closed decision vocabulary (`Resume | Reject | RetryWithRevision |
-Supersede`) is unchanged at HEAD and deliberately small.
+for pausing and deciding; its §17.2 decision vocabulary is closed, deliberately small, and
+unchanged at HEAD — the list itself lives there, not here.
 
 Every decision is recorded with the decider's identity on the `ExternalDecisionRecorded` event.
 Today every decider is a person on a client; §8 records the settled direction for what else a
@@ -93,7 +93,8 @@ What actually runs, at HEAD:
   the room lifecycle, template, session, pairing, and artifact APIs over REST, with WebSocket
   broadcast, supervising the sidecar (`src/Aer.Sidecar`, zero-config Tailscale) for remote reach.
   The engine spec's §20 wrote "no daemon" and §21 left the pump question open; both were overtaken
-  by the code without a recorded decision — this section is that record.
+  by the code without a recorded decision — this section is that record. Its §17.1 already
+  referred to the daemon in passing, contradicting §20 in the same document; §17.1 was right.
 - **The pump, answered.** The engine advances only inside a mutation-interface call; something must
   make those calls. At HEAD that something is *whichever host process is driving the room*: the CLI
   (`aer run`) for a headless run, the daemon for anything a client initiates. Exactly one may
@@ -118,9 +119,9 @@ determinism, the mutation interface, concurrency, artifacts, pause/decision, and
 composition. None of it is restated here, deliberately: one register, referenced everywhere.
 
 Its §20 exclusions remain true of the tree except the two this document explicitly retires (the
-daemon, named clients). The still-true ones this spec re-affirms without restating: no workflow
-DSL, no open-ended decision or failure vocabularies, no interactive mid-execution control, no
-cross-task event ordering, and the §16/§3 artifact and pass-through rules.
+daemon, named clients). Every other §20 exclusion stays owned and worded by §20 — re-affirmed
+here by reference alone, because a renamed copy of that list is exactly the drift this document
+exists to end.
 
 ## 7. The journal at HEAD
 
