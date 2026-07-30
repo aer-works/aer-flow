@@ -65,6 +65,38 @@ public class RoomProjectorTests
     }
 
     [Fact]
+    public void An_escalation_and_resolution_for_an_unknown_ref_surface_as_unmatched_entries()
+    {
+        var events = new List<RoomEvent>
+        {
+            new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
+            new RoomEvent.HeldWorkEscalated(LaneRefB, "supervisor-bob"),
+            new RoomEvent.HeldWorkResolved(LaneRefB, new LaneJournalCitation("lanes/lane-b", ExecId, "executionSucceeded", 1)),
+        };
+
+        var state = RoomProjector.Project(events);
+
+        // The tracked ref is untouched, and the orphans are named in append order -- the why
+        // lives on RoomState.UnmatchedEntries' doc.
+        Assert.Equal(HeldWorkStatus.Dispatched, state.HeldWork[LaneRefA].Status);
+        Assert.Equal(2, state.UnmatchedEntries.Count);
+        Assert.Contains("heldWorkEscalated", state.UnmatchedEntries[0]);
+        Assert.Contains("lanes/lane-b", state.UnmatchedEntries[0]);
+        Assert.Contains("heldWorkResolved", state.UnmatchedEntries[1]);
+    }
+
+    [Fact]
+    public void A_journal_whose_every_entry_matches_has_no_unmatched_entries()
+    {
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
+            new RoomEvent.HeldWorkEscalated(LaneRefA, "supervisor-bob"),
+        ]);
+
+        Assert.Empty(state.UnmatchedEntries);
+    }
+
+    [Fact]
     public void Polarity_arm_2_lane_directory_with_no_ref_in_room_journal_is_invisible_to_room()
     {
         // Projection has only LaneRefA; non-referenced lane directory 'lanes/lane-b' is invisible

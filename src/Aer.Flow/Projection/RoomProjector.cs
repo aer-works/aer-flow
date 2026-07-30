@@ -14,6 +14,7 @@ public static class RoomProjector
         ArgumentNullException.ThrowIfNull(events);
 
         var heldWork = new Dictionary<HeldWorkRef, HeldWorkState>();
+        var unmatchedEntries = new List<string>();
 
         foreach (var roomEvent in events)
         {
@@ -29,14 +30,19 @@ public static class RoomProjector
                     break;
 
                 case RoomEvent.HeldWorkEscalated escalated:
-                    if (heldWork.TryGetValue(escalated.What, out var existingEscalated))
+                    if (heldWork.TryGetValue(escalated.Ref, out var existingEscalated))
                     {
-                        heldWork[escalated.What] = existingEscalated with
+                        heldWork[escalated.Ref] = existingEscalated with
                         {
                             Status = HeldWorkStatus.Escalated,
                             EscalatedTo = escalated.ToWhom
                         };
                     }
+                    else
+                    {
+                        unmatchedEntries.Add($"heldWorkEscalated for unknown ref '{escalated.Ref}'");
+                    }
+
                     break;
 
                 case RoomEvent.HeldWorkResolved resolved:
@@ -48,10 +54,15 @@ public static class RoomProjector
                             Citation = resolved.Citation
                         };
                     }
+                    else
+                    {
+                        unmatchedEntries.Add($"heldWorkResolved for unknown ref '{resolved.Ref}'");
+                    }
+
                     break;
             }
         }
 
-        return new RoomState(heldWork);
+        return new RoomState(heldWork, unmatchedEntries);
     }
 }
