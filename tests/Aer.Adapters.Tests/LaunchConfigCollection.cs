@@ -15,12 +15,12 @@ namespace Aer.Adapters.Tests;
 /// by #682, whose remarks carry the mechanism).
 /// </para>
 /// <para>
-/// <b>Still kept after #682.</b> Re-enabling parallelization no longer reproduces that
-/// <c>UnauthorizedAccessException</c> across repeated runs, but it does reliably cost
-/// <see cref="LaunchConfigRewriteTests"/>'s own reader/writer measurement its thread-pool capacity,
-/// which the assertion needs to observe any reads at all. Left in place rather than folded into
-/// #682's fix — that is a harness-contention question about this collection's own classes, not the
-/// writer defect #682 measured.
+/// <b>Left in place after #682.</b> Setting <c>DisableParallelization = false</c> — letting this
+/// collection's classes, still sequential with each other by collection membership, run alongside
+/// the rest of the assembly rather than blocking it — reproduced neither that
+/// <c>UnauthorizedAccessException</c> nor any other failure across repeated runs. Loosening it is out
+/// of #682's scope rather than ruled out: this attribute is doing more than the defect it was added
+/// for now needs, and that is an opportunity, not something this issue measured against.
 /// </para>
 /// <para>
 /// Eight classes rather than the original two: three of the failures were in classes never covered.

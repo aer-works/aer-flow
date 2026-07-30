@@ -157,8 +157,13 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
     /// premise the fix rests on: a writer that loses the rename does not need to win it, it needs the
     /// file to already hold what it wanted to write.
     /// </summary>
+    /// <remarks>
+    /// Dedicated <see cref="Thread"/>s rather than <see cref="Task.Run(Action)"/>: 40 pooled tasks
+    /// parked on one <see cref="Barrier"/> would hold the thread pool hostage until injection caught
+    /// up, coupling this test's timing to whatever else in the assembly wants the pool.
+    /// </remarks>
     [Fact]
-    public async Task Many_concurrent_cold_start_writers_with_identical_content_do_not_throw()
+    public void Many_concurrent_cold_start_writers_with_identical_content_do_not_throw()
     {
         var path = Path_("settings.json");
         const string content = """{"hooks":"canonical"}""";
@@ -167,7 +172,7 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
         using var barrier = new Barrier(writerCount);
         var exceptions = new ConcurrentBag<Exception>();
 
-        var writers = Enumerable.Range(0, writerCount).Select(_ => Task.Run(() =>
+        var writers = Enumerable.Range(0, writerCount).Select(_ => new Thread(() =>
         {
             barrier.SignalAndWait();
             try
@@ -178,9 +183,17 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
             {
                 exceptions.Add(ex);
             }
-        }));
+        })).ToArray();
 
-        await Task.WhenAll(writers);
+        foreach (var writer in writers)
+        {
+            writer.Start();
+        }
+
+        foreach (var writer in writers)
+        {
+            writer.Join();
+        }
 
         Assert.Empty(exceptions);
         Assert.Equal(content, File.ReadAllText(path));
