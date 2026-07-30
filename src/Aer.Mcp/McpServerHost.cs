@@ -18,12 +18,12 @@ namespace Aer.Mcp;
 /// <para>
 /// One request in, one line out: this host is a per-invocation stdio server, matching how a vendor
 /// CLI itself spawns an MCP server subprocess for the lifetime of one <c>-p</c> turn — it does not
-/// hold connections open across turns, and exits when its input stream closes. As of #585's wiring
-/// half, <c>Aer.Workers.Dialogue</c> spawns this host per participant: claude participants via
-/// <c>--mcp-config</c>/<c>--strict-mcp-config</c> (<see cref="Aer.Adapters.ClaudeWorkerAdapter"/>),
-/// agy participants via a per-run workspace's <c>.agents/mcp_config.json</c> reached with
-/// <c>--add-dir</c>. See <c>DialogueRunner</c> for the capture-file mechanism that reads a
-/// participant's yield call back out once its turn process exits.
+/// hold connections open across turns, and exits when its input stream closes. As of this commit,
+/// nothing in <c>src/</c> spawns this host yet — wiring it into <c>Aer.Workers.Dialogue</c> so claude
+/// participants reach it via <c>--mcp-config</c>/<c>--strict-mcp-config</c> and agy participants via a
+/// per-run workspace's <c>.agents/mcp_config.json</c> + <c>--add-dir</c> is #585's remaining half (see
+/// decision 0035). This class itself has no dependency on that wiring landing — it is usable standalone
+/// the moment a caller supplies an <c>input</c>/<c>output</c> pair and a tool list.
 /// </para>
 /// <para>
 /// Request handling never lets one bad request take down the loop: a request whose <c>method</c> or

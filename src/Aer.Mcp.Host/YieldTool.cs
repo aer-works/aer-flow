@@ -5,8 +5,10 @@ namespace Aer.Mcp.Host;
 
 /// <summary>
 /// The <c>yield</c> tool (#585, decision 0035): a participant calls this when it believes a
-/// dialogue exchange should end, instead of the retired <c>DialogueRunner.TryStripStopSentinel</c>
-/// text-match. Composed into a runnable server here, in the composition-root project — <see cref="Aer.Mcp.McpServerHost"/>
+/// dialogue exchange should end, in place of a text-sentinel match on the turn's own output. As of
+/// this commit <c>DialogueRunner.TryStripStopSentinel</c> is still the live mechanism — this tool has
+/// no caller wired in yet; see <c>McpServerHost</c>'s own remarks for what's left. Composed into a
+/// runnable server here, in the composition-root project — <see cref="Aer.Mcp.McpServerHost"/>
 /// itself has no idea this tool exists, per that class's own remarks.
 /// <para>
 /// Captures exactly one call: writes the received arguments as JSON to <see cref="captureFilePath"/>
