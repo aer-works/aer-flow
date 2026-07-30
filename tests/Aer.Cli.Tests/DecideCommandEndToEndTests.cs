@@ -55,9 +55,7 @@ public class DecideCommandEndToEndTests
     [Fact]
     public async Task Deciding_against_a_task_whose_journal_is_held_open_by_another_process_throws_FlowJournalHeldException_not_a_raw_IOException()
     {
-        // #816's measured crash: a live 'aer run' engine holds flow.jsonl open for the whole pump
-        // duration. A second command reaching for the same file must get the typed refusal, never
-        // the raw sharing-violation IOException DecideCommand used to let escape unhandled.
+        // #816's measured crash, decide's half; see FlowEventLogWriterTests for the mechanism.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try

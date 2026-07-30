@@ -46,10 +46,7 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
     // it is portable and does not depend on OS-localized exception text.
     private const int ErrorSharingViolationHResult = unchecked((int)0x80070020);
 
-    /// <exception cref="FlowJournalHeldException">
-    /// Another process already has <paramref name="logFilePath"/> open — most likely a live
-    /// <c>aer run</c> engine driving this same task.
-    /// </exception>
+    /// <exception cref="FlowJournalHeldException">See that type's own docs for why (#816).</exception>
     private static FileStream OpenAppendStream(string logFilePath)
     {
         var directory = Path.GetDirectoryName(logFilePath);
