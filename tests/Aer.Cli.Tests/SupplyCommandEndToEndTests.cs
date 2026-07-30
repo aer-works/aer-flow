@@ -51,6 +51,38 @@ public class SupplyCommandEndToEndTests
     }
 
     [Fact]
+    public async Task Supplying_against_a_task_whose_journal_is_held_open_by_another_process_throws_FlowJournalHeldException_not_a_raw_IOException()
+    {
+        // #816's population: SupplyCommand shares the same FlowEventLogWriter construction as
+        // decide/cancel, so it must surface the typed refusal too.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            var sourceFilePath = Path.Combine(testRoot, "revision.txt");
+            await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            using var liveEngineHolder = new FileStream(
+                logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
+
+            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
+
+            await Assert.ThrowsAsync<FlowJournalHeldException>(
+                () => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
     public async Task Supplying_against_a_bindings_file_that_also_names_an_unresolvable_worker_still_succeeds()
     {
         // #662, supply's half of the same defect CancelCommandEndToEndTests covers: a bindings file

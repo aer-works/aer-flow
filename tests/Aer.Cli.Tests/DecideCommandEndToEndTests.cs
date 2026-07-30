@@ -3,6 +3,7 @@ using Aer.Adapters;
 using Aer.Cli.Tests.TestSupport;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
+using Aer.Flow.Store;
 using Aer.Flow.Templates;
 
 namespace Aer.Cli.Tests;
@@ -43,6 +44,40 @@ public class DecideCommandEndToEndTests
 
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.All(finalResult.State.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Deciding_against_a_task_whose_journal_is_held_open_by_another_process_throws_FlowJournalHeldException_not_a_raw_IOException()
+    {
+        // #816's measured crash: a live 'aer run' engine holds flow.jsonl open for the whole pump
+        // duration. A second command reaching for the same file must get the typed refusal, never
+        // the raw sharing-violation IOException DecideCommand used to let escape unhandled.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            using var liveEngineHolder = new FileStream(
+                logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
+
+            var decideOptions = new DecideOptions(
+                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                SupplementaryExecutionId: null, bindingsFilePath);
+
+            await Assert.ThrowsAsync<FlowJournalHeldException>(
+                () => DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {

@@ -21,6 +21,38 @@ public class CancelCommandEndToEndTests
         };
 
     [Fact]
+    public async Task Cancelling_a_task_whose_journal_is_held_open_by_another_process_throws_FlowJournalHeldException_not_a_raw_IOException()
+    {
+        // #816's population: the same shared FlowEventLogWriter construction CancelCommand uses
+        // must surface the typed refusal too, not just DecideCommand.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+            var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
+            Assert.NotNull(architectExecutionId);
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            using var liveEngineHolder = new FileStream(
+                logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
+
+            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, bindingsFilePath);
+
+            await Assert.ThrowsAsync<FlowJournalHeldException>(
+                () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
     public async Task Cancelling_a_task_directory_whose_bindings_file_also_names_an_unresolvable_worker_still_succeeds()
     {
         // #662, pinning the rationale CancelCommand's own lazy-resolve comment carries: "reviewer"
