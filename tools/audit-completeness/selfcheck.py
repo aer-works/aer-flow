@@ -311,6 +311,32 @@ def _dispatch_states_its_budget():
     return f"{len(dispatch.TEMPLATES)} templates x (budget stated = budget bound, prompt intact)"
 
 
+@check("a shell grant carries the never-kill rule, and a read-only brief does not")
+def _shell_grant_carries_never_kill():
+    """#717's prompt-borne defense -- dispatch.py's shell_rules_preamble carries the measured
+    incident and why the gate cannot enforce this. What only this arm pins: the rule reaches
+    every shell-granted brief and must NOT pollute read-only ones, where it would be noise about
+    a capability the worker does not have.
+    """
+    both = {True: 0, False: 0}
+    for name, tpl in resolved_templates().items():
+        entry = dispatch.build_bindings(
+            worker_name="w", prompt_text="-- prompt --", output_name="out.md",
+            adapter=tpl["adapter"], working_directory=ROOT,
+            timeout_minutes=tpl["timeout_minutes"], model=tpl["model"], effort=tpl["effort"],
+            read_files=tpl["read_files"], write_files=tpl["write_files"],
+            run_shell_commands=tpl["run_shell_commands"], network_access=tpl["network_access"],
+        )["w"]
+        carries = "never kill" in entry["PromptTemplate"]
+        assert carries == tpl["run_shell_commands"], (
+            f"TEMPLATES[{name!r}]: shell={tpl['run_shell_commands']} but the never-kill rule "
+            f"{'is missing' if tpl['run_shell_commands'] else 'leaked into a read-only brief'}")
+        both[tpl["run_shell_commands"]] += 1
+    assert both[True] and both[False], (
+        "the template population no longer exercises both polarities, so this arm proves one side only")
+    return f"{both[True]} shell-granted carry it, {both[False]} read-only do not"
+
+
 @check("every gemini template pins a model `agy models` lists")
 def _pins_resolve():
     accepted = register_models()

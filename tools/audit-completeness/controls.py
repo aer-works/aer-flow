@@ -422,6 +422,25 @@ def _dispatch_states_the_wrong_budget():
         yield
 
 
+NEVER_KILL = "a shell grant carries the never-kill rule, and a read-only brief does not"
+
+
+@control(NEVER_KILL, "the rule is dropped, so a shell-granted worker is briefed like a read-only one")
+def _shell_rules_say_nothing():
+    with swap(selfcheck.dispatch, "shell_rules_preamble", lambda run_shell_commands: ""):
+        yield
+
+
+@control(NEVER_KILL, "the rule leaks into every brief, shell-granted or not")
+def _shell_rules_leak_everywhere():
+    # The polarity a "does the string appear?" test cannot see on its own: a preamble attached
+    # unconditionally still satisfies the shell-granted half while briefing read-only workers
+    # about a capability they do not have.
+    with swap(selfcheck.dispatch, "shell_rules_preamble",
+              lambda run_shell_commands: "SHELL RULES: never kill anything.\n\n"):
+        yield
+
+
 RECORDONCE = "the record-once checker fires on restated prose, not on text the register prescribes"
 RECORDONCE_PIN = "the record-once checker still finds the passages it found in a real merge"
 
