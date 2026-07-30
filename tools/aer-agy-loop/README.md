@@ -4,7 +4,7 @@
 pixi run aer-dispatch -- --list-templates
 
 pixi run aer-dispatch -- \
-    [--template advise|implement|review|fact-check] \
+    [--template <name from --list-templates>] \
     --prompt-file <path> \
     --output-name <name> \
     --working-directory <absolute path> \
@@ -46,7 +46,7 @@ applies one layer up, in tooling that could otherwise grow into a shadow engine.
 
 ## Templates — pick the role, not the settings
 
-`--template advise|implement|review|fact-check` pins vendor, model, effort, permission grant and
+`--template <name>` pins vendor, model, effort, permission grant and
 timeout as a set. Run `pixi run aer-dispatch -- --list-templates` for what each one is
 for and what it resolves to; the definitions and the reasoning behind each setting live next to the
 `TEMPLATES` dict in `dispatch.py`, and are deliberately not restated here.
