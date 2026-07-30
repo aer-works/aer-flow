@@ -299,5 +299,145 @@ public class ContractValidatorTests
             DirectoryCleanup.DeleteRecursively(directory);
         }
     }
+
+    /// <summary>
+    /// Spec §4.2: a declared <see cref="OutputSchema"/> makes shape part of contract satisfaction.
+    /// Both polarities in one place — a valid verdict document satisfies, a same-named prose file
+    /// is a <see cref="UnsatisfiedOutputReason.SchemaViolation"/> carrying the parser's why.
+    /// </summary>
+    [Fact]
+    public void A_schema_declared_output_is_satisfied_by_a_valid_verdict_and_unsatisfied_by_prose()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var contract = new WorkerContract(
+                "reviewer",
+                [],
+                [new ProducedOutput("verdict.json", Schema: OutputSchema.ReviewVerdict)],
+                []);
+
+            File.WriteAllText(
+                Path.Combine(directory, "verdict.json"),
+                """
+                {"reviewedRef": "branch-x", "findings": [
+                    {"severity": "high", "claim": "off-by-one in pager", "status": "confirmed",
+                     "anchor": {"file": "src/P.cs", "line": 42}}
+                ]}
+                """);
+            Assert.True(ContractValidator.IsSatisfied(contract, directory));
+
+            File.WriteAllText(Path.Combine(directory, "verdict.json"), "## Review\nLooks fine to me.");
+            var result = ContractValidator.Validate(contract, directory);
+
+            var unsatisfied = Assert.Single(result.UnsatisfiedOutputs);
+            Assert.Equal(UnsatisfiedOutputReason.SchemaViolation, unsatisfied.Reason);
+            Assert.False(string.IsNullOrWhiteSpace(unsatisfied.Detail));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// A parseable-but-hollow document — valid JSON, wrong shape — must fail the schema, not slide
+    /// through as "it parsed as JSON". This is the arm that discriminates schema checking from
+    /// §4.1's NotJson check, which such a file passes.
+    /// </summary>
+    [Fact]
+    public void A_schema_declared_output_that_is_valid_JSON_but_not_the_shape_is_a_SchemaViolation()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "verdict.json"), """{"status": "approved"}""");
+            var contract = new WorkerContract(
+                "reviewer",
+                [],
+                [new ProducedOutput("verdict.json", Schema: OutputSchema.ReviewVerdict)],
+                []);
+
+            var result = ContractValidator.Validate(contract, directory);
+
+            var unsatisfied = Assert.Single(result.UnsatisfiedOutputs);
+            Assert.Equal(UnsatisfiedOutputReason.SchemaViolation, unsatisfied.Reason);
+            Assert.Contains("reviewedRef", unsatisfied.Detail);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// Spec §4.2's one-report-per-output rule: when a schema'd output also declares a condition and
+    /// the schema fails, the condition is not separately evaluated — one output, one diagnostic.
+    /// The condition here would itself fail, so a double report is what a regression looks like.
+    /// </summary>
+    [Fact]
+    public void A_failed_schema_reports_once_even_when_the_output_also_declares_a_failing_condition()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "verdict.json"), """{"wrong": "shape"}""");
+            var contract = new WorkerContract(
+                "reviewer",
+                [],
+                [
+                    new ProducedOutput(
+                        "verdict.json",
+                        new OutputCondition("/status", new JsonScalar.String("approved")),
+                        OutputSchema.ReviewVerdict),
+                ],
+                []);
+
+            var result = ContractValidator.Validate(contract, directory);
+
+            var unsatisfied = Assert.Single(result.UnsatisfiedOutputs);
+            Assert.Equal(UnsatisfiedOutputReason.SchemaViolation, unsatisfied.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// A schema'd output that passes its schema still has its condition evaluated — declaring a
+    /// shape does not exempt an output from §4.1. The condition targets a field the schema does not
+    /// know, which is also the extra-fields-tolerated claim exercised end to end.
+    /// </summary>
+    [Fact]
+    public void A_passing_schema_does_not_exempt_the_outputs_condition_from_evaluation()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(directory, "verdict.json"),
+                """{"reviewedRef": "branch-x", "findings": [], "gate": "rejected"}""");
+            var contract = new WorkerContract(
+                "reviewer",
+                [],
+                [
+                    new ProducedOutput(
+                        "verdict.json",
+                        new OutputCondition("/gate", new JsonScalar.String("approved")),
+                        OutputSchema.ReviewVerdict),
+                ],
+                []);
+
+            var result = ContractValidator.Validate(contract, directory);
+
+            var unsatisfied = Assert.Single(result.UnsatisfiedOutputs);
+            Assert.Equal(UnsatisfiedOutputReason.ConditionFailed, unsatisfied.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
 }
 

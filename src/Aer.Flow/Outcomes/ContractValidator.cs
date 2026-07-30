@@ -72,6 +72,24 @@ public static class ContractValidator
                 continue;
             }
 
+            if (output.Schema != OutputSchema.None)
+            {
+                var schemaFailure = TryGetSchemaViolation(output.Name, output.Schema, path);
+                if (schemaFailure is not null)
+                {
+                    // One report per output, like Missing: a file that is not its declared shape is
+                    // already condemned, and also evaluating its condition would name the same
+                    // output twice in one diagnostic.
+                    (unsatisfied ??= []).Add(schemaFailure);
+                    if (stopAtFirstFailure)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+            }
+
             if (output.Condition is null)
             {
                 continue;
@@ -91,6 +109,25 @@ public static class ContractValidator
         return unsatisfied is null
             ? ContractValidationResult.Satisfied
             : new ContractValidationResult(unsatisfied);
+    }
+
+    /// <summary>
+    /// Evaluates a declared <see cref="OutputSchema"/> (spec §4.2): parse-only, per decision 0043 —
+    /// the file either is the declared shape or the output is unsatisfied with the parser's own
+    /// sentence as detail. Content is never interpreted beyond parsing.
+    /// </summary>
+    private static UnsatisfiedOutput? TryGetSchemaViolation(string outputName, OutputSchema schema, string path)
+    {
+        var error = schema switch
+        {
+            OutputSchema.ReviewVerdict =>
+                ReviewVerdictSchema.TryParse(File.ReadAllBytes(path), out _, out var parseError) ? null : parseError,
+            _ => throw new ArgumentOutOfRangeException(nameof(schema), schema, "Unknown OutputSchema case."),
+        };
+
+        return error is null
+            ? null
+            : new UnsatisfiedOutput(outputName, UnsatisfiedOutputReason.SchemaViolation, Detail: error);
     }
 
     private static UnsatisfiedOutput? TryGetUnsatisfiedCondition(string outputName, OutputCondition condition, string path)
@@ -332,6 +369,12 @@ public enum UnsatisfiedOutputReason
     /// one, and reported rather than thrown so it names itself instead of escaping the classifier.
     /// </summary>
     MalformedCondition,
+
+    /// <summary>
+    /// The file exists but does not parse as its declared <see cref="OutputSchema"/> (spec §4.2).
+    /// <see cref="UnsatisfiedOutput.Detail"/> carries the parser's one-sentence why.
+    /// </summary>
+    SchemaViolation,
 }
 
 /// <summary>
