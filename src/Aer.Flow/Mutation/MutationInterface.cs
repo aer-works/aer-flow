@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Concurrency;
 using Aer.Flow.Dispatch;
@@ -205,7 +206,7 @@ public static class MutationInterface
 
         // §7's write-sequence discipline still applies: appended and fsync'd before this method
         // returns, even though no Core process ever follows it (§17.3).
-        await eventLogWriter.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), cancellationToken)
+        await eventLogWriter.AppendAsync(CreateExecutionRequestAccepted(request), cancellationToken)
             .ConfigureAwait(false);
 
         var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
@@ -745,10 +746,17 @@ public static class MutationInterface
             upstreamExecutionIds);
 
         // §7's write-sequence rule: intent recorded and fsync'd before Core is ever asked to run.
-        await eventLogWriter.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), cancellationToken)
+        await eventLogWriter.AppendAsync(CreateExecutionRequestAccepted(request), cancellationToken)
             .ConfigureAwait(false);
 
         return new PreparedExecution(request, outputDirectory);
+    }
+
+    private static FlowEvent.ExecutionRequestAccepted CreateExecutionRequestAccepted(ExecutionRequest request)
+    {
+        var pid = Environment.ProcessId;
+        var startTime = new DateTimeOffset(Process.GetCurrentProcess().StartTime).ToUniversalTime();
+        return new FlowEvent.ExecutionRequestAccepted(request, pid, startTime);
     }
 
     private static async Task DispatchAndRecordOutcomeAsync(

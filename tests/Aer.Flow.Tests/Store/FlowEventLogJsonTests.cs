@@ -143,6 +143,28 @@ public class FlowEventLogJsonTests
     }
 
     [Fact]
+    public void An_ExecutionRequestAccepted_line_predating_engine_process_identity_still_replays_with_nulls()
+    {
+        var node = JsonNode.Parse(JsonSerializer.Serialize(
+            (FlowEvent)new FlowEvent.ExecutionRequestAccepted(
+                new ExecutionRequest(ExecutionId, WorkflowId, StepId, "worker", [], [], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId>()),
+                EnginePid: 12345,
+                EngineStartTime: DateTimeOffset.UtcNow),
+            typeof(FlowEvent),
+            FlowEventLogJson.Options))!.AsObject();
+
+        Assert.True(node.Remove(nameof(FlowEvent.ExecutionRequestAccepted.EnginePid)));
+        Assert.True(node.Remove(nameof(FlowEvent.ExecutionRequestAccepted.EngineStartTime)));
+
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(node.ToJsonString(), FlowEventLogJson.Options);
+
+        var accepted = Assert.IsType<FlowEvent.ExecutionRequestAccepted>(deserialized);
+        Assert.Equal(ExecutionId, accepted.Request.ExecutionId);
+        Assert.Null(accepted.EnginePid);
+        Assert.Null(accepted.EngineStartTime);
+    }
+
+    [Fact]
     public void Enums_persist_by_name_so_reordering_a_declaration_cannot_reinterpret_the_journal()
     {
         var json = JsonSerializer.Serialize(

@@ -65,7 +65,7 @@ public static class StatusCommand
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var state = StateProjector.Project(events, snapshot);
 
-        PrintState(output, state, logPath);
+        PrintState(output, state, logPath, events);
 
         // A task directory whose snapshot is bound but has recorded zero events yet -- never
         // started via `aer run` -- projects as WorkflowStatus.Terminal by StateProjector's own
@@ -155,7 +155,8 @@ public static class StatusCommand
         }
     }
 
-    private static void PrintState(TextWriter output, FlowState state, string logPath)
+    private static void PrintState(
+        TextWriter output, FlowState state, string logPath, IReadOnlyList<FlowEvent> events)
     {
         output.WriteLine($"Workflow status: {state.Status}");
         output.WriteLine($"Log last updated: {ResolveLogUpdatedAt(logPath)}");
@@ -163,13 +164,44 @@ public static class StatusCommand
         foreach (var step in state.Steps)
         {
             var executionText = step.LatestExecutionId?.ToString() ?? "none";
-            output.WriteLine($"  {step.StepId}: {step.Status} (execution={executionText})");
+            var statusText = FormatStepStatus(step, events);
+            output.WriteLine($"  {step.StepId}: {statusText} (execution={executionText})");
         }
 
         foreach (var stepLess in state.StepLessExecutions)
         {
             output.WriteLine($"  (supplementary) {stepLess.Worker}: execution={stepLess.ExecutionId} pending");
         }
+    }
+
+    public static string FormatStepStatus(StepState step, IReadOnlyList<FlowEvent> events)
+    {
+        // Probe ONLY steps claiming a live engine. Paused is a mask over an already-terminal
+        // outcome (StateProjector) -- its engine has legitimately exited, and probing it stamped
+        // every healthy paused step "crash recovery will classify" (the lane review's high
+        // finding). Pending has no execution yet, so no liveness claim applies there either.
+        if (step.Status is not StepStatus.Running)
+        {
+            return step.Status.ToString();
+        }
+
+        if (step.LatestExecutionId is null)
+        {
+            return step.Status.ToString();
+        }
+
+        var accepted = events.OfType<FlowEvent.ExecutionRequestAccepted>()
+            .FirstOrDefault(e => e.Request.ExecutionId == step.LatestExecutionId);
+
+        var probeResult = EngineLivenessProbe.Probe(accepted?.EnginePid, accepted?.EngineStartTime);
+
+        return probeResult.Status switch
+        {
+            EngineLivenessStatus.Alive => step.Status.ToString(),
+            EngineLivenessStatus.Dead => $"{step.Status} — engine not alive; crash recovery will classify on next pump",
+            EngineLivenessStatus.Unknown => $"liveness unknown ({probeResult.Why})",
+            _ => $"liveness unknown ({probeResult.Why})",
+        };
     }
 
     /// <summary>
