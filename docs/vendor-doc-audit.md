@@ -1713,12 +1713,12 @@ somebody's decision.
 Recorded here because they existed only in code comments and commit messages, which is not the
 register.
 
-**1. An unknown `--model` fails closed on `claude` and fails open on `agy`.**
+**1. An unknown `--model` fails closed on `claude` and accepts this unlisted name (`gemini-3-flash`) on `agy`.**
 
 | | behaviour |
 |---|---|
 | `claude` | `is_error: true` — a stale pin self-reports |
-| `agy` | accepts the unlisted name, `rc=0`, output produced; no warning observed on the captured stream |
+| `agy` | accepts this unlisted name (`gemini-3-flash`), `rc=0`, output produced; no warning observed on the captured stream |
 
 Measured: `agy -p … --model gemini-3-flash`, a model `agy models` does not list, returned `rc=0` with
 output. That name had been sitting in a binding fixture, two dialogue participants and two runbooks,
@@ -1726,7 +1726,7 @@ pinning nothing. The `claude` arm is measured by `tools/smoke-preflight/prefligh
 live run, not by this probe.
 
 **Scope — two claims, two evidence classes.** *Accept vs. reject* is **verified (both directions)**:
-claude rejects the unlisted name, agy does not. *Which model then served the request* is
+claude rejects the unlisted name, agy accepts this unlisted name (`gemini-3-flash`). *Which model then served the request* is
 **inferred, not measured** — AER has no attribution surface, which is the same reason it cannot be
 checked here. Likewise "no warning" is an absence with **no positive control**: nothing establishes
 that this capture would have shown a warning had one been emitted. Read it as "none observed", not

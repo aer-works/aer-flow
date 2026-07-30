@@ -3038,16 +3038,17 @@ def _agy_unlisted_model_acceptance():
     request. AER has no attribution surface -- the same reason docs/vendor-doc-audit.md's own scope
     note declines to say this "routes silently to the default". Nor does this claim an absence of a
     warning: "no warning" would need a positive control for a warning actually firing on some other
-    input, which does not exist. The detail string below prints the raw tail of what agy said, so a
+    input, which does not exist. The detail string below prints the raw text of what agy said, so a
     reader can look for one, rather than asserting there is none.
 
     SENTINEL, decided explicitly rather than inherited from the issue. The direction that matters is
     ACCEPTANCE, not rejection: a future agy erroring on `gemini-3-flash` is not silent -- a dispatch
     pinned to it would fail LOUDLY, which is not the failure mode AER's cost/attribution assumption
-    depends on. But agy WIDENING acceptance (`gemini-3-pro` starting to succeed too, or any other
-    unlisted shape joining `gemini-3-flash`'s side) would silently make that assumption wronger, with
-    nothing else in this repo positioned to notice. That is the vendor-changing-silently-under-a-
-    committed-design bar the README sets, so this is a sentinel for the ACCEPT side of the asymmetry.
+    depends on. But agy WIDENING acceptance (`gemini-3-pro` starting to succeed too, or drift in the
+    two probed names (`gemini-3-flash`, `gemini-3-pro`); a third unlisted name is explicitly not
+    covered) would silently make that assumption wronger, with nothing else in this repo positioned
+    to notice. That is the vendor-changing-silently-under-a-committed-design bar the README sets, so
+    this is a sentinel for the ACCEPT side of the asymmetry.
     """
     probe = ["-p", "reply with exactly the word PONG"]
 
@@ -3062,8 +3063,12 @@ def _agy_unlisted_model_acceptance():
     text_f, text_p = (out_f + err_f), (out_p + err_p)
     class_f, class_p = _classify_model_outcome(rc_f, text_f), _classify_model_outcome(rc_p, text_p)
 
-    detail = (f"flash: rc={rc_f} {class_f} tail={text_f.strip()[-160:]!r} || "
-              f"pro: rc={rc_p} {class_p} tail={text_p.strip()[-160:]!r}")
+    def _clip(s: str) -> str:
+        t = s.strip()
+        return t[:160] + " ... " + t[-160:] if len(t) > 320 else t
+
+    detail = (f"flash: rc={rc_f} {class_f} text={_clip(text_f)!r} || "
+              f"pro: rc={rc_p} {class_p} text={_clip(text_p)!r}")
 
     if "ambiguous" in (class_f, class_p):
         return INCONCLUSIVE, ("at least one unlisted arm's outcome cannot be attributed to model "
