@@ -279,7 +279,10 @@ TEMPLATES = {
         # (#510) -- see `docs/vendor-capabilities.md`'s `agy models` section. `verify.py`'s CHEAP pins
         # the same way. STEP 9 of `pixi run audit-completeness` checks these names against that
         # register, because a name the CLI will not accept is #547's failure class.
-        "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
+        #
+        # Flash tier by operator directive (#742): frontier effort is an explicit --model override
+        # for the pass that must notice something off-list, never the default.
+        "adapter": "gemini", "model": "gemini-3.6-flash-high", "effort": None,
         "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
@@ -290,7 +293,8 @@ TEMPLATES = {
                 "dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's "
                 "timeout exercises that equally -- so do not reach for the skip-permissions grant "
                 "expecting it to buy that.",
-        "adapter": "gemini", "model": "gemini-3.1-pro-high", "effort": None,
+        # Same tier directive as `advise` (#742).
+        "adapter": "gemini", "model": "gemini-3.6-flash-high", "effort": None,
         "read_files": True, "write_files": True,
         "run_shell_commands": True, "network_access": True,
         "timeout_minutes": 40,
@@ -298,12 +302,17 @@ TEMPLATES = {
     "review": {
         "_use": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose "
                 "rationale asserts something. The default for any PR touching src/ or making a claim "
-                "in docs/. This is the tier that has actually caught the defects.",
+                "in docs/.",
         # No workspace write (#649). A reviewer's deliverable is its report, which lands in
         # AER_OUTPUT_DIR — a directory a withheld write still reaches on this adapter. Until that
         # existed, every dispatch here granted the reviewer the ability to edit the very code it was
         # reviewing, purely so it could save a file.
-        "adapter": "claude", "model": "opus", "effort": "xhigh",
+        #
+        # sonnet/high by operator directive (#742): four sonnet passes on 2026-07-30 caught
+        # only-verified findings, one proven by reverting the fix under the new tests. What sonnet
+        # would MISS versus a frontier pass is unmeasured (no parallel arm ran) -- escalate with an
+        # explicit --model override when the review must notice something off-list.
+        "adapter": "claude", "model": "sonnet", "effort": "high",
         "read_files": True, "write_files": False,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
