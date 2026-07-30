@@ -221,6 +221,7 @@ vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
+audit-phase3 = { cmd = "python -u tools/audit-completeness/phase3.py" }
 
 # Needs full history: it diffs against origin/main. See recordonce.py (#671).
 audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }

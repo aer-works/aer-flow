@@ -95,6 +95,18 @@ def selftest():
     return 0 if ok else 1
 
 
+def print_phase3_status():
+    res = subprocess.run(
+        [sys.executable, "tools/audit-completeness/phase3.py"],
+        capture_output=True,
+        text=True,
+    )
+    for line in res.stdout.splitlines():
+        if line.startswith("PHASE3:"):
+            print(line, flush=True)
+            break
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest()
@@ -102,6 +114,7 @@ def main():
     names = FAST if "--fast" in sys.argv else GATES
     failed = run_gates(names, pixi_runner)
     print()
+    print_phase3_status()
     print(summarise(names, failed))
     return 1 if failed else 0
 
