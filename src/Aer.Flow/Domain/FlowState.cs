@@ -150,7 +150,10 @@ public sealed record StepState(
     bool PauseRecordedForLatestExecution = false,
     StepStatus? PausedOutcome = null,
     ExecutionId? PendingSupplementaryExecutionId = null,
-    bool IsPendingSupersedeTarget = false);
+    bool IsPendingSupersedeTarget = false,
+    DateTimeOffset? RetryNotBefore = null,
+    int? RetryDelayMs = null,
+    ExecutionId? RetryScheduledForExecutionId = null);
 
 /// <summary>
 /// A step-less supplementary execution still awaiting completion (spec §17.3): minted outside the

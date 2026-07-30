@@ -18,6 +18,7 @@ namespace Aer.Flow.Domain;
 [JsonDerivedType(typeof(WorkflowPaused), "workflowPaused")]
 [JsonDerivedType(typeof(ExternalDecisionRecorded), "externalDecisionRecorded")]
 [JsonDerivedType(typeof(WorkflowResumed), "workflowResumed")]
+[JsonDerivedType(typeof(StepRetryScheduled), "stepRetryScheduled")]
 public abstract record FlowEvent
 {
     private FlowEvent()
@@ -83,4 +84,11 @@ public abstract record FlowEvent
 
     /// <summary>The workflow is no longer paused following the referenced decision (spec §17).</summary>
     public sealed record WorkflowResumed(DecisionId DecisionId) : FlowEvent;
+
+    /// <summary>Flow has scheduled a retry backoff deadline for a failed step attempt.</summary>
+    public sealed record StepRetryScheduled(
+        StepId StepId,
+        ExecutionId ForExecutionId,
+        DateTimeOffset RetryNotBefore,
+        int RetryDelayMs) : FlowEvent;
 }

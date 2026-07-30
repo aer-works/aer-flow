@@ -114,7 +114,7 @@ Append-only, source of truth for system state reconstruction. Storage backend (J
 | Log                            | Owner             | Contains                                                                                                                                                                                                                              |
 | ------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `events.jsonl` (or equivalent) | Core, exclusively | `ExecutionStarted`, `ExecutionExited`. Core also raises `StdoutChunk`/`StderrChunk` while `CaptureOutput` is enabled — which Flow now enables for every dispatch, so it can surface a failing worker's stderr (§8.2) — but Flow records **no chunk events here**; it consumes them in memory and writes only the two lifecycle events. This is why a classification rebuilt from this log after a restart has no stderr available to it                                                                                                                                    |
-| `flow.jsonl` (or equivalent)   | Flow, exclusively | `ExecutionRequestAccepted`, `ExecutionRequestRejected`, `ExecutionSucceeded`, `ExecutionFailed`, `ExecutionCancelled`, `CancellationRequested`, `WorkflowPaused`, `ExternalDecisionRecorded`, `WorkflowResumed` |
+| `flow.jsonl` (or equivalent)   | Flow, exclusively | `ExecutionRequestAccepted`, `ExecutionRequestRejected`, `ExecutionSucceeded`, `ExecutionFailed`, `ExecutionCancelled`, `CancellationRequested`, `StepRetryScheduled`, `WorkflowPaused`, `ExternalDecisionRecorded`, `WorkflowResumed` |
 
 **Rule:** each log has exactly one writer role. Core never writes to the Flow log; Flow never writes to the Core log. This holds regardless of file format or count — if the two are later merged into one store, the ownership rule still applies per event type.
 
@@ -128,6 +128,7 @@ Append-only, source of truth for system state reconstruction. Storage backend (J
 | `ExecutionFailed`                                                 | Flow has classified a completed execution as failed                                                     | Post-execution (outcome classification)                                           |
 | `ExecutionCancelled`                                              | Flow has classified a completed execution as cancelled (§9)                                             | Post-execution (outcome classification)                                           |
 | `CancellationRequested`                                           | Flow has forwarded an on-demand cancellation request toward Core for a still-running `ExecutionId` (§9) | Mid-execution (neither admission nor outcome — the execution was already running) |
+| `StepRetryScheduled`                                              | Flow has recorded the instant before which a failed step's next machine-initiated retry may not dispatch (§10.2) | Between attempts (after outcome classification, before the retry's admission)     |
 | `WorkflowPaused` / `ExternalDecisionRecorded` / `WorkflowResumed` | A workflow has paused, received an external decision, and resumed (§17)                                 | Between steps, at arbitrary real-world duration                                   |
 
 These names are deliberately distinct from each other precisely because "admitted to run," "succeeded once run," "cancelled mid-run," and "paused awaiting a decision" are different moments. No event name may be reused across multiple meanings.
@@ -308,6 +309,18 @@ Flow has no loop or branching construct (§20). This section names a pattern —
 - It does **not** provide a way to route back to an *earlier* step in the DAG on its own. That shape requires either Case 2 encapsulation (§18.2, the loop lives inside one worker), explicit unrolling in the template (separate, named steps for each anticipated round), or the bounded `Supersede` mechanism (§17.2, §17.5) — a step declaring `SupersedeTargets` may explicitly, and only within that declared list, trigger a new execution of an earlier step. Retry-as-self-iteration itself still only loops a step in place against itself; it cannot reach backward — that capability exists elsewhere, deliberately bounded, not here.
 - The cap on attempts is a real constraint, not a formality: a worker that can never reach `"approved"` will exhaust `RetryPolicy` and fail the step terminally, exactly as designed. This is intentional — an unbounded self-improvement loop is exactly the kind of runtime logic §20 excludes Flow from providing, and bounding it is what keeps this a pattern rather than a reintroduced DSL.
 
+### 10.2 Retry Pacing (Backoff)
+
+Whether a failure retries is §10's opening rules; **when** the retry dispatches is this section (decision 0042 records why this shape).
+
+- `RetryPolicy` carries a `Backoff` policy: four named presets — `none`, `brisk`, `steady`, `patient` — or an explicit object (`InitialMs`, `Multiplier`, `MaxMs`, `Jitter`). Preset parameter values are canonical in `BackoffPolicy` (the code), not restated here; the intent ladder is none = immediate, brisk = sub-second start for tight iteration, steady = seconds-scale, patient = minutes-scale for rate-limited or contended workers.
+- A definition that omits `Backoff` gets `steady`. A definition naming an unknown preset **fails to load** — a misspelled preset must never silently become a different pacing.
+- When a failed step still has retry budget, the engine appends `StepRetryScheduled(StepId, ForExecutionId, RetryNotBefore, RetryDelayMs)` — a derived obligation recomputed from projected state every round, exactly the shape `WorkflowPaused` obligations take (§17), and idempotent per attempt: at most one per failed `ExecutionId`, keyed by `ForExecutionId`. It is appended even when the computed delay is zero (`none`), so the log always shows pacing was applied, not skipped.
+- Readiness (§11.3) gains a time dimension: a deferred step is ready when `now >= RetryNotBefore`, with one clamp — a recorded deadline lying **further away than the delay that produced it** (`RetryNotBefore − now > RetryDelayMs`) is impossible unless the clock moved backwards after scheduling, and releases the step immediately rather than stranding it.
+- The clock and the jitter source live in the engine loop exclusively. `MayRetry` stays pure, and projection/replay never consults a time source: replaying a log containing `StepRetryScheduled` events reproduces state identically with no clock at all (§12.1). The jittered delay is baked into the recorded `RetryDelayMs` at scheduling time; nothing is recomputed at read time. Jitter bounds each delay to no less than half its unjittered value, so herds of identically-shaped workflows desynchronize without any delay collapsing toward zero.
+- A deferral pauses one dispatch, never the workflow: workflow-level status stays running while a deferral is pending — a deferred retry is scheduled work, not a terminal outcome — and a deferral deadline wakes the engine even while an unrelated step is mid-flight, so a slow sibling never stretches a sub-second backoff to its own runtime.
+- Only machine-initiated retries are paced. An operator's `RetryWithRevision` (§17.2) is an explicit "retry now" and is never deferred.
+
 ---
 
 ## 11. WorkflowDefinition
@@ -326,7 +339,7 @@ WorkflowDefinition (Template)
       ├── Inputs
       ├── Outputs
       ├── DependsOn[]      (StepIds)
-      ├── RetryPolicy
+      ├── RetryPolicy      (MaxAttempts + Backoff — see §10.2)
       └── PausePoint       (optional — see §17)
            ├── SupersedeTargets[]   (StepIds; optional — see §17.1, §17.2)
            └── Kind                 (ReadyForReview default | NeedsInput — see §17.1)

@@ -51,6 +51,10 @@ public static class StateProjector
         var pendingSupplementaryExecutionIdByStepId = new Dictionary<StepId, ExecutionId>();
         var pendingSupersedeTargetStepIds = new HashSet<StepId>();
 
+        var retryNotBeforeByStepId = new Dictionary<StepId, DateTimeOffset>();
+        var retryDelayMsByStepId = new Dictionary<StepId, int>();
+        var retryScheduledForExecutionIdByStepId = new Dictionary<StepId, ExecutionId>();
+
         foreach (var flowEvent in events)
         {
             switch (flowEvent)
@@ -65,6 +69,9 @@ public static class StateProjector
                         // This dispatch is the consequence a prior decision was owed, if any — fulfilled now.
                         pendingSupplementaryExecutionIdByStepId.Remove(acceptedStepId);
                         pendingSupersedeTargetStepIds.Remove(acceptedStepId);
+                        retryNotBeforeByStepId.Remove(acceptedStepId);
+                        retryDelayMsByStepId.Remove(acceptedStepId);
+                        retryScheduledForExecutionIdByStepId.Remove(acceptedStepId);
                     }
                     else
                     {
@@ -147,6 +154,9 @@ public static class StateProjector
                             stepIdByExecutionId.TryGetValue(resumedExecutionId, out var retryStepId))
                         {
                             consecutiveFailureCountByStepId[retryStepId] = 0;
+                            retryNotBeforeByStepId.Remove(retryStepId);
+                            retryDelayMsByStepId.Remove(retryStepId);
+                            retryScheduledForExecutionIdByStepId.Remove(retryStepId);
 
                             if (supplementaryExecutionId is { } retrySupplement)
                             {
@@ -173,6 +183,12 @@ public static class StateProjector
                         }
                     }
 
+                    break;
+
+                case FlowEvent.StepRetryScheduled retryScheduled:
+                    retryNotBeforeByStepId[retryScheduled.StepId] = retryScheduled.RetryNotBefore;
+                    retryDelayMsByStepId[retryScheduled.StepId] = retryScheduled.RetryDelayMs;
+                    retryScheduledForExecutionIdByStepId[retryScheduled.StepId] = retryScheduled.ForExecutionId;
                     break;
 
                 // Mid-execution, not an outcome — the step stays Running (or Paused) until the
@@ -222,14 +238,23 @@ public static class StateProjector
                 pendingSupplementaryExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var pendingSupplement)
                     ? pendingSupplement
                     : null,
-                pendingSupersedeTargetStepIds.Contains(stepDefinition.StepId)));
+                pendingSupersedeTargetStepIds.Contains(stepDefinition.StepId),
+                retryNotBeforeByStepId.TryGetValue(stepDefinition.StepId, out var rnb) ? rnb : null,
+                retryDelayMsByStepId.TryGetValue(stepDefinition.StepId, out var rdm) ? rdm : null,
+                retryScheduledForExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var rfe) ? rfe : null));
         }
 
+        // Paused outranks a pending deferral: a deferred sibling must not make a workflow that is
+        // waiting on a human read as Running — the operator's decision surface keys on Paused, and
+        // the pump deliberately returns rather than waits while any step is paused (#712). A
+        // deferral only means Running when nothing needs a person first.
         var workflowStatus = steps.Any(step => step.Status == StepStatus.Running)
             ? WorkflowStatus.Running
             : steps.Any(step => step.Status == StepStatus.Paused)
                 ? WorkflowStatus.Paused
-                : WorkflowStatus.Terminal;
+                : steps.Any(step => step.RetryNotBefore != null)
+                    ? WorkflowStatus.Running
+                    : WorkflowStatus.Terminal;
 
         // Still pending: accepted, but no terminal event recorded for it yet — exactly the same
         // "no terminal event means Running-or-crashed" rule §6 already applies to step-tied

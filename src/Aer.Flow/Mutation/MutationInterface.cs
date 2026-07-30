@@ -51,7 +51,9 @@ public static class MutationInterface
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
         InFlightExecutionRegistry? inFlightExecutions = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeProvider? timeProvider = null,
+        Func<double>? jitterSource = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -65,7 +67,8 @@ public static class MutationInterface
 
         return await PumpToFixedPointAsync(
                 workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
-                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken)
+                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
+                timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
     }
 
@@ -94,7 +97,9 @@ public static class MutationInterface
         StepId? targetStepId = null,
         ExecutionId? supplementaryExecutionId = null,
         InFlightExecutionRegistry? inFlightExecutions = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeProvider? timeProvider = null,
+        Func<double>? jitterSource = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -128,7 +133,8 @@ public static class MutationInterface
 
         return await PumpToFixedPointAsync(
                 workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
-                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken)
+                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
+                timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
     }
 
@@ -236,7 +242,9 @@ public static class MutationInterface
         ICoreDispatcher dispatcher,
         ExecutionId targetExecutionId,
         InFlightExecutionRegistry? inFlightExecutions = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeProvider? timeProvider = null,
+        Func<double>? jitterSource = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -264,7 +272,8 @@ public static class MutationInterface
 
         return await PumpToFixedPointAsync(
                 workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
-                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken)
+                inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
+                timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
     }
 
@@ -296,7 +305,9 @@ public static class MutationInterface
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
         InFlightExecutionRegistry inFlightExecutions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeProvider timeProvider,
+        Func<double> jitterSource)
     {
         inFlightExecutions.Bind(eventLogWriter);
 
@@ -462,12 +473,34 @@ public static class MutationInterface
                 continue;
             }
 
+            // A derived obligation (#712; spec §10), re-evaluated from projected state on every round for
+            // the same crash-safety reason the pause obligation above is: evaluated after pause obligations
+            // and before readiness.
+            var retryObligations = GetRetryObligations(state, snapshot, timeProvider, jitterSource);
+            if (retryObligations.Count > 0)
+            {
+                foreach (var obligation in retryObligations)
+                {
+                    await eventLogWriter.AppendAsync(
+                            new FlowEvent.StepRetryScheduled(
+                                obligation.StepId,
+                                obligation.ForExecutionId,
+                                obligation.RetryNotBefore,
+                                obligation.RetryDelayMs),
+                            ioCancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                continue;
+            }
+
             // Once a host stop is underway, no newly-ready step should be dispatched — cancellation
             // is winding this call down, not making room for fresh work. The same applies to a
             // crash-recovery resubmission (M10 Phase 3): it is a brand-new dispatch to Core too.
+            var now = timeProvider.GetUtcNow();
             var readyStepIds = hostStopRequested
                 ? (IReadOnlySet<StepId>)new HashSet<StepId>()
-                : DependencyResolver.GetReadySteps(state, snapshot);
+                : DependencyResolver.GetReadySteps(state, snapshot, now);
             var toResubmit = hostStopRequested ? (IReadOnlyList<ExecutionId>)[] : crashRecovery.ToResubmit;
 
             // Snapshot declaration order, not the ready set's (unordered) iteration order, so a
@@ -539,6 +572,46 @@ public static class MutationInterface
                     continue;
                 }
 
+                var pendingDeferrals = state.Steps
+                    .Where(s => s.RetryNotBefore is not null)
+                    .Select(s => s.RetryNotBefore!.Value)
+                    .ToList();
+
+                if (pendingDeferrals.Count > 0 && !hostStopRequested && !state.Steps.Any(s => s.Status == StepStatus.Paused))
+                {
+                    var minNotBefore = pendingDeferrals.Min();
+                    var nowAtCheck = timeProvider.GetUtcNow();
+                    var delay = minNotBefore - nowAtCheck;
+
+                    if (delay > TimeSpan.Zero)
+                    {
+                        var delayTask = Task.Delay(delay, timeProvider, ioCancellationToken);
+                        var deferralHostStopWatcher = cancellationToken.CanBeCanceled
+                            ? Task.Delay(Timeout.Infinite, cancellationToken)
+                            : null;
+
+                        var deferralCandidates = new List<Task> { delayTask };
+                        if (deferralHostStopWatcher is not null)
+                        {
+                            deferralCandidates.Add(deferralHostStopWatcher);
+                        }
+
+                        var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
+                        if (completedWait == deferralHostStopWatcher)
+                        {
+                            hostStopRequested = true;
+                            ioCancellationToken = CancellationToken.None;
+                            await inFlightExecutions.RequestStopAsync(CancellationToken.None).ConfigureAwait(false);
+                        }
+
+                        continue;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
                 return state;
             }
 
@@ -555,7 +628,34 @@ public static class MutationInterface
                 waitCandidates.Add(hostStopWatcher);
             }
 
+            // A deferral deadline must wake this wait too, not only the idle branch above: a
+            // deferred retry whose sibling is still mid-flight would otherwise sleep until that
+            // sibling completes, stretching a sub-second backoff to the sibling's full runtime.
+            // The timer only wakes the loop — releasing the step stays the resolver's decision on
+            // the re-projection after `continue`, same as the idle branch.
+            Task? deferralWakeup = null;
+            if (!hostStopRequested)
+            {
+                var pendingRetryDeadlines = state.Steps
+                    .Where(s => s.RetryNotBefore is not null)
+                    .Select(s => s.RetryNotBefore!.Value)
+                    .ToList();
+                if (pendingRetryDeadlines.Count > 0)
+                {
+                    var wakeDelay = pendingRetryDeadlines.Min() - timeProvider.GetUtcNow();
+                    if (wakeDelay > TimeSpan.Zero)
+                    {
+                        deferralWakeup = Task.Delay(wakeDelay, timeProvider, ioCancellationToken);
+                        waitCandidates.Add(deferralWakeup);
+                    }
+                }
+            }
+
             var completed = await Task.WhenAny(waitCandidates).ConfigureAwait(false);
+            if (completed == deferralWakeup)
+            {
+                continue;
+            }
             if (completed == hostStopWatcher)
             {
                 hostStopRequested = true;
@@ -668,4 +768,62 @@ public static class MutationInterface
         };
 
     private sealed record PreparedExecution(ExecutionRequest Request, string OutputDirectory);
+
+    private sealed record RetryObligation(
+        StepId StepId,
+        ExecutionId ForExecutionId,
+        DateTimeOffset RetryNotBefore,
+        int RetryDelayMs);
+
+    private static List<RetryObligation> GetRetryObligations(
+        FlowState state,
+        WorkflowDefinitionSnapshot snapshot,
+        TimeProvider timeProvider,
+        Func<double> jitterSource)
+    {
+        var stepDefinitionByStepId = snapshot.Steps.ToDictionary(s => s.StepId);
+        var obligations = new List<RetryObligation>();
+
+        foreach (var stepState in state.Steps)
+        {
+            if (stepState.Status != StepStatus.Failed || stepState.LatestExecutionId is null)
+            {
+                continue;
+            }
+
+            var stepDef = stepDefinitionByStepId[stepState.StepId];
+            if (!RetryEngine.MayRetry(stepState, stepDef.RetryPolicy))
+            {
+                continue;
+            }
+
+            // A Failed step whose ConsecutiveFailureCount is zero is one an operator just reopened
+            // via RetryWithRevision (§17.2) — StateProjector resets the count for exactly that
+            // decision. Backoff exists to pace the machine's own retries; a person's explicit
+            // "retry now" is not paced, so no obligation is scheduled for it.
+            if (stepState.ConsecutiveFailureCount == 0)
+            {
+                continue;
+            }
+
+            if (stepState.RetryScheduledForExecutionId == stepState.LatestExecutionId)
+            {
+                continue;
+            }
+
+            double jitterSample = jitterSource();
+            int attempt = stepState.ConsecutiveFailureCount;
+            TimeSpan delay = stepDef.RetryPolicy.Backoff.DelayFor(attempt, jitterSample);
+            int delayMs = (int)Math.Round(delay.TotalMilliseconds);
+            DateTimeOffset notBefore = timeProvider.GetUtcNow().AddMilliseconds(delayMs);
+
+            obligations.Add(new RetryObligation(
+                stepState.StepId,
+                stepState.LatestExecutionId.Value,
+                notBefore,
+                delayMs));
+        }
+
+        return obligations;
+    }
 }

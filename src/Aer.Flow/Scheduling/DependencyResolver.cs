@@ -19,7 +19,12 @@ public static class DependencyResolver
     /// the derived complement (<see cref="StepStatus.Failed"/> and not <c>MayRetry</c>), never a
     /// stored event.
     /// </summary>
-    public static IReadOnlySet<StepId> GetReadySteps(FlowState state, WorkflowDefinitionSnapshot snapshot)
+    // `now` is required rather than defaulted, and that is a measured hazard, not style: a
+    // defaulted DateTimeOffset is year one, which puts every deferral deadline ~2000 years in the
+    // future -- further away than any delay -- so the skew clamp below reads the omission as a
+    // backwards clock jump and releases the step immediately. A caller that forgot the clock would
+    // silently reinstate the zero-delay retry #712 exists to end.
+    public static IReadOnlySet<StepId> GetReadySteps(FlowState state, WorkflowDefinitionSnapshot snapshot, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -69,6 +74,17 @@ public static class DependencyResolver
             if (stepState.Status == StepStatus.Failed && !RetryEngine.MayRetry(stepState, stepDefinition.RetryPolicy))
             {
                 continue;
+            }
+
+            if (stepState.RetryNotBefore is { } notBefore && stepState.RetryDelayMs is { } delayMs)
+            {
+                var remaining = notBefore - now;
+                var maxDelay = TimeSpan.FromMilliseconds(delayMs);
+                var isReadyByTime = now >= notBefore || remaining > maxDelay;
+                if (!isReadyByTime)
+                {
+                    continue;
+                }
             }
 
             if (IsReady(stepDefinition, stepState, stepStateByStepId))
