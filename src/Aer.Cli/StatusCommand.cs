@@ -271,9 +271,22 @@ public static class StatusCommand
             }
             else
             {
-                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\x{bytes[i]:x2}");
+                // charsUsed == 0 with the byte consumed means the decoder BUFFERED a valid-so-far
+                // lead/continuation byte of a multi-byte sequence -- not an invalid byte. Emitting
+                // an escape here duplicated every non-ASCII character as \xNN + the decoded char
+                // (the lane review's high finding). Advance silently; the decoder produces the
+                // character when the sequence completes, and the flush below drains a sequence
+                // truncated at end-of-input as U+FFFD (genuinely invalid bytes already surface as
+                // U+FFFD through the decoder's replacement fallback).
                 i++;
             }
+        }
+
+        var flushed = new char[2];
+        decoder.Convert([], 0, 0, flushed, 0, 2, flush: true, out _, out var flushedChars, out _);
+        for (int c = 0; c < flushedChars; c++)
+        {
+            sb.Append(flushed[c]);
         }
 
         return sb.ToString();

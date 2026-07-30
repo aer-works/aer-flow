@@ -247,4 +247,22 @@ public class CapturedWorkerStreamTests
             DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
+
+    [Fact]
+    public void EscapeNonPrintable_MultiByteUtf8_DecodesCleanly_NoSpuriousEscapes()
+    {
+        // The lane review's high finding: a buffered multi-byte lead byte was escaped as \xNN AND
+        // later decoded, so every non-ASCII character rendered twice. Three arms, one condition
+        // apart: clean multi-byte in, escape-only for a real control byte, replacement for a
+        // sequence truncated at end-of-input.
+        var clean = StatusCommand.EscapeNonPrintable(System.Text.Encoding.UTF8.GetBytes("café ☕"));
+        Assert.Equal("café ☕", clean);
+        Assert.DoesNotContain("\\x", clean);
+
+        var withEsc = StatusCommand.EscapeNonPrintable(new byte[] { (byte)'A', 0x1b, (byte)'B' });
+        Assert.Equal("A\\x1bB", withEsc);
+
+        var truncated = StatusCommand.EscapeNonPrintable(new byte[] { (byte)'A', 0xC3 });
+        Assert.Equal("A�", truncated);
+    }
 }
