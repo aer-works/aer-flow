@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import uuid
@@ -66,6 +67,89 @@ def _default_cli_path(repo_root: Path) -> Path:
     return repo_root / "src" / "Aer.Cli" / "bin" / "Debug" / "net10.0" / "Aer.Cli.exe"
 
 
+def refresh_published_engine(repo_root: Path) -> Path:
+    """#717: the engine never runs from the repo's own bin.
+
+    An engine running from `src/Aer.Cli/bin` holds locks on the very assemblies the repo's own
+    `pixi run gates` (and any dispatched build) must overwrite — measured twice in one day in both
+    directions: a worker `taskkill`ed the engine MSBuild named as its lock-holder, and the
+    orchestrator's own lint failed against the engine's locks while a dispatch merely ran. Running
+    a COPY severs the collision: the repo's binaries stay rebuildable while any number of engines
+    run.
+
+    Each distinct build gets its own directory, named by the newest mtime across the WHOLE source
+    bin tree (a single-file gate misses a rebuild that touched only a dependency DLL), and a copier
+    stages privately then commits with an atomic `os.rename` onto the versioned name. Both halves
+    exist because the first draft's copy-in-place was reviewed and refuted: two simultaneous
+    first-time copiers could tear the shared directory (stale exe beside fresh DLLs), and copy2's
+    preserved mtimes made the torn copy read "up to date" forever after. With a rename as the
+    commit point, exactly one racer publishes a complete tree; the loser discards its staging and
+    uses the winner's. Engines still running from older versioned dirs hold their own files; prune
+    skips whatever is locked and catches it on a later refresh.
+    """
+    source = _default_cli_path(repo_root)
+    if not source.exists():
+        # The caller reports the not-built error against the source path, same as before.
+        return source
+
+    stamp = max(p.stat().st_mtime_ns for p in source.parent.rglob("*") if p.is_file())
+    engines_root = repo_root / "aer-agy-loop-scratch" / "engine"
+    final = engines_root / str(stamp)
+    target = final / source.name
+
+    if not target.exists():
+        engines_root.mkdir(parents=True, exist_ok=True)
+        staging = engines_root / f"{stamp}.staging-{uuid.uuid4().hex[:8]}"
+        shutil.copytree(source.parent, staging)
+        try:
+            staging.rename(final)
+        except OSError:
+            # The other racer committed first; its tree is complete by definition of the rename.
+            shutil.rmtree(staging, ignore_errors=True)
+            if not target.exists():
+                raise
+
+        # Digit-named dirs only: a concurrent racer's live `.staging-` dir must never be swept.
+        # A dir still hosting a running engine refuses deletion and is retried next refresh.
+        for entry in engines_root.iterdir():
+            if entry.is_dir() and entry.name.isdigit() and entry != final:
+                shutil.rmtree(entry, ignore_errors=True)
+    return target
+
+
+def provision_worktree(repo: Path, branch: str) -> Path:
+    """#717's --worktree: a dispatched worker that builds or tests never works in the live repo.
+
+    Creates (or reuses) a sibling worktree for an existing branch, then runs the two provisioning
+    steps whose absence has each burned a session: `git submodule update --init` (the native
+    binding is a submodule) and `pixi run build-core` (52 dispatch/e2e tests fail on the missing
+    native lib and none of the failures names it). Reuse requires the worktree to already be on
+    the requested branch — anything else is a wrong-repo accident, refused loudly.
+    """
+    # Sanitized before it becomes a path segment: a branch like `feature/foo` would otherwise
+    # smuggle a separator into the name and pathlib would silently nest the worktree one level
+    # down (the #723 review's finding 2).
+    short = branch.split("-", 1)[0] if branch.split("-", 1)[0].isdigit() else branch[:12]
+    short = "".join(c if c.isalnum() or c in "._" else "-" for c in short)
+    path = repo.parent / f"{repo.name}-w{short}"
+
+    if path.exists():
+        current = subprocess.run(
+            ["git", "-C", str(path), "branch", "--show-current"],
+            capture_output=True, text=True, encoding="utf-8", check=True).stdout.strip()
+        if current != branch:
+            raise SystemExit(
+                f"error: worktree {path} exists but is on {current!r}, not {branch!r} -- "
+                "remove it or pick the branch it actually holds.")
+        return path
+
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", str(path), branch], check=True)
+    subprocess.run(["git", "-C", str(path), "submodule", "update", "--init"], check=True)
+    if (path / "pixi.toml").exists():
+        subprocess.run(["pixi", "run", "build-core"], cwd=str(path), check=True)
+    return path
+
+
 def budget_preamble(timeout_minutes: int, output_name: str) -> str:
     """What the worker is never otherwise told: how long it has, and that expiry destroys its work.
 
@@ -83,6 +167,25 @@ def budget_preamble(timeout_minutes: int, output_name: str) -> str:
         f"than composing the whole thing and saving it at the end. Order your work so the most "
         f"important findings are written first; being cut off should cost the tail, not everything. "
         f"If you are running short, write what you have and say what you did not get to.\n\n"
+    )
+
+
+def shell_rules_preamble(run_shell_commands: bool) -> str:
+    """The #717 rule, in every shell-granted brief — measured, not hypothetical.
+
+    A worker whose `dotnet build` reported "locked by: Aer.Cli (18780)" ran `taskkill /F` on that
+    PID and killed the engine hosting it. The gate structurally cannot stop this: it does not read
+    a shell command's arguments (#659). So the rule rides in the prompt, while the structural
+    defenses are the published engine copy and the worktree (both also #717) — this sentence is
+    the last line, not the wall.
+    """
+    if not run_shell_commands:
+        return ""
+    return (
+        "SHELL RULES: never kill, stop, or restart a process you did not start yourself -- no "
+        "taskkill/kill/Stop-Process on a PID you found in an error message or lock diagnostic. If "
+        "a file is locked by another process, report the lock and work around or stop; clearing "
+        "it is never yours to do.\n\n"
     )
 
 
@@ -115,7 +218,9 @@ def build_bindings(
             "ProducedOutputs": [{"Name": output_name}],
             "OptionalMetadata": [],
         },
-        "PromptTemplate": budget_preamble(timeout_minutes, output_name) + prompt_text,
+        "PromptTemplate": budget_preamble(timeout_minutes, output_name)
+        + shell_rules_preamble(run_shell_commands)
+        + prompt_text,
         # Split into hours: "00:90:00" is not 90 minutes under .NET's [-][d.]hh:mm:ss, it is
         # malformed. Everything below 60 was correct, which is why the default of 20 never showed it —
         # and #588 makes a larger number the natural next thing an operator reaches for.
@@ -368,7 +473,8 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true",
                         help="Resolve the template, run every guard, generate workflow/bindings, then stop without dispatching. Spends nothing.")
     parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
-    parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: <repo>/src/Aer.Cli/bin/Debug/net10.0/Aer.Cli.exe.")
+    parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: a published COPY of the repo bin (refreshed when the repo bin is newer) so the engine never holds the repo's own binaries -- #717. Passing this flag skips the copy entirely.")
+    parser.add_argument("--worktree", metavar="BRANCH", default=None, help="Provision (or reuse) a sibling git worktree of --working-directory on this existing branch -- submodules initialised, native lib built -- and dispatch there instead. #717: a worker that builds or tests never works in the live repo.")
     return parser
 
 
@@ -403,10 +509,10 @@ def main() -> int:
             setattr(args, key, value)
 
     repo_root = Path(__file__).resolve().parents[2]
-    cli_path = args.cli_path or _default_cli_path(repo_root)
-    # A dry run REPORTS the CLI's absence instead of failing on it. Requiring a built Aer.Cli.exe
-    # would put --dry-run out of reach of CI's `audit` job, which has no .NET and no build -- and
-    # being reachable there is the whole point (#639).
+    # A dry run keeps the plain repo-bin path: it never spawns the engine, and refreshing a copy
+    # would put --dry-run out of reach of CI's `audit` job, which has no .NET and no build (#639).
+    cli_path = args.cli_path if args.cli_path else (
+        _default_cli_path(repo_root) if args.dry_run else refresh_published_engine(repo_root))
     if not cli_path.exists() and not args.dry_run:
         print(f"error: Aer.Cli.exe not found at {cli_path} -- build it first (pixi run build).", file=sys.stderr)
         return 2
@@ -423,6 +529,11 @@ def main() -> int:
 
     prompt_text = args.prompt_file.read_text(encoding="utf-8")
     working_directory = args.working_directory.resolve()
+    # Not under --dry-run: provisioning creates a real worktree and runs a real build, and the dry
+    # run's whole promise is that nothing is mutated or spent (#639).
+    if args.worktree and not args.dry_run:
+        working_directory = provision_worktree(working_directory, args.worktree)
+        print(f"[dispatch.py] worktree: {working_directory} (branch {args.worktree})")
 
     workflow = build_workflow(args.worker_name, args.output_name)
     bindings = build_bindings(
