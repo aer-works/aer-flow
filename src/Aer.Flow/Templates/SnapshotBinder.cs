@@ -31,7 +31,13 @@ public static class SnapshotBinder
             definition.Steps);
     }
 
-    /// <summary>Bounded retry budget for a rename that loses a transient sharing violation (see remarks).</summary>
+    /// <summary>
+    /// Bounded retry budget for a rename that loses a transient sharing violation (see remarks).
+    /// Ten rather than <c>AtomicLaunchConfigWriter</c>'s five because the contending party here is a
+    /// reader poll loop (<c>StatusCommand</c>/<c>LaneTerminalProbe</c> re-read on an interval), not a
+    /// one-shot sibling writer — with the same linear backoff the doubled budget covers two full
+    /// reader poll periods; unmeasured beyond this fix's own race test, which is the citation.
+    /// </summary>
     private const int MaxRenameAttempts = 10;
 
     /// <summary>
@@ -47,8 +53,12 @@ public static class SnapshotBinder
     /// disk while a direct write is still in flight (#818).
     /// <para>
     /// <b>The rename is retried, unlike that writer's retry which guards concurrent writers:</b> this
-    /// method has no concurrent-writer race (a snapshot is bound and persisted exactly once per task)
-    /// but does have a writer-vs-reader one, and measurement while building this fix's own race test
+    /// method ASSUMES no concurrent writer — "a snapshot is bound and persisted exactly once per task"
+    /// is a caller invariant upheld by <c>RunCommand</c>'s bind-or-load choice, not something this
+    /// method enforces (its <c>File.Exists</c> check has an unguarded window; two racing engines on
+    /// one task directory would be refused earlier by the journal's ConcurrencyGuard, which is the
+    /// actual enforcement point). What it does guard against is the writer-vs-reader race, and
+    /// measurement while building this fix's own race test
     /// showed Windows' overwrite-rename needs the destination briefly exclusive: a reader with
     /// <paramref name="snapshotFilePath"/> open at that instant (e.g. <see cref="LoadFromFileAsync"/>'s
     /// <see cref="File.ReadAllTextAsync(string, CancellationToken)"/>, default <c>FileShare.Read</c>)
