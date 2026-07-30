@@ -176,7 +176,11 @@ public static class StatusCommand
 
     public static string FormatStepStatus(StepState step, IReadOnlyList<FlowEvent> events)
     {
-        if (IsTerminal(step.Status))
+        // Probe ONLY steps claiming a live engine. Paused is a mask over an already-terminal
+        // outcome (StateProjector) -- its engine has legitimately exited, and probing it stamped
+        // every healthy paused step "crash recovery will classify" (the lane review's high
+        // finding). Pending has no execution yet, so no liveness claim applies there either.
+        if (step.Status is not StepStatus.Running)
         {
             return step.Status.ToString();
         }
@@ -199,9 +203,6 @@ public static class StatusCommand
             _ => $"liveness unknown ({probeResult.Why})",
         };
     }
-
-    private static bool IsTerminal(StepStatus status) =>
-        status is StepStatus.Succeeded or StepStatus.Failed or StepStatus.Cancelled or StepStatus.Rejected;
 
     /// <summary>
     /// <c>flow.jsonl</c>'s own last-write time (UTC), append-only so this is exactly "when the

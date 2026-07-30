@@ -96,6 +96,16 @@ public class EngineLivenessProbeTests
         // Probe failure arm: renders liveness unknown (<why>)
         var failureOutput = StatusCommand.FormatStepStatus(runningStepLegacy, [legacyAccepted]);
         Assert.Equal("liveness unknown (no process identity recorded)", failureOutput);
+
+        // Paused step: NO annotation even with a dead engine on record -- why is documented at
+        // the positive Running gate in StatusCommand.FormatStepStatus.
+        var pausedStepDead = new StepState(StepId, StepStatus.Paused, LatestExecutionId: new ExecutionId("exec-dead"), emptyUpstreams);
+        var pausedOutput = StatusCommand.FormatStepStatus(pausedStepDead, [deadAccepted]);
+        Assert.Equal("Paused", pausedOutput);
+
+        // Pending step: no execution yet, no liveness claim -- never "liveness unknown".
+        var pendingStep = new StepState(StepId, StepStatus.Pending, LatestExecutionId: null, emptyUpstreams);
+        Assert.Equal("Pending", StatusCommand.FormatStepStatus(pendingStep, []));
     }
 
     private static ExecutionRequest MakeRequest(string execId) =>
