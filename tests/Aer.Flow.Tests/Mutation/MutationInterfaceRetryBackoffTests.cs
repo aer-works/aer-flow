@@ -669,6 +669,92 @@ public class MutationInterfaceRetryBackoffTests
         }
     }
 
+    // 13. An expired deferral whose step is blocked on a terminally failed dependency is a fixed
+    // point. Before the future-deadline filter in the idle wait, this state was a zero-delay spin:
+    // nothing ready (the dependency is not Succeeded), nothing in flight, and a deadline in the
+    // past producing delay <= 0 -> continue -> re-project -> repeat, forever, at full CPU.
+    [Fact]
+    public async Task Test13_Expired_deferral_blocked_on_failed_dependency_is_a_fixed_point_not_a_spin()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
+
+        try
+        {
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-retry-13"),
+                new WorkflowTemplateId("template-retry-13"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(StepA, "worker-a", [], ["outA.txt"], DependsOn: [], RetryPolicy: new RetryPolicy(MaxAttempts: 1)),
+                    new WorkflowStepDefinition(StepB, "worker-b", [], ["outB.txt"], DependsOn: [StepA], RetryPolicy: new RetryPolicy(MaxAttempts: 2, Backoff: BackoffPolicy.Steady))
+                ]);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["worker-a"] = new WorkerBinding.Process(
+                    new WorkerContract("worker-a", [], [new ProducedOutput("outA.txt")], []),
+                    ExitCleanlyWithoutWriting(),
+                    TimeSpan.FromSeconds(30)),
+                ["worker-b"] = new WorkerBinding.Process(
+                    new WorkerContract("worker-b", [], [new ProducedOutput("outB.txt")], []),
+                    ExitCleanlyWithoutWriting(),
+                    TimeSpan.FromSeconds(30))
+            };
+
+            // The stranded shape, written as history: A succeeded, B failed and was deferred, then
+            // A reran (a supersede consequence) and failed permanently -- all before this pump
+            // starts, with B's deadline already in the past.
+            var aFirst = new ExecutionId("a-1");
+            var bAttempt = new ExecutionId("b-1");
+            var aRerun = new ExecutionId("a-2");
+            await using (var writerInit = new FlowEventLogWriter(logPath))
+            {
+                var ct = TestContext.Current.CancellationToken;
+                await writerInit.AppendAsync(new FlowEvent.ExecutionRequestAccepted(
+                    new ExecutionRequest(aFirst, new WorkflowId("wf-13"), StepA, "worker-a", [], ["outA.txt"], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId>())), ct);
+                await writerInit.AppendAsync(new FlowEvent.ExecutionSucceeded(aFirst), ct);
+                await writerInit.AppendAsync(new FlowEvent.ExecutionRequestAccepted(
+                    new ExecutionRequest(bAttempt, new WorkflowId("wf-13"), StepB, "worker-b", [], ["outB.txt"], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId> { [StepA] = aFirst })), ct);
+                await writerInit.AppendAsync(new FlowEvent.ExecutionFailed(bAttempt, FailureClassification.Retryable, "boom"), ct);
+                await writerInit.AppendAsync(new FlowEvent.StepRetryScheduled(
+                    StepB, bAttempt, fakeTime.GetUtcNow().AddSeconds(-10), 500), ct);
+                await writerInit.AppendAsync(new FlowEvent.ExecutionRequestAccepted(
+                    new ExecutionRequest(aRerun, new WorkflowId("wf-13"), StepA, "worker-a", [], ["outA.txt"], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId>())), ct);
+                await writerInit.AppendAsync(new FlowEvent.ExecutionFailed(aRerun, FailureClassification.Permanent, "dead"), ct);
+            }
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            // Nothing ever advances fakeTime: the pump must return on its own, promptly.
+            var finalState = await MutationInterface.StartWorkflowAsync(
+                new WorkflowId("wf-13"),
+                taskDirectory,
+                snapshot,
+                bindings,
+                artifactsRoot,
+                reader,
+                writer,
+                dispatcher,
+                timeProvider: fakeTime,
+                jitterSource: () => 0.0,
+                cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(PumpCompletionTimeout, TestContext.Current.CancellationToken);
+
+            Assert.Equal(StepStatus.Failed, finalState.Steps.Single(s => s.StepId == StepA).Status);
+            Assert.Equal(StepStatus.Failed, finalState.Steps.Single(s => s.StepId == StepB).Status);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
     // 12. Host stop during a deferral wait (Test 12 from §6)
     [Fact]
     public async Task Test12_Host_stop_during_deferral_wait_returns_promptly()

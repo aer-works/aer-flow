@@ -574,8 +574,15 @@ public static class MutationInterface
                         continue;
                     }
 
+                    // Only a deadline still ahead justifies waiting, measured against the same `now`
+                    // the resolver just used. A deferral whose deadline has already passed while its
+                    // step stayed un-ready is blocked on something other than time — a dependency
+                    // superseded and then terminally failed — and a passed deadline can never become
+                    // ready by waiting, so treating it as waitable turns this branch into a zero-delay
+                    // spin (delay <= 0, continue, re-project, repeat). With no future deadline, no
+                    // ready step and nothing in flight, this state IS the pump's fixed point.
                     var pendingDeferrals = state.Steps
-                        .Where(s => s.RetryNotBefore is not null)
+                        .Where(s => s.RetryNotBefore is not null && s.RetryNotBefore.Value > now)
                         .Select(s => s.RetryNotBefore!.Value)
                         .ToList();
 
