@@ -502,9 +502,9 @@ public class StateProjectorTests
     [Fact]
     public void An_ExhaustedUntil_failure_does_not_increment_the_consecutive_failure_count()
     {
-        // 0026's budget exemption at its source: a quota hit is not a failure the budget counts,
-        // so a later real failure starts from the real-failure count and BackoffPolicy's attempt
-        // number never inflates from having waited out a quota window.
+        // Both directions of the projector's ExhaustedUntil counting rule (the why lives on the
+        // ExecutionFailed case in StateProjector.cs): the quota hit leaves the count alone, the
+        // ordinary failure after it still counts.
         var first = new ExecutionId("exec-1");
         var second = new ExecutionId("exec-2");
         var events = new FlowEvent[]

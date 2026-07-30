@@ -899,16 +899,27 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             return false;
         }
 
-        int hours = match.Groups["hours"].Success ? int.Parse(match.Groups["hours"].Value, CultureInfo.InvariantCulture) : 0;
-        int minutes = match.Groups["minutes"].Success ? int.Parse(match.Groups["minutes"].Value, CultureInfo.InvariantCulture) : 0;
-        int seconds = match.Groups["seconds"].Success ? int.Parse(match.Groups["seconds"].Value, CultureInfo.InvariantCulture) : 0;
+        // TryParse, never Parse: the regex's digit groups are unbounded, and this is called on the
+        // pump's classification path, which deliberately has no catch (MutationInterface refuses
+        // to fabricate outcomes) — a thrown OverflowException here would fault the whole pump.
+        // A vendor string too absurd to parse lands in the same conservative arm as any other
+        // unparseable duration: no classification, reason preserved intact.
+        if (!TryReadGroup(match, "hours", out int hours) ||
+            !TryReadGroup(match, "minutes", out int minutes) ||
+            !TryReadGroup(match, "seconds", out int seconds))
+        {
+            return false;
+        }
 
         if (hours == 0 && minutes == 0 && seconds == 0)
         {
             return false;
         }
 
-        var duration = new TimeSpan(hours, minutes, seconds);
+        // Summed as long seconds rather than the TimeSpan(h, m, s) constructor: the constructor
+        // throws ArgumentOutOfRangeException near int.MaxValue hours, and no overflow is reachable
+        // this way (int.MaxValue * 3600 fits a long with 5 orders of magnitude to spare).
+        var duration = TimeSpan.FromSeconds((hours * 3600L) + (minutes * 60L) + seconds);
         if (duration <= TimeSpan.Zero)
         {
             return false;
@@ -917,5 +928,12 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         classification = FailureClassification.ExhaustedUntil;
         retryNotBefore = timeProvider.GetUtcNow().Add(duration);
         return true;
+    }
+
+    private static bool TryReadGroup(Match match, string groupName, out int value)
+    {
+        value = 0;
+        return !match.Groups[groupName].Success
+            || int.TryParse(match.Groups[groupName].Value, NumberStyles.None, CultureInfo.InvariantCulture, out value);
     }
 }
