@@ -165,6 +165,10 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
     [Fact]
     public void Many_concurrent_cold_start_writers_with_identical_content_do_not_throw()
     {
+        // Deliberately NOT skipped off Windows, unlike the siblings above: "no writer throws" is a
+        // claim worth holding on every platform. But the CONTENTION only reproduces where renames
+        // take the sharing violation (#682 was measured on Windows), so off Windows this asserts
+        // the happy path, not the retry path -- the reproduction is Windows-only.
         var path = Path_("settings.json");
         const string content = """{"hooks":"canonical"}""";
         const int writerCount = 40;

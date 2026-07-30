@@ -88,8 +88,10 @@ internal static class AtomicLaunchConfigWriter
 
                 // #682: a losing rename did not need to win -- if some other writer's identical
                 // content already landed, this attempt's goal is already satisfied, regardless of
-                // how many attempts remain. Checked on every failure, not only at MaxAttempts, so a
-                // large cold-start herd stops contending as soon as one of them succeeds.
+                // how many attempts remain. Checked on every failure, not only at MaxAttempts. This
+                // narrows the exhaustion window sharply rather than closing it: AlreadyHolds' own
+                // read can lose the same sharing-violation race (its catch returns false), so a
+                // herd member that keeps losing that read on every remaining attempt still throws.
                 if (AlreadyHolds(path, content))
                 {
                     return;
