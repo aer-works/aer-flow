@@ -95,6 +95,28 @@ def selftest():
     return 0 if ok else 1
 
 
+def print_doc_ledger_status():
+    res = subprocess.run(
+        [sys.executable, "tools/audit-completeness/docledger.py"],
+        capture_output=True,
+        text=True,
+    )
+    # First line only (the count), UNLESS the checker is reporting a fault -- a FAIL (bad ledger,
+    # done-without-evidence) must never be scraped into silence. Filtering a checker's output for
+    # the happy prefix is the exact anti-pattern this file's own header records (#685's incident),
+    # and the first draft of this function reintroduced it -- caught by the lane review.
+    printed = False
+    for line in res.stdout.splitlines():
+        if line.startswith("DOC LEDGER:") and not printed:
+            print(line, flush=True)
+            printed = True
+        elif line.startswith("FAIL"):
+            print(f"DOC LEDGER {line}", flush=True)
+            printed = True
+    if not printed and res.returncode != 0:
+        print(f"DOC LEDGER: checker exited {res.returncode} with unrecognized output -- run `pixi run audit-doc-ledger`", flush=True)
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest()
@@ -102,6 +124,7 @@ def main():
     names = FAST if "--fast" in sys.argv else GATES
     failed = run_gates(names, pixi_runner)
     print()
+    print_doc_ledger_status()
     print(summarise(names, failed))
     return 1 if failed else 0
 
