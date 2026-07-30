@@ -68,47 +68,81 @@ public static class WorkerBindingResolver
         var bindings = new Dictionary<string, WorkerBinding>(config.Count);
         foreach (var (workerName, entry) in config)
         {
-            if (!adapters.TryGetValue(entry.Adapter, out var adapter))
-            {
-                throw new UnknownWorkerAdapterException(entry.Adapter);
-            }
-
-            // Both refusals read a grant as deciding what the worker can do, which is only true for an
-            // adapter that consumes it. IPermissionGrantTranslator marks that population, and
-            // WorkerAdapterRegistryTests (#651) holds the marker to it by dispatching every registered
-            // adapter under two different grants and checking which ones change.
-            if (adapter is IPermissionGrantTranslator)
-            {
-                // Order matters, and there is a test for it: a grant can carry both faults at once, and
-                // the shell one names the mistake the operator actually made — they reached for the
-                // shell believing it escaped the write withhold. Told only that the contract is
-                // unsatisfiable, they would grant more shell.
-                RefuseIfShellDefeatsAWithheldCategory(workerName, entry.PermissionGrant);
-                RefuseIfTheContractCannotBeWritten(workerName, entry.Contract, entry.PermissionGrant, adapter);
-            }
-
-            var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
-            var invocation = new WorkerInvocation(
-                entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant,
-                workingDirectory, bindingsFileDirectory, entry.SessionId, entry.ResumeSession,
-                entry.StreamJson, entry.LogFilePath, entry.Effort,
-                // #588: the same entry.Timeout that becomes ExecutionRequest.Timeout on line below,
-                // handed to the adapter so a vendor CLI with its own internal wait limit can be told
-                // about AER's. Passing it here rather than plumbing a per-execution value is what
-                // keeps Resolve's "once per binding entry" contract intact — both come off `entry`.
-                entry.Timeout);
-            var target = adapter.Resolve(invocation, entry.Contract);
-
-            if (onWorkerStdoutLine is not null)
-            {
-                var capturedWorkerName = workerName;
-                target = target with { OnStdoutLine = line => onWorkerStdoutLine(capturedWorkerName, line) };
-            }
-
-            bindings[workerName] = new WorkerBinding.Process(entry.Contract, target, entry.Timeout);
+            bindings[workerName] = ResolveEntry(workerName, entry, adapters, profiles, bindingsFileDirectory, onWorkerStdoutLine);
         }
 
         return bindings;
+    }
+
+    /// <summary>
+    /// Same resolution as <see cref="Resolve"/>, but per-entry and deferred: every bind-time refusal
+    /// above only fires for an entry some caller actually looks up by name, never for the rest of the
+    /// file merely because it was present (#662). <c>aer run</c> still wants <see cref="Resolve"/>'s
+    /// eager form — a fresh dispatch should fail before it starts rather than partway through — but
+    /// <c>aer cancel</c>/<c>aer supply</c> act on a task directory whose run has already started, and
+    /// need only the bindings a step actually reachable from here will use.
+    /// </summary>
+    public static IReadOnlyDictionary<string, WorkerBinding> ResolveLazily(
+        IReadOnlyDictionary<string, WorkerBindingConfigEntry> config,
+        IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+        IReadOnlyDictionary<string, string>? profiles = null,
+        string? bindingsFileDirectory = null,
+        Action<string, string>? onWorkerStdoutLine = null)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(adapters);
+
+        return new LazyWorkerBindings(
+            config,
+            (workerName, entry) => ResolveEntry(workerName, entry, adapters, profiles, bindingsFileDirectory, onWorkerStdoutLine));
+    }
+
+    private static WorkerBinding ResolveEntry(
+        string workerName,
+        WorkerBindingConfigEntry entry,
+        IReadOnlyDictionary<string, IWorkerAdapter> adapters,
+        IReadOnlyDictionary<string, string>? profiles,
+        string? bindingsFileDirectory,
+        Action<string, string>? onWorkerStdoutLine)
+    {
+        if (!adapters.TryGetValue(entry.Adapter, out var adapter))
+        {
+            throw new UnknownWorkerAdapterException(entry.Adapter);
+        }
+
+        // Both refusals read a grant as deciding what the worker can do, which is only true for an
+        // adapter that consumes it. IPermissionGrantTranslator marks that population, and
+        // WorkerAdapterRegistryTests (#651) holds the marker to it by dispatching every registered
+        // adapter under two different grants and checking which ones change.
+        if (adapter is IPermissionGrantTranslator)
+        {
+            // Order matters, and there is a test for it: a grant can carry both faults at once, and
+            // the shell one names the mistake the operator actually made — they reached for the
+            // shell believing it escaped the write withhold. Told only that the contract is
+            // unsatisfiable, they would grant more shell.
+            RefuseIfShellDefeatsAWithheldCategory(workerName, entry.PermissionGrant);
+            RefuseIfTheContractCannotBeWritten(workerName, entry.Contract, entry.PermissionGrant, adapter);
+        }
+
+        var workingDirectory = ResolveWorkingDirectory(workerName, entry.WorkingDirectory, profiles);
+        var invocation = new WorkerInvocation(
+            entry.PromptTemplate, entry.Model, entry.PermissionScope, entry.PermissionGrant,
+            workingDirectory, bindingsFileDirectory, entry.SessionId, entry.ResumeSession,
+            entry.StreamJson, entry.LogFilePath, entry.Effort,
+            // #588: the same entry.Timeout that becomes ExecutionRequest.Timeout below, handed to the
+            // adapter so a vendor CLI with its own internal wait limit can be told about AER's. Passing
+            // it here rather than plumbing a per-execution value is what keeps this "once per binding
+            // entry" contract intact — both come off `entry`.
+            entry.Timeout);
+        var target = adapter.Resolve(invocation, entry.Contract);
+
+        if (onWorkerStdoutLine is not null)
+        {
+            var capturedWorkerName = workerName;
+            target = target with { OnStdoutLine = line => onWorkerStdoutLine(capturedWorkerName, line) };
+        }
+
+        return new WorkerBinding.Process(entry.Contract, target, entry.Timeout);
     }
 
     /// <summary>

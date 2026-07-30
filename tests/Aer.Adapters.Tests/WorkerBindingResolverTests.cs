@@ -668,6 +668,32 @@ public class WorkerBindingResolverTests
                 EchoAdapter()));
     }
 
+    // ---------------------------------------------------------------------------------------
+    // #662 — ResolveLazily defers every refusal above to first lookup, rather than deleting it.
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void ResolveLazily_does_not_refuse_an_unsatisfiable_entry_that_is_never_looked_up()
+    {
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+
+        var bindings = WorkerBindingResolver.ResolveLazily(ConfigWith(ArchitectContract, grant), EchoAdapter());
+
+        Assert.True(bindings.ContainsKey("architect"));
+    }
+
+    [Fact]
+    public void ResolveLazily_still_refuses_an_unsatisfiable_entry_once_it_is_looked_up()
+    {
+        // The polarity control for the test above: deferring resolution must not silently drop the
+        // #629 refusal, only delay it to the point some caller actually needs that worker's binding.
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+
+        var bindings = WorkerBindingResolver.ResolveLazily(ConfigWith(ArchitectContract, grant), EchoAdapter());
+
+        Assert.Throws<UnsatisfiableOutputContractException>(() => bindings["architect"]);
+    }
+
     /// <summary>
     /// A grant-consuming adapter that answers <see cref="IWorkerAdapter.WithheldWritesReachTheOutbox"/>
     /// with true — <see cref="IPermissionGrantTranslator"/> because the refusal only runs for that

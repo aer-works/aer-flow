@@ -26,7 +26,8 @@ public static class CancelCommand
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
     /// <exception cref="UnknownWorkerAdapterException">
-    /// The worker-binding config names an adapter not present in <paramref name="adapters"/>.
+    /// The worker-binding config names an adapter not present in <paramref name="adapters"/>, for a
+    /// worker the pump this call drives actually looks up (<see cref="WorkerBindingResolver.ResolveLazily"/>, #662).
     /// </exception>
     /// <exception cref="Aer.Flow.Mutation.UnknownExecutionIdException">
     /// <paramref name="options"/>'s <c>ExecutionId</c> was never admitted for execution.
@@ -60,7 +61,10 @@ public static class CancelCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
-        var workerBindings = WorkerBindingResolver.Resolve(
+        // Lazy (#662): cancel targets a task 'aer run' already started — it does not need to know how
+        // to dispatch a worker it will never dispatch, so a bindings file naming an unresolvable one
+        // must not block cancelling a different, already-dispatched execution.
+        var workerBindings = WorkerBindingResolver.ResolveLazily(
             bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
