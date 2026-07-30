@@ -1,0 +1,97 @@
+using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
+using Aer.Flow.Projection;
+using Aer.Flow.Store;
+
+namespace Aer.Flow.Tests.Mutation;
+
+public class RoomMutationInterfaceTests : IDisposable
+{
+    private readonly string _tempDirectory;
+    private readonly string _roomLogPath;
+
+    public RoomMutationInterfaceTests()
+    {
+        _tempDirectory = Path.Combine(Path.GetTempPath(), "aer_room_mut_tests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDirectory);
+        _roomLogPath = Path.Combine(_tempDirectory, "room.jsonl");
+    }
+
+    [Fact]
+    public async Task Mutation_interface_dispatches_escalates_and_resolves_held_work()
+    {
+        var laneRef = new HeldWorkRef("lanes/lane-1");
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        var state1 = await RoomMutationInterface.DispatchHeldWorkAsync(_tempDirectory, laneRef, "shape-1", TimeSpan.FromMinutes(10), "op-alice", reader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Single(state1.HeldWork);
+        Assert.Equal(HeldWorkStatus.Dispatched, state1.HeldWork[laneRef].Status);
+
+        var state2 = await RoomMutationInterface.EscalateHeldWorkAsync(_tempDirectory, laneRef, "op-bob", reader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HeldWorkStatus.Escalated, state2.HeldWork[laneRef].Status);
+        Assert.Equal("op-bob", state2.HeldWork[laneRef].EscalatedTo);
+
+        var citation = new LaneJournalCitation("lanes/lane-1", new ExecutionId("exec-1"), "executionSucceeded", 1);
+        var state3 = await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HeldWorkStatus.Resolved, state3.HeldWork[laneRef].Status);
+        Assert.Equal(citation, state3.HeldWork[laneRef].Citation);
+    }
+
+    [Fact]
+    public async Task Dispatching_duplicate_ref_throws_InvalidRoomMutationException()
+    {
+        var laneRef = new HeldWorkRef("lanes/lane-1");
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        await RoomMutationInterface.DispatchHeldWorkAsync(_tempDirectory, laneRef, "shape-1", TimeSpan.FromMinutes(10), "op-alice", reader, writer, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(async () =>
+            await RoomMutationInterface.DispatchHeldWorkAsync(_tempDirectory, laneRef, "shape-2", TimeSpan.FromMinutes(5), "op-alice", reader, writer, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Escalating_unknown_ref_throws_InvalidRoomMutationException()
+    {
+        var laneRef = new HeldWorkRef("lanes/unknown");
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(async () =>
+            await RoomMutationInterface.EscalateHeldWorkAsync(_tempDirectory, laneRef, "op-bob", reader, writer, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Resolving_already_resolved_ref_throws_InvalidRoomMutationException()
+    {
+        var laneRef = new HeldWorkRef("lanes/lane-1");
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        await RoomMutationInterface.DispatchHeldWorkAsync(_tempDirectory, laneRef, "shape-1", TimeSpan.FromMinutes(10), "op-alice", reader, writer, TestContext.Current.CancellationToken);
+
+        var citation = new LaneJournalCitation("lanes/lane-1", new ExecutionId("exec-1"), "executionSucceeded", 1);
+        await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(async () =>
+            await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken));
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDirectory))
+        {
+            try
+            {
+                Directory.Delete(_tempDirectory, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+}
