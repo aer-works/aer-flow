@@ -150,6 +150,45 @@ def provision_worktree(repo: Path, branch: str) -> Path:
     return path
 
 
+def _git(workdir: Path, *argv: str) -> str | None:
+    """One git read against the workdir, or None when it is not a git repo (or git is absent)."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(workdir), *argv],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _git_head(workdir: Path) -> str | None:
+    return _git(workdir, "rev-parse", "HEAD")
+
+
+def _print_workspace_truth(workdir: Path, head_before: str | None) -> None:
+    """#731: what the run actually did to the workspace, computed here, never by the worker.
+
+    A worker's summary is a self-report; every one this register was designed from had to be
+    verified against the real diff by hand, and that check caught real gaps. Printed on failure
+    too -- what a dead worker left uncommitted is exactly what the orchestrator needs next.
+    Empty-output lines are printed as (none) rather than omitted: silence would be ambiguous
+    between "clean" and "not a git repo", and only one of those is evidence.
+    """
+    if head_before is None:
+        return
+    print(f"\n[dispatch.py] workspace truth ({workdir}):", file=sys.stderr)
+    for label, value in (
+        ("uncommitted", _git(workdir, "status", "--short")),
+        ("commits added", _git(workdir, "log", "--oneline", f"{head_before}..HEAD")),
+        ("diff --stat", _git(workdir, "diff", "--stat", f"{head_before}..HEAD")),
+    ):
+        if value:
+            indented = "\n".join(f"    {line}" for line in value.splitlines())
+            print(f"  {label}:\n{indented}", file=sys.stderr)
+        else:
+            print(f"  {label}: (none)", file=sys.stderr)
+
+
 def budget_preamble(timeout_minutes: int, output_name: str) -> str:
     """What the worker is never otherwise told: how long it has, and that expiry destroys its work.
 
@@ -638,6 +677,7 @@ def main() -> int:
     # stale prefix be sliced off and labelled instead of silently prepended.
     log_bytes_before = log_path.stat().st_size if log_path.exists() else None
     log_mtime_before = log_path.stat().st_mtime if log_path.exists() else None
+    head_before = _git_head(working_directory)
 
     result = subprocess.run(
         [
@@ -654,6 +694,7 @@ def main() -> int:
     )
 
     print(result.stdout, end="")
+    _print_workspace_truth(working_directory, head_before)
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
         print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
