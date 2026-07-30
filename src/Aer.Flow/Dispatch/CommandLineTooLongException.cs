@@ -15,9 +15,15 @@ namespace Aer.Flow.Dispatch;
 /// </para>
 /// </para>
 /// <para>
-/// Caught in <c>MutationInterface.DispatchAndRecordOutcomeAsync</c> and recorded as an
-/// <c>ExecutionFailed</c> event carrying the refusal message with <c>FailureClassification.Permanent</c>,
-/// preventing <c>flow.jsonl</c> from being left stuck at <c>ExecutionRequestAccepted</c> (#747).
+/// <b>A recorded outcome since #747, reversing this doc's earlier position.</b> Caught in
+/// <c>MutationInterface.DispatchAndRecordOutcomeAsync</c> and recorded as <c>ExecutionFailed</c>
+/// with <c>FailureClassification.Permanent</c>, carrying the refusal message. The earlier doc
+/// extended spec §7's safe crash state (intent recorded, nothing ran, recover by re-submission)
+/// to this refusal — but §7's re-submission story only operates across a restart, and a
+/// deterministic refusal re-refuses on every re-submission, so "recoverable" could never
+/// complete. Measured 2026-07-30: four live refusals each left a log ending at
+/// <c>ExecutionRequestAccepted</c>, indistinguishable from a healthy run. §7's crash state
+/// itself is unchanged and still safe — the distinction now lives in §7's own text.
 /// </para>
 /// </summary>
 public sealed class CommandLineTooLongException : AerFlowException
