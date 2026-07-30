@@ -323,356 +323,374 @@ public static class MutationInterface
 
         while (true)
         {
-            // Captured before the log read below, not after (issue #81): a sibling dispatch's
-            // DispatchAndRecordOutcomeAsync always appends its outcome and fsyncs it before calling
-            // Unregister, so if an ExecutionId has already dropped out of this snapshot, the append
-            // that preceded its Unregister is guaranteed to already be durable — and therefore
-            // visible to the log read started right after. Reading the log first and checking the
-            // registry second (the previous order) offered no such guarantee: a sibling could finish
-            // its append-then-Unregister sequence in the gap after the read had already started,
-            // leaving a Running step that looks unregistered and unstarted-in-Core — indistinguishable
-            // from the "safe pre-spawn crash" state — even though it had, in fact, just succeeded.
-            var registeredExecutionIds = inFlightExecutions.RegisteredExecutionIds();
-
-            // A single read of the combined log per round — feeding both Flow's own projection and
-            // M10 Phase 3's crash reconciliation from one pass, rather than reading and parsing the
-            // same file twice for no new information.
-            var log = await eventLogReader.ReadSnapshotAsync(ioCancellationToken).ConfigureAwait(false);
-            var events = log.FlowEvents;
-            state = StateProjector.Project(events, snapshot);
-
-            // Keyed once per round rather than re-scanned per obligation: every crash-recovery
-            // branch below that acts on an already-accepted execution (classification or
-            // re-submission) looks up its durably recorded ExecutionRequest here instead of
-            // reconstructing one, so no new ExecutionRequestAccepted is ever needed for the same
-            // attempt.
-            var acceptedRequestByExecutionId = events
-                .OfType<FlowEvent.ExecutionRequestAccepted>()
-                .ToDictionary(e => e.Request.ExecutionId, e => e.Request);
-
-            // M10 Phase 3 (§7 full robustness): joins Core's half of the log — read back here for
-            // the first time since M7 Phase 6 wrote it — to Flow's own intents by ExecutionId (§6),
-            // distinguishing a process-bound step's "genuinely still Running" from "a prior pump
-            // crashed before recording its outcome" (until now indistinguishable, per StateProjector's
-            // own comment). A dispatch this very call still has registered is excluded — that pump is
-            // this pump, not a crashed one.
-            var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
-                state, snapshot, workerBindings, log.CoreEvents, registeredExecutionIds);
-
-            // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
-            // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
-            // cancellation request, which simply derives as too late unless the recorded exit reason
-            // was itself CancelRequested (§9's crash clause).
-            if (crashRecovery.ToClassify.Count > 0)
+            try
             {
-                foreach (var (executionId, exit) in crashRecovery.ToClassify)
+                // Captured before the log read below, not after (issue #81): a sibling dispatch's
+                // DispatchAndRecordOutcomeAsync always appends its outcome and fsyncs it before calling
+                // Unregister, so if an ExecutionId has already dropped out of this snapshot, the append
+                // that preceded its Unregister is guaranteed to already be durable — and therefore
+                // visible to the log read started right after. Reading the log first and checking the
+                // registry second (the previous order) offered no such guarantee: a sibling could finish
+                // its append-then-Unregister sequence in the gap after the read had already started,
+                // leaving a Running step that looks unregistered and unstarted-in-Core — indistinguishable
+                // from the "safe pre-spawn crash" state — even though it had, in fact, just succeeded.
+                var registeredExecutionIds = inFlightExecutions.RegisteredExecutionIds();
+
+                // A single read of the combined log per round — feeding both Flow's own projection and
+                // M10 Phase 3's crash reconciliation from one pass, rather than reading and parsing the
+                // same file twice for no new information.
+                var log = await eventLogReader.ReadSnapshotAsync(ioCancellationToken).ConfigureAwait(false);
+                var events = log.FlowEvents;
+                state = StateProjector.Project(events, snapshot);
+
+                // Keyed once per round rather than re-scanned per obligation: every crash-recovery
+                // branch below that acts on an already-accepted execution (classification or
+                // re-submission) looks up its durably recorded ExecutionRequest here instead of
+                // reconstructing one, so no new ExecutionRequestAccepted is ever needed for the same
+                // attempt.
+                var acceptedRequestByExecutionId = events
+                    .OfType<FlowEvent.ExecutionRequestAccepted>()
+                    .ToDictionary(e => e.Request.ExecutionId, e => e.Request);
+
+                // M10 Phase 3 (§7 full robustness): joins Core's half of the log — read back here for
+                // the first time since M7 Phase 6 wrote it — to Flow's own intents by ExecutionId (§6),
+                // distinguishing a process-bound step's "genuinely still Running" from "a prior pump
+                // crashed before recording its outcome" (until now indistinguishable, per StateProjector's
+                // own comment). A dispatch this very call still has registered is excluded — that pump is
+                // this pump, not a crashed one.
+                var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
+                    state, snapshot, workerBindings, log.CoreEvents, registeredExecutionIds);
+
+                // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
+                // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
+                // cancellation request, which simply derives as too late unless the recorded exit reason
+                // was itself CancelRequested (§9's crash clause).
+                if (crashRecovery.ToClassify.Count > 0)
                 {
-                    var request = acceptedRequestByExecutionId[executionId];
-                    var binding = (WorkerBinding.Process)workerBindings[request.Worker];
-                    var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
-                    var classification = OutcomeClassifier.Classify(
-                        new CoreDispatchResult(exit.ExitCode, exit.Reason), binding.Contract, outputDirectory);
+                    foreach (var (executionId, exit) in crashRecovery.ToClassify)
+                    {
+                        var request = acceptedRequestByExecutionId[executionId];
+                        var binding = (WorkerBinding.Process)workerBindings[request.Worker];
+                        var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
+                        var classification = OutcomeClassifier.Classify(
+                            new CoreDispatchResult(exit.ExitCode, exit.Reason), binding.Contract, outputDirectory);
 
-                    await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
+                        await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
 
-                continue;
-            }
-
-            // No ExecutionStarted was ever recorded for this target (§9's crash clause): the cancel
-            // wins, finalized directly — there was never anything to forward to Core in the first
-            // place, and re-dispatching now would race the intent that already decided this attempt
-            // is not to run.
-            if (crashRecovery.ToFinalizeAsCancelled.Count > 0)
-            {
-                foreach (var executionId in crashRecovery.ToFinalizeAsCancelled)
-                {
-                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                continue;
-            }
-
-            // The orphan (§7's third crash state): ExecutionStarted with no ExecutionExited, this
-            // call's own registry proving it is not still genuinely in flight here. Nothing can
-            // re-attach (§20 no daemon; the binding is spawn-and-await) and §15 forbids a second
-            // execution for the same request, so the attempt is finalized from recorded facts alone
-            // as abandoned — a real, chargeable failed attempt (§10) — regardless of whether a
-            // cancellation was also pending for it. There is no live handle left to re-issue a
-            // cancellation toward (this pump is not the one that dispatched it); the best-effort
-            // re-issue spec §7 allows for is therefore a documented no-op given aer-core's binding
-            // has no cross-process re-attach capability, not a new mechanism this phase introduces.
-            if (crashRecovery.ToFinalizeAsAbandoned.Count > 0)
-            {
-                foreach (var executionId in crashRecovery.ToFinalizeAsAbandoned)
-                {
-                    await eventLogWriter.AppendAsync(
-                            new FlowEvent.ExecutionFailed(
-                                executionId,
-                                FailureClassification.Retryable,
-                                "Abandoned during crash recovery: no ExecutionExited was recorded for this execution before Flow restarted."),
-                            ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                continue;
-            }
-
-            // A derived obligation (§17.3), re-evaluated from projected state on every round for
-            // the same crash-safety reason the pause obligation below is: the filesystem is read
-            // only here, at classification time, and the resulting ExecutionSucceeded is the
-            // durable truth from then on (§13). Must run before pause obligations, so a step that
-            // just settled this way can still owe a WorkflowPaused append in the same pass.
-            var settledNonProcessExecutionIds = NonProcessCompletionDetector.GetSettledExecutions(
-                state, snapshot, workerBindings, artifactsRootPath);
-            if (settledNonProcessExecutionIds.Count > 0)
-            {
-                foreach (var executionId in settledNonProcessExecutionIds)
-                {
-                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                continue;
-            }
-
-            // A derived obligation (§9 steps 2-3, vacuous with no process), re-evaluated from
-            // projected state on every round for the same crash-safety reason as the settlement
-            // check above. Must run before pause obligations, so a step just cancelled this way can
-            // still owe a WorkflowPaused append in the same pass.
-            var cancelledNonProcessExecutionIds = NonProcessCancellationDetector.GetCancelledExecutions(
-                state, snapshot, workerBindings);
-            if (cancelledNonProcessExecutionIds.Count > 0)
-            {
-                foreach (var executionId in cancelledNonProcessExecutionIds)
-                {
-                    await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                continue;
-            }
-
-            // A derived obligation (§17.1), re-evaluated from projected state on every round rather
-            // than welded into the dispatch continuation, so a crash between the outcome event and
-            // this append loses nothing (§7, §13). Appending changes a paused step's projected
-            // status from its terminal outcome to Paused, which must be reflected before readiness
-            // is resolved — re-reading and re-projecting the freshly appended events is simpler than
-            // threading that one status change through by hand.
-            var pauseObligations = PauseEngine.GetPauseObligations(state, snapshot);
-            if (pauseObligations.Count > 0)
-            {
-                foreach (var (stepId, executionId) in pauseObligations)
-                {
-                    await eventLogWriter.AppendAsync(new FlowEvent.WorkflowPaused(executionId, stepId), ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                continue;
-            }
-
-            // A derived obligation (#712; spec §10), re-evaluated from projected state on every round for
-            // the same crash-safety reason the pause obligation above is: evaluated after pause obligations
-            // and before readiness.
-            var retryObligations = GetRetryObligations(state, snapshot, timeProvider, jitterSource);
-            if (retryObligations.Count > 0)
-            {
-                foreach (var obligation in retryObligations)
-                {
-                    await eventLogWriter.AppendAsync(
-                            new FlowEvent.StepRetryScheduled(
-                                obligation.StepId,
-                                obligation.ForExecutionId,
-                                obligation.RetryNotBefore,
-                                obligation.RetryDelayMs),
-                            ioCancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                continue;
-            }
-
-            // Once a host stop is underway, no newly-ready step should be dispatched — cancellation
-            // is winding this call down, not making room for fresh work. The same applies to a
-            // crash-recovery resubmission (M10 Phase 3): it is a brand-new dispatch to Core too.
-            var now = timeProvider.GetUtcNow();
-            var readyStepIds = hostStopRequested
-                ? (IReadOnlySet<StepId>)new HashSet<StepId>()
-                : DependencyResolver.GetReadySteps(state, snapshot, now);
-            var toResubmit = hostStopRequested ? (IReadOnlyList<ExecutionId>)[] : crashRecovery.ToResubmit;
-
-            // Snapshot declaration order, not the ready set's (unordered) iteration order, so a
-            // round's intents are always emitted in the same sequence for the same FlowState (§13)
-            // regardless of how concurrent dispatches later complete.
-            foreach (var stepDefinition in snapshot.Steps)
-            {
-                if (!readyStepIds.Contains(stepDefinition.StepId))
-                {
                     continue;
                 }
 
-                if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding))
+                // No ExecutionStarted was ever recorded for this target (§9's crash clause): the cancel
+                // wins, finalized directly — there was never anything to forward to Core in the first
+                // place, and re-dispatching now would race the intent that already decided this attempt
+                // is not to run.
+                if (crashRecovery.ToFinalizeAsCancelled.Count > 0)
                 {
-                    throw new UnresolvedWorkerException(
-                        $"No WorkerBinding registered for Worker '{stepDefinition.Worker}' (step '{stepDefinition.StepId}').");
+                    foreach (var executionId in crashRecovery.ToFinalizeAsCancelled)
+                    {
+                        await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    continue;
                 }
 
-                // §7's write-sequence rule, extended to a concurrent round: each intent is appended
-                // and fsync'd here — awaited sequentially, in declaration order — before that step's
-                // own dispatch is even started, and before the next step's intent is written.
-                var prepared = await PrepareExecutionAsync(
-                        workflowId, stepDefinition, snapshot, state, binding, artifactsRootPath, eventLogWriter, ioCancellationToken)
-                    .ConfigureAwait(false);
-
-                // A non-process worker (§17.3) is fully handled by the append above: no Core
-                // process to spawn, so nothing joins the in-flight set. The pump reaches its fixed
-                // point with the step awaiting external completion (no daemon, §20); a later round's
-                // NonProcessCompletionDetector call is what eventually finalizes it.
-                if (binding is WorkerBinding.Process processBinding)
+                // The orphan (§7's third crash state): ExecutionStarted with no ExecutionExited, this
+                // call's own registry proving it is not still genuinely in flight here. Nothing can
+                // re-attach (§20 no daemon; the binding is spawn-and-await) and §15 forbids a second
+                // execution for the same request, so the attempt is finalized from recorded facts alone
+                // as abandoned — a real, chargeable failed attempt (§10) — regardless of whether a
+                // cancellation was also pending for it. There is no live handle left to re-issue a
+                // cancellation toward (this pump is not the one that dispatched it); the best-effort
+                // re-issue spec §7 allows for is therefore a documented no-op given aer-core's binding
+                // has no cross-process re-attach capability, not a new mechanism this phase introduces.
+                if (crashRecovery.ToFinalizeAsAbandoned.Count > 0)
                 {
-                    // Registered under its own token (§9 steps 1-3, M10 Phase 2) — never the ambient
-                    // cancellationToken directly — so this specific execution, and only this one, can
-                    // be signalled without touching a sibling dispatched in the same round.
-                    var executionId = prepared.Request.ExecutionId;
-                    var dispatchCancellationToken = inFlightExecutions.Register(executionId);
+                    foreach (var executionId in crashRecovery.ToFinalizeAsAbandoned)
+                    {
+                        await eventLogWriter.AppendAsync(
+                                new FlowEvent.ExecutionFailed(
+                                    executionId,
+                                    FailureClassification.Retryable,
+                                    "Abandoned during crash recovery: no ExecutionExited was recorded for this execution before Flow restarted."),
+                                ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
 
-                    // Not awaited here: starts the dispatch and joins the in-flight set, so a slow
-                    // step never blocks this round from dispatching the rest of its ready work.
+                    continue;
+                }
+
+                // A derived obligation (§17.3), re-evaluated from projected state on every round for
+                // the same crash-safety reason the pause obligation below is: the filesystem is read
+                // only here, at classification time, and the resulting ExecutionSucceeded is the
+                // durable truth from then on (§13). Must run before pause obligations, so a step that
+                // just settled this way can still owe a WorkflowPaused append in the same pass.
+                var settledNonProcessExecutionIds = NonProcessCompletionDetector.GetSettledExecutions(
+                    state, snapshot, workerBindings, artifactsRootPath);
+                if (settledNonProcessExecutionIds.Count > 0)
+                {
+                    foreach (var executionId in settledNonProcessExecutionIds)
+                    {
+                        await eventLogWriter.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                // A derived obligation (§9 steps 2-3, vacuous with no process), re-evaluated from
+                // projected state on every round for the same crash-safety reason as the settlement
+                // check above. Must run before pause obligations, so a step just cancelled this way can
+                // still owe a WorkflowPaused append in the same pass.
+                var cancelledNonProcessExecutionIds = NonProcessCancellationDetector.GetCancelledExecutions(
+                    state, snapshot, workerBindings);
+                if (cancelledNonProcessExecutionIds.Count > 0)
+                {
+                    foreach (var executionId in cancelledNonProcessExecutionIds)
+                    {
+                        await eventLogWriter.AppendAsync(new FlowEvent.ExecutionCancelled(executionId), ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                // A derived obligation (§17.1), re-evaluated from projected state on every round rather
+                // than welded into the dispatch continuation, so a crash between the outcome event and
+                // this append loses nothing (§7, §13). Appending changes a paused step's projected
+                // status from its terminal outcome to Paused, which must be reflected before readiness
+                // is resolved — re-reading and re-projecting the freshly appended events is simpler than
+                // threading that one status change through by hand.
+                var pauseObligations = PauseEngine.GetPauseObligations(state, snapshot);
+                if (pauseObligations.Count > 0)
+                {
+                    foreach (var (stepId, executionId) in pauseObligations)
+                    {
+                        await eventLogWriter.AppendAsync(new FlowEvent.WorkflowPaused(executionId, stepId), ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                // A derived obligation (#712; spec §10), re-evaluated from projected state on every round for
+                // the same crash-safety reason the pause obligation above is: evaluated after pause obligations
+                // and before readiness.
+                var retryObligations = GetRetryObligations(state, snapshot, timeProvider, jitterSource);
+                if (retryObligations.Count > 0)
+                {
+                    foreach (var obligation in retryObligations)
+                    {
+                        await eventLogWriter.AppendAsync(
+                                new FlowEvent.StepRetryScheduled(
+                                    obligation.StepId,
+                                    obligation.ForExecutionId,
+                                    obligation.RetryNotBefore,
+                                    obligation.RetryDelayMs),
+                                ioCancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    continue;
+                }
+
+                // Once a host stop is underway, no newly-ready step should be dispatched — cancellation
+                // is winding this call down, not making room for fresh work. The same applies to a
+                // crash-recovery resubmission (M10 Phase 3): it is a brand-new dispatch to Core too.
+                var now = timeProvider.GetUtcNow();
+                var readyStepIds = hostStopRequested
+                    ? (IReadOnlySet<StepId>)new HashSet<StepId>()
+                    : DependencyResolver.GetReadySteps(state, snapshot, now);
+                var toResubmit = hostStopRequested ? (IReadOnlyList<ExecutionId>)[] : crashRecovery.ToResubmit;
+
+                // Snapshot declaration order, not the ready set's (unordered) iteration order, so a
+                // round's intents are always emitted in the same sequence for the same FlowState (§13)
+                // regardless of how concurrent dispatches later complete.
+                foreach (var stepDefinition in snapshot.Steps)
+                {
+                    if (!readyStepIds.Contains(stepDefinition.StepId))
+                    {
+                        continue;
+                    }
+
+                    if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding))
+                    {
+                        throw new UnresolvedWorkerException(
+                            $"No WorkerBinding registered for Worker '{stepDefinition.Worker}' (step '{stepDefinition.StepId}').");
+                    }
+
+                    // §7's write-sequence rule, extended to a concurrent round: each intent is appended
+                    // and fsync'd here — awaited sequentially, in declaration order — before that step's
+                    // own dispatch is even started, and before the next step's intent is written.
+                    var prepared = await PrepareExecutionAsync(
+                            workflowId, stepDefinition, snapshot, state, binding, artifactsRootPath, eventLogWriter, ioCancellationToken)
+                        .ConfigureAwait(false);
+
+                    // A non-process worker (§17.3) is fully handled by the append above: no Core
+                    // process to spawn, so nothing joins the in-flight set. The pump reaches its fixed
+                    // point with the step awaiting external completion (no daemon, §20); a later round's
+                    // NonProcessCompletionDetector call is what eventually finalizes it.
+                    if (binding is WorkerBinding.Process processBinding)
+                    {
+                        // Registered under its own token (§9 steps 1-3, M10 Phase 2) — never the ambient
+                        // cancellationToken directly — so this specific execution, and only this one, can
+                        // be signalled without touching a sibling dispatched in the same round.
+                        var executionId = prepared.Request.ExecutionId;
+                        var dispatchCancellationToken = inFlightExecutions.Register(executionId);
+
+                        // Not awaited here: starts the dispatch and joins the in-flight set, so a slow
+                        // step never blocks this round from dispatching the rest of its ready work.
+                        inFlight.Add(DispatchAndRecordOutcomeAsync(
+                            prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
+                    }
+                }
+
+                // M10 Phase 3's re-submission crash state (§7): the same attempt, not a retry — the
+                // intent is already durably recorded (ExecutionRequestAccepted), so this re-dispatches
+                // the existing request as-is rather than calling PrepareExecutionAsync, which would
+                // append a new one and charge a fresh ExecutionId against nothing.
+                foreach (var executionId in toResubmit)
+                {
+                    var request = acceptedRequestByExecutionId[executionId];
+                    var processBinding = (WorkerBinding.Process)workerBindings[request.Worker];
+                    var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
+                    var prepared = new PreparedExecution(request, outputDirectory);
+
+                    var dispatchCancellationToken = inFlightExecutions.Register(executionId);
                     inFlight.Add(DispatchAndRecordOutcomeAsync(
                         prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
                 }
-            }
 
-            // M10 Phase 3's re-submission crash state (§7): the same attempt, not a retry — the
-            // intent is already durably recorded (ExecutionRequestAccepted), so this re-dispatches
-            // the existing request as-is rather than calling PrepareExecutionAsync, which would
-            // append a new one and charge a fresh ExecutionId against nothing.
-            foreach (var executionId in toResubmit)
-            {
-                var request = acceptedRequestByExecutionId[executionId];
-                var processBinding = (WorkerBinding.Process)workerBindings[request.Worker];
-                var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRootPath, executionId);
-                var prepared = new PreparedExecution(request, outputDirectory);
+                if (inFlight.Count == 0)
+                {
+                    // A round that dispatched only non-process work still changed projected state (new
+                    // ExecutionRequestAccepted events) even though nothing joined inFlight — loop back
+                    // around to re-project and return the state that actually reflects it, rather than
+                    // the stale snapshot read at the top of this iteration.
+                    if (readyStepIds.Count > 0)
+                    {
+                        continue;
+                    }
 
-                var dispatchCancellationToken = inFlightExecutions.Register(executionId);
-                inFlight.Add(DispatchAndRecordOutcomeAsync(
-                    prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
-            }
+                    var pendingDeferrals = state.Steps
+                        .Where(s => s.RetryNotBefore is not null)
+                        .Select(s => s.RetryNotBefore!.Value)
+                        .ToList();
 
-            if (inFlight.Count == 0)
-            {
-                // A round that dispatched only non-process work still changed projected state (new
-                // ExecutionRequestAccepted events) even though nothing joined inFlight — loop back
-                // around to re-project and return the state that actually reflects it, rather than
-                // the stale snapshot read at the top of this iteration.
-                if (readyStepIds.Count > 0)
+                    if (pendingDeferrals.Count > 0 && !hostStopRequested && !state.Steps.Any(s => s.Status == StepStatus.Paused))
+                    {
+                        var minNotBefore = pendingDeferrals.Min();
+                        var nowAtCheck = timeProvider.GetUtcNow();
+                        var delay = minNotBefore - nowAtCheck;
+
+                        if (delay > TimeSpan.Zero)
+                        {
+                            var delayTask = Task.Delay(delay, timeProvider, ioCancellationToken);
+                            var deferralHostStopWatcher = cancellationToken.CanBeCanceled
+                                ? Task.Delay(Timeout.Infinite, cancellationToken)
+                                : null;
+
+                            var deferralCandidates = new List<Task> { delayTask };
+                            if (deferralHostStopWatcher is not null)
+                            {
+                                deferralCandidates.Add(deferralHostStopWatcher);
+                            }
+
+                            var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
+                            if (completedWait == deferralHostStopWatcher)
+                            {
+                                hostStopRequested = true;
+                                ioCancellationToken = CancellationToken.None;
+                                await inFlightExecutions.RequestStopAsync(CancellationToken.None).ConfigureAwait(false);
+                            }
+
+                            continue;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+
+                    return state;
+                }
+
+                // Races the round's in-flight dispatches against the host token itself (M10 Phase 2): a
+                // Task.Delay(Timeout.Infinite, ...) never completes on its own, only transitions to
+                // Canceled the instant cancellationToken fires, which Task.WhenAny treats as "done" —
+                // exactly the wakeup a host-initiated stop needs without polling.
+                var hostStopWatcher = !hostStopRequested && cancellationToken.CanBeCanceled
+                    ? Task.Delay(Timeout.Infinite, cancellationToken)
+                    : null;
+                var waitCandidates = new List<Task>(inFlight);
+                if (hostStopWatcher is not null)
+                {
+                    waitCandidates.Add(hostStopWatcher);
+                }
+
+                // A deferral deadline must wake this wait too, not only the idle branch above: a
+                // deferred retry whose sibling is still mid-flight would otherwise sleep until that
+                // sibling completes, stretching a sub-second backoff to the sibling's full runtime.
+                // The timer only wakes the loop — releasing the step stays the resolver's decision on
+                // the re-projection after `continue`, same as the idle branch.
+                Task? deferralWakeup = null;
+                if (!hostStopRequested)
+                {
+                    var pendingRetryDeadlines = state.Steps
+                        .Where(s => s.RetryNotBefore is not null)
+                        .Select(s => s.RetryNotBefore!.Value)
+                        .ToList();
+                    if (pendingRetryDeadlines.Count > 0)
+                    {
+                        var wakeDelay = pendingRetryDeadlines.Min() - timeProvider.GetUtcNow();
+                        if (wakeDelay > TimeSpan.Zero)
+                        {
+                            deferralWakeup = Task.Delay(wakeDelay, timeProvider, ioCancellationToken);
+                            waitCandidates.Add(deferralWakeup);
+                        }
+                    }
+                }
+
+                var completed = await Task.WhenAny(waitCandidates).ConfigureAwait(false);
+                if (completed == deferralWakeup)
                 {
                     continue;
                 }
-
-                var pendingDeferrals = state.Steps
-                    .Where(s => s.RetryNotBefore is not null)
-                    .Select(s => s.RetryNotBefore!.Value)
-                    .ToList();
-
-                if (pendingDeferrals.Count > 0 && !hostStopRequested && !state.Steps.Any(s => s.Status == StepStatus.Paused))
+                if (completed == hostStopWatcher)
                 {
-                    var minNotBefore = pendingDeferrals.Min();
-                    var nowAtCheck = timeProvider.GetUtcNow();
-                    var delay = minNotBefore - nowAtCheck;
+                    hostStopRequested = true;
 
-                    if (delay > TimeSpan.Zero)
-                    {
-                        var delayTask = Task.Delay(delay, timeProvider, ioCancellationToken);
-                        var deferralHostStopWatcher = cancellationToken.CanBeCanceled
-                            ? Task.Delay(Timeout.Infinite, cancellationToken)
-                            : null;
+                    // From here on every read/write this loop performs must survive the now-cancelled
+                    // ambient token so the pump can still converge (see ioCancellationToken's own
+                    // remarks above).
+                    ioCancellationToken = CancellationToken.None;
 
-                        var deferralCandidates = new List<Task> { delayTask };
-                        if (deferralHostStopWatcher is not null)
-                        {
-                            deferralCandidates.Add(deferralHostStopWatcher);
-                        }
-
-                        var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
-                        if (completedWait == deferralHostStopWatcher)
-                        {
-                            hostStopRequested = true;
-                            ioCancellationToken = CancellationToken.None;
-                            await inFlightExecutions.RequestStopAsync(CancellationToken.None).ConfigureAwait(false);
-                        }
-
-                        continue;
-                    }
-                    else
-                    {
-                        continue;
-                    }
+                    // Intent-first, for every execution still in flight, before any of them is signalled
+                    // (§7, §9 step 1) — RequestStopAsync itself enforces that ordering.
+                    await inFlightExecutions.RequestStopAsync(CancellationToken.None).ConfigureAwait(false);
+                    continue;
                 }
 
-                return state;
+                inFlight.Remove(completed);
+                await completed.ConfigureAwait(false);
             }
-
-            // Races the round's in-flight dispatches against the host token itself (M10 Phase 2): a
-            // Task.Delay(Timeout.Infinite, ...) never completes on its own, only transitions to
-            // Canceled the instant cancellationToken fires, which Task.WhenAny treats as "done" —
-            // exactly the wakeup a host-initiated stop needs without polling.
-            var hostStopWatcher = !hostStopRequested && cancellationToken.CanBeCanceled
-                ? Task.Delay(Timeout.Infinite, cancellationToken)
-                : null;
-            var waitCandidates = new List<Task>(inFlight);
-            if (hostStopWatcher is not null)
+            catch (OperationCanceledException) when (!hostStopRequested && cancellationToken.IsCancellationRequested)
             {
-                waitCandidates.Add(hostStopWatcher);
-            }
-
-            // A deferral deadline must wake this wait too, not only the idle branch above: a
-            // deferred retry whose sibling is still mid-flight would otherwise sleep until that
-            // sibling completes, stretching a sub-second backoff to the sibling's full runtime.
-            // The timer only wakes the loop — releasing the step stays the resolver's decision on
-            // the re-projection after `continue`, same as the idle branch.
-            Task? deferralWakeup = null;
-            if (!hostStopRequested)
-            {
-                var pendingRetryDeadlines = state.Steps
-                    .Where(s => s.RetryNotBefore is not null)
-                    .Select(s => s.RetryNotBefore!.Value)
-                    .ToList();
-                if (pendingRetryDeadlines.Count > 0)
-                {
-                    var wakeDelay = pendingRetryDeadlines.Min() - timeProvider.GetUtcNow();
-                    if (wakeDelay > TimeSpan.Zero)
-                    {
-                        deferralWakeup = Task.Delay(wakeDelay, timeProvider, ioCancellationToken);
-                        waitCandidates.Add(deferralWakeup);
-                    }
-                }
-            }
-
-            var completed = await Task.WhenAny(waitCandidates).ConfigureAwait(false);
-            if (completed == deferralWakeup)
-            {
-                continue;
-            }
-            if (completed == hostStopWatcher)
-            {
+                // A host stop is a request to converge, not to crash — but the two parked waits
+                // above are the only places that used to translate the ambient token into the
+                // graceful path (hostStopRequested → RequestStopAsync → converge on a no-cancel
+                // token). A cancel landing anywhere else — the loop-top log read, a dispatch
+                // preparation — surfaced as OperationCanceledException and killed the pump with
+                // in-flight processes never told to stop (#718). Route every ambient-token
+                // cancellation into the same graceful path instead; `inFlight` and the registry
+                // live outside the loop, so the next round still owns and awaits everything
+                // already running.
                 hostStopRequested = true;
-
-                // From here on every read/write this loop performs must survive the now-cancelled
-                // ambient token so the pump can still converge (see ioCancellationToken's own
-                // remarks above).
                 ioCancellationToken = CancellationToken.None;
-
-                // Intent-first, for every execution still in flight, before any of them is signalled
-                // (§7, §9 step 1) — RequestStopAsync itself enforces that ordering.
                 await inFlightExecutions.RequestStopAsync(CancellationToken.None).ConfigureAwait(false);
-                continue;
             }
-
-            inFlight.Remove(completed);
-            await completed.ConfigureAwait(false);
         }
     }
 
