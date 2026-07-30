@@ -8,11 +8,12 @@ namespace Aer.Workers.Dialogue;
 /// starting from index 0, writing each turn to <c>transcript.jsonl</c> as it happens and, once the
 /// exchange ends, writing <see cref="DialogueWorkerConfig.FinalOutputName"/> per
 /// <see cref="Aer.Workers.Dialogue.FinalOutputMode"/> (#736; see that type for what each value writes). Ends on
-/// any of three conditions — the ceiling-clamped <see cref="DialogueWorkerConfig.TurnBudget"/> turns
-/// having run (see <see cref="DialogueWorkerConfig.HardTurnCeiling"/>), or a participant's turn
-/// containing <see cref="DialogueWorkerConfig.StopSentinel"/> — and fails the whole exchange
-/// (throwing <see cref="DialogueExecutionException"/>, caught by <see cref="Program"/> and mapped to
-/// a non-zero process exit) if a vendor CLI exits non-zero or produces no text for a turn.
+/// either of two conditions — the ceiling-clamped <see cref="DialogueWorkerConfig.TurnBudget"/> turns
+/// having run (see <see cref="DialogueWorkerConfig.HardTurnCeiling"/>), or a participant calling the
+/// <c>yield</c> MCP tool during its own turn (#585, decision 0035; see
+/// <see cref="DialogueYieldWiring"/>) — and fails the whole exchange (throwing
+/// <see cref="DialogueExecutionException"/>, caught by <see cref="Program"/> and mapped to a non-zero
+/// process exit) if a vendor CLI exits non-zero or produces no text for a turn.
 /// <para>
 /// <b>Context threading is the full transcript so far</b>, not a sliding window: each turn's prompt
 /// is its speaker's <see cref="DialogueParticipant.Preamble"/>, the exchange's
@@ -32,14 +33,14 @@ namespace Aer.Workers.Dialogue;
 /// command-line ceiling a long exchange eventually exceeded.
 /// </para>
 /// <para>
-/// <b>The stop signal is a literal substring of the turn's own text</b>, not a structured per-turn
-/// output file: spike #21 already recorded that vendor CLIs are unreliable about writing extra files
-/// on cue (the walkthrough's §8 finding — <c>agy</c> asking a clarifying question and writing nothing
-/// at all) but reliably produce stdout text, so parsing the text this worker already reads for
-/// threading is the more robust of the two shapes across two different vendors' output habits, not
-/// a second per-turn contract each vendor's CLI would have to honor. The sentinel is stripped out of
-/// the text recorded on the transcript and threaded forward — a reader of the transcript (and M18's
-/// eventual conversation view) sees the participant's actual words, not the control token.
+/// <b>The stop signal is a structured MCP tool call, not a text sentinel</b> (#585, decision 0035,
+/// superseding M17 Phase 3, #166's original substring match): each participant's vendor CLI invocation
+/// is wired, by <see cref="DialogueYieldWiring"/>, to its own instance of <c>Aer.Mcp.Host</c>, which a
+/// turn can call the <c>yield</c> tool against. After a turn's process exits, this runner checks that
+/// specific participant's own capture file — never another participant's, and never the turn's own
+/// text — for a call, giving structural (not text-inferred) attribution of who yielded.
+/// <see cref="DialogueWorkerConfig.StopSentinel"/> is still parsed onto every config but no longer acted
+/// on here; see that property's own remarks and #820.
 /// </para>
 /// </summary>
 public sealed class DialogueRunner(IVendorTurnClient turnClient)
@@ -54,12 +55,14 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
 
         var effectiveTurnBudget = Math.Min(config.TurnBudget, DialogueWorkerConfig.HardTurnCeiling);
         var turns = new List<TranscriptTurn>(effectiveTurnBudget);
+        var wiredParticipants = DialogueYieldWiring.Wire(config.Participants, outputDirectory);
 
         await using (var transcript = new TranscriptWriter(Path.Combine(outputDirectory, "transcript.jsonl")))
         {
             for (var sequence = 1; sequence <= effectiveTurnBudget; sequence++)
             {
-                var speaker = config.Participants[(sequence - 1) % config.Participants.Count];
+                var wired = wiredParticipants[(sequence - 1) % wiredParticipants.Count];
+                var speaker = wired.Participant;
                 var prompt = BuildPrompt(speaker, config.SeedPrompt, turns);
                 var promptPath = Path.Combine(outputDirectory, $"prompt-turn-{sequence}.txt");
                 await File.WriteAllTextAsync(promptPath, prompt, cancellationToken).ConfigureAwait(false);
@@ -90,13 +93,13 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
                 }
 
                 var text = result.Text;
-                var isStop = TryStripStopSentinel(config.StopSentinel, ref text);
+                var capture = DialogueYieldWiring.ReadAndConsumeCapture(wired.CaptureFilePath);
 
-                var turn = new TranscriptTurn(sequence, speaker.Role, speaker.Vendor, prompt, text);
+                var turn = new TranscriptTurn(sequence, speaker.Role, speaker.Vendor, prompt, text, capture?.Outcome, capture?.Note);
                 await transcript.AppendAsync(turn, cancellationToken).ConfigureAwait(false);
                 turns.Add(turn);
 
-                if (isStop)
+                if (capture is not null)
                 {
                     break;
                 }
@@ -149,28 +152,4 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
 
     /// <summary>The single "Role: Text" rendering both <see cref="BuildPrompt"/>'s context-threading and <see cref="RenderTranscript"/>'s final output share.</summary>
     private static string FormatTurnLine(TranscriptTurn turn) => $"{turn.Role}: {turn.Text}";
-
-    /// <summary>
-    /// If <paramref name="stopSentinel"/> is configured and occurs in <paramref name="text"/>,
-    /// removes the sentinel substring and trims the result, returning true. Leaves
-    /// <paramref name="text"/> untouched and returns false otherwise. Only the sentinel occurrence
-    /// is removed — the rest of the turn's text (before and after it) is preserved, so a participant
-    /// may still say something meaningful in its final turn, not just the sentinel alone.
-    /// </summary>
-    private static bool TryStripStopSentinel(string? stopSentinel, ref string text)
-    {
-        if (string.IsNullOrEmpty(stopSentinel))
-        {
-            return false;
-        }
-
-        var index = text.IndexOf(stopSentinel, StringComparison.Ordinal);
-        if (index < 0)
-        {
-            return false;
-        }
-
-        text = (text[..index] + text[(index + stopSentinel.Length)..]).Trim();
-        return true;
-    }
 }

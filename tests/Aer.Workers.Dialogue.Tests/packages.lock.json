@@ -99,8 +99,20 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "aer.workers.dialogue": {
+      "aer.mcp": {
         "type": "Project"
+      },
+      "aer.mcp.host": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Mcp": "[0.14.0, )"
+        }
+      },
+      "aer.workers.dialogue": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Mcp.Host": "[0.14.0, )"
+        }
       }
     }
   }

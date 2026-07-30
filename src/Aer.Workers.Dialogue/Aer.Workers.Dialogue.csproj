@@ -7,4 +7,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- DialogueYieldWiring spawns this per participant (#585); the ProjectReference is what gets
+         Aer.Mcp.Host.dll copied next to this project's own output so AppContext.BaseDirectory can
+         find it at runtime. -->
+    <ProjectReference Include="..\Aer.Mcp.Host\Aer.Mcp.Host.csproj" />
+  </ItemGroup>
+
 </Project>

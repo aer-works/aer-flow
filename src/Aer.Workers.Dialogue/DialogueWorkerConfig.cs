@@ -27,11 +27,12 @@ namespace Aer.Workers.Dialogue;
 /// parameter.
 /// </param>
 /// <param name="StopSentinel">
-/// A literal string a turn's text may contain to signal the exchange is done early (M17 Phase 3,
-/// #166) — checked against each turn's raw text after it is confirmed non-empty; if present, the
-/// sentinel substring is stripped from the recorded/threaded text and the exchange ends after that
-/// turn, before <see cref="TurnBudget"/> is necessarily exhausted. Null or empty means no early stop
-/// is configured — the exchange always runs the full (ceiling-clamped) <see cref="TurnBudget"/>.
+/// The original M17 Phase 3 (#166) early-stop mechanism — a literal string a turn's text could
+/// contain to end the exchange early. <b>Parsed and carried on every config, but no longer acted on by
+/// <see cref="DialogueRunner"/></b>: #585/decision 0035 replaced it with a structured <c>yield</c> MCP
+/// tool call (see <see cref="DialogueYieldWiring"/>). Retiring the field itself — and the authoring
+/// surface in <c>Aer.Ui</c>/<c>Aer.Ui.Core</c> that still sets it — is #820's scope, deliberately not
+/// done here.
 /// </param>
 /// <param name="Participants">
 /// The exchange's sides, in speaking order — turn 1 goes to <c>Participants[0]</c>, turn 2 to

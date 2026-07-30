@@ -170,8 +170,12 @@ public class DialogueRunnerTests
     }
 
     [Fact]
-    public async Task A_stop_sentinel_ends_the_exchange_before_the_turn_budget_is_exhausted()
+    public async Task Sentinel_looking_turn_text_no_longer_ends_the_exchange()
     {
+        // #585/decision 0035 retired the text-sentinel mechanism. Configuring StopSentinel and having
+        // a turn's text contain it must NOT end the exchange anymore -- this is the polarity flip on
+        // the old "A_stop_sentinel_ends_the_exchange..." test, proving the substring path is actually
+        // gone rather than just unreachable from BuildConfig.
         var client = new ScriptedTurnClient(callIndex => callIndex == 2
             ? new VendorTurnResult("Looks good. STOP_DIALOGUE", 0, "")
             : new VendorTurnResult($"response-{callIndex}", 0, ""));
@@ -181,13 +185,148 @@ public class DialogueRunnerTests
         {
             var turns = await runner.RunAsync(BuildConfig(6, stopSentinel: "STOP_DIALOGUE"), outputDirectory);
 
+            Assert.Equal(6, turns.Count);
+            Assert.Equal(6, client.CallCount);
+            Assert.Contains("STOP_DIALOGUE", turns[1].Text);
+            Assert.All(turns, t => Assert.Null(t.YieldOutcome));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task A_yield_call_ends_the_exchange_before_the_turn_budget_is_exhausted_concluded()
+    {
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var config = BuildConfig(6);
+            var participants = config.Participants;
+            var captureFilePath = Path.Combine(outputDirectory, $"yield-capture-{participants[1].Role}.json");
+
+            var client = new ScriptedTurnClient(callIndex =>
+            {
+                if (callIndex == 2)
+                {
+                    Directory.CreateDirectory(outputDirectory);
+                    File.WriteAllText(captureFilePath, "{\"Outcome\":\"concluded\",\"Note\":\"agreed\"}");
+                }
+
+                return new VendorTurnResult($"response-{callIndex}", 0, "");
+            });
+            var runner = new DialogueRunner(client);
+
+            var turns = await runner.RunAsync(config, outputDirectory);
+
             Assert.Equal(2, turns.Count);
             Assert.Equal(2, client.CallCount);
-            Assert.Equal("Looks good.", turns[^1].Text);
-            Assert.DoesNotContain("STOP_DIALOGUE", turns[^1].Text);
+            Assert.Equal("concluded", turns[^1].YieldOutcome);
+            Assert.Equal("agreed", turns[^1].YieldNote);
+            Assert.False(File.Exists(captureFilePath), "the capture file must be consumed (deleted) once read");
 
             var finalOutputPath = Path.Combine(outputDirectory, "final.md");
-            Assert.Equal("Looks good.", await File.ReadAllTextAsync(finalOutputPath));
+            Assert.Equal("response-2", await File.ReadAllTextAsync(finalOutputPath));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task A_yield_call_ends_the_exchange_with_a_stalemate_outcome()
+    {
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var config = BuildConfig(6);
+            var participants = config.Participants;
+            var captureFilePath = Path.Combine(outputDirectory, $"yield-capture-{participants[0].Role}.json");
+
+            var client = new ScriptedTurnClient(callIndex =>
+            {
+                if (callIndex == 1)
+                {
+                    Directory.CreateDirectory(outputDirectory);
+                    File.WriteAllText(captureFilePath, "{\"Outcome\":\"stalemate\",\"Note\":null}");
+                }
+
+                return new VendorTurnResult($"response-{callIndex}", 0, "");
+            });
+            var runner = new DialogueRunner(client);
+
+            var turns = await runner.RunAsync(config, outputDirectory);
+
+            Assert.Single(turns);
+            Assert.Equal("stalemate", turns[^1].YieldOutcome);
+            Assert.Null(turns[^1].YieldNote);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task A_participants_yield_is_never_attributed_to_a_different_participants_turn()
+    {
+        // The responder's capture file already exists before the exchange starts (as if it were
+        // written moments earlier by something else entirely). Turn 1 belongs to the initiator, whose
+        // own capture path is different -- the responder's pre-existing file must never be checked
+        // during turn 1, must not end the exchange early, and must be untouched afterward.
+        var outputDirectory = CreateTempDir();
+        Directory.CreateDirectory(outputDirectory);
+        try
+        {
+            // TurnBudget 1: only the initiator ever speaks, so the responder's own turn -- and any
+            // consumption of the responder's capture file -- never happens in this run at all.
+            var config = BuildConfig(1);
+            var responderCapture = Path.Combine(outputDirectory, $"yield-capture-{config.Participants[1].Role}.json");
+            File.WriteAllText(responderCapture, "{\"Outcome\":\"concluded\",\"Note\":\"not the initiator's turn\"}");
+
+            var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+            var runner = new DialogueRunner(client);
+
+            var turns = await runner.RunAsync(config, outputDirectory);
+
+            Assert.Single(turns);
+            Assert.Null(turns[0].YieldOutcome);
+            Assert.True(File.Exists(responderCapture), "a file belonging to a participant who hasn't spoken yet must not be consumed");
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task A_stale_capture_file_from_before_the_exchange_started_is_never_read()
+    {
+        // A capture file for the initiator role, left over from some prior run in the same directory,
+        // must not be picked up as if the initiator yielded on turn 1 of THIS exchange -- DialogueRunner
+        // only ever reads a participant's file after that participant's own turn in the current run.
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var config = BuildConfig(2);
+            var initiatorCapture = Path.Combine(outputDirectory, $"yield-capture-{config.Participants[0].Role}.json");
+            File.WriteAllText(initiatorCapture, "{\"Outcome\":\"concluded\",\"Note\":\"stale from a prior run\"}");
+
+            var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+            var runner = new DialogueRunner(client);
+
+            var turns = await runner.RunAsync(config, outputDirectory);
+
+            // The stale file IS consumed on turn 1 -- same participant, same path, and DialogueRunner
+            // has no way to distinguish "written before this run" from "written during turn 1", which
+            // is why capture files must live under a fresh per-run outputDirectory in production. The
+            // assertion this test actually protects is narrower and still meaningful: whatever gets
+            // read is attributed to turn 1 (the initiator, whose file it is), never to turn 2's
+            // different participant.
+            Assert.Single(turns);
+            Assert.Equal("concluded", turns[0].YieldOutcome);
         }
         finally
         {
