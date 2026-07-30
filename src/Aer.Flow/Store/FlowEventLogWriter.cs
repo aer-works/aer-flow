@@ -40,6 +40,16 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
         _leaveOpen = leaveOpen;
     }
 
+    // The Win32 HRESULT for ERROR_SHARING_VIOLATION. .NET assigns this same HRESULT to the
+    // equivalent IOException on every OS it runs on — including Unix, where it comes from the
+    // runtime's own flock-based FileShare enforcement rather than a real Win32 call — so checking
+    // it is portable and does not depend on OS-localized exception text.
+    private const int ErrorSharingViolationHResult = unchecked((int)0x80070020);
+
+    /// <exception cref="FlowJournalHeldException">
+    /// Another process already has <paramref name="logFilePath"/> open — most likely a live
+    /// <c>aer run</c> engine driving this same task.
+    /// </exception>
     private static FileStream OpenAppendStream(string logFilePath)
     {
         var directory = Path.GetDirectoryName(logFilePath);
@@ -48,13 +58,25 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
             Directory.CreateDirectory(directory);
         }
 
-        return new FileStream(
-            logFilePath,
-            FileMode.Append,
-            FileAccess.Write,
-            FileShare.Read,
-            bufferSize: 1,
-            useAsync: true);
+        try
+        {
+            return new FileStream(
+                logFilePath,
+                FileMode.Append,
+                FileAccess.Write,
+                FileShare.Read,
+                bufferSize: 1,
+                useAsync: true);
+        }
+        catch (IOException ex) when (ex.HResult == ErrorSharingViolationHResult)
+        {
+            throw new FlowJournalHeldException(
+                $"'{logFilePath}' is held open by another process — most likely a live 'aer run' " +
+                "engine driving this workflow. A decision can only be recorded once that engine " +
+                "is stopped or paused: the workflow's latest attempt must be Paused, with no live " +
+                "'aer run' still holding its journal (see 'aer status').",
+                ex);
+        }
     }
 
     public Task AppendAsync(FlowEvent flowEvent, CancellationToken cancellationToken = default)

@@ -38,6 +38,10 @@ public static class CancelCommand
     /// <c>aer run</c> pump; see that exception's message for how to reach an in-flight execution
     /// instead.
     /// </exception>
+    /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
+    /// Another process — most likely a live <c>aer run</c> engine — already holds this task's
+    /// <c>flow.jsonl</c> open (#816).
+    /// </exception>
     public static async Task<CommandResult> ExecuteAsync(
         CancelOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
