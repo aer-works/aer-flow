@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Aer.Workers.Dialogue;
 
 /// <summary>
@@ -19,9 +21,10 @@ namespace Aer.Workers.Dialogue;
 /// error, since the ceiling exists to bound worst case cost, not to reject authoring intent.
 /// </param>
 /// <param name="FinalOutputName">
-/// The declared output file name this worker writes on completion (the last turn's text) — the
-/// "declared final output" the phase plan names, present so a caller's <c>WorkerContract</c> has
-/// something to validate once Phase 4 wires dispatch up.
+/// The declared output file name this worker writes on completion — the "declared final output" the
+/// phase plan names, present so a caller's <c>WorkerContract</c> has something to validate once
+/// Phase 4 wires dispatch up. What it contains is <see cref="FinalOutputMode"/>'s call: the last
+/// turn's text by default, or the full role-attributed exchange in <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/> mode.
 /// </param>
 /// <param name="StopSentinel">
 /// A literal string a turn's text may contain to signal the exchange is done early (M17 Phase 3,
@@ -40,18 +43,31 @@ namespace Aer.Workers.Dialogue;
 /// The maximum wall-clock duration allowed for a single turn's execution across all participants
 /// (defaulting to 5 minutes if omitted or non-positive).
 /// </param>
+/// <param name="FinalOutputMode">
+/// What <see cref="FinalOutputName"/> carries (#736, field note 7 on #665): <see cref="Dialogue.FinalOutputMode.FinalTurn"/>
+/// (the default, and this worker's original behavior) writes only the last turn's text;
+/// <see cref="Dialogue.FinalOutputMode.Transcript"/> writes the full role-attributed exchange instead.
+/// Defaults to <see cref="Dialogue.FinalOutputMode.FinalTurn"/> if omitted.
+/// </param>
 public sealed record DialogueWorkerConfig(
     string SeedPrompt,
     int TurnBudget,
     string FinalOutputName,
     string? StopSentinel,
     IReadOnlyList<DialogueParticipant> Participants,
-    TimeSpan? TurnTimeout = null)
+    TimeSpan? TurnTimeout = null,
+    [property: JsonConverter(typeof(FinalOutputModeJsonConverter))] FinalOutputMode? FinalOutputMode = null)
 {
     /// <summary>
     /// Default per-turn ceiling (5 minutes).
     /// </summary>
     public static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Default <see cref="Dialogue.FinalOutputMode"/> when a config omits it — this worker's
+    /// original, still-default behavior of writing only the last turn's text.
+    /// </summary>
+    public const FinalOutputMode DefaultFinalOutputMode = Dialogue.FinalOutputMode.FinalTurn;
 
     /// <summary>
     /// The hard safety ceiling on turns <see cref="DialogueRunner"/> will ever actually run,

@@ -5,8 +5,11 @@ namespace Aer.Workers.Dialogue;
 /// <summary>
 /// Runs the dialogue exchange (M17 Phase 3, #166; generalized to N-party round-robin M23 Phase 1,
 /// #270): turns round-robin through <see cref="DialogueWorkerConfig.Participants"/> in list order
-/// starting from index 0, writing each turn to <c>transcript.jsonl</c> as it happens and the final
-/// turn's text to <see cref="DialogueWorkerConfig.FinalOutputName"/> once the exchange ends. Ends on
+/// starting from index 0, writing each turn to <c>transcript.jsonl</c> as it happens and, once the
+/// exchange ends, writing <see cref="DialogueWorkerConfig.FinalOutputName"/> per
+/// <see cref="DialogueWorkerConfig.FinalOutputMode"/> (#736) — the last turn's text by default, or
+/// the full role-attributed exchange in <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/>
+/// mode. Ends on
 /// any of three conditions — the ceiling-clamped <see cref="DialogueWorkerConfig.TurnBudget"/> turns
 /// having run (see <see cref="DialogueWorkerConfig.HardTurnCeiling"/>), or a participant's turn
 /// containing <see cref="DialogueWorkerConfig.StopSentinel"/> — and fails the whole exchange
@@ -102,8 +105,13 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
             }
         }
 
+        var effectiveFinalOutputMode = config.FinalOutputMode ?? DialogueWorkerConfig.DefaultFinalOutputMode;
+        var finalOutputText = effectiveFinalOutputMode == FinalOutputMode.Transcript
+            ? RenderTranscript(turns)
+            : turns[^1].Text;
+
         await File.WriteAllTextAsync(
-            Path.Combine(outputDirectory, config.FinalOutputName), turns[^1].Text, cancellationToken)
+            Path.Combine(outputDirectory, config.FinalOutputName), finalOutputText, cancellationToken)
             .ConfigureAwait(false);
 
         return turns;
@@ -114,11 +122,37 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
         var context = new StringBuilder(seedPrompt);
         foreach (var turn in priorTurns)
         {
-            context.Append("\n\n").Append(turn.Role).Append(": ").Append(turn.Text);
+            context.Append("\n\n").Append(FormatTurnLine(turn));
         }
 
         return $"{speaker.Preamble}\n\n{context}";
     }
+
+    /// <summary>
+    /// Renders the exchange already accumulated in <paramref name="turns"/> as the full
+    /// role-attributed transcript for <see cref="Aer.Workers.Dialogue.FinalOutputMode.Transcript"/>:
+    /// every turn, in order, each prefixed with its speaker's role — the same "Role: Text" line
+    /// shape <see cref="BuildPrompt"/> already threads into each next turn's prompt via
+    /// <see cref="FormatTurnLine"/>, reused here rather than rendered a second way.
+    /// </summary>
+    private static string RenderTranscript(IReadOnlyList<TranscriptTurn> turns)
+    {
+        var builder = new StringBuilder();
+        for (var i = 0; i < turns.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append("\n\n");
+            }
+
+            builder.Append(FormatTurnLine(turns[i]));
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>The single "Role: Text" rendering both <see cref="BuildPrompt"/>'s context-threading and <see cref="RenderTranscript"/>'s final output share.</summary>
+    private static string FormatTurnLine(TranscriptTurn turn) => $"{turn.Role}: {turn.Text}";
 
     /// <summary>
     /// If <paramref name="stopSentinel"/> is configured and occurs in <paramref name="text"/>,

@@ -70,6 +70,41 @@ public class DialogueWorkerConfigParserTests
     }
 
     [Fact]
+    public void Absent_FinalOutputMode_defaults_to_FinalTurn()
+    {
+        var config = DialogueWorkerConfigParser.Parse(ValidJson);
+
+        Assert.Equal(FinalOutputMode.FinalTurn, config.FinalOutputMode);
+    }
+
+    [Theory]
+    [InlineData("FinalTurn", FinalOutputMode.FinalTurn)]
+    [InlineData("Transcript", FinalOutputMode.Transcript)]
+    public void Each_valid_FinalOutputMode_value_parses_to_itself(string value, FinalOutputMode expected)
+    {
+        var json = ValidJson.Replace(
+            "\"TurnBudget\": 4,", $"\"TurnBudget\": 4, \"FinalOutputMode\": \"{value}\",");
+
+        var config = DialogueWorkerConfigParser.Parse(json);
+
+        Assert.Equal(expected, config.FinalOutputMode);
+    }
+
+    [Fact]
+    public void An_unknown_FinalOutputMode_value_throws_naming_the_value_and_the_valid_set()
+    {
+        var json = ValidJson.Replace(
+            "\"TurnBudget\": 4,", "\"TurnBudget\": 4, \"FinalOutputMode\": \"Bogus\",");
+
+        var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
+
+        Assert.Contains("FinalOutputMode", ex.Message);
+        Assert.Contains("Bogus", ex.Message);
+        Assert.Contains("FinalTurn", ex.Message);
+        Assert.Contains("Transcript", ex.Message);
+    }
+
+    [Fact]
     public void Malformed_json_throws()
     {
         var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse("{ not json"));

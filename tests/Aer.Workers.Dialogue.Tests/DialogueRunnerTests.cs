@@ -26,6 +26,18 @@ public class DialogueRunnerTests
         StopSentinel: stopSentinel,
         Participants: participants);
 
+    private static DialogueWorkerConfig BuildConfig(int turnBudget, FinalOutputMode finalOutputMode) => new(
+        SeedPrompt: "seed",
+        TurnBudget: turnBudget,
+        FinalOutputName: "final.md",
+        StopSentinel: null,
+        Participants:
+        [
+            new DialogueParticipant("initiator", "stub-claude", null, "Initiator preamble", "stub-claude", ["{PROMPT}"]),
+            new DialogueParticipant("responder", "stub-gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]),
+        ],
+        FinalOutputMode: finalOutputMode);
+
     [Fact]
     public async Task Runs_exactly_TurnBudget_turns_alternating_speakers()
     {
@@ -97,6 +109,59 @@ public class DialogueRunnerTests
             var finalOutputPath = Path.Combine(outputDirectory, "final.md");
             Assert.True(File.Exists(finalOutputPath));
             Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task FinalOutputMode_FinalTurn_writes_only_the_last_turns_text()
+    {
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var turns = await runner.RunAsync(BuildConfig(2, FinalOutputMode.FinalTurn), outputDirectory);
+
+            var finalOutputPath = Path.Combine(outputDirectory, "final.md");
+            var finalOutput = await File.ReadAllTextAsync(finalOutputPath);
+            Assert.Equal(turns[^1].Text, finalOutput);
+            Assert.DoesNotContain("initiator", finalOutput);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task FinalOutputMode_Transcript_writes_the_full_role_attributed_exchange_in_order()
+    {
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var turns = await runner.RunAsync(BuildConfig(3, FinalOutputMode.Transcript), outputDirectory);
+
+            var finalOutputPath = Path.Combine(outputDirectory, "final.md");
+            var finalOutput = await File.ReadAllTextAsync(finalOutputPath);
+
+            // Every turn's role and text show up, and the last turn's text does not appear alone —
+            // this is the whole exchange, not just the final turn.
+            Assert.Contains($"{turns[0].Role}: {turns[0].Text}", finalOutput);
+            Assert.Contains($"{turns[1].Role}: {turns[1].Text}", finalOutput);
+            Assert.Contains($"{turns[2].Role}: {turns[2].Text}", finalOutput);
+            Assert.NotEqual(turns[^1].Text, finalOutput);
+
+            // In order: turn 1's text appears before turn 2's, which appears before turn 3's.
+            Assert.True(finalOutput.IndexOf(turns[0].Text, StringComparison.Ordinal)
+                < finalOutput.IndexOf(turns[1].Text, StringComparison.Ordinal));
+            Assert.True(finalOutput.IndexOf(turns[1].Text, StringComparison.Ordinal)
+                < finalOutput.IndexOf(turns[2].Text, StringComparison.Ordinal));
         }
         finally
         {
