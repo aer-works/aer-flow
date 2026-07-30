@@ -38,6 +38,21 @@ public class SnapshotJsonTests
         Assert.DoesNotContain("\"Kind\":1", json, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The control for the test above: under the default options this contract replaced, the same
+    /// snapshot really does emit the ordinal the probe string looks for. Without this, a property
+    /// rename or naming policy could make <c>"Kind":1</c> unfindable for a reason that has nothing
+    /// to do with enum names, and the <c>DoesNotContain</c> above would pass while proving nothing.
+    /// </summary>
+    [Fact]
+    public void The_default_options_this_contract_replaced_do_emit_the_ordinal_the_probe_expects()
+    {
+        var json = JsonSerializer.Serialize(SampleSnapshot());
+
+        Assert.Contains("\"Kind\":1", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"NeedsInput\"", json, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_intact_snapshot_round_trips()
     {

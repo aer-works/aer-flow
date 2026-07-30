@@ -27,7 +27,7 @@ public static class WorkflowDefinitionParser
         WorkflowDefinition? definition;
         try
         {
-            definition = JsonSerializer.Deserialize<WorkflowDefinition>(json, SnapshotJson.Options);
+            definition = JsonSerializer.Deserialize<WorkflowDefinition>(json, SnapshotJson.TemplateOptions);
         }
         catch (JsonException ex)
         {

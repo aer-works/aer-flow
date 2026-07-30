@@ -40,4 +40,22 @@ public static class SnapshotJson
         Converters = { new JsonStringEnumConverter() },
         RespectRequiredConstructorParameters = true,
     };
+
+    /// <summary>
+    /// The template's read contract (#619): the same by-name enums, deliberately WITHOUT
+    /// <see cref="JsonSerializerOptions.RespectRequiredConstructorParameters"/>.
+    /// </summary>
+    /// <remarks>
+    /// The two files are different contracts, exactly as #619 warned. A template is human-authored
+    /// input: a missing member must reach <see cref="Templates.WorkflowDefinitionValidator"/>'s
+    /// structural rejection — a named property in an actionable message, the behaviour
+    /// <c>WorkflowDefinitionParserTests</c>' missing-member arms pin — rather than die inside the
+    /// serializer as a raw missing-parameter error (#562 is open about exactly that reading
+    /// experience). <c>snapshot.json</c> is the opposite contract: machine-written durable state,
+    /// where a silently defaulted member IS the corruption and throwing early is the point.
+    /// </remarks>
+    public static JsonSerializerOptions TemplateOptions { get; } = new()
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
 }
