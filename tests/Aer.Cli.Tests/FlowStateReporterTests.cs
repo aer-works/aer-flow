@@ -183,4 +183,46 @@ public class FlowStateReporterTests
         Assert.Contains("Paused — awaiting input", output);
         Assert.DoesNotContain("Paused — awaiting review", output);
     }
+
+    [Fact]
+    public void Report_prints_produced_output_paths_for_succeeded_steps_and_none_for_failed_steps()
+    {
+        var taskDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
+        var snapshot = new WorkflowDefinitionSnapshot(
+            new WorkflowDefinitionSnapshotId("snap-1"),
+            new WorkflowTemplateId("wf"),
+            1,
+            [
+                new WorkflowStepDefinition(new StepId("succeeded_step"), "worker", [], ["plan", "spec"], [], new RetryPolicy(1)),
+                new WorkflowStepDefinition(new StepId("failed_step"), "worker", [], ["unused_out"], [], new RetryPolicy(1)),
+            ]);
+
+        var execSucceeded = new ExecutionId("exec-succ-123");
+        var execFailed = new ExecutionId("exec-fail-456");
+
+        var state = new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            [
+                new StepState(new StepId("succeeded_step"), StepStatus.Succeeded, execSucceeded, new Dictionary<StepId, ExecutionId>()),
+                new StepState(
+                    new StepId("failed_step"), StepStatus.Failed, execFailed, new Dictionary<StepId, ExecutionId>(),
+                    LatestFailureReason: "Contract not satisfied"),
+            ],
+            WorkflowStatus.Terminal);
+
+        using var stringWriter = new StringWriter();
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+
+        var output = stringWriter.ToString();
+
+        var expectedPlanPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execSucceeded}", "plan"));
+        var expectedSpecPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execSucceeded}", "spec"));
+        var unexpectedFailPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execFailed}", "unused_out"));
+
+        Assert.Contains($"plan -> {expectedPlanPath}", output);
+        Assert.Contains($"spec -> {expectedSpecPath}", output);
+        Assert.DoesNotContain($"unused_out -> {unexpectedFailPath}", output);
+        Assert.DoesNotContain("unused_out ->", output);
+    }
 }
+

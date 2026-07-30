@@ -98,6 +98,6 @@ public static class DecideCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot);
+        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath);
     }
 }

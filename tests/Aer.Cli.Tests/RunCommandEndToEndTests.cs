@@ -424,4 +424,70 @@ public class RunCommandEndToEndTests
         Assert.True(File.Exists(outputPath));
         Assert.Equal(expectedContent, (await File.ReadAllTextAsync(outputPath)).Trim());
     }
+
+    [Fact]
+    public async Task RunCommand_reporting_prints_output_artifact_paths_for_succeeded_runs_and_omits_failed_steps()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            Directory.CreateDirectory(testRoot);
+            var definition = new WorkflowDefinition(
+                new WorkflowTemplateId("two-step"),
+                1,
+                [
+                    new WorkflowStepDefinition(new StepId("succ_step"), "succ_worker", [], ["plan"], [], new RetryPolicy(1)),
+                    new WorkflowStepDefinition(new StepId("fail_step"), "fail_worker", [], ["fail_out"], [], new RetryPolicy(1)),
+                ]);
+
+            var workflowFilePath = Path.Combine(testRoot, "workflow.json");
+            await File.WriteAllTextAsync(workflowFilePath, JsonSerializer.Serialize(definition), TestContext.Current.CancellationToken);
+
+            var config = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                ["succ_worker"] = new WorkerBindingConfigEntry(
+                    "shell",
+                    new WorkerContract("succ_worker", [], [new ProducedOutput("plan")], []),
+                    WriteFileCommand("plan", "the-plan"),
+                    TimeSpan.FromSeconds(30)),
+                ["fail_worker"] = new WorkerBindingConfigEntry(
+                    "shell",
+                    new WorkerContract("fail_worker", [], [new ProducedOutput("fail_out")], []),
+                    OperatingSystem.IsWindows() ? "exit 1" : "exit 1",
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            var bindingsFilePath = Path.Combine(testRoot, "bindings.json");
+            await File.WriteAllTextAsync(bindingsFilePath, JsonSerializer.Serialize(config), TestContext.Current.CancellationToken);
+
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var result = await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            using var stringWriter = new StringWriter();
+            FlowStateReporter.Report(stringWriter, result);
+            var reportOutput = stringWriter.ToString();
+
+            var succStepState = result.State.Steps.Single(s => s.StepId.Value == "succ_step");
+            var failStepState = result.State.Steps.Single(s => s.StepId.Value == "fail_step");
+
+            Assert.Equal(StepStatus.Succeeded, succStepState.Status);
+            Assert.Equal(StepStatus.Failed, failStepState.Status);
+
+            var expectedPlanPath = Path.GetFullPath(Path.Combine(taskDirectory, "artifacts", $"execution_{succStepState.LatestExecutionId}", "plan"));
+            var unexpectedFailPath = Path.GetFullPath(Path.Combine(taskDirectory, "artifacts", $"execution_{failStepState.LatestExecutionId}", "fail_out"));
+
+            Assert.Contains($"plan -> {expectedPlanPath}", reportOutput);
+            Assert.True(File.Exists(expectedPlanPath));
+
+            Assert.DoesNotContain("fail_out ->", reportOutput);
+            Assert.DoesNotContain(unexpectedFailPath, reportOutput);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
 }
+

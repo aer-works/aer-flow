@@ -110,7 +110,7 @@ public static class RunCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot, resumedFromSnapshot);
+        return new CommandResult(state, snapshot, resumedFromSnapshot, options.TaskDirectoryPath);
     }
 
     /// <summary>

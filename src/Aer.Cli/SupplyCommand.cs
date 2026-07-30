@@ -101,7 +101,7 @@ public static class SupplyCommand
                 reader, writer, dispatcher, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return new SupplyResult(executionId, new CommandResult(settledState, snapshot));
+        return new SupplyResult(executionId, new CommandResult(settledState, snapshot, TaskDirectoryPath: options.TaskDirectoryPath));
     }
 }
 
