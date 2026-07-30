@@ -173,6 +173,58 @@ public class DialogueTemplateEditorTests
         }
     }
 
+    /// <summary>
+    /// The identical round-trip drop one field over from #743's, for
+    /// <see cref="DialogueWorkerConfig.TurnTimeout"/> — mechanism and provenance on
+    /// <c>WorkerBindingEntryViewModel._dialogueTurnTimeout</c>'s doc, which this pins. Same
+    /// shape as the test above, same reason.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_dialogue_steps_hand_authored_TurnTimeout_survives_reopen_and_an_unrelated_resave()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"dialogue-template-editor-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = TempBindingsPath(directory);
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "debate";
+            entry.Adapter = "dialogue";
+            entry.TimeoutText = "00:05:00";
+            entry.DialogueSeedPromptText = "Propose a caching strategy.";
+            entry.DialogueFinalOutputNameText = "verdict.md";
+            entry.DialogueParticipants[0].Preamble = "Side A.";
+            entry.DialogueParticipants[1].Preamble = "Side B.";
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+            var savedEntry = (await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken))["debate"];
+            var sidecarPath = Path.Combine(directory, savedEntry.PromptTemplate);
+
+            var sidecarConfig = await DialogueWorkerConfigParser.LoadFromFileAsync(sidecarPath, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                sidecarPath,
+                System.Text.Json.JsonSerializer.Serialize(sidecarConfig with { TurnTimeout = TimeSpan.FromMinutes(20) }),
+                TestContext.Current.CancellationToken);
+
+            await window.OpenBindingsInEditorAsync(path, TestContext.Current.CancellationToken);
+            var reopened = window.ViewModel.BindingsEditor.Entries.Single(e => e.WorkerName == "debate");
+
+            reopened.DialogueTurnBudgetText = "5";
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            var resavedConfig = await DialogueWorkerConfigParser.LoadFromFileAsync(sidecarPath, TestContext.Current.CancellationToken);
+            Assert.Equal(TimeSpan.FromMinutes(20), resavedConfig.TurnTimeout);
+            Assert.Equal(5, resavedConfig.TurnBudget);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
     [AvaloniaFact]
     public async Task Removing_a_dialogue_participant_below_two_blocks_save_with_no_write()
     {
