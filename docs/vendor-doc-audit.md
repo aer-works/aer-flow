@@ -1713,12 +1713,12 @@ somebody's decision.
 Recorded here because they existed only in code comments and commit messages, which is not the
 register.
 
-**1. An unknown `--model` fails closed on `claude` and fails open on `agy`.**
+**1. An unknown `--model` fails closed on `claude` and accepts this unlisted name (`gemini-3-flash`) on `agy`.**
 
 | | behaviour |
 |---|---|
 | `claude` | `is_error: true` — a stale pin self-reports |
-| `agy` | accepts the unlisted name, `rc=0`, output produced; no warning observed on the captured stream |
+| `agy` | accepts this unlisted name (`gemini-3-flash`), `rc=0`, output produced; no warning observed on the captured stream |
 
 Measured: `agy -p … --model gemini-3-flash`, a model `agy models` does not list, returned `rc=0` with
 output. That name had been sitting in a binding fixture, two dialogue participants and two runbooks,
@@ -1726,7 +1726,7 @@ pinning nothing. The `claude` arm is measured by `tools/smoke-preflight/prefligh
 live run, not by this probe.
 
 **Scope — two claims, two evidence classes.** *Accept vs. reject* is **verified (both directions)**:
-claude rejects the unlisted name, agy does not. *Which model then served the request* is
+claude rejects the unlisted name, agy accepts this unlisted name (`gemini-3-flash`). *Which model then served the request* is
 **inferred, not measured** — AER has no attribution surface, which is the same reason it cannot be
 checked here. Likewise "no warning" is an absence with **no positive control**: nothing establishes
 that this capture would have shown a warning had one been emitted. Read it as "none observed", not
@@ -1735,9 +1735,19 @@ as "none emitted".
 **Why it matters past the tests.** AER pins a model per worker. On `agy` a pin that goes stale is
 accepted rather than rejected, so any AER cost or model-attribution surface would report the pinned
 model with no way to confirm what ran — and agy's catalogue includes `claude-opus-4-6-thinking`, so
-the drift is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures;
-**nothing guards the product**, and no issue owns that gap — a `vendor-verify` sentinel was
-considered and is tracked in #547.
+the drift is not necessarily downward. `pixi run smoke-preflight` guards the test fixtures.
+
+**Update (#547).** A second, independent probe (`effort.agy-rejection-is-per-model`, 2026-07-28)
+measured a DIFFERENT unlisted name — `gemini-3-pro` — and found the opposite outcome: rejected, by
+name. The two data points read as a contradiction because nothing ran them under one shared control
+until now. `tools/vendor-verify/verify.py` carries the sentinel
+`agy.unlisted-model-acceptance-is-per-name`, written to settle it: control arm a catalogued model,
+then both unlisted names under the same invocation shape. **Not yet run** — this entry states what
+the check tests, not a result; see
+[`architecture-impact.md`](architecture-impact.md) § agy, whose row is explicit that nothing here is
+measured until the operator runs it. The product-side half — nothing validates a model name a
+worker binding or a room actually carries, before it reaches `agy` — is filed as its own issue,
+#726, rather than built inside #547.
 
 **2. `claude` has no model-catalogue command, and `claude models` spends usage.** There is no such
 subcommand — the words are taken as a *prompt* and answered, costing a turn. So claude's valid model
