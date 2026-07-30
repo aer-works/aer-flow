@@ -252,4 +252,45 @@ public class ProcessVendorTurnClientTests
             }
         }
     }
+
+    [Theory]
+    [InlineData("--print-timeout", "10s")]
+    [InlineData("--print-timeout=10s", null)]
+    public async Task Operator_print_timeout_below_turn_timeout_plus_60s_throws_config_exception(string flag, string? val)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"vendor-turn-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            DialogueParticipant participant;
+            var args = val is null ? new[] { flag, "-p", DialogueParticipant.PromptPlaceholder } : new[] { flag, val, "-p", DialogueParticipant.PromptPlaceholder };
+            if (OperatingSystem.IsWindows())
+            {
+                var scriptPath = Path.Combine(root, "agy.cmd");
+                File.WriteAllText(scriptPath, "@echo %*\r\n");
+                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", scriptPath, args);
+            }
+            else
+            {
+                var shScriptPath = Path.Combine(root, "agy");
+                File.WriteAllText(shScriptPath, "#!/bin/sh\necho \"$@\"\n");
+                File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, args);
+            }
+
+            var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
+            var ex = await Assert.ThrowsAsync<DialogueWorkerConfigException>(
+                () => client.SendTurnAsync(participant, "hello"));
+
+            Assert.Contains("--print-timeout", ex.Message);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                DirectoryCleanup.DeleteRecursively(root);
+            }
+        }
+    }
 }
+

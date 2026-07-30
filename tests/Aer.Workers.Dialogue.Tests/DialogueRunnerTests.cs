@@ -230,7 +230,53 @@ public class DialogueRunnerTests
         }
     }
 
+    [Fact]
+    public async Task Timed_out_turn_reports_configured_ceiling_and_role()
+    {
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult("", 124, "Turn timed out...", TimedOut: true));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var config = BuildConfig(2);
+            var ex = await Assert.ThrowsAsync<DialogueExecutionException>(
+                () => runner.RunAsync(config, outputDirectory));
+
+            Assert.Contains("timed out", ex.Message);
+            Assert.Contains("initiator", ex.Message);
+            Assert.Contains((config.TurnTimeout ?? DialogueWorkerConfig.DefaultTurnTimeout).ToString(), ex.Message);
+            Assert.DoesNotContain("exited with code 124", ex.Message);
+
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task Real_process_exiting_124_is_not_reported_as_timeout()
+    {
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult("", 124, "some vendor error", TimedOut: false));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var config = BuildConfig(2);
+            var ex = await Assert.ThrowsAsync<DialogueExecutionException>(
+                () => runner.RunAsync(config, outputDirectory));
+
+            Assert.Contains("exited with code 124", ex.Message);
+            Assert.DoesNotContain("timed out", ex.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
     private static string CreateTempDir()
+
     {
         var path = Path.Combine(Path.GetTempPath(), $"dialogue-runner-{Guid.NewGuid():N}");
         Directory.CreateDirectory(path);

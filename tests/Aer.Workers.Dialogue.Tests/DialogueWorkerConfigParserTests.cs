@@ -59,8 +59,9 @@ public class DialogueWorkerConfigParserTests
     }
 
     [Theory]
+    [InlineData("00:00:00")]
     [InlineData("-00:01:00")]
-    public void Negative_turn_timeout_throws(string timeoutStr)
+    public void Non_positive_turn_timeout_throws(string timeoutStr)
     {
         var json = ValidJson.Replace("\"TurnBudget\": 4,", $"\"TurnBudget\": 4, \"TurnTimeout\": \"{timeoutStr}\",");
 

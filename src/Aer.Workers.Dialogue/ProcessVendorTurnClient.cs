@@ -60,7 +60,23 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
 
         var effectiveTurnTimeout = turnTimeout ?? _configuredTurnTimeout ?? DialogueWorkerConfig.DefaultTurnTimeout;
 
+        if (TryGetOperatorPrintTimeout(participant.Args, out var rawTimeout) && rawTimeout is not null)
+        {
+            if (!TryParseGoDuration(rawTimeout, out var operatorTimeout))
+            {
+                throw new DialogueWorkerConfigException($"Operator --print-timeout '{rawTimeout}' is not a valid Go duration.");
+            }
+
+            var minRequired = effectiveTurnTimeout + PrintTimeoutMargin;
+            if (operatorTimeout < minRequired)
+            {
+                throw new DialogueWorkerConfigException(
+                    $"Operator --print-timeout '{rawTimeout}' ({operatorTimeout.TotalSeconds}s) must be at least TurnTimeout + 60s ({minRequired.TotalSeconds}s) for TurnTimeout of {effectiveTurnTimeout.TotalSeconds}s.");
+            }
+        }
+
         string? tempPromptFile = null;
+
         try
         {
             // DialogueRunner always pre-writes the turn's prompt and passes its path, so File.Exists(prompt)
@@ -156,20 +172,23 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                     return new VendorTurnResult(
                         string.Empty,
                         124,
-                        $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.");
+                        $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.",
+                        TimedOut: true);
                 }
 
                 return new VendorTurnResult(
                     stdoutTask.Result.TrimEnd('\r', '\n'),
                     process.ExitCode,
-                    stderrTask.Result.TrimEnd('\r', '\n'));
+                    stderrTask.Result.TrimEnd('\r', '\n'),
+                    TimedOut: false);
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
                 return new VendorTurnResult(
                     string.Empty,
                     124,
-                    $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.");
+                    $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.",
+                    TimedOut: true);
             }
         }
         finally
@@ -201,7 +220,111 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
 
     private static bool HasOperatorPrintTimeout(IReadOnlyList<string> args)
     {
-        return args.Any(a => a == "--print-timeout" || a.StartsWith("--print-timeout=", StringComparison.Ordinal));
+        return TryGetOperatorPrintTimeout(args, out _);
+    }
+
+    private static bool TryGetOperatorPrintTimeout(IReadOnlyList<string> args, out string? rawTimeout)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] == "--print-timeout" && i + 1 < args.Count)
+            {
+                rawTimeout = args[i + 1];
+                return true;
+            }
+
+            if (args[i].StartsWith("--print-timeout=", StringComparison.Ordinal))
+            {
+                rawTimeout = args[i]["--print-timeout=".Length..];
+                return true;
+            }
+        }
+
+        rawTimeout = null;
+        return false;
+    }
+
+    public static bool TryParseGoDuration(string input, out TimeSpan duration)
+    {
+        duration = default;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var s = input.Trim();
+        var isNegative = false;
+        if (s.StartsWith('-'))
+        {
+            isNegative = true;
+            s = s[1..];
+        }
+        else if (s.StartsWith('+'))
+        {
+            s = s[1..];
+        }
+
+        if (string.IsNullOrEmpty(s))
+        {
+            return false;
+        }
+
+        double totalSeconds = 0;
+        var i = 0;
+        var len = s.Length;
+
+        while (i < len)
+        {
+            var startNum = i;
+            while (i < len && (char.IsDigit(s[i]) || s[i] == '.'))
+            {
+                i++;
+            }
+
+            if (i == startNum)
+            {
+                return false;
+            }
+
+            if (!double.TryParse(s[startNum..i], System.Globalization.CultureInfo.InvariantCulture, out var num))
+            {
+                return false;
+            }
+
+            var startUnit = i;
+            while (i < len && (char.IsLetter(s[i]) || s[i] == 'µ'))
+            {
+                i++;
+            }
+
+            if (i == startUnit)
+            {
+                return false;
+            }
+
+            var unit = s[startUnit..i];
+            var unitInSeconds = unit switch
+            {
+                "ns" => 1e-9,
+                "us" or "µs" => 1e-6,
+                "ms" => 1e-3,
+                "s" => 1.0,
+                "m" => 60.0,
+                "h" => 3600.0,
+                _ => -1.0,
+            };
+
+            if (unitInSeconds < 0)
+            {
+                return false;
+            }
+
+            totalSeconds += num * unitInSeconds;
+        }
+
+        var ts = TimeSpan.FromSeconds(totalSeconds);
+        duration = isNegative ? -ts : ts;
+        return true;
     }
 
     private static string FormatPrintTimeout(TimeSpan timeout)
@@ -214,3 +337,4 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
         return $"{Math.Max(seconds, 1)}s";
     }
 }
+

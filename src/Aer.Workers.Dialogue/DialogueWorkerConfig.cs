@@ -46,19 +46,13 @@ public sealed record DialogueWorkerConfig(
     string FinalOutputName,
     string? StopSentinel,
     IReadOnlyList<DialogueParticipant> Participants,
-    TimeSpan TurnTimeout = default)
+    TimeSpan? TurnTimeout = null)
 {
     /// <summary>
     /// Default per-turn ceiling (5 minutes).
     /// </summary>
     public static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromMinutes(5);
 
-    /// <summary>
-    /// The per-turn timeout ceiling for child process turns.
-    /// </summary>
-    public TimeSpan TurnTimeout { get; init; } = TurnTimeout == default
-        ? DefaultTurnTimeout
-        : TurnTimeout;
     /// <summary>
     /// The hard safety ceiling on turns <see cref="DialogueRunner"/> will ever actually run,
     /// enforced unconditionally regardless of a config's own <see cref="TurnBudget"/> (M23 Phase 1,
