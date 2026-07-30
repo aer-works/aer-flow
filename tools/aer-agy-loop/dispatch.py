@@ -30,7 +30,7 @@ to keeping orchestration decisions out of glue code that could quietly grow into
 
 Usage:
     pixi run aer-dispatch -- --list-templates
-    pixi run aer-dispatch -- [--template advise|implement|review|fact-check] \
+    pixi run aer-dispatch -- [--template <name from --list-templates>] \
         --prompt-file <path> --output-name <name> \
         --working-directory <abs path> [--adapter gemini] [--model <name>] [--effort <level>] \
         [--read-files|--no-read-files] [--write-files|--no-write-files] \
