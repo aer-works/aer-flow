@@ -57,6 +57,10 @@ public static class DialogueWorkerConfigParser
             config = config with { TurnTimeout = DialogueWorkerConfig.DefaultTurnTimeout };
         }
 
+        if (config.FinalOutputMode is null)
+        {
+            config = config with { FinalOutputMode = DialogueWorkerConfig.DefaultFinalOutputMode };
+        }
 
         if (config.Participants is null || config.Participants.Count < 2)
         {

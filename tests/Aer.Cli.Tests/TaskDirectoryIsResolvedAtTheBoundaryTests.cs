@@ -32,6 +32,8 @@ public class TaskDirectoryIsResolvedAtTheBoundaryTests
         [typeof(SupplyOptionsParser)] = () =>
             SupplyOptionsParser.Parse([Relative, "--worker", "w", "--output", "o", "--file", "f.txt", "--bindings", "b.json"])
                 .TaskDirectoryPath,
+        [typeof(StatusOptionsParser)] = () =>
+            StatusOptionsParser.Parse([Relative]).TaskDirectoryPath,
     };
 
     [Fact]

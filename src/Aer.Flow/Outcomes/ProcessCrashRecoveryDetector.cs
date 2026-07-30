@@ -85,13 +85,6 @@ public static class ProcessCrashRecoveryDetector
                 continue;
             }
 
-            // Non-process reconciliation is NonProcessCompletionDetector/NonProcessCancellationDetector's
-            // job — Core never writes a CoreEvent for a binding with no process behind it.
-            if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding) || binding is not WorkerBinding.Process)
-            {
-                continue;
-            }
-
             // A dispatch this very call already has registered is not a crash-recovery candidate at
             // all, regardless of what the Core log does or doesn't yet show for it: this pump is
             // still genuinely awaiting it right now, not one that crashed mid-run and needs
@@ -110,6 +103,18 @@ public static class ProcessCrashRecoveryDetector
             if (startedExecutionIds.Contains(executionId))
             {
                 toFinalizeAsAbandoned.Add(executionId);
+                continue;
+            }
+
+            // Non-process reconciliation is NonProcessCompletionDetector/NonProcessCancellationDetector's
+            // job — Core never writes a CoreEvent for a binding with no process behind it. Reached
+            // only for the pre-spawn states: the classify/abandon branches above act on recorded
+            // Core evidence and never consult the binding (#724). A present-but-unresolvable
+            // binding is allowed to throw out of here — a pre-spawn recovery genuinely needs the
+            // binding to resubmit, and swallowing the refusal would leave the step Running forever
+            // with no obligation and no explanation.
+            if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding) || binding is not WorkerBinding.Process)
+            {
                 continue;
             }
 

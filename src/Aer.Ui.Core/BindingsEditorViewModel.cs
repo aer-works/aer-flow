@@ -499,6 +499,8 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
             && a.TurnBudget == b.TurnBudget
             && a.FinalOutputName == b.FinalOutputName
             && a.StopSentinel == b.StopSentinel
+            && a.TurnTimeout == b.TurnTimeout
+            && a.FinalOutputMode == b.FinalOutputMode
             && a.Participants.Count == b.Participants.Count
             && a.Participants.Zip(b.Participants, DialogueParticipantEquals).All(equal => equal);
     }

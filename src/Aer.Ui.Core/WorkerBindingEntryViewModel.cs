@@ -170,6 +170,24 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
     [ObservableProperty]
     private string dialogueFinalOutputNameText = string.Empty;
 
+    /// <summary>
+    /// Round-trips <see cref="DialogueWorkerConfig.FinalOutputMode"/> (#736) through this row's
+    /// load/save cycle without giving it a bindable control — #736 deliberately has no UI half for
+    /// *authoring* the mode, but a value an existing config already carries must still survive an
+    /// unrelated edit and save (found while implementing #736, filed as #743). Plain field, not an
+    /// <c>[ObservableProperty]</c>: nothing in AuthorView binds to it, so it raises no change
+    /// notification and needs none.
+    /// </summary>
+    private FinalOutputMode? _dialogueFinalOutputMode;
+
+    /// <summary>
+    /// Round-trips <see cref="DialogueWorkerConfig.TurnTimeout"/> (#609) — the identical defect one
+    /// field over from <see cref="_dialogueFinalOutputMode"/>'s, found by the #736 review and filed
+    /// as its own issue: an unrelated edit-and-save silently reset a hand-authored ceiling to the
+    /// 5-minute default. Same shape for the same reason as the field above.
+    /// </summary>
+    private TimeSpan? _dialogueTurnTimeout;
+
     /// <summary>This row's exchange sides, in speaking order (M23 Phase 1, #270's N-party generalization) — at least two required to build a valid <see cref="DialogueWorkerConfig"/>, no upper bound.</summary>
     public ObservableCollection<DialogueParticipantEditorViewModel> DialogueParticipants { get; } = [];
 
@@ -281,6 +299,8 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             vm.DialogueTurnBudgetText = dialogueConfig.TurnBudget.ToString();
             vm.DialogueStopSentinelText = dialogueConfig.StopSentinel ?? string.Empty;
             vm.DialogueFinalOutputNameText = dialogueConfig.FinalOutputName;
+            vm._dialogueFinalOutputMode = dialogueConfig.FinalOutputMode;
+            vm._dialogueTurnTimeout = dialogueConfig.TurnTimeout;
             foreach (var participant in dialogueConfig.Participants)
             {
                 vm.DialogueParticipants.Add(new DialogueParticipantEditorViewModel(vm.NotifyDialogueParticipantsChanged, vm.RemoveDialogueParticipant)
@@ -587,7 +607,9 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             turnBudget,
             DialogueFinalOutputNameText,
             string.IsNullOrWhiteSpace(DialogueStopSentinelText) ? null : DialogueStopSentinelText,
-            participants);
+            participants,
+            TurnTimeout: _dialogueTurnTimeout,
+            FinalOutputMode: _dialogueFinalOutputMode);
         error = null;
         return true;
     }

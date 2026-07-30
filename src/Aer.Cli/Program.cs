@@ -44,7 +44,7 @@ if (args.Length >= 1 && args[0] == "agy-hook-check")
     return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools, agyOutputDir, agyWorkspaceDir);
 }
 
-var knownSubcommands = new[] { "run", "cancel", "decide", "supply" };
+var knownSubcommands = new[] { "run", "cancel", "decide", "supply", "status" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
     Console.Error.WriteLine(RunOptionsParser.Usage);
@@ -56,6 +56,7 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
     Console.Error.WriteLine(
         "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
+    Console.Error.WriteLine("       aer status <task-dir> [--follow]");
     Console.Error.WriteLine("       aer --version");
     Console.Error.WriteLine();
     Console.Error.WriteLine($"  {RunOptionsParser.ResumeNote}");
@@ -77,6 +78,17 @@ Console.CancelKeyPress += (_, eventArgs) =>
 
 try
 {
+    // Read-only, and never a mutation surface (#730) -- it produces no CommandResult (there is
+    // nothing "resumed from" and nothing to pump to a fixed point) and always exits 0 when it
+    // manages to print a status at all, so it is handled here rather than joining the
+    // CommandResult/FlowStateReporter shape every mutating command below shares.
+    if (args[0] == "status")
+    {
+        var statusOptions = StatusOptionsParser.Parse(args[1..]);
+        await StatusCommand.ExecuteAsync(statusOptions, Console.Out, hostStopSource.Token).ConfigureAwait(false);
+        return 0;
+    }
+
     CommandResult result;
     switch (args[0])
     {
