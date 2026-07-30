@@ -180,6 +180,54 @@ public class MutationInterfaceTests
     }
 
     [Fact]
+    public async Task StartWorkflowAsync_records_a_Retryable_ExecutionFailed_when_the_OS_itself_refuses_the_spawn()
+    {
+        // The refusal family's generic member (#747's review): AerException, not the typed guard.
+        // Retryable — not Permanent — because an OS refusal is not proven deterministic; a stuck
+        // cause terminates through RetryPolicy exhaustion instead. Polarity partner to the
+        // Permanent assert in the CommandLineTooLongException test below.
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        try
+        {
+            var stepId = new StepId("os-refused-step");
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-os-refusal"),
+                new WorkflowTemplateId("os-refusal"),
+                WorkflowTemplateVersion: 1,
+                Steps: [new WorkflowStepDefinition(stepId, "os-refused", [], ["out.txt"], DependsOn: [], RetryPolicy: new RetryPolicy(1))]);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["os-refused"] = new WorkerBinding.Process(
+                    new WorkerContract("os-refused", [], [new ProducedOutput("out.txt")], []),
+                    new CoreDispatchTarget("dummy", []),
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+
+            var finalState = await MutationInterface.StartWorkflowAsync(
+                new WorkflowId("wf-os-refusal"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer,
+                new OsRefusingCoreDispatcher(), cancellationToken: TestContext.Current.CancellationToken);
+
+            var stepState = Assert.Single(finalState.Steps);
+            Assert.Equal(StepStatus.Failed, stepState.Status);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var failedEvent = Assert.Single(events.OfType<FlowEvent.ExecutionFailed>());
+            Assert.Equal(FailureClassification.Retryable, failedEvent.FailureClassification);
+            Assert.StartsWith("Spawn refused:", failedEvent.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
     public async Task StartWorkflowAsync_records_ExecutionFailed_when_dispatch_throws_CommandLineTooLongException()
     {
         var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
@@ -230,6 +278,16 @@ public class MutationInterfaceTests
         public Task<CoreDispatchResult> DispatchAsync(ExecutionRequest request, CoreDispatchTarget target, CancellationToken cancellationToken = default)
         {
             throw new CommandLineTooLongException(refusalMessage);
+        }
+    }
+
+    private sealed class OsRefusingCoreDispatcher : ICoreDispatcher
+    {
+        public Task<CoreDispatchResult> DispatchAsync(ExecutionRequest request, CoreDispatchTarget target, CancellationToken cancellationToken = default)
+        {
+            // The binding's own exception type, the shape a missing binary or an unguarded
+            // over-long POSIX command line actually surfaces as (#747's review, finding 3).
+            throw new Aer.Core.AerException(Aer.Core.AerErrorCode.SpawnFailed);
         }
     }
 }

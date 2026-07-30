@@ -781,13 +781,31 @@ public static class MutationInterface
         }
         catch (CommandLineTooLongException ex)
         {
-            // A refusal to spawn (e.g. over-long command line) throws before land/exit events exist.
-            // Record ExecutionFailed so flow.jsonl is not left stuck at ExecutionRequestAccepted forever (#747).
+            // A deterministic refusal to spawn: re-submission re-refuses identically, so Permanent
+            // (#747; the retry gate in RetryEngine.MayRetry is what makes that stick). Recorded so
+            // flow.jsonl is not left stuck at ExecutionRequestAccepted forever.
             await eventLogWriter.AppendAsync(
                 new FlowEvent.ExecutionFailed(
                     prepared.Request.ExecutionId,
                     FailureClassification.Permanent,
                     ex.Message),
+                CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Aer.Core.AerException ex)
+        {
+            // The rest of the refusal family (#747's review): the OS declining the spawn — missing
+            // binary, bad working directory, an over-long command line on the platforms whose
+            // ceiling is unmeasured and unguarded (#612) — surfaces as the binding's AerException,
+            // not the typed guard above. Retryable, not Permanent: these are not proven
+            // deterministic, and a genuinely stuck cause terminates through RetryPolicy exhaustion
+            // instead. Same reason as above for recording at all; OperationCanceledException stays
+            // deliberately uncaught either way.
+            await eventLogWriter.AppendAsync(
+                new FlowEvent.ExecutionFailed(
+                    prepared.Request.ExecutionId,
+                    FailureClassification.Retryable,
+                    $"Spawn refused: {ex.Message}"),
                 CancellationToken.None)
                 .ConfigureAwait(false);
         }

@@ -21,9 +21,11 @@ namespace Aer.Flow.Dispatch;
 /// extended spec §7's safe crash state (intent recorded, nothing ran, recover by re-submission)
 /// to this refusal — but §7's re-submission story only operates across a restart, and a
 /// deterministic refusal re-refuses on every re-submission, so "recoverable" could never
-/// complete. Measured 2026-07-30: four live refusals each left a log ending at
-/// <c>ExecutionRequestAccepted</c>, indistinguishable from a healthy run. §7's crash state
-/// itself is unchanged and still safe — the distinction now lives in §7's own text.
+/// complete. The measurement behind this — four live refusals, each leaving a log ending at
+/// <c>ExecutionRequestAccepted</c>, indistinguishable from a healthy run — is recorded on #747.
+/// §7's crash state itself is unchanged and still safe — the distinction now lives in §7's own
+/// text, and the generic-refusal arm (<c>AerException</c>, Retryable) is the same treatment for
+/// the family members no typed guard names.
 /// </para>
 /// </summary>
 public sealed class CommandLineTooLongException : AerFlowException
