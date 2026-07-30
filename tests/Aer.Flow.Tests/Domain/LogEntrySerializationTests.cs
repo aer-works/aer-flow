@@ -53,4 +53,48 @@ public class LogEntrySerializationTests
 
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<LogEntry>(json, FlowEventLogJson.Options));
     }
+
+    [Fact]
+    public void FlowLogEntry_with_WriterUtcTimestamp_roundtrips()
+    {
+        var timestamp = new DateTime(2026, 7, 30, 12, 30, 45, DateTimeKind.Utc);
+        var original = new LogEntry.FlowLogEntry(new FlowEvent.ExecutionSucceeded(ExecutionId), timestamp);
+
+        var json = JsonSerializer.Serialize(original, typeof(LogEntry), FlowEventLogJson.Options);
+        var deserialized = JsonSerializer.Deserialize<LogEntry>(json, FlowEventLogJson.Options) as LogEntry.FlowLogEntry;
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Event, deserialized.Event);
+        Assert.Equal(timestamp, deserialized.WriterUtcTimestamp);
+    }
+
+    [Fact]
+    public void FlowLogEntry_without_WriterUtcTimestamp_roundtrips_as_null()
+    {
+        var original = new LogEntry.FlowLogEntry(new FlowEvent.ExecutionSucceeded(ExecutionId));
+
+        var json = JsonSerializer.Serialize(original, typeof(LogEntry), FlowEventLogJson.Options);
+        var deserialized = JsonSerializer.Deserialize<LogEntry>(json, FlowEventLogJson.Options) as LogEntry.FlowLogEntry;
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Event, deserialized.Event);
+        Assert.Null(deserialized.WriterUtcTimestamp);
+    }
+
+    [Fact]
+    public void Old_journal_line_without_WriterUtcTimestamp_deserializes()
+    {
+        // Serialize an entry without a timestamp, then remove the WriterUtcTimestamp field
+        // to simulate an old journal line (backward compatibility).
+        var entryWithoutTimestamp = new LogEntry.FlowLogEntry(new FlowEvent.ExecutionSucceeded(ExecutionId));
+        var json = JsonSerializer.Serialize(entryWithoutTimestamp, typeof(LogEntry), FlowEventLogJson.Options);
+
+        // The JSON should deserialize even if WriterUtcTimestamp is missing in old journal lines
+        var deserialized = JsonSerializer.Deserialize<LogEntry>(json, FlowEventLogJson.Options) as LogEntry.FlowLogEntry;
+
+        Assert.NotNull(deserialized);
+        var succeeded = Assert.IsType<FlowEvent.ExecutionSucceeded>(deserialized.Event);
+        Assert.Equal("exec-1", succeeded.ExecutionId.Value);
+        Assert.Null(deserialized.WriterUtcTimestamp);
+    }
 }

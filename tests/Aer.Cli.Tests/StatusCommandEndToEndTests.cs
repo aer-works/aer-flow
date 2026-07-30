@@ -34,7 +34,7 @@ public class StatusCommandEndToEndTests
 
             var text = output.ToString();
             Assert.Contains("Workflow status: Terminal", text);
-            Assert.Contains($"architect: Succeeded (execution={architectExecutionId})", text);
+            Assert.Contains($"architect: Succeeded (execution={architectExecutionId}", text);
             Assert.Contains("critic: Succeeded", text);
             Assert.Contains("publisher: Succeeded", text);
         }

@@ -63,9 +63,10 @@ public static class StatusCommand
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
         var reader = new FlowEventLogReader(logPath);
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
         var state = StateProjector.Project(events, snapshot);
 
-        PrintState(output, state, logPath, events);
+        PrintState(output, state, logPath, events, entries);
 
         if (options.Follow)
         {
@@ -319,22 +320,62 @@ public static class StatusCommand
     }
 
     private static void PrintState(
-        TextWriter output, FlowState state, string logPath, IReadOnlyList<FlowEvent> events)
+        TextWriter output, FlowState state, string logPath, IReadOnlyList<FlowEvent> events, IReadOnlyList<LogEntry> entries)
     {
         output.WriteLine($"Workflow status: {state.Status}");
         output.WriteLine($"Log last updated: {ResolveLogUpdatedAt(logPath)}");
+
+        var eventTimestamps = ExtractEventTimestamps(entries);
 
         foreach (var step in state.Steps)
         {
             var executionText = step.LatestExecutionId?.ToString() ?? "none";
             var statusText = FormatStepStatus(step, events);
-            output.WriteLine($"  {step.StepId}: {statusText} (execution={executionText})");
+            var timeText = step.LatestExecutionId is not null && eventTimestamps.TryGetValue(step.LatestExecutionId.Value.Value, out var time)
+                ? $" @ {time:O}"
+                : string.Empty;
+            output.WriteLine($"  {step.StepId}: {statusText} (execution={executionText}{timeText})");
         }
 
         foreach (var stepLess in state.StepLessExecutions)
         {
             output.WriteLine($"  (supplementary) {stepLess.Worker}: execution={stepLess.ExecutionId} pending");
         }
+    }
+
+    private static Dictionary<string, DateTime> ExtractEventTimestamps(IReadOnlyList<LogEntry> entries)
+    {
+        var timestamps = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        foreach (var entry in entries)
+        {
+            string? execId = null;
+            DateTime? timestamp = null;
+
+            switch (entry)
+            {
+                case LogEntry.FlowLogEntry flowEntry:
+                    timestamp = flowEntry.WriterUtcTimestamp;
+                    if (flowEntry.Event is FlowEvent.ExecutionRequestAccepted accepted)
+                    {
+                        execId = accepted.Request.ExecutionId.Value;
+                    }
+                    break;
+                case LogEntry.CoreLogEntry coreEntry:
+                    timestamp = coreEntry.WriterUtcTimestamp;
+                    if (coreEntry.Event is CoreEvent.ExecutionStarted started)
+                    {
+                        execId = started.ExecutionId.Value;
+                    }
+                    break;
+            }
+
+            if (execId is not null && timestamp.HasValue)
+            {
+                timestamps[execId] = timestamp.Value;
+            }
+        }
+
+        return timestamps;
     }
 
     public static string FormatStepStatus(StepState step, IReadOnlyList<FlowEvent> events)

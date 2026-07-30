@@ -67,6 +67,15 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
         return new EventLogSnapshot(flowEvents, coreEvents);
     }
 
+    /// <summary>
+    /// Reads all log entries, including their writer-stamped timestamps. Used by status reporting
+    /// to display per-step times derived from event log timestamps.
+    /// </summary>
+    public async Task<IReadOnlyList<LogEntry>> ReadAllEntriesWithTimestampsAsync(CancellationToken cancellationToken = default)
+    {
+        return await ReadAllEntriesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<IReadOnlyList<LogEntry>> ReadAllEntriesAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(logFilePath))

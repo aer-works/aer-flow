@@ -60,13 +60,13 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
     public Task AppendAsync(FlowEvent flowEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(flowEvent);
-        return AppendEntryAsync(new LogEntry.FlowLogEntry(flowEvent), cancellationToken);
+        return AppendEntryAsync(new LogEntry.FlowLogEntry(flowEvent, DateTime.UtcNow), cancellationToken);
     }
 
     public Task AppendAsync(CoreEvent coreEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(coreEvent);
-        return AppendEntryAsync(new LogEntry.CoreLogEntry(coreEvent), cancellationToken);
+        return AppendEntryAsync(new LogEntry.CoreLogEntry(coreEvent, DateTime.UtcNow), cancellationToken);
     }
 
     private async Task AppendEntryAsync(LogEntry entry, CancellationToken cancellationToken)
