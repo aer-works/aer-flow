@@ -98,6 +98,7 @@ public class DialogueWorkerConfigParserTests
 
         var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
 
+        Assert.DoesNotContain("Malformed", ex.Message);
         Assert.Contains("FinalOutputMode", ex.Message);
         Assert.Contains("Bogus", ex.Message);
         Assert.Contains("FinalTurn", ex.Message);
