@@ -68,10 +68,11 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
         catch (IOException ex) when (ex.HResult == ErrorSharingViolationHResult)
         {
             throw new FlowJournalHeldException(
-                $"'{logFilePath}' is held open by another process — most likely a live 'aer run' " +
-                "engine driving this workflow. A decision can only be recorded once that engine " +
-                "is stopped or paused: the workflow's latest attempt must be Paused, with no live " +
-                "'aer run' still holding its journal (see 'aer status').",
+                $"'{logFilePath}' is held open by another process — usually this task's live " +
+                "'aer run' engine, which keeps the journal open for its whole run, though any " +
+                "sibling aer command mid-append briefly holds it too. Retry once nothing else " +
+                "holds the journal; for a decision, the workflow's latest attempt must be Paused " +
+                "with no live 'aer run' (see 'aer status').",
                 ex);
         }
     }
