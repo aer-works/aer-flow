@@ -34,11 +34,31 @@ namespace Aer.Workers.Dialogue;
 /// </summary>
 public sealed class ProcessVendorTurnClient : IVendorTurnClient
 {
-    public async Task<VendorTurnResult> SendTurnAsync(
+    private static readonly TimeSpan PrintTimeoutMargin = TimeSpan.FromSeconds(60);
+
+    private readonly TimeSpan? _configuredTurnTimeout;
+
+    public ProcessVendorTurnClient(TimeSpan? turnTimeout = null)
+    {
+        _configuredTurnTimeout = turnTimeout;
+    }
+
+    public ProcessVendorTurnClient(DialogueWorkerConfig config)
+        : this(config?.TurnTimeout)
+    {
+    }
+
+    public Task<VendorTurnResult> SendTurnAsync(
         DialogueParticipant participant, string prompt, CancellationToken cancellationToken = default)
+        => SendTurnAsync(participant, prompt, turnTimeout: null, cancellationToken);
+
+    public async Task<VendorTurnResult> SendTurnAsync(
+        DialogueParticipant participant, string prompt, TimeSpan? turnTimeout, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(participant);
         ArgumentNullException.ThrowIfNull(prompt);
+
+        var effectiveTurnTimeout = turnTimeout ?? _configuredTurnTimeout ?? DialogueWorkerConfig.DefaultTurnTimeout;
 
         string? tempPromptFile = null;
         try
@@ -98,19 +118,59 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                 startInfo.ArgumentList.Add(substituted);
             }
 
+            if (IsAgyCommand(participant.Command) && !HasOperatorPrintTimeout(participant.Args))
+            {
+                startInfo.ArgumentList.Add("--print-timeout");
+                startInfo.ArgumentList.Add(FormatPrintTimeout(effectiveTurnTimeout));
+            }
+
             using var process = new Process { StartInfo = startInfo };
             process.Start();
             process.StandardInput.Close();
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(effectiveTurnTimeout);
+            using var registration = timeoutCts.Token.Register(() =>
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch
+                {
+                }
+            });
 
-            return new VendorTurnResult(
-                stdoutTask.Result.TrimEnd('\r', '\n'),
-                process.ExitCode,
-                stderrTask.Result.TrimEnd('\r', '\n'));
+            try
+            {
+                var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+                var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+
+                if (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    return new VendorTurnResult(
+                        string.Empty,
+                        124,
+                        $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.");
+                }
+
+                return new VendorTurnResult(
+                    stdoutTask.Result.TrimEnd('\r', '\n'),
+                    process.ExitCode,
+                    stderrTask.Result.TrimEnd('\r', '\n'));
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                return new VendorTurnResult(
+                    string.Empty,
+                    124,
+                    $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.");
+            }
         }
         finally
         {
@@ -126,5 +186,31 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                 }
             }
         }
+    }
+
+    private static bool IsAgyCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(command);
+        return string.Equals(name, "agy", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasOperatorPrintTimeout(IReadOnlyList<string> args)
+    {
+        return args.Any(a => a == "--print-timeout" || a.StartsWith("--print-timeout=", StringComparison.Ordinal));
+    }
+
+    private static string FormatPrintTimeout(TimeSpan timeout)
+    {
+        var withMargin = timeout > TimeSpan.MaxValue - PrintTimeoutMargin
+            ? TimeSpan.MaxValue
+            : timeout + PrintTimeoutMargin;
+
+        var seconds = (long)Math.Ceiling(withMargin.TotalSeconds);
+        return $"{Math.Max(seconds, 1)}s";
     }
 }

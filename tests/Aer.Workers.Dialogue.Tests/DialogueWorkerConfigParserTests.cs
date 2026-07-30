@@ -45,6 +45,27 @@ public class DialogueWorkerConfigParserTests
         Assert.Equal("claude", config.Participants[0].Vendor);
         Assert.Equal("responder", config.Participants[1].Role);
         Assert.Equal("gemini", config.Participants[1].Vendor);
+        Assert.Equal(TimeSpan.FromMinutes(5), config.TurnTimeout);
+    }
+
+    [Fact]
+    public void Parses_custom_turn_timeout()
+    {
+        var json = ValidJson.Replace("\"TurnBudget\": 4,", "\"TurnBudget\": 4, \"TurnTimeout\": \"00:02:00\",");
+
+        var config = DialogueWorkerConfigParser.Parse(json);
+
+        Assert.Equal(TimeSpan.FromMinutes(2), config.TurnTimeout);
+    }
+
+    [Theory]
+    [InlineData("-00:01:00")]
+    public void Negative_turn_timeout_throws(string timeoutStr)
+    {
+        var json = ValidJson.Replace("\"TurnBudget\": 4,", $"\"TurnBudget\": 4, \"TurnTimeout\": \"{timeoutStr}\",");
+
+        var ex = Assert.Throws<DialogueWorkerConfigException>(() => DialogueWorkerConfigParser.Parse(json));
+        Assert.Contains("TurnTimeout", ex.Message);
     }
 
     [Fact]

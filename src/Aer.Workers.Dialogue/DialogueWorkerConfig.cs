@@ -36,13 +36,29 @@ namespace Aer.Workers.Dialogue;
 /// (M23 Phase 1's N-party generalization of the prior fixed Initiator/Responder shape). Must contain
 /// at least two entries: a "dialogue" with one side is not an exchange.
 /// </param>
+/// <param name="TurnTimeout">
+/// The maximum wall-clock duration allowed for a single turn's execution across all participants
+/// (defaulting to 5 minutes if omitted or non-positive).
+/// </param>
 public sealed record DialogueWorkerConfig(
     string SeedPrompt,
     int TurnBudget,
     string FinalOutputName,
     string? StopSentinel,
-    IReadOnlyList<DialogueParticipant> Participants)
+    IReadOnlyList<DialogueParticipant> Participants,
+    TimeSpan TurnTimeout = default)
 {
+    /// <summary>
+    /// Default per-turn ceiling (5 minutes).
+    /// </summary>
+    public static readonly TimeSpan DefaultTurnTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// The per-turn timeout ceiling for child process turns.
+    /// </summary>
+    public TimeSpan TurnTimeout { get; init; } = TurnTimeout == default
+        ? DefaultTurnTimeout
+        : TurnTimeout;
     /// <summary>
     /// The hard safety ceiling on turns <see cref="DialogueRunner"/> will ever actually run,
     /// enforced unconditionally regardless of a config's own <see cref="TurnBudget"/> (M23 Phase 1,

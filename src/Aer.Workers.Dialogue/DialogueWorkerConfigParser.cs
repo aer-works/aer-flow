@@ -45,6 +45,11 @@ public static class DialogueWorkerConfigParser
             throw new DialogueWorkerConfigException("Dialogue-worker config is missing 'FinalOutputName'.");
         }
 
+        if (config.TurnTimeout <= TimeSpan.Zero)
+        {
+            throw new DialogueWorkerConfigException("Dialogue-worker config's 'TurnTimeout' must be positive.");
+        }
+
         if (config.Participants is null || config.Participants.Count < 2)
         {
             throw new DialogueWorkerConfigException(
