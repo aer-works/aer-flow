@@ -4,7 +4,7 @@
 
 Companion to [`vendor-doc-audit.md`](vendor-doc-audit.md) (the findings) and
 [`vendor-capabilities.md`](vendor-capabilities.md) (the reference), against `claude` 2.1.220 and
-`agy` 1.1.7.
+`agy` 1.1.8.
 
 ## How coverage is established
 
