@@ -221,5 +221,13 @@ public static class Journeys
             new("two models genuinely disagree", Runner.Attest, Coverage.HumanAttested,
                 "The disagreement is the point and cannot be staged with stubs."),
         ], [386, 424]),
+
+        new("J19", "Run the room for a day from your pocket", "Fails — automated + human",
+        [
+            new("daemon event→notification pipeline and the decision round-trip", Runner.Engine, Coverage.Pending,
+                "The wake-bridge (#799) and AER's own notifier (decision 0030) do not exist yet; the automated legs get driven as they land."),
+            new("real device, real notification, desk untouched", Runner.Attest, Coverage.HumanAttested,
+                "The phone half is a human walk: notifications reaching a physical pocket and a decision answered there advancing the room. This journey is docs/plan.md §M26's demo bar."),
+        ], [799, 806, 337]),
     ];
 }
