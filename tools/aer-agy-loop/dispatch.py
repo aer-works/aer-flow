@@ -235,77 +235,132 @@ def shell_rules_preamble(run_shell_commands: bool) -> str:
     )
 
 
+def lane_review_prompt(output_name: str) -> str:
+    """Generate the prompt for the review step in --lane mode.
+
+    Instructs an adversarial review of the branch diff (git diff main...HEAD in the working
+    directory), requiring file:line evidence for findings and prose output to output_name.
+    """
+    return (
+        f"Perform an adversarial review of the branch's diff (`git diff main...HEAD` in the working directory).\n"
+        f"Identify any defects, correctness issues, unverified claims, or missing test coverage. "
+        f"Every finding must include file:line evidence.\n"
+        f"Write your prose report to `{output_name}` in AER_OUTPUT_DIR.\n"
+    )
+
+
 def build_bindings(
-    worker_name: str,
-    prompt_text: str,
-    output_name: str,
-    adapter: str,
-    working_directory: Path,
-    timeout_minutes: int,
-    model: str | None,
-    effort: str | None,
-    read_files: bool,
-    write_files: bool,
-    run_shell_commands: bool,
-    network_access: bool,
+    worker_name: str = "worker",
+    prompt_text: str = "",
+    output_name: str = "",
+    adapter: str = "gemini",
+    working_directory: Path | None = None,
+    timeout_minutes: int = 20,
+    model: str | None = None,
+    effort: str | None = None,
+    read_files: bool = True,
+    write_files: bool = True,
+    run_shell_commands: bool = False,
+    network_access: bool = False,
     verdict_schema: bool = False,
+    steps: list[dict] | None = None,
 ) -> dict:
-    permission_grant = {
-        "ReadFiles": read_files,
-        "WriteFiles": write_files,
-        "RunShellCommands": run_shell_commands,
-        "NetworkAccess": network_access,
-    }
+    if steps is None:
+        if working_directory is None:
+            working_directory = Path(".")
+        steps = [{
+            "step_id": worker_name,
+            "worker_name": worker_name,
+            "prompt_text": prompt_text,
+            "output_name": output_name,
+            "adapter": adapter,
+            "working_directory": working_directory,
+            "timeout_minutes": timeout_minutes,
+            "model": model,
+            "effort": effort,
+            "read_files": read_files,
+            "write_files": write_files,
+            "run_shell_commands": run_shell_commands,
+            "network_access": network_access,
+            "verdict_schema": verdict_schema,
+        }]
 
-    produced_outputs = [{"Name": output_name}]
-    if verdict_schema:
-        # Spec §4.2: the engine validates this parses as a ReviewVerdict at completion -- a review
-        # whose verdict.json is missing or malformed is a FAILED execution regardless of the prose
-        # report's quality. The shape instruction rides the prompt below.
-        produced_outputs.append({"Name": VERDICT_OUTPUT_NAME, "Schema": "ReviewVerdict"})
+    bindings = {}
+    for s in steps:
+        permission_grant = {
+            "ReadFiles": s["read_files"],
+            "WriteFiles": s["write_files"],
+            "RunShellCommands": s["run_shell_commands"],
+            "NetworkAccess": s["network_access"],
+        }
 
-    entry = {
-        "Adapter": adapter,
-        "Contract": {
-            "WorkerName": worker_name,
-            "RequiredInputs": [],
-            "ProducedOutputs": produced_outputs,
-            "OptionalMetadata": [],
-        },
-        "PromptTemplate": budget_preamble(timeout_minutes, output_name)
-        + shell_rules_preamble(run_shell_commands)
-        + (verdict_preamble() if verdict_schema else "")
-        + prompt_text,
-        # Split into hours: "00:90:00" is not 90 minutes under .NET's [-][d.]hh:mm:ss, it is
-        # malformed. Everything below 60 was correct, which is why the default of 20 never showed it —
-        # and #588 makes a larger number the natural next thing an operator reaches for.
-        "Timeout": "{:02d}:{:02d}:00".format(*divmod(timeout_minutes, 60)),
-        "PermissionGrant": permission_grant,
-        "WorkingDirectory": _forward_slashes(working_directory),
-    }
-    if model:
-        entry["Model"] = model
-    if effort:
-        entry["Effort"] = effort
+        produced_outputs = [{"Name": s["output_name"]}]
+        if s.get("verdict_schema"):
+            # Spec §4.2: the engine validates this parses as a ReviewVerdict at completion -- a review
+            # whose verdict.json is missing or malformed is a FAILED execution regardless of the prose
+            # report's quality. The shape instruction rides the prompt below.
+            produced_outputs.append({"Name": VERDICT_OUTPUT_NAME, "Schema": "ReviewVerdict"})
 
-    return {worker_name: entry}
+        entry = {
+            "Adapter": s["adapter"],
+            "Contract": {
+                "WorkerName": s["worker_name"],
+                "RequiredInputs": [],
+                "ProducedOutputs": produced_outputs,
+                "OptionalMetadata": [],
+            },
+            "PromptTemplate": budget_preamble(s["timeout_minutes"], s["output_name"])
+            + shell_rules_preamble(s["run_shell_commands"])
+            + (verdict_preamble() if s.get("verdict_schema") else "")
+            + s["prompt_text"],
+            # Split into hours: "00:90:00" is not 90 minutes under .NET's [-][d.]hh:mm:ss, it is
+            # malformed. Everything below 60 was correct, which is why the default of 20 never showed it —
+            # and #588 makes a larger number the natural next thing an operator reaches for.
+            "Timeout": "{:02d}:{:02d}:00".format(*divmod(s["timeout_minutes"], 60)),
+            "PermissionGrant": permission_grant,
+            "WorkingDirectory": _forward_slashes(s["working_directory"]),
+        }
+        if s.get("model"):
+            entry["Model"] = s["model"]
+        if s.get("effort"):
+            entry["Effort"] = s["effort"]
+
+        bindings[s["step_id"]] = entry
+
+    return bindings
 
 
-def build_workflow(worker_name: str, output_name: str, verdict_schema: bool = False) -> dict:
-    outputs = [output_name] + ([VERDICT_OUTPUT_NAME] if verdict_schema else [])
+def build_workflow(
+    worker_name: str = "worker",
+    output_name: str = "",
+    verdict_schema: bool = False,
+    steps: list[dict] | None = None,
+) -> dict:
+    if steps is None:
+        steps = [{
+            "step_id": worker_name,
+            "worker_name": worker_name,
+            "output_name": output_name,
+            "verdict_schema": verdict_schema,
+            "depends_on": [],
+        }]
+
+    workflow_steps = []
+    for s in steps:
+        outputs = [s["output_name"]] + ([VERDICT_OUTPUT_NAME] if s.get("verdict_schema") else [])
+        workflow_steps.append({
+            "StepId": s["step_id"],
+            "Worker": s["worker_name"],
+            "Inputs": [],
+            "Outputs": outputs,
+            "DependsOn": s.get("depends_on", []),
+            "RetryPolicy": {"MaxAttempts": 1},
+        })
+
     return {
         "WorkflowTemplateId": f"aer-agy-loop-{uuid.uuid4().hex[:8]}",
         "WorkflowTemplateVersion": 1,
-        "Steps": [
-            {
-                "StepId": worker_name,
-                "Worker": worker_name,
-                "Inputs": [],
-                "Outputs": outputs,
-                "DependsOn": [],
-                "RetryPolicy": {"MaxAttempts": 1},
-            }
-        ],
+        "Steps": workflow_steps,
     }
 
 
@@ -564,14 +619,16 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     # them, so asking for the catalogue got "the following arguments are required: --prompt-file".
     listing = any(a.startswith("--list") for a in argv)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--prompt-file", required=not listing, type=Path, help="Path to the prompt text sent to the worker.")
-    parser.add_argument("--output-name", required=not listing, help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
-    parser.add_argument("--working-directory", required=not listing, type=Path, help="Absolute path the dispatched worker treats as its project root.")
+    parser.add_argument("--lane", action="store_true",
+                        help="Build and run a 3-step workflow (implement -> janitor -> review) in a single dispatch.")
+    parser.add_argument("--prompt-file", default=None, type=Path, help="Path to the prompt text sent to the worker.")
+    parser.add_argument("--output-name", default=None, help="Contract output name (no extension needed; matches an AER_OUTPUT_DIR file).")
+    parser.add_argument("--working-directory", default=None, type=Path, help="Absolute path the dispatched worker treats as its project root.")
     parser.add_argument("--template", choices=sorted(TEMPLATES), default=None,
                         help="Role preset supplying adapter/model/effort/permissions/timeout. Explicit flags still win. See --list-templates.")
     parser.add_argument("--list-templates", action="store_true", help="Print each template, what it is for, and what it resolves to, then exit.")
     parser.add_argument("--adapter", default=None, help="Registered adapter name (default: gemini, or the template's).")
-    parser.add_argument("--worker-name", default="worker", help="Worker role name used in the generated workflow/bindings (default: worker).")
+    parser.add_argument("--worker-name", default=None, help="Worker role name used in the generated workflow/bindings (default: worker).")
     parser.add_argument("--model", default=None, help="Pin a specific model (e.g. a Gemini thinking-tier model). Omit and no --model flag is sent at all, leaving the vendor CLI's own default in effect -- AER pins nothing.")
     parser.add_argument("--effort", default=None, help="Raw vendor-native effort-level string (e.g. claude: low|medium|high|xhigh|max, agy: low|medium|high). Passed through as-is, no validation.")
     parser.add_argument("--read-files", action="store_true", default=None)
@@ -623,10 +680,39 @@ def main() -> int:
         print("dispatch nothing. There is no template for that, deliberately.")
         return 0
 
-    # Precedence: an explicit flag beats the template, the template beats the built-in default.
-    for key, value in resolve(TEMPLATES.get(args.template, {})).items():
-        if getattr(args, key) is None:
-            setattr(args, key, value)
+    if args.lane:
+        if args.template is not None:
+            print("error: --lane cannot be combined with --template", file=sys.stderr)
+            return 2
+        if args.worker_name is not None:
+            print("error: --lane cannot be combined with --worker-name", file=sys.stderr)
+            return 2
+        if args.output_name is not None:
+            print("error: --lane cannot be combined with --output-name", file=sys.stderr)
+            return 2
+        if args.prompt_file is None:
+            print("error: the following arguments are required: --prompt-file", file=sys.stderr)
+            return 2
+        if args.working_directory is None:
+            print("error: the following arguments are required: --working-directory", file=sys.stderr)
+            return 2
+    else:
+        if args.prompt_file is None:
+            print("error: the following arguments are required: --prompt-file", file=sys.stderr)
+            return 2
+        if args.output_name is None:
+            print("error: the following arguments are required: --output-name", file=sys.stderr)
+            return 2
+        if args.working_directory is None:
+            print("error: the following arguments are required: --working-directory", file=sys.stderr)
+            return 2
+        if args.worker_name is None:
+            args.worker_name = "worker"
+
+        # Precedence: an explicit flag beats the template, the template beats the built-in default.
+        for key, value in resolve(TEMPLATES.get(args.template, {})).items():
+            if getattr(args, key) is None:
+                setattr(args, key, value)
 
     repo_root = Path(__file__).resolve().parents[2]
     # A dry run keeps the plain repo-bin path: it never spawns the engine, and refreshing a copy
@@ -637,17 +723,6 @@ def main() -> int:
         print(f"error: Aer.Cli.exe not found at {cli_path} -- build it first (pixi run build).", file=sys.stderr)
         return 2
 
-    refusal = grant_refusal(vars(args))
-    if refusal:
-        print(f"error: {refusal}", file=sys.stderr)
-        return 2
-
-    run_id = uuid.uuid4().hex[:12]
-    scratch_root = (args.scratch_root or (repo_root / "aer-agy-loop-scratch" / "runs" / run_id)).resolve()
-    scratch_root.mkdir(parents=True, exist_ok=True)
-    task_dir = scratch_root / "task-dir"
-
-    prompt_text = args.prompt_file.read_text(encoding="utf-8")
     working_directory = args.working_directory.resolve()
     # Not under --dry-run: provisioning creates a real worktree and runs a real build, and the dry
     # run's whole promise is that nothing is mutated or spent (#639).
@@ -655,58 +730,117 @@ def main() -> int:
         working_directory = provision_worktree(working_directory, args.worktree)
         print(f"[dispatch.py] worktree: {working_directory} (branch {args.worktree})")
 
-    workflow = build_workflow(args.worker_name, args.output_name, verdict_schema=args.verdict_schema)
-    bindings = build_bindings(
-        worker_name=args.worker_name,
-        prompt_text=prompt_text,
-        output_name=args.output_name,
-        verdict_schema=args.verdict_schema,
-        adapter=args.adapter,
-        working_directory=working_directory,
-        timeout_minutes=args.timeout_minutes,
-        model=args.model,
-        effort=args.effort,
-        read_files=args.read_files,
-        write_files=args.write_files,
-        run_shell_commands=args.run_shell_commands,
-        network_access=args.network_access,
-    )
+    if not args.lane:
+        refusal = grant_refusal(vars(args))
+        if refusal:
+            print(f"error: {refusal}", file=sys.stderr)
+            return 2
+
+        prompt_text = args.prompt_file.read_text(encoding="utf-8")
+        step_specs = [{
+            "step_id": args.worker_name,
+            "worker_name": args.worker_name,
+            "prompt_text": prompt_text,
+            "output_name": args.output_name,
+            "depends_on": [],
+            "adapter": args.adapter,
+            "working_directory": working_directory,
+            "timeout_minutes": args.timeout_minutes,
+            "model": args.model,
+            "effort": args.effort,
+            "read_files": args.read_files,
+            "write_files": args.write_files,
+            "run_shell_commands": args.run_shell_commands,
+            "network_access": args.network_access,
+            "verdict_schema": args.verdict_schema,
+        }]
+    else:
+        janitor_prompt_path = Path(__file__).resolve().parent / "janitor-prompt.md"
+        if not janitor_prompt_path.exists():
+            print(f"error: janitor prompt file not found at {janitor_prompt_path}", file=sys.stderr)
+            return 2
+
+        implement_prompt = args.prompt_file.read_text(encoding="utf-8")
+        janitor_prompt = janitor_prompt_path.read_text(encoding="utf-8")
+        review_prompt = lane_review_prompt("report.md")
+
+        step_specs = [
+            {
+                "step_id": "implement",
+                "worker_name": "implement",
+                "prompt_text": implement_prompt,
+                "output_name": "implement-report.md",
+                "depends_on": [],
+                "working_directory": working_directory,
+                **resolve(TEMPLATES["implement"]),
+            },
+            {
+                "step_id": "janitor",
+                "worker_name": "janitor",
+                "prompt_text": janitor_prompt,
+                "output_name": "janitor-report.md",
+                "depends_on": ["implement"],
+                "working_directory": working_directory,
+                **resolve(TEMPLATES["janitor"]),
+            },
+            {
+                "step_id": "review",
+                "worker_name": "review",
+                "prompt_text": review_prompt,
+                "output_name": "report.md",
+                "depends_on": ["janitor"],
+                "working_directory": working_directory,
+                **resolve(TEMPLATES["review"]),
+            },
+        ]
+
+        for s in step_specs:
+            refusal = grant_refusal(s)
+            if refusal:
+                print(f"error: step '{s['step_id']}': {refusal}", file=sys.stderr)
+                return 2
+
+    run_id = uuid.uuid4().hex[:12]
+    scratch_root = (args.scratch_root or (repo_root / "aer-agy-loop-scratch" / "runs" / run_id)).resolve()
+    scratch_root.mkdir(parents=True, exist_ok=True)
+    task_dir = scratch_root / "task-dir"
+
+    workflow = build_workflow(steps=step_specs)
+    bindings = build_bindings(steps=step_specs)
 
     workflow_path = scratch_root / "workflow.json"
     bindings_path = scratch_root / "bindings.json"
     workflow_path.write_text(json.dumps(workflow, indent=2), encoding="utf-8")
     bindings_path.write_text(json.dumps(bindings, indent=2), encoding="utf-8")
 
-    # CLAUDE.md gate `second-reader` ("name the model; don't inherit it") and the cost-and-reversibility policy ("say what it spends before
-    # spending it") are both prose an agent has to remember at the moment it dispatches, which is
-    # exactly when it is thinking about something else. Announcing the tier here makes the tool say it
-    # instead. This fires for every dispatch, not only a reviewer one -- an implementer or an advisor
-    # consult is spent from the same budget.
-    #
-    # An omitted --model is named rather than left blank, because a blank field reads like a choice.
-    # It resolves to the *vendor* CLI's own default: with no Model in the bindings the adapter adds no
-    # --model flag at all (GeminiWorkerAdapter's `if (invocation.Model is not null)`), so nothing on
-    # AER's side picked it. Saying that precisely matters here -- `gemini-3-flash` once sat in fixtures
-    # and runbooks pinning nothing while the repo read as though a model had been chosen.
-    print(
-        # "would dispatch" under --dry-run. The banner exists to announce a spend before it happens,
-        # and a dry run has none -- so saying "about to dispatch" and then dispatching nothing would
-        # make this line assert what the code does not do.
-        "[dispatch.py] {verb}: adapter={adapter} model={model} effort={effort} "
-        "timeout={timeout}m".format(
-            verb="WOULD dispatch" if args.dry_run else "about to dispatch",
-            adapter=args.adapter,
-            model=args.model if args.model else "<none pinned -- the vendor CLI's own default>",
-            # Deliberately says what is SENT, not what the vendor will do with the absence. For an
-            # agy template the effort already sits in the model name, and whether an unpassed
-            # `--effort` then defaults, is ignored, or is overridden by the suffix is exactly the
-            # unprobed interaction in #510 -- so a banner promising "the vendor CLI's own default"
-            # would assert the thing nobody has measured, on the line an operator reads before spend.
-            effort=args.effort if args.effort else "<no --effort flag sent>",
-            timeout=args.timeout_minutes,
-        ),
-        file=sys.stderr,
-    )
+    if args.lane:
+        print(
+            "[dispatch.py] {verb}: lane 3 steps (implement -> janitor -> review)".format(
+                verb="WOULD dispatch" if args.dry_run else "about to dispatch",
+            ),
+            file=sys.stderr,
+        )
+    else:
+        s = step_specs[0]
+        print(
+            # "would dispatch" under --dry-run. The banner exists to announce a spend before it happens,
+            # and a dry run has none -- so saying "about to dispatch" and then dispatching nothing would
+            # make this line assert what the code does not do.
+            "[dispatch.py] {verb}: adapter={adapter} model={model} effort={effort} "
+            "timeout={timeout}m".format(
+                verb="WOULD dispatch" if args.dry_run else "about to dispatch",
+                adapter=s["adapter"],
+                model=s["model"] if s["model"] else "<none pinned -- the vendor CLI's own default>",
+                # Deliberately says what is SENT, not what the vendor will do with the absence. For an
+                # agy template the effort already sits in the model name, and whether an unpassed
+                # `--effort` then defaults, is ignored, or is overridden by the suffix is exactly the
+                # unprobed interaction in #510 -- so a banner promising "the vendor CLI's own default"
+                # would assert the thing nobody has measured, on the line an operator reads before spend.
+                effort=s["effort"] if s["effort"] else "<no --effort flag sent>",
+                timeout=s["timeout_minutes"],
+            ),
+            file=sys.stderr,
+        )
 
     if args.dry_run:
         # Stops HERE, after the JSON is generated, not before. The three bugs this script exists to
@@ -719,9 +853,12 @@ def main() -> int:
         print(f"    task-dir:   {_forward_slashes(task_dir)}")
         print(f"    Aer.Cli:    {cli_path}"
               f"{'' if cli_path.exists() else '   <-- NOT BUILT; a real run would fail here'}")
-        print("    grant:      " + " ".join(
-            f"{k}={getattr(args, k)}" for k in
-            ("read_files", "write_files", "run_shell_commands", "network_access")))
+        if not args.lane:
+            print("    grant:      " + " ".join(
+                f"{k}={getattr(args, k)}" for k in
+                ("read_files", "write_files", "run_shell_commands", "network_access")))
+        else:
+            print("    lane:       implement -> janitor -> review")
         return 0
 
     # Captured BEFORE the run. A reused --scratch-root carries a previous dispatch's log, and
@@ -781,18 +918,18 @@ def main() -> int:
             print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
         return result.returncode
 
+    primary_output_name = "report.md" if args.lane else args.output_name
     artifacts_dir = task_dir / "artifacts"
-    output_files = list(artifacts_dir.glob(f"*/{args.output_name}")) if artifacts_dir.exists() else []
+    output_files = list(artifacts_dir.glob(f"*/{primary_output_name}")) if artifacts_dir.exists() else []
     if not output_files:
-        print(f"error: workflow reported success but no '{args.output_name}' artifact was found under {artifacts_dir}", file=sys.stderr)
+        print(f"error: workflow reported success but no '{primary_output_name}' artifact was found under {artifacts_dir}", file=sys.stderr)
         return 3
 
     output_content = output_files[0].read_text(encoding="utf-8")
     print(output_content)
     print(f"\n[dispatch.py] output written to: {output_files[0]}", file=sys.stderr)
-    if args.verdict_schema:
-        # The engine already refused to succeed without a schema-valid verdict (spec §4.2) --
-        # this is a pointer for the caller, not a re-validation.
+    has_verdict = args.lane or args.verdict_schema
+    if has_verdict:
         for verdict_path in artifacts_dir.glob(f"*/{VERDICT_OUTPUT_NAME}"):
             print(f"[dispatch.py] structured verdict: {verdict_path}", file=sys.stderr)
     return 0
