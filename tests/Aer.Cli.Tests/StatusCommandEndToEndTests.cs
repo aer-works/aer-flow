@@ -473,9 +473,15 @@ public class StatusCommandEndToEndTests
 
     private static string GatedCopyFirstInputCommand(string outputName, string signalFilePath)
     {
+        // && on both arms, never cmd's & (#809): & runs the payload even when the gating
+        // powershell fails to spawn, which skips the gate SILENTLY -- the run reaches Terminal
+        // before the follow's first read and the assert fails with a missing-events signature
+        // instead of naming the gate. Fail closed: a gate that cannot run fails the step loudly.
+        // The wait loop's timeout-expiry path still exits 0, so best-effort semantics after 60s
+        // are unchanged.
         var normalizedPath = signalFilePath.Replace("\\", "/");
         return OperatingSystem.IsWindows()
-            ? $"powershell -NoProfile -Command \"for ($i=0; $i -lt 1200; $i++) {{ if (Test-Path '{normalizedPath}') {{ break }}; Start-Sleep -Milliseconds 50 }}\" & type %AER_INPUT_0% >%AER_OUTPUT_DIR%\\{outputName}"
+            ? $"powershell -NoProfile -Command \"for ($i=0; $i -lt 1200; $i++) {{ if (Test-Path '{normalizedPath}') {{ break }}; Start-Sleep -Milliseconds 50 }}\" && type %AER_INPUT_0% >%AER_OUTPUT_DIR%\\{outputName}"
             : $"sh -c \"for i in \\$(seq 1 1200); do if [ -f \\\"{normalizedPath}\\\" ]; then break; fi; sleep 0.05; done\" && cat \"$AER_INPUT_0\" > \"$AER_OUTPUT_DIR/{outputName}\"";
     }
 }
