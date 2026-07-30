@@ -309,4 +309,102 @@ public class WorkflowDefinitionParserTests
 
         Assert.Equal(3, parsed.Steps.Count);
     }
+
+    [Fact]
+    public void An_unknown_Backoff_preset_surfaces_converter_message_without_malformed_preamble()
+    {
+        var json = """
+            {
+              "WorkflowTemplateId": "x",
+              "WorkflowTemplateVersion": 1,
+              "Steps": [
+                {
+                  "StepId": "a",
+                  "Worker": "w",
+                  "Inputs": [],
+                  "Outputs": [],
+                  "DependsOn": [],
+                  "RetryPolicy": { "MaxAttempts": 3, "Backoff": "unknown_preset" }
+                }
+              ]
+            }
+            """;
+
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(json));
+
+        var error = Assert.Single(ex.Errors);
+        Assert.StartsWith("Unknown Backoff preset 'unknown_preset' for field 'Backoff'", error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Malformed template JSON", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Truncated_or_malformed_json_retains_malformed_preamble()
+    {
+        var json = """{"WorkflowTemplateId":"x","WorkflowTemplateVersion":1,"Steps":[{"StepId":"a","Worker":""";
+
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(json));
+
+        var error = Assert.Single(ex.Errors);
+        Assert.StartsWith("Malformed template JSON", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Every_converter_reachable_from_the_template_graph_is_known_to_the_prefix_list()
+    {
+        // #792: ConverterMessagePrefixes is an enumerated list, so a converter added to the
+        // template graph later would have its value errors re-buried under the malformed-JSON
+        // preamble with nothing red anywhere. This walk is the tripwire: when it fails, extend
+        // ConverterMessagePrefixes in WorkflowDefinitionParser for the new converter's messages,
+        // then add it to the covered set below.
+        var covered = new HashSet<string>
+        {
+            "Aer.Flow.Domain.BackoffPolicyJsonConverter",
+            "Aer.Flow.Domain.StepId+Converter",
+            "Aer.Flow.Domain.WorkflowTemplateId+Converter",
+        };
+
+        var discovered = new HashSet<string>();
+        var visited = new HashSet<Type>();
+
+        void Walk(Type type)
+        {
+            if (type.IsArray)
+            {
+                Walk(type.GetElementType()!);
+                return;
+            }
+
+            if (type.IsGenericType)
+            {
+                foreach (var arg in type.GetGenericArguments())
+                {
+                    Walk(arg);
+                }
+            }
+
+            if (type.Namespace?.StartsWith("Aer.Flow", StringComparison.Ordinal) != true
+                || !visited.Add(type))
+            {
+                return;
+            }
+
+            var attribute = type.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonConverterAttribute), inherit: false);
+            foreach (System.Text.Json.Serialization.JsonConverterAttribute a in attribute)
+            {
+                discovered.Add(a.ConverterType!.FullName!);
+            }
+
+            foreach (var property in type.GetProperties())
+            {
+                Walk(property.PropertyType);
+            }
+        }
+
+        Walk(typeof(WorkflowDefinition));
+
+        Assert.True(discovered.Count > 0, "the walk found no converters at all -- it is broken, not the graph clean");
+        Assert.True(discovered.SetEquals(covered),
+            $"template-graph converters and the covered set diverge. discovered: [{string.Join(", ", discovered)}] " +
+            $"covered: [{string.Join(", ", covered)}]. See ConverterMessagePrefixes in WorkflowDefinitionParser.");
+    }
 }
