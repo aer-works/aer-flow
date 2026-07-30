@@ -161,6 +161,32 @@ public class FlowEventLogJsonTests
     /// re-coupling stability to this repo's declaration order instead. Asserted so the comment and
     /// the code cannot drift apart again.
     /// </summary>
+    /// <summary>
+    /// #759's second reader's C1 DEFECT: the additive-member compat pattern above existed only for
+    /// <see cref="FlowEvent"/>, never for <see cref="CoreEvent"/> — where #759's <c>StderrTail</c>
+    /// actually landed. Every journal written before #759 carries <c>executionExited</c> lines
+    /// without the key; this is the test that makes breaking them loud instead of discovered.
+    /// </summary>
+    [Fact]
+    public void A_CoreEvent_line_predating_StderrTail_still_replays_with_null()
+    {
+        var node = JsonNode.Parse(JsonSerializer.Serialize(
+            (CoreEvent)new CoreEvent.ExecutionExited(ExecutionId, 1, CoreExitReason.Natural, "tail text"),
+            typeof(CoreEvent),
+            FlowEventLogJson.Options))!.AsObject();
+
+        // Same fixture guard as the FlowEvent arm: a rename must fail here, not silently turn this
+        // into a test of a current line.
+        Assert.True(node.Remove(nameof(CoreEvent.ExecutionExited.StderrTail)));
+
+        var deserialized = JsonSerializer.Deserialize<CoreEvent>(node.ToJsonString(), FlowEventLogJson.Options);
+
+        var exited = Assert.IsType<CoreEvent.ExecutionExited>(deserialized);
+        Assert.Equal(ExecutionId, exited.ExecutionId);
+        Assert.Equal(1, exited.ExitCode);
+        Assert.Null(exited.StderrTail);
+    }
+
     [Fact]
     public void CoreExitReason_persists_by_name_as_its_own_stability_claim_requires()
     {
