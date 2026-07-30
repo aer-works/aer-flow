@@ -21,7 +21,8 @@ aer-flow/
 ├── tests/                     Unit/integration tests + the Aer.Plan.Tests doc gate; journey and
 │                              live-smoke test projects live outside AerFlow.slnx (default CI skips them)
 ├── spec/                      Behavioral specs (source of truth) + product journeys
-│   ├── aer-flow-behavioral-spec-v1.0.md   the engine — current
+│   ├── aer-room-spec-v1.0.md              the system — current, room worldview
+│   ├── aer-flow-behavioral-spec-v1.0.md   the engine — its scheduling chapter
 │   ├── journeys.md
 │   └── AER Overview.md
 ├── docs/                      plan.md (the living, gated plan), decisions/ (numbered ADRs),
