@@ -15,8 +15,13 @@ namespace Aer.Adapters;
 public static class WorkerBindingConfigParser
 {
     /// <summary>Parses a worker-binding config from a JSON string.</summary>
+    /// <param name="json">The config document.</param>
+    /// <param name="sourcePath">
+    /// Same contract as <see cref="Aer.Flow.Templates.WorkflowDefinitionParser.Parse"/>'s
+    /// <c>sourcePath</c> (#562).
+    /// </param>
     /// <exception cref="WorkerBindingConfigException">The JSON is malformed or empty.</exception>
-    public static IReadOnlyDictionary<string, WorkerBindingConfigEntry> Parse(string json)
+    public static IReadOnlyDictionary<string, WorkerBindingConfigEntry> Parse(string json, string? sourcePath = null)
     {
         Dictionary<string, WorkerBindingConfigEntry>? entries;
         try
@@ -25,12 +30,18 @@ public static class WorkerBindingConfigParser
         }
         catch (JsonException ex)
         {
-            throw new WorkerBindingConfigException($"Malformed worker-binding config JSON: {ex.Message}", ex);
+            var location = sourcePath is null ? string.Empty : $" in '{sourcePath}'";
+            const string shape =
+                "A valid worker-binding config looks like: "
+                + "{ \"<workerName>\": { \"Adapter\": \"<string>\", \"Contract\": { ... }, "
+                + "\"PromptTemplate\": \"<string>\", \"Timeout\": \"<hh:mm:ss>\" } }.";
+            throw new WorkerBindingConfigException($"Malformed worker-binding config JSON{location}: {ex.Message} {shape}", ex);
         }
 
         if (entries is null)
         {
-            throw new WorkerBindingConfigException("Worker-binding config file did not contain a JSON object.");
+            var location = sourcePath is null ? string.Empty : $" '{sourcePath}'";
+            throw new WorkerBindingConfigException($"Worker-binding config file{location} did not contain a JSON object.");
         }
 
         foreach (var (workerName, entry) in entries)
@@ -86,6 +97,6 @@ public static class WorkerBindingConfigParser
         string path, CancellationToken cancellationToken = default)
     {
         var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
-        return Parse(json);
+        return Parse(json, path);
     }
 }

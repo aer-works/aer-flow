@@ -172,6 +172,25 @@ public class WorkerBindingConfigParserTests
     }
 
     [Fact]
+    public async Task LoadFromFileAsync_names_the_file_in_a_malformed_json_error()
+    {
+        // #562: a raw System.Text.Json exception gave no indication which file was bad.
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, "{ not valid json", TestContext.Current.CancellationToken);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<WorkerBindingConfigException>(
+                () => WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken));
+
+            Assert.Contains(path, ex.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task LoadFromFileAsync_reads_and_parses_a_file()
     {
         var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");

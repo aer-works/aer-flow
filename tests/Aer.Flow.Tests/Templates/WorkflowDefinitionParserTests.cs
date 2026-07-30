@@ -72,6 +72,45 @@ public class WorkflowDefinitionParserTests
     }
 
     [Fact]
+    public void A_string_WorkflowTemplateVersion_names_the_expected_int_shape()
+    {
+        // #562: a hand-authored template quoting the version ("1.0.0" instead of 1) used to
+        // surface System.Text.Json's raw converter message with no guidance toward the fix.
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(
+            """{"WorkflowTemplateId":"x","WorkflowTemplateVersion":"1.0.0","Steps":[]}"""));
+
+        Assert.Contains(ex.Errors, e => e.Contains("WorkflowTemplateVersion") && e.Contains("integer") && e.Contains("not a quoted string"));
+    }
+
+    [Fact]
+    public void An_object_Inputs_names_the_expected_array_shape()
+    {
+        // #562: "Inputs": {} instead of [] used to surface a raw IReadOnlyList`1 converter message.
+        var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse(
+            """{"WorkflowTemplateId":"x","WorkflowTemplateVersion":1,"Steps":[{"StepId":"a","Worker":"w","Inputs":{},"Outputs":[],"DependsOn":[],"RetryPolicy":{"MaxAttempts":1}}]}"""));
+
+        Assert.Contains(ex.Errors, e => e.Contains("Steps[0].Inputs") && e.Contains("array of strings") && e.Contains("not an object"));
+    }
+
+    [Fact]
+    public async Task LoadFromFileAsync_names_the_file_in_a_malformed_json_error()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"template-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, "{ not valid json", TestContext.Current.CancellationToken);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<WorkflowDefinitionValidationException>(
+                () => WorkflowDefinitionParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken));
+
+            Assert.Contains(ex.Errors, e => e.Contains(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void A_null_json_document_is_rejected()
     {
         var ex = Assert.Throws<WorkflowDefinitionValidationException>(() => WorkflowDefinitionParser.Parse("null"));
