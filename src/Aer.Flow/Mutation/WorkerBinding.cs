@@ -15,7 +15,11 @@ public abstract record WorkerBinding(WorkerContract Contract)
     /// A Core-managed process (spec §3, §4): the concrete binary to spawn and how long a single
     /// execution may run.
     /// </summary>
-    public sealed record Process(WorkerContract Contract, CoreDispatchTarget Target, TimeSpan Timeout)
+    public sealed record Process(
+        WorkerContract Contract,
+        CoreDispatchTarget Target,
+        TimeSpan Timeout,
+        Outcomes.IFailureClassifier? FailureClassifier = null)
         : WorkerBinding(Contract);
 
     /// <summary>

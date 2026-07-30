@@ -229,6 +229,7 @@ public class FlowEventLogJsonTests
     [Theory]
     [InlineData(0, FailureClassification.Retryable)]
     [InlineData(1, FailureClassification.Permanent)]
+    [InlineData(2, FailureClassification.ExhaustedUntil)]
     public void A_journal_written_before_this_change_still_replays_its_ordinal_enums(
         int ordinal, FailureClassification expected)
     {
@@ -253,6 +254,7 @@ public class FlowEventLogJsonTests
     {
         Assert.Equal(0, (int)FailureClassification.Retryable);
         Assert.Equal(1, (int)FailureClassification.Permanent);
+        Assert.Equal(2, (int)FailureClassification.ExhaustedUntil);
 
         Assert.Equal(0, (int)CoreExitReason.Natural);
         Assert.Equal(1, (int)CoreExitReason.TimedOut);

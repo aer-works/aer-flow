@@ -36,6 +36,7 @@ public static class StateProjector
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
         var latestFailureReasonByStepId = new Dictionary<StepId, string?>();
+        var latestExecutionFailedRetryNotBeforeByStepId = new Dictionary<StepId, DateTimeOffset?>();
         var cancellationRequestedExecutionIds = new HashSet<ExecutionId>();
 
         // Step-less executions (spec §17.3) never associate with any StepId — tracked separately,
@@ -87,6 +88,7 @@ public static class StateProjector
                         consecutiveFailureCountByStepId[succeededStepId] = 0;
                         latestFailureClassificationByStepId[succeededStepId] = null;
                         latestFailureReasonByStepId[succeededStepId] = null;
+                        latestExecutionFailedRetryNotBeforeByStepId[succeededStepId] = null;
                     }
 
                     break;
@@ -99,6 +101,7 @@ public static class StateProjector
                             consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
                         latestFailureClassificationByStepId[failedStepId] = failed.FailureClassification;
                         latestFailureReasonByStepId[failedStepId] = failed.Reason;
+                        latestExecutionFailedRetryNotBeforeByStepId[failedStepId] = failed.RetryNotBefore;
                     }
 
                     break;
@@ -241,7 +244,8 @@ public static class StateProjector
                 pendingSupersedeTargetStepIds.Contains(stepDefinition.StepId),
                 retryNotBeforeByStepId.TryGetValue(stepDefinition.StepId, out var rnb) ? rnb : null,
                 retryDelayMsByStepId.TryGetValue(stepDefinition.StepId, out var rdm) ? rdm : null,
-                retryScheduledForExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var rfe) ? rfe : null));
+                retryScheduledForExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var rfe) ? rfe : null,
+                latestExecutionFailedRetryNotBeforeByStepId.GetValueOrDefault(stepDefinition.StepId)));
         }
 
         // Paused outranks a pending deferral: a deferred sibling must not make a workflow that is

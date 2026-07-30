@@ -52,7 +52,7 @@ public sealed record WorkerProgressEvent(string Kind, string Text, bool IsPartia
 /// <c>AER_INPUT_&lt;n&gt;</c>/<c>AER_OUTPUT_DIR</c>) lives behind an implementation of this
 /// interface; <c>Aer.Flow</c> never learns a vendor exists.
 /// </summary>
-public interface IWorkerAdapter
+public interface IWorkerAdapter : Aer.Flow.Outcomes.IFailureClassifier
 {
     /// <summary>
     /// Resolves <paramref name="invocation"/> and <paramref name="contract"/> into the concrete

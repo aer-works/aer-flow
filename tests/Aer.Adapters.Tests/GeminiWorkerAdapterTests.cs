@@ -1028,4 +1028,52 @@ public class GeminiWorkerAdapterTests
 
         Assert.StartsWith("agy:", value, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Classifies_verbatim_specimen_as_ExhaustedUntil_with_exact_reset_timestamp()
+    {
+        var specimen = "Worker exited with non-zero code 1. stderr: Error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 28m40s.";
+        var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+        var testTime = new TestTimeProvider(now);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(specimen, testTime, out var classification, out var retryNotBefore);
+
+        Assert.True(classified);
+        Assert.Equal(FailureClassification.ExhaustedUntil, classification);
+        Assert.Equal(now.AddMinutes(28).AddSeconds(40), retryNotBefore);
+    }
+
+    [Fact]
+    public void Non_quota_stderr_classifies_as_null()
+    {
+        var stderr = "Worker exited with non-zero code 1. stderr: Error: Failed to execute tool.";
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.False(classified);
+        Assert.Null(classification);
+        Assert.Null(retryNotBefore);
+    }
+
+    [Fact]
+    public void Quota_like_stderr_without_parseable_duration_classifies_as_null()
+    {
+        var stderr = "Worker exited with non-zero code 1. stderr: Error: Individual quota reached. Resets in tomorrow.";
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.False(classified);
+        Assert.Null(classification);
+        Assert.Null(retryNotBefore);
+    }
+
+    private sealed class TestTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
 }

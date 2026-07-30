@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 
@@ -80,7 +82,7 @@ namespace Aer.Adapters;
 /// dead end.
 /// </para>
 /// </summary>
-public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
+public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
     private const string DefaultPermissionScope = "accept-edits";
 
@@ -855,5 +857,65 @@ public sealed class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         var seconds = (long)Math.Ceiling(withMargin.TotalSeconds);
         return $"{Math.Max(seconds, 1)}s";
+    }
+
+    public bool TryClassifyFailure(
+        string? stderrTail,
+        TimeProvider timeProvider,
+        out FailureClassification? classification,
+        out DateTimeOffset? retryNotBefore) =>
+        TryClassifyQuotaExhaustion(stderrTail, timeProvider, out classification, out retryNotBefore);
+
+    [GeneratedRegex(@"Resets in\s+(?:(?<hours>\d+)h)?(?:(?<minutes>\d+)m)?(?:(?<seconds>\d+)s)?", RegexOptions.IgnoreCase)]
+    private static partial Regex QuotaResetDurationRegex();
+
+    /// <summary>
+    /// Recognizes Gemini quota exhaustion errors from stderr prose (issue #594) and parses the reset duration
+    /// converted to an absolute <see cref="DateTimeOffset"/>.
+    /// </summary>
+    public static bool TryClassifyQuotaExhaustion(
+        string? stderrOrReason,
+        TimeProvider timeProvider,
+        out FailureClassification? classification,
+        out DateTimeOffset? retryNotBefore)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        classification = null;
+        retryNotBefore = null;
+
+        if (string.IsNullOrWhiteSpace(stderrOrReason))
+        {
+            return false;
+        }
+
+        if (!stderrOrReason.Contains("Individual quota reached", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var match = QuotaResetDurationRegex().Match(stderrOrReason);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        int hours = match.Groups["hours"].Success ? int.Parse(match.Groups["hours"].Value, CultureInfo.InvariantCulture) : 0;
+        int minutes = match.Groups["minutes"].Success ? int.Parse(match.Groups["minutes"].Value, CultureInfo.InvariantCulture) : 0;
+        int seconds = match.Groups["seconds"].Success ? int.Parse(match.Groups["seconds"].Value, CultureInfo.InvariantCulture) : 0;
+
+        if (hours == 0 && minutes == 0 && seconds == 0)
+        {
+            return false;
+        }
+
+        var duration = new TimeSpan(hours, minutes, seconds);
+        if (duration <= TimeSpan.Zero)
+        {
+            return false;
+        }
+
+        classification = FailureClassification.ExhaustedUntil;
+        retryNotBefore = timeProvider.GetUtcNow().Add(duration);
+        return true;
     }
 }

@@ -544,7 +544,7 @@ public static class MutationInterface
                         // Not awaited here: starts the dispatch and joins the in-flight set, so a slow
                         // step never blocks this round from dispatching the rest of its ready work.
                         inFlight.Add(DispatchAndRecordOutcomeAsync(
-                            prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
+                            prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken, timeProvider));
                     }
                 }
 
@@ -561,7 +561,7 @@ public static class MutationInterface
 
                     var dispatchCancellationToken = inFlightExecutions.Register(executionId);
                     inFlight.Add(DispatchAndRecordOutcomeAsync(
-                        prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken));
+                        prepared, processBinding, eventLogWriter, dispatcher, inFlightExecutions, dispatchCancellationToken, timeProvider));
                 }
 
                 if (inFlight.Count == 0)
@@ -765,7 +765,8 @@ public static class MutationInterface
         IEventLogWriter eventLogWriter,
         ICoreDispatcher dispatcher,
         InFlightExecutionRegistry inFlightExecutions,
-        CancellationToken dispatchCancellationToken)
+        CancellationToken dispatchCancellationToken,
+        TimeProvider? timeProvider = null)
     {
         try
         {
@@ -778,7 +779,8 @@ public static class MutationInterface
             // that would convert a contract violation into a fabricated outcome.
             var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, dispatchCancellationToken)
                 .ConfigureAwait(false);
-            var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, prepared.OutputDirectory);
+            var classification = OutcomeClassifier.Classify(
+                dispatchResult, binding.Contract, prepared.OutputDirectory, binding.FailureClassifier, timeProvider);
 
             // Never gated on dispatchCancellationToken: that token having fired is exactly what
             // produced this outcome (Cancelled) in the first place, so recording it must not itself
@@ -832,7 +834,7 @@ public static class MutationInterface
         classification.Verdict switch
         {
             OutcomeVerdict.Succeeded => new FlowEvent.ExecutionSucceeded(executionId),
-            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification, classification.Reason),
+            OutcomeVerdict.Failed => new FlowEvent.ExecutionFailed(executionId, classification.FailureClassification, classification.Reason, classification.RetryNotBefore),
             OutcomeVerdict.Cancelled => new FlowEvent.ExecutionCancelled(executionId),
             _ => throw new ArgumentOutOfRangeException(nameof(classification), classification.Verdict, "Unknown OutcomeVerdict."),
         };
@@ -881,11 +883,23 @@ public static class MutationInterface
                 continue;
             }
 
-            double jitterSample = jitterSource();
-            int attempt = stepState.ConsecutiveFailureCount;
-            TimeSpan delay = stepDef.RetryPolicy.Backoff.DelayFor(attempt, jitterSample);
-            int delayMs = (int)Math.Round(delay.TotalMilliseconds);
-            DateTimeOffset notBefore = timeProvider.GetUtcNow().AddMilliseconds(delayMs);
+            DateTimeOffset notBefore;
+            int delayMs;
+
+            if (stepState.LatestFailureClassification == FailureClassification.ExhaustedUntil &&
+                stepState.LatestExecutionFailedRetryNotBefore is { } resetMoment)
+            {
+                notBefore = resetMoment;
+                delayMs = (int)Math.Max(0, Math.Round((notBefore - timeProvider.GetUtcNow()).TotalMilliseconds));
+            }
+            else
+            {
+                double jitterSample = jitterSource();
+                int attempt = stepState.ConsecutiveFailureCount;
+                TimeSpan delay = stepDef.RetryPolicy.Backoff.DelayFor(attempt, jitterSample);
+                delayMs = (int)Math.Round(delay.TotalMilliseconds);
+                notBefore = timeProvider.GetUtcNow().AddMilliseconds(delayMs);
+            }
 
             obligations.Add(new RetryObligation(
                 stepState.StepId,

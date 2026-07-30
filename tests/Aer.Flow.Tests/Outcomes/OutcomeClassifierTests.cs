@@ -597,5 +597,83 @@ public class OutcomeClassifierTests
             DirectoryCleanup.DeleteRecursively(directory);
         }
     }
+
+    [Fact]
+    public void Classify_delegates_to_IFailureClassifier_and_carries_ExhaustedUntil_and_RetryNotBefore()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var contract = new WorkerContract("worker", [], [], []);
+            var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+            var testTime = new TestTimeProvider(now);
+            var specimenStderr = "Error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 28m40s.";
+            var mockClassifier = new TestQuotaClassifier(specimenStderr, FailureClassification.ExhaustedUntil, now.AddMinutes(28).AddSeconds(40));
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, specimenStderr),
+                contract,
+                directory,
+                mockClassifier,
+                testTime);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.Equal(FailureClassification.ExhaustedUntil, classification.FailureClassification);
+            Assert.Equal(now.AddMinutes(28).AddSeconds(40), classification.RetryNotBefore);
+            Assert.Contains("Worker exited with non-zero code 1. stderr: Error: Individual quota reached.", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    [Fact]
+    public void Classify_preserves_Reason_intact_when_quota_like_stderr_has_no_parseable_duration()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var contract = new WorkerContract("worker", [], [], []);
+            var unparseableStderr = "Error: Individual quota reached. Resets in unknown.";
+            var mockClassifier = new TestQuotaClassifier("dummy", null, null);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, unparseableStderr),
+                contract,
+                directory,
+                mockClassifier);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.Null(classification.FailureClassification);
+            Assert.Equal("Worker exited with non-zero code 1. stderr: Error: Individual quota reached. Resets in unknown.", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    private sealed class TestQuotaClassifier(string matchStderr, FailureClassification? classificationToEmit, DateTimeOffset? notBeforeToEmit) : IFailureClassifier
+    {
+        public bool TryClassifyFailure(string? stderrTail, TimeProvider timeProvider, out FailureClassification? classification, out DateTimeOffset? retryNotBefore)
+        {
+            if (stderrTail == matchStderr && classificationToEmit is not null)
+            {
+                classification = classificationToEmit;
+                retryNotBefore = notBeforeToEmit;
+                return true;
+            }
+
+            classification = null;
+            retryNotBefore = null;
+            return false;
+        }
+    }
+
+    private sealed class TestTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
 }
 

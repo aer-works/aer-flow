@@ -56,7 +56,8 @@ public abstract record FlowEvent
     public sealed record ExecutionFailed(
         ExecutionId ExecutionId,
         FailureClassification? FailureClassification,
-        string? Reason = null) : FlowEvent;
+        string? Reason = null,
+        DateTimeOffset? RetryNotBefore = null) : FlowEvent;
 
     /// <summary>Flow has classified a completed execution as cancelled (spec §8, §9).</summary>
     public sealed record ExecutionCancelled(ExecutionId ExecutionId) : FlowEvent;
