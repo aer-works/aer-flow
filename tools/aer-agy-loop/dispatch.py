@@ -248,6 +248,7 @@ def build_bindings(
     write_files: bool,
     run_shell_commands: bool,
     network_access: bool,
+    verdict_schema: bool = False,
 ) -> dict:
     permission_grant = {
         "ReadFiles": read_files,
@@ -256,16 +257,24 @@ def build_bindings(
         "NetworkAccess": network_access,
     }
 
+    produced_outputs = [{"Name": output_name}]
+    if verdict_schema:
+        # Spec §4.2: the engine validates this parses as a ReviewVerdict at completion -- a review
+        # whose verdict.json is missing or malformed is a FAILED execution regardless of the prose
+        # report's quality. The shape instruction rides the prompt below.
+        produced_outputs.append({"Name": VERDICT_OUTPUT_NAME, "Schema": "ReviewVerdict"})
+
     entry = {
         "Adapter": adapter,
         "Contract": {
             "WorkerName": worker_name,
             "RequiredInputs": [],
-            "ProducedOutputs": [{"Name": output_name}],
+            "ProducedOutputs": produced_outputs,
             "OptionalMetadata": [],
         },
         "PromptTemplate": budget_preamble(timeout_minutes, output_name)
         + shell_rules_preamble(run_shell_commands)
+        + (verdict_preamble() if verdict_schema else "")
         + prompt_text,
         # Split into hours: "00:90:00" is not 90 minutes under .NET's [-][d.]hh:mm:ss, it is
         # malformed. Everything below 60 was correct, which is why the default of 20 never showed it —
@@ -282,7 +291,8 @@ def build_bindings(
     return {worker_name: entry}
 
 
-def build_workflow(worker_name: str, output_name: str) -> dict:
+def build_workflow(worker_name: str, output_name: str, verdict_schema: bool = False) -> dict:
+    outputs = [output_name] + ([VERDICT_OUTPUT_NAME] if verdict_schema else [])
     return {
         "WorkflowTemplateId": f"aer-agy-loop-{uuid.uuid4().hex[:8]}",
         "WorkflowTemplateVersion": 1,
@@ -291,12 +301,42 @@ def build_workflow(worker_name: str, output_name: str) -> dict:
                 "StepId": worker_name,
                 "Worker": worker_name,
                 "Inputs": [],
-                "Outputs": [output_name],
+                "Outputs": outputs,
                 "DependsOn": [],
                 "RetryPolicy": {"MaxAttempts": 1},
             }
         ],
     }
+
+
+# One name, used by the contract, the workflow, and the prompt below -- a drifted copy here would
+# make the engine demand a file the prompt never asked the worker to write.
+VERDICT_OUTPUT_NAME = "verdict.json"
+
+
+def verdict_preamble() -> str:
+    """The prompt half of spec §4.2's ReviewVerdict contract (#732).
+
+    The canonical field-level definition is `Aer.Flow.Domain.ReviewVerdict`; this block restates
+    only what the worker must type, because the worker cannot read C# xmldoc from a prompt.
+    """
+    return (
+        f"VERDICT ARTIFACT (required): besides your report, write `{VERDICT_OUTPUT_NAME}` into "
+        "AER_OUTPUT_DIR. The engine validates it against a schema at completion -- if it is "
+        "missing or malformed, the run is recorded as FAILED regardless of the report's quality. "
+        "Exact shape (bare JSON, no markdown fences):\n"
+        '{"reviewedRef": "<branch, commit, or PR you reviewed -- required>",\n'
+        ' "summary": "<one line, optional>",\n'
+        ' "findings": [\n'
+        '   {"severity": "high|medium|low", "claim": "<one-line statement>",\n'
+        '    "status": "confirmed|refuted|unverified",\n'
+        '    "anchor": {"file": "<repo-relative path>", "line": <int, optional>},\n'
+        '    "detail": "<evidence and reasoning, optional>"}\n'
+        " ]}\n"
+        "An empty findings array is valid and means you looked and found nothing. `anchor` is "
+        "optional per finding. Every finding in your prose report must appear here; the report "
+        "carries your reasoning, this file carries the claims.\n\n"
+    )
 
 
 # Named role presets, so the tier decision is a flag rather than something the caller re-derives.
@@ -332,6 +372,7 @@ TEMPLATES = {
         "read_files": True, "write_files": True,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
+        "verdict_schema": False,
     },
     "implement": {
         "_use": "A bounded change with the approach already decided. Exercises the write path and "
@@ -344,6 +385,7 @@ TEMPLATES = {
         "read_files": True, "write_files": True,
         "run_shell_commands": True, "network_access": True,
         "timeout_minutes": 40,
+        "verdict_schema": False,
     },
     "review": {
         "_use": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose "
@@ -362,6 +404,9 @@ TEMPLATES = {
         "read_files": True, "write_files": False,
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 25,
+        # #732 / spec §4.2: reviews also produce a schema-checked verdict.json the engine validates
+        # at completion, so this loop stops regex-grepping severity words out of prose reports.
+        "verdict_schema": True,
     },
     "fact-check": {
         "_use": "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the "
@@ -371,6 +416,7 @@ TEMPLATES = {
         "read_files": True, "write_files": False,  # #649, same reason as `review` above.
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 15,
+        "verdict_schema": False,
     },
     "janitor": {
         "_use": "After an implementer commits: run the named mechanical checkers and make them green "
@@ -385,6 +431,7 @@ TEMPLATES = {
         "read_files": True, "write_files": True,
         "run_shell_commands": True, "network_access": True,
         "timeout_minutes": 15,
+        "verdict_schema": False,
     },
 }
 
@@ -401,6 +448,7 @@ BUILT_IN = {
     "read_files": True, "write_files": True,
     "run_shell_commands": False, "network_access": False,
     "timeout_minutes": 20,
+    "verdict_schema": False,
 }
 
 
@@ -538,6 +586,9 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     parser.add_argument("--no-run-shell-commands", dest="run_shell_commands", action="store_false")
     parser.add_argument("--network-access", action="store_true", default=None)
     parser.add_argument("--no-network-access", dest="network_access", action="store_false")
+    parser.add_argument("--verdict-schema", action="store_true", default=None,
+                        help="Also require a schema-checked verdict.json (spec §4.2). The review template sets this; the flag exists to add it to an ad-hoc dispatch or (--no-verdict-schema) drop it from one.")
+    parser.add_argument("--no-verdict-schema", dest="verdict_schema", action="store_false")
     parser.add_argument("--timeout-minutes", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true",
                         help="Resolve the template, run every guard, generate workflow/bindings, then stop without dispatching. Spends nothing.")
@@ -604,11 +655,12 @@ def main() -> int:
         working_directory = provision_worktree(working_directory, args.worktree)
         print(f"[dispatch.py] worktree: {working_directory} (branch {args.worktree})")
 
-    workflow = build_workflow(args.worker_name, args.output_name)
+    workflow = build_workflow(args.worker_name, args.output_name, verdict_schema=args.verdict_schema)
     bindings = build_bindings(
         worker_name=args.worker_name,
         prompt_text=prompt_text,
         output_name=args.output_name,
+        verdict_schema=args.verdict_schema,
         adapter=args.adapter,
         working_directory=working_directory,
         timeout_minutes=args.timeout_minutes,
@@ -738,6 +790,11 @@ def main() -> int:
     output_content = output_files[0].read_text(encoding="utf-8")
     print(output_content)
     print(f"\n[dispatch.py] output written to: {output_files[0]}", file=sys.stderr)
+    if args.verdict_schema:
+        # The engine already refused to succeed without a schema-valid verdict (spec §4.2) --
+        # this is a pointer for the caller, not a re-validation.
+        for verdict_path in artifacts_dir.glob(f"*/{VERDICT_OUTPUT_NAME}"):
+            print(f"[dispatch.py] structured verdict: {verdict_path}", file=sys.stderr)
     return 0
 
 
