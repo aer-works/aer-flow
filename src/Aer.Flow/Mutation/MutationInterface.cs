@@ -370,10 +370,10 @@ public static class MutationInterface
                     foreach (var (executionId, exit) in crashRecovery.ToClassify)
                     {
                         var request = acceptedRequestByExecutionId[executionId];
-                        var binding = (WorkerBinding.Process)workerBindings[request.Worker];
+                        var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
                         var classification = OutcomeClassifier.Classify(
-                            new CoreDispatchResult(exit.ExitCode, exit.Reason), binding.Contract, outputDirectory);
+                            new CoreDispatchResult(exit.ExitCode, exit.Reason), contract, outputDirectory);
 
                         await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
                             .ConfigureAwait(false);
@@ -857,5 +857,28 @@ public static class MutationInterface
         }
 
         return obligations;
+    }
+
+    private static WorkerContract GetContractForClassification(
+        ExecutionRequest request,
+        IReadOnlyDictionary<string, WorkerBinding> workerBindings)
+    {
+        try
+        {
+            if (workerBindings.TryGetValue(request.Worker, out var binding) && binding is WorkerBinding.Process processBinding)
+            {
+                return processBinding.Contract;
+            }
+        }
+        catch
+        {
+            // Unresolvable worker binding
+        }
+
+        return new WorkerContract(
+            request.Worker,
+            RequiredInputs: [],
+            ProducedOutputs: [.. request.Outputs.Select(o => new ProducedOutput(o))],
+            OptionalMetadata: []);
     }
 }

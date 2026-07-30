@@ -85,13 +85,6 @@ public static class ProcessCrashRecoveryDetector
                 continue;
             }
 
-            // Non-process reconciliation is NonProcessCompletionDetector/NonProcessCancellationDetector's
-            // job — Core never writes a CoreEvent for a binding with no process behind it.
-            if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding) || binding is not WorkerBinding.Process)
-            {
-                continue;
-            }
-
             // A dispatch this very call already has registered is not a crash-recovery candidate at
             // all, regardless of what the Core log does or doesn't yet show for it: this pump is
             // still genuinely awaiting it right now, not one that crashed mid-run and needs
@@ -110,6 +103,23 @@ public static class ProcessCrashRecoveryDetector
             if (startedExecutionIds.Contains(executionId))
             {
                 toFinalizeAsAbandoned.Add(executionId);
+                continue;
+            }
+
+            // Non-process reconciliation is NonProcessCompletionDetector/NonProcessCancellationDetector's
+            // job — Core never writes a CoreEvent for a binding with no process behind it.
+            bool isProcessBinding = false;
+            try
+            {
+                isProcessBinding = workerBindings.TryGetValue(stepDefinition.Worker, out var binding) && binding is WorkerBinding.Process;
+            }
+            catch
+            {
+                // Unresolvable worker binding
+            }
+
+            if (!isProcessBinding)
+            {
                 continue;
             }
 

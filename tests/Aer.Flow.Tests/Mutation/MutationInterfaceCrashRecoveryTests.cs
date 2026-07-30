@@ -258,6 +258,52 @@ public class MutationInterfaceCrashRecoveryTests
         }
     }
 
+    [Fact]
+    public async Task StartWorkflowAsync_classifies_crash_recovery_candidate_when_its_worker_binding_is_unresolvable()
+    {
+        var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "unresolvable-worker"));
+
+        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        try
+        {
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var emptyBindings = new Dictionary<string, WorkerBinding>();
+            var workflowId = new WorkflowId("wf");
+
+            var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, executionId);
+            var request = new ExecutionRequest(
+                executionId,
+                workflowId,
+                A,
+                "unresolvable-worker",
+                Inputs: [],
+                Outputs: [],
+                Timeout,
+                ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot),
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+
+            var stub = new StubCoreDispatcher();
+
+            var state = await MutationInterface.StartWorkflowAsync(
+                workflowId, taskDirectory, snapshot, emptyBindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(StepStatus.Succeeded, state.Steps.Single(s => s.StepId == A).Status);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            Assert.Single(events, e => e is FlowEvent.ExecutionSucceeded es && es.ExecutionId == executionId);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
     private static async Task<ExecutionId> AcceptRequestAsync(
         FlowEventLogWriter writer, WorkflowId workflowId, string artifactsRoot, StepId stepId)
     {
