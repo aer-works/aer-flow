@@ -712,6 +712,52 @@ public class CoreDispatcherTests
     }
 
     /// <summary>
+    /// #701: a worker that never writes a newline must not grow the buffer without ceiling. Past
+    /// <see cref="StdoutLineBuffer.MaxBufferedLineLength"/> the held text is emitted as a synthetic
+    /// line ending in <see cref="StdoutLineBuffer.SplitMarker"/> — every character still reaches
+    /// the consumer, in order, and the fabricated boundary is the marked thing rather than the
+    /// dropped thing (the outcome the issue names as the one to avoid is a SILENT fragment).
+    /// </summary>
+    [Fact]
+    public void A_newline_free_run_past_the_ceiling_is_emitted_as_a_marked_synthetic_line()
+    {
+        const int overshoot = 10;
+        var payload = new string('x', StdoutLineBuffer.MaxBufferedLineLength + overshoot);
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+
+        buffer.Append(System.Text.Encoding.UTF8.GetBytes(payload), lines.Add);
+
+        var synthetic = Assert.Single(lines);
+        Assert.EndsWith(StdoutLineBuffer.SplitMarker, synthetic, StringComparison.Ordinal);
+        Assert.Equal(StdoutLineBuffer.MaxBufferedLineLength, synthetic.Length - StdoutLineBuffer.SplitMarker.Length);
+
+        buffer.Flush(lines.Add);
+        Assert.Equal(2, lines.Count);
+
+        // Nothing was lost: the split fabricated a boundary, never dropped a character.
+        Assert.Equal(payload, string.Concat(synthetic[..^StdoutLineBuffer.SplitMarker.Length], lines[1]));
+    }
+
+    /// <summary>
+    /// Polarity for the ceiling: text exactly AT it stays buffered (a legitimate long line keeps
+    /// waiting for its newline), and the eventual real line carries no marker.
+    /// </summary>
+    [Fact]
+    public void A_newline_free_run_at_the_ceiling_is_never_split()
+    {
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+
+        buffer.Append(System.Text.Encoding.UTF8.GetBytes(new string('x', StdoutLineBuffer.MaxBufferedLineLength)), lines.Add);
+        Assert.Empty(lines);
+
+        buffer.Append("\n"u8.ToArray(), lines.Add);
+        var line = Assert.Single(lines);
+        Assert.DoesNotContain(StdoutLineBuffer.SplitMarker, line, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A worker killed mid-character leaves a partial sequence in the decoder, and flushing has to
     /// surface it as U+FFFD rather than drop it.
     /// </summary>
