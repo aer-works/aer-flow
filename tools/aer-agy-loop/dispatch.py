@@ -694,6 +694,32 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     return parser
 
 
+def _print_flow_log(log_path: Path, log_bytes_before: int | None, log_mtime_before: float | None, task_dir: Path) -> None:
+    print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
+    if not log_path.exists():
+        print("(not written -- `aer run` failed before recording anything)", file=sys.stderr)
+    elif log_bytes_before and log_path.stat().st_size > log_bytes_before:
+        # Grew: this run wrote something, but the file still opens with another run's events.
+        # Show only the bytes this run appended, and say what was withheld and why.
+        with open(log_path, encoding="utf-8") as fh:
+            fh.seek(log_bytes_before)
+            fresh = fh.read()
+        print(f"(the first {log_bytes_before} bytes belong to an EARLIER run in this reused"
+              " task-dir and are withheld -- flow.jsonl is append-only, so they would read as"
+              " this run's events. Only what this run appended is shown.)", file=sys.stderr)
+        print(fresh, file=sys.stderr)
+    elif log_mtime_before is not None and log_path.stat().st_mtime == log_mtime_before:
+        # Untouched by this run. Say that instead of the contents: a stale log is worse than no
+        # log, because it looks like evidence.
+        print("(NOT THIS RUN -- this log predates the dispatch and was not touched by it.", file=sys.stderr)
+        print(" `aer run` failed before writing any event, so there are no diagnostics for this", file=sys.stderr)
+        print(" run. The stale contents are withheld deliberately; they describe other work.", file=sys.stderr)
+        print(f" Cause is almost always a reused --scratch-root: {task_dir} already existed.", file=sys.stderr)
+        print(" Omit --scratch-root to get a fresh runs/<uuid> directory.)", file=sys.stderr)
+    else:
+        print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
+
+
 def main() -> int:
     # Windows' default console codepage (cp1252) can't represent most Unicode -- a dispatched
     # worker's own output (a box-drawing table character, an emoji, anything non-Latin-1) crashed
@@ -934,47 +960,51 @@ def main() -> int:
     log_mtime_before = log_path.stat().st_mtime if log_path.exists() else None
     head_before = _git_head(working_directory)
 
-    result = subprocess.run(
-        [
-            str(cli_path),
-            "run",
-            str(workflow_path),
-            "--bindings",
-            str(bindings_path),
-            "--task-dir",
-            _forward_slashes(task_dir),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    outer_deadline_minutes = sum(s["timeout_minutes"] for s in step_specs) + 5
+    outer_deadline_seconds = outer_deadline_minutes * 60
+
+    try:
+        result = subprocess.run(
+            [
+                str(cli_path),
+                "run",
+                str(workflow_path),
+                "--bindings",
+                str(bindings_path),
+                "--task-dir",
+                _forward_slashes(task_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=outer_deadline_seconds,
+        )
+    except subprocess.TimeoutExpired as ex:
+        pid = getattr(ex, "pid", None)
+        pid_str = str(pid) if pid is not None else "unavailable"
+        print(
+            f"\n[dispatch.py] ERROR: outer deadline expired after {outer_deadline_minutes}m ({outer_deadline_seconds}s). "
+            f"Engine PID: {pid_str}.",
+            file=sys.stderr,
+        )
+        print(
+            f"[dispatch.py] flow.jsonl ({log_path}) holds whatever the engine recorded prior to expiry.",
+            file=sys.stderr,
+        )
+        if ex.stdout:
+            stdout_text = ex.stdout if isinstance(ex.stdout, str) else ex.stdout.decode("utf-8", errors="replace")
+            print(stdout_text, end="")
+        _print_workspace_truth(working_directory, head_before)
+        if ex.stderr:
+            stderr_text = ex.stderr if isinstance(ex.stderr, str) else ex.stderr.decode("utf-8", errors="replace")
+            print(stderr_text, file=sys.stderr, end="")
+        _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
+        return 1
 
     print(result.stdout, end="")
     _print_workspace_truth(working_directory, head_before)
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
-        print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
-        if not log_path.exists():
-            print("(not written -- `aer run` failed before recording anything)", file=sys.stderr)
-        elif log_bytes_before and log_path.stat().st_size > log_bytes_before:
-            # Grew: this run wrote something, but the file still opens with another run's events.
-            # Show only the bytes this run appended, and say what was withheld and why.
-            with open(log_path, encoding="utf-8") as fh:
-                fh.seek(log_bytes_before)
-                fresh = fh.read()
-            print(f"(the first {log_bytes_before} bytes belong to an EARLIER run in this reused"
-                  " task-dir and are withheld -- flow.jsonl is append-only, so they would read as"
-                  " this run's events. Only what this run appended is shown.)", file=sys.stderr)
-            print(fresh, file=sys.stderr)
-        elif log_mtime_before is not None and log_path.stat().st_mtime == log_mtime_before:
-            # Untouched by this run. Say that instead of the contents: a stale log is worse than no
-            # log, because it looks like evidence.
-            print("(NOT THIS RUN -- this log predates the dispatch and was not touched by it.", file=sys.stderr)
-            print(" `aer run` failed before writing any event, so there are no diagnostics for this", file=sys.stderr)
-            print(" run. The stale contents are withheld deliberately; they describe other work.", file=sys.stderr)
-            print(f" Cause is almost always a reused --scratch-root: {task_dir} already existed.", file=sys.stderr)
-            print(" Omit --scratch-root to get a fresh runs/<uuid> directory.)", file=sys.stderr)
-        else:
-            print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
+        _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
         return result.returncode
 
     primary_output_name = "report.md" if args.lane else args.output_name
