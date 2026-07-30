@@ -29,7 +29,7 @@ namespace Aer.Ui;
 
 public partial class MainWindow : Window
 {
-    private const string ArtifactsDirectoryName = "artifacts";
+    private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
     private const int MaxArtifactPreviewLength = 8000;
 
     /// <summary>

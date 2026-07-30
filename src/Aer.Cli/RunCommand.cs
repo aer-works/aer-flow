@@ -1,4 +1,5 @@
 using Aer.Adapters;
+using Aer.Flow.Artifacts;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
@@ -17,7 +18,7 @@ public static class RunCommand
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
-    private const string ArtifactsDirectoryName = "artifacts";
+    private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <summary>
     /// Parses the workflow template and worker-binding config (binding from the already-persisted
@@ -110,7 +111,7 @@ public static class RunCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot, resumedFromSnapshot);
+        return new CommandResult(state, snapshot, resumedFromSnapshot, options.TaskDirectoryPath);
     }
 
     /// <summary>

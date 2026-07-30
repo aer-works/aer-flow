@@ -1,3 +1,4 @@
+using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 
 namespace Aer.Cli;
@@ -17,6 +18,7 @@ public static class FlowStateReporter
         ArgumentNullException.ThrowIfNull(result);
 
         var pausePointByStepId = result.Snapshot.Steps.ToDictionary(step => step.StepId, step => step.PausePoint);
+        var stepDefByStepId = result.Snapshot.Steps.ToDictionary(step => step.StepId);
 
         // #628: an already-terminal task directory reports the prior run's status, writes no new
         // events, and exits non-zero — with nothing to distinguish it from a fresh failure. Say
@@ -29,6 +31,10 @@ public static class FlowStateReporter
         }
 
         output.WriteLine($"Workflow status: {result.State.Status}");
+        var artifactsRootPath = result.TaskDirectoryPath is not null
+            ? Path.Combine(result.TaskDirectoryPath, ArtifactManager.ArtifactsDirectoryName)
+            : null;
+
         foreach (var step in result.State.Steps)
         {
             if (step.Status == StepStatus.Paused)
@@ -65,6 +71,24 @@ public static class FlowStateReporter
 
                 output.WriteLine($"  {step.StepId}: {step.Status}{reasonSuffix}");
             }
+
+            // #740: At settle, aer run prints one line per produced output of each succeeded execution:
+            // output name -> absolute path. A Paused step whose underlying outcome Succeeded — the
+            // ready-for-review approval gate — prints them too: that is exactly the moment a person
+            // wants to open what the worker produced.
+            var executionSucceeded = step.Status == StepStatus.Succeeded ||
+                (step.Status == StepStatus.Paused && step.PausedOutcome == StepStatus.Succeeded);
+            if (executionSucceeded &&
+                step.LatestExecutionId is not null &&
+                artifactsRootPath is not null &&
+                stepDefByStepId.TryGetValue(step.StepId, out var stepDef))
+            {
+                var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, step.LatestExecutionId.Value);
+                foreach (var outputName in stepDef.Outputs)
+                {
+                    output.WriteLine($"  {outputName} -> {Path.Combine(outputDirectory, outputName)}");
+                }
+            }
         }
 
         foreach (var stepLess in result.State.StepLessExecutions)
@@ -73,3 +97,4 @@ public static class FlowStateReporter
         }
     }
 }
+

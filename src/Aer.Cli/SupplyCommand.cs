@@ -28,7 +28,7 @@ public static class SupplyCommand
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
-    private const string ArtifactsDirectoryName = "artifacts";
+    private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
     /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
@@ -101,7 +101,7 @@ public static class SupplyCommand
                 reader, writer, dispatcher, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return new SupplyResult(executionId, new CommandResult(settledState, snapshot));
+        return new SupplyResult(executionId, new CommandResult(settledState, snapshot, TaskDirectoryPath: options.TaskDirectoryPath));
     }
 }
 

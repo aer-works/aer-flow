@@ -16,4 +16,8 @@ namespace Aer.Cli;
 /// be noise rather than news.
 /// </param>
 public sealed record CommandResult(
-    FlowState State, WorkflowDefinitionSnapshot Snapshot, bool ResumedFromSnapshot = false);
+    FlowState State,
+    WorkflowDefinitionSnapshot Snapshot,
+    bool ResumedFromSnapshot = false,
+    string? TaskDirectoryPath = null);
+

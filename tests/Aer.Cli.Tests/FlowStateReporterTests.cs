@@ -183,4 +183,93 @@ public class FlowStateReporterTests
         Assert.Contains("Paused — awaiting input", output);
         Assert.DoesNotContain("Paused — awaiting review", output);
     }
+
+    [Fact]
+    public void Report_prints_produced_output_paths_for_succeeded_steps_and_none_for_failed_steps()
+    {
+        var taskDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
+        var snapshot = new WorkflowDefinitionSnapshot(
+            new WorkflowDefinitionSnapshotId("snap-1"),
+            new WorkflowTemplateId("wf"),
+            1,
+            [
+                new WorkflowStepDefinition(new StepId("succeeded_step"), "worker", [], ["plan", "spec"], [], new RetryPolicy(1)),
+                new WorkflowStepDefinition(new StepId("failed_step"), "worker", [], ["unused_out"], [], new RetryPolicy(1)),
+            ]);
+
+        var execSucceeded = new ExecutionId("exec-succ-123");
+        var execFailed = new ExecutionId("exec-fail-456");
+
+        var state = new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            [
+                new StepState(new StepId("succeeded_step"), StepStatus.Succeeded, execSucceeded, new Dictionary<StepId, ExecutionId>()),
+                new StepState(
+                    new StepId("failed_step"), StepStatus.Failed, execFailed, new Dictionary<StepId, ExecutionId>(),
+                    LatestFailureReason: "Contract not satisfied"),
+            ],
+            WorkflowStatus.Terminal);
+
+        using var stringWriter = new StringWriter();
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+
+        var output = stringWriter.ToString();
+
+        var expectedPlanPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execSucceeded}", "plan"));
+        var expectedSpecPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execSucceeded}", "spec"));
+        var unexpectedFailPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execFailed}", "unused_out"));
+
+        Assert.Contains($"plan -> {expectedPlanPath}", output);
+        Assert.Contains($"spec -> {expectedSpecPath}", output);
+        Assert.DoesNotContain($"unused_out -> {unexpectedFailPath}", output);
+        Assert.DoesNotContain("unused_out ->", output);
+    }
+
+    /// <summary>
+    /// The second reader's finding on #740: the first cut keyed the path-printing gate on
+    /// <see cref="StepStatus.Succeeded"/> alone, and a pause masks the status to Paused — so the
+    /// approval-gate state got no paths despite holding a finished artifact (the why lives on the
+    /// gate in <see cref="FlowStateReporter"/> itself).
+    /// </summary>
+    /// <remarks>
+    /// The Failed-outcome pause is the polarity control one condition apart: a reporter keying on
+    /// <see cref="StepStatus.Paused"/> alone, rather than on <c>PausedOutcome</c>, fails it.
+    /// </remarks>
+    [Theory]
+    [InlineData(StepStatus.Succeeded, true)]
+    [InlineData(StepStatus.Failed, false)]
+    public void A_paused_step_prints_output_paths_exactly_when_its_masked_outcome_succeeded(
+        StepStatus pausedOutcome, bool expectPaths)
+    {
+        var taskDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
+        var snapshot = new WorkflowDefinitionSnapshot(
+            new WorkflowDefinitionSnapshotId("snap-1"),
+            new WorkflowTemplateId("wf"),
+            1,
+            [
+                new WorkflowStepDefinition(
+                    new StepId("gated"), "worker", [], ["verdict"], [],
+                    new RetryPolicy(1), new PausePoint([])),
+            ]);
+
+        var executionId = new ExecutionId("exec-gated");
+        var state = new FlowState(
+            snapshot.WorkflowDefinitionSnapshotId,
+            [
+                new StepState(
+                    new StepId("gated"), StepStatus.Paused, executionId, new Dictionary<StepId, ExecutionId>(),
+                    PausedOutcome: pausedOutcome),
+            ],
+            WorkflowStatus.Paused);
+
+        using var stringWriter = new StringWriter();
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+
+        var output = stringWriter.ToString();
+        var expectedPath = Path.Combine(taskDir, "artifacts", $"execution_{executionId}", "verdict");
+
+        Assert.Contains("Paused — awaiting review", output);
+        Assert.Equal(expectPaths, output.Contains($"verdict -> {expectedPath}", StringComparison.Ordinal));
+    }
 }
+
