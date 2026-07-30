@@ -36,8 +36,8 @@ public static class SupplyCommand
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
     /// <exception cref="UnknownWorkerAdapterException">
-    /// The worker-binding config names an adapter not present in <paramref name="adapters"/>, for a
-    /// worker the pump this call drives actually looks up (<see cref="WorkerBindingResolver.ResolveLazily"/>, #662).
+    /// An adapter the bindings file names is missing from <paramref name="adapters"/> — raised
+    /// only when the resume pump first looks that worker up (<see cref="WorkerBindingResolver.ResolveLazily"/>, #662).
     /// </exception>
     /// <exception cref="FileNotFoundException"><see cref="SupplyOptions.SourceFilePath"/> does not exist.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">

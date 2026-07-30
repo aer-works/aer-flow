@@ -23,11 +23,10 @@ public class CancelCommandEndToEndTests
     [Fact]
     public async Task Cancelling_a_task_directory_whose_bindings_file_also_names_an_unresolvable_worker_still_succeeds()
     {
-        // #662: cancel needs the task directory and the run to stop, not the ability to dispatch
-        // every worker the bindings file happens to name. "reviewer" is never used by the three-step
-        // workflow below — it stands in for a worker (e.g. `agy`, #662's comment) whose contract and
-        // grant became unsatisfiable after this run started, which must not block cancelling a
-        // different, already-dispatched execution.
+        // #662, pinning the rationale CancelCommand's own lazy-resolve comment carries: "reviewer"
+        // is never used by the three-step workflow below — it stands in for a worker whose contract
+        // and grant became unsatisfiable after this run started, and the cancel must proceed
+        // regardless.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try
