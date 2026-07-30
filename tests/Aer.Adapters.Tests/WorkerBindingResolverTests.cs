@@ -413,14 +413,7 @@ public class WorkerBindingResolverTests
 
         var binding = (WorkerBinding.Process)bindings["debate"];
         var expected = Path.GetFullPath(Path.Combine("/configs", "dialogue-debate.json"));
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal(expected, binding.Target.Args[4]);
-        }
-        else
-        {
-            Assert.Contains($"\"{expected}\"", binding.Target.Args[1]);
-        }
+        Assert.Equal(expected, binding.Target.Args[2]);
     }
 
     /// <summary>

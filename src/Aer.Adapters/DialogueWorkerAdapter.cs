@@ -50,17 +50,16 @@ namespace Aer.Adapters;
 /// here would be a redundant (and differently-shaped) duplicate, not a gap.
 /// </para>
 /// <para>
-/// <b>The shell wrap's original justification is retired (#713's review).</b> This paragraph used
-/// to say the wrap exists solely so the shell expands <c>$AER_OUTPUT_DIR</c>/<c>%AER_OUTPUT_DIR%</c>
-/// at spawn time — but <c>CoreDispatcher</c> expands every <c>Args</c> placeholder <em>before</em>
-/// the process is created (its <c>VariableToken</c> is the grammar's one home), so the shell never
-/// sees one and expands nothing. The wrap is kept because removing it is a spawn-shape change this
-/// adapter's tests have never run without, not because it does anything — #716. The rest holds:
+/// <b>Dialogue worker is spawned directly without a shell wrap (#716).</b> <c>CoreDispatcher</c>
+/// expands every <c>Args</c> placeholder <em>before</em> process creation (its <c>VariableToken</c>
+/// is the grammar's one home), so layering <c>cmd</c>/<c>sh</c> expanded nothing. Spawning
+/// <c>dotnet</c> directly avoids unnecessary shell processes. The rest holds:
 /// unlike <see cref="ClaudeWorkerAdapter"/>/<see cref="GeminiWorkerAdapter"/>, this adapter needs
 /// neither stdin redirection (the dialogue executable never reads <c>Console.In</c> — its
 /// <c>Program.cs</c> is argument-driven only) nor Windows' newline-collapsing (its two arguments
-/// are never multi-line), and Windows tokens are still never pre-quoted into one string, for the
-/// identical reason <see cref="ClaudeWorkerAdapter"/>'s remarks record.
+/// are never multi-line), and args stay a token list end to end — never pre-quoted into one
+/// command-line string — the same shape <see cref="ClaudeWorkerAdapter"/>'s <c>Resolve</c> builds
+/// in code (its remarks carry no prose about this; the code is the record).
 /// </para>
 /// </remarks>
 public sealed class DialogueWorkerAdapter : IWorkerAdapter
@@ -79,15 +78,14 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
         ArgumentNullException.ThrowIfNull(invocation);
         ArgumentNullException.ThrowIfNull(contract);
 
-        var isWindows = OperatingSystem.IsWindows();
         var resolvedConfigPath = ResolveConfigPath(invocation.PromptTemplate, invocation.BindingsFileDirectory);
-        var gatedConfigPath = GateParticipants(
+        var configPath = GateParticipants(
             resolvedConfigPath, invocation.PermissionGrant, invocation.WorkingDirectory);
-        var configPath = EscapeUserContent(gatedConfigPath, isWindows);
 
-        return isWindows
-            ? ResolveWindows(configPath, invocation.WorkingDirectory)
-            : ResolveUnix(configPath, invocation.WorkingDirectory);
+        var outputDir = WorkerEnvironmentReference.For("AER_OUTPUT_DIR");
+        List<string> args = ["exec", DialogueWorkerDllPath, configPath, outputDir];
+
+        return new CoreDispatchTarget("dotnet", args, invocation.WorkingDirectory);
     }
 
     /// <summary>
@@ -405,39 +403,4 @@ public sealed class DialogueWorkerAdapter : IWorkerAdapter
         Path.IsPathRooted(promptTemplate) || string.IsNullOrEmpty(bindingsFileDirectory)
             ? promptTemplate
             : Path.GetFullPath(Path.Combine(bindingsFileDirectory, promptTemplate));
-
-    private static CoreDispatchTarget ResolveWindows(string configPath, string? workingDirectory)
-    {
-        List<string> args = ["/c", "dotnet", "exec", DialogueWorkerDllPath, configPath, "%AER_OUTPUT_DIR%"];
-        return new CoreDispatchTarget("cmd", args, workingDirectory);
-    }
-
-    private static CoreDispatchTarget ResolveUnix(string configPath, string? workingDirectory)
-    {
-        var commandLine = new StringBuilder("dotnet exec ")
-            .Append(Quote(DialogueWorkerDllPath))
-            .Append(' ').Append(Quote(configPath))
-            .Append(" \"$AER_OUTPUT_DIR\"");
-
-        return new CoreDispatchTarget("sh", ["-c", commandLine.ToString()], workingDirectory);
-    }
-
-    /// <summary>
-    /// Defuses shell metacharacters in the config-authored path before it is embedded in the
-    /// generated command — identical treatment to <see cref="ClaudeWorkerAdapter"/>'s escaping of
-    /// authored text, since the shell-wrapping mechanism (and therefore what needs defusing) is the
-    /// same regardless of which string is being carried. On Windows only <c>%</c> needs doubling; a
-    /// literal quote/backtick/dollar/backslash does not (see <see cref="ClaudeWorkerAdapter"/>'s
-    /// remarks for why).
-    /// </summary>
-    private static string EscapeUserContent(string value, bool isWindows) => isWindows
-        ? value.Replace("%", "%%")
-        : value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("`", "\\`").Replace("$", "\\$");
-
-    /// <summary>
-    /// Wraps already-escaped content in double quotes for embedding as one shell argument in the
-    /// Unix <c>sh -c</c> command line, which <c>execve</c> passes through verbatim with no further
-    /// re-quoting. Windows never builds a command line this way (see <see cref="ResolveWindows"/>).
-    /// </summary>
-    private static string Quote(string value) => $"\"{value}\"";
 }
