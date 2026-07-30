@@ -317,6 +317,20 @@ TEMPLATES = {
         "run_shell_commands": False, "network_access": False,
         "timeout_minutes": 15,
     },
+    "janitor": {
+        "_use": "After an implementer commits: run the named mechanical checkers and make them green "
+                "without changing behavior (#729). The canonical brief is janitor-prompt.md next to "
+                "this file -- pass it via --prompt-file rather than restating the contract. The "
+                "checkers determine the work, so the cheap tier runs it; anything needing judgment "
+                "comes back [NOT DONE], not guessed at.",
+        # The full grant is what running `pixi run ...` costs (see grant_refusal: a shell grant
+        # refuses every withheld category), not a statement of trust -- the model stays the
+        # cheapest one dispatchable. Same pin as verify.py's CHEAP for agy.
+        "adapter": "gemini", "model": "gemini-3.6-flash-low", "effort": None,
+        "read_files": True, "write_files": True,
+        "run_shell_commands": True, "network_access": True,
+        "timeout_minutes": 15,
+    },
 }
 
 # Below the gate's own floor -- a typo, a version bump, a comment fix asserting nothing -- dispatch
