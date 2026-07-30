@@ -26,7 +26,7 @@ public abstract record CoreEvent
     public sealed record ExecutionStarted(ExecutionId ExecutionId, uint Pid) : CoreEvent;
 
     /// <summary>The Core-managed process for this execution has exited.</summary>
-    public sealed record ExecutionExited(ExecutionId ExecutionId, int ExitCode, CoreExitReason Reason) : CoreEvent;
+    public sealed record ExecutionExited(ExecutionId ExecutionId, int ExitCode, CoreExitReason Reason, string? StderrTail = null) : CoreEvent;
 }
 
 /// <summary>
