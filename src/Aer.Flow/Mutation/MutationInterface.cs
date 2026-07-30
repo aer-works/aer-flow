@@ -370,10 +370,10 @@ public static class MutationInterface
                     foreach (var (executionId, exit) in crashRecovery.ToClassify)
                     {
                         var request = acceptedRequestByExecutionId[executionId];
-                        var binding = (WorkerBinding.Process)workerBindings[request.Worker];
+                        var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
                         var classification = OutcomeClassifier.Classify(
-                            new CoreDispatchResult(exit.ExitCode, exit.Reason), binding.Contract, outputDirectory);
+                            new CoreDispatchResult(exit.ExitCode, exit.Reason), contract, outputDirectory);
 
                         await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
                             .ConfigureAwait(false);
@@ -887,5 +887,39 @@ public static class MutationInterface
         }
 
         return obligations;
+    }
+
+    /// <summary>
+    /// The contract a crash-recovery classification runs against (#724): the live binding's when it
+    /// resolves, else one reconstructed from the recorded <see cref="ExecutionRequest"/> — the
+    /// execution already ran, so what it was asked to produce is a recorded fact, and a bindings
+    /// file that changed or broke since must not make the recorded outcome unclassifiable (the
+    /// #662 lesson, on the recovery path). The reconstruction carries output NAMES only: any
+    /// <c>OutputCondition</c> the original contract declared is unknowable from the request today,
+    /// so a conditioned output classifies on existence alone in this fallback. Recording the full
+    /// contract on the request is #672's design to make.
+    /// </summary>
+    private static WorkerContract GetContractForClassification(
+        ExecutionRequest request,
+        IReadOnlyDictionary<string, WorkerBinding> workerBindings)
+    {
+        try
+        {
+            if (workerBindings.TryGetValue(request.Worker, out var binding) && binding is WorkerBinding.Process processBinding)
+            {
+                return processBinding.Contract;
+            }
+        }
+        catch (AerFlowException)
+        {
+            // Resolution refused (missing adapter, unsatisfiable grant) — exactly the case the
+            // recorded request exists to cover. Anything else still propagates.
+        }
+
+        return new WorkerContract(
+            request.Worker,
+            RequiredInputs: [],
+            ProducedOutputs: [.. request.Outputs.Select(o => new ProducedOutput(o))],
+            OptionalMetadata: []);
     }
 }
