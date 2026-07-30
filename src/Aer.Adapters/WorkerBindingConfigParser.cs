@@ -28,7 +28,7 @@ public static class WorkerBindingConfigParser
         {
             entries = JsonSerializer.Deserialize<Dictionary<string, WorkerBindingConfigEntry>>(json);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or ArgumentException)
         {
             var location = sourcePath is null ? string.Empty : $" in '{sourcePath}'";
             const string shape =
@@ -59,6 +59,19 @@ public static class WorkerBindingConfigParser
             if (entry.Contract is null)
             {
                 throw new WorkerBindingConfigException($"Worker-binding config entry for '{workerName}' is missing 'Contract'.");
+            }
+
+            if (entry.Contract.ProducedOutputs is not null)
+            {
+                foreach (var output in entry.Contract.ProducedOutputs)
+                {
+                    if (output.Name is not null && output.Name.StartsWith('.'))
+                    {
+                        throw new WorkerBindingConfigException(
+                            $"Worker-binding config entry for '{workerName}' declares ProducedOutput '{output.Name}' — "
+                            + "names starting with '.' are reserved for engine stream logs.");
+                    }
+                }
             }
 
             if (string.IsNullOrWhiteSpace(entry.PromptTemplate))

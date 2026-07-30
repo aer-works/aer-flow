@@ -67,28 +67,25 @@ public static class StatusCommand
 
         PrintState(output, state, logPath, events);
 
-        // A task directory whose snapshot is bound but has recorded zero events yet -- never
-        // started via `aer run` -- projects as WorkflowStatus.Terminal by StateProjector's own
-        // deliberate, already-tested rule (StateProjectorTests.An_all_pending_workflow_projects_WorkflowStatus_Terminal):
-        // "nothing running, nothing paused" is trivially true before anything has ever dispatched.
-        // So `aer status --follow` against a not-yet-started task prints once and exits immediately
-        // rather than waiting for it to begin -- the same fact any other reader of this projection
-        // already lives with, not something particular to --follow.
+        if (options.Follow)
+        {
+            var artifactsDir = Path.Combine(options.TaskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+            TailStreams(output, artifactsDir, new Dictionary<string, long>(StringComparer.Ordinal));
+        }
+
         if (!options.Follow || state.Status == WorkflowStatus.Terminal)
         {
             return;
         }
 
-        await FollowAsync(output, reader, snapshot, events.Count, logPath, cancellationToken).ConfigureAwait(false);
+        await FollowAsync(output, reader, snapshot, events.Count, logPath, options.TaskDirectoryPath, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Polls <paramref name="logPath"/>'s length for growth, printing every event newer than
     /// <paramref name="printedEventCount"/> as it appears, until re-projecting reaches
     /// <see cref="WorkflowStatus.Terminal"/> or <paramref name="cancellationToken"/> is cancelled.
-    /// A cancellation (Ctrl+C, or a host-initiated stop) ends the loop the same way the issue's own
-    /// acceptance criteria describe it — a normal way for <c>--follow</c> to end, not a fault — so
-    /// it is caught here rather than left to escape into <c>Program</c>'s generic exception mapping.
+    /// Tails stdout/stderr streams of running executions interleaved with event lines.
     /// </summary>
     private static async Task FollowAsync(
         TextWriter output,
@@ -96,20 +93,12 @@ public static class StatusCommand
         WorkflowDefinitionSnapshot snapshot,
         int printedEventCount,
         string logPath,
+        string taskDirectoryPath,
         CancellationToken cancellationToken)
     {
-        // Deliberately not seeded from a fresh FileInfo read here: ExecuteAsync already decided
-        // "not terminal yet" from an earlier read of the log, and PrintState's writes to `output`
-        // run in between -- when `output` is a piped/redirected Console.Out, a slow downstream
-        // reader applies real backpressure there, real wall-clock time, not a nanosecond gap. If
-        // the workflow finishes in that window, a baseline captured *now* would already include
-        // the final bytes, `currentLength` would never differ from it again, and the loop would
-        // poll forever against an already-finished workflow -- the exact hang this command must not
-        // produce (regression-tested in StatusCommandEndToEndTests via a TextWriter that blocks
-        // there deliberately). A sentinel that can never equal a real length forces the very first
-        // poll to always re-read and re-project, bounding that race to one PollIntervalMs rather
-        // than leaving it unbounded.
         var lastObservedLength = -1L;
+        var artifactsDir = Path.Combine(taskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+        var streamOffsets = new Dictionary<string, long>(StringComparer.Ordinal);
 
         while (true)
         {
@@ -122,37 +111,211 @@ public static class StatusCommand
                 return;
             }
 
-            // A fresh FileInfo per poll: an existing instance caches Length at construction time
-            // and never observes growth on its own, which would silently turn every poll after the
-            // first into a no-op — the loop would never see the file change again.
             var logFile = new FileInfo(logPath);
             var currentLength = logFile.Exists ? logFile.Length : 0;
-            if (currentLength == lastObservedLength)
+
+            if (currentLength != lastObservedLength)
             {
-                continue;
+                lastObservedLength = currentLength;
+
+                var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+                for (var i = printedEventCount; i < events.Count; i++)
+                {
+                    output.WriteLine(events[i]);
+                }
+
+                printedEventCount = events.Count;
+
+                var state = StateProjector.Project(events, snapshot);
+                TailStreams(output, artifactsDir, streamOffsets);
+
+                if (state.Status == WorkflowStatus.Terminal)
+                {
+                    output.WriteLine($"Workflow status: {state.Status}");
+                    return;
+                }
             }
-
-            lastObservedLength = currentLength;
-
-            // Re-read the whole log through the one parser for this format rather than hand-rolling
-            // an incremental line read here — ReadAllAsync already handles a dangling, not-yet-
-            // newline-terminated write in flight (§5.3) correctly, and a second reader of the same
-            // format is exactly what CLAUDE.md's record-once gate forbids.
-            var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-            for (var i = printedEventCount; i < events.Count; i++)
+            else
             {
-                output.WriteLine(events[i]);
-            }
-
-            printedEventCount = events.Count;
-
-            var state = StateProjector.Project(events, snapshot);
-            if (state.Status == WorkflowStatus.Terminal)
-            {
-                output.WriteLine($"Workflow status: {state.Status}");
-                return;
+                TailStreams(output, artifactsDir, streamOffsets);
             }
         }
+    }
+
+    // Public as a test seam, matching FormatStepStatus and EscapeNonPrintable: the reader-side
+    // rollover behavior is asserted directly (the lane review's medium finding).
+    public static void TailStreams(TextWriter output, string artifactsDir, Dictionary<string, long> streamOffsets)
+    {
+        if (!Directory.Exists(artifactsDir))
+        {
+            return;
+        }
+
+        foreach (var execDir in Directory.GetDirectories(artifactsDir, "execution_*"))
+        {
+            TailStreamFile(
+                output,
+                Path.Combine(execDir, Aer.Flow.Dispatch.ExecutionStreamLogger.StdoutLogFileName),
+                Path.Combine(execDir, Aer.Flow.Dispatch.ExecutionStreamLogger.StdoutRolloverFileName),
+                streamOffsets);
+
+            TailStreamFile(
+                output,
+                Path.Combine(execDir, Aer.Flow.Dispatch.ExecutionStreamLogger.StderrLogFileName),
+                Path.Combine(execDir, Aer.Flow.Dispatch.ExecutionStreamLogger.StderrRolloverFileName),
+                streamOffsets);
+        }
+    }
+
+    private static void TailStreamFile(TextWriter output, string logPath, string rolloverPath, Dictionary<string, long> streamOffsets)
+    {
+        if (!File.Exists(logPath))
+        {
+            return;
+        }
+
+        streamOffsets.TryGetValue(logPath, out var offset);
+
+        // Rollover detection keys on the rollover FILE'S identity (its mtime advances every time
+        // the writer rolls), never on a length comparison: a fresh file whose length equals the
+        // stored offset made `length < offset` miss the rollover entirely and silently drop the
+        // new content -- found by the reader-side test the lane review demanded. The rollover
+        // path doubles as its own dict key; log and rollover paths are distinct strings.
+        if (File.Exists(rolloverPath))
+        {
+            streamOffsets.TryGetValue(rolloverPath, out var seenRolloverTicks);
+            var rolloverFi = new FileInfo(rolloverPath);
+            var ticks = rolloverFi.LastWriteTimeUtc.Ticks;
+            if (ticks != seenRolloverTicks)
+            {
+                // The rolled file IS the previous current file: emit its unseen tail, then the
+                // fresh file reads from the start.
+                if (rolloverFi.Length > offset)
+                {
+                    ReadAndOutputBytes(output, rolloverPath, offset, rolloverFi.Length - offset);
+                }
+
+                offset = 0;
+                streamOffsets[rolloverPath] = ticks;
+            }
+        }
+
+        var fi = new FileInfo(logPath);
+        if (fi.Length > offset)
+        {
+            var bytesRead = ReadAndOutputBytes(output, logPath, offset, fi.Length - offset);
+            offset += bytesRead;
+        }
+
+        streamOffsets[logPath] = offset;
+    }
+
+    private static long ReadAndOutputBytes(TextWriter output, string path, long offset, long count)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            fs.Seek(offset, SeekOrigin.Begin);
+            var buffer = new byte[count];
+            int totalRead = 0;
+            while (totalRead < count)
+            {
+                int read = fs.Read(buffer, totalRead, (int)(count - totalRead));
+                if (read <= 0) break;
+                totalRead += read;
+            }
+
+            if (totalRead > 0)
+            {
+                var escaped = EscapeNonPrintable(buffer.AsSpan(0, totalRead));
+                output.Write(escaped);
+            }
+
+            return totalRead;
+        }
+        catch (IOException)
+        {
+            return 0;
+        }
+    }
+
+    public static string EscapeNonPrintable(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        var sb = new System.Text.StringBuilder(bytes.Length);
+        var decoder = System.Text.Encoding.UTF8.GetDecoder();
+        var chars = new char[2];
+
+        for (int i = 0; i < bytes.Length;)
+        {
+            int bytesUsed, charsUsed;
+            bool completed;
+            decoder.Convert(bytes.Slice(i, 1).ToArray(), 0, 1, chars, 0, 2, false, out bytesUsed, out charsUsed, out completed);
+
+            if (charsUsed > 0)
+            {
+                for (int c = 0; c < charsUsed; c++)
+                {
+                    var ch = chars[c];
+                    if (ch is '\n' or '\t' || IsPrintable(ch))
+                    {
+                        sb.Append(ch);
+                    }
+                    else
+                    {
+                        var code = (ushort)ch;
+                        if (code <= 0xFF)
+                        {
+                            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\x{code:x2}");
+                        }
+                        else
+                        {
+                            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"\\x{code:x4}");
+                        }
+                    }
+                }
+
+                i += bytesUsed;
+            }
+            else
+            {
+                // charsUsed == 0 with the byte consumed means the decoder BUFFERED a valid-so-far
+                // lead/continuation byte of a multi-byte sequence -- not an invalid byte. Emitting
+                // an escape here duplicated every non-ASCII character as \xNN + the decoded char
+                // (the lane review's high finding). Advance silently; the decoder produces the
+                // character when the sequence completes, and the flush below drains a sequence
+                // truncated at end-of-input as U+FFFD (genuinely invalid bytes already surface as
+                // U+FFFD through the decoder's replacement fallback).
+                i++;
+            }
+        }
+
+        var flushed = new char[2];
+        decoder.Convert([], 0, 0, flushed, 0, 2, flush: true, out _, out var flushedChars, out _);
+        for (int c = 0; c < flushedChars; c++)
+        {
+            sb.Append(flushed[c]);
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsPrintable(char ch)
+    {
+        if (ch == ' ') return true;
+        var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch);
+        return cat is not (System.Globalization.UnicodeCategory.Control
+            or System.Globalization.UnicodeCategory.Format
+            or System.Globalization.UnicodeCategory.Surrogate
+            or System.Globalization.UnicodeCategory.PrivateUse
+            or System.Globalization.UnicodeCategory.OtherNotAssigned
+            or System.Globalization.UnicodeCategory.LineSeparator
+            or System.Globalization.UnicodeCategory.ParagraphSeparator
+            or System.Globalization.UnicodeCategory.SpaceSeparator);
     }
 
     private static void PrintState(
