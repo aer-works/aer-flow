@@ -17,8 +17,8 @@ public static class WorkerBindingConfigParser
     /// <summary>Parses a worker-binding config from a JSON string.</summary>
     /// <param name="json">The config document.</param>
     /// <param name="sourcePath">
-    /// The file <paramref name="json"/> was read from, named in the error when the JSON is
-    /// malformed (#562) — <c>null</c> for callers with no file.
+    /// Same contract as <see cref="Aer.Flow.Templates.WorkflowDefinitionParser.Parse"/>'s
+    /// <c>sourcePath</c> (#562).
     /// </param>
     /// <exception cref="WorkerBindingConfigException">The JSON is malformed or empty.</exception>
     public static IReadOnlyDictionary<string, WorkerBindingConfigEntry> Parse(string json, string? sourcePath = null)
