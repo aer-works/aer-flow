@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
+using Aer.Flow.Store;
 
 namespace Aer.Flow.Templates;
 
@@ -26,7 +27,7 @@ public static class WorkflowDefinitionParser
         WorkflowDefinition? definition;
         try
         {
-            definition = JsonSerializer.Deserialize<WorkflowDefinition>(json);
+            definition = JsonSerializer.Deserialize<WorkflowDefinition>(json, SnapshotJson.Options);
         }
         catch (JsonException ex)
         {

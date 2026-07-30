@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
+using Aer.Flow.Store;
 
 namespace Aer.Flow.Templates;
 
@@ -42,7 +43,7 @@ public static class SnapshotBinder
             Directory.CreateDirectory(directory);
         }
 
-        var json = JsonSerializer.Serialize(snapshot);
+        var json = JsonSerializer.Serialize(snapshot, SnapshotJson.Options);
         await File.WriteAllTextAsync(snapshotFilePath, json, cancellationToken).ConfigureAwait(false);
     }
 
@@ -62,7 +63,7 @@ public static class SnapshotBinder
         WorkflowDefinitionSnapshot? snapshot;
         try
         {
-            snapshot = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(json);
+            snapshot = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(json, SnapshotJson.Options);
         }
         catch (JsonException ex)
         {

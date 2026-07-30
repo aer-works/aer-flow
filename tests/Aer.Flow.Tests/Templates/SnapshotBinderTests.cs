@@ -1,6 +1,7 @@
 using Aer.Flow.Tests.TestSupport;
 using System.Text.Json;
 using Aer.Flow.Domain;
+using Aer.Flow.Store;
 using Aer.Flow.Templates;
 
 namespace Aer.Flow.Tests.Templates;
@@ -69,10 +70,10 @@ public class SnapshotBinderTests
             await SnapshotBinder.PersistAsync(snapshot, path, TestContext.Current.CancellationToken);
 
             var json = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
-            var reloaded = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(json);
+            var reloaded = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(json, SnapshotJson.Options);
 
             Assert.NotNull(reloaded);
-            Assert.Equal(JsonSerializer.Serialize(snapshot), JsonSerializer.Serialize(reloaded));
+            Assert.Equal(JsonSerializer.Serialize(snapshot, SnapshotJson.Options), JsonSerializer.Serialize(reloaded, SnapshotJson.Options));
         }
         finally
         {
@@ -108,7 +109,7 @@ public class SnapshotBinderTests
         // its pause points. STJ materializes the missing constructor value as default(PausePointKind),
         // so ReadyForReview MUST be the zero value for every replayed pause to keep its original
         // approval-gate meaning — this test fails loudly if the enum members are ever reordered.
-        var pausePoint = JsonSerializer.Deserialize<PausePoint>("""{"SupersedeTargets":[]}""");
+        var pausePoint = JsonSerializer.Deserialize<PausePoint>("""{"SupersedeTargets":[]}""", SnapshotJson.Options);
 
         Assert.NotNull(pausePoint);
         Assert.Equal(PausePointKind.ReadyForReview, pausePoint.Kind);
@@ -143,7 +144,7 @@ public class SnapshotBinderTests
     {
         var templatePath = Path.Combine(Path.GetTempPath(), $"template-{Guid.NewGuid():N}.json");
         var snapshotPath = Path.Combine(Path.GetTempPath(), $"snapshot-{Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(SampleDefinition()), TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(SampleDefinition(), SnapshotJson.Options), TestContext.Current.CancellationToken);
         try
         {
             var loaded = await WorkflowDefinitionParser.LoadFromFileAsync(templatePath, TestContext.Current.CancellationToken);
@@ -152,9 +153,9 @@ public class SnapshotBinderTests
 
             // Edit the template on disk after the snapshot was bound and persisted.
             var edited = SampleDefinition() with { WorkflowTemplateVersion = 4 };
-            await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(edited), TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(templatePath, JsonSerializer.Serialize(edited, SnapshotJson.Options), TestContext.Current.CancellationToken);
 
-            var reloaded = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(await File.ReadAllTextAsync(snapshotPath, TestContext.Current.CancellationToken));
+            var reloaded = await SnapshotBinder.LoadFromFileAsync(snapshotPath, TestContext.Current.CancellationToken);
 
             Assert.NotNull(reloaded);
             Assert.Equal(3, reloaded.WorkflowTemplateVersion);
