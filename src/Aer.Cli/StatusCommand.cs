@@ -65,7 +65,7 @@ public static class StatusCommand
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var state = StateProjector.Project(events, snapshot);
 
-        PrintState(output, state, logPath);
+        PrintState(output, state, logPath, events);
 
         // A task directory whose snapshot is bound but has recorded zero events yet -- never
         // started via `aer run` -- projects as WorkflowStatus.Terminal by StateProjector's own
@@ -155,7 +155,8 @@ public static class StatusCommand
         }
     }
 
-    private static void PrintState(TextWriter output, FlowState state, string logPath)
+    private static void PrintState(
+        TextWriter output, FlowState state, string logPath, IReadOnlyList<FlowEvent> events)
     {
         output.WriteLine($"Workflow status: {state.Status}");
         output.WriteLine($"Log last updated: {ResolveLogUpdatedAt(logPath)}");
@@ -163,7 +164,8 @@ public static class StatusCommand
         foreach (var step in state.Steps)
         {
             var executionText = step.LatestExecutionId?.ToString() ?? "none";
-            output.WriteLine($"  {step.StepId}: {step.Status} (execution={executionText})");
+            var statusText = FormatStepStatus(step, events);
+            output.WriteLine($"  {step.StepId}: {statusText} (execution={executionText})");
         }
 
         foreach (var stepLess in state.StepLessExecutions)
@@ -171,6 +173,35 @@ public static class StatusCommand
             output.WriteLine($"  (supplementary) {stepLess.Worker}: execution={stepLess.ExecutionId} pending");
         }
     }
+
+    public static string FormatStepStatus(StepState step, IReadOnlyList<FlowEvent> events)
+    {
+        if (IsTerminal(step.Status))
+        {
+            return step.Status.ToString();
+        }
+
+        if (step.LatestExecutionId is null)
+        {
+            return step.Status.ToString();
+        }
+
+        var accepted = events.OfType<FlowEvent.ExecutionRequestAccepted>()
+            .FirstOrDefault(e => e.Request.ExecutionId == step.LatestExecutionId);
+
+        var probeResult = EngineLivenessProbe.Probe(accepted?.EnginePid, accepted?.EngineStartTime);
+
+        return probeResult.Status switch
+        {
+            EngineLivenessStatus.Alive => step.Status.ToString(),
+            EngineLivenessStatus.Dead => $"{step.Status} — engine not alive; crash recovery will classify on next pump",
+            EngineLivenessStatus.Unknown => $"liveness unknown ({probeResult.Why})",
+            _ => $"liveness unknown ({probeResult.Why})",
+        };
+    }
+
+    private static bool IsTerminal(StepStatus status) =>
+        status is StepStatus.Succeeded or StepStatus.Failed or StepStatus.Cancelled or StepStatus.Rejected;
 
     /// <summary>
     /// <c>flow.jsonl</c>'s own last-write time (UTC), append-only so this is exactly "when the

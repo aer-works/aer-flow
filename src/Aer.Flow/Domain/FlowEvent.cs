@@ -26,7 +26,10 @@ public abstract record FlowEvent
     }
 
     /// <summary>Flow has admitted this request for execution (pre-execution, admission control).</summary>
-    public sealed record ExecutionRequestAccepted(ExecutionRequest Request) : FlowEvent;
+    public sealed record ExecutionRequestAccepted(
+        ExecutionRequest Request,
+        int? EnginePid = null,
+        DateTimeOffset? EngineStartTime = null) : FlowEvent;
 
     /// <summary>Flow declined to submit this request, e.g. a concurrency cap (spec §15).</summary>
     public sealed record ExecutionRequestRejected(ExecutionId ExecutionId, string Reason) : FlowEvent;
