@@ -339,9 +339,10 @@ jobs:
           BODY: ${{ github.event.pull_request.body }}
         run: printf '%s' "$BODY" | pixi run audit-completeness -- --pr-body
 
-  # Phase 3 documentation reorg audit check.
+  # Documentation-ledger audit: red while docs debt recorded in doc-ledger.json remains
+  # unexecuted (#797's temporary check; the job is removed by the PR that empties the ledger).
   # Rationale: the repo's standing rule is that nothing lands leaving required CI red, so the stick-to-it mechanism is a visibly red optional job on every PR until the ledger empties, never a merge blocker for unrelated work.
-  phase3-reorg:
+  doc-ledger:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -349,8 +350,8 @@ jobs:
         with:
           run-install: false
           cache: false
-      - name: Audit Phase 3 documentation reorg
-        run: pixi run audit-phase3
+      - name: Audit the documentation ledger
+        run: pixi run audit-doc-ledger
 
   ci:
     needs: [changes, test, mobile, audit]

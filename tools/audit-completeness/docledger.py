@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""Phase 3 documentation reorg audit check.
+"""Documentation-ledger audit check (the #797 temporary check).
 
-Checks tools/audit-completeness/phase3-ledger.json to verify that all documentation reorg items
-(disposition fix or archive) have been resolved with evidence.
+Checks tools/audit-completeness/doc-ledger.json: a ledger of documentation debt (entries with
+disposition fix or archive) that must be resolved with evidence.
 
 Enforces:
 1. Every entry with status 'done' MUST have a non-empty 'evidence_link' field.
@@ -15,11 +15,11 @@ import json
 import pathlib
 import tempfile
 
-DEFAULT_LEDGER_PATH = pathlib.Path(__file__).parent / "phase3-ledger.json"
+DEFAULT_LEDGER_PATH = pathlib.Path(__file__).parent / "doc-ledger.json"
 
 
-def audit_phase3_ledger(ledger_path: pathlib.Path) -> tuple[int, list[dict], str]:
-    """Audits the Phase 3 ledger.
+def audit_doc_ledger(ledger_path: pathlib.Path) -> tuple[int, list[dict], str]:
+    """Audits the doc ledger.
 
     Returns:
         (exit_code, pending_entries, message)
@@ -57,17 +57,17 @@ def audit_phase3_ledger(ledger_path: pathlib.Path) -> tuple[int, list[dict], str
 
     pending_count = len(pending_entries)
     if pending_count > 0:
-        msg = f"PHASE3: {pending_count} entries remain\nPending paths:"
+        msg = f"DOC LEDGER: {pending_count} entries remain\nPending paths:"
         for entry in pending_entries:
             msg += f"\n  - {entry.get('path', '<unknown>')}"
         return 1, pending_entries, msg
 
-    return 0, [], "PHASE3: 0 entries remain (all done)"
+    return 0, [], "DOC LEDGER: 0 entries remain (all done)"
 
 
 def run_selftest() -> int:
-    """Inline polarity self-tests for phase3.py."""
-    print("Running phase3 inline self-tests...")
+    """Inline polarity self-tests for docledger.py."""
+    print("Running doc-ledger inline self-tests...")
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = pathlib.Path(tmpdir)
 
@@ -77,8 +77,8 @@ def run_selftest() -> int:
         ]
         f1 = tmp_path / "pending.json"
         f1.write_text(json.dumps(pending_ledger), encoding="utf-8")
-        code, pending, msg = audit_phase3_ledger(f1)
-        if code != 1 or len(pending) != 1 or "PHASE3: 1 entries remain" not in msg:
+        code, pending, msg = audit_doc_ledger(f1)
+        if code != 1 or len(pending) != 1 or "DOC LEDGER: 1 entries remain" not in msg:
             print(f"Self-test 1 FAILED: expected exit 1 for pending entry, got {code}, msg: {msg}")
             return 1
         print("  - Test 1 (pending entry -> exit 1): pass")
@@ -95,8 +95,8 @@ def run_selftest() -> int:
         ]
         f2 = tmp_path / "done.json"
         f2.write_text(json.dumps(done_ledger), encoding="utf-8")
-        code, pending, msg = audit_phase3_ledger(f2)
-        if code != 0 or len(pending) != 0 or "PHASE3: 0 entries remain" not in msg:
+        code, pending, msg = audit_doc_ledger(f2)
+        if code != 0 or len(pending) != 0 or "DOC LEDGER: 0 entries remain" not in msg:
             print(f"Self-test 2 FAILED: expected exit 0 for all done entries, got {code}, msg: {msg}")
             return 1
         print("  - Test 2 (all done with evidence_link -> exit 0): pass")
@@ -107,13 +107,13 @@ def run_selftest() -> int:
         ]
         f3 = tmp_path / "done_no_link.json"
         f3.write_text(json.dumps(done_no_link), encoding="utf-8")
-        code, pending, msg = audit_phase3_ledger(f3)
+        code, pending, msg = audit_doc_ledger(f3)
         if code != 1 or "marked 'done' without a non-empty 'evidence_link'" not in msg:
             print(f"Self-test 3 FAILED: expected exit 1 for done without evidence_link, got {code}, msg: {msg}")
             return 1
         print("  - Test 3 (done without evidence_link -> exit 1): pass")
 
-    print("Phase 3 self-tests: pass")
+    print("Doc-ledger self-tests: pass")
     return 0
 
 
@@ -126,7 +126,7 @@ def main(argv=None) -> int:
     if argv and not argv[0].startswith("-"):
         ledger_path = pathlib.Path(argv[0])
 
-    code, pending, msg = audit_phase3_ledger(ledger_path)
+    code, pending, msg = audit_doc_ledger(ledger_path)
     print(msg)
     return code
 
