@@ -258,8 +258,8 @@ public class RoomWakeBridgeIntegrationTests
 
             // The healthy lane's wake must survive the sick lane's probe failure...
             Assert.Contains(tick.Wakes, w => w.Ref.Value == healthyLane && w.Kind == RoomWakeKind.DispatchedLaneTerminated);
-            // ...and the sick lane must produce no wake this tick (a failed probe asserts nothing;
-            // the next tick re-probes and self-heals once the write settles), but the failure is
+            // ...and the sick lane must produce no wake this tick (the transience reasoning lives
+            // on RoomWakeBridgeState.CurrentProbeFailures' doc comment), but the failure is
             // surfaced, never logged-and-lost.
             Assert.DoesNotContain(tick.Wakes, w => w.Ref.Value == sickLane);
             var failure = Assert.Single(tick.ProbeFailures);
