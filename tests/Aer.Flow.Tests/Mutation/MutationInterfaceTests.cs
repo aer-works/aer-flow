@@ -178,5 +178,60 @@ public class MutationInterfaceTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [Fact]
+    public async Task StartWorkflowAsync_records_ExecutionFailed_when_dispatch_throws_CommandLineTooLongException()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        try
+        {
+            var stepId = new StepId("long-cmd-step");
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-refusal"),
+                new WorkflowTemplateId("refusal"),
+                WorkflowTemplateVersion: 1,
+                Steps: [new WorkflowStepDefinition(stepId, "long-cmd", [], ["out.txt"], DependsOn: [], RetryPolicy: new RetryPolicy(1))]);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["long-cmd"] = new WorkerBinding.Process(
+                    new WorkerContract("long-cmd", [], [new ProducedOutput("out.txt")], []),
+                    new CoreDispatchTarget("dummy", []),
+                    TimeSpan.FromSeconds(30)),
+            };
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var refusalMessage = "Command line length 40000 exceeds maximum allowable length of 32767.";
+            var dispatcher = new RefusingCoreDispatcher(refusalMessage);
+
+            var finalState = await MutationInterface.StartWorkflowAsync(
+                new WorkflowId("wf-refusal"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+
+            var stepState = Assert.Single(finalState.Steps);
+            Assert.Equal(StepStatus.Failed, stepState.Status);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var failedEvent = Assert.Single(events.OfType<FlowEvent.ExecutionFailed>());
+            Assert.Equal(FailureClassification.Permanent, failedEvent.FailureClassification);
+            Assert.NotNull(failedEvent.Reason);
+            Assert.Contains(refusalMessage, failedEvent.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    private sealed class RefusingCoreDispatcher(string refusalMessage) : ICoreDispatcher
+    {
+        public Task<CoreDispatchResult> DispatchAsync(ExecutionRequest request, CoreDispatchTarget target, CancellationToken cancellationToken = default)
+        {
+            throw new CommandLineTooLongException(refusalMessage);
+        }
+    }
 }
+
 

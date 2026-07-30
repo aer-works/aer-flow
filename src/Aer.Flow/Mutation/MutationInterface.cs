@@ -779,6 +779,18 @@ public static class MutationInterface
             await eventLogWriter.AppendAsync(ToOutcomeEvent(prepared.Request.ExecutionId, classification), CancellationToken.None)
                 .ConfigureAwait(false);
         }
+        catch (CommandLineTooLongException ex)
+        {
+            // A refusal to spawn (e.g. over-long command line) throws before land/exit events exist.
+            // Record ExecutionFailed so flow.jsonl is not left stuck at ExecutionRequestAccepted forever (#747).
+            await eventLogWriter.AppendAsync(
+                new FlowEvent.ExecutionFailed(
+                    prepared.Request.ExecutionId,
+                    FailureClassification.Permanent,
+                    ex.Message),
+                CancellationToken.None)
+                .ConfigureAwait(false);
+        }
         finally
         {
             inFlightExecutions.Unregister(prepared.Request.ExecutionId);
