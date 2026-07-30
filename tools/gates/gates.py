@@ -101,10 +101,20 @@ def print_phase3_status():
         capture_output=True,
         text=True,
     )
+    # First line only (the count), UNLESS phase3.py is reporting a fault -- a FAIL (bad ledger,
+    # done-without-evidence) must never be scraped into silence. Filtering a checker's output for
+    # the happy prefix is the exact anti-pattern this file's own header records (#685's incident),
+    # and the first draft of this function reintroduced it -- caught by the lane review.
+    printed = False
     for line in res.stdout.splitlines():
-        if line.startswith("PHASE3:"):
+        if line.startswith("PHASE3:") and not printed:
             print(line, flush=True)
-            break
+            printed = True
+        elif line.startswith("FAIL"):
+            print(f"PHASE3 {line}", flush=True)
+            printed = True
+    if not printed and res.returncode != 0:
+        print(f"PHASE3: checker exited {res.returncode} with unrecognized output -- run `pixi run audit-phase3`", flush=True)
 
 
 def main():

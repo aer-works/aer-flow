@@ -59,7 +59,7 @@ def audit_phase3_ledger(ledger_path: pathlib.Path) -> tuple[int, list[dict], str
     if pending_count > 0:
         msg = f"PHASE3: {pending_count} entries remain\nPending paths:"
         for entry in pending_entries:
-            msg += f"\n  - {entry['path']}"
+            msg += f"\n  - {entry.get('path', '<unknown>')}"
         return 1, pending_entries, msg
 
     return 0, [], "PHASE3: 0 entries remain (all done)"
