@@ -259,6 +259,44 @@ public class MutationInterfaceCrashRecoveryTests
     }
 
     [Fact]
+    public async Task StartWorkflowAsync_classifies_crash_recovery_candidate_when_its_worker_binding_refuses_to_resolve()
+    {
+        // Same recorded history as the absent-worker arm below, but the binding is present and
+        // REFUSING (see RefusingBindings) — the classify path must fall back to the recorded
+        // request's contract, not surface the refusal.
+        var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "unresolvable-worker"));
+        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        try
+        {
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var workflowId = new WorkflowId("wf");
+            var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, executionId);
+            var request = new ExecutionRequest(
+                executionId, workflowId, A, "unresolvable-worker", Inputs: [], Outputs: [], Timeout,
+                ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot),
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+
+            var state = await MutationInterface.StartWorkflowAsync(
+                workflowId, taskDirectory, snapshot, new RefusingBindings(), artifactsRoot, reader, writer,
+                new StubCoreDispatcher(), cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(StepStatus.Succeeded, state.Steps.Single(s => s.StepId == A).Status);
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            Assert.Single(events, e => e is FlowEvent.ExecutionSucceeded es && es.ExecutionId == executionId);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
     public async Task StartWorkflowAsync_classifies_crash_recovery_candidate_when_its_worker_binding_is_unresolvable()
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "unresolvable-worker"));
@@ -341,6 +379,25 @@ public class MutationInterfaceCrashRecoveryTests
     {
         ["stub-worker"] = new WorkerBinding.Process(ProcessContract, Target, Timeout),
     };
+
+    /// <summary>
+    /// #724's title case, distinct from the absent-worker arm above: the binding is PRESENT but
+    /// resolution refuses (a lazily-resolved entry whose adapter is gone, #662). Every lookup
+    /// throws, the way <c>WorkerBindingResolver.ResolveLazily</c>'s entries do.
+    /// </summary>
+    private sealed class RefusingBindings : IReadOnlyDictionary<string, WorkerBinding>
+    {
+        private sealed class TestResolutionRefusal(string message) : AerFlowException(message);
+
+        public WorkerBinding this[string key] => throw new TestResolutionRefusal($"No adapter for '{key}'.");
+        public bool TryGetValue(string key, out WorkerBinding value) => throw new TestResolutionRefusal($"No adapter for '{key}'.");
+        public bool ContainsKey(string key) => true;
+        public int Count => 1;
+        public IEnumerable<string> Keys => ["unresolvable-worker"];
+        public IEnumerable<WorkerBinding> Values => throw new TestResolutionRefusal("enumerated");
+        public IEnumerator<KeyValuePair<string, WorkerBinding>> GetEnumerator() => throw new TestResolutionRefusal("enumerated");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new TestResolutionRefusal("enumerated");
+    }
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {

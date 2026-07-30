@@ -859,6 +859,16 @@ public static class MutationInterface
         return obligations;
     }
 
+    /// <summary>
+    /// The contract a crash-recovery classification runs against (#724): the live binding's when it
+    /// resolves, else one reconstructed from the recorded <see cref="ExecutionRequest"/> — the
+    /// execution already ran, so what it was asked to produce is a recorded fact, and a bindings
+    /// file that changed or broke since must not make the recorded outcome unclassifiable (the
+    /// #662 lesson, on the recovery path). The reconstruction carries output NAMES only: any
+    /// <c>OutputCondition</c> the original contract declared is unknowable from the request today,
+    /// so a conditioned output classifies on existence alone in this fallback. Recording the full
+    /// contract on the request is #672's design to make.
+    /// </summary>
     private static WorkerContract GetContractForClassification(
         ExecutionRequest request,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings)
@@ -870,9 +880,10 @@ public static class MutationInterface
                 return processBinding.Contract;
             }
         }
-        catch
+        catch (AerFlowException)
         {
-            // Unresolvable worker binding
+            // Resolution refused (missing adapter, unsatisfiable grant) — exactly the case the
+            // recorded request exists to cover. Anything else still propagates.
         }
 
         return new WorkerContract(

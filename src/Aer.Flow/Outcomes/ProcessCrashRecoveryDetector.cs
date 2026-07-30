@@ -107,18 +107,13 @@ public static class ProcessCrashRecoveryDetector
             }
 
             // Non-process reconciliation is NonProcessCompletionDetector/NonProcessCancellationDetector's
-            // job — Core never writes a CoreEvent for a binding with no process behind it.
-            bool isProcessBinding = false;
-            try
-            {
-                isProcessBinding = workerBindings.TryGetValue(stepDefinition.Worker, out var binding) && binding is WorkerBinding.Process;
-            }
-            catch
-            {
-                // Unresolvable worker binding
-            }
-
-            if (!isProcessBinding)
+            // job — Core never writes a CoreEvent for a binding with no process behind it. Reached
+            // only for the pre-spawn states: the classify/abandon branches above act on recorded
+            // Core evidence and never consult the binding (#724). A present-but-unresolvable
+            // binding is allowed to throw out of here — a pre-spawn recovery genuinely needs the
+            // binding to resubmit, and swallowing the refusal would leave the step Running forever
+            // with no obligation and no explanation.
+            if (!workerBindings.TryGetValue(stepDefinition.Worker, out var binding) || binding is not WorkerBinding.Process)
             {
                 continue;
             }
