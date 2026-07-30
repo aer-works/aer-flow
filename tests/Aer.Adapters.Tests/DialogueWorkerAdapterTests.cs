@@ -19,20 +19,12 @@ public class DialogueWorkerAdapterTests
         "debate", [], [new ProducedOutput("verdict.md")], []);
 
     [Fact]
-    public void Resolves_to_a_shell_wrapper_so_AER_OUTPUT_DIR_can_be_expanded()
+    public void Resolves_directly_to_dotnet_without_a_shell_wrapper()
     {
         var target = new DialogueWorkerAdapter().Resolve(new WorkerInvocation("/configs/debate.json"), DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("cmd", target.Program);
-            Assert.Equal("/c", target.Args[0]);
-        }
-        else
-        {
-            Assert.Equal("sh", target.Program);
-            Assert.Equal("-c", target.Args[0]);
-        }
+        Assert.Equal("dotnet", target.Program);
+        Assert.Equal("exec", target.Args[0]);
     }
 
     [Fact]
@@ -40,18 +32,9 @@ public class DialogueWorkerAdapterTests
     {
         var target = new DialogueWorkerAdapter().Resolve(new WorkerInvocation("/configs/debate.json"), DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("dotnet", target.Args[1]);
-            Assert.Equal("exec", target.Args[2]);
-            Assert.Contains("Aer.Workers.Dialogue.dll", target.Args[3]);
-        }
-        else
-        {
-            var commandLine = target.Args[1];
-            Assert.StartsWith("dotnet exec ", commandLine);
-            Assert.Contains("Aer.Workers.Dialogue.dll", commandLine);
-        }
+        Assert.Equal("dotnet", target.Program);
+        Assert.Equal("exec", target.Args[0]);
+        Assert.EndsWith("Aer.Workers.Dialogue.dll", target.Args[1]);
     }
 
     [Fact]
@@ -60,14 +43,7 @@ public class DialogueWorkerAdapterTests
         var target = new DialogueWorkerAdapter().Resolve(new WorkerInvocation("/configs/debate.json"), DebateContract);
         var expectedDllPath = typeof(DialogueWorkerConfig).Assembly.Location;
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal(expectedDllPath, target.Args[3]);
-        }
-        else
-        {
-            Assert.Contains($"\"{expectedDllPath}\"", target.Args[1]);
-        }
+        Assert.Equal(expectedDllPath, target.Args[1]);
     }
 
     [Fact]
@@ -75,14 +51,7 @@ public class DialogueWorkerAdapterTests
     {
         var target = new DialogueWorkerAdapter().Resolve(new WorkerInvocation("/configs/debate.json"), DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("/configs/debate.json", target.Args[4]);
-        }
-        else
-        {
-            Assert.Contains("\"/configs/debate.json\"", target.Args[1]);
-        }
+        Assert.Equal("/configs/debate.json", target.Args[2]);
     }
 
     [Fact]
@@ -90,51 +59,27 @@ public class DialogueWorkerAdapterTests
     {
         var target = new DialogueWorkerAdapter().Resolve(new WorkerInvocation("/configs/debate.json"), DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("%AER_OUTPUT_DIR%", target.Args[^1]);
-        }
-        else
-        {
-            Assert.EndsWith("\"$AER_OUTPUT_DIR\"", target.Args[1]);
-        }
+        Assert.Equal(WorkerEnvironmentReference.For("AER_OUTPUT_DIR"), target.Args[3]);
     }
 
     [Fact]
-    public void A_config_path_containing_shell_metacharacters_is_defused_not_expanded()
+    public void A_config_path_containing_shell_metacharacters_passes_through_unchanged_without_shell_escaping()
     {
         var invocation = new WorkerInvocation("/configs/$HOME/\"debate\".json");
 
         var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            // No POSIX metacharacters need defusing on Windows -- only '%' does (see the '%' test
-            // below) -- so the literal path passes straight through as its own argv token.
-            Assert.Equal("/configs/$HOME/\"debate\".json", target.Args[4]);
-        }
-        else
-        {
-            var commandLine = target.Args[1];
-            Assert.Contains("/configs/\\$HOME/\\\"debate\\\".json", commandLine);
-        }
+        Assert.Equal("/configs/$HOME/\"debate\".json", target.Args[2]);
     }
 
     [Fact]
-    public void A_percent_sign_in_the_config_path_is_defused_on_windows_so_cmd_cannot_expand_it()
+    public void A_percent_sign_in_the_config_path_passes_through_unchanged()
     {
         var invocation = new WorkerInvocation("/configs/100%/debate.json");
 
         var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("/configs/100%%/debate.json", target.Args[4]);
-        }
-        else
-        {
-            Assert.Contains("/configs/100%/debate.json", target.Args[1]);
-        }
+        Assert.Equal("/configs/100%/debate.json", target.Args[2]);
     }
 
     /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged, same as ClaudeWorkerAdapterTests/GeminiWorkerAdapterTests.</summary>
@@ -161,14 +106,7 @@ public class DialogueWorkerAdapterTests
         var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
 
         var expected = Path.GetFullPath(Path.Combine("/configs", "dialogue-debate.json"));
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal(expected, target.Args[4]);
-        }
-        else
-        {
-            Assert.Contains($"\"{expected}\"", target.Args[1]);
-        }
+        Assert.Equal(expected, target.Args[2]);
     }
 
     [Fact]
@@ -178,14 +116,7 @@ public class DialogueWorkerAdapterTests
 
         var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("/configs/debate.json", target.Args[4]);
-        }
-        else
-        {
-            Assert.Contains("\"/configs/debate.json\"", target.Args[1]);
-        }
+        Assert.Equal("/configs/debate.json", target.Args[2]);
     }
 
     [Fact]
@@ -195,14 +126,7 @@ public class DialogueWorkerAdapterTests
 
         var target = new DialogueWorkerAdapter().Resolve(invocation, DebateContract);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal("dialogue-debate.json", target.Args[4]);
-        }
-        else
-        {
-            Assert.Contains("\"dialogue-debate.json\"", target.Args[1]);
-        }
+        Assert.Equal("dialogue-debate.json", target.Args[2]);
     }
 
     [Fact]
