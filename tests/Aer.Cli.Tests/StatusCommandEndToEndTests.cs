@@ -145,14 +145,10 @@ public class StatusCommandEndToEndTests
     }
 
     /// <summary>
-    /// A discriminating regression test for a specific race: ExecuteAsync's own initial read
-    /// decides the workflow is not yet terminal, but the tailing loop's byte-length baseline is a
-    /// *second*, later read of the same file — taken only after every line of the initial
-    /// <c>PrintState</c> output has been written. When <c>output</c> is a piped/redirected
-    /// <c>Console.Out</c>, a slow downstream reader applies real backpressure to those writes —
-    /// real wall-clock time, not a nanosecond gap. If the workflow finishes while that write is
-    /// still blocked, a baseline captured once it unblocks already includes the final bytes, so the
-    /// loop's "did the length change" check never fires again and it polls forever.
+    /// Regression test for the startup race documented on <c>StatusCommand.FollowAsync</c>'s own
+    /// baseline-seeding comment (see it for the mechanism — a slow consumer applying backpressure
+    /// to a piped <c>Console.Out</c> between the initial print and the tailing loop's baseline
+    /// capture).
     /// <para>
     /// Reproduced deterministically with a <see cref="TextWriter"/> that blocks its first
     /// <c>WriteLine</c> call on a gate the test controls, rather than by racing real timing (an
