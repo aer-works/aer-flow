@@ -46,18 +46,18 @@ internal sealed class LazyWorkerBindings : IReadOnlyDictionary<string, WorkerBin
 
     public IEnumerable<string> Keys => _config.Keys;
 
-    // Forcing every entry's Lazy<T> here is the one path that reintroduces #662's eager refusal — but
-    // only for a caller that enumerates the whole map rather than looking up a worker by name, which
-    // no shipped consumer does (see class remarks).
-    public IEnumerable<WorkerBinding> Values => _resolved.Values.Select(l => l.Value);
+    // Enumerating would force every entry's Lazy<T> — the one path that reintroduces #662's eager
+    // refusal, silently. No shipped consumer enumerates (see class remarks), so a future one is a
+    // regression by definition, and the #662 review called the silent version a live footgun: this
+    // throws instead, naming the alternative, so the regression announces itself at first run.
+    public IEnumerable<WorkerBinding> Values => throw EnumerationRefused();
 
-    public IEnumerator<KeyValuePair<string, WorkerBinding>> GetEnumerator()
-    {
-        foreach (var key in _config.Keys)
-        {
-            yield return new KeyValuePair<string, WorkerBinding>(key, _resolved[key].Value);
-        }
-    }
+    public IEnumerator<KeyValuePair<string, WorkerBinding>> GetEnumerator() => throw EnumerationRefused();
 
-    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => throw EnumerationRefused();
+
+    private static NotSupportedException EnumerationRefused() => new(
+        "Enumerating lazily-resolved worker bindings would eagerly resolve — and refuse — every "
+        + "entry, which is the defect ResolveLazily exists to avoid (#662). Look workers up by "
+        + "name via TryGetValue, or use WorkerBindingResolver.Resolve when eager refusal is wanted.");
 }
