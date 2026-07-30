@@ -3044,11 +3044,11 @@ def _agy_unlisted_model_acceptance():
     SENTINEL, decided explicitly rather than inherited from the issue. The direction that matters is
     ACCEPTANCE, not rejection: a future agy erroring on `gemini-3-flash` is not silent -- a dispatch
     pinned to it would fail LOUDLY, which is not the failure mode AER's cost/attribution assumption
-    depends on. But agy WIDENING acceptance (`gemini-3-pro` starting to succeed too, or drift in the
-    two probed names (`gemini-3-flash`, `gemini-3-pro`); a third unlisted name is explicitly not
-    covered) would silently make that assumption wronger, with nothing else in this repo positioned
-    to notice. That is the vendor-changing-silently-under-a-committed-design bar the README sets, so
-    this is a sentinel for the ACCEPT side of the asymmetry.
+    depends on. But agy WIDENING acceptance -- `gemini-3-pro` starting to succeed too -- would
+    silently make that assumption wronger, with nothing else in this repo positioned to notice.
+    That is the vendor-changing-silently-under-a-committed-design bar the README sets, so this is a
+    sentinel for the ACCEPT side of the asymmetry. Scope: the check covers drift in the two probed
+    names only; a THIRD unlisted name joining the accept side is explicitly not covered.
     """
     probe = ["-p", "reply with exactly the word PONG"]
 
