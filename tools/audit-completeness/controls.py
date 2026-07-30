@@ -110,6 +110,35 @@ def _bad_pin():
         yield
 
 
+@control("workspace truth renders probe failures loudly, never as a clean tree",
+         "git errors are discarded again (#780's shape), so a failed probe falls through to (none)")
+def _truth_discards_errors():
+    orig = selfcheck.dispatch._git_cmd
+
+    def discards_err(workdir, *argv, **kwargs):
+        value, _err = orig(workdir, *argv, **kwargs)
+        return value, None
+
+    with swap(selfcheck.dispatch, "_git_cmd", discards_err):
+        yield
+
+
+@control("workspace truth renders probe failures loudly, never as a clean tree",
+         "a failed HEAD check returns before the status probe, so uncommitted work goes unreported")
+def _truth_head_failure_skips_status():
+    orig = selfcheck.dispatch._print_workspace_truth
+
+    def early_return(workdir, head_before, head_before_err=None):
+        if head_before_err or head_before is None:
+            print(f"\n[dispatch.py] workspace truth ({workdir}):", file=sys.stderr)
+            print("  truth unavailable: initial HEAD check failed", file=sys.stderr)
+            return False
+        return orig(workdir, head_before, head_before_err)
+
+    with swap(selfcheck.dispatch, "_print_workspace_truth", early_return):
+        yield
+
+
 @control("no template is refused, and every grant the shell would over-reach is",
          "the coherence rule is dropped, so a withheld write dispatches whenever the shell is granted")
 def _no_coherence_rule():

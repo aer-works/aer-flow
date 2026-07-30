@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -151,11 +152,19 @@ def provision_worktree(repo: Path, branch: str) -> Path:
 
 
 def _git_cmd(workdir: Path, *argv: str, timeout: int = 30) -> tuple[str | None, str | None]:
-    """One git read against workdir. Returns (stdout, None) on success or (None, reason) on failure."""
+    """One git read against workdir. Returns (stdout, None) on success or (None, reason) on failure.
+
+    GIT_* is scrubbed from the environment: an inherited GIT_DIR/GIT_INDEX_FILE (a git hook
+    exports both) overrides `-C`'s repo discovery, and the truth block would then report some
+    OTHER repository's state as this workdir's -- a wrong answer, delivered confidently, from
+    the one probe whose whole job is to be trustworthy.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
         result = subprocess.run(
             ["git", "-C", str(workdir), *argv],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+            env=env)
     except OSError as exc:
         return None, f"git execution error: {exc}"
     except subprocess.TimeoutExpired:
@@ -200,28 +209,46 @@ def _templates_ref() -> str:
 
 
 
-def _git_head(workdir: Path) -> str | None:
-    return _git(workdir, "rev-parse", "HEAD")
+def _git_head(workdir: Path) -> tuple[str | None, str | None]:
+    return _git_cmd(workdir, "rev-parse", "HEAD")
 
 
-def _print_workspace_truth(workdir: Path, head_before: str | None) -> None:
+def _print_workspace_truth(workdir: Path, head_before: str | None, head_before_err: str | None = None) -> bool:
     """#731: what the run actually did to the workspace, computed here, never by the worker.
 
     A worker's summary is a self-report; every one this register was designed from had to be
     verified against the real diff by hand, and that check caught real gaps. Printed on failure
     too -- what a dead worker left uncommitted is exactly what the orchestrator needs next.
     Empty-output lines are printed as (none) rather than omitted: silence would be ambiguous
-    between "clean" and "not a git repo", and only one of those is evidence.
+    between "clean" and "not a git repo", and only one of those is evidence. Probe failures
+    render as 'truth unavailable: <why>' and cause this function to return False (#780).
     """
-    if head_before is None:
-        return
     print(f"\n[dispatch.py] workspace truth ({workdir}):", file=sys.stderr)
-    for label, value in (
-        ("uncommitted", _git(workdir, "status", "--short")),
-        ("commits added", _git(workdir, "log", "--oneline", f"{head_before}..HEAD")),
-        ("diff --stat", _git(workdir, "diff", "--stat", f"{head_before}..HEAD")),
+    if head_before_err or head_before is None:
+        head_err = f"initial HEAD check failed ({head_before_err or 'git rev-parse HEAD failed'})"
+    else:
+        head_err = None
+
+    truth_ok = True
+    for label, argv in (
+        # The status probe does not depend on head_before, so it still runs -- and still
+        # reports -- when the HEAD check failed: what a worker left uncommitted in a repo
+        # whose HEAD could not be read is recoverable diagnostic, not part of the failure.
+        ("uncommitted", ("status", "--short")),
+        ("commits added", ("log", "--oneline", f"{head_before}..HEAD")),
+        ("diff --stat", ("diff", "--stat", f"{head_before}..HEAD")),
     ):
-        if value:
+        if head_err is not None and label != "uncommitted":
+            truth_ok = False
+            print(f"  {label}: truth unavailable: {head_err}", file=sys.stderr)
+            continue
+        value, err = _git_cmd(workdir, *argv)
+        if head_err is not None:
+            truth_ok = False
+        if err:
+            truth_ok = False
+            print(f"  {label}: truth unavailable: {err}", file=sys.stderr)
+        elif value:
             # Escaped, not trusted: commit subjects are worker-authored and git does not
             # sanitize them (only filenames get C-quoted). Raw ANSI escapes or \r here could
             # repaint THIS block on a terminal -- the one report the worker must not be able
@@ -233,6 +260,8 @@ def _print_workspace_truth(workdir: Path, head_before: str | None) -> None:
             print(f"  {label}:\n{indented}", file=sys.stderr)
         else:
             print(f"  {label}: (none)", file=sys.stderr)
+
+    return truth_ok
 
 
 def budget_preamble(timeout_minutes: int, output_name: str) -> str:
@@ -958,7 +987,7 @@ def main() -> int:
     # stale prefix be sliced off and labelled instead of silently prepended.
     log_bytes_before = log_path.stat().st_size if log_path.exists() else None
     log_mtime_before = log_path.stat().st_mtime if log_path.exists() else None
-    head_before = _git_head(working_directory)
+    head_before, head_before_err = _git_head(working_directory)
 
     outer_deadline_minutes = sum(s["timeout_minutes"] for s in step_specs) + 5
     outer_deadline_seconds = outer_deadline_minutes * 60
@@ -1011,7 +1040,10 @@ def main() -> int:
         )
         if engine_stdout:
             print(engine_stdout, end="")
-        _print_workspace_truth(working_directory, head_before)
+        # Return value deliberately unused: this path already exits 1. Passing the HEAD error
+        # keeps the rendering honest -- without it a failed HEAD probe reads as a clean tree,
+        # the exact #780 defect, on the one path where the tree is most likely to be mid-work.
+        _print_workspace_truth(working_directory, head_before, head_before_err)
         if engine_stderr:
             print(engine_stderr, file=sys.stderr, end="")
         _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
@@ -1020,11 +1052,15 @@ def main() -> int:
     result = subprocess.CompletedProcess(engine.args, engine.returncode, engine_stdout, engine_stderr)
 
     print(result.stdout, end="")
-    _print_workspace_truth(working_directory, head_before)
+    truth_ok = _print_workspace_truth(working_directory, head_before, head_before_err)
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
         _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
         return result.returncode
+
+    if not truth_ok:
+        print("error: workspace truth could not be established", file=sys.stderr)
+        return 1
 
     primary_output_name = "report.md" if args.lane else args.output_name
     artifacts_dir = task_dir / "artifacts"

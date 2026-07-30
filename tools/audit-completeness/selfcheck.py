@@ -31,6 +31,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -528,6 +529,69 @@ def _templates_dry_run():
         )
     return (f"{len(dispatch.TEMPLATES)} templates x 8 resolved keys vs the generated bindings, "
             "+ 2 refusal polarities")
+
+
+@check("workspace truth renders probe failures loudly, never as a clean tree")
+def _workspace_truth_probe_failures_are_loud():
+    """#780: a failed git probe rendered identically to a clean tree -- `(none)` -- and the
+    orchestrator convicted an honest worker of fabrication on that reading. The fix is one
+    condition apart from the bug (`if err` before `if value`), so both polarities are pinned
+    here against real git repos, not doubles a mock could satisfy either way.
+    """
+    def truth(head_before, head_before_err=None):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            ok = dispatch._print_workspace_truth(repo, head_before, head_before_err)
+        return ok, buf.getvalue()
+
+    with tempfile.TemporaryDirectory() as scratch:
+        repo = Path(scratch) / "repo"
+        repo.mkdir()
+
+        def git(*argv):
+            # GIT_* scrubbed: under the pre-push hook git exports GIT_DIR/GIT_INDEX_FILE, which
+            # redirect this harness's commits at the OUTER repo. Passed standalone, failed only
+            # inside the hook -- the exact env leak the vendor loop already strips for.
+            env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+            done = subprocess.run(
+                ["git", "-C", str(repo), "-c", "user.email=selfcheck@localhost",
+                 "-c", "user.name=selfcheck", *argv],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+            assert done.returncode == 0, f"harness git {argv} failed: {done.stderr.strip()[:200]}"
+            return done.stdout.strip()
+
+        git("init", "-q")
+        git("commit", "--allow-empty", "-q", "-m", "base")
+        head = git("rev-parse", "HEAD")
+        (repo / "w.txt").write_text("x", encoding="utf-8")
+        git("add", "w.txt")
+        git("commit", "-q", "-m", "worker commit")
+
+        # Control arm, read first: on a healthy repo the block renders the added commit and
+        # reports truth established. If THIS fails, the harness repo is broken, not dispatch.py.
+        ok, out = truth(head)
+        assert ok and "worker commit" in out and "truth unavailable" not in out, (
+            f"control failed -- a healthy repo did not render its own commit:\n{out}")
+
+        # The #780 polarity: an unresolvable head_before is a probe FAILURE. It must render
+        # loudly and report truth as NOT established -- and must never fall through to the
+        # clean-tree line, which is the reading the conviction was made on.
+        ok, out = truth("0" * 40)
+        assert not ok, "a failed probe still reported truth as established"
+        assert "truth unavailable" in out, f"a failed probe rendered without the loud marker:\n{out}"
+        assert "commits added: (none)" not in out, (
+            f"a failed probe rendered as a clean tree:\n{out}")
+
+        # HEAD-failure arm: the two head_before-dependent probes are unavailable, but the status
+        # probe needs no head_before and must still report what the worker left uncommitted.
+        (repo / "leftover.txt").write_text("uncommitted", encoding="utf-8")
+        ok, out = truth(None, "git execution error: simulated")
+        assert not ok, "a failed HEAD check still reported truth as established"
+        assert "truth unavailable: initial HEAD check failed" in out, (
+            f"a failed HEAD check rendered without its reason:\n{out}")
+        assert "leftover.txt" in out, (
+            f"the HEAD-independent status probe went silent on a failed HEAD check:\n{out}")
+    return "3 arms (control, failed probe, failed HEAD) against a real git repo"
 
 
 @check("every permission boolean can be turned OFF from the command line")
