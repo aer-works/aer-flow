@@ -183,7 +183,14 @@ def _print_workspace_truth(workdir: Path, head_before: str | None) -> None:
         ("diff --stat", _git(workdir, "diff", "--stat", f"{head_before}..HEAD")),
     ):
         if value:
-            indented = "\n".join(f"    {line}" for line in value.splitlines())
+            # Escaped, not trusted: commit subjects are worker-authored and git does not
+            # sanitize them (only filenames get C-quoted). Raw ANSI escapes or \r here could
+            # repaint THIS block on a terminal -- the one report the worker must not be able
+            # to spoof (the #731 review's finding 1).
+            safe = "".join(
+                ch if ch.isprintable() or ch in "\n\t" else f"\\x{ord(ch):02x}"
+                for ch in value)
+            indented = "\n".join(f"    {line}" for line in safe.splitlines())
             print(f"  {label}:\n{indented}", file=sys.stderr)
         else:
             print(f"  {label}: (none)", file=sys.stderr)
