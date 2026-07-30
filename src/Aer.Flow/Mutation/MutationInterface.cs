@@ -869,11 +869,14 @@ public static class MutationInterface
                 continue;
             }
 
-            // A Failed step whose ConsecutiveFailureCount is zero is one an operator just reopened
-            // via RetryWithRevision (§17.2) — StateProjector resets the count for exactly that
-            // decision. Backoff exists to pace the machine's own retries; a person's explicit
-            // "retry now" is not paced, so no obligation is scheduled for it.
-            if (stepState.ConsecutiveFailureCount == 0)
+            // A Failed step whose ConsecutiveFailureCount is zero with no live classification is
+            // one an operator just reopened via RetryWithRevision (§17.2) — StateProjector resets
+            // both for exactly that decision. Backoff exists to pace the machine's own retries; a
+            // person's explicit "retry now" is not paced, so no obligation is scheduled for it.
+            // An ExhaustedUntil step also sits at zero (quota hits consume no budget, 0026) but is
+            // the machine's own wait, not a person's reopen — it must still be paced to the reset.
+            if (stepState.ConsecutiveFailureCount == 0
+                && stepState.LatestFailureClassification != FailureClassification.ExhaustedUntil)
             {
                 continue;
             }

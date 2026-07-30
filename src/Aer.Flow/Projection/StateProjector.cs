@@ -97,8 +97,17 @@ public static class StateProjector
                     terminalStatusByExecutionId[failed.ExecutionId] = StepStatus.Failed;
                     if (stepIdByExecutionId.TryGetValue(failed.ExecutionId, out var failedStepId))
                     {
-                        consecutiveFailureCountByStepId[failedStepId] =
-                            consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
+                        // ExhaustedUntil never increments: 0026's "consumes no retry budget" is
+                        // enforced here at the source, so a later real failure starts from the
+                        // real-failure count and the backoff attempt number never inflates from
+                        // waiting out a quota window. RetryEngine's attempts check and the
+                        // ExhaustedUntil arm of GetRetryObligations both lean on this.
+                        if (failed.FailureClassification != FailureClassification.ExhaustedUntil)
+                        {
+                            consecutiveFailureCountByStepId[failedStepId] =
+                                consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
+                        }
+
                         latestFailureClassificationByStepId[failedStepId] = failed.FailureClassification;
                         latestFailureReasonByStepId[failedStepId] = failed.Reason;
                         latestExecutionFailedRetryNotBeforeByStepId[failedStepId] = failed.RetryNotBefore;
@@ -157,6 +166,13 @@ public static class StateProjector
                             stepIdByExecutionId.TryGetValue(resumedExecutionId, out var retryStepId))
                         {
                             consecutiveFailureCountByStepId[retryStepId] = 0;
+                            // The classification clears with the count, mirroring the success
+                            // reset above: a reopen is a fresh round, and a stale ExhaustedUntil
+                            // left here would send the operator's explicit retry-now back through
+                            // GetRetryObligations' reset-moment pacing instead of dispatching it.
+                            latestFailureClassificationByStepId[retryStepId] = null;
+                            latestFailureReasonByStepId[retryStepId] = null;
+                            latestExecutionFailedRetryNotBeforeByStepId[retryStepId] = null;
                             retryNotBeforeByStepId.Remove(retryStepId);
                             retryDelayMsByStepId.Remove(retryStepId);
                             retryScheduledForExecutionIdByStepId.Remove(retryStepId);
