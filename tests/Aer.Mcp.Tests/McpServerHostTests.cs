@@ -85,6 +85,45 @@ public class McpServerHostTests
     }
 
     [Fact]
+    public async Task MalformedJsonLine_IsSkipped_LoopSurvivesAndAnswersTheNextLine()
+    {
+        // The first line is not valid JSON at all (an unterminated object) — must not throw out of
+        // RunAsync, and the well-formed line after it still gets answered.
+        var responses = await RunAsync(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}");
+
+        Assert.Single(responses);
+        Assert.Equal(2, (int)responses[0]["id"]!);
+        Assert.Single(responses[0]["result"]!["tools"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task ValidJsonNonObjectLine_IsSkipped_LoopSurvivesAndAnswersTheNextLine()
+    {
+        // A syntactically valid JSON line that parses to a bare array, not a JSON-RPC object.
+        var responses = await RunAsync(
+            "[1,2,3]\n" +
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}");
+
+        Assert.Single(responses);
+        Assert.Equal(2, (int)responses[0]["id"]!);
+    }
+
+    [Fact]
+    public async Task ExplicitNullArguments_BehavesIdenticallyToOmittedArguments()
+    {
+        var responses = await RunAsync(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"yield\",\"arguments\":null}}");
+
+        // YieldTool requires 'outcome'; an empty-effective-arguments call must report that missing
+        // field the same way whether 'arguments' was omitted or explicitly null — not throw, and not
+        // silently succeed.
+        Assert.True((bool)responses[0]["result"]!["isError"]!);
+        Assert.Contains("outcome", (string)responses[0]["result"]!["content"]![0]!["text"]!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task NonStringMethod_DoesNotCrashLoop_ReturnsMethodNotFound()
     {
         // "method" is a number, not a string — a naive JsonNode.GetValue<string>() throws here.
@@ -140,14 +179,27 @@ public class McpServerHostTests
 
     private static async Task<List<System.Text.Json.Nodes.JsonObject>> RunAsync(string requestLine)
     {
-        var host = new McpServerHost("aer-mcp-host-test", "1.0.0", [new YieldTool(Path.GetTempFileName())]);
-        var input = new StringReader(requestLine + "\n");
-        var output = new StringWriter();
+        // Path.GetTempFileName() would create the file up front, which YieldTool would then read as
+        // "yield already called once" on the very first call — build an unused path instead.
+        var captureFile = Path.Combine(Path.GetTempPath(), $"aer-mcp-test-{Guid.NewGuid():N}.json");
+        try
+        {
+            var host = new McpServerHost("aer-mcp-host-test", "1.0.0", [new YieldTool(captureFile)]);
+            var input = new StringReader(requestLine + "\n");
+            var output = new StringWriter();
 
-        await host.RunAsync(input, output);
+            await host.RunAsync(input, output);
 
-        var text = output.ToString();
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return lines.Select(l => System.Text.Json.Nodes.JsonNode.Parse(l)!.AsObject()).ToList();
+            var text = output.ToString();
+            var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return lines.Select(l => System.Text.Json.Nodes.JsonNode.Parse(l)!.AsObject()).ToList();
+        }
+        finally
+        {
+            if (File.Exists(captureFile))
+            {
+                File.Delete(captureFile);
+            }
+        }
     }
 }

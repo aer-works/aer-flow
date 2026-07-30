@@ -41,6 +41,14 @@ public sealed class YieldTool(string captureFilePath) : IMcpTool
 
     public McpToolCallResult Call(JsonElement arguments)
     {
+        if (File.Exists(captureFilePath))
+        {
+            // "Captures exactly one call" is enforced here, not just documented: a second tools/call
+            // for 'yield' in the same turn must not silently replace the first participant's recorded
+            // outcome with a later one DialogueRunner never asked for.
+            return new McpToolCallResult("yield was already called once for this turn.", IsError: true);
+        }
+
         if (!arguments.TryGetProperty("outcome", out var outcomeElement) || outcomeElement.ValueKind != JsonValueKind.String)
         {
             return new McpToolCallResult("'outcome' is required and must be a string.", IsError: true);
