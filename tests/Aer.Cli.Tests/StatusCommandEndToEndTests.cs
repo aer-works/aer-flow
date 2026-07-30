@@ -3,6 +3,7 @@ using Aer.Adapters;
 using Aer.Cli.Tests.TestSupport;
 using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
+using Aer.Flow.Store;
 using Aer.Flow.Templates;
 
 namespace Aer.Cli.Tests;
@@ -141,6 +142,131 @@ public class StatusCommandEndToEndTests
         {
             DirectoryCleanup.DeleteRecursively(testRoot);
         }
+    }
+
+    /// <summary>
+    /// A discriminating regression test for a specific race: ExecuteAsync's own initial read
+    /// decides the workflow is not yet terminal, but the tailing loop's byte-length baseline is a
+    /// *second*, later read of the same file — taken only after every line of the initial
+    /// <c>PrintState</c> output has been written. When <c>output</c> is a piped/redirected
+    /// <c>Console.Out</c>, a slow downstream reader applies real backpressure to those writes —
+    /// real wall-clock time, not a nanosecond gap. If the workflow finishes while that write is
+    /// still blocked, a baseline captured once it unblocks already includes the final bytes, so the
+    /// loop's "did the length change" check never fires again and it polls forever.
+    /// <para>
+    /// Reproduced deterministically with a <see cref="TextWriter"/> that blocks its first
+    /// <c>WriteLine</c> call on a gate the test controls, rather than by racing real timing (an
+    /// earlier version of this test appended the terminal event immediately after starting the
+    /// follow task and found it usually landed before <c>ExecuteAsync</c>'s own initial read too —
+    /// a false pass that would have looked identical whether or not the fix below existed).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Follow_does_not_hang_when_the_workflow_finishes_while_the_initial_print_is_still_blocked_on_a_slow_consumer()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            Directory.CreateDirectory(taskDirectory);
+            var definition = new WorkflowDefinition(
+                new WorkflowTemplateId("race-probe"),
+                1,
+                [new WorkflowStepDefinition(new StepId("step-one"), "step-one", [], ["out"], [], new RetryPolicy(1))]);
+            var snapshot = SnapshotBinder.Bind(definition);
+            var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+            await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var executionId = new ExecutionId("exec-race-1");
+            var request = new ExecutionRequest(
+                executionId,
+                new WorkflowId("wf-race"),
+                new StepId("step-one"),
+                "step-one",
+                Inputs: [],
+                Outputs: [],
+                Timeout: TimeSpan.FromSeconds(30),
+                Environment: [],
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+            }
+
+            using var releaseGate = new ManualResetEventSlim(false);
+            var blockingWriter = new BlockingOnFirstWriteLineTextWriter(releaseGate);
+
+            // ExecuteAsync's synchronous prefix (the initial read, PrintState, and FollowAsync's
+            // baseline capture) runs on whatever thread calls it; that prefix is about to block
+            // inside `blockingWriter`'s first WriteLine, so it must run on its own thread rather
+            // than this test's -- otherwise the block below would deadlock against itself.
+            var statusTask = Task.Run(
+                () => StatusCommand.ExecuteAsync(
+                    new StatusOptions(taskDirectory, Follow: true), blockingWriter, TestContext.Current.CancellationToken),
+                TestContext.Current.CancellationToken);
+
+            Assert.True(
+                blockingWriter.FirstWriteLineStarted.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken),
+                "PrintState's first WriteLine never started -- the harness itself is broken, not the fix under test.");
+
+            // The workflow finishes now, while ExecuteAsync is still blocked inside PrintState --
+            // strictly before FollowAsync's baseline capture, which only runs once PrintState (and
+            // therefore this blocked WriteLine call) returns.
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(executionId), TestContext.Current.CancellationToken);
+            }
+
+            releaseGate.Set();
+
+            var completedFirst = await Task.WhenAny(
+                statusTask, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.True(
+                ReferenceEquals(statusTask, completedFirst),
+                "aer status --follow hung: the workflow finished while the initial print was still blocked, " +
+                "before the tailing loop's own baseline capture.");
+            await statusTask;
+
+            Assert.Contains("Workflow status: Terminal", blockingWriter.ToString());
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// Blocks its first <see cref="WriteLine(string?)"/> call on a caller-supplied gate, standing
+    /// in for a piped <c>Console.Out</c> whose downstream reader is applying backpressure --
+    /// deterministic where racing real wall-clock timing against the command's own internals is
+    /// not (see the test this backs).
+    /// </summary>
+    private sealed class BlockingOnFirstWriteLineTextWriter(ManualResetEventSlim releaseGate) : TextWriter
+    {
+        private readonly StringWriter _inner = new();
+        private bool _hasBlockedOnce;
+
+        public ManualResetEventSlim FirstWriteLineStarted { get; } = new(false);
+
+        public override System.Text.Encoding Encoding => _inner.Encoding;
+
+        public override void WriteLine(string? value)
+        {
+            _inner.WriteLine(value);
+
+            if (_hasBlockedOnce)
+            {
+                return;
+            }
+
+            _hasBlockedOnce = true;
+            FirstWriteLineStarted.Set();
+            releaseGate.Wait(TimeSpan.FromSeconds(5));
+        }
+
+        public override string ToString() => _inner.ToString();
     }
 
     [Fact]

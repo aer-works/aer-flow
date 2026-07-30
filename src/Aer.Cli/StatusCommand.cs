@@ -98,8 +98,18 @@ public static class StatusCommand
         string logPath,
         CancellationToken cancellationToken)
     {
-        var logFile = new FileInfo(logPath);
-        var lastObservedLength = logFile.Exists ? logFile.Length : 0;
+        // Deliberately not seeded from a fresh FileInfo read here: ExecuteAsync already decided
+        // "not terminal yet" from an earlier read of the log, and PrintState's writes to `output`
+        // run in between -- when `output` is a piped/redirected Console.Out, a slow downstream
+        // reader applies real backpressure there, real wall-clock time, not a nanosecond gap. If
+        // the workflow finishes in that window, a baseline captured *now* would already include
+        // the final bytes, `currentLength` would never differ from it again, and the loop would
+        // poll forever against an already-finished workflow -- the exact hang this command must not
+        // produce (regression-tested in StatusCommandEndToEndTests via a TextWriter that blocks
+        // there deliberately). A sentinel that can never equal a real length forces the very first
+        // poll to always re-read and re-project, bounding that race to one PollIntervalMs rather
+        // than leaving it unbounded.
+        var lastObservedLength = -1L;
 
         while (true)
         {
@@ -115,7 +125,7 @@ public static class StatusCommand
             // A fresh FileInfo per poll: an existing instance caches Length at construction time
             // and never observes growth on its own, which would silently turn every poll after the
             // first into a no-op — the loop would never see the file change again.
-            logFile = new FileInfo(logPath);
+            var logFile = new FileInfo(logPath);
             var currentLength = logFile.Exists ? logFile.Length : 0;
             if (currentLength == lastObservedLength)
             {
