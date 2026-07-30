@@ -259,6 +259,59 @@ public class MutationInterfaceCrashRecoveryTests
     }
 
     [Fact]
+    public async Task Crash_recovery_classification_uses_the_live_contracts_OutputCondition_when_the_binding_resolves()
+    {
+        // The #724 review's gap: nothing drove a condition-bearing contract through this path. The
+        // live binding resolves here, so its OutputCondition must bite — a recorded clean exit
+        // whose artifact does NOT satisfy the condition classifies as failure, proving the
+        // request-derived fallback (names only, no conditions) is NOT what runs when the live
+        // contract is available.
+        var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "conditioned-worker"));
+        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        try
+        {
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var workflowId = new WorkflowId("wf");
+            var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, executionId);
+            var request = new ExecutionRequest(
+                executionId, workflowId, A, "conditioned-worker", Inputs: [], Outputs: ["verdict"], Timeout,
+                ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot),
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionStarted(executionId, Pid: 4242), TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(
+                Path.Combine(outputDirectory, "verdict"), """{"status":"rejected"}""", TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["conditioned-worker"] = new WorkerBinding.Process(
+                    new WorkerContract(
+                        "conditioned-worker", [],
+                        [new ProducedOutput("verdict", new OutputCondition("/status", new JsonScalar.String("approved")))],
+                        []),
+                    Target, Timeout),
+            };
+
+            var state = await MutationInterface.StartWorkflowAsync(
+                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer,
+                new StubCoreDispatcher(), cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(StepStatus.Failed, state.Steps.Single(s => s.StepId == A).Status);
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            Assert.Single(events, e => e is FlowEvent.ExecutionFailed ef && ef.ExecutionId == executionId);
+            Assert.DoesNotContain(events, e => e is FlowEvent.ExecutionSucceeded);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
     public async Task StartWorkflowAsync_classifies_crash_recovery_candidate_when_its_worker_binding_refuses_to_resolve()
     {
         // Same recorded history as the absent-worker arm below, but the binding is present and
