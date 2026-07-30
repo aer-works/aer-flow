@@ -81,6 +81,149 @@ public class SnapshotBinderTests
         }
     }
 
+    private static WorkflowDefinitionSnapshot LargeSnapshot(int stepCount) => new(
+        new WorkflowDefinitionSnapshotId(Guid.NewGuid().ToString("n")),
+        new WorkflowTemplateId("bulk-template"),
+        WorkflowTemplateVersion: 1,
+        Steps: Enumerable.Range(0, stepCount)
+            .Select(i => new WorkflowStepDefinition(
+                new StepId($"step-{i}"),
+                "worker",
+                Inputs: ["input-" + new string('x', 200)],
+                Outputs: ["output-" + new string('y', 200)],
+                DependsOn: [],
+                RetryPolicy: new RetryPolicy(MaxAttempts: 3)))
+            .ToArray());
+
+    /// <summary>
+    /// #818: a concurrent reader racing <see cref="SnapshotBinder.PersistAsync"/> must never observe
+    /// <c>File.Exists == true</c> with truncated/unparseable JSON at the final path -- only the prior
+    /// content (if any) or the complete new content. Real in-process race, not simulated: a large
+    /// (multi-hundred-KB) payload widens the window enough that, against the pre-fix
+    /// <c>File.WriteAllTextAsync(snapshotFilePath, ...)</c> implementation, a tight concurrent
+    /// poll-and-parse loop reliably observed a truncated read within a handful of the 25 iterations
+    /// below. Verified red against that implementation before adding the temp+rename fix; kept as a
+    /// permanent regression test since, post-fix, the assertion holds unconditionally (an atomic
+    /// rename has no intermediate state to observe), so it cannot become flaky going forward.
+    /// </summary>
+    [Fact]
+    public async Task PersistAsync_never_exposes_partial_JSON_at_the_final_path_to_a_concurrent_reader()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"snapshot-race-{Guid.NewGuid():N}.json");
+        var sawTornRead = false;
+        var readerFailure = string.Empty;
+
+        try
+        {
+            for (var iteration = 0; iteration < 25 && !sawTornRead; iteration++)
+            {
+                var snapshot = LargeSnapshot(500);
+                using var cts = new CancellationTokenSource();
+                var readerTask = Task.Run(async () =>
+                {
+                    while (!cts.IsCancellationRequested)
+                    {
+                        byte[] bytes;
+                        try
+                        {
+                            bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+                        }
+                        catch (IOException)
+                        {
+                            continue; // final path mid-rename or not yet created -- not a torn read
+                        }
+
+                        if (bytes.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(bytes, SnapshotJson.Options);
+                        }
+                        catch (JsonException ex)
+                        {
+                            sawTornRead = true;
+                            readerFailure = $"iteration {iteration}: {ex.Message}";
+                            return;
+                        }
+
+                        // A brief gap between reads, rather than reopening the destination
+                        // back-to-back: a real reader (one `File.ReadAllTextAsync` per CLI
+                        // invocation) never holds it open continuously, and PersistAsync's own
+                        // rename retry (for the transient sharing violation documented on
+                        // PersistAsync) needs an actual gap to land in.
+                        try
+                        {
+                            await Task.Delay(1, cts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+                    }
+                }, TestContext.Current.CancellationToken);
+
+                await SnapshotBinder.PersistAsync(snapshot, path, TestContext.Current.CancellationToken);
+                cts.Cancel();
+                await readerTask;
+            }
+
+            Assert.False(sawTornRead, $"concurrent reader observed unparseable JSON at the final path: {readerFailure}");
+        }
+        finally
+        {
+            // Windows can briefly hold the last reader's handle open past the awaited read
+            // completing (overlapped-I/O completion timing) -- retry the scratch-file cleanup
+            // rather than let that timing artifact fail the test.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    File.Delete(path);
+                    break;
+                }
+                catch (IOException) when (attempt < 5)
+                {
+                    await Task.Delay(20, TestContext.Current.CancellationToken);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// #818: if the atomic rename step itself fails, the temp sibling must not linger forever -- best
+    /// effort cleanup, same choice <c>Aer.Adapters.AtomicLaunchConfigWriter</c> makes -- and the real
+    /// failure must propagate rather than being masked by the cleanup attempt.
+    /// </summary>
+    [Fact]
+    public async Task PersistAsync_cleans_up_its_temp_file_and_rethrows_when_the_rename_fails()
+    {
+        var snapshot = SnapshotBinder.Bind(SampleDefinition());
+        var directory = Path.Combine(Path.GetTempPath(), $"snapshot-fail-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        // A directory at the destination path makes File.Move's overwrite rename fail, simulating a
+        // failed rename without needing to fabricate a genuine cross-process sharing violation.
+        var path = Path.Combine(directory, "snapshot.json");
+        Directory.CreateDirectory(path);
+
+        try
+        {
+            // File.Move onto an existing directory surfaces as IOException on some platforms and
+            // UnauthorizedAccessException on others -- either way it must not be swallowed.
+            await Assert.ThrowsAnyAsync<Exception>(
+                () => SnapshotBinder.PersistAsync(snapshot, path, TestContext.Current.CancellationToken));
+
+            var leftoverTempFiles = Directory.GetFiles(directory, "*.tmp");
+            Assert.Empty(leftoverTempFiles);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
     [Fact]
     public async Task PersistAsync_creates_missing_parent_directories()
     {

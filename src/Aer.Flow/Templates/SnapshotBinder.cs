@@ -31,7 +31,32 @@ public static class SnapshotBinder
             definition.Steps);
     }
 
-    /// <summary>Persists <paramref name="snapshot"/> as JSON at <paramref name="snapshotFilePath"/>, creating parent directories as needed.</summary>
+    /// <summary>Bounded retry budget for a rename that loses a transient sharing violation (see remarks).</summary>
+    private const int MaxRenameAttempts = 5;
+
+    /// <summary>
+    /// Persists <paramref name="snapshot"/> as JSON at <paramref name="snapshotFilePath"/>, creating
+    /// parent directories as needed.
+    /// </summary>
+    /// <remarks>
+    /// Writes to a <c>{snapshotFilePath}.{guid}.tmp</c> sibling in the same directory, flushes it,
+    /// then <see cref="File.Move(string, string, bool)"/>s it onto <paramref name="snapshotFilePath"/>
+    /// -- a same-volume rename, atomic on both Windows and POSIX (same shape as
+    /// <c>Aer.Adapters.AtomicLaunchConfigWriter</c>, applied there to worker launch configs).
+    /// Without this, a concurrent reader can observe <c>File.Exists == true</c> with partial JSON on
+    /// disk while a direct write is still in flight (#818).
+    /// <para>
+    /// <b>The rename is retried, unlike that writer's retry which guards concurrent writers:</b> this
+    /// method has no concurrent-writer race (a snapshot is bound and persisted exactly once per task)
+    /// but does have a writer-vs-reader one, and measurement while building this fix's own race test
+    /// showed Windows' overwrite-rename needs the destination briefly exclusive: a reader with
+    /// <paramref name="snapshotFilePath"/> open at that instant (e.g. <see cref="LoadFromFileAsync"/>'s
+    /// <see cref="File.ReadAllTextAsync(string, CancellationToken)"/>, default <c>FileShare.Read</c>)
+    /// makes <see cref="File.Move(string, string, bool)"/> throw <see cref="UnauthorizedAccessException"/>
+    /// -- a transient sharing violation, not a real failure, so it is retried with a short backoff
+    /// rather than surfaced.
+    /// </para>
+    /// </remarks>
     public static async Task PersistAsync(
         WorkflowDefinitionSnapshot snapshot,
         string snapshotFilePath,
@@ -44,7 +69,44 @@ public static class SnapshotBinder
         }
 
         var json = JsonSerializer.Serialize(snapshot, SnapshotJson.Options);
-        await File.WriteAllTextAsync(snapshotFilePath, json, cancellationToken).ConfigureAwait(false);
+        var tempPath = $"{snapshotFilePath}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await File.WriteAllTextAsync(tempPath, json, cancellationToken).ConfigureAwait(false);
+
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    File.Move(tempPath, snapshotFilePath, overwrite: true);
+                    return;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt >= MaxRenameAttempts)
+                    {
+                        throw;
+                    }
+
+                    await Task.Delay(10 * attempt, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort: a leftover .tmp file is invisible to every reader (none of them glob the
+            // directory, all look up the exact snapshot file name) and far smaller a problem than
+            // masking the real exception -- same choice AtomicLaunchConfigWriter makes.
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch
+            {
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
