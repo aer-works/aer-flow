@@ -55,7 +55,8 @@ Two things worth knowing before reaching for one:
 
 - **Precedence is explicit flag > template > built-in default**, so `--template review --model haiku`
   does what it says. The templates are a starting point you can override, not a lock — every
-  permission has a `--no-` arm.
+  permission has a `--no-` arm. (Under `--lane` the per-dispatch overrides are refused instead —
+  see the lane section below for why.)
 - **A read-only dispatch is refused before it can spend**, because a worker satisfies its
   `ProducedOutputs` contract only by writing into `AER_OUTPUT_DIR`
   ([#629](https://github.com/aer-works/aer-flow/issues/629)). Granting the shell instead is not an
@@ -67,6 +68,21 @@ Two things worth knowing before reaching for one:
 
 A pinned `agy` model name is checked against `agy models` by STEP 9 of
 `pixi run audit-completeness`.
+
+## `--lane` — implement, janitor, review as one three-step run
+
+`--lane --prompt-file <implement-brief> --working-directory <repo>` builds ONE workflow whose three
+steps are the shape of every shipping lane — `implement` (your brief) → `janitor` (the canonical
+`janitor-prompt.md`, verbatim) → `review` (a generated adversarial brief over `git diff main...HEAD`,
+producing the schema-checked `verdict.json` the review template requires) — chained with `DependsOn`,
+each step carrying exactly its template's settings, and the engine's own scheduling replacing the
+three hand-orchestrated dispatches this loop used to run ([#741](https://github.com/aer-works/aer-flow/issues/741)).
+
+Because each step resolves from its own template, the single-dispatch knobs (`--template`,
+`--worker-name`, `--output-name`, and every model/effort/grant/timeout override) are **refused, not
+ignored** — a flag that looks accepted and does nothing would be the worse behavior. `--worktree`
+composes with it as usual. Outputs land per step: `implement-report.md`, `janitor.md` (the filename
+the canonical brief itself instructs), `report.md` + `verdict.json`.
 
 ## `--dry-run` — resolve, guard, generate, stop
 

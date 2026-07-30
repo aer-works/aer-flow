@@ -690,6 +690,17 @@ def main() -> int:
         if args.output_name is not None:
             print("error: --lane cannot be combined with --output-name", file=sys.stderr)
             return 2
+
+        # The #741 review's finding 2: these all default to None and are template-resolved per step
+        # in lane mode, so an explicit value would be silently ignored -- and a flag that looks
+        # accepted but does nothing is worse than a refusal. Refuse each by name.
+        for flag_name in ("adapter", "model", "effort", "timeout_minutes", "read_files",
+                          "write_files", "run_shell_commands", "network_access", "verdict_schema"):
+            if getattr(args, flag_name) is not None:
+                print(f"error: --lane resolves every step's settings from its template; "
+                      f"an explicit --{flag_name.replace('_', '-')} would be silently ignored, so it is refused.",
+                      file=sys.stderr)
+                return 2
         if args.prompt_file is None:
             print("error: the following arguments are required: --prompt-file", file=sys.stderr)
             return 2
@@ -778,7 +789,11 @@ def main() -> int:
                 "step_id": "janitor",
                 "worker_name": "janitor",
                 "prompt_text": janitor_prompt,
-                "output_name": "janitor-report.md",
+                # Must match the filename janitor-prompt.md itself instructs (its closing line), or
+                # the one prompt carries two contradictory filenames and the contract demands the one
+                # the canonical brief never mentions -- the #741 review's finding 1, found before any
+                # lane was paid for.
+                "output_name": "janitor.md",
                 "depends_on": ["implement"],
                 "working_directory": working_directory,
                 **resolve(TEMPLATES["janitor"]),
