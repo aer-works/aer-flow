@@ -94,6 +94,15 @@ SUPPRESS = re.compile(r"^\s*record-once-ok:\s*#(\d{3,})\s+(?:canonical\s+is\s+)?
 # a gate that believes nothing was said -- the failure `replacing()` in controls.py records.
 SUPPRESS_LOOSE = re.compile(r"^\s*record-once-ok\b")
 
+# Markdown's one comment form, for marker purposes only (#691). Markdown is this gate's dominant
+# population, and before this the documented comment form silently exempted nothing there: `prose`
+# is the RAW line in a markdown file, so `<!--` in front of the marker defeated SUPPRESS's anchor,
+# and defeated SUPPRESS_LOOSE's identically -- the mistyped-marker reporter could not see the well
+# typed one either. Anchored to the line start for the same reason SUPPRESS is: `<!--` quoted
+# mid-sentence is prose about a comment. The closer is optional so an unclosed opener still reads
+# as the decision it announces; words for shingling keep coming from the raw line either way.
+MD_COMMENT = re.compile(r"^\s*<!--\s*(?P<body>.*?)\s*(?:-->\s*)?$")
+
 # The issue field of a marker that announced itself and did not parse. Not a real issue number, and
 # it never reaches the exempting path -- it exists so one code path carries both author errors.
 MALFORMED = "?"
@@ -270,19 +279,24 @@ def marked_runs(path: str, hunks: list[list[str]]) -> list[tuple[list[str], tupl
         for line, comment in zip(lines, comments):
             words: list[str] = []
             prose = None
+            marker_text = None
             if markdown and FENCE.match(line):
                 fenced = not fenced
             elif fenced or (markdown and TABLE_ROW.match(line)):
                 pass
             elif markdown:
                 prose = line
+                # The marker is read out of the comment BODY while the words stay raw -- see
+                # MD_COMMENT for why the two diverge in markdown and nowhere else.
+                marker_text = m.group("body") if (m := MD_COMMENT.match(line)) else line
             elif comment is not None:
                 prose = comment
+                marker_text = comment
 
             if prose is not None:
-                if (found := SUPPRESS.search(prose)) is not None:
+                if (found := SUPPRESS.search(marker_text)) is not None:
                     marker = (found.group(1), found.group(2))
-                elif SUPPRESS_LOOSE.search(prose) is not None:
+                elif SUPPRESS_LOOSE.search(marker_text) is not None:
                     marker = (MALFORMED, prose.strip())
                 words = normalise(prose)
 
@@ -544,8 +558,10 @@ def violations(by_file: dict[str, list[list[str]]], at=None) -> list[str]:
             + "\n".join(f"      {p}" for p in files)
             + f"\n      e.g. \"{sample}\"\n"
             + "      Keep it in one; link from the rest. A deliberate second copy needs\n"
-            + "      `record-once-ok: #<issue> <canonical path>` in a comment beside that copy --\n"
-            + "      which exempts that passage only, holds for later changes too, and is reported.")
+            + "      `record-once-ok: #<issue> <canonical path>` in a comment beside that copy\n"
+            + "      (in markdown: `<!-- record-once-ok: ... -->` opening its own line, no blank\n"
+            + "      line between it and the passage) -- which exempts that passage only, holds\n"
+            + "      for later changes too, and is reported.")
     return problems
 
 

@@ -1023,6 +1023,35 @@ def _recordonce_discriminates():
     assert len(solo) == 1 and "does not parse" in solo[0], (
         f"record-once: a marker with no canonical path failed silently -- {solo}")
 
+    # -- #691, the markdown half of the hatch. Markdown is this gate's dominant population and an
+    # HTML comment is the only comment form it has; before this, the comment form exempted nothing
+    # AND reported nothing, which is the same silent no-op class as `broken` above, scoped to
+    # exactly the files most likely to need a marker.
+    md_marker = "<!-- record-once-ok: #901 canonical is docs/plan.md -->"
+    # No marker on the src side, deliberately: one side's marker exempts the pair (the #676 arm
+    # above pins that), so a fixture carrying the C# marker too would pass with the markdown one
+    # still dead -- which is exactly how the first draft of this arm failed to discriminate.
+    md_marked = {"src/A.cs": [f"// {sentence}"], "docs/B.md": [sentence, md_marker]}
+    assert not rec.violations(added, lambda path: md_marked.get(path)), (
+        "record-once: an HTML-comment marker in a markdown file exempted nothing")
+
+    # Its malformed sibling must be REPORTED, not silent -- SUPPRESS_LOOSE has to see the same
+    # comment shape SUPPRESS does, or the mistyped-marker class reopens for markdown specifically.
+    md_typo = {"docs/B.md": [sentence, "<!-- record-once-ok #901 docs/plan.md -->"],
+               "src/A.cs": [f"// {sentence}", marker]}
+    assert any("does not parse" in b for b in rec.groups(added, lambda path: md_typo.get(path))[2]), (
+        "record-once: a malformed HTML-comment marker in markdown failed silently")
+
+    # And prose about the comment form stays inert -- mid-sentence, the `<!--` never opens the
+    # line, so a doc explaining this syntax (this repo has one) neither exempts nor reports.
+    md_mention = {"docs/B.md": [sentence, f"write {md_marker} beside the copy"],
+                  "src/A.cs": [f"// {sentence}"]}
+    at_md_mention = lambda path: md_mention.get(path)  # noqa: E731
+    assert rec.violations(added, at_md_mention), (
+        "record-once: an HTML-comment marker quoted mid-sentence exempted a passage")
+    assert not rec.groups(added, at_md_mention)[2], (
+        "record-once: prose describing the markdown marker form was reported as a broken one")
+
     # The locale-decoding crash `GIT_TEXT` in recordonce.py records (#690). Run against a real
     # tracked file whose bytes are not cp1252-decodable: the defect lives in how a subprocess pipe is
     # decoded, so no in-memory fixture can reach it, and the second assertion is what stops the arm
