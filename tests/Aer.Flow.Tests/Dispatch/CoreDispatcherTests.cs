@@ -714,9 +714,8 @@ public class CoreDispatcherTests
     /// <summary>
     /// #701: a worker that never writes a newline must not grow the buffer without ceiling. Past
     /// <see cref="StdoutLineBuffer.MaxBufferedLineLength"/> the held text is emitted as a synthetic
-    /// line ending in <see cref="StdoutLineBuffer.SplitMarker"/> — every character still reaches
-    /// the consumer, in order, and the fabricated boundary is the marked thing rather than the
-    /// dropped thing (the outcome the issue names as the one to avoid is a SILENT fragment).
+    /// line ending in <see cref="StdoutLineBuffer.SplitMarker"/>, with nothing dropped and nothing
+    /// silent — the ceiling constant's own remarks carry the measurement and the design choice.
     /// </summary>
     [Fact]
     public void A_newline_free_run_past_the_ceiling_is_emitted_as_a_marked_synthetic_line()
@@ -737,6 +736,40 @@ public class CoreDispatcherTests
 
         // Nothing was lost: the split fabricated a boundary, never dropped a character.
         Assert.Equal(payload, string.Concat(synthetic[..^StdoutLineBuffer.SplitMarker.Length], lines[1]));
+    }
+
+    /// <summary>
+    /// #701's review finding: a code point above U+FFFF is two UTF-16 chars, so a cut landing
+    /// between them used to orphan half of it — the split loop's own comment in
+    /// <see cref="StdoutLineBuffer"/> carries the corruption mechanism and the stderr precedent.
+    /// This pins the back-off.
+    /// </summary>
+    [Fact]
+    public void A_split_landing_inside_a_surrogate_pair_backs_off_rather_than_severing_it()
+    {
+        // Ceiling-minus-one ASCII chars, then an astral-plane character: the pair straddles the cut.
+        var payload = new string('x', StdoutLineBuffer.MaxBufferedLineLength - 1) + "🚨tail";
+        var lines = new List<string>();
+        var buffer = new StdoutLineBuffer();
+
+        buffer.Append(System.Text.Encoding.UTF8.GetBytes(payload), lines.Add);
+        buffer.Flush(lines.Add);
+
+        Assert.Equal(2, lines.Count);
+        var fragment = lines[0][..^StdoutLineBuffer.SplitMarker.Length];
+
+        // The cut backed off: the fragment ends before the pair, the remainder carries it whole.
+        Assert.Equal(StdoutLineBuffer.MaxBufferedLineLength - 1, fragment.Length);
+        Assert.StartsWith("🚨", lines[1], StringComparison.Ordinal);
+        Assert.Equal(payload, fragment + lines[1]);
+
+        // Round-trip proves no lone surrogate on either side — the same technique the stderr
+        // buffer's own orphaned-surrogate test uses.
+        foreach (var emitted in new[] { fragment, lines[1] })
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(emitted);
+            Assert.Equal(emitted, System.Text.Encoding.UTF8.GetString(bytes));
+        }
     }
 
     /// <summary>

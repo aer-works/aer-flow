@@ -301,8 +301,18 @@ internal sealed class StdoutLineBuffer
         // exactly AT the ceiling is still a legitimate line waiting, never split.
         while (content.Length > MaxBufferedLineLength)
         {
-            onLine(content[..MaxBufferedLineLength] + SplitMarker);
-            content = content[MaxBufferedLineLength..];
+            // The cut index counts UTF-16 chars, and a code point above the BMP is a surrogate
+            // PAIR — cutting between its halves emits a lone surrogate that any downstream UTF-8
+            // re-encode silently replaces with U+FFFD, breaking "every character still arrives".
+            // Same guard StderrTailBuffer has always had at its own cut point: back off by one.
+            var cut = MaxBufferedLineLength;
+            if (char.IsHighSurrogate(content[cut - 1]))
+            {
+                cut--;
+            }
+
+            onLine(content[..cut] + SplitMarker);
+            content = content[cut..];
         }
 
         buffer.Clear();
