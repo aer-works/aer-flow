@@ -34,13 +34,49 @@ namespace Aer.Workers.Dialogue;
 /// </summary>
 public sealed class ProcessVendorTurnClient : IVendorTurnClient
 {
-    public async Task<VendorTurnResult> SendTurnAsync(
+    private static readonly TimeSpan PrintTimeoutMargin = TimeSpan.FromSeconds(60);
+
+    private readonly TimeSpan? _configuredTurnTimeout;
+
+    public ProcessVendorTurnClient(TimeSpan? turnTimeout = null)
+    {
+        _configuredTurnTimeout = turnTimeout;
+    }
+
+    public ProcessVendorTurnClient(DialogueWorkerConfig config)
+        : this(config?.TurnTimeout)
+    {
+    }
+
+    public Task<VendorTurnResult> SendTurnAsync(
         DialogueParticipant participant, string prompt, CancellationToken cancellationToken = default)
+        => SendTurnAsync(participant, prompt, turnTimeout: null, cancellationToken);
+
+    public async Task<VendorTurnResult> SendTurnAsync(
+        DialogueParticipant participant, string prompt, TimeSpan? turnTimeout, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(participant);
         ArgumentNullException.ThrowIfNull(prompt);
 
+        var effectiveTurnTimeout = turnTimeout ?? _configuredTurnTimeout ?? DialogueWorkerConfig.DefaultTurnTimeout;
+
+        if (TryGetOperatorPrintTimeout(participant.Args, out var rawTimeout) && rawTimeout is not null)
+        {
+            if (!TryParseGoDuration(rawTimeout, out var operatorTimeout))
+            {
+                throw new DialogueWorkerConfigException($"Operator --print-timeout '{rawTimeout}' is not a valid Go duration.");
+            }
+
+            var minRequired = effectiveTurnTimeout + PrintTimeoutMargin;
+            if (operatorTimeout < minRequired)
+            {
+                throw new DialogueWorkerConfigException(
+                    $"Operator --print-timeout '{rawTimeout}' ({operatorTimeout.TotalSeconds}s) must be at least TurnTimeout + 60s ({minRequired.TotalSeconds}s) for TurnTimeout of {effectiveTurnTimeout.TotalSeconds}s.");
+            }
+        }
+
         string? tempPromptFile = null;
+
         try
         {
             // DialogueRunner always pre-writes the turn's prompt and passes its path, so File.Exists(prompt)
@@ -98,19 +134,62 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                 startInfo.ArgumentList.Add(substituted);
             }
 
+            if (IsAgyCommand(participant.Command) && !HasOperatorPrintTimeout(participant.Args))
+            {
+                startInfo.ArgumentList.Add("--print-timeout");
+                startInfo.ArgumentList.Add(FormatPrintTimeout(effectiveTurnTimeout));
+            }
+
             using var process = new Process { StartInfo = startInfo };
             process.Start();
             process.StandardInput.Close();
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(effectiveTurnTimeout);
+            using var registration = timeoutCts.Token.Register(() =>
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                }
+                catch
+                {
+                }
+            });
 
-            return new VendorTurnResult(
-                stdoutTask.Result.TrimEnd('\r', '\n'),
-                process.ExitCode,
-                stderrTask.Result.TrimEnd('\r', '\n'));
+            try
+            {
+                var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+                var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+
+                if (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    return new VendorTurnResult(
+                        string.Empty,
+                        124,
+                        $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.",
+                        TimedOut: true);
+                }
+
+                return new VendorTurnResult(
+                    stdoutTask.Result.TrimEnd('\r', '\n'),
+                    process.ExitCode,
+                    stderrTask.Result.TrimEnd('\r', '\n'),
+                    TimedOut: false);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                return new VendorTurnResult(
+                    string.Empty,
+                    124,
+                    $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.",
+                    TimedOut: true);
+            }
         }
         finally
         {
@@ -127,4 +206,135 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
             }
         }
     }
+
+    private static bool IsAgyCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(command);
+        return string.Equals(name, "agy", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasOperatorPrintTimeout(IReadOnlyList<string> args)
+    {
+        return TryGetOperatorPrintTimeout(args, out _);
+    }
+
+    private static bool TryGetOperatorPrintTimeout(IReadOnlyList<string> args, out string? rawTimeout)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] == "--print-timeout" && i + 1 < args.Count)
+            {
+                rawTimeout = args[i + 1];
+                return true;
+            }
+
+            if (args[i].StartsWith("--print-timeout=", StringComparison.Ordinal))
+            {
+                rawTimeout = args[i]["--print-timeout=".Length..];
+                return true;
+            }
+        }
+
+        rawTimeout = null;
+        return false;
+    }
+
+    public static bool TryParseGoDuration(string input, out TimeSpan duration)
+    {
+        duration = default;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var s = input.Trim();
+        var isNegative = false;
+        if (s.StartsWith('-'))
+        {
+            isNegative = true;
+            s = s[1..];
+        }
+        else if (s.StartsWith('+'))
+        {
+            s = s[1..];
+        }
+
+        if (string.IsNullOrEmpty(s))
+        {
+            return false;
+        }
+
+        double totalSeconds = 0;
+        var i = 0;
+        var len = s.Length;
+
+        while (i < len)
+        {
+            var startNum = i;
+            while (i < len && (char.IsDigit(s[i]) || s[i] == '.'))
+            {
+                i++;
+            }
+
+            if (i == startNum)
+            {
+                return false;
+            }
+
+            if (!double.TryParse(s[startNum..i], System.Globalization.CultureInfo.InvariantCulture, out var num))
+            {
+                return false;
+            }
+
+            var startUnit = i;
+            while (i < len && (char.IsLetter(s[i]) || s[i] == 'µ'))
+            {
+                i++;
+            }
+
+            if (i == startUnit)
+            {
+                return false;
+            }
+
+            var unit = s[startUnit..i];
+            var unitInSeconds = unit switch
+            {
+                "ns" => 1e-9,
+                "us" or "µs" => 1e-6,
+                "ms" => 1e-3,
+                "s" => 1.0,
+                "m" => 60.0,
+                "h" => 3600.0,
+                _ => -1.0,
+            };
+
+            if (unitInSeconds < 0)
+            {
+                return false;
+            }
+
+            totalSeconds += num * unitInSeconds;
+        }
+
+        var ts = TimeSpan.FromSeconds(totalSeconds);
+        duration = isNegative ? -ts : ts;
+        return true;
+    }
+
+    private static string FormatPrintTimeout(TimeSpan timeout)
+    {
+        var withMargin = timeout > TimeSpan.MaxValue - PrintTimeoutMargin
+            ? TimeSpan.MaxValue
+            : timeout + PrintTimeoutMargin;
+
+        var seconds = (long)Math.Ceiling(withMargin.TotalSeconds);
+        return $"{Math.Max(seconds, 1)}s";
+    }
 }
+

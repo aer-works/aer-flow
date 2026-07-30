@@ -10,4 +10,6 @@ namespace Aer.Workers.Dialogue;
 /// <param name="Text">Captured stdout, trimmed of a trailing newline. May be empty — an empty turn is <see cref="DialogueRunner"/>'s concern, not this type's.</param>
 /// <param name="ExitCode">The spawned process's exit code. Non-zero is <see cref="DialogueRunner"/>'s signal to fail the exchange, the same "exit code alone is not success" reasoning <c>Aer.Flow.Outcomes.OutcomeClassifier</c> applies one layer up.</param>
 /// <param name="StandardError">Captured stderr, trimmed of a trailing newline. Never parsed for meaning — carried only so a non-zero-exit failure message can show a human what the vendor CLI actually said.</param>
-public sealed record VendorTurnResult(string Text, int ExitCode, string StandardError);
+/// <param name="TimedOut">True ONLY if AER's own turn timeout mechanism killed the child process due to exceeding <c>TurnTimeout</c>.</param>
+public sealed record VendorTurnResult(string Text, int ExitCode, string StandardError, bool TimedOut = false);
+

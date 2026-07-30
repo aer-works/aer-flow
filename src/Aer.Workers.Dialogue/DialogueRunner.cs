@@ -65,6 +65,13 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
 
                 var result = await turnClient.SendTurnAsync(speaker, promptPath, cancellationToken).ConfigureAwait(false);
 
+                if (result.TimedOut)
+                {
+                    var configuredCeiling = config.TurnTimeout ?? DialogueWorkerConfig.DefaultTurnTimeout;
+                    throw new DialogueExecutionException(
+                        $"Turn {sequence} ({speaker.Role}/{speaker.Vendor}) timed out after {configuredCeiling}.");
+                }
+
                 if (result.ExitCode != 0)
                 {
                     var stderrDetail = string.IsNullOrWhiteSpace(result.StandardError)
@@ -73,6 +80,7 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
                     throw new DialogueExecutionException(
                         $"Turn {sequence} ({speaker.Role}/{speaker.Vendor}) exited with code {result.ExitCode}.{stderrDetail}");
                 }
+
 
                 if (string.IsNullOrWhiteSpace(result.Text))
                 {
