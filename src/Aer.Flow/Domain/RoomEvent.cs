@@ -25,7 +25,7 @@ public abstract record RoomEvent
 
     /// <summary>Records that held work was escalated.</summary>
     public sealed record HeldWorkEscalated(
-        HeldWorkRef What,
+        HeldWorkRef Ref,
         string ToWhom) : RoomEvent;
 
     /// <summary>Records that held work was resolved, citing the lane's terminal event.</summary>
