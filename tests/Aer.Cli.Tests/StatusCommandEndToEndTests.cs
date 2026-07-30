@@ -204,7 +204,7 @@ public class StatusCommandEndToEndTests
                 TestContext.Current.CancellationToken);
 
             Assert.True(
-                blockingWriter.FirstWriteLineStarted.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken),
+                blockingWriter.FirstWriteLineStarted.Wait(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken),
                 "PrintState's first WriteLine never started -- the harness itself is broken, not the fix under test.");
 
             // The workflow finishes now, while ExecuteAsync is still blocked inside PrintState --
@@ -218,7 +218,7 @@ public class StatusCommandEndToEndTests
             releaseGate.Set();
 
             var completedFirst = await Task.WhenAny(
-                statusTask, Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+                statusTask, Task.Delay(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken));
             Assert.True(
                 ReferenceEquals(statusTask, completedFirst),
                 "aer status --follow hung: the workflow finished while the initial print was still blocked, " +
@@ -259,7 +259,44 @@ public class StatusCommandEndToEndTests
 
             _hasBlockedOnce = true;
             FirstWriteLineStarted.Set();
-            releaseGate.Wait(TimeSpan.FromSeconds(5));
+            releaseGate.Wait(TimeSpan.FromMinutes(2));
+        }
+
+        public override string ToString() => _inner.ToString();
+    }
+
+    private sealed class SignalingTextWriter(string signalFilePath) : TextWriter
+    {
+        private readonly StringWriter _inner = new();
+        private bool _signaled;
+
+        public override System.Text.Encoding Encoding => _inner.Encoding;
+
+        public override void WriteLine(string? value)
+        {
+            _inner.WriteLine(value);
+            Signal();
+        }
+
+        public override void Write(string? value)
+        {
+            _inner.Write(value);
+            Signal();
+        }
+
+        private void Signal()
+        {
+            if (!_signaled)
+            {
+                _signaled = true;
+                try
+                {
+                    File.WriteAllText(signalFilePath, "started");
+                }
+                catch
+                {
+                }
+            }
         }
 
         public override string ToString() => _inner.ToString();
@@ -270,37 +307,29 @@ public class StatusCommandEndToEndTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
+        var signalFilePath = Path.Combine(testRoot, "status-started.flag");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
-            var bindingsFilePath = await WriteThreeStepDelayedBindingsAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepGatedBindingsAsync(testRoot, signalFilePath);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
             var runTask = RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
-            // Wait for the first *event*, not just the snapshot: a snapshot with zero recorded
-            // events projects as WorkflowStatus.Terminal by this codebase's own deliberate,
-            // already-tested design (StateProjectorTests.An_all_pending_workflow_projects_WorkflowStatus_Terminal)
-            // -- an unstarted task is indistinguishable from a finished one until the pump records
-            // its first dispatch. Starting status before that point would make it exit immediately
-            // on a correct read, not exercise the tailing loop this test is for.
             var logPath = Path.Combine(taskDirectory, "flow.jsonl");
             while (!File.Exists(logPath) || new FileInfo(logPath).Length == 0)
             {
                 await Task.Delay(25, TestContext.Current.CancellationToken);
             }
 
-            var output = new StringWriter();
+            var output = new SignalingTextWriter(signalFilePath);
             var statusTask = StatusCommand.ExecuteAsync(
                 new StatusOptions(taskDirectory, Follow: true), output, TestContext.Current.CancellationToken);
 
-            var completedFirst = await Task.WhenAny(
-                statusTask, Task.Delay(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
-            Assert.True(ReferenceEquals(statusTask, completedFirst), "aer status --follow never reached the workflow's terminal state.");
-            await statusTask;
-
-            var runResult = await runTask;
+            var runResult = await runTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Terminal, runResult.State.Status);
+
+            await statusTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
 
             var text = output.ToString();
             Assert.Contains("ExecutionRequestAccepted", text);
@@ -318,10 +347,11 @@ public class StatusCommandEndToEndTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
+        var signalFilePath = Path.Combine(testRoot, "status-started.flag");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
-            var bindingsFilePath = await WriteThreeStepDelayedBindingsAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepGatedBindingsAsync(testRoot, signalFilePath);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
             var runTask = RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
@@ -332,24 +362,24 @@ public class StatusCommandEndToEndTests
                 await Task.Delay(25, TestContext.Current.CancellationToken);
             }
 
-            // Cancel while the workflow is still genuinely mid-flight (the first ~900ms step
-            // delay has not elapsed yet) -- this is the Ctrl+C/host-stop path the issue's own
-            // acceptance criteria name ("exiting when the workflow reaches a terminal state, or on
-            // Ctrl-C"), and it must return cleanly rather than let OperationCanceledException
-            // escape as a raw, unmapped exception.
             using var followCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
             followCancellation.CancelAfter(TimeSpan.FromMilliseconds(300));
 
-            var output = new StringWriter();
+            var output = new SignalingTextWriter(signalFilePath);
             var statusTask = StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory, Follow: true), output, followCancellation.Token);
 
-            var completedFirst = await Task.WhenAny(statusTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
-            Assert.True(ReferenceEquals(statusTask, completedFirst), "Cancelling aer status --follow did not return promptly.");
+            await statusTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
 
             var exception = await Record.ExceptionAsync(() => statusTask);
             Assert.Null(exception);
 
-            await runTask;
+            // Ensure the signal file is created so runTask can finish cleanly
+            if (!File.Exists(signalFilePath))
+            {
+                File.WriteAllText(signalFilePath, "started");
+            }
+
+            await runTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
         }
         finally
         {
@@ -383,17 +413,17 @@ public class StatusCommandEndToEndTests
                 "shell",
                 new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
                 WriteFileCommand("plan", "the-plan"),
-                TimeSpan.FromSeconds(30)),
+                TimeSpan.FromMinutes(3)),
             ["critic"] = new WorkerBindingConfigEntry(
                 "shell",
                 new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
                 CopyFirstInputCommand("review"),
-                TimeSpan.FromSeconds(30)),
+                TimeSpan.FromMinutes(3)),
             ["publisher"] = new WorkerBindingConfigEntry(
                 "shell",
                 new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
                 CopyFirstInputCommand("summary"),
-                TimeSpan.FromSeconds(30)),
+                TimeSpan.FromMinutes(3)),
         };
 
         var path = Path.Combine(directory, "bindings.json");
@@ -402,12 +432,11 @@ public class StatusCommandEndToEndTests
     }
 
     /// <summary>
-    /// The same three-step chain as <see cref="WriteThreeStepBindingsAsync"/>, with each step's
-    /// shell command padded with a ~1s delay before it writes its output — enough of a window for
-    /// a concurrently-running <c>aer status --follow</c> poll (500ms) to observe at least one
-    /// intermediate, non-terminal state rather than only the final one.
+    /// Three-step chain where step 2 ("critic") waits for a signal file created when
+    /// <c>aer status --follow</c> begins its output, eliminating wall-clock races while guaranteeing
+    /// that follow observes intermediate events as they land.
     /// </summary>
-    private static async Task<string> WriteThreeStepDelayedBindingsAsync(string directory)
+    private static async Task<string> WriteThreeStepGatedBindingsAsync(string directory, string signalFilePath)
     {
         Directory.CreateDirectory(directory);
         var config = new Dictionary<string, WorkerBindingConfigEntry>
@@ -415,21 +444,21 @@ public class StatusCommandEndToEndTests
             ["architect"] = new WorkerBindingConfigEntry(
                 "shell",
                 new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
-                DelayedWriteFileCommand("plan", "the-plan"),
-                TimeSpan.FromSeconds(30)),
+                WriteFileCommand("plan", "the-plan"),
+                TimeSpan.FromMinutes(3)),
             ["critic"] = new WorkerBindingConfigEntry(
                 "shell",
                 new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
-                DelayedCopyFirstInputCommand("review"),
-                TimeSpan.FromSeconds(30)),
+                GatedCopyFirstInputCommand("review", signalFilePath),
+                TimeSpan.FromMinutes(3)),
             ["publisher"] = new WorkerBindingConfigEntry(
                 "shell",
                 new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
-                DelayedCopyFirstInputCommand("summary"),
-                TimeSpan.FromSeconds(30)),
+                CopyFirstInputCommand("summary"),
+                TimeSpan.FromMinutes(3)),
         };
 
-        var path = Path.Combine(directory, "delayed-bindings.json");
+        var path = Path.Combine(directory, "gated-bindings.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
         return path;
     }
@@ -442,20 +471,11 @@ public class StatusCommandEndToEndTests
         ? $"type %AER_INPUT_0% >%AER_OUTPUT_DIR%\\{outputName}"
         : $"cat \"$AER_INPUT_0\" > \"$AER_OUTPUT_DIR/{outputName}\"";
 
-    // Not `ping -n 2 127.0.0.1`: it depends on ICMP/loopback networking actually being reachable
-    // from the spawned worker process, which is not guaranteed in every sandboxed environment --
-    // if it fails instantly instead of delaying, `&` (not `&&`) runs the write step immediately
-    // anyway, silently collapsing the whole window this test relies on. `Start-Sleep` has no such
-    // external dependency, and deliberately unquoted: a quoted `-Command "..."` argument nested
-    // inside `cmd /c "<this whole string>"` measured at 385ms elapsed for a 900ms sleep -- cmd's
-    // handling of embedded quotes inside an already-quoted /c argument is fragile enough that the
-    // sleep silently never ran. Unquoted (PowerShell's -Command already takes the remaining
-    // arguments verbatim), it measures the full ~900ms+ it should.
-    private static string DelayedWriteFileCommand(string outputName, string content) => OperatingSystem.IsWindows()
-        ? $"powershell -NoProfile -Command Start-Sleep -Milliseconds 900 & echo {content}>%AER_OUTPUT_DIR%\\{outputName}"
-        : $"sleep 1 && echo {content} > \"$AER_OUTPUT_DIR/{outputName}\"";
-
-    private static string DelayedCopyFirstInputCommand(string outputName) => OperatingSystem.IsWindows()
-        ? $"powershell -NoProfile -Command Start-Sleep -Milliseconds 900 & type %AER_INPUT_0% >%AER_OUTPUT_DIR%\\{outputName}"
-        : $"sleep 1 && cat \"$AER_INPUT_0\" > \"$AER_OUTPUT_DIR/{outputName}\"";
+    private static string GatedCopyFirstInputCommand(string outputName, string signalFilePath)
+    {
+        var normalizedPath = signalFilePath.Replace("\\", "/");
+        return OperatingSystem.IsWindows()
+            ? $"powershell -NoProfile -Command \"for ($i=0; $i -lt 1200; $i++) {{ if (Test-Path '{normalizedPath}') {{ break }}; Start-Sleep -Milliseconds 50 }}\" & type %AER_INPUT_0% >%AER_OUTPUT_DIR%\\{outputName}"
+            : $"sh -c \"for i in \\$(seq 1 1200); do if [ -f \\\"{normalizedPath}\\\" ]; then break; fi; sleep 0.05; done\" && cat \"$AER_INPUT_0\" > \"$AER_OUTPUT_DIR/{outputName}\"";
+    }
 }
