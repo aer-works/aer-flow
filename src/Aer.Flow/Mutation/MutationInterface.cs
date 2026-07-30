@@ -761,6 +761,13 @@ public static class MutationInterface
     {
         try
         {
+            // Rests on ICoreDispatcher's contract that cancellation via dispatchCancellationToken
+            // comes back as a normal CoreDispatchResult (CoreExitReason.CancelRequested), never as
+            // OperationCanceledException — CoreDispatcher converts AerCancelException two layers
+            // down. If an implementation (or a test double) ever let OCE escape here, the outcome
+            // append below would be skipped and, with the ambient token also cancelled, the pump's
+            // round-level catch would absorb the evidence. There is deliberately no local catch:
+            // that would convert a contract violation into a fabricated outcome.
             var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, dispatchCancellationToken)
                 .ConfigureAwait(false);
             var classification = OutcomeClassifier.Classify(dispatchResult, binding.Contract, prepared.OutputDirectory);
