@@ -173,7 +173,13 @@ def _git(workdir: Path, *argv: str) -> str | None:
 
 
 def _templates_ref() -> str:
-    """Compute the templates ref string for the repo containing dispatch.py itself (#763)."""
+    """The provenance string for the templates this dispatch will use (#763).
+
+    Sha and branch are the containing repo's; the dirty marker is deliberately scoped to this
+    tool's own directory — a dirty src/ elsewhere does not change which templates run, and marking
+    it would teach readers to ignore the marker (the lane review's finding 2: the first docstring
+    claimed the wider scope the code correctly does not have).
+    """
     dispatch_dir = Path(__file__).resolve().parent
     sha, err = _git_cmd(dispatch_dir, "rev-parse", "--short", "HEAD", timeout=5)
     if err or sha is None:
@@ -698,6 +704,10 @@ def main() -> int:
     args = build_parser().parse_args()
 
     if args.list_templates:
+        # The catalogue is exactly what a stale checkout misrepresents (#763's originating
+        # incident), so the listing names its own provenance too.
+        print(f"templates ref: {_templates_ref()}")
+        print()
         for name in sorted(TEMPLATES):
             t = TEMPLATES[name]
             # A bare `None` reads as "nobody thought about effort" rather than "deliberately not

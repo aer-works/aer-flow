@@ -464,6 +464,13 @@ def _templates_dry_run():
                 "may have DISPATCHED. Cost is the operator's call; a checker must not be able to "
                 "start spending on its own."
             )
+            # #763: the announce block must name the templates' own ref -- a stale checkout
+            # dispatching with the wrong dispatch.py is exactly the incident this line exists for,
+            # and the lane review's finding 1 was that nothing asserted the line survives.
+            assert "templates ref:" in (done.stderr + done.stdout), (
+                f"`--template {name} --dry-run` printed no 'templates ref:' line (#763): a dispatch "
+                "that does not announce its templates' provenance re-opens the stale-checkout leak."
+            )
             payload = json.loads((Path(scratch) / "bindings.json").read_text(encoding="utf-8"))
             entry = payload["worker"]
             expected = dispatch.resolve(dispatch.TEMPLATES[name])
