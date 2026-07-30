@@ -1,7 +1,7 @@
 # Vendor capabilities — what each worker CLI can actually do
 
 > **Read [`vendor-doc-audit.md`](vendor-doc-audit.md) alongside this (#527, 2026-07-25).** That audit
-> re-measured much of what is here against `claude` 2.1.220 / `agy` 1.1.7 and **changed two readings
+> re-measured much of what is here against `claude` 2.1.220 / `agy` 1.1.8 and **changed two readings
 > in this file**: the `--allowedTools` section below is no longer "a family ceiling", and the sandbox
 > row's scope is Windows-only. Rows this file states as measured still hold; what changed is what
 > they *mean*. Behaviours either file relies on are re-runnable with `pixi run vendor-verify`.
@@ -12,8 +12,8 @@ and where a row says something is *absent*, it names the surfaces that absence w
 
 | established | against | covers |
 |---|---|---|
-| 2026-07-25, `#527` | `claude` **2.1.220**, `agy` **1.1.7** | the rows the probe suite regenerates: usage, per-turn cost, structured output, `--permission-prompt-tool`, effort, `--add-dir`, plus the subcommand findings below — **re-probed after claude self-updated mid-audit** |
-| 2026-07-25, `#527` | `claude` **2.1.220**, `agy` **1.1.7** | everything in [`vendor-doc-audit.md § Verified by running it`](vendor-doc-audit.md), all 29 `pixi run vendor-verify` checks |
+| 2026-07-25, `#527` | `claude` **2.1.220**, `agy` **1.1.8** | the rows the probe suite regenerates: usage, per-turn cost, structured output, `--permission-prompt-tool`, effort, `--add-dir`, plus the subcommand findings below — **re-probed after claude self-updated mid-audit** |
+| 2026-07-25, `#527` | `claude` **2.1.220**, `agy` **1.1.8** | everything in [`vendor-doc-audit.md § Verified by running it`](vendor-doc-audit.md), all 29 `pixi run vendor-verify` checks |
 | 2026-07-24, `#472` | `claude` 2.1.219, `agy` **1.1.6** | everything else — the permission grammar, `--sandbox` enforcement, the cwd finding, `--remote-control`, the blocking-MCP proof |
 
 **`agy` moved from 1.1.6 to 1.1.7 partway through that same day** — the superseded binary is still on
@@ -47,7 +47,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 
 ## Capability matrix
 
-| | `claude` 2.1.220 | `agy` 1.1.7 |
+| | `claude` 2.1.220 | `agy` 1.1.8 |
 |---|---|---|
 | Headless flag | `-p` / `--print` | `-p` / `--print` |
 | Effort | `--effort low\|medium\|high\|xhigh\|max` | `--effort low\|medium\|high` |

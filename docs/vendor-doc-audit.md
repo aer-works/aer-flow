@@ -1,6 +1,6 @@
 # Vendor documentation audit — every documented capability, and whether we verified it
 
-Measured against `claude` 2.1.220 and `agy` 1.1.7. Read the docs, then verify each claim against the
+Measured against `claude` 2.1.220 and `agy` 1.1.8. Read the docs, then verify each claim against the
 live CLI — `vendor-capabilities.md` was built the other way (probe binaries and help text first) and
 several rows were wrong as a result, all the same shape: **a capability was recorded as absent
 because the surface checked did not mention it.** The documentation mentions it.
@@ -885,7 +885,7 @@ daemon handover judged by **embedded build timestamp**, not version string.
 ## Verified by running it (#527, 2026-07-25)
 
 Everything above this section is **documented** — a vendor claim. This section is what survived
-being run, on `claude` 2.1.220 / `agy` 1.1.7 / Windows 11, all under `-p`.
+being run, on `claude` 2.1.220 / `agy` 1.1.8 / Windows 11, all under `-p`.
 
 Two rules held throughout: **one variable per test**, and **execution proven by a side effect**
 (a sentinel file the tool writes) rather than by the model's account of what it did. Both exist
