@@ -147,11 +147,14 @@ public class CapturedOutputEncodingEndToEndTests
                 f.write(b'done')
             """;
         var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(pythonCode));
-        // The -c argument must be quoted per shell: sh treats bare parentheses as a syntax error
-        // (this exact line, unquoted, broke only on the Linux CI leg — the Windows-local green was
-        // the platform trap). The base64 payload is [A-Za-z0-9+/=], safe inside either quote style.
+        // Two shells, two rules, and the base64 payload's spacelessness is load-bearing for both.
+        // Windows: cmd re-splits the template, so the spaceless exec(...) expression survives BARE
+        // as one token — adding quotes breaks it (aer-core escapes them into literal characters in
+        // python's -c payload; measured red). POSIX: sh parses the template as shell, where bare
+        // parentheses are a syntax error (measured red on the Linux CI leg) — single quotes fix it,
+        // with python's inner strings switched to double quotes.
         var command = OperatingSystem.IsWindows()
-            ? $"python -c \"exec(__import__('base64').b64decode('{b64}'))\""
+            ? $"python -c exec(__import__('base64').b64decode('{b64}'))"
             : $"python -c 'exec(__import__(\"base64\").b64decode(\"{b64}\"))'";
 
         var config = new Dictionary<string, WorkerBindingConfigEntry>
