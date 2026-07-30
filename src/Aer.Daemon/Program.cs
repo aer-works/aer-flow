@@ -648,6 +648,7 @@ namespace Aer.Daemon
             {
                 RoomDirectoryPath = wakeState.RoomDirectoryPath,
                 Wakes = wakeState.CurrentWakes.Select(w => new { Ref = w.Ref.Value, Kind = w.Kind.ToString() }).ToList(),
+                ProbeFailures = wakeState.CurrentProbeFailures.Select(f => new { Ref = f.Ref.Value, f.Error }).ToList(),
             }));
 
             // REST endpoints

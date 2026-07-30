@@ -135,6 +135,9 @@ public class RoomWakeDerivationTests
         var wakes1 = RoomWakeDerivation.DeriveWakes(state, probes);
         var wakes2 = RoomWakeDerivation.DeriveWakes(state, probes);
 
-        Assert.Equal(wakes1, wakes2);
+        // Sorted before comparing: dictionary enumeration order is not part of its contract, and
+        // this claim is about set identity, not iteration order (the integration test's
+        // recompute-after-restart assertion sorts for the same reason).
+        Assert.Equal(wakes1.OrderBy(w => w.Ref.Value), wakes2.OrderBy(w => w.Ref.Value));
     }
 }

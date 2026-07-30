@@ -80,8 +80,8 @@ public class RoomWakeBridgeIntegrationTests
             // "A crash-restarted daemon recomputes the identical set" -- simulated here as two
             // wholly independent calls against the same on-disk journals, no shared in-memory state
             // between them (the static helper takes no bridge instance at all).
-            var firstRead = await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken);
-            var secondRead = await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var firstRead = (await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken)).Wakes;
+            var secondRead = (await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken)).Wakes;
 
             Assert.Equal(2, firstRead.Count);
             Assert.Equal(firstRead.OrderBy(w => w.Ref.Value), secondRead.OrderBy(w => w.Ref.Value));
@@ -114,7 +114,7 @@ public class RoomWakeBridgeIntegrationTests
                     TestContext.Current.CancellationToken);
             }
 
-            var beforeResolve = await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var beforeResolve = (await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken)).Wakes;
             Assert.Single(beforeResolve);
 
             await using (var writer = new RoomEventLogWriter(roomLogPath))
@@ -126,7 +126,7 @@ public class RoomWakeBridgeIntegrationTests
             }
 
             // Resolving the ref IS what clears the wake -- no daemon-side ack, no separate call.
-            var afterResolve = await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var afterResolve = (await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken)).Wakes;
             Assert.Empty(afterResolve);
         }
         finally
@@ -220,6 +220,54 @@ public class RoomWakeBridgeIntegrationTests
         finally
         {
             client.Dispose();
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task A_malformed_lane_snapshot_suppresses_only_that_lanes_wake_never_the_whole_tick()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"wake-bridge-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(testRoot, "room");
+        var healthyLane = Path.Combine(testRoot, "lane-healthy");
+        var sickLane = Path.Combine(testRoot, "lane-sick");
+        try
+        {
+            await WriteOneStepLaneAsync(healthyLane, terminal: true);
+
+            // A lane whose snapshot.json is unreadable garbage -- the reviewer's construction for
+            // a transiently mid-write (or genuinely corrupted) snapshot: flow.jsonl exists, so the
+            // orphan arm does not apply, and the probe's snapshot load throws.
+            await WriteOneStepLaneAsync(sickLane, terminal: true);
+            await File.WriteAllTextAsync(
+                Path.Combine(sickLane, "snapshot.json"), "{ not json", TestContext.Current.CancellationToken);
+
+            var roomLogPath = Path.Combine(roomDirectory, "room.jsonl");
+            Directory.CreateDirectory(roomDirectory);
+            await using (var writer = new RoomEventLogWriter(roomLogPath))
+            {
+                await writer.AppendAsync(
+                    new RoomEvent.HeldWorkDispatched(new HeldWorkRef(healthyLane), "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
+                    TestContext.Current.CancellationToken);
+                await writer.AppendAsync(
+                    new RoomEvent.HeldWorkDispatched(new HeldWorkRef(sickLane), "shape-2", TimeSpan.FromMinutes(10), "decider-1"),
+                    TestContext.Current.CancellationToken);
+            }
+
+            var tick = await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken);
+
+            // The healthy lane's wake must survive the sick lane's probe failure...
+            Assert.Contains(tick.Wakes, w => w.Ref.Value == healthyLane && w.Kind == RoomWakeKind.DispatchedLaneTerminated);
+            // ...and the sick lane must produce no wake this tick (a failed probe asserts nothing;
+            // the next tick re-probes and self-heals once the write settles), but the failure is
+            // surfaced, never logged-and-lost.
+            Assert.DoesNotContain(tick.Wakes, w => w.Ref.Value == sickLane);
+            var failure = Assert.Single(tick.ProbeFailures);
+            Assert.Equal(sickLane, failure.Ref.Value);
+            Assert.False(string.IsNullOrWhiteSpace(failure.Error));
+        }
+        finally
+        {
             DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
