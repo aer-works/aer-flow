@@ -318,48 +318,49 @@ public static class StateProjector
         var stepById = steps.ToDictionary(step => step.StepId);
         var definitionById = snapshot.Steps.ToDictionary(definition => definition.StepId);
 
-        // A step that can still progress on its own: a scheduled deferral, a failure the
-        // RetryPolicy (or 0026's ExhaustedUntil exemption) still permits another attempt for, or a
-        // decision consequence awaiting its dispatch (§17.2/§17.5).
-        bool CanProgressAlone(StepState step) =>
-            step.RetryNotBefore is not null
-            || (step.Status == StepStatus.Failed
-                && Scheduling.RetryEngine.MayRetry(step, definitionById[step.StepId].RetryPolicy))
-            || step.PendingSupplementaryExecutionId is not null
-            || step.IsPendingSupersedeTarget;
-
-        if (steps.Any(CanProgressAlone))
+        // A supersede target is the one eligibility DependencyResolver readies WITHOUT a
+        // dependency check (§17.5's direct consequence), so it alone means Running outright.
+        if (steps.Any(step => step.IsPendingSupersedeTarget))
         {
             return WorkflowStatus.Running;
         }
 
-        // A Pending step is alive exactly when every upstream dependency can still deliver its
-        // inputs — Succeeded already has, and a Pending-or-progressing chain still might. A chain
-        // dead at any link (permanent/exhausted failure, cancellation, rejection) leaves its
-        // dependents Pending forever, and THAT is the legitimate Terminal-with-Pending-steps case.
-        // Memoized; the validator forbids dependency cycles, and the false-before-recursing seed
-        // makes an impossible cycle read as dead rather than looping.
-        var aliveByStepId = new Dictionary<StepId, bool>();
-        bool IsAlive(StepId stepId)
+        // Everything else that could still dispatch — a Pending step, a scheduled deferral, a
+        // failure the RetryPolicy (or 0026's ExhaustedUntil exemption) still permits another
+        // attempt for, a decision consequence awaiting dispatch (§17.2) — only actually will if
+        // its own DependsOn chain can still deliver its inputs: Succeeded already has, and an
+        // eligible chain still might. A chain dead at any link (permanent/exhausted failure,
+        // cancellation, rejection) leaves its dependents idle forever, and THAT is the legitimate
+        // Terminal-with-idle-steps case. The cascade applies to every eligibility kind alike:
+        // exempting the retry/reopen kinds read a reopened step above a dead chain as Running
+        // forever — a hang no consumer could escape (the #810 review's high finding).
+        // Memoized; the validator forbids dependency cycles at Bind time, and the
+        // false-before-recursing seed makes a cycle in a hand-corrupted snapshot read as dead
+        // rather than loop.
+        var deliverableByStepId = new Dictionary<StepId, bool>();
+        bool CanStillDeliver(StepId stepId)
         {
-            if (aliveByStepId.TryGetValue(stepId, out var known))
+            if (deliverableByStepId.TryGetValue(stepId, out var known))
             {
                 return known;
             }
 
-            aliveByStepId[stepId] = false;
+            deliverableByStepId[stepId] = false;
             var step = stepById[stepId];
-            var alive = step.Status switch
-            {
-                StepStatus.Succeeded => true,
-                StepStatus.Pending => definitionById[stepId].DependsOn.All(IsAlive),
-                _ => CanProgressAlone(step),
-            };
-            aliveByStepId[stepId] = alive;
-            return alive;
+            var eligible = step.Status == StepStatus.Succeeded
+                || step.Status == StepStatus.Pending
+                || step.RetryNotBefore is not null
+                || (step.Status == StepStatus.Failed
+                    && Scheduling.RetryEngine.MayRetry(step, definitionById[stepId].RetryPolicy))
+                || step.PendingSupplementaryExecutionId is not null;
+            var deliverable = eligible
+                && (step.Status == StepStatus.Succeeded
+                    || definitionById[stepId].DependsOn.All(CanStillDeliver));
+            deliverableByStepId[stepId] = deliverable;
+            return deliverable;
         }
 
-        return steps.Any(step => step.Status == StepStatus.Pending && IsAlive(step.StepId))
+        return steps.Any(step => step.Status != StepStatus.Succeeded && CanStillDeliver(step.StepId))
             ? WorkflowStatus.Running
             : WorkflowStatus.Terminal;
     }
