@@ -53,6 +53,29 @@ public class SnapshotJsonTests
         Assert.DoesNotContain("\"NeedsInput\"", json, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The additive direction, snapshot-side (#619 review, finding 1) — the same contract
+    /// <c>FlowEventLogJsonTests</c> protects for flow.jsonl: <c>RespectRequiredConstructorParameters</c>
+    /// bites only parameters with no default, so a member added later WITH a default must stay
+    /// loadable from snapshots written before it existed. Exercised through a real defaulted
+    /// member removed from a real serialization.
+    /// </summary>
+    [Fact]
+    public void A_snapshot_predating_an_added_optional_member_still_loads_with_the_default()
+    {
+        var node = JsonNode.Parse(JsonSerializer.Serialize(SampleSnapshot(), SnapshotJson.Options))!.AsObject();
+        var pausePoint = node["Steps"]!.AsArray()[0]!.AsObject()["PausePoint"]!.AsObject();
+
+        // Guards the fixture itself: a rename would make Remove return false and this would
+        // quietly become a test of a current snapshot, passing while proving nothing.
+        Assert.True(pausePoint.Remove("Kind"));
+
+        var deserialized = JsonSerializer.Deserialize<WorkflowDefinitionSnapshot>(node.ToJsonString(), SnapshotJson.Options);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(PausePointKind.ReadyForReview, Assert.Single(deserialized.Steps).PausePoint!.Kind);
+    }
+
     [Fact]
     public void An_intact_snapshot_round_trips()
     {
@@ -113,9 +136,31 @@ public class SnapshotJsonTests
     {
         var pinned = new[] { typeof(PausePointKind), typeof(JitterMode) };
 
+        var reachable = ReachableEnums(typeof(WorkflowDefinitionSnapshot), typeof(WorkflowDefinition));
+
+        Assert.Equal(pinned.OrderBy(t => t.Name), reachable.OrderBy(t => t.Name));
+    }
+
+    private sealed record ArrayCarrier(JitterMode[] Modes);
+
+    /// <summary>
+    /// Control for the walk itself (#619 review, finding 2): an enum reachable ONLY through an
+    /// array element must be seen. A <c>T[]</c> is not <c>IsGenericType</c>, so without a
+    /// dedicated array branch the walk yielded the array type itself and silently never visited
+    /// its element — the blind spot that would have let a future array-typed member smuggle an
+    /// unpinned enum past the test above.
+    /// </summary>
+    [Fact]
+    public void The_reachability_walk_descends_into_array_element_types()
+    {
+        Assert.Contains(typeof(JitterMode), ReachableEnums(typeof(ArrayCarrier)));
+    }
+
+    private static HashSet<Type> ReachableEnums(params Type[] roots)
+    {
         var reachable = new HashSet<Type>();
         var seen = new HashSet<Type>();
-        var queue = new Queue<Type>([typeof(WorkflowDefinitionSnapshot), typeof(WorkflowDefinition)]);
+        var queue = new Queue<Type>(roots);
 
         while (queue.Count > 0)
         {
@@ -156,7 +201,7 @@ public class SnapshotJsonTests
             }
         }
 
-        Assert.Equal(pinned.OrderBy(t => t.Name), reachable.OrderBy(t => t.Name));
+        return reachable;
     }
 
     private static IEnumerable<Type> Unwrap(Type type)
@@ -165,6 +210,18 @@ public class SnapshotJsonTests
         if (underlying is not null)
         {
             yield return underlying;
+            yield break;
+        }
+
+        // A T[] is not IsGenericType, so without this branch the walk yielded the array type
+        // itself and never visited its element — the walk's own control test pins this.
+        if (type.IsArray)
+        {
+            foreach (var inner in Unwrap(type.GetElementType()!))
+            {
+                yield return inner;
+            }
+
             yield break;
         }
 
