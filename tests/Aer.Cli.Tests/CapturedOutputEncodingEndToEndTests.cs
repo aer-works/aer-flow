@@ -39,8 +39,6 @@ public class CapturedOutputEncodingEndToEndTests
             var bindingsFilePath = await WriteOneStepBindingsAsync(testRoot, fixturePath);
             var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-
             var capturedStdoutLines = new List<string>();
             Action<string, string> onWorkerStdoutLine = (worker, line) =>
             {
@@ -56,17 +54,20 @@ public class CapturedOutputEncodingEndToEndTests
             var outputPath = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}", "output1");
             Assert.True(File.Exists(outputPath), $"Expected output artifact at {outputPath}");
 
-            // Record captured stdout lines to flow.jsonl as captured output events
-            var outputEventLines = capturedStdoutLines.Select(line => $"{{\"eventType\":\"capturedOutput\",\"line\":\"{line}\"}}");
-            await File.AppendAllLinesAsync(logPath, outputEventLines, Encoding.UTF8, TestContext.Current.CancellationToken);
-
-            // Byte-compare captured events in flow.jsonl against the fixture's bytes (not string literal comparison)
-            byte[] flowJsonlBytes = await File.ReadAllBytesAsync(logPath, TestContext.Current.CancellationToken);
-            bool containsExactBytes = ContainsSequence(flowJsonlBytes, fixtureBytes);
+            // The claim under test is capture fidelity: fixture bytes -> python stdout -> aer-core
+            // capture -> CoreDispatcher's UTF-8 decode -> this callback's strings. Re-encoding the
+            // captured strings must reproduce the exact original bytes; any codepage transcoding
+            // anywhere in that pipeline breaks the round trip and fails here. Asserted on the
+            // callback directly — never by writing anything into flow.jsonl ourselves, which would
+            // fabricate events and prove only our own append (this test's first draft did exactly
+            // that; kept as a warning).
+            byte[] recapturedBytes = Encoding.UTF8.GetBytes(string.Join("\n", capturedStdoutLines));
+            bool containsExactBytes = ContainsSequence(recapturedBytes, fixtureBytes);
 
             Assert.True(
                 containsExactBytes,
-                $"flow.jsonl did not contain the exact UTF-8 byte sequence emitted by Python stdout. " +
+                $"The captured stdout did not round-trip the exact UTF-8 byte sequence python emitted — " +
+                $"the engine-side capture transcoded it (#466's engine half CONFIRMED). " +
                 $"Fixture bytes ({fixtureBytes.Length}): {BitConverter.ToString(fixtureBytes)}");
         }
         finally
