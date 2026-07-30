@@ -1028,4 +1028,91 @@ public class GeminiWorkerAdapterTests
 
         Assert.StartsWith("agy:", value, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Classifies_verbatim_specimen_as_ExhaustedUntil_with_exact_reset_timestamp()
+    {
+        var specimen = "Worker exited with non-zero code 1. stderr: Error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 28m40s.";
+        var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+        var testTime = new TestTimeProvider(now);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(specimen, testTime, out var classification, out var retryNotBefore);
+
+        Assert.True(classified);
+        Assert.Equal(FailureClassification.ExhaustedUntil, classification);
+        Assert.Equal(now.AddMinutes(28).AddSeconds(40), retryNotBefore);
+    }
+
+    [Fact]
+    public void Non_quota_stderr_classifies_as_null()
+    {
+        var stderr = "Worker exited with non-zero code 1. stderr: Error: Failed to execute tool.";
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.False(classified);
+        Assert.Null(classification);
+        Assert.Null(retryNotBefore);
+    }
+
+    [Fact]
+    public void Quota_like_stderr_without_parseable_duration_classifies_as_null()
+    {
+        var stderr = "Worker exited with non-zero code 1. stderr: Error: Individual quota reached. Resets in tomorrow.";
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.False(classified);
+        Assert.Null(classification);
+        Assert.Null(retryNotBefore);
+    }
+
+    [Fact]
+    public void Quota_reset_with_overflowing_digits_classifies_as_null_not_a_thrown_exception()
+    {
+        // A duration too large for int must classify false, not throw -- the why (the pump's
+        // deliberately catch-free classification path) lives on the TryParse block in
+        // GeminiWorkerAdapter.TryClassifyQuotaExhaustion.
+        var stderr = "Error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 99999999999999999999m.";
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.False(classified);
+        Assert.Null(classification);
+        Assert.Null(retryNotBefore);
+    }
+
+    [Theory]
+    [InlineData("Resets in 2h.", 2, 0, 0)]
+    [InlineData("Resets in 28m.", 0, 28, 0)]
+    [InlineData("Resets in 40s.", 0, 0, 40)]
+    [InlineData("Resets in 1h30s.", 1, 0, 30)]
+    public void Each_optional_duration_group_parses_alone_and_in_partial_combination(
+        string resetText, int hours, int minutes, int seconds)
+    {
+        // The three regex groups are independently optional; only the all-three specimen was
+        // covered, so a group-reading edit could break one combination with every test green.
+        var stderr = $"Error: Individual quota reached. Please upgrade your subscription to increase your limits. {resetText}";
+        var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+        var testTime = new TestTimeProvider(now);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.True(classified);
+        Assert.Equal(FailureClassification.ExhaustedUntil, classification);
+        Assert.Equal(now.AddHours(hours).AddMinutes(minutes).AddSeconds(seconds), retryNotBefore);
+    }
+
+    private sealed class TestTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
 }

@@ -15,6 +15,10 @@ public static class RetryEngine
     /// (absent or unrecognized defaults to <see cref="FailureClassification.Retryable"/>, §8.1), and
     /// <see cref="StepState.ConsecutiveFailureCount"/> has not yet reached <paramref name="retryPolicy"/>'s
     /// <see cref="RetryPolicy.MaxAttempts"/> — the total number of attempts allowed per round.
+    /// <see cref="FailureClassification.ExhaustedUntil"/> bypasses the attempts check entirely:
+    /// 0026 obliges the engine to never spend retry attempts against an exhausted quota, because
+    /// retrying is not what is wrong — the retry is paced to the vendor's reset instant instead
+    /// (MutationInterface.GetRetryObligations), never abandoned for lack of budget.
     /// <see cref="StepStatus.Cancelled"/> is never retried regardless of policy (§9, §10): cancellation is a
     /// decision to stop, not a failure to route around, and this predicate only ever returns true for a
     /// step whose latest attempt is <see cref="StepStatus.Failed"/>.
@@ -26,6 +30,7 @@ public static class RetryEngine
 
         return stepState.Status == StepStatus.Failed
             && stepState.LatestFailureClassification != FailureClassification.Permanent
-            && stepState.ConsecutiveFailureCount < retryPolicy.MaxAttempts;
+            && (stepState.LatestFailureClassification == FailureClassification.ExhaustedUntil
+                || stepState.ConsecutiveFailureCount < retryPolicy.MaxAttempts);
     }
 }

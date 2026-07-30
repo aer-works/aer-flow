@@ -142,7 +142,7 @@ public static class WorkerBindingResolver
             target = target with { OnStdoutLine = line => onWorkerStdoutLine(capturedWorkerName, line) };
         }
 
-        return new WorkerBinding.Process(entry.Contract, target, entry.Timeout);
+        return new WorkerBinding.Process(entry.Contract, target, entry.Timeout, adapter);
     }
 
     /// <summary>

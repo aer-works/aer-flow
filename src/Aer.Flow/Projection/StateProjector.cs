@@ -36,6 +36,7 @@ public static class StateProjector
         var consecutiveFailureCountByStepId = new Dictionary<StepId, int>();
         var latestFailureClassificationByStepId = new Dictionary<StepId, FailureClassification?>();
         var latestFailureReasonByStepId = new Dictionary<StepId, string?>();
+        var latestExecutionFailedRetryNotBeforeByStepId = new Dictionary<StepId, DateTimeOffset?>();
         var cancellationRequestedExecutionIds = new HashSet<ExecutionId>();
 
         // Step-less executions (spec §17.3) never associate with any StepId — tracked separately,
@@ -87,6 +88,7 @@ public static class StateProjector
                         consecutiveFailureCountByStepId[succeededStepId] = 0;
                         latestFailureClassificationByStepId[succeededStepId] = null;
                         latestFailureReasonByStepId[succeededStepId] = null;
+                        latestExecutionFailedRetryNotBeforeByStepId[succeededStepId] = null;
                     }
 
                     break;
@@ -95,10 +97,20 @@ public static class StateProjector
                     terminalStatusByExecutionId[failed.ExecutionId] = StepStatus.Failed;
                     if (stepIdByExecutionId.TryGetValue(failed.ExecutionId, out var failedStepId))
                     {
-                        consecutiveFailureCountByStepId[failedStepId] =
-                            consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
+                        // ExhaustedUntil never increments: 0026's "consumes no retry budget" is
+                        // enforced here at the source, so a later real failure starts from the
+                        // real-failure count and the backoff attempt number never inflates from
+                        // waiting out a quota window. RetryEngine's attempts check and the
+                        // ExhaustedUntil arm of GetRetryObligations both lean on this.
+                        if (failed.FailureClassification != FailureClassification.ExhaustedUntil)
+                        {
+                            consecutiveFailureCountByStepId[failedStepId] =
+                                consecutiveFailureCountByStepId.GetValueOrDefault(failedStepId) + 1;
+                        }
+
                         latestFailureClassificationByStepId[failedStepId] = failed.FailureClassification;
                         latestFailureReasonByStepId[failedStepId] = failed.Reason;
+                        latestExecutionFailedRetryNotBeforeByStepId[failedStepId] = failed.RetryNotBefore;
                     }
 
                     break;
@@ -154,6 +166,13 @@ public static class StateProjector
                             stepIdByExecutionId.TryGetValue(resumedExecutionId, out var retryStepId))
                         {
                             consecutiveFailureCountByStepId[retryStepId] = 0;
+                            // The classification clears with the count, mirroring the success
+                            // reset above: a reopen is a fresh round, and a stale ExhaustedUntil
+                            // left here would send the operator's explicit retry-now back through
+                            // GetRetryObligations' reset-moment pacing instead of dispatching it.
+                            latestFailureClassificationByStepId[retryStepId] = null;
+                            latestFailureReasonByStepId[retryStepId] = null;
+                            latestExecutionFailedRetryNotBeforeByStepId[retryStepId] = null;
                             retryNotBeforeByStepId.Remove(retryStepId);
                             retryDelayMsByStepId.Remove(retryStepId);
                             retryScheduledForExecutionIdByStepId.Remove(retryStepId);
@@ -241,7 +260,8 @@ public static class StateProjector
                 pendingSupersedeTargetStepIds.Contains(stepDefinition.StepId),
                 retryNotBeforeByStepId.TryGetValue(stepDefinition.StepId, out var rnb) ? rnb : null,
                 retryDelayMsByStepId.TryGetValue(stepDefinition.StepId, out var rdm) ? rdm : null,
-                retryScheduledForExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var rfe) ? rfe : null));
+                retryScheduledForExecutionIdByStepId.TryGetValue(stepDefinition.StepId, out var rfe) ? rfe : null,
+                latestExecutionFailedRetryNotBeforeByStepId.GetValueOrDefault(stepDefinition.StepId)));
         }
 
         // Paused outranks a pending deferral: a deferred sibling must not make a workflow that is

@@ -816,4 +816,71 @@ public class MutationInterfaceRetryBackoffTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [Fact]
+    public async Task ExhaustedUntil_failure_RetryNotBefore_equals_reset_moment_while_ordinary_retryable_follows_backoff()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
+        var fakeTime = new FakeTimeProvider(now);
+        var resetMoment = now.AddMinutes(45);
+
+        try
+        {
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+
+            var execIdExhausted = new ExecutionId("exec-exhausted");
+            var execIdRetryable = new ExecutionId("exec-retryable");
+
+            // Append ExhaustedUntil failure with explicit reset moment
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(
+                new ExecutionRequest(execIdExhausted, new WorkflowId("wf-ex"), StepA, "worker-a", [], [], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId>())), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionFailed(execIdExhausted, FailureClassification.ExhaustedUntil, "quota exhausted", resetMoment), TestContext.Current.CancellationToken);
+
+            var snapshotA = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snap-1"),
+                new WorkflowTemplateId("tpl-1"),
+                1,
+                [new WorkflowStepDefinition(StepA, "worker-a", [], [], [], RetryPolicy: new RetryPolicy(MaxAttempts: 3, Backoff: BackoffPolicy.Steady))]);
+
+            var eventsExhausted = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var stateExhausted = StateProjector.Project(eventsExhausted, snapshotA);
+
+            var getObligationsMethod = typeof(MutationInterface).GetMethod("GetRetryObligations", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            var obligationsExhausted = (IEnumerable<object>)getObligationsMethod.Invoke(null, [stateExhausted, snapshotA, fakeTime, (Func<double>)(() => 0.0)])!;
+            var exhaustedObligation = obligationsExhausted.Single();
+
+            var notBeforeProperty = exhaustedObligation.GetType().GetProperty("RetryNotBefore")!;
+            var exhaustedNotBefore = (DateTimeOffset)notBeforeProperty.GetValue(exhaustedObligation)!;
+
+            Assert.Equal(resetMoment, exhaustedNotBefore);
+
+            // Append ordinary Retryable failure (no reset moment)
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(
+                new ExecutionRequest(execIdRetryable, new WorkflowId("wf-retry"), StepB, "worker-b", [], [], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId>())), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionFailed(execIdRetryable, FailureClassification.Retryable, "ordinary failure"), TestContext.Current.CancellationToken);
+
+            var snapshotB = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snap-2"),
+                new WorkflowTemplateId("tpl-2"),
+                1,
+                [new WorkflowStepDefinition(StepB, "worker-b", [], [], [], RetryPolicy: new RetryPolicy(MaxAttempts: 3, Backoff: BackoffPolicy.Steady))]);
+
+            var eventsRetryable = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            var stateRetryable = StateProjector.Project(eventsRetryable, snapshotB);
+
+            var obligationsRetryable = (IEnumerable<object>)getObligationsMethod.Invoke(null, [stateRetryable, snapshotB, fakeTime, (Func<double>)(() => 0.0)])!;
+            var retryableObligation = obligationsRetryable.Single();
+            var retryableNotBefore = (DateTimeOffset)notBeforeProperty.GetValue(retryableObligation)!;
+
+            // Steady backoff with 0.0 jitter sample is 500ms delay
+            Assert.Equal(now.AddMilliseconds(500), retryableNotBefore);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }

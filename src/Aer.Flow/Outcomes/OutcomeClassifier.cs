@@ -35,7 +35,8 @@ public enum OutcomeVerdict
 public sealed record OutcomeClassification(
     OutcomeVerdict Verdict,
     FailureClassification? FailureClassification = null,
-    string? Reason = null);
+    string? Reason = null,
+    DateTimeOffset? RetryNotBefore = null);
 
 /// <summary>
 /// Maps a <see cref="CoreDispatchResult"/> plus a step's <see cref="WorkerContract"/> into one of
@@ -86,7 +87,9 @@ public static class OutcomeClassifier
     public static OutcomeClassification Classify(
         CoreDispatchResult result,
         WorkerContract contract,
-        string outputDirectory)
+        string outputDirectory,
+        IFailureClassifier? failureClassifier = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(contract);
@@ -100,19 +103,23 @@ public static class OutcomeClassifier
 
         if (result.Reason == CoreExitReason.TimedOut)
         {
+            var (classification, retryNotBefore) = ReadOrClassifyFailure(contract, outputDirectory, result, failureClassifier, timeProvider);
             return new OutcomeClassification(
                 OutcomeVerdict.Failed,
-                ReadFailureClassification(contract, outputDirectory),
-                WithStderr("Execution timed out.", result.StderrTail));
+                classification,
+                WithStderr("Execution timed out.", result.StderrTail),
+                retryNotBefore);
         }
 
         // Only CoreExitReason.Natural remains.
         if (result.ExitCode != 0)
         {
+            var (classification, retryNotBefore) = ReadOrClassifyFailure(contract, outputDirectory, result, failureClassifier, timeProvider);
             return new OutcomeClassification(
                 OutcomeVerdict.Failed,
-                ReadFailureClassification(contract, outputDirectory),
-                WithStderr($"Worker exited with non-zero code {result.ExitCode}.", result.StderrTail));
+                classification,
+                WithStderr($"Worker exited with non-zero code {result.ExitCode}.", result.StderrTail),
+                retryNotBefore);
         }
 
         var validation = ContractValidator.Validate(contract, outputDirectory);
@@ -124,10 +131,12 @@ public static class OutcomeClassifier
         // Stderr is appended here too, not just on the non-zero-exit path. The exit-0-but-no-output
         // worker is #597's case, and a worker that decided it had nothing to write very often says
         // why on stderr on its way out — that is precisely the failure with the least other evidence.
+        var (contractClassification, contractRetryNotBefore) = ReadOrClassifyFailure(contract, outputDirectory, result, failureClassifier, timeProvider);
         return new OutcomeClassification(
             OutcomeVerdict.Failed,
-            ReadFailureClassification(contract, outputDirectory),
-            WithStderr(BuildContractFailureReason(validation.UnsatisfiedOutputs), result.StderrTail));
+            contractClassification,
+            WithStderr(BuildContractFailureReason(validation.UnsatisfiedOutputs), result.StderrTail),
+            contractRetryNotBefore);
     }
 
     /// <summary>
@@ -322,5 +331,27 @@ public static class OutcomeClassifier
         }
 
         return null;
+    }
+
+    private static (FailureClassification? Classification, DateTimeOffset? RetryNotBefore) ReadOrClassifyFailure(
+        WorkerContract contract,
+        string outputDirectory,
+        CoreDispatchResult result,
+        IFailureClassifier? failureClassifier,
+        TimeProvider? timeProvider)
+    {
+        var metadataClassification = ReadFailureClassification(contract, outputDirectory);
+        if (metadataClassification is not null)
+        {
+            return (metadataClassification, null);
+        }
+
+        if (failureClassifier is not null && failureClassifier.TryClassifyFailure(
+                result.StderrTail, timeProvider ?? TimeProvider.System, out var adapterClassification, out var adapterRetryNotBefore))
+        {
+            return (adapterClassification, adapterRetryNotBefore);
+        }
+
+        return (null, null);
     }
 }

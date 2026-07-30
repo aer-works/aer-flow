@@ -56,6 +56,19 @@ public class RetryEngineTests
         Assert.True(mayRetry);
     }
 
+    [Fact]
+    public void An_ExhaustedUntil_classification_never_spends_retry_budget()
+    {
+        // 0026: "an ExhaustedUntil outcome consumes no retry budget, because retrying is not what
+        // is wrong." The polarity partner is An_exhausted_budget_may_not_retry above -- same
+        // count, same policy, one classification apart.
+        var mayRetry = RetryEngine.MayRetry(
+            Failed(consecutiveFailureCount: 3, FailureClassification.ExhaustedUntil),
+            new RetryPolicy(MaxAttempts: 3));
+
+        Assert.True(mayRetry);
+    }
+
     [Theory]
     [InlineData(StepStatus.Succeeded)]
     [InlineData(StepStatus.Pending)]

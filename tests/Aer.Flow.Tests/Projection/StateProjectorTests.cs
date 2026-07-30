@@ -500,6 +500,56 @@ public class StateProjectorTests
     }
 
     [Fact]
+    public void An_ExhaustedUntil_failure_does_not_increment_the_consecutive_failure_count()
+    {
+        // Both directions of the projector's ExhaustedUntil counting rule (the why lives on the
+        // ExecutionFailed case in StateProjector.cs): the quota hit leaves the count alone, the
+        // ordinary failure after it still counts.
+        var first = new ExecutionId("exec-1");
+        var second = new ExecutionId("exec-2");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(first, Architect)),
+            new FlowEvent.ExecutionFailed(first, FailureClassification.ExhaustedUntil, "quota", DateTimeOffset.UnixEpoch),
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(second, Architect)),
+            new FlowEvent.ExecutionFailed(second, FailureClassification.Retryable),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.Equal(1, architect.ConsecutiveFailureCount);
+        Assert.Equal(FailureClassification.Retryable, architect.LatestFailureClassification);
+    }
+
+    [Fact]
+    public void RetryWithRevision_clears_the_latest_failure_classification_like_a_success_does()
+    {
+        // The reopen IS a fresh round (the count reset above already says so). Leaving the stale
+        // classification behind let a reopened quota-failed step re-pace itself to the old vendor
+        // reset moment instead of honoring the operator's explicit retry-now. The log replayed
+        // here is also what a pre-#594 engine could legitimately have written (a quota step that
+        // auto-paused), so this doubles as replay compatibility for that history.
+        var executionId = new ExecutionId("exec-1");
+        var decisionId = new DecisionId("decision-1");
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.ExhaustedUntil, "quota", DateTimeOffset.UnixEpoch),
+            new FlowEvent.WorkflowPaused(executionId, Architect),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, executionId, DecisionType.RetryWithRevision, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.Null(architect.LatestFailureClassification);
+        Assert.Null(architect.LatestFailureReason);
+        Assert.Null(architect.LatestExecutionFailedRetryNotBefore);
+    }
+
+    [Fact]
     public void RetryWithRevision_with_a_SupplementaryExecutionId_projects_it_as_pending_for_the_referenced_step()
     {
         var executionId = new ExecutionId("exec-1");
