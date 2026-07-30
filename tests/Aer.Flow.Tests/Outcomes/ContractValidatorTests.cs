@@ -405,6 +405,39 @@ public class ContractValidatorTests
     }
 
     /// <summary>
+    /// The classifier layer of the schema arm (the #732 review's one MEDIUM: nothing at this layer
+    /// would fail if <c>DescribeUnsatisfiedOutput</c>'s SchemaViolation case were deleted or its
+    /// Detail dropped). A clean exit 0 with a malformed schema'd output must classify Failed with
+    /// the parser's sentence in the Reason; deleting the switch arm faults this test through the
+    /// switch's own default throw, and dropping Detail fails the Contains.
+    /// </summary>
+    [Fact]
+    public void Classify_names_the_schema_violation_and_its_detail_in_the_failure_Reason()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, "verdict.json"), """{"status": "approved"}""");
+            var contract = new WorkerContract(
+                "reviewer",
+                [],
+                [new ProducedOutput("verdict.json", Schema: OutputSchema.ReviewVerdict)],
+                []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural), contract, directory);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.Contains("'verdict.json' is not a valid document of its declared schema", classification.Reason);
+            Assert.Contains("reviewedRef", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
     /// A schema'd output that passes its schema still has its condition evaluated — declaring a
     /// shape does not exempt an output from §4.1. The condition targets a field the schema does not
     /// know, which is also the extra-fields-tolerated claim exercised end to end.

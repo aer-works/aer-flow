@@ -82,6 +82,7 @@ public class ReviewVerdictSchemaTests
     [InlineData("""{"reviewedRef": "main", "findings": [null]}""", "findings[0]")]
     [InlineData("""{"reviewedRef": "main", "findings": [{"severity": "high", "claim": " ", "status": "confirmed"}]}""", "claim")]
     [InlineData("""{"reviewedRef": "main", "findings": [{"severity": "high", "claim": "x", "status": "confirmed", "anchor": {"file": "f", "line": 0}}]}""", "line")]
+    [InlineData("""{"reviewedRef": "main", "findings": [{"severity": "high", "claim": "x", "status": "confirmed", "anchor": {"line": 3}}]}""", "anchor.file")]
     public void Documents_below_the_semantic_floor_are_refused_with_a_reason_naming_the_field(
         string json, string expectedInError)
     {

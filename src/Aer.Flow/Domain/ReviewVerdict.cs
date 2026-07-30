@@ -143,6 +143,15 @@ public static class ReviewVerdictSchema
                 error = $"findings[{i}].anchor.line must be 1 or greater when present.";
                 return false;
             }
+
+            // The same deserializer leniency the findings check above guards against: File is
+            // declared non-nullable, and STJ will happily bind an anchor without one. Found by the
+            // schema's own first live reviewer.
+            if (finding.Anchor is not null && string.IsNullOrWhiteSpace(finding.Anchor.File))
+            {
+                error = $"findings[{i}].anchor.file must name a file when an anchor is present.";
+                return false;
+            }
         }
 
         verdict = parsed;
