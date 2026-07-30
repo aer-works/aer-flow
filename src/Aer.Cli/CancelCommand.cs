@@ -39,7 +39,8 @@ public static class CancelCommand
     /// instead.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
-    /// Same journal-held refusal as <see cref="DecideCommand"/> (#816); see that exception's own docs.
+    /// #816, shared with every other command building a <c>FlowEventLogWriter</c> — see that
+    /// type's own docs.
     /// </exception>
     public static async Task<CommandResult> ExecuteAsync(
         CancelOptions options,
