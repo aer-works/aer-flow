@@ -77,26 +77,43 @@ def refresh_published_engine(repo_root: Path) -> Path:
     a COPY severs the collision: the repo's binaries stay rebuildable while any number of engines
     run.
 
-    The copy refreshes when the repo bin's Aer.Cli.exe is newer than the copy's. A refresh attempt
-    while an older copy is still running loses the race benignly: the stale copy keeps running,
-    this dispatch uses it too, and a warning says so — a one-dispatch-old engine beats a failed
-    dispatch.
+    Each distinct build gets its own directory, named by the newest mtime across the WHOLE source
+    bin tree (a single-file gate misses a rebuild that touched only a dependency DLL), and a copier
+    stages privately then commits with an atomic `os.rename` onto the versioned name. Both halves
+    exist because the first draft's copy-in-place was reviewed and refuted: two simultaneous
+    first-time copiers could tear the shared directory (stale exe beside fresh DLLs), and copy2's
+    preserved mtimes made the torn copy read "up to date" forever after. With a rename as the
+    commit point, exactly one racer publishes a complete tree; the loser discards its staging and
+    uses the winner's. Engines still running from older versioned dirs hold their own files; prune
+    skips whatever is locked and catches it on a later refresh.
     """
     source = _default_cli_path(repo_root)
     if not source.exists():
         # The caller reports the not-built error against the source path, same as before.
         return source
 
-    target_dir = repo_root / "aer-agy-loop-scratch" / "engine"
-    target = target_dir / source.name
-    if not target.exists() or source.stat().st_mtime > target.stat().st_mtime:
+    stamp = max(p.stat().st_mtime_ns for p in source.parent.rglob("*") if p.is_file())
+    engines_root = repo_root / "aer-agy-loop-scratch" / "engine"
+    final = engines_root / str(stamp)
+    target = final / source.name
+
+    if not target.exists():
+        engines_root.mkdir(parents=True, exist_ok=True)
+        staging = engines_root / f"{stamp}.staging-{uuid.uuid4().hex[:8]}"
+        shutil.copytree(source.parent, staging)
         try:
-            shutil.copytree(source.parent, target_dir, dirs_exist_ok=True)
-        except OSError as error:
+            staging.rename(final)
+        except OSError:
+            # The other racer committed first; its tree is complete by definition of the rename.
+            shutil.rmtree(staging, ignore_errors=True)
             if not target.exists():
                 raise
-            print(f"[dispatch.py] warning: engine copy refresh failed ({error}); "
-                  f"using the existing copy at {target}", file=sys.stderr)
+
+        # Digit-named dirs only: a concurrent racer's live `.staging-` dir must never be swept.
+        # A dir still hosting a running engine refuses deletion and is retried next refresh.
+        for entry in engines_root.iterdir():
+            if entry.is_dir() and entry.name.isdigit() and entry != final:
+                shutil.rmtree(entry, ignore_errors=True)
     return target
 
 
@@ -109,7 +126,11 @@ def provision_worktree(repo: Path, branch: str) -> Path:
     native lib and none of the failures names it). Reuse requires the worktree to already be on
     the requested branch — anything else is a wrong-repo accident, refused loudly.
     """
+    # Sanitized before it becomes a path segment: a branch like `feature/foo` would otherwise
+    # smuggle a separator into the name and pathlib would silently nest the worktree one level
+    # down (the #723 review's finding 2).
     short = branch.split("-", 1)[0] if branch.split("-", 1)[0].isdigit() else branch[:12]
+    short = "".join(c if c.isalnum() or c in "._" else "-" for c in short)
     path = repo.parent / f"{repo.name}-w{short}"
 
     if path.exists():
