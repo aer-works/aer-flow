@@ -61,11 +61,10 @@ public class ReviewVerdictSchemaTests
     }
 
     /// <summary>
-    /// Pins the fact decision 0043's Rests-on table cites: System.Text.Json binds an absent
-    /// constructor parameter to its default — null, despite the non-nullable declaration — rather
-    /// than throwing, so <see cref="ReviewVerdictSchema.TryParse"/>'s hand-written floor is what
-    /// actually enforces presence. If this arm ever starts failing on a JsonException instead of
-    /// the floor message, STJ tightened and the hand checks can be revisited.
+    /// Pins the deserializer-leniency fact decision 0043's Rests-on table cites (the why lives on
+    /// the null check inside <see cref="ReviewVerdictSchema.TryParse"/>): presence is enforced by
+    /// the hand-written floor, not by STJ. If this arm ever starts failing on a JsonException
+    /// instead of the floor message, STJ tightened and the hand checks can be revisited.
     /// </summary>
     [Fact]
     public void A_document_without_findings_is_refused_by_the_shape_floor_not_by_the_deserializer()

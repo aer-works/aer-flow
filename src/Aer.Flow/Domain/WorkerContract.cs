@@ -16,9 +16,9 @@ public sealed record WorkerContract(
 
 /// <summary>A named output file role a <see cref="WorkerContract"/> requires (spec §4).</summary>
 /// <param name="Schema">
-/// Extends the contract from "this file must exist" to "this file must exist and parse as this
-/// shape" (spec §4.2, decision 0043) — the structural sibling of <paramref name="Condition"/>.
-/// Serialized only when set, so contracts that predate the field round-trip byte-identically.
+/// A declared document shape the file must parse as (spec §4.2, decision 0043) — the structural
+/// sibling of <paramref name="Condition"/>. Serialized only when set, so contracts that predate
+/// the field round-trip byte-identically.
 /// </param>
 public sealed record ProducedOutput(
     string Name,

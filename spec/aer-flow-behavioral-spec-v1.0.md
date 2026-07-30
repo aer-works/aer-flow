@@ -123,8 +123,8 @@ the recorded classification and never re-reads the artifact.
 
 **Validation is parse-only, and that is the boundary, not an economy.** The engine checks that the
 document *is* the shape; it never reads the shape's content — a finding's severity, a verdict's
-conclusions — to schedule, route, retry, or decide anything (decision 0043, applying 0038's rule
-that a verdict is evidence for a decision, never the decision). A structured verdict exists so the
+conclusions — to schedule, route, retry, or decide anything (decision 0043, which applies decision
+0038's evidence/decision boundary to structured findings). A structured verdict exists so the
 *human* deciding at a `PausePoint`, and the surfaces that serve them, can consume findings without
 re-reading prose — the discipline/intelligence split of §1 is unchanged by structure arriving in
 the artifact.
