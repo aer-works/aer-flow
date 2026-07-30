@@ -150,15 +150,48 @@ def provision_worktree(repo: Path, branch: str) -> Path:
     return path
 
 
-def _git(workdir: Path, *argv: str) -> str | None:
-    """One git read against the workdir, or None when it is not a git repo (or git is absent)."""
+def _git_cmd(workdir: Path, *argv: str, timeout: int = 30) -> tuple[str | None, str | None]:
+    """One git read against workdir. Returns (stdout, None) on success or (None, reason) on failure."""
     try:
         result = subprocess.run(
             ["git", "-C", str(workdir), *argv],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return result.stdout.strip() if result.returncode == 0 else None
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except OSError as exc:
+        return None, f"git execution error: {exc}"
+    except subprocess.TimeoutExpired:
+        return None, f"git command timed out after {timeout}s"
+    if result.returncode != 0:
+        err = result.stderr.strip() or f"git exit code {result.returncode}"
+        return None, err
+    return result.stdout.strip(), None
+
+
+def _git(workdir: Path, *argv: str) -> str | None:
+    """One git read against the workdir, or None when it is not a git repo (or git is absent)."""
+    out, _ = _git_cmd(workdir, *argv, timeout=30)
+    return out
+
+
+def _templates_ref() -> str:
+    """Compute the templates ref string for the repo containing dispatch.py itself (#763)."""
+    dispatch_dir = Path(__file__).resolve().parent
+    sha, err = _git_cmd(dispatch_dir, "rev-parse", "--short", "HEAD", timeout=5)
+    if err or sha is None:
+        return f"unavailable ({err or 'git rev-parse HEAD failed'})"
+
+    branch, err = _git_cmd(dispatch_dir, "branch", "--show-current", timeout=5)
+    if err:
+        return f"unavailable ({err})"
+    if not branch:
+        branch = "DETACHED"
+
+    status, err = _git_cmd(dispatch_dir, "status", "--porcelain", ".", timeout=5)
+    if err:
+        return f"unavailable ({err})"
+
+    dirty = "*" if status else ""
+    return f"{branch}@{sha}{dirty}"
+
 
 
 def _git_head(workdir: Path) -> str | None:
@@ -856,6 +889,7 @@ def main() -> int:
             ),
             file=sys.stderr,
         )
+    print(f"[dispatch.py] templates ref: {_templates_ref()}", file=sys.stderr)
 
     if args.dry_run:
         # Stops HERE, after the JSON is generated, not before. The three bugs this script exists to
