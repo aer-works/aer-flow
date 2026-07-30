@@ -963,42 +963,61 @@ def main() -> int:
     outer_deadline_minutes = sum(s["timeout_minutes"] for s in step_specs) + 5
     outer_deadline_seconds = outer_deadline_minutes * 60
 
+    # Popen + two-stage communicate rather than subprocess.run(timeout=...), and the difference IS
+    # the fix (the lane review's HIGH, verified against CPython's subprocess source): on Windows,
+    # run()'s TimeoutExpired handler kills the direct child and then calls communicate() with NO
+    # timeout to collect output — and #767's measured hazard is precisely a surviving process
+    # holding inherited pipe handles, which keeps that unbounded cleanup read blocked forever. The
+    # second communicate here is bounded; if the pipes are still held past it, we say so and exit —
+    # communicate's reader threads are daemon threads, so exiting is safe, and nothing beyond the
+    # direct child is ever killed (the never-kill rule stands for the rest of the tree).
+    engine = subprocess.Popen(
+        [
+            str(cli_path),
+            "run",
+            str(workflow_path),
+            "--bindings",
+            str(bindings_path),
+            "--task-dir",
+            _forward_slashes(task_dir),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     try:
-        result = subprocess.run(
-            [
-                str(cli_path),
-                "run",
-                str(workflow_path),
-                "--bindings",
-                str(bindings_path),
-                "--task-dir",
-                _forward_slashes(task_dir),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=outer_deadline_seconds,
-        )
+        engine_stdout, engine_stderr = engine.communicate(timeout=outer_deadline_seconds)
     except subprocess.TimeoutExpired as ex:
-        pid = getattr(ex, "pid", None)
-        pid_str = str(pid) if pid is not None else "unavailable"
         print(
             f"\n[dispatch.py] ERROR: outer deadline expired after {outer_deadline_minutes}m ({outer_deadline_seconds}s). "
-            f"Engine PID: {pid_str}.",
+            f"Engine PID: {engine.pid}. Killing the engine process (only the direct child).",
             file=sys.stderr,
         )
+        engine.kill()
+        try:
+            engine_stdout, engine_stderr = engine.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            print(
+                "[dispatch.py] pipes still held 15s after the kill -- some surviving process "
+                "inherited the engine's output handles (#767's measured shape). Abandoning the "
+                "read; output captured so far follows.",
+                file=sys.stderr,
+            )
+            engine_stdout = ex.stdout if isinstance(ex.stdout, str) else None
+            engine_stderr = ex.stderr if isinstance(ex.stderr, str) else None
         print(
             f"[dispatch.py] flow.jsonl ({log_path}) holds whatever the engine recorded prior to expiry.",
             file=sys.stderr,
         )
-        if ex.stdout:
-            stdout_text = ex.stdout if isinstance(ex.stdout, str) else ex.stdout.decode("utf-8", errors="replace")
-            print(stdout_text, end="")
+        if engine_stdout:
+            print(engine_stdout, end="")
         _print_workspace_truth(working_directory, head_before)
-        if ex.stderr:
-            stderr_text = ex.stderr if isinstance(ex.stderr, str) else ex.stderr.decode("utf-8", errors="replace")
-            print(stderr_text, file=sys.stderr, end="")
+        if engine_stderr:
+            print(engine_stderr, file=sys.stderr, end="")
         _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
         return 1
+
+    result = subprocess.CompletedProcess(engine.args, engine.returncode, engine_stdout, engine_stderr)
 
     print(result.stdout, end="")
     _print_workspace_truth(working_directory, head_before)
