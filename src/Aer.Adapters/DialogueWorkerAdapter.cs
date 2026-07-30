@@ -57,8 +57,9 @@ namespace Aer.Adapters;
 /// unlike <see cref="ClaudeWorkerAdapter"/>/<see cref="GeminiWorkerAdapter"/>, this adapter needs
 /// neither stdin redirection (the dialogue executable never reads <c>Console.In</c> — its
 /// <c>Program.cs</c> is argument-driven only) nor Windows' newline-collapsing (its two arguments
-/// are never multi-line), and Windows tokens are still never pre-quoted into one string, for the
-/// identical reason <see cref="ClaudeWorkerAdapter"/>'s remarks record.
+/// are never multi-line), and args stay a token list end to end — never pre-quoted into one
+/// command-line string — the same shape <see cref="ClaudeWorkerAdapter"/>'s <c>Resolve</c> builds
+/// in code (its remarks carry no prose about this; the code is the record).
 /// </para>
 /// </remarks>
 public sealed class DialogueWorkerAdapter : IWorkerAdapter
