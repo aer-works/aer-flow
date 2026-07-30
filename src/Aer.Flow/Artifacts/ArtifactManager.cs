@@ -23,6 +23,15 @@ public static class ArtifactManager
     public const string PromptFileName = "prompt.txt";
 
     /// <summary>
+    /// The directory under a task directory that every artifact root is built from (§16) — the same
+    /// shared-constant reasoning as <see cref="PromptFileName"/>: every layer that composes
+    /// <c>{taskDirectory}/artifacts</c> must agree on the segment exactly (#773). Tests deliberately
+    /// keep restating the literal instead of reading this back: they pin the on-disk contract, which
+    /// a change to this constant must break loudly, not follow silently.
+    /// </summary>
+    public const string ArtifactsDirectoryName = "artifacts";
+
+    /// <summary>
     /// Creates (if needed) and returns <c>{artifactsRootPath}/execution_{executionId}</c> — the
     /// immutable directory this execution's outputs will be written into (§16). Addressing the
     /// directory by <see cref="ExecutionId"/> rather than a separately tracked sequence number is

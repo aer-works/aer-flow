@@ -212,7 +212,7 @@ public static class StepItemProjector
         Action<StepItemViewModel> select,
         IReadOnlyDictionary<string, string>? workerAdapters = null)
     {
-        var artifactsRootPath = Path.Combine(taskDirectoryPath, "artifacts");
+        var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
         var pausedByStepId = pausedSteps.ToDictionary(paused => paused.StepId);
         var executionsByStepId = projection.Lineage.Executions
             .Where(execution => execution.StepId is not null)

@@ -32,7 +32,7 @@ public static class FlowStateReporter
 
         output.WriteLine($"Workflow status: {result.State.Status}");
         var artifactsRootPath = result.TaskDirectoryPath is not null
-            ? Path.Combine(result.TaskDirectoryPath, "artifacts")
+            ? Path.Combine(result.TaskDirectoryPath, ArtifactManager.ArtifactsDirectoryName)
             : null;
 
         foreach (var step in result.State.Steps)
@@ -81,8 +81,7 @@ public static class FlowStateReporter
                 var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, step.LatestExecutionId.Value);
                 foreach (var outputName in stepDef.Outputs)
                 {
-                    var outputPath = Path.GetFullPath(Path.Combine(outputDirectory, outputName));
-                    output.WriteLine($"  {outputName} -> {outputPath}");
+                    output.WriteLine($"  {outputName} -> {Path.Combine(outputDirectory, outputName)}");
                 }
             }
         }

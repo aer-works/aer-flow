@@ -124,7 +124,7 @@ public sealed partial class HomeViewModel : ObservableObject
             {
                 previewFileName = execution.OutputFiles[0];
                 var outputDirectory = ArtifactManager.ResolveOutputDirectory(
-                    Path.Combine(taskDirectoryPath, "artifacts"), executionId);
+                    Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName), executionId);
                 try
                 {
                     var content = File.ReadAllText(Path.Combine(outputDirectory, previewFileName));

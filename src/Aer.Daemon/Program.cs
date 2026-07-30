@@ -799,7 +799,7 @@ namespace Aer.Daemon
                     }
 
                     var outputDir = ArtifactManager.ResolveOutputDirectory(
-                        Path.Combine(request.DirectoryPath, "artifacts"),
+                        Path.Combine(request.DirectoryPath, ArtifactManager.ArtifactsDirectoryName),
                         referencedExecution.ExecutionId);
                     var candidatePath = Path.Combine(outputDir, request.ArtifactReference.FileName);
                     if (File.Exists(candidatePath))
@@ -977,7 +977,7 @@ namespace Aer.Daemon
                 }
 
                 var outputDirectory = ArtifactManager.ResolveOutputDirectory(
-                    Path.Combine(directoryPath, "artifacts"), execution.ExecutionId);
+                    Path.Combine(directoryPath, ArtifactManager.ArtifactsDirectoryName), execution.ExecutionId);
 
                 try
                 {
@@ -1821,7 +1821,7 @@ namespace Aer.Daemon
 
                         var snapshotPath = Path.Combine(directoryPath, "snapshot.json");
                         var flowLogPath = Path.Combine(directoryPath, "flow.jsonl");
-                        var artifactsPath = Path.Combine(directoryPath, "artifacts");
+                        var artifactsPath = Path.Combine(directoryPath, ArtifactManager.ArtifactsDirectoryName);
                         if (File.Exists(snapshotPath))
                         {
                             File.Delete(snapshotPath);
@@ -1908,7 +1908,7 @@ namespace Aer.Daemon
                 var latestExecution = finalProj.Lineage.Executions.LastOrDefault(ex => ex.StepId?.Value == InteractiveSessionMaterializer.DefaultStepId);
                 if (latestExecution != null)
                 {
-                    var outputDir = ArtifactManager.ResolveOutputDirectory(Path.Combine(directoryPath, "artifacts"), latestExecution.ExecutionId);
+                    var outputDir = ArtifactManager.ResolveOutputDirectory(Path.Combine(directoryPath, ArtifactManager.ArtifactsDirectoryName), latestExecution.ExecutionId);
                     var responseFile = Path.Combine(outputDir, InteractiveSessionMaterializer.DefaultOutputFileName);
                     if (File.Exists(responseFile))
                     {

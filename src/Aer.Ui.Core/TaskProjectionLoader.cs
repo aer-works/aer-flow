@@ -51,7 +51,7 @@ public static class TaskProjectionLoader
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
-    private const string ArtifactsDirectoryName = "artifacts";
+    private const string ArtifactsDirectoryName = Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="InvalidTaskDirectoryException">
     /// <paramref name="taskDirectoryPath"/> has no persisted snapshot — UI spec §3.1's

@@ -1,4 +1,5 @@
 using Aer.Adapters;
+using Aer.Flow.Artifacts;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
@@ -18,7 +19,7 @@ public static class CancelCommand
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
-    private const string ArtifactsDirectoryName = "artifacts";
+    private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
     /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
