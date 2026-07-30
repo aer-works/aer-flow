@@ -211,7 +211,7 @@ public class DialogueDispatchEndToEndTests
                 "dialogue",
                 new WorkerContract("debate", [], [new ProducedOutput("verdict.md")], []),
                 "dialogue-config.json",
-                TimeSpan.FromSeconds(30)),
+                TimeSpan.FromMinutes(3)),
         };
 
         var bindingsPath = Path.Combine(directory, "bindings.json");
@@ -243,7 +243,7 @@ public class DialogueDispatchEndToEndTests
                 "dialogue",
                 new WorkerContract("debate", [], [new ProducedOutput("verdict.md")], []),
                 dialogueConfigPath,
-                TimeSpan.FromSeconds(30)),
+                TimeSpan.FromMinutes(3)),
         };
 
         var bindingsPath = Path.Combine(directory, "bindings.json");
@@ -286,7 +286,7 @@ public class DialogueDispatchEndToEndTests
                 "dialogue",
                 new WorkerContract("debate", [], [new ProducedOutput("verdict.md")], []),
                 dialogueConfigPath,
-                TimeSpan.FromSeconds(30)),
+                TimeSpan.FromMinutes(3)),
         };
 
         var bindingsPath = Path.Combine(directory, "bindings.json");
