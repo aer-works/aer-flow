@@ -72,8 +72,13 @@ public static class FlowStateReporter
                 output.WriteLine($"  {step.StepId}: {step.Status}{reasonSuffix}");
             }
 
-            // #740: At settle, aer run prints one line per produced output of each succeeded execution: output name -> absolute path.
-            if (step.Status == StepStatus.Succeeded &&
+            // #740: At settle, aer run prints one line per produced output of each succeeded execution:
+            // output name -> absolute path. A Paused step whose underlying outcome Succeeded — the
+            // ready-for-review approval gate — prints them too: that is exactly the moment a person
+            // wants to open what the worker produced.
+            var executionSucceeded = step.Status == StepStatus.Succeeded ||
+                (step.Status == StepStatus.Paused && step.PausedOutcome == StepStatus.Succeeded);
+            if (executionSucceeded &&
                 step.LatestExecutionId is not null &&
                 artifactsRootPath is not null &&
                 stepDefByStepId.TryGetValue(step.StepId, out var stepDef))

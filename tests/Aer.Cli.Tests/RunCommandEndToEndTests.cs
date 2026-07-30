@@ -454,7 +454,7 @@ public class RunCommandEndToEndTests
                 ["fail_worker"] = new WorkerBindingConfigEntry(
                     "shell",
                     new WorkerContract("fail_worker", [], [new ProducedOutput("fail_out")], []),
-                    OperatingSystem.IsWindows() ? "exit 1" : "exit 1",
+                    "exit 1",
                     TimeSpan.FromSeconds(30)),
             };
 
