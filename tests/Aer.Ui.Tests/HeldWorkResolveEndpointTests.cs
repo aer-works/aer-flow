@@ -70,11 +70,15 @@ public class HeldWorkResolveEndpointTests : IAsyncLifetime
         }
     }
 
-    private async Task<HeldWorkRef> DispatchMemoryProposalAsync(string operation = "add", string targetPath = "fact.md")
+    private async Task<HeldWorkRef> DispatchMemoryProposalAsync(
+        string operation = "add", string targetPath = "fact.md", string captureName = "proposal-1.json")
     {
         var captureDir = Path.Combine(_roomDirectory, "artifacts", "execution_1", "memory-proposals");
         Directory.CreateDirectory(captureDir);
-        var captureFile = Path.Combine(captureDir, "proposal-1.json");
+
+        // The capture path IS the HeldWorkRef, so a caller dispatching more than one proposal must
+        // vary this or the second dispatch collides with the first's still-open ref.
+        var captureFile = Path.Combine(captureDir, captureName);
         var content = operation == "delete" ? "null" : "\"the fact\"";
         await File.WriteAllTextAsync(
             captureFile,
@@ -90,6 +94,52 @@ public class HeldWorkResolveEndpointTests : IAsyncLifetime
             "operator", reader, writer, TestContext.Current.CancellationToken);
 
         return @ref;
+    }
+
+    /// <summary>
+    /// #857's harness half. Every other test in this class resolves against a daemon whose
+    /// <c>RoomWakeBridge</c> is dormant — it stays asleep until something calls
+    /// <c>/api/rooms/watch</c>, and no resolve test did. So the endpoint's behaviour with a live
+    /// sweep taking the same room lock on a 500ms tick was unshipped-as-if-covered: the suite was
+    /// green on a configuration production never runs in.
+    /// <para>
+    /// This arms the watch first, then resolves several times while the bridge is genuinely
+    /// ticking. It deliberately does <b>not</b> assert that a collision occurred — a real 500ms
+    /// tick cannot be made to collide on demand, and a test that needed it to would be the timed
+    /// race this issue is about. The deterministic proof that a held lock is waited out rather than
+    /// refused lives in <c>ConcurrencyGuardTests</c> and <c>MemoryProposalResolutionTests</c>. What
+    /// this adds is the configuration: with the bridge live, resolve must never come back 409.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Resolving_while_the_room_wake_bridge_is_watching_never_returns_conflict()
+    {
+        var watchResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/rooms/watch",
+            new { RoomDirectoryPath = _roomDirectory },
+            TestContext.Current.CancellationToken);
+        Assert.True(watchResponse.IsSuccessStatusCode, "Could not arm the room watch, so the bridge never ticked.");
+
+        // Several resolves spread across more than one 500ms sweep interval, so the window the
+        // sweep holds the lock in is actually spanned rather than stepped over once.
+        for (var i = 0; i < 6; i++)
+        {
+            var @ref = await DispatchMemoryProposalAsync(
+                targetPath: $"fact-{i}.md", captureName: $"proposal-sweep-{i}.json");
+
+            var response = await _client.PostAsJsonAsync(
+                $"{_baseUrl}/api/rooms/held-work/resolve",
+                new ResolveHeldWorkRequest(_roomDirectory, @ref.Value, "approve"),
+                TestContext.Current.CancellationToken);
+
+            Assert.False(
+                response.StatusCode == System.Net.HttpStatusCode.Conflict,
+                $"Resolve {i} came back 409 with the wake bridge watching -- an operator's approve lost a "
+                + "coin-flip to a routine sweep, which is exactly #857.");
+            Assert.True(response.IsSuccessStatusCode);
+
+            await Task.Delay(120, TestContext.Current.CancellationToken);
+        }
     }
 
     [Fact]

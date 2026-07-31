@@ -93,6 +93,55 @@ public class MemoryProposalResolutionTests : IDisposable
         Assert.Equal(HeldWorkStatus.Resolved, finalState.HeldWork[@ref].Status);
     }
 
+    /// <summary>
+    /// #857, the operator-visible half: an approve issued while a background sweep holds the room
+    /// lock must succeed once the sweep lets go, not bounce with a 409. <c>RoomWakeBridge</c> takes
+    /// this same lock on a 500ms tick, so before this fix an operator's click could be refused for
+    /// no reason but timing, with nothing to do about it except click again.
+    /// <para>
+    /// The sweep is not run here — a real 500ms tick would make this a race, and a test for a
+    /// timing defect must not itself be timed. The lock is held directly instead, which is exactly
+    /// what the sweep does to this path, and released from a dedicated thread so pool pressure
+    /// cannot move the release. Elapsed time asserts the hold was genuinely contended, so a run
+    /// that never overlapped fails rather than passing quietly.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Approving_while_a_sweep_holds_the_room_lock_waits_rather_than_refusing()
+    {
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        var @ref = await DispatchMemoryProposalAsync(reader, writer);
+
+        var hold = TimeSpan.FromMilliseconds(250);
+        var holder = ConcurrencyGuard.Acquire(_tempDirectory);
+        var release = new Thread(() =>
+        {
+            Thread.Sleep(hold);
+            holder.Dispose();
+        })
+        {
+            IsBackground = true,
+            Name = "aer-857-sweep",
+        };
+
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        release.Start();
+
+        var state = await MemoryProposalResolution.ResolveAsync(
+            _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken);
+
+        elapsed.Stop();
+        release.Join(TimeSpan.FromSeconds(10));
+
+        Assert.True(
+            elapsed.Elapsed >= hold,
+            $"Resolve completed in {elapsed.ElapsedMilliseconds}ms, inside the {hold.TotalMilliseconds}ms hold -- " +
+            "the room lock was never actually contended, so this proves nothing.");
+        Assert.Equal(HeldWorkStatus.Resolved, state.HeldWork[@ref].Status);
+        Assert.Equal("the fact", await File.ReadAllTextAsync(Path.Combine(_memoryRoot, "fact.md"), TestContext.Current.CancellationToken));
+    }
+
     /// <summary>Approval of a memory-proposal-shaped item both applies the write and resolves the held-work item.</summary>
     [Fact]
     public async Task Approving_a_memory_proposal_applies_it_and_resolves_the_held_work()

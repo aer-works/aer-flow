@@ -40,15 +40,76 @@ public sealed class ConcurrencyGuard : IDisposable
         }
         catch (IOException ex)
         {
-            throw new WorkflowLockedException(
-                $"Task directory '{taskDirectoryPath}' is already locked by another Flow instance — most " +
-                "likely a live 'aer run' pump. A live in-flight execution can only be reached from that " +
-                "process itself (Ctrl+C); 'aer cancel' from a second terminal reaches only idle tasks — a " +
-                "crashed pump's orphaned executions, or pending non-process work.", ex);
+            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath), ex);
         }
 
         return new ConcurrencyGuard(lockStream);
     }
+
+    /// <summary>
+    /// Acquires the lock like <see cref="Acquire"/>, but retries a lost race until
+    /// <paramref name="within"/> elapses instead of failing on the first attempt.
+    /// <para>
+    /// This is opt-in, and <see cref="Acquire"/> deliberately stays fail-fast: for an
+    /// <c>aer run</c> pump, losing the lock means another pump owns this task and waiting for it is
+    /// exactly the wrong behaviour. What this exists for is the opposite case — a holder known to
+    /// let go in milliseconds, where failing fast turns a routine overlap into a user-visible
+    /// error. #857: the room sweep takes this same lock every 500ms, so an operator's
+    /// approve/reject could lose a coin-flip to a background tick and be refused, with nothing
+    /// wrong and nothing to retry but the click.
+    /// </para>
+    /// <para>
+    /// Bounded rather than indefinite on purpose. A genuinely stuck holder must still surface as a
+    /// failure; the budget is sized to cover a routine overlap, not to hide one that is not
+    /// routine.
+    /// </para>
+    /// </summary>
+    /// <exception cref="WorkflowLockedException">
+    /// The lock was still held when <paramref name="within"/> ran out.
+    /// </exception>
+    public static ConcurrencyGuard AcquireWithin(string taskDirectoryPath, TimeSpan within)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+
+        Directory.CreateDirectory(taskDirectoryPath);
+        var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
+        var deadline = DateTime.UtcNow + within;
+
+        while (true)
+        {
+            try
+            {
+                return new ConcurrencyGuard(
+                    new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                // Thread.Sleep rather than Task.Delay: the caller may be on a starved pool, and a
+                // retry that cannot be scheduled is a retry that does not happen.
+                Thread.Sleep(TimeSpan.FromMilliseconds(25));
+            }
+            catch (IOException ex)
+            {
+                throw new WorkflowLockedException(
+                    $"{BuildLockedMessage(taskDirectoryPath)} Still held after waiting " +
+                    $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.", ex);
+            }
+        }
+    }
+
+    /// <summary>
+    /// #857: the message no longer asserts a single cause. It used to name "a live 'aer run' pump"
+    /// as the likely holder, which predates rooms and is simply wrong in the case an operator is
+    /// most likely to hit — a background room sweep holding the lock for a few milliseconds. A
+    /// lock file cannot tell us who won it, so the honest message names the possibilities rather
+    /// than picking one and sending the reader after it.
+    /// </summary>
+    private static string BuildLockedMessage(string taskDirectoryPath) =>
+        $"Task directory '{taskDirectoryPath}' is already locked by another Flow instance. That is " +
+        "either a live 'aer run' pump, or a background room sweep that takes the same lock briefly " +
+        "on every tick. A live in-flight execution can only be reached from the pump process itself " +
+        "(Ctrl+C); 'aer cancel' from a second terminal reaches only idle tasks — a crashed pump's " +
+        "orphaned executions, or pending non-process work.";
 
     /// <summary>
     /// Reports whether another live holder currently owns the lock for

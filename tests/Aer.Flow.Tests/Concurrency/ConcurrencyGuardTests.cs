@@ -78,4 +78,129 @@ public class ConcurrencyGuardTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    /// <summary>
+    /// #857: the behaviour the whole issue turns on — a holder that lets go quickly is waited out
+    /// rather than refused.
+    /// <para>
+    /// Neither side runs on the thread pool. The release is a dedicated thread whose
+    /// <c>Thread.Sleep</c> wakes on time under any pool pressure, and <c>AcquireWithin</c>'s own
+    /// retry uses <c>Thread.Sleep</c> for the same reason. A contention test scheduled on a pool is
+    /// a test that stops discriminating exactly when the machine is busy, which is the condition it
+    /// exists for.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void AcquireWithin_waits_out_a_holder_that_releases_inside_the_budget()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var hold = TimeSpan.FromMilliseconds(250);
+        try
+        {
+            var holder = ConcurrencyGuard.Acquire(taskDirectory);
+            var release = new Thread(() =>
+            {
+                Thread.Sleep(hold);
+                holder.Dispose();
+            })
+            {
+                IsBackground = true,
+                Name = "aer-857-release",
+            };
+
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            release.Start();
+
+            using (ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromSeconds(5)))
+            {
+                elapsed.Stop();
+            }
+
+            release.Join(TimeSpan.FromSeconds(10));
+
+            Assert.True(
+                elapsed.Elapsed >= hold,
+                $"Acquired in {elapsed.ElapsedMilliseconds}ms, inside the {hold.TotalMilliseconds}ms hold -- " +
+                "the lock was never actually contended, so this proves nothing.");
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    /// <summary>
+    /// Other polarity: the wait is BOUNDED. A holder that never lets go must still surface as a
+    /// failure rather than being waited on forever — a stuck holder is a real problem and hiding it
+    /// would be the opposite of the fix.
+    /// </summary>
+    [Fact]
+    public void AcquireWithin_still_throws_when_the_holder_outlasts_the_budget()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+
+            var exception = Assert.Throws<WorkflowLockedException>(
+                () => ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromMilliseconds(100)));
+
+            Assert.Contains("not a routine overlap", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    /// <summary>
+    /// The third polarity, and the one that guards the blast radius: <see cref="ConcurrencyGuard.Acquire"/>
+    /// stays FAIL-FAST. #857 adds waiting for the operator-facing path only; an <c>aer run</c> pump
+    /// that loses this lock means another pump owns the task, and waiting for it is exactly wrong.
+    /// </summary>
+    [Fact]
+    public void Acquire_remains_fail_fast_and_does_not_wait()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            elapsed.Stop();
+
+            Assert.True(
+                elapsed.Elapsed < TimeSpan.FromMilliseconds(500),
+                $"Acquire took {elapsed.ElapsedMilliseconds}ms -- it is meant to refuse immediately, not wait.");
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    /// <summary>
+    /// #857's second half. The reasoning lives on <c>ConcurrencyGuard.BuildLockedMessage</c>; what
+    /// is pinned here is that the old single-cause wording cannot come back, in either direction —
+    /// the discarded claim is absent and the missing one is present.
+    /// </summary>
+    [Fact]
+    public void The_locked_message_does_not_blame_a_pump_as_the_single_likely_cause()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+
+            var exception = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+
+            Assert.DoesNotContain("most likely a live 'aer run' pump", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("room sweep", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }

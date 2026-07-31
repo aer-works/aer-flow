@@ -38,6 +38,14 @@ public static class MemoryProposalResolution
     public const string ApprovedEventType = "operator-approved";
     public const string RejectedEventType = "operator-rejected";
 
+    /// <summary>
+    /// #857: how long a resolve waits out a contended room lock before refusing. Sized against the
+    /// holder it actually loses to — <c>RoomWakeBridge</c>'s sweep, which takes the lock on a 500ms
+    /// tick and holds it for milliseconds — so two seconds covers many consecutive ticks with room
+    /// to spare, while still surfacing a holder that is genuinely stuck rather than merely busy.
+    /// </summary>
+    internal static readonly TimeSpan SweepContentionBudget = TimeSpan.FromSeconds(2);
+
     public static async Task<RoomState> ResolveAsync(
         string roomDirectoryPath,
         HeldWorkRef @ref,
@@ -56,7 +64,14 @@ public static class MemoryProposalResolution
         // (e.g. reject-then-approve, or a retried approve) could apply a memory-proposal write
         // even though the item was already resolved -- the apply ran before
         // RoomMutationInterface's own already-resolved guard ever got a chance to refuse it.
-        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+        //
+        // #857: acquired WITH A WAIT rather than fail-fast, because this is the operator-facing
+        // path. RoomWakeBridge sweeps the same room every 500ms and takes this same lock, so a
+        // fail-fast acquire here turns a routine background tick into a refused approve/reject that
+        // the operator can only respond to by clicking again. The sweep's hold is milliseconds, so
+        // a short wait converts a coin-flip into a certainty. Still bounded: a genuinely stuck
+        // holder must surface, not be waited on forever.
+        using var guard = ConcurrencyGuard.AcquireWithin(roomDirectoryPath, SweepContentionBudget);
 
         var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
         var state = RoomProjector.Project(existingEvents);
