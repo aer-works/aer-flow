@@ -278,10 +278,8 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         await WaitForCompletionsAsync(directoryB, expectedCompletions: 1);
 
         // The discriminator is the GAP between the two dispatches' start stamps, not total wall
-        // time: global serialisation forces the second start to wait out the first's full
-        // DispatchDelay hold (gap >= 900ms by construction), while true concurrency leaves only
-        // spawn jitter -- see SlowCollisionStubAdapter.StartStampFilePrefix for why the earlier
-        // wall-clock bound (1.5x DispatchDelay) failed a genuinely concurrent CI run.
+        // time -- why, and why the earlier 1.5x-DispatchDelay wall-clock bound failed a genuinely
+        // concurrent CI run, is SlowCollisionStubAdapter.StartStampFilePrefix's doc.
         var startA = ReadDispatchStartUtc(directoryA);
         var startB = ReadDispatchStartUtc(directoryB);
         var gap = (startA - startB).Duration();
