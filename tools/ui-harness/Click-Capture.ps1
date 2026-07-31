@@ -33,7 +33,7 @@ public class Clk {
 [Clk]::SetProcessDPIAware() | Out-Null
 
 $proc = Get-Process | Where-Object { $_.MainWindowTitle -like '*Baton*' } | Select-Object -First 1
-if (-not $proc) { Write-Output "NO AER WINDOW"; exit 1 }
+if (-not $proc) { Write-Output "NO BATON WINDOW"; exit 1 }
 $h = $proc.MainWindowHandle
 
 $r = New-Object Clk+RECT
