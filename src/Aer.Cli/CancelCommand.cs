@@ -34,9 +34,10 @@ public static class CancelCommand
     /// <paramref name="options"/>'s <c>ExecutionId</c> was never admitted for execution.
     /// </exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock — most likely a live
-    /// <c>aer run</c> pump; see that exception's message for how to reach an in-flight execution
-    /// instead.
+    /// Another Flow instance already holds this task directory's lock; see that exception's message
+    /// for which holders are possible and how to reach an in-flight execution instead. (#857: this
+    /// used to paraphrase the message as "most likely a live <c>aer run</c> pump" — a single cause
+    /// the message itself no longer asserts, and the paraphrase is what would have gone stale.)
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
     /// #816, shared with every other command building a <c>FlowEventLogWriter</c> — see that

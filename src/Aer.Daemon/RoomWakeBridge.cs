@@ -57,8 +57,18 @@ public sealed record RoomWakeTick(IReadOnlyList<RoomWake> Wakes, IReadOnlyList<L
 /// Daemon-hosted derivation of the room's wake set (#799): watches <c>room.jsonl</c> for appends
 /// by length-poll (<c>Aer.Cli.StatusCommand</c>'s own precedent — filesystem change notifications
 /// are unreliable cross-platform), recomputes which held-work refs are unresolved, and re-probes
-/// each of those lanes' <c>flow.jsonl</c> every tick via <see cref="LaneTerminalProbe"/> — never
-/// taking the room's or any lane's <see cref="Aer.Flow.Concurrency.ConcurrencyGuard"/>. Holds no
+/// each of those lanes' <c>flow.jsonl</c> every tick via <see cref="LaneTerminalProbe"/> — taking no
+/// lane's <see cref="Aer.Flow.Concurrency.ConcurrencyGuard"/> for any of it.
+/// <para>
+/// #878: that used to read "never taking the room's or any lane's" guard, and the room half was
+/// false. The same tick also sweeps for new memory proposals, and escalating one goes through
+/// <c>RoomMutationInterface.DispatchHeldWorkAsync</c>, which <b>does</b> take the room's guard. It is
+/// conditional — a capture file already in the projected state is skipped, so an idle tick locks
+/// nothing — which is how the claim survived: it looks true in steady state and is wrong at exactly
+/// the moment the lock is contended. #857's fix was written against the wrong belief this sentence
+/// invited.
+/// </para>
+/// Holds no
 /// state worth crash-proofing: <see cref="RoomWakeBridgeState.CurrentWakes"/> is fully
 /// recomputed, never incrementally updated, so a restarted bridge reproduces the identical set.
 /// </summary>
