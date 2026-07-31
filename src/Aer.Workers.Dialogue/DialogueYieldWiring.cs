@@ -24,10 +24,21 @@ internal static class DialogueYieldWiring
     {
         var hostDllPath = Path.Combine(AppContext.BaseDirectory, "Aer.Mcp.Host.dll");
         var wired = new WiredParticipant[participants.Count];
+        var seenSlugs = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < participants.Count; i++)
         {
             var participant = participants[i];
             var slug = SanitizeForFileName(participant.Role);
+            if (!seenSlugs.Add(slug))
+            {
+                // Two participants sharing a Role (or two Roles that sanitize to the same slug) would
+                // otherwise share one capture file path, making a yield call from either
+                // indistinguishable from the other's -- exactly the attribution guarantee this
+                // mechanism exists to provide.
+                throw new DialogueWorkerConfigException(
+                    $"Two or more participants share the role '{participant.Role}' (or sanitize to the same file-name slug '{slug}') -- yield attribution requires every participant's role to be distinct.");
+            }
+
             var captureFilePath = Path.Combine(outputDirectory, $"yield-capture-{slug}.json");
             wired[i] = new WiredParticipant(WireOne(participant, slug, outputDirectory, hostDllPath, captureFilePath), captureFilePath);
         }

@@ -14,4 +14,12 @@
     <ProjectReference Include="..\Aer.Mcp.Host\Aer.Mcp.Host.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- DialogueYieldWiring's claude/agy branches only run against real vendor Commands, which no
+         DialogueRunner-level test spawns (they use stub-claude/stub-gemini test scripts, which
+         deliberately bypass the exact-name match), so exposing internals is what lets the wiring
+         logic itself (flags, JSON shape, workspace layout) get a direct test. -->
+    <InternalsVisibleTo Include="Aer.Workers.Dialogue.Tests" />
+  </ItemGroup>
+
 </Project>
