@@ -17,7 +17,8 @@ page-at-a-time (a summarizing fetch is lossy — see `documentation-lessons.md` 
 
 `pixi run vendor-survey` (see `tools/vendor-survey/`) rebuilds this: **249 pages / 7.0 MB →
 1,475 unique constraint sentences**, tagged against AER's open questions with page+line provenance,
-plus a ledger giving **every page a disposition** so coverage is checkable rather than asserted.
+plus an audit register giving **every page a disposition** so coverage is checkable rather than
+asserted.
 
 | disposition | pages | meaning |
 |---|---|---|
@@ -25,7 +26,7 @@ plus a ledger giving **every page a disposition** so coverage is checkable rathe
 | `SCAN-ONLY` | 123 | touches an open question but thin; constraints harvested |
 | `NO-SIGNAL` | 7 | no open-question vocabulary at all |
 
-**The per-page `·` tables below are superseded by the ledger** and are kept only for the pages whose
+**The per-page `·` tables below are superseded by the audit register** and are kept only for the pages whose
 *contents* are summarized here.
 
 **A doc page changing is a reason to re-verify, not a reason to believe the new page.** Every **V**
@@ -46,7 +47,7 @@ than a model's account of what it did. A `FAIL` means a behaviour a decision res
 
 ## A. `claude` — documentation coverage
 
-Index: `https://code.claude.com/docs/llms.txt` — **172 pages, all mirrored and swept** (`pixi run vendor-survey`). The tier lists below are a manual triage and do not track the ledger's `PENDING-DEPTH` scoring exactly — **trust the ledger, not the tiers**, when the two disagree.
+Index: `https://code.claude.com/docs/llms.txt` — **172 pages, all mirrored and swept** (`pixi run vendor-survey`). The tier lists below are a manual triage and do not track the audit register's `PENDING-DEPTH` scoring exactly — **trust the audit register, not the tiers**, when the two disagree.
 
 ### Read
 

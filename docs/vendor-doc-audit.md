@@ -586,7 +586,7 @@ false of what AER shipped.
 ### The hook spec is inside the binary, and it settles the command-string question (#710)
 
 `agy.exe` embeds its own complete `hooks.json` specification as plaintext. Extracted verbatim to
-`.vendor-survey/corpus/agy__hooks-embedded.md` (`agy/hooks-embedded` in the ledger) — a spec taken out
+`.vendor-survey/corpus/agy__hooks-embedded.md` (`agy/hooks-embedded` in the audit register) — a spec taken out
 of the shipped binary cannot be stale relative to that binary, which is a stronger guarantee than any
 mirrored web page here carries. Re-extract after an agy upgrade.
 
@@ -769,7 +769,7 @@ exactly the problem 0015's durable gate and the room store both have.
 raw `.md` pages; agy `llms.txt` + `sitemap.xml` → 77 server-rendered pages) and harvests sentences
 matching a fixed grammar (*skips, only, cannot, must, requires, before v, will become*) corpus-wide:
 **249 pages / 7.0 MB → 1,475 unique constraint sentences**, tagged against AER's open questions with
-page:line provenance, plus a ledger giving **every page a disposition**. 100% page coverage at ~1%
+page:line provenance, plus an audit register giving **every page a disposition**. 100% page coverage at ~1%
 of the bytes — several findings below come from `glossary`, `channels`, `chrome`, `context-window`
 and `desktop-scheduled-tasks`, pages a depth-first read would not have reached.
 

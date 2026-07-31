@@ -185,7 +185,7 @@ vendor-probe = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --out docs
 # summarizing fetch is lossy — that produced the first, wrong reading of claude's `defer`. Every
 # finding that changed a decision was one sentence sharing a recognisable grammar ("Bare mode skips
 # OAuth and keychain reads"), so this harvests that class corpus-wide: 100% page coverage at ~1% of
-# the bytes, plus a ledger giving every page a disposition so coverage is checkable, not asserted.
+# the bytes, plus an audit register giving every page a disposition so coverage is checkable, not asserted.
 #
 # Re-run on every vendor version bump — VendorProbeStalenessTests already fails when a CLI moves.
 vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
@@ -207,7 +207,7 @@ vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
 # redirected, and a run killed on a timeout loses everything it had already found.
 vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 
-# Recomputes the #527 audit's completeness ledger: for each step of the chain, the population that
+# Recomputes the #527 audit's completeness register: for each step of the chain, the population that
 # was supposed to be covered and whether every member of it carries a disposition. Exists because
 # "we read everything" is unfalsifiable -- documentation-lessons.md rule 15 says a completeness
 # claim ships with the artifact that lets someone check it. Free: reads files, starts no session.

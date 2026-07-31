@@ -69,9 +69,9 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
         {
             throw new FlowJournalHeldException(
                 $"'{logFilePath}' is held open by another process — usually this task's live " +
-                "'aer run' engine, which keeps the journal open for its whole run, though any " +
+                "'aer run' engine, which keeps the ledger open for its whole run, though any " +
                 "sibling aer command mid-append briefly holds it too. Retry once nothing else " +
-                "holds the journal; for a decision, the workflow's latest attempt must be Paused " +
+                "holds the ledger; for a decision, the workflow's latest attempt must be Paused " +
                 "with no live 'aer run' (see 'aer status').",
                 ex);
         }

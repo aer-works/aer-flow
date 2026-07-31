@@ -468,5 +468,5 @@ public static class StatusCommand
     /// </summary>
     private static string ResolveLogUpdatedAt(string logPath) => File.Exists(logPath)
         ? File.GetLastWriteTimeUtc(logPath).ToString("O")
-        : "never (no flow.jsonl yet)";
+        : "never (no ledger yet)";
 }

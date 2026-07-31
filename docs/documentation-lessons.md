@@ -176,7 +176,7 @@ the correction beside them.
 
 ### 15. Make coverage checkable, not asserted
 
-"We read the docs" is unfalsifiable. The ledger gives **every** page a disposition, so coverage is
+"We read the docs" is unfalsifiable. The audit register gives **every** page a disposition, so coverage is
 a number anyone can recompute. That's what made "31 agy pages were invisible to the harvest"
 discoverable at all.
 

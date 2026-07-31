@@ -125,6 +125,11 @@ exists to end.
 
 ## 7. The journal at HEAD
 
+**The journal's user-facing noun is "the ledger"** (lowercase;
+[0045](../docs/decisions/0045-the-product-is-baton-the-journal-is-the-ledger.md)). `flow.jsonl`
+names the storage file, not the concept — "journal" stays the engine-internal term used below and
+in code, while anything a person reads says "the ledger."
+
 One clarification the engine spec's §5.1 left open to interpretation: it names two logs
 (`events.jsonl`, `flow.jsonl`) while permitting physical consolidation so long as each event type
 keeps exactly one writer. **The tree implements the consolidation**: a single physical `flow.jsonl`
