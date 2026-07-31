@@ -1,4 +1,4 @@
-module aer-works/aer-flow/sidecar
+module aer-works/baton/sidecar
 
 go 1.26.5
 

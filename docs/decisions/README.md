@@ -60,7 +60,7 @@ fact, how it is known, and what happens to this decision if it turns out false.
 ```
 
 Note what the example does *not* contain: a row like *"`--allowedTools` bounds what a worker can
-do — assumed"*. That claim is **measured false** ([#529](https://github.com/aer-works/aer-flow/issues/529)),
+do — assumed"*. That claim is **measured false** ([#529](https://github.com/aer-works/baton/issues/529)),
 and filing a known-false fact as merely unverified is the most dangerous row this table can carry —
 it reads as pending work rather than as a broken dependency. **If a fact is false, the decision is
 already broken; say so in the decision, don't park it here.**

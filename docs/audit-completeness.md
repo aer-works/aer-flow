@@ -38,11 +38,11 @@ as done.
 
 | gap | disposition |
 |---|---|
-| `--allowedTools` does not bound a worker's capabilities | **filed — [#529](https://github.com/aer-works/aer-flow/issues/529)**, live defect. Also flipped journey J6 to *Fails* and forced 0029. |
+| `--allowedTools` does not bound a worker's capabilities | **filed — [#529](https://github.com/aer-works/baton/issues/529)**, live defect. Also flipped journey J6 to *Fails* and forced 0029. |
 | `--bare` disables hooks even via `--settings` | **already filed — #521.** Narrows the viable gate combinations; cited by 0029. |
 | A `PreToolUse` hook is the gate that always fires | **already filed — #517.** 0029 is the decision that answers it. |
-| Hooks may fail **silently** on Windows; 0029's mandatory hook rests on it | **filed and answered — [#530](https://github.com/aer-works/aer-flow/issues/530)**, closed with a measurement (`gate.broken-hook-fails-open`). They fail **open and silently**, and the assumption named the *wrong cause*: CRLF and spaces in paths both survive. Made 0029's self-check load-bearing and fixed what it must assert. |
-| SEP-1036 URL-mode elicitation is unproven end to end | **filed — [#531](https://github.com/aer-works/aer-flow/issues/531)**, permanently a human action item. |
+| Hooks may fail **silently** on Windows; 0029's mandatory hook rests on it | **filed and answered — [#530](https://github.com/aer-works/baton/issues/530)**, closed with a measurement (`gate.broken-hook-fails-open`). They fail **open and silently**, and the assumption named the *wrong cause*: CRLF and spaces in paths both survive. Made 0029's self-check load-bearing and fixed what it must assert. |
+| SEP-1036 URL-mode elicitation is unproven end to end | **filed — [#531](https://github.com/aer-works/baton/issues/531)**, permanently a human action item. |
 | `.mcp.json` project scope is approval-gated, so unusable headless | **recorded on #445**, with the twice-spawned and release-the-call constraints. |
 | `PermissionRequest` / `Notification` silent under `-p` | **fixed in design — 0030**; no issue needed, the answer was architectural. |
 | Nested subagents allowed by default; subagent inherits parent mode | **fixed in design — 0029** + carried into M27 in the plan. |

@@ -335,7 +335,7 @@ Configuration the installed engineering skills read. Written by `/setup-matt-poc
 
 ### Issue tracker
 
-GitHub issues in `aer-works/aer-flow`, via `gh`. See `docs/agents/issue-tracker.md`. Branch, commit,
+GitHub issues in `aer-works/baton`, via `gh`. See `docs/agents/issue-tracker.md`. Branch, commit,
 and PR rules stay in "Git conventions" above — that file does not restate them.
 
 ### Triage labels

@@ -78,7 +78,7 @@ that bounds the *documentation*, not reality.
 ## Decisions whose dependencies are now recorded
 
 Only 0029 and 0030 carry `Rests on` tables. 0001–0028 predate the requirement; 0031–0041 postdate
-it and simply never got one — tracked as a gap in [#589](https://github.com/aer-works/aer-flow/issues/589)
+it and simply never got one — tracked as a gap in [#589](https://github.com/aer-works/baton/issues/589)
 rather than retrofitted wholesale here, which would manufacture dependency tables from memory, the
 failure mode the requirement exists to prevent. The rule going forward: **a record acquires a
 `Rests on` table when it is next amended or created**, written from what is then known rather than

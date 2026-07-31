@@ -32,7 +32,7 @@ to the sources that already keep it, each with its own gate:
 | *why* we chose something | [`docs/decisions/`](decisions/) | numbered, immutable — superseded, never edited |
 | what the product *promises*, and whether it's met | [`spec/journeys.md`](../spec/journeys.md) | the journey tests (#313) + the reconcile gate (#314) |
 | what the *engine* does | [`spec/`](../spec/) behavioural specs | the test suite |
-| an issue's live state | the **[milestones](https://github.com/aer-works/aer-flow/milestones)** (M26–M30) / project board | GitHub |
+| an issue's live state | the **[milestones](https://github.com/aer-works/baton/milestones)** (M26–M30) / project board | GitHub |
 | what a *past* milestone shipped | [`docs/milestone-history.md`](milestone-history.md) | append-only; provenance, never authority |
 | whether a specific vendor fact is still measured/current | [`docs/vendor-capabilities.md`](vendor-capabilities.md) / `docs/vendor-*.md` | `pixi run vendor-verify` sentinels, re-runnable on demand |
 
@@ -273,7 +273,7 @@ each moves work earlier than the sequence above implies.
 
 **M26 acquires the gate, and that is the real change.** [0029](decisions/0029-the-gate-is-three-mechanisms.md)
 makes a `PreToolUse` hook **mandatory on every worker AER spawns**, not only on workers whose flow
-declares a gate — because [#529](https://github.com/aer-works/aer-flow/issues/529) measured that an
+declares a gate — because [#529](https://github.com/aer-works/baton/issues/529) measured that an
 MCP gate bounds nothing the model can reach through `Bash`. So the hook, and the startup self-check
 that proves it fires, belong to "one room, one worker" rather than to M28. This is the audit's
 largest scheduling consequence: **M26 is no longer the milestone with no permission work in it.**

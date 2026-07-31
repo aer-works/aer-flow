@@ -656,7 +656,7 @@ def step4_stale_citations():
         return None
     try:
         out = subprocess.run(
-            ["gh", "issue", "list", "--repo", "aer-works/aer-flow", "--state", "all",
+            ["gh", "issue", "list", "--repo", "aer-works/baton", "--state", "all",
              "--limit", "1000", "--json", "number,state"],
             capture_output=True, text=True, cwd=ROOT, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
