@@ -50,12 +50,23 @@ namespace Aer.Adapters;
 /// content-identity argument above applies to the loser too, not only to the skip. Measured on the
 /// same platform, and under the same "Why the retry" sharing violation, as the paragraph above.
 /// Raising <see cref="MaxAttempts"/> would have moved the threshold rather than removed it, which is
-/// why the budget itself is unchanged.
+/// why the budget itself is unchanged. That fix narrowed the window without closing it -- the probe
+/// read can lose the same race on every re-check -- and #840 measured exactly that; the
+/// post-exhaustion settle loop in <see cref="Write"/> is what finally closes it for a file that
+/// becomes readable at all.
 /// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter
 {
     private const int MaxAttempts = 5;
+
+    /// <summary>
+    /// Post-exhaustion probe count. Sleeps at most 100ms plus the probes' own reads, and only on the
+    /// path that previously threw outright (#840) -- the happy path never pays it. The cost lands on
+    /// callers as roughly doubled worst-case latency to REPORT a failure (the pre-#840 backoff
+    /// sleeps also summed to ~100ms); the success path is unchanged.
+    /// </summary>
+    private const int SettleProbes = 5;
 
     public static void Write(string path, string content)
     {
@@ -88,10 +99,10 @@ internal static class AtomicLaunchConfigWriter
 
                 // #682: a losing rename did not need to win -- if some other writer's identical
                 // content already landed, this attempt's goal is already satisfied, regardless of
-                // how many attempts remain. Checked on every failure, not only at MaxAttempts. This
-                // narrows the exhaustion window sharply rather than closing it: AlreadyHolds' own
-                // read can lose the same sharing-violation race (its catch returns false), so a
-                // herd member that keeps losing that read on every remaining attempt still throws.
+                // how many attempts remain. Checked on every failure, not only at MaxAttempts.
+                // AlreadyHolds' own read can lose the same sharing-violation race (its catch
+                // returns false); the settle loop below is what catches the herd member that
+                // loses it on every attempt (#840).
                 if (AlreadyHolds(path, content))
                 {
                     return;
@@ -99,6 +110,19 @@ internal static class AtomicLaunchConfigWriter
 
                 if (attempt >= MaxAttempts)
                 {
+                    // #840: the herd member that lost every rename AND every probe read still has
+                    // one honest way to be satisfied -- wait for the winners' renames to drain and
+                    // read again. Bounded and loud: a file that never becomes readable, or holds
+                    // someone else's content, still surfaces the original exception.
+                    for (var settle = 0; settle < SettleProbes; settle++)
+                    {
+                        Thread.Sleep(TimeSpan.FromMilliseconds(20));
+                        if (AlreadyHolds(path, content))
+                        {
+                            return;
+                        }
+                    }
+
                     throw;
                 }
 
