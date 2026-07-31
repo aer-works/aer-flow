@@ -1,3 +1,4 @@
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
@@ -49,15 +50,31 @@ public static class MemoryProposalResolution
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(writer);
 
-        var state = RoomProjector.Project(await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false));
+        // #672 review (blocking finding): the already-resolved check, the memory/ apply, and the
+        // resolve append must all happen under the SAME room lock. Checking status, releasing the
+        // lock, then applying and resolving separately left a window where a second resolve call
+        // (e.g. reject-then-approve, or a retried approve) could apply a memory-proposal write
+        // even though the item was already resolved -- the apply ran before
+        // RoomMutationInterface's own already-resolved guard ever got a chance to refuse it.
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+        var state = RoomProjector.Project(existingEvents);
         if (!state.HeldWork.TryGetValue(@ref, out var item))
         {
             throw new InvalidRoomMutationException($"HeldWorkRef '{@ref}' was not found in this room.");
         }
 
+        if (item.Status == HeldWorkStatus.Resolved)
+        {
+            throw new InvalidRoomMutationException($"HeldWorkRef '{@ref}' is already resolved.");
+        }
+
         if (approve && item.Shape == MemoryProposalEscalation.MemoryProposalShape)
         {
             // Deliberately BEFORE the resolve below -- see this class's own remarks on ordering.
+            // Safe to apply here specifically BECAUSE the status check above and this apply share
+            // the same lock hold as the append that follows -- no other resolver can interleave.
             await MemoryProposalApplier.ApplyAsync(roomDirectoryPath, @ref.Value, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -65,7 +82,7 @@ public static class MemoryProposalResolution
         var citation = new LaneJournalCitation(
             @ref.Value, new ExecutionId(@ref.Value), approve ? ApprovedEventType : RejectedEventType);
 
-        return await RoomMutationInterface.ResolveHeldWorkAsync(
-            roomDirectoryPath, @ref, citation, reader, writer, cancellationToken).ConfigureAwait(false);
+        return await RoomMutationInterface.ResolveHeldWorkLockedAsync(
+            @ref, citation, existingEvents, state, writer, cancellationToken).ConfigureAwait(false);
     }
 }

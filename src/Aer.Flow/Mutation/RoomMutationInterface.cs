@@ -105,6 +105,29 @@ public static class RoomMutationInterface
         var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
         var currentState = RoomProjector.Project(existingEvents);
 
+        return await ResolveHeldWorkLockedAsync(@ref, citation, existingEvents, currentState, writer, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The validate-and-append half of <see cref="ResolveHeldWorkAsync"/>, split out so
+    /// <see cref="MemoryProposalResolution"/> can hold the SAME <see cref="ConcurrencyGuard"/>
+    /// across its own "is this already resolved" check, its <c>memory/</c> file write, and this
+    /// append -- three steps that must not interleave with a concurrent resolver (#672 review: a
+    /// caller that checked status, released the lock, then separately called
+    /// <see cref="ResolveHeldWorkAsync"/> left a window where a second resolve could apply a
+    /// memory-proposal write before this method's own already-resolved check ever ran). Internal:
+    /// callers outside this project acquire the lock via <see cref="ResolveHeldWorkAsync"/>
+    /// instead, which still exists for every resolver that has no extra locked work to do.
+    /// </summary>
+    internal static async Task<RoomState> ResolveHeldWorkLockedAsync(
+        HeldWorkRef @ref,
+        LaneJournalCitation citation,
+        IReadOnlyList<RoomEvent> existingEvents,
+        RoomState currentState,
+        IRoomEventLogWriter writer,
+        CancellationToken cancellationToken = default)
+    {
         if (!currentState.HeldWork.TryGetValue(@ref, out var item))
         {
             throw new InvalidRoomMutationException($"HeldWorkRef '{@ref}' was not found in this room.");

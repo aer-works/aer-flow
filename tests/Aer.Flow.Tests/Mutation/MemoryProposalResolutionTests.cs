@@ -153,6 +153,54 @@ public class MemoryProposalResolutionTests : IDisposable
             _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// #672 review (blocking finding): rejecting an item and then calling approve on the SAME ref
+    /// must refuse -- it is already resolved -- and must not write memory/ on the way to refusing.
+    /// Before the fix this applied the proposal and only then threw, leaving the write behind
+    /// despite the 400.
+    /// </summary>
+    [Fact]
+    public async Task Approving_after_a_reject_on_the_same_ref_refuses_and_writes_nothing()
+    {
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        var @ref = await DispatchMemoryProposalAsync(reader, writer);
+
+        await MemoryProposalResolution.ResolveAsync(
+            _tempDirectory, @ref, approve: false, reader, writer, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(() => MemoryProposalResolution.ResolveAsync(
+            _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken));
+
+        Assert.False(File.Exists(Path.Combine(_memoryRoot, "fact.md")));
+    }
+
+    /// <summary>
+    /// #672 review: approving an 'edit' proposal, then a human hand-edits the resulting fact file,
+    /// then a second approve call against the SAME already-resolved ref must refuse and must not
+    /// clobber the hand edit.
+    /// </summary>
+    [Fact]
+    public async Task Re_approving_an_already_resolved_edit_refuses_and_does_not_clobber_a_hand_edit()
+    {
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        var @ref = await DispatchMemoryProposalAsync(reader, writer);
+
+        await MemoryProposalResolution.ResolveAsync(
+            _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(_memoryRoot, "fact.md"), "operator edited by hand", TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(() => MemoryProposalResolution.ResolveAsync(
+            _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            "operator edited by hand",
+            await File.ReadAllTextAsync(Path.Combine(_memoryRoot, "fact.md"), TestContext.Current.CancellationToken));
+    }
+
     /// <summary>A non-memory-proposal shape resolves through the same surface with no filesystem side effect.</summary>
     [Fact]
     public async Task Approving_a_non_memory_proposal_shape_resolves_without_touching_memory()
