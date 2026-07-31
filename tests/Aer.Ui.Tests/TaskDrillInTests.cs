@@ -251,6 +251,93 @@ public class TaskDrillInTests
         }
     }
 
+    /// <summary>
+    /// #868: selecting critic fires an auto-preview of its first output (review.md) off the
+    /// unawaited <see cref="MainWindow.ShowSelectedStepFirstOutputAsync"/> fire-and-forget
+    /// subscription; an explicit preview of a different file (prompt.txt) issued right after used to
+    /// race it — whichever <c>File.ReadAllTextAsync</c> finished last won, regardless of which the
+    /// user actually asked for last. The original CI failure (#868) caught this only by luck, on two
+    /// small files whose read order was not controlled. Made reliably red here by making review.md
+    /// large enough that its read is still in flight (or completes only shortly after) the explicit,
+    /// tiny prompt.txt read — the same technique #868 itself suggests — so the auto-preview's
+    /// completion is what's actually being raced against, not scheduler luck.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Explicit_preview_of_a_different_file_survives_a_slower_in_flight_auto_preview()
+    {
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        await File.WriteAllTextAsync(
+            Path.Combine(outputDirectory, "review.md"),
+            new string('c', 150_000_000),
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(outputDirectory, "prompt.txt"), "Review the plan.", TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            // Needs-you-first auto-selects critic, which fires the (unawaited) auto-preview of the
+            // huge review.md off the SelectedStep PropertyChanged handler -- that read is now in
+            // flight.
+
+            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var promptFile = Assert.Single(critic.PromptFiles);
+            var previewBox = window.FindViewControl<TextBox>("ArtifactPreviewBox")!;
+
+            // Issued while the huge auto-preview read is still in flight -- the explicit request.
+            await promptFile.PreviewCommand.ExecuteAsync(null);
+            Assert.Equal("Review the plan.", previewBox.Text);
+
+            // Give the slower, superseded auto-preview read every chance to complete, and fail the
+            // instant it clobbers the newer, explicit result rather than only checking at the end.
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                Assert.Equal("Review the plan.", previewBox.Text);
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    /// <summary>
+    /// #868's fix polarity check, the other direction: a genuinely newer preview must still win even
+    /// though it was issued (and may complete) after an older one -- a fix that simply dropped every
+    /// second overlapping request would pass the test above but break ordinary fast clicking. Forces
+    /// the ordering with real, unawaited overlap: preview a large file without awaiting it, then
+    /// immediately await a preview of a second, different file, and assert the second (truly the
+    /// newest request) is what's showing once both have had time to finish.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_newer_preview_request_still_wins_even_when_issued_immediately_after_an_older_one()
+    {
+        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var olderFilePath = Path.Combine(outputDirectory, "older.txt");
+        var newerFilePath = Path.Combine(outputDirectory, "newer.txt");
+        await File.WriteAllTextAsync(olderFilePath, "Older content.", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(newerFilePath, "Newer content.", TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var olderPreviewTask = window.ShowArtifactPreviewAsync(olderFilePath, TestContext.Current.CancellationToken);
+            var newerPreviewTask = window.ShowArtifactPreviewAsync(newerFilePath, TestContext.Current.CancellationToken);
+            await Task.WhenAll(olderPreviewTask, newerPreviewTask);
+
+            Assert.Equal("Newer content.", window.FindViewControl<TextBox>("ArtifactPreviewBox")!.Text);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
     [AvaloniaFact]
     public async Task A_step_with_no_captured_prompt_reports_no_prompt_files()
     {
