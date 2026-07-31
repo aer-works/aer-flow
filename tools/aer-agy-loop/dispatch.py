@@ -567,7 +567,6 @@ def build_dialogue_config(
         "SeedPrompt": seed_prompt,
         "TurnBudget": turn_budget,
         "FinalOutputName": final_output_name,
-        "StopSentinel": None,
         "Participants": participants,
     }
     return config, participants
