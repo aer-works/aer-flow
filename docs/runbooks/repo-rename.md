@@ -12,8 +12,9 @@ repo.
 - Confirm #823 (or its successor PR) has merged to `main`. Every live reference in the tree
   should already read `aer-works/baton` — if `git grep -n "aer-works/aer-flow" -- ':!CHANGELOG.md'
   ':!**/CHANGELOG.md' ':!docs/archive' ':!patches' ':!scripts/patch-tailscale-dart.sh'
-  ':!docs/decisions/00*' ':!docs/design'` still returns live hits, stop and find out why before
-  renaming out from under them.
+  ':!docs/decisions/00*' ':!tools/audit-completeness/completeness.py'` still returns live hits,
+  stop and find out why before renaming out from under them. (`completeness.py` is expected to
+  show up here until step 2 below — see why in that section.)
 - Note every local clone of this repo on this machine. Worktrees added with `git worktree add`
   (this layout has several — `aer-flow`, `aer-flow-w799`, `aer-flow-w823`, `aer-flow-w833`, plus
   any agent worktrees under `.claude/worktrees/`) all point at **one shared `.git` directory**, and
@@ -23,12 +24,32 @@ repo.
 
 ## The flip
 
+**Step 1 — the rename itself, on GitHub's side:**
+
 ```sh
 gh repo rename baton --repo aer-works/aer-flow
 ```
 
-This is the only step that happens on GitHub's side. `gh` will ask for confirmation once; there is
-no dry-run.
+`gh` will ask for confirmation once; there is no dry-run.
+
+**Step 2 — flip the one hardcoded reference that had to stay on the old name until now.**
+`tools/audit-completeness/completeness.py`'s STEP 4 (`step4_stale_citations`) calls `gh issue
+list --repo aer-works/aer-flow ...` to check docs don't cite closed issues as open. #823 could not
+point this at `aer-works/baton` in advance the way it did every markdown link, because this call
+is live: `gh issue list` is GraphQL-backed, and GraphQL resolves the *current* repo name rather
+than following the REST rename redirect markdown links get for free. Pointed at the not-yet-existing
+name, the call fails and the `except`/`returncode != 0` branch prints `SKIPPED` — which `main()`
+excludes from the pass/fail rollup, so the check goes silently inert instead of failing loud. Now
+that the rename has happened, flip it:
+
+```sh
+# in tools/audit-completeness/completeness.py, step4_stale_citations():
+#   "--repo", "aer-works/aer-flow"  ->  "--repo", "aer-works/baton"
+```
+
+Commit that one-line change (conventional commit, e.g. `chore(tools): Point completeness.py's
+stale-citation check at the renamed repo`) as part of this same flip, not as a follow-up — every
+run of `pixi run gates` between the rename and that commit has STEP 4 silently skipping.
 
 ## What GitHub carries automatically — no action needed
 
@@ -69,10 +90,14 @@ no dry-run.
   configuration stored *outside* GitHub (e.g. a Slack app's saved webhook target) that hardcoded
   the old path. GitHub's redirect only covers requests that reach `github.com`; anything with the
   old owner/repo baked into a non-GitHub system needs a manual update.
-- **Local package manager or tool caches that pinned the old path as a literal string** rather
-  than resolving it live — none are known to exist in this repo (the sidecar's `go.mod` module
-  path was renamed in #823 precisely because it's a local path with no network resolution, so
-  nothing would have caught a stale one).
+- **Anything that pins the repo path as a literal string used in a live call, rather than a
+  redirect-covered link.** Two are known: the sidecar's `go.mod` module path (renamed in #823,
+  since it's a local path with no network resolution, so nothing would have caught a stale one),
+  and `tools/audit-completeness/completeness.py`'s STEP 4, which stayed on the old name until
+  step 2 above specifically because it's a live `gh` call that a redirect does not rescue. Both
+  needed a real code change, not just a doc edit — check for others with the same shape (a literal
+  `aer-works/...` string passed to something that executes, rather than one a person reads) before
+  assuming the flip is complete.
 
 ## Verification, after
 
@@ -92,6 +117,17 @@ every untouched historical reference in this repo depends on:
 ```sh
 gh api repos/aer-works/aer-flow --jq .full_name   # expect: "aer-works/baton" (gh follows the redirect)
 ```
+
+Finally, confirm step 2 above actually landed:
+
+```sh
+pixi run audit-completeness   # STEP 4 must NOT print "SKIPPED" — that means it's still on the old name
+```
+
+Whether `gh issue list --repo <old-name>` itself would have kept working after the flip (i.e.
+whether GraphQL follows the rename the way the REST endpoint above does) was not tested from
+inside #823 — there is no renamed repo to test it against yet. This check is what catches it
+either way: if step 2 was skipped or wrong, STEP 4 SKIPs and this command's output says so.
 
 If any of these fail, do not re-run the rename — `gh repo rename` is not idempotent against a
 repo that's already been renamed once (the source name `aer-works/aer-flow` no longer exists to

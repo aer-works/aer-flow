@@ -221,7 +221,7 @@ Backlog · #405
 The specific action whenever it is known — "Reading TasksViewModel.cs ", "Running pixi run test ". Specific beats charming, every time, because it is information rather than decoration.
 
 For the genuinely generic wait, M27 uses a plain deterministic label ("Working", "Needs input", "Executing step 2 "), always with elapsed time beside it — not a curated whimsical set. A playful verb for that wait is real design work (a hand-written string set, a locale story, a per-state mapping) that doesn't exist yet; shipping a plain label now rather than inventing that mid-pass is the M27 scope call
-([#578](https://github.com/aer-works/aer-flow/issues/578) tracks bringing a curated set back once
+([#578](https://github.com/aer-works/baton/issues/578) tracks bringing a curated set back once
 that's actually specified).
 
 Decided: the specific action whenever it is known; a plain deterministic label for the genuinely generic wait, always with elapsed time, always switchable — playful verbs are a later, separately-specified addition, not M27's default.

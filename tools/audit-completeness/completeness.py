@@ -656,7 +656,12 @@ def step4_stale_citations():
         return None
     try:
         out = subprocess.run(
-            ["gh", "issue", "list", "--repo", "aer-works/baton", "--state", "all",
+            # Stays "aer-flow" until the #823 GitHub rename actually runs -- this is a live
+            # `gh` GraphQL call, not a link, and GraphQL resolves the *current* repo name rather
+            # than following the REST rename redirect. Flip this line in the same step that runs
+            # `gh repo rename` (docs/runbooks/repo-rename.md); flipping it early makes STEP 4
+            # SKIP silently until then.
+            ["gh", "issue", "list", "--repo", "aer-works/aer-flow", "--state", "all",
              "--limit", "1000", "--json", "number,state"],
             capture_output=True, text=True, cwd=ROOT, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
