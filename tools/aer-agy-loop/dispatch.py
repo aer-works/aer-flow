@@ -306,11 +306,13 @@ def shell_rules_preamble(run_shell_commands: bool) -> str:
 def lane_review_prompt(output_name: str) -> str:
     """Generate the prompt for the review step in --lane mode.
 
-    Instructs an adversarial review of the branch diff (git diff main...HEAD in the working
-    directory), requiring file:line evidence for findings and prose output to output_name.
+    Instructs an adversarial review of the branch diff (git diff origin/main...HEAD in the
+    working directory -- the REMOTE ref: lanes branch from origin/main, and the local main ref
+    lags on this host, which inflated one review's surface ~14x and silently shrank its
+    coverage, #852), requiring file:line evidence for findings and prose output to output_name.
     """
     return (
-        f"Perform an adversarial review of the branch's diff (`git diff main...HEAD` in the working directory).\n"
+        f"Perform an adversarial review of the branch's diff (`git diff origin/main...HEAD` in the working directory).\n"
         f"Identify any defects, correctness issues, unverified claims, or missing test coverage. "
         f"Every finding must include file:line evidence.\n"
         f"Write your prose report to `{output_name}` in AER_OUTPUT_DIR.\n"
