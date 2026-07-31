@@ -18,10 +18,12 @@ public partial class App : Application
             // #823: the old Documents/AER Flow folder is real data on real installs. Migrate it to
             // Documents/Baton before the window that reads from that path opens; if both already
             // exist, don't guess which one wins — say so instead.
+            // Either non-Migrated outcome carries a message and leaves the data where it was; the
+            // window opens on the new path either way (#863).
             var migration = WorkspaceMigration.Run();
-            if (migration.Outcome == WorkspaceMigrationOutcome.BothPresentNoAction)
+            if (migration.Message is { } migrationNotice)
             {
-                new WorkspaceMigrationNoticeWindow(migration.Message!).Show();
+                new WorkspaceMigrationNoticeWindow(migrationNotice).Show();
             }
 
             var window = new MainWindow();
