@@ -1,7 +1,7 @@
 # Decision audit — every record's disposition against measured vendor reality
 
 **Started 2026-07-25 against #527's findings; kept current since.** Population: every numbered
-record in [`decisions/`](decisions/), currently 44 (counted via `ls docs/decisions/`). Disposition vocabulary is fixed —
+record in [`decisions/`](decisions/), currently 45 (counted via `ls docs/decisions/`). Disposition vocabulary is fixed —
 `unaffected`, `amended`, `superseded`, `rewritten` — and enforced by `pixi run audit-completeness`,
 which also requires a reason in its own column and fails if any decision on disk has no row.
 
@@ -73,6 +73,7 @@ that bounds the *documentation*, not reality.
 | 0042 | unaffected | Retry backoff is a derived obligation with a steady default. Written after #527 against the engine's own event log and clock ownership; the only vendor-adjacent fact (rate-limited CLIs punish hot retry loops) motivates it but nothing in it depends on a vendor mechanism. |
 | 0043 | unaffected | Structured verdict as a schema'd contract output. Written after #527 against the engine's own contract-validation machinery; no vendor mechanism anywhere in it — the writers happen to be vendor CLI workers, but the schema is enforced by Flow on bytes on disk. |
 | 0044 | unaffected | Memory belongs to the room and changes only by decision. Written 2026-07-30, long after #527; its one vendor-adjacent dependency (a portable structured worker→AER channel) rests on 0029/0035's post-audit measurements and #585's shipped host, named in its own Rests on table. |
+| 0045 | unaffected | The product is Baton; the journal is the ledger; the token stays aer. Written 2026-07-31, a naming decision resting on the recorded deliberation (#823), not on any vendor behaviour the audit measured. |
 
 ## Decisions whose dependencies are now recorded
 
