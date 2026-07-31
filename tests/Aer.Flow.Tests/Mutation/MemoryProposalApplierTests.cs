@@ -214,6 +214,17 @@ public class MemoryProposalApplierTests : IDisposable
             Assert.Equal(
                 "via alias",
                 await File.ReadAllTextAsync(Path.Combine(realDirectory, "fact.md"), TestContext.Current.CancellationToken));
+
+            // The other polarity of #875's index skip, which its own test cannot supply: that test
+            // proves an outside file is not listed, using an ordinary in-tree file as its positive.
+            // This proves the skip does not ALSO drop a fact that a deliberately-allowed alias
+            // points at -- the fact is listed once, at its real path, because the walk reaches it
+            // directly rather than through the link.
+            var index = await File.ReadAllTextAsync(
+                Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+
+            Assert.Contains("- real/fact.md", index, StringComparison.Ordinal);
+            Assert.DoesNotContain("alias/fact.md", index, StringComparison.Ordinal);
         }
         finally
         {
@@ -340,48 +351,6 @@ public class MemoryProposalApplierTests : IDisposable
     }
 
     /// <summary>
-    /// Covers the file half of <c>ResolveIfReparsePoint</c>'s <c>isDirectory ? Directory... :
-    /// File...</c> branch, which the directory tests above leave unexercised. A file symlink is
-    /// unprivileged on Linux/macOS but needs admin or Developer Mode on Windows, so this skips
-    /// rather than fakes where it cannot be created.
-    /// </summary>
-    [Fact]
-    public async Task A_file_reparse_point_under_memory_that_resolves_outside_it_is_refused()
-    {
-        Directory.CreateDirectory(_memoryRoot);
-        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
-        Directory.CreateDirectory(outsideDirectory);
-        var outsideFile = Path.Combine(outsideDirectory, "real.md");
-        await File.WriteAllTextAsync(outsideFile, "outside content", TestContext.Current.CancellationToken);
-
-        var linkPath = Path.Combine(_memoryRoot, "fact-link.md");
-        try
-        {
-            File.CreateSymbolicLink(linkPath, outsideFile);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Assert.Skip($"Could not create a file symlink in this environment: {ex.Message}");
-            return;
-        }
-
-        try
-        {
-            var capture = WriteCapture(
-                """{"Operation":"edit","TargetPath":"fact-link.md","Content":"pwned","Rationale":"malicious"}""");
-
-            await Assert.ThrowsAsync<InvalidRoomMutationException>(
-                () => MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken));
-
-            Assert.Equal("outside content", await File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
-        }
-        finally
-        {
-            File.Delete(linkPath);
-        }
-    }
-
-    /// <summary>
     /// #874: a cyclic reparse point makes <c>ResolveLinkTarget(returnFinalTarget: true)</c> throw
     /// <see cref="IOException"/>, which before the fix escaped <c>ApplyAsync</c> raw instead of
     /// arriving as the <see cref="InvalidRoomMutationException"/> every other refusal there raises.
@@ -439,6 +408,90 @@ public class MemoryProposalApplierTests : IDisposable
         finally
         {
             RemoveDirectoryLink(loopA);
+        }
+    }
+
+    /// <summary>
+    /// Covers the file half of <c>ResolveIfReparsePoint</c>'s <c>isDirectory ? Directory... :
+    /// File...</c> branch, which the directory tests above leave unexercised. A file symlink is
+    /// unprivileged on Linux/macOS but needs admin or Developer Mode on Windows, so this skips
+    /// rather than fakes where it cannot be created -- it is expected to be the CI Linux/macOS legs
+    /// that actually run it.
+    /// </summary>
+    [Fact]
+    public async Task A_file_reparse_point_under_memory_that_resolves_outside_it_is_refused()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
+        Directory.CreateDirectory(outsideDirectory);
+        var outsideFile = Path.Combine(outsideDirectory, "real.md");
+        await File.WriteAllTextAsync(outsideFile, "outside content", TestContext.Current.CancellationToken);
+
+        var linkPath = Path.Combine(_memoryRoot, "fact-link.md");
+        try
+        {
+            File.CreateSymbolicLink(linkPath, outsideFile);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"Could not create a file symlink in this environment: {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            var capture = WriteCapture(
+                """{"Operation":"edit","TargetPath":"fact-link.md","Content":"pwned","Rationale":"malicious"}""");
+
+            await Assert.ThrowsAsync<InvalidRoomMutationException>(
+                () => MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken));
+
+            Assert.Equal("outside content", await File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(linkPath);
+        }
+    }
+
+    /// <summary>
+    /// #875, whose defect and reasoning live on <c>RegenerateIndex</c> itself rather than being
+    /// restated here. What belongs to this test specifically: the applied proposal targets an
+    /// ordinary in-tree path, because the index is wrong even when the mutation that triggered the
+    /// rebuild was entirely legitimate.
+    /// </summary>
+    [Fact]
+    public async Task The_regenerated_index_does_not_list_files_reached_through_a_reparse_point()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
+        Directory.CreateDirectory(outsideDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(outsideDirectory, "outside-fact.md"), "not this room's", TestContext.Current.CancellationToken);
+
+        var linkPath = Path.Combine(_memoryRoot, "linked");
+        if (!TryCreateDirectoryReparsePoint(linkPath, outsideDirectory, out var skipReason))
+        {
+            Assert.Skip(skipReason);
+            return;
+        }
+
+        try
+        {
+            var capture = WriteCapture(
+                """{"Operation":"add","TargetPath":"fact.md","Content":"a real fact","Rationale":"learned it"}""");
+
+            await MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken);
+
+            var index = await File.ReadAllTextAsync(
+                Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+
+            Assert.Contains("- fact.md", index, StringComparison.Ordinal);
+            Assert.DoesNotContain("outside-fact.md", index, StringComparison.Ordinal);
+        }
+        finally
+        {
+            RemoveDirectoryLink(linkPath);
         }
     }
 
@@ -516,6 +569,51 @@ public class MemoryProposalApplierTests : IDisposable
         finally
         {
             Directory.Delete(roomDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// #875 for a <b>file</b> symlink rather than a directory junction. Its own test, not another
+    /// assertion bolted onto the junction one, so that an environment which cannot create file
+    /// symlinks reports this as skipped instead of quietly dropping the check -- a check that cannot
+    /// run must not look like a check that ran and found nothing.
+    /// </summary>
+    [Fact]
+    public async Task The_regenerated_index_does_not_list_a_file_symlink_pointing_outside_memory()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
+        Directory.CreateDirectory(outsideDirectory);
+        var outsideFile = Path.Combine(outsideDirectory, "outside-fact.md");
+        await File.WriteAllTextAsync(outsideFile, "not this room's", TestContext.Current.CancellationToken);
+
+        var linkPath = Path.Combine(_memoryRoot, "linked-fact.md");
+        try
+        {
+            File.CreateSymbolicLink(linkPath, outsideFile);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"Could not create a file symlink in this environment: {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            var capture = WriteCapture(
+                """{"Operation":"add","TargetPath":"fact.md","Content":"a real fact","Rationale":"learned it"}""");
+
+            await MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken);
+
+            var index = await File.ReadAllTextAsync(
+                Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+
+            Assert.Contains("- fact.md", index, StringComparison.Ordinal);
+            Assert.DoesNotContain("linked-fact.md", index, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(linkPath);
         }
     }
 

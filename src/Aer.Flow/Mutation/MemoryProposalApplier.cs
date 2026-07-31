@@ -281,11 +281,50 @@ public static class MemoryProposalApplier
         }
     }
 
+    /// <summary>
+    /// #875: the enumeration skips reparse points rather than walking through them. The write side
+    /// refuses a link that leaves memory/, but a plain recursive enumeration follows one
+    /// transparently — so a junction that is present for any reason would have its outside contents
+    /// listed in the index as though they were this room's own facts, and the index is what the
+    /// orchestrator reads at every turn start.
+    /// <para>
+    /// The skip is by attribute, so it applies to EVERY reparse point, including one that resolves
+    /// back inside memory/ and is therefore still perfectly writable (#856 item 2). State the
+    /// consequence rather than let the word "skip" hide it: an in-tree alias's own NAME does not
+    /// appear in the index. No fact's content is lost — the walk reaches the same bytes directly, at
+    /// the real path — but the alias is not an addressable entry the orchestrator can see.
+    /// </para>
+    /// <para>
+    /// That is chosen over resolving-and-filtering, which would list both names for one fact and,
+    /// worse, cannot be made safe for a directory junction pointing at its own ancestor: following
+    /// that recurses forever. The allow-polarity test in <c>MemoryProposalApplierTests</c> carries a
+    /// pair of index assertions that pin this trade-off in both directions, so it cannot flip
+    /// silently. (Named by class rather than by method on purpose: spelling the method out here
+    /// reproduces its whole sentence, which is a restatement the record-once gate catches.)
+    /// </para>
+    /// <para>
+    /// Every <see cref="EnumerationOptions"/> property that differs from the
+    /// <see cref="SearchOption"/> overload this replaced was checked rather than assumed equivalent;
+    /// #875 carries the property-by-property comparison and the run behind it.
+    /// </para>
+    /// </summary>
     private static void RegenerateIndex(string memoryRoot)
     {
         Directory.CreateDirectory(memoryRoot);
 
-        var factFiles = Directory.GetFiles(memoryRoot, "*", SearchOption.AllDirectories)
+        var enumeration = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+
+            // The one differing property that is NOT inert: `new EnumerationOptions()` defaults this
+            // to true, so taking the default would silently drop an unreadable fact file from the
+            // index -- trading a visible failure for an index that quietly under-reports. Set
+            // explicitly to match the overload being replaced (measured, in #875).
+            IgnoreInaccessible = false,
+        };
+
+        var factFiles = Directory.GetFiles(memoryRoot, "*", enumeration)
             .Where(f => !Path.GetFileName(f).Equals(IndexFileName, StringComparison.OrdinalIgnoreCase))
             .Where(f => !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
             .Select(f => Path.GetRelativePath(memoryRoot, f).Replace(Path.DirectorySeparatorChar, '/'))
