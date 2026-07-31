@@ -32,11 +32,8 @@ public static class SnapshotBinder
     }
 
     /// <summary>
-    /// Bounded retry budget for a rename that loses a transient sharing violation (see remarks).
-    /// Ten rather than <c>AtomicLaunchConfigWriter</c>'s five because the contending party here is a
-    /// reader poll loop (<c>StatusCommand</c>/<c>LaneTerminalProbe</c> re-read on an interval), not a
-    /// one-shot sibling writer — with the same linear backoff the doubled budget covers two full
-    /// reader poll periods; unmeasured beyond this fix's own race test, which is the citation.
+    /// Bounded retry budget for a rename that loses a transient sharing violation — see
+    /// <see cref="PersistAsync"/>'s remarks for what contends since #842 and what did before.
     /// </summary>
     private const int MaxRenameAttempts = 10;
 
@@ -59,12 +56,12 @@ public static class SnapshotBinder
     /// one task directory would be refused earlier by the journal's ConcurrencyGuard, which is the
     /// actual enforcement point). What it does guard against is the writer-vs-reader race, and
     /// measurement while building this fix's own race test
-    /// showed Windows' overwrite-rename needs the destination briefly exclusive: a reader with
-    /// <paramref name="snapshotFilePath"/> open at that instant (e.g. <see cref="LoadFromFileAsync"/>'s
-    /// <see cref="File.ReadAllTextAsync(string, CancellationToken)"/>, default <c>FileShare.Read</c>)
-    /// makes <see cref="File.Move(string, string, bool)"/> throw <see cref="UnauthorizedAccessException"/>
+    /// showed Windows' overwrite-rename needs the destination free of default-share handles: a
+    /// reader without <c>FileShare.Delete</c> open at that instant makes
+    /// <see cref="File.Move(string, string, bool)"/> throw <see cref="UnauthorizedAccessException"/>
     /// -- a transient sharing violation, not a real failure, so it is retried with a short backoff
-    /// rather than surfaced.
+    /// rather than surfaced. Since #842 <see cref="LoadFromFileAsync"/> opens delete-tolerant, so
+    /// the repo's own readers are no longer that contention; the retry stays for foreign handles.
     /// </para>
     /// </remarks>
     public static async Task PersistAsync(
@@ -130,7 +127,19 @@ public static class SnapshotBinder
     public static async Task<WorkflowDefinitionSnapshot> LoadFromFileAsync(
         string snapshotFilePath, CancellationToken cancellationToken = default)
     {
-        var json = await File.ReadAllTextAsync(snapshotFilePath, cancellationToken).ConfigureAwait(false);
+        // #842: ReadWrite|Delete share rather than File.ReadAllTextAsync's default Read -- a
+        // default-share handle is exactly what blocks PersistAsync's overwrite-rename on Windows,
+        // so the repo's own readers were the contention the writer's retry guarded against. A read
+        // in flight during the rename keeps the old file object; atomicity is the rename's, either
+        // way.
+        string json;
+        using (var reader = new StreamReader(new FileStream(
+            snapshotFilePath, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096,
+            FileOptions.Asynchronous | FileOptions.SequentialScan)))
+        {
+            json = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
 
         WorkflowDefinitionSnapshot? snapshot;
         try

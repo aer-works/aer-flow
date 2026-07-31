@@ -126,7 +126,17 @@ public class SnapshotBinderTests
                         byte[] bytes;
                         try
                         {
-                            bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+                            // #842: read the way LoadFromFileAsync now reads (delete-tolerant
+                            // share) -- this reader's whole justification is simulating the
+                            // product reader, and a default-share read is additionally the very
+                            // handle shape that starved the writer's rename retry under
+                            // full-suite load (the measured exhaustion on #842).
+                            using var readStream = new FileStream(
+                                path, FileMode.Open, FileAccess.Read,
+                                FileShare.ReadWrite | FileShare.Delete);
+                            using var buffer = new MemoryStream();
+                            await readStream.CopyToAsync(buffer, TestContext.Current.CancellationToken);
+                            bytes = buffer.ToArray();
                         }
                         catch (IOException)
                         {
@@ -150,10 +160,10 @@ public class SnapshotBinderTests
                         }
 
                         // A brief gap between reads, rather than reopening the destination
-                        // back-to-back: a real reader (one `File.ReadAllTextAsync` per CLI
-                        // invocation) never holds it open continuously, and PersistAsync's own
-                        // rename retry (for the transient sharing violation documented on
-                        // PersistAsync) needs an actual gap to land in.
+                        // back-to-back: a real reader (one LoadFromFileAsync per CLI invocation)
+                        // never holds it open continuously. Since #842's delete-tolerant share
+                        // the rename no longer needs the gap; keeping it keeps the reader shaped
+                        // like the real poll loops.
                         try
                         {
                             await Task.Delay(3, cts.Token);
