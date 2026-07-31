@@ -437,7 +437,10 @@ public static class StatusCommand
 
     /// <summary>
     /// An operator reading status wants "when does work resume", not a UTC instant to convert by
-    /// hand (#817) -- <see cref="StepState.RetryNotBefore"/> is rendered in local time. The
+    /// hand (#817) -- <see cref="StepState.RetryNotBefore"/> is rendered in local time, date
+    /// always included: the dominant real park is a plan-cap wait that can cross midnight or span
+    /// days (0026), where a bare clock time is ambiguous. A constant format also keeps rendering
+    /// independent of when status is run, which a same-day/other-day fork would not. The
     /// classification is <see cref="StepState.LatestFailureClassification"/> as recorded on the
     /// attempt <see cref="FlowEvent.StepRetryScheduled"/> is pacing, mapped to the operator-facing
     /// word: <see cref="FailureClassification.ExhaustedUntil"/> is the vendor-quota wait 0026
@@ -451,7 +454,7 @@ public static class StatusCommand
             ? "vendor quota"
             : "retryable";
         var localRetryTime = step.RetryNotBefore!.Value.ToLocalTime()
-            .ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            .ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 
         return $"parked ({classification}) — retries {localRetryTime}";
     }

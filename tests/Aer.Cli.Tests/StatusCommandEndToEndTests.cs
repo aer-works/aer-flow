@@ -430,8 +430,35 @@ public class StatusCommandEndToEndTests
             await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
 
             var text = output.ToString();
-            var expectedLocalTime = retryNotBefore.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            var expectedLocalTime = retryNotBefore.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
             Assert.Contains($"implement: parked (vendor quota) — retries {expectedLocalTime}", text);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Status_of_an_ordinary_backoff_park_days_away_renders_retryable_with_the_full_date()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var (_, _, _, retryNotBefore) = await WriteParkedStepFixtureAsync(
+                testRoot,
+                taskDirectory,
+                FailureClassification.Retryable,
+                retryIn: TimeSpan.FromDays(3));
+
+            var output = new StringWriter();
+            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+
+            var text = output.ToString();
+            var expectedLocalTime = retryNotBefore.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Contains($"implement: parked (retryable) — retries {expectedLocalTime}", text);
+            Assert.DoesNotContain("parked (vendor quota)", text);
         }
         finally
         {
@@ -487,7 +514,11 @@ public class StatusCommandEndToEndTests
     /// a quota classification.
     /// </summary>
     private static async Task<(string SnapshotPath, string LogPath, ExecutionId ExecutionId, DateTimeOffset RetryNotBefore)>
-        WriteParkedStepFixtureAsync(string testRoot, string taskDirectory)
+        WriteParkedStepFixtureAsync(
+            string testRoot,
+            string taskDirectory,
+            FailureClassification classification = FailureClassification.ExhaustedUntil,
+            TimeSpan? retryIn = null)
     {
         Directory.CreateDirectory(taskDirectory);
         var definition = new WorkflowDefinition(
@@ -511,13 +542,13 @@ public class StatusCommandEndToEndTests
             Environment: [],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
-        var retryNotBefore = DateTimeOffset.UtcNow.AddMinutes(45);
+        var retryNotBefore = DateTimeOffset.UtcNow.Add(retryIn ?? TimeSpan.FromMinutes(45));
 
         await using (var writer = new FlowEventLogWriter(logPath))
         {
             await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
             await writer.AppendAsync(
-                new FlowEvent.ExecutionFailed(executionId, FailureClassification.ExhaustedUntil, "quota exhausted", retryNotBefore),
+                new FlowEvent.ExecutionFailed(executionId, classification, "attempt failed", retryNotBefore),
                 TestContext.Current.CancellationToken);
             await writer.AppendAsync(
                 new FlowEvent.StepRetryScheduled(new StepId("implement"), executionId, retryNotBefore, 2_700_000),
