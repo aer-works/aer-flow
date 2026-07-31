@@ -46,11 +46,7 @@ public class ExternalDecisionValidatorTests
     private static StepState Running(StepId stepId, ExecutionId executionId) =>
         new(stepId, StepStatus.Running, executionId, NoUpstream);
 
-    /// <summary>
-    /// #815: a step #594's classification quota-parked — Failed with a scheduled retry — but never
-    /// paused (a lane workflow has no <see cref="PausePoint"/> at all, unlike this suite's other
-    /// helpers' <c>criticPausePoint</c> steps).
-    /// </summary>
+    /// <summary>See <see cref="ExternalDecisionValidator"/>'s #815 remarks.</summary>
     private static StepState FailedWithScheduledRetry(StepId stepId, ExecutionId executionId, DateTimeOffset retryNotBefore) =>
         new(stepId, StepStatus.Failed, executionId, NoUpstream, RetryNotBefore: retryNotBefore, RetryDelayMs: 60_000);
 
@@ -407,14 +403,7 @@ public class ExternalDecisionValidatorTests
 
     // --- #815: operator retry-now for a quota-parked (Failed + scheduled-retry) step ---
 
-    /// <summary>
-    /// #815's measured defect: a step #594's classification quota-parked (Failed, a
-    /// <see cref="FlowEvent.StepRetryScheduled"/> already recorded — <see cref="StepState.RetryNotBefore"/>
-    /// set) was never paused, since a lane workflow declares no <see cref="PausePoint"/> at all
-    /// (<c>criticPausePoint: null</c> below). RetryWithRevision is the one decision type the scope
-    /// decision widens to reach it, reusing #594's existing classification-clearing consequence
-    /// rather than adding a new one.
-    /// </summary>
+    /// <summary>The scenario <see cref="ExternalDecisionValidator"/>'s #815 remarks describe, with no <c>PausePoint</c> declared.</summary>
     [Fact]
     public void RetryWithRevision_against_a_Failed_step_with_a_scheduled_retry_and_no_PausePoint_is_valid()
     {
