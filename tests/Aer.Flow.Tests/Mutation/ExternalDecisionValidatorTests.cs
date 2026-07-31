@@ -43,6 +43,16 @@ public class ExternalDecisionValidatorTests
 
     private static StepState Pending(StepId stepId) => new(stepId, StepStatus.Pending, LatestExecutionId: null, NoUpstream);
 
+    private static StepState Running(StepId stepId, ExecutionId executionId) =>
+        new(stepId, StepStatus.Running, executionId, NoUpstream);
+
+    /// <summary>See <see cref="ExternalDecisionValidator"/>'s #815 remarks.</summary>
+    private static StepState FailedWithScheduledRetry(StepId stepId, ExecutionId executionId, DateTimeOffset retryNotBefore) =>
+        new(stepId, StepStatus.Failed, executionId, NoUpstream, RetryNotBefore: retryNotBefore, RetryDelayMs: 60_000);
+
+    private static StepState Failed(StepId stepId, ExecutionId executionId) =>
+        new(stepId, StepStatus.Failed, executionId, NoUpstream);
+
     /// <summary>
     /// A step a prior Supersede already named as <c>TargetStepId</c>, whose consequence (the
     /// re-dispatch) has not landed yet — <c>Status</c> still reads the stale pre-Supersede
@@ -389,5 +399,114 @@ public class ExternalDecisionValidatorTests
             succeededExecutionIds: new HashSet<ExecutionId> { CriticExecutionId }));
 
         Assert.Null(exception);
+    }
+
+    // --- #815: operator retry-now for a quota-parked (Failed + scheduled-retry) step ---
+
+    /// <summary>The scenario <see cref="ExternalDecisionValidator"/>'s #815 remarks describe, with no <c>PausePoint</c> declared.</summary>
+    [Fact]
+    public void RetryWithRevision_against_a_Failed_step_with_a_scheduled_retry_and_no_PausePoint_is_valid()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                Succeeded(Architect, ArchitectExecutionId),
+                FailedWithScheduledRetry(Critic, CriticExecutionId, DateTimeOffset.UnixEpoch.AddHours(1)),
+                Pending(Publisher),
+            ]);
+
+        var exception = Record.Exception(() =>
+            Validate(state, Snapshot(criticPausePoint: null), DecisionType.RetryWithRevision, CriticExecutionId));
+
+        Assert.Null(exception);
+    }
+
+    /// <summary>
+    /// Polarity: a Running step (no terminal outcome at all, so certainly no scheduled retry)
+    /// still gets the ordinary refusal — the widening in #815 does not touch this case.
+    /// </summary>
+    [Fact]
+    public void RetryWithRevision_against_a_Running_step_is_still_invalid()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                Succeeded(Architect, ArchitectExecutionId),
+                Running(Critic, CriticExecutionId),
+                Pending(Publisher),
+            ]);
+
+        var ex = Assert.Throws<InvalidExternalDecisionException>(() =>
+            Validate(state, Snapshot(criticPausePoint: null), DecisionType.RetryWithRevision, CriticExecutionId));
+
+        Assert.Equal(
+            $"Execution '{CriticExecutionId}' is not the currently paused latest attempt of any step.", ex.Message);
+    }
+
+    /// <summary>
+    /// Polarity: a Succeeded (non-Paused) step still gets the ordinary refusal — unchanged from
+    /// before #815, restated here alongside the other #815 polarity arms for a single reading.
+    /// </summary>
+    [Fact]
+    public void RetryWithRevision_against_a_Succeeded_non_paused_step_is_still_invalid()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                Succeeded(Architect, ArchitectExecutionId),
+                Succeeded(Critic, CriticExecutionId),
+                Pending(Publisher),
+            ]);
+
+        var ex = Assert.Throws<InvalidExternalDecisionException>(() =>
+            Validate(state, Snapshot(criticPausePoint: null), DecisionType.RetryWithRevision, CriticExecutionId));
+
+        Assert.Equal(
+            $"Execution '{CriticExecutionId}' is not the currently paused latest attempt of any step.", ex.Message);
+    }
+
+    /// <summary>
+    /// Polarity: a Failed step with NO scheduled retry (RetryPolicy already exhausted, or a
+    /// Permanent classification that never schedules one) still gets the ordinary refusal — #815's
+    /// widening is scoped to "Failed AND a scheduled retry", never "Failed" alone.
+    /// </summary>
+    [Fact]
+    public void RetryWithRevision_against_a_Failed_step_with_no_scheduled_retry_is_still_invalid()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                Succeeded(Architect, ArchitectExecutionId),
+                Failed(Critic, CriticExecutionId),
+                Pending(Publisher),
+            ]);
+
+        var ex = Assert.Throws<InvalidExternalDecisionException>(() =>
+            Validate(state, Snapshot(criticPausePoint: null), DecisionType.RetryWithRevision, CriticExecutionId));
+
+        Assert.Equal(
+            $"Execution '{CriticExecutionId}' is not the currently paused latest attempt of any step.", ex.Message);
+    }
+
+    /// <summary>
+    /// Polarity: the scope decision names RetryWithRevision only — Reject against the same
+    /// quota-parked step must still refuse with the ordinary wording.
+    /// </summary>
+    [Fact]
+    public void Reject_against_a_Failed_step_with_a_scheduled_retry_is_still_invalid()
+    {
+        var state = new FlowState(
+            new WorkflowDefinitionSnapshotId("snapshot-1"),
+            [
+                Succeeded(Architect, ArchitectExecutionId),
+                FailedWithScheduledRetry(Critic, CriticExecutionId, DateTimeOffset.UnixEpoch.AddHours(1)),
+                Pending(Publisher),
+            ]);
+
+        var ex = Assert.Throws<InvalidExternalDecisionException>(() =>
+            Validate(state, Snapshot(criticPausePoint: null), DecisionType.Reject, CriticExecutionId));
+
+        Assert.Equal(
+            $"Execution '{CriticExecutionId}' is not the currently paused latest attempt of any step.", ex.Message);
     }
 }

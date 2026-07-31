@@ -9,8 +9,11 @@ namespace Aer.Cli;
 /// </summary>
 /// <param name="TaskDirectoryPath">An already-started task's durable state directory.</param>
 /// <param name="ExecutionId">
-/// The currently paused execution this decision resolves — the reference the pause-aware output
-/// (<see cref="FlowStateReporter"/>) reports so a terminal user knows what to pass here.
+/// The execution this decision resolves — the reference the pause-aware output
+/// (<see cref="FlowStateReporter"/>) reports so a terminal user knows what to pass here. Ordinarily
+/// the currently paused latest attempt; for <see cref="Domain.DecisionType.RetryWithRevision"/>
+/// only, also a Failed latest attempt with a scheduled retry still pending (#815) — a step #594's
+/// classification quota-parked without ever pausing it.
 /// </param>
 /// <param name="DecisionType">One of §17.2's closed set: <c>resume</c>, <c>reject</c>, <c>retry-with-revision</c>, <c>supersede</c>.</param>
 /// <param name="TargetStepId">Required for, and only valid with, <see cref="Domain.DecisionType.Supersede"/>.</param>

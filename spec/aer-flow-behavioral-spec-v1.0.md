@@ -163,7 +163,7 @@ Append-only, source of truth for system state reconstruction. Storage backend (J
 | `ExecutionCancelled`                                              | Flow has classified a completed execution as cancelled (§9)                                             | Post-execution (outcome classification)                                           |
 | `CancellationRequested`                                           | Flow has forwarded an on-demand cancellation request toward Core for a still-running `ExecutionId` (§9) | Mid-execution (neither admission nor outcome — the execution was already running) |
 | `StepRetryScheduled`                                              | Flow has recorded the instant before which a failed step's next machine-initiated retry may not dispatch (§10.2) | Between attempts (after outcome classification, before the retry's admission)     |
-| `WorkflowPaused` / `ExternalDecisionRecorded` / `WorkflowResumed` | A workflow has paused, received an external decision, and resumed (§17)                                 | Between steps, at arbitrary real-world duration                                   |
+| `WorkflowPaused` / `ExternalDecisionRecorded` / `WorkflowResumed` | A workflow has paused, received an external decision, and resumed (§17). A retry-now against a quota-parked step records the latter two with no `WorkflowPaused` (§17.2's `RetryWithRevision`) | Between steps, at arbitrary real-world duration                                   |
 
 These names are deliberately distinct from each other precisely because "admitted to run," "succeeded once run," "cancelled mid-run," and "paused awaiting a decision" are different moments. No event name may be reused across multiple meanings.
 
@@ -518,6 +518,9 @@ ExternalDecisionRecorded
 WorkflowResumed
 ```
 
+One decision type can enter this diagram from the side, skipping `WorkflowPaused` entirely:
+`RetryWithRevision` against a quota-parked step — see its bullet in §17.2.
+
 ### 17.1 PausePoint
 
 A step in a `WorkflowDefinition` template (§11.1) may optionally declare a `PausePoint`. When a step with `PausePoint` reaches a terminal outcome, Flow appends `WorkflowPaused` instead of immediately evaluating downstream steps' readiness (§11.3). The workflow remains paused — Flow is idle, no process exists, nothing is "waiting" in memory — until an `ExternalDecisionRecorded` event resumes it.
@@ -558,7 +561,7 @@ ExternalDecisionRecorded
 
 - **`Resume`** — proceed as if the referenced execution's outcome stands; downstream steps become eligible per §11.3 exactly as they would without a pause.
 - **`Reject`** — treat the referenced step as terminally failed; do not evaluate its dependents. Equivalent in effect to exhausting `RetryPolicy`, but externally triggered rather than automatic.
-- **`RetryWithRevision`** — the referenced step, which has **not yet succeeded**, should attempt again, optionally incorporating a supplementary artifact. This is the externally-triggered counterpart to §10.1's bounded self-iteration: same step, new attempt, recoverable failure. `SupplementaryExecutionId` is optional here — sometimes a human just wants to retry as-is.
+- **`RetryWithRevision`** — the referenced step, which has **not yet succeeded**, should attempt again, optionally incorporating a supplementary artifact. This is the externally-triggered counterpart to §10.1's bounded self-iteration: same step, new attempt, recoverable failure. `SupplementaryExecutionId` is optional here — sometimes a human just wants to retry as-is. Uniquely among decision types, `RetryWithRevision` is admissible in **two** states, not one: against the currently paused latest attempt (like every other type), and — since #815 — against a Failed latest attempt whose step has a **scheduled retry** (§9's quota classification), where it is the operator's retry-*now*: the recorded decision clears the schedule and the pacing state exactly as §9 already defines, so the step dispatches on the next readiness pass instead of waiting out a reset clock that may belong to a vendor the step is no longer bound to. In that second state the workflow was never paused, so `ExternalDecisionRecorded`/`WorkflowResumed` appear with **no** preceding `WorkflowPaused` — the one place the §17 diagram's left edge is entered from the side. All other decision types remain pause-only.
 - **`Supersede`** — a step that has **already succeeded** should be re-executed because a downstream step has learned something that makes the prior result no longer current. `TargetStepId` must be one of the pause point's declared `SupersedeTargets` entries — a `Supersede` naming any other `StepId` is invalid and must be rejected by Flow, not silently widened. `SupplementaryExecutionId` is **mandatory** for `Supersede`: by definition, superseding a result that already succeeded only makes sense if there's new information driving the change; a `Supersede` with no supplementary artifact has no reason to exist and is itself an invalid decision.
 
 `RetryWithRevision` and `Supersede` are kept as separate decision types, rather than one type covering both, specifically so the event log itself records which relationship occurred — "this step hadn't succeeded yet and tried again" reads as a different fact from "this step had already succeeded and was deliberately superseded," and a log reader (or a human auditing history later) shouldn't have to infer which one happened from context.
