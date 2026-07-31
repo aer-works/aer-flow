@@ -9,14 +9,16 @@ namespace Aer.Workers.Dialogue;
 public interface IVendorTurnClient
 {
     /// <summary>
-    /// Runs <paramref name="participant"/>'s configured command for one turn. What
-    /// <paramref name="prompt"/> means depends on which placeholder <paramref name="participant"/>'s
-    /// <see cref="DialogueParticipant.Args"/> use: with <see cref="DialogueParticipant.PromptPlaceholder"/>
-    /// it is the literal prompt text, substituted directly into argv. With
-    /// <see cref="DialogueParticipant.PromptFilePlaceholder"/> it is a path to a file already
-    /// containing the prompt text (see <see cref="DialogueRunner"/>, which writes that file before
-    /// calling this) — only the short path crosses the process boundary, which is what keeps a long
-    /// exchange from ever exceeding the host OS's command-line length limit (#579).
+    /// Runs <paramref name="participant"/>'s configured command for one turn, substituting
+    /// <paramref name="prompt"/> directly into the argv element equal to
+    /// <see cref="DialogueParticipant.PromptPlaceholder"/>.
+    /// <paramref name="sessionId"/> is this participant's vendor-native session id as of the
+    /// <em>start</em> of this turn: <see langword="null"/> on that participant's first turn (nothing
+    /// to resume yet), or the id <see cref="VendorTurnResult.SessionId"/> returned from that
+    /// participant's immediately preceding turn (decision 0039). The returned
+    /// <see cref="VendorTurnResult.SessionId"/> is what the caller passes back in on this
+    /// participant's <em>next</em> turn.
     /// </summary>
-    Task<VendorTurnResult> SendTurnAsync(DialogueParticipant participant, string prompt, CancellationToken cancellationToken = default);
+    Task<VendorTurnResult> SendTurnAsync(
+        DialogueParticipant participant, string prompt, string? sessionId = null, CancellationToken cancellationToken = default);
 }

@@ -15,22 +15,20 @@ namespace Aer.Workers.Dialogue;
 /// <see cref="DialogueExecutionException"/>, caught by <see cref="Program"/> and mapped to a non-zero
 /// process exit) if a vendor CLI exits non-zero or produces no text for a turn.
 /// <para>
-/// <b>Context threading is the full transcript so far</b>, not a sliding window: each turn's prompt
-/// is its speaker's <see cref="DialogueParticipant.Preamble"/>, the exchange's
-/// <see cref="DialogueWorkerConfig.SeedPrompt"/>, and every prior turn's role and text in order.
-/// <see cref="DialogueWorkerConfig.TurnBudget"/> is this worker's own config, and deliberately small
-/// (the phase plan's "bounded" exchange) — bounding it is what keeps cost and wall-clock time
-/// predictable without this worker inventing a token-budget or summarization scheme of its own. A
-/// model reasoning about the exchange needs the whole conversation to stay coherent across turns,
-/// not just the immediately preceding message — the same reason a human relaying every round by hand
-/// (§17.5, what this milestone automates) would naturally carry the whole thread forward, not just
-/// the last reply. This does <b>not</b> bound the size of what reaches the vendor CLI's own
-/// command-line, which would otherwise grow every turn: each turn's full prompt (preamble + seed +
-/// every prior turn) is written to a file in <paramref name="outputDirectory"/> and only that file's
-/// short path crosses the process boundary (see <see cref="ProcessVendorTurnClient"/> and
-/// <see cref="DialogueParticipant.PromptFilePlaceholder"/>) — issue #579 was a real crash from
-/// threading the whole transcript directly into argv on Windows, whose ~32,767-character
-/// command-line ceiling a long exchange eventually exceeded.
+/// <b>Context threading is a bounded per-turn increment, not the full transcript</b> (decision 0039,
+/// superseding M17 Phase 3's original full-transcript design): each turn's prompt is its speaker's
+/// <see cref="DialogueParticipant.Preamble"/> plus either <see cref="DialogueWorkerConfig.SeedPrompt"/>
+/// (the very first turn of the whole exchange, when nothing has been said yet) or the immediately
+/// preceding turn's role and text (every turn after that) — never the accumulated thread. Coherence
+/// across a participant's own turns comes from the vendor's own native session continuation instead
+/// (<c>--resume</c>/<c>--session-id</c> for <c>claude</c>, <c>--conversation</c> for <c>agy</c>, wired
+/// per participant by <see cref="ProcessVendorTurnClient"/> and threaded here via each
+/// <see cref="VendorTurnResult.SessionId"/>), the same mechanism <c>Aer.Adapters</c>'s
+/// <c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c> already use for Conversation/Pipeline. This is
+/// what makes a turn's prompt bounded by construction rather than by an argv-length workaround: #579's
+/// crash (a long transcript overflowing Windows' ~32,767-character command-line ceiling) and #582's
+/// quadratic per-turn cost growth were both symptoms of resending history a resumed vendor session
+/// already remembers, not of anything this worker needs to solve itself.
 /// </para>
 /// <para>
 /// <b>The stop signal is a structured MCP tool call, not a text sentinel</b> (#585, decision 0035,
@@ -57,17 +55,22 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
         var turns = new List<TranscriptTurn>(effectiveTurnBudget);
         var wiredParticipants = DialogueYieldWiring.Wire(config.Participants, outputDirectory);
 
+        // One vendor-native session id per participant (decision 0039) -- each side of the exchange
+        // is a separate vendor session, never a shared one, so this is keyed by participant index
+        // (stable across the whole exchange; see wiredParticipants above), not by role text.
+        var sessionIds = new string?[wiredParticipants.Count];
+
         await using (var transcript = new TranscriptWriter(Path.Combine(outputDirectory, "transcript.jsonl")))
         {
             for (var sequence = 1; sequence <= effectiveTurnBudget; sequence++)
             {
-                var wired = wiredParticipants[(sequence - 1) % wiredParticipants.Count];
+                var participantIndex = (sequence - 1) % wiredParticipants.Count;
+                var wired = wiredParticipants[participantIndex];
                 var speaker = wired.Participant;
                 var prompt = BuildPrompt(speaker, config.SeedPrompt, turns);
-                var promptPath = Path.Combine(outputDirectory, $"prompt-turn-{sequence}.txt");
-                await File.WriteAllTextAsync(promptPath, prompt, cancellationToken).ConfigureAwait(false);
 
-                var result = await turnClient.SendTurnAsync(speaker, promptPath, cancellationToken).ConfigureAwait(false);
+                var result = await turnClient.SendTurnAsync(speaker, prompt, sessionIds[participantIndex], cancellationToken).ConfigureAwait(false);
+                sessionIds[participantIndex] = result.SessionId;
 
                 if (result.TimedOut)
                 {
@@ -118,15 +121,18 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
         return turns;
     }
 
+    /// <summary>
+    /// The bounded per-turn increment decision 0039 asks for: <paramref name="speaker"/>'s own
+    /// preamble plus either <paramref name="seedPrompt"/> (nothing has been said yet — the exchange's
+    /// very first turn) or the single immediately preceding turn (every turn after that). Deliberately
+    /// never the accumulated <paramref name="priorTurns"/> beyond its last element — a resumed vendor
+    /// session already remembers everything earlier, which is what keeps this bounded by construction
+    /// rather than by an argv-length workaround (see this class's own remarks).
+    /// </summary>
     private static string BuildPrompt(DialogueParticipant speaker, string seedPrompt, IReadOnlyList<TranscriptTurn> priorTurns)
     {
-        var context = new StringBuilder(seedPrompt);
-        foreach (var turn in priorTurns)
-        {
-            context.Append("\n\n").Append(FormatTurnLine(turn));
-        }
-
-        return $"{speaker.Preamble}\n\n{context}";
+        var increment = priorTurns.Count == 0 ? seedPrompt : FormatTurnLine(priorTurns[^1]);
+        return $"{speaker.Preamble}\n\n{increment}";
     }
 
     /// <summary>

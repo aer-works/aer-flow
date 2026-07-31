@@ -59,7 +59,7 @@ public class DialogueParticipantGatingTests : IDisposable
     {
         var authored = WriteConfig(new DialogueParticipant(
             "initiator", "claude", Model: null, "You argue for.", "claude",
-            ["-p", "Read {PROMPT_FILE}", "--allowedTools", "Write,Read"]));
+            ["-p", "Read {PROMPT_FILE}", "--allowedTools", "Write,Read", DialogueParticipant.PromptPlaceholder]));
 
         var participant = Resolved(authored).Participants[0];
 
@@ -97,7 +97,7 @@ public class DialogueParticipantGatingTests : IDisposable
     {
         var authored = WriteConfig(new DialogueParticipant(
             "responder", "gemini", Model: null, "You argue against.", "agy",
-            ["-p", "Read {PROMPT_FILE}"]));
+            ["-p", "Read {PROMPT_FILE}", DialogueParticipant.PromptPlaceholder]));
 
         var participant = Resolved(authored).Participants[0];
 
@@ -153,19 +153,22 @@ public class DialogueParticipantGatingTests : IDisposable
     /// </summary>
     [Theory]
     [InlineData("cmd", new[] { "/c", "claude", "-p", "{PROMPT}" })]
-    // {PROMPT_FILE} rather than {PROMPT}: the parser requires {PROMPT} to be a whole argument, and a
-    // shell -c string embeds its placeholder inside one.
-    [InlineData("sh", new[] { "-c", "agy -p {PROMPT_FILE}" })]
+    // {PROMPT_FILE} is inert leftover text, not a recognised placeholder any more (decision 0039
+    // retired it): the parser requires a standalone {PROMPT} element, which a shell -c string can't
+    // provide since it embeds its text inside one longer argument -- so each fixture below carries a
+    // trailing standalone {PROMPT} purely to satisfy that structural check. It is inert to what this
+    // test actually exercises (vendor-in-a-wrapper detection, scoped to the shell string's own content).
+    [InlineData("sh", new[] { "-c", "agy -p {PROMPT_FILE}", "{PROMPT}" })]
     [InlineData("npx", new[] { "claude", "-p", "{PROMPT}" })]
     // Everything below this line reached a real vendor CLI UNREFUSED until a reviewer of #705
     // constructed them against the shipped code. None is adversarial — each is what someone writes
     // by habit, and the first is one character from the `sh -c` fixture three lines up.
-    [InlineData("sh", new[] { "-lc", "agy -p {PROMPT_FILE}" })]          // clustered short flags
-    [InlineData("bash", new[] { "-ec", "claude -p {PROMPT_FILE}" })]     // ditto, other order
-    [InlineData("sh", new[] { "-c", "cd /repo && claude -p {PROMPT_FILE}" })]  // not the first segment
-    [InlineData("sh", new[] { "-c", "exec agy -p {PROMPT_FILE}" })]      // not the first token
-    [InlineData("sh", new[] { "-c", "FOO=1 claude -p {PROMPT_FILE}" })]  // assignment prefix
-    [InlineData("sh", new[] { "-c", "true; agy -p {PROMPT_FILE}" })]     // second statement
+    [InlineData("sh", new[] { "-lc", "agy -p {PROMPT_FILE}", "{PROMPT}" })]          // clustered short flags
+    [InlineData("bash", new[] { "-ec", "claude -p {PROMPT_FILE}", "{PROMPT}" })]     // ditto, other order
+    [InlineData("sh", new[] { "-c", "cd /repo && claude -p {PROMPT_FILE}", "{PROMPT}" })]  // not the first segment
+    [InlineData("sh", new[] { "-c", "exec agy -p {PROMPT_FILE}", "{PROMPT}" })]      // not the first token
+    [InlineData("sh", new[] { "-c", "FOO=1 claude -p {PROMPT_FILE}", "{PROMPT}" })]  // assignment prefix
+    [InlineData("sh", new[] { "-c", "true; agy -p {PROMPT_FILE}", "{PROMPT}" })]     // second statement
     // Base64 UTF-16 for `claude -p hi`. -EncodedCommand was LISTED as handled while structurally
     // unable to match anything, which is the documentation defect of a true sentence read wrongly.
     // {PROMPT} rides as its own argument because the parser requires a VISIBLE placeholder — which
@@ -195,8 +198,8 @@ public class DialogueParticipantGatingTests : IDisposable
     [Theory]
     [InlineData("powershell", new[] { "-File", "s.ps1", "{PROMPT}" })]
     // The vendor name in an ARGUMENT position of a shell string, never the executable position.
-    [InlineData("sh", new[] { "-c", "echo 'argue as claude would' > {PROMPT_FILE}" })]
-    [InlineData("sh", new[] { "-c", "./stub.sh --persona agy --input {PROMPT_FILE}" })]
+    [InlineData("sh", new[] { "-c", "echo 'argue as claude would' > {PROMPT_FILE}", "{PROMPT}" })]
+    [InlineData("sh", new[] { "-c", "./stub.sh --persona agy --input {PROMPT_FILE}", "{PROMPT}" })]
     // A value that merely starts with a dash and ends in c must not read as a shell command switch.
     [InlineData("powershell", new[] { "-File", "s.ps1", "-abc", "claude is a model", "{PROMPT}" })]
     public void A_participant_that_only_MENTIONS_a_vendor_is_not_refused(string command, string[] args)

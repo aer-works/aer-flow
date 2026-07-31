@@ -12,12 +12,25 @@ namespace Aer.Workers.Dialogue;
 /// a shell-wrapped invocation has (spike #21's Windows token-quoting findings do not apply here for
 /// exactly that reason). Real per-vendor argument shaping (the actual <c>claude</c>/<c>agy</c> flag
 /// vocabularies) is Phase 3's concern — this client only knows how to run whatever
-/// <see cref="DialogueParticipant"/> configuration names, real vendor or test stub alike. See
-/// <see cref="IVendorTurnClient.SendTurnAsync"/> for what <c>prompt</c> means for each of the two
-/// placeholders a participant's <see cref="DialogueParticipant.Args"/> can use — only
-/// <see cref="DialogueParticipant.PromptPlaceholder"/> substitutes prompt text directly into argv;
-/// <see cref="DialogueParticipant.PromptFilePlaceholder"/> substitutes a file path instead, which is
-/// how a long exchange avoids #579's command-line length crash.
+/// <see cref="DialogueParticipant"/> configuration names, real vendor or test stub alike.
+/// <paramref name="prompt"/> (see <see cref="IVendorTurnClient.SendTurnAsync"/>) is always substituted
+/// directly into the argv element equal to <see cref="DialogueParticipant.PromptPlaceholder"/> — decision
+/// 0039 retired the <c>{PROMPT_FILE}</c> file-passing mechanism <c>#580</c> added, because a bounded
+/// per-turn prompt (see <see cref="DialogueRunner"/>) never approaches the argv limit #579 crashed on.
+/// <para>
+/// <b>Vendor-native session continuation (decision 0039).</b> Detected the same way
+/// <see cref="DialogueYieldWiring"/> detects a real vendor CLI to wire MCP into: by
+/// <see cref="DialogueParticipant.Command"/>'s file name, never <see cref="DialogueParticipant.Vendor"/>
+/// (opaque to this worker beyond the transcript) — so a test stub command gets no session flags
+/// injected, exactly like it gets no MCP wiring. For a <c>claude</c> command: <paramref name="sessionId"/>
+/// null means this participant's session has not started yet, so a fresh id is minted and passed via
+/// <c>--session-id</c>; non-null means <c>--resume &lt;id&gt;</c>. For an <c>agy</c> command: <c>agy</c>
+/// mints its own id, so a null <paramref name="sessionId"/> instead passes <c>--log-file</c> pointed at
+/// a fresh temp file, which is scraped afterward for a <c>conversation=&lt;id&gt;</c> line (the same
+/// regex the daemon's own interactive-session turn loop uses against agy's log output); a non-null
+/// <paramref name="sessionId"/> passes it straight through via <c>--conversation</c>. Any other command
+/// gets no flags at all and echoes <paramref name="sessionId"/> back unchanged.
+/// </para>
 /// <para>
 /// Stdin is redirected but never written to and closed immediately, the same "avoid a stdin-wait
 /// stall" reasoning <c>ClaudeWorkerAdapter</c>'s remarks record for the real vendor CLIs.
@@ -36,6 +49,15 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
 {
     private static readonly TimeSpan PrintTimeoutMargin = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// The safe-well-under-the-platform-limit ceiling decision 0039 asks for (originally #581):
+    /// #579 measured Windows' real argv ceiling at ~32,767 characters, and a bounded per-turn prompt
+    /// (see <see cref="DialogueRunner"/>) should never come close to either number — hitting this is
+    /// always an unanticipated outlier, so it fails loud and typed rather than crashing the platform
+    /// way #579 originally did.
+    /// </summary>
+    public const int MaxArgumentLength = 16_000;
+
     private readonly TimeSpan? _configuredTurnTimeout;
 
     public ProcessVendorTurnClient(TimeSpan? turnTimeout = null)
@@ -49,11 +71,11 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
     }
 
     public Task<VendorTurnResult> SendTurnAsync(
-        DialogueParticipant participant, string prompt, CancellationToken cancellationToken = default)
-        => SendTurnAsync(participant, prompt, turnTimeout: null, cancellationToken);
+        DialogueParticipant participant, string prompt, string? sessionId = null, CancellationToken cancellationToken = default)
+        => SendTurnAsync(participant, prompt, sessionId, turnTimeout: null, cancellationToken);
 
     public async Task<VendorTurnResult> SendTurnAsync(
-        DialogueParticipant participant, string prompt, TimeSpan? turnTimeout, CancellationToken cancellationToken = default)
+        DialogueParticipant participant, string prompt, string? sessionId, TimeSpan? turnTimeout, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(participant);
         ArgumentNullException.ThrowIfNull(prompt);
@@ -75,32 +97,10 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
             }
         }
 
-        string? tempPromptFile = null;
+        string? agyLogFilePath = null;
 
         try
         {
-            // DialogueRunner always pre-writes the turn's prompt and passes its path, so File.Exists(prompt)
-            // is true on every production call. The else branch is exercised directly by
-            // ProcessVendorTurnClientTests, which call SendTurnAsync with raw prompt text (not a path)
-            // against a {PROMPT_FILE} participant to test this client in isolation from DialogueRunner —
-            // it writes that text to a temp file so the substitution below still has a path to work
-            // with, then cleans the temp file up in the finally block.
-            var hasPromptFilePlaceholder = participant.Args.Any(a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
-            string? promptFilePath = null;
-            if (hasPromptFilePlaceholder)
-            {
-                if (File.Exists(prompt))
-                {
-                    promptFilePath = prompt;
-                }
-                else
-                {
-                    tempPromptFile = Path.Combine(Path.GetTempPath(), $"aer-dialogue-prompt-{Guid.NewGuid():N}.txt");
-                    await File.WriteAllTextAsync(tempPromptFile, prompt, cancellationToken).ConfigureAwait(false);
-                    promptFilePath = tempPromptFile;
-                }
-            }
-
             var startInfo = new ProcessStartInfo
             {
                 FileName = participant.Command,
@@ -121,17 +121,55 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
 
             foreach (var arg in participant.Args)
             {
-                var substituted = arg;
-                if (arg == DialogueParticipant.PromptPlaceholder)
+                var substituted = arg == DialogueParticipant.PromptPlaceholder ? prompt : arg;
+
+                if (substituted.Length > MaxArgumentLength)
                 {
-                    substituted = prompt;
-                }
-                else if (promptFilePath is not null && arg.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal))
-                {
-                    substituted = arg.Replace(DialogueParticipant.PromptFilePlaceholder, promptFilePath, StringComparison.Ordinal);
+                    throw new DialogueArgumentTooLargeException(
+                        $"Turn for role '{participant.Role}' substituted an argument of {substituted.Length} characters, "
+                        + $"exceeding the safe threshold of {MaxArgumentLength} (decision 0039's defensive guard). "
+                        + "A bounded per-turn prompt should never approach this -- this is very likely an unbounded value reaching argv unexpectedly.");
                 }
 
                 startInfo.ArgumentList.Add(substituted);
+            }
+
+            // Vendor-native session continuation (decision 0039), detected the same way
+            // DialogueYieldWiring detects a real vendor CLI: by Command's file name, never
+            // participant.Vendor -- a test-stub command matches neither branch and gets no flags,
+            // echoing sessionId back unchanged below.
+            string? establishedSessionId = sessionId;
+            if (IsClaudeCommand(participant.Command))
+            {
+                if (sessionId is null)
+                {
+                    establishedSessionId = Guid.NewGuid().ToString();
+                    startInfo.ArgumentList.Add("--session-id");
+                    startInfo.ArgumentList.Add(establishedSessionId);
+                }
+                else
+                {
+                    startInfo.ArgumentList.Add("--resume");
+                    startInfo.ArgumentList.Add(sessionId);
+                }
+            }
+            else if (IsAgyCommand(participant.Command))
+            {
+                if (sessionId is null)
+                {
+                    // agy mints its own conversation id; there is nothing to pass on this turn.
+                    // Point --log-file at a fresh temp file so the id can be scraped back out after
+                    // the process exits (below) -- the same conversation=<id> shape the daemon's own
+                    // interactive-session turn loop already scrapes agy's log output for.
+                    agyLogFilePath = Path.Combine(Path.GetTempPath(), $"aer-dialogue-agy-log-{Guid.NewGuid():N}.txt");
+                    startInfo.ArgumentList.Add("--log-file");
+                    startInfo.ArgumentList.Add(agyLogFilePath);
+                }
+                else
+                {
+                    startInfo.ArgumentList.Add("--conversation");
+                    startInfo.ArgumentList.Add(sessionId);
+                }
             }
 
             if (IsAgyCommand(participant.Command) && !HasOperatorPrintTimeout(participant.Args))
@@ -173,14 +211,21 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                         string.Empty,
                         124,
                         $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.",
-                        TimedOut: true);
+                        TimedOut: true,
+                        SessionId: sessionId);
+                }
+
+                if (agyLogFilePath is not null)
+                {
+                    establishedSessionId = TryScrapeAgyConversationId(agyLogFilePath);
                 }
 
                 return new VendorTurnResult(
                     stdoutTask.Result.TrimEnd('\r', '\n'),
                     process.ExitCode,
                     stderrTask.Result.TrimEnd('\r', '\n'),
-                    TimedOut: false);
+                    TimedOut: false,
+                    SessionId: establishedSessionId);
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
@@ -188,34 +233,63 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                     string.Empty,
                     124,
                     $"Turn timed out after {effectiveTurnTimeout} for role '{participant.Role}'.",
-                    TimedOut: true);
+                    TimedOut: true,
+                    SessionId: sessionId);
             }
         }
         finally
         {
-            if (tempPromptFile is not null && File.Exists(tempPromptFile))
+            if (agyLogFilePath is not null && File.Exists(agyLogFilePath))
             {
                 try
                 {
-                    File.Delete(tempPromptFile);
+                    File.Delete(agyLogFilePath);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    Console.Error.WriteLine($"Failed to delete temporary prompt file '{tempPromptFile}': {ex.Message}");
+                    Console.Error.WriteLine($"Failed to delete temporary agy log file '{agyLogFilePath}': {ex.Message}");
                 }
             }
         }
     }
 
-    private static bool IsAgyCommand(string command)
+    /// <summary>
+    /// Mirrors the regex the daemon's own interactive-session turn loop (<c>Program.cs</c>) already
+    /// uses against agy's <c>--log-file</c> output; not shared code because the daemon's copy carries
+    /// its own establishment-tracking semantics this worker does not need (record-once ties this
+    /// comment to that behavior, not to a shared helper the two have no other reason to share).
+    /// </summary>
+    private static string? TryScrapeAgyConversationId(string logFilePath)
+    {
+        if (!File.Exists(logFilePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var logText = File.ReadAllText(logFilePath);
+            var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([^\s\r\n]+)");
+            return match.Success ? match.Groups[1].Value : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsClaudeCommand(string command) => CommandNameEquals(command, "claude");
+
+    private static bool IsAgyCommand(string command) => CommandNameEquals(command, "agy");
+
+    private static bool CommandNameEquals(string command, string name)
     {
         if (string.IsNullOrWhiteSpace(command))
         {
             return false;
         }
 
-        var name = Path.GetFileNameWithoutExtension(command);
-        return string.Equals(name, "agy", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(Path.GetFileNameWithoutExtension(command), name, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasOperatorPrintTimeout(IReadOnlyList<string> args)

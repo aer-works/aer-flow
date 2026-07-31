@@ -176,13 +176,12 @@ public class DialogueWorkerConfigParserTests
     }
 
     /// <summary>
-    /// #579 regression: DialogueParticipantPresets.For builds participants with
-    /// DialogueParticipant.PromptFilePlaceholder embedded inside a longer instruction string, not the
-    /// exact-match DialogueParticipant.PromptPlaceholder this class's other tests use. A config built
-    /// this way — the shape aer-dialogue actually loads for any preset-based participant — must parse.
+    /// Decision 0039 retired {PROMPT_FILE}: DialogueParticipantPresets.For now builds every preset
+    /// participant with the exact-match DialogueParticipant.PromptPlaceholder, the same shape this
+    /// class's other tests use — a preset-built config must parse the same way an authored one does.
     /// </summary>
     [Fact]
-    public void A_participant_using_the_prompt_file_placeholder_parses()
+    public void A_participant_built_from_a_preset_parses()
     {
         var config = new DialogueWorkerConfig(
             SeedPrompt: "Propose a design.",
@@ -197,21 +196,13 @@ public class DialogueWorkerConfigParserTests
 
         var parsed = DialogueWorkerConfigParser.Parse(json);
 
-        Assert.Contains(
-            parsed.Participants[0].Args,
-            a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
-        Assert.Contains(
-            parsed.Participants[1].Args,
-            a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
+        Assert.Contains(parsed.Participants[0].Args, a => a == DialogueParticipant.PromptPlaceholder);
+        Assert.Contains(parsed.Participants[1].Args, a => a == DialogueParticipant.PromptPlaceholder);
     }
 
-    /// <summary>
-    /// The negative arm of the above: a participant with neither placeholder — not even embedded in a
-    /// longer string — must still be rejected. Guards against loosening the {PROMPT_FILE} check to
-    /// substring-match without keeping this failure mode covered.
-    /// </summary>
+    /// <summary>The negative arm: a participant with no {PROMPT} element at all — not even embedded in a longer string — must be rejected.</summary>
     [Fact]
-    public void A_participant_with_neither_placeholder_throws()
+    public void A_participant_with_no_placeholder_throws()
     {
         var json = ValidJson.Replace("""["-p", "{PROMPT}"]""", """["-p", "no placeholder here"]""");
 

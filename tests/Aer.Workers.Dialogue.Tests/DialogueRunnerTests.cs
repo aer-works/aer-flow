@@ -59,23 +59,68 @@ public class DialogueRunnerTests
     }
 
     [Fact]
-    public async Task Threads_the_full_transcript_so_far_into_each_next_turns_prompt()
+    public async Task Each_turns_prompt_is_bounded_to_preamble_plus_the_immediately_preceding_reply()
     {
+        // Decision 0039: no more full-transcript resend. Turn 1 has nothing preceding it, so it gets
+        // the seed instead; every turn after that gets only the single immediately preceding turn's
+        // text, never anything further back.
         var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
         var runner = new DialogueRunner(client);
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(3), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(4), outputDirectory);
 
             Assert.Contains("seed", turns[0].Prompt);
             Assert.Contains("Initiator preamble", turns[0].Prompt);
-            Assert.Contains("Responder preamble", turns[1].Prompt);
 
-            // Turn 3's prompt carries turn 1's *and* turn 2's text, not just the immediately preceding turn.
-            Assert.Contains(turns[0].Text, turns[2].Prompt);
+            Assert.Contains("Responder preamble", turns[1].Prompt);
+            Assert.Contains(turns[0].Text, turns[1].Prompt);
+            Assert.DoesNotContain("seed", turns[1].Prompt);
+
+            // Turn 3 carries turn 2's text, never turn 1's or the seed -- the bounded-increment
+            // property this whole change exists to establish.
             Assert.Contains(turns[1].Text, turns[2].Prompt);
-            Assert.Contains("seed", turns[2].Prompt);
+            Assert.DoesNotContain(turns[0].Text, turns[2].Prompt);
+            Assert.DoesNotContain("seed", turns[2].Prompt);
+
+            // Turn 4 carries turn 3's text, never turn 1's or turn 2's -- the property holds turn over
+            // turn, not just once at turn 3.
+            Assert.Contains(turns[2].Text, turns[3].Prompt);
+            Assert.DoesNotContain(turns[0].Text, turns[3].Prompt);
+            Assert.DoesNotContain(turns[1].Text, turns[3].Prompt);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task Each_participant_gets_its_own_session_id_established_on_its_first_turn_and_resumed_after()
+    {
+        // Decision 0039: DialogueRunner threads a per-participant session id, established (null in,
+        // whatever the client returns out) on that participant's own first turn and resumed (the
+        // previously-established id passed back in) on every one of its later turns -- independent
+        // per participant, since the two sides are separate vendor sessions.
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, "", SessionId: $"session-for-call-{callIndex}"));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            await runner.RunAsync(BuildConfig(4), outputDirectory);
+
+            // Call 1 = initiator's first turn, call 2 = responder's first turn: both null in (nothing
+            // established yet for either participant).
+            Assert.Null(client.SessionIdsSeen[0]);
+            Assert.Null(client.SessionIdsSeen[1]);
+
+            // Call 3 = initiator's second turn: resumes what call 1 established, NOT what call 2
+            // (the responder's own session) established.
+            Assert.Equal("session-for-call-1", client.SessionIdsSeen[2]);
+
+            // Call 4 = responder's second turn: resumes what call 2 established.
+            Assert.Equal("session-for-call-2", client.SessionIdsSeen[3]);
         }
         finally
         {
@@ -462,9 +507,14 @@ public class DialogueRunnerTests
     {
         public int CallCount { get; private set; }
 
-        public Task<VendorTurnResult> SendTurnAsync(DialogueParticipant participant, string prompt, CancellationToken cancellationToken = default)
+        /// <summary>Every <paramref name="sessionId"/> this client was called with, in call order — lets a test assert the fresh-vs-resumed sequence a caller passed in.</summary>
+        public List<string?> SessionIdsSeen { get; } = [];
+
+        public Task<VendorTurnResult> SendTurnAsync(
+            DialogueParticipant participant, string prompt, string? sessionId = null, CancellationToken cancellationToken = default)
         {
             CallCount++;
+            SessionIdsSeen.Add(sessionId);
             return Task.FromResult(resultForCall(CallCount));
         }
     }

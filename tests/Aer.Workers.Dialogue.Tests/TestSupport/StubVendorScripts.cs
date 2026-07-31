@@ -29,17 +29,17 @@ internal static class StubVendorScripts
         if (OperatingSystem.IsWindows())
         {
             var scriptPath = Path.Combine(scriptDirectory, $"{Guid.NewGuid():N}.ps1");
-            File.WriteAllText(scriptPath, $"param([string]$Prompt)\r\n$text = if (Test-Path -Path $Prompt -PathType Leaf) {{ Get-Content -Path $Prompt -Raw }} else {{ $Prompt }}\r\nWrite-Output ($text + '{suffix}')\r\n");
+            File.WriteAllText(scriptPath, $"param([string]$Prompt)\r\nWrite-Output ($Prompt + '{suffix}')\r\n");
 
             return new DialogueParticipant(
                 role, vendor, Model: null, preamble, "powershell",
-                ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, DialogueParticipant.PromptFilePlaceholder]);
+                ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, DialogueParticipant.PromptPlaceholder]);
         }
 
         var shScriptPath = Path.Combine(scriptDirectory, $"{Guid.NewGuid():N}.sh");
-        File.WriteAllText(shScriptPath, $"#!/bin/sh\nif [ -f \"$1\" ]; then text=$(cat \"$1\"); else text=\"$1\"; fi\necho \"$text{suffix}\"\n");
+        File.WriteAllText(shScriptPath, $"#!/bin/sh\necho \"$1{suffix}\"\n");
 
-        return new DialogueParticipant(role, vendor, Model: null, preamble, "sh", [shScriptPath, DialogueParticipant.PromptFilePlaceholder]);
+        return new DialogueParticipant(role, vendor, Model: null, preamble, "sh", [shScriptPath, DialogueParticipant.PromptPlaceholder]);
     }
 
     /// <summary>A participant whose stub CLI writes <paramref name="stderrText"/> to stderr and exits with <paramref name="exitCode"/>, never writing anything to stdout — the "vendor CLI exits non-zero" failure path (M17 Phase 3, #166).</summary>
