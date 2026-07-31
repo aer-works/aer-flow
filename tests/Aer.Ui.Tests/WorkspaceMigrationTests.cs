@@ -36,13 +36,10 @@ public class WorkspaceMigrationTests
     }
 
     /// <summary>
-    /// #863: the migration runs during framework initialisation, before any window exists, and
-    /// <see cref="Directory.Move"/> throws on the ordinary conditions a real Documents folder meets
-    /// — a file open in another process, a read-only child, a cross-volume Known Folder redirect.
-    /// Propagating that would turn "your old folder could not be moved" into "the app does not
-    /// start", a crash mode that did not exist before the rename and would hit exactly the people
-    /// who have real data to migrate. The move is best-effort: it degrades to the same message
-    /// surface the both-present arm uses, and startup continues.
+    /// #863, whose cost the catch in <see cref="WorkspaceMigration.Run(string, string)"/> records:
+    /// the move is best-effort, so a failure reports and startup continues. The arm below uses a
+    /// real open handle rather than a stubbed failure, because that is the condition an editor or
+    /// a sync client actually creates.
     /// </summary>
     [Fact]
     public void A_move_that_cannot_complete_reports_it_instead_of_throwing_at_startup()
