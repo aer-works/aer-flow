@@ -1,4 +1,4 @@
-# What AER Flow is
+# What Baton is
 
 > **Design corpus — started 2026-07-24 during the M25 design pause, kept current since.**
 > This is the *source* the decision records were written from; where a record and this document
@@ -8,11 +8,11 @@
 
 ---
 
-AER Flow — what it is
+Baton — what it is
 
 Product definition · draft for markup
 
-## AER Flow
+## Baton
 
 A drop-in replacement for Claude Code that puts more than one model in the room , and lets you leave the room without losing it.
 

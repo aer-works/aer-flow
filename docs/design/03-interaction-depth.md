@@ -10,7 +10,7 @@
 
 ---
 
-AER Flow — interaction depth
+Baton — interaction depth
 
 Interaction design · depth pass
 

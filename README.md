@@ -1,7 +1,7 @@
 # Baton
 
-Baton is the product name for the AER (Agent Execution Runtime) ecosystem's workflow tool. It is
-built on `aer-flow`, the workflow execution engine layer.
+Baton is the AER (Agent Execution Runtime) ecosystem's workflow tool, built on `aer-flow`, its
+workflow execution engine layer.
 
 Built in .NET, it reads structured workflow definitions, dispatches them to Workers (via `aer-core`), and bridges outputs back to the engine.
 
