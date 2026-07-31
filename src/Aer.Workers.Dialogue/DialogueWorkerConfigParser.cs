@@ -109,20 +109,17 @@ public static class DialogueWorkerConfigParser
             throw new DialogueWorkerConfigException($"Dialogue-worker config's '{fieldName}' is missing 'Command'.");
         }
 
-        // Mirrors ProcessVendorTurnClient's own substitution rules exactly: {PROMPT} replaces a
-        // whole arg (Args.Contains checks element equality), {PROMPT_FILE} may be embedded inside a
-        // longer arg (e.g. "Read instructions from {PROMPT_FILE} and follow them."), so it needs a
-        // substring check instead.
+        // Mirrors ProcessVendorTurnClient's own substitution rule exactly (decision 0039 retired the
+        // {PROMPT_FILE} alternative): {PROMPT} must replace a whole arg (ProcessVendorTurnClient only
+        // substitutes on exact element equality), so this is element equality too, not a substring check.
         var hasPromptPlaceholder = participant.Args is not null
             && participant.Args.Contains(DialogueParticipant.PromptPlaceholder);
-        var hasPromptFilePlaceholder = participant.Args is not null
-            && participant.Args.Any(a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
 
-        if (!hasPromptPlaceholder && !hasPromptFilePlaceholder)
+        if (!hasPromptPlaceholder)
         {
             throw new DialogueWorkerConfigException(
                 $"Dialogue-worker config's '{fieldName}.Args' must contain the literal " +
-                $"'{DialogueParticipant.PromptPlaceholder}' or '{DialogueParticipant.PromptFilePlaceholder}' placeholder.");
+                $"'{DialogueParticipant.PromptPlaceholder}' placeholder.");
         }
     }
 }

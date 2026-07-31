@@ -20,20 +20,18 @@ public static class DialogueParticipantPresets
         ArgumentException.ThrowIfNullOrEmpty(role);
         ArgumentException.ThrowIfNullOrEmpty(preamble);
 
-        var promptInstruction = $"Read instructions from {DialogueParticipant.PromptFilePlaceholder} and follow them.";
-
         return vendor switch
         {
             "claude" => new DialogueParticipant(
                 role, vendor, model, preamble, "claude",
                 model is null
-                    ? ["-p", promptInstruction, "--allowedTools", "Write,Read", "--output-format", "text"]
-                    : ["-p", promptInstruction, "--allowedTools", "Write,Read", "--output-format", "text", "--model", model]),
+                    ? ["-p", DialogueParticipant.PromptPlaceholder, "--allowedTools", "Write,Read", "--output-format", "text"]
+                    : ["-p", DialogueParticipant.PromptPlaceholder, "--allowedTools", "Write,Read", "--output-format", "text", "--model", model]),
             "gemini" => new DialogueParticipant(
                 role, vendor, model, preamble, "agy",
                 model is null
-                    ? ["-p", promptInstruction, "--mode", "accept-edits"]
-                    : ["-p", promptInstruction, "--mode", "accept-edits", "--model", model]),
+                    ? ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits"]
+                    : ["-p", DialogueParticipant.PromptPlaceholder, "--mode", "accept-edits", "--model", model]),
             _ => throw new ArgumentException($"No participant preset exists for vendor '{vendor}'.", nameof(vendor)),
         };
     }

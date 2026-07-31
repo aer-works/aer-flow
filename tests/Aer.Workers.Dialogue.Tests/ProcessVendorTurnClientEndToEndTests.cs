@@ -129,16 +129,23 @@ public class ProcessVendorTurnClientEndToEndTests
         }
     }
 
+    /// <summary>
+    /// Decision 0039's replacement for the old "long prompt survives via {PROMPT_FILE}" test:
+    /// {PROMPT_FILE} is retired, and a bounded per-turn prompt (preamble + seed or the single
+    /// immediately preceding reply) should never approach the oversize guard's threshold. A huge
+    /// preamble is the one thing that can still make a single turn's prompt large regardless of
+    /// bounding, so it is exactly what should trip the guard now instead of silently reaching argv.
+    /// </summary>
     [Fact]
-    public async Task A_long_prompt_exceeding_win32_command_line_limit_succeeds_without_crashing()
+    public async Task A_participant_whose_preamble_alone_exceeds_the_oversize_guard_fails_the_exchange()
     {
         var root = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-{Guid.NewGuid():N}");
         var scriptDirectory = Path.Combine(root, "scripts");
         var outputDirectory = Path.Combine(root, "output");
         try
         {
-            var largePreamble = new string('x', 40000);
-            var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", largePreamble, " [drafted]");
+            var oversizePreamble = new string('x', ProcessVendorTurnClient.MaxArgumentLength + 1);
+            var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", oversizePreamble, " [drafted]");
             var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "Responder preamble", " [reviewed]");
             var config = new DialogueWorkerConfig(
                 SeedPrompt: "Design a cache.",
@@ -147,10 +154,8 @@ public class ProcessVendorTurnClientEndToEndTests
                 Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
-            var turns = await runner.RunAsync(config, outputDirectory);
 
-            Assert.Single(turns);
-            Assert.Contains(largePreamble, turns[0].Text);
+            await Assert.ThrowsAsync<DialogueArgumentTooLargeException>(() => runner.RunAsync(config, outputDirectory));
         }
         finally
         {

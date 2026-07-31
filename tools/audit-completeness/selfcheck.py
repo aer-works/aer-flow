@@ -604,15 +604,15 @@ def _dialogue_dry_run():
         # rebuilds a known-vendor participant's Command/Args from that same formula at bind time.
         assert proposer["Command"] == "agy" and reviewer["Command"] == "claude"
         assert proposer["Args"] == [
-            "-p", "Read instructions from {PROMPT_FILE} and follow them.",
+            "-p", "{PROMPT}",
             "--mode", "accept-edits", "--model", "gemini-3.6-flash-high"]
         assert reviewer["Args"] == [
-            "-p", "Read instructions from {PROMPT_FILE} and follow them.",
+            "-p", "{PROMPT}",
             "--allowedTools", "Write,Read", "--output-format", "text", "--model", "sonnet"]
         for p in participants:
-            assert any(dispatch.DIALOGUE_PROMPT_FILE_PLACEHOLDER in a for a in p["Args"]), (
-                f"participant '{p['Role']}' has no {{PROMPT_FILE}} placeholder -- "
-                "DialogueWorkerConfigParser.ValidateParticipant would refuse this config")
+            assert dispatch.DIALOGUE_PROMPT_PLACEHOLDER in p["Args"], (
+                f"participant '{p['Role']}' has no whole-element {{PROMPT}} placeholder -- "
+                "post-#586 DialogueWorkerConfigParser refuses this config (the {PROMPT_FILE} era is over)")
     return "1 dry-run x 3 generated JSONs (workflow/bindings/dialogue-config), 2 cross-vendor participants"
 
 

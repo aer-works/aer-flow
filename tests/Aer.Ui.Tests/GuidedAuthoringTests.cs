@@ -127,8 +127,8 @@ public class GuidedAuthoringTests
             Assert.Equal(2, config.Participants.Count);
             Assert.Equal("claude", config.Participants[0].Command);
             Assert.Equal("agy", config.Participants[1].Command);
-            Assert.Contains(config.Participants[0].Args, a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
-            Assert.Contains(config.Participants[1].Args, a => a.Contains(DialogueParticipant.PromptFilePlaceholder, StringComparison.Ordinal));
+            Assert.Contains(config.Participants[0].Args, a => a == DialogueParticipant.PromptPlaceholder);
+            Assert.Contains(config.Participants[1].Args, a => a == DialogueParticipant.PromptPlaceholder);
         }
         finally
         {
