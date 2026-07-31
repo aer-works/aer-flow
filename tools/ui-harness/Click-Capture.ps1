@@ -1,4 +1,4 @@
-# Clicks a window-relative point in the AER Flow window, then captures by handle.
+# Clicks a window-relative point in the Baton window, then captures by handle.
 # Saves and restores the user's cursor position so driving the app does not steal
 # their pointer. DPI-aware so bitmap pixels and screen coordinates agree.
 param(
@@ -32,7 +32,7 @@ public class Clk {
 
 [Clk]::SetProcessDPIAware() | Out-Null
 
-$proc = Get-Process | Where-Object { $_.MainWindowTitle -like '*AER Flow*' } | Select-Object -First 1
+$proc = Get-Process | Where-Object { $_.MainWindowTitle -like '*Baton*' } | Select-Object -First 1
 if (-not $proc) { Write-Output "NO AER WINDOW"; exit 1 }
 $h = $proc.MainWindowHandle
 
@@ -51,7 +51,7 @@ $rootAtPoint = [Clk]::GetAncestor([Clk]::WindowFromPoint($probe), 2)   # GA_ROOT
 if ($rootAtPoint -ne $h) {
     $sb = New-Object System.Text.StringBuilder 256
     [void][Clk]::GetWindowText($rootAtPoint, $sb, 256)
-    Write-Output "REFUSED: ($X,$Y) belongs to 0x$($rootAtPoint.ToString('X')) '$($sb.ToString())', not the AER Flow window. Bring it to the front and retry; no click was sent."
+    Write-Output "REFUSED: ($X,$Y) belongs to 0x$($rootAtPoint.ToString('X')) '$($sb.ToString())', not the Baton window. Bring it to the front and retry; no click was sent."
     exit 2
 }
 
