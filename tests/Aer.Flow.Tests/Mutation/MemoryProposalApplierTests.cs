@@ -382,6 +382,202 @@ public class MemoryProposalApplierTests : IDisposable
     }
 
     /// <summary>
+    /// #874: a cyclic reparse point makes <c>ResolveLinkTarget(returnFinalTarget: true)</c> throw
+    /// <see cref="IOException"/>, which before the fix escaped <c>ApplyAsync</c> raw instead of
+    /// arriving as the <see cref="InvalidRoomMutationException"/> every other refusal there raises.
+    /// <para>
+    /// Windows-only on purpose, and the scope is the measurement's rather than a convenience: on
+    /// Windows a cyclic junction reports as an <b>existing</b> directory, which is what carries
+    /// execution past the <c>Directory.Exists</c> guard and into the throwing call. Whether a cyclic
+    /// symlink on POSIX reaches the same code path was not measured, so this test does not claim it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_cyclic_reparse_point_is_refused_as_an_invalid_mutation_not_a_raw_io_error()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("The cyclic-junction behaviour this pins was measured on Windows only; see #874.");
+            return;
+        }
+
+        Directory.CreateDirectory(_memoryRoot);
+        var loopA = Path.Combine(_memoryRoot, "loopA");
+        var loopB = Path.Combine(_memoryRoot, "loopB");
+
+        // Created A -> B first, while B does not exist yet: 'mklink /J' does not require its target
+        // to be present, which is what makes the cycle constructible at all.
+        if (!TryCreateDirectoryReparsePoint(loopA, loopB, out var firstSkipReason))
+        {
+            Assert.Skip(firstSkipReason);
+            return;
+        }
+
+        try
+        {
+            if (!TryCreateDirectoryReparsePoint(loopB, loopA, out var secondSkipReason))
+            {
+                Assert.Skip(secondSkipReason);
+                return;
+            }
+
+            try
+            {
+                var capture = WriteCapture(
+                    """{"Operation":"add","TargetPath":"loopA/fact.md","Content":"never lands","Rationale":"cyclic"}""");
+
+                var exception = await Assert.ThrowsAsync<InvalidRoomMutationException>(
+                    () => MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken));
+
+                Assert.Contains("reparse point", exception.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                RemoveDirectoryLink(loopB);
+            }
+        }
+        finally
+        {
+            RemoveDirectoryLink(loopA);
+        }
+    }
+
+    /// <summary>
+    /// #874's second trigger, and the one that caught an earlier draft of the fix out: a reparse
+    /// point whose own ACL denies this process read access. <c>ResolveLinkTarget</c> throws
+    /// <see cref="UnauthorizedAccessException"/>, which does <b>not</b> derive from
+    /// <see cref="IOException"/> -- so a catch naming only <c>IOException</c> lets it escape raw,
+    /// exactly the failure #874 exists to close. Every guard upstream still passes: measured,
+    /// <c>Directory.Exists</c> returns true and <c>File.GetAttributes</c> succeeds on the denied
+    /// link.
+    /// <para>
+    /// Windows-only, because the mechanism is a Windows ACL. The room lives in its own temp
+    /// directory rather than under <c>_tempDirectory</c> so that a failure to restore the ACL can
+    /// never leave <c>Dispose()</c> unable to clean up the shared tree.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_reparse_point_this_process_cannot_read_is_refused_as_an_invalid_mutation()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("The denied-reparse-point behaviour this pins is a Windows ACL mechanism; see #874.");
+            return;
+        }
+
+        var roomDirectory = Path.Combine(Path.GetTempPath(), "aer_memory_applier_denied_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(roomDirectory);
+
+        try
+        {
+            var memoryRoot = Path.Combine(roomDirectory, MemoryProposalApplier.MemoryDirectoryName);
+            Directory.CreateDirectory(memoryRoot);
+            var outsideDirectory = Path.Combine(roomDirectory, "outside");
+            Directory.CreateDirectory(outsideDirectory);
+
+            var linkPath = Path.Combine(memoryRoot, "escape");
+            if (!TryCreateDirectoryReparsePoint(linkPath, outsideDirectory, out var skipReason))
+            {
+                Assert.Skip(skipReason);
+                return;
+            }
+
+            try
+            {
+                if (!TryDenyReadAccess(linkPath, out var denySkipReason))
+                {
+                    Assert.Skip(denySkipReason);
+                    return;
+                }
+
+                try
+                {
+                    var capturePath = Path.Combine(_tempDirectory, "proposal-denied-link.json");
+                    await File.WriteAllTextAsync(
+                        capturePath,
+                        """{"Operation":"add","TargetPath":"escape/pwned.md","Content":"pwned","Rationale":"malicious"}""",
+                        TestContext.Current.CancellationToken);
+
+                    var exception = await Assert.ThrowsAsync<InvalidRoomMutationException>(
+                        () => MemoryProposalApplier.ApplyAsync(roomDirectory, capturePath, TestContext.Current.CancellationToken));
+
+                    Assert.Contains("reparse point", exception.Message, StringComparison.Ordinal);
+                }
+                finally
+                {
+                    RestoreReadAccess(linkPath);
+                }
+            }
+            finally
+            {
+                RemoveDirectoryLink(linkPath);
+            }
+        }
+        finally
+        {
+            Directory.Delete(roomDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Denies the current user read/traverse on <paramref name="path"/> via <c>icacls</c>, spawned
+    /// directly rather than through a shell for the same quoting reason as
+    /// <see cref="TryCreateDirectoryReparsePoint"/>. Inheritance is broken first, otherwise the
+    /// inherited grant from the temp tree wins and the deny never bites. Returns false with a reason
+    /// rather than faking the arm if the environment will not apply it.
+    /// </summary>
+    private static bool TryDenyReadAccess(string path, out string skipReason)
+    {
+        var user = Environment.UserName;
+        if (RunIcacls(path, "/inheritance:r", "/grant:r", $"{user}:(F)") != 0)
+        {
+            skipReason = "Could not break ACL inheritance in this environment; the deny arm would not bite.";
+            return false;
+        }
+
+        if (RunIcacls(path, "/deny", $"{user}:(RX)") != 0)
+        {
+            skipReason = "Could not apply a deny ACE in this environment.";
+            return false;
+        }
+
+        skipReason = "";
+        return true;
+    }
+
+    /// <summary>
+    /// Undoes <see cref="TryDenyReadAccess"/> so the link can be unlinked and the temp tree removed.
+    /// Best-effort by design: the room directory is this test's own, so a failure here cannot strand
+    /// the shared fixture.
+    /// </summary>
+    private static void RestoreReadAccess(string path)
+    {
+        RunIcacls(path, "/remove:d", Environment.UserName);
+        RunIcacls(path, "/grant", $"{Environment.UserName}:(F)");
+    }
+
+    private static int RunIcacls(string path, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo("icacls")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add(path);
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo)!;
+        process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return process.ExitCode;
+    }
+
+    /// <summary>
     /// Unlinks a reparse point created by <see cref="TryCreateDirectoryReparsePoint"/> without
     /// touching its target -- <c>Directory.Delete(path, recursive: false)</c> on a junction or
     /// directory symlink removes the link itself, never the linked-to contents.

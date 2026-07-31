@@ -252,11 +252,33 @@ public static class MemoryProposalApplier
             return path;
         }
 
-        var resolved = isDirectory
-            ? Directory.ResolveLinkTarget(path, returnFinalTarget: true)
-            : File.ResolveLinkTarget(path, returnFinalTarget: true);
+        try
+        {
+            var resolved = isDirectory
+                ? Directory.ResolveLinkTarget(path, returnFinalTarget: true)
+                : File.ResolveLinkTarget(path, returnFinalTarget: true);
 
-        return resolved?.FullName ?? path;
+            return resolved?.FullName ?? path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // #874: two measured ways this call fails on a reparse point that every guard above has
+            // already accepted, and neither is screened out by the Directory.Exists check -- a
+            // junction reports as an existing directory in both cases, and File.GetAttributes
+            // succeeds in both.
+            //   - a cycle (A -> B -> A): `returnFinalTarget: true` walks the whole chain, so
+            //     resolution fails with IOException.
+            //   - a link whose own ACL denies this process read access: UnauthorizedAccessException,
+            //     which does NOT derive from IOException and so needs naming separately. Catching
+            //     only IOException here is precisely the bug an earlier draft of this shipped.
+            // #874 carries both runs. Refusing is the only honest answer -- a link whose target
+            // cannot be determined cannot be shown to land inside memory/, and returning `path`
+            // unresolved would silently downgrade to the lexical check this method exists to replace.
+            throw new InvalidRoomMutationException(
+                $"Memory-proposal target path component '{path}' is a reparse point whose target could not be " +
+                $"resolved ({ex.Message}); refused, because an unresolvable link cannot be shown to stay inside memory/.",
+                ex);
+        }
     }
 
     private static void RegenerateIndex(string memoryRoot)
