@@ -327,6 +327,25 @@ def _negated_close_cries_wolf():
         yield
 
 
+@control("a wrong repo name fails STEP 4 loudly; every other gh failure still skips",
+         "the missing-repo case is treated as just another skip, so a wrong name checks nothing")
+def _step4_missing_repo_skips_again():
+    # The defect restored: every gh failure is a skip, which is the state that let a repointed
+    # repo name silence STEP 4 while the rollup stayed green.
+    with swap(selfcheck.completeness, "repo_is_unreachable", lambda stderr: False):
+        yield
+
+
+@control("a wrong repo name fails STEP 4 loudly; every other gh failure still skips",
+         "every gh failure is called a missing repo, so being offline reds the whole gate")
+def _step4_calls_every_failure_a_missing_repo():
+    # The opposite direction, and the one that gets a check disabled rather than trusted: if
+    # offline and unauthenticated runs fail the gate, the first developer without network deletes
+    # the step.
+    with swap(selfcheck.completeness, "repo_is_unreachable", lambda stderr: True):
+        yield
+
+
 @control("--pr-body refuses a path argument instead of passing over the empty stdin it leaves",
          "the stray-argument refusal is removed, so a path argument reads empty stdin and passes")
 def _pr_body_takes_a_path_again():
