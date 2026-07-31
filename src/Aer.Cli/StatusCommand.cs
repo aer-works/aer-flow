@@ -62,8 +62,17 @@ public static class StatusCommand
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
         var reader = new FlowEventLogReader(logPath);
-        var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
+
+        var events = new List<FlowEvent>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (entry is LogEntry.FlowLogEntry flowLogEntry)
+            {
+                events.Add(flowLogEntry.Event);
+            }
+        }
+
         var state = StateProjector.Project(events, snapshot);
 
         PrintState(output, state, logPath, events, entries);
