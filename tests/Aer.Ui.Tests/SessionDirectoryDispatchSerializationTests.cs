@@ -297,135 +297,11 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             "Two dispatches against the same task directory overlapped -- the per-directory lock did not serialise them.");
     }
 
-    /// <summary>
-    /// #872's discriminating red, and the reason this is a test rather than a comment: the defect
-    /// only ever appeared as a flake under machine load, so nothing in the suite could tell a fixed
-    /// helper from a lucky one. Here the contended window is created deliberately -- a writer holds
-    /// the file with <c>FileShare.None</c>, exactly the momentary open the daemon's own append takes
-    /// -- and released while the reader is polling. Before the fix the reader throws the instant it
-    /// finds the file; after it, it waits the writer out.
-    /// <para>
-    /// Windows-only, and scoped to what the mechanism actually is rather than for convenience:
-    /// <c>FileShare.None</c> is enforced by the OS on Windows, while POSIX file locking is advisory,
-    /// so on Linux/macOS the read simply succeeds and the arm would be green either way -- a test
-    /// that passes without discriminating is worse than one that says it did not run. Same scoping
-    /// mistake #865 shipped, applied deliberately this time.
-    /// </para>
-    /// </summary>
-    [Fact]
-    public async Task A_reader_waits_out_a_writer_holding_the_file_without_sharing_read()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Skip("FileShare.None is only OS-enforced on Windows; elsewhere this arm cannot discriminate. See #872.");
-            return;
-        }
-
-        var directory = Path.Combine(Path.GetTempPath(), "aer_872_share_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-
-        try
-        {
-            var path = Path.Combine(directory, "turn-errors.log");
-            await File.WriteAllTextAsync(path, "the dispatch failure text", TestContext.Current.CancellationToken);
-
-            var exclusive = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
-            try
-            {
-                var read = Task.Run(() => WaitForFileContentAsync(path));
-
-                // Long enough that the reader has certainly attempted the open and been refused,
-                // and well inside ShareRetryBudget so a correct reader still has retries left.
-                await Task.Delay(250, TestContext.Current.CancellationToken);
-                exclusive.Dispose();
-
-                Assert.Equal("the dispatch failure text", await read);
-            }
-            finally
-            {
-                exclusive.Dispose();
-            }
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
-    }
-
     private static int ReadCompletionsCount(string taskDirectory)
     {
         var completionsFile = Path.Combine(taskDirectory, SlowCollisionStubAdapter.CompletionsFileName);
-        return File.Exists(completionsFile) ? ReadLinesShareTolerant(completionsFile).Count : 0;
+        return File.Exists(completionsFile) ? LiveFileReader.ReadLines(completionsFile).Count : 0;
     }
-
-    /// <summary>
-    /// Line-wise read of a file a live writer may hold; the sharing rules are
-    /// <see cref="ReadShareTolerant"/>'s. A torn line can at worst be the final one, which the
-    /// callers' &gt;=-then-settle pattern already tolerates.
-    /// </summary>
-    private static List<string> ReadLinesShareTolerant(string path) =>
-        ReadShareTolerant(path, reader =>
-        {
-            var lines = new List<string>();
-            while (reader.ReadLine() is { } line)
-            {
-                if (line.Length > 0)
-                {
-                    lines.Add(line);
-                }
-            }
-
-            return lines;
-        });
-
-    /// <summary>
-    /// #872: the whole-file counterpart, for a reader that wants the text rather than the lines. It
-    /// exists because <see cref="WaitForFileContentAsync"/> read with <c>File.ReadAllTextAsync</c>
-    /// and hit the race described above for real -- see that method.
-    /// </summary>
-    private static string ReadTextShareTolerant(string path) =>
-        ReadShareTolerant(path, reader => reader.ReadToEnd());
-
-    /// <summary>
-    /// The one place the share-tolerant open and its retry live, so the readers above cannot drift
-    /// apart -- and so a reader added later inherits both halves instead of re-deriving one of them,
-    /// which is exactly how #872 happened.
-    /// <para>
-    /// These files are appended to by a still-live writer while the tests poll them, so a
-    /// default-share read races the writer's handle on Windows (share violation, #839, caught on PR
-    /// #838's CI). Both halves are needed and that is measured, not cautious: tolerant share flags
-    /// alone are NOT enough, because Windows PowerShell 5.1's Add-Content takes a momentary open
-    /// that does not share Read at all -- the flags-only version of this helper failed the same race
-    /// in its own branch's gates run. So a transient open failure is also retried until
-    /// <see cref="ShareRetryBudget"/> runs out, and then rethrown loudly rather than swallowed.
-    /// </para>
-    /// </summary>
-    private static T ReadShareTolerant<T>(string path, Func<StreamReader, T> read)
-    {
-        var deadline = DateTime.UtcNow + ShareRetryBudget;
-        while (true)
-        {
-            try
-            {
-                using var stream = new FileStream(
-                    path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var reader = new StreamReader(stream);
-                return read(reader);
-            }
-            catch (Exception ex) when (
-                ex is IOException or UnauthorizedAccessException && DateTime.UtcNow < deadline)
-            {
-                Thread.Sleep(TimeSpan.FromMilliseconds(25));
-            }
-        }
-    }
-
-    /// <summary>
-    /// How long <see cref="ReadShareTolerant"/> keeps retrying a sharing violation before
-    /// rethrowing. The appender holds the file for microseconds per line; two seconds is orders of
-    /// magnitude of headroom for a loaded CI runner without hiding a genuinely stuck handle.
-    /// </summary>
-    private static readonly TimeSpan ShareRetryBudget = TimeSpan.FromSeconds(2);
 
     /// <summary>The one dispatch's start-stamp file time in this directory; fails loudly on zero or several.</summary>
     private static DateTime ReadDispatchStartUtc(string taskDirectory)
@@ -548,8 +424,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         {
             if (File.Exists(completionsFile))
             {
-                // Share-tolerant for the same reason as ReadCompletionsCount (#839).
-                var lines = ReadLinesShareTolerant(completionsFile);
+                var lines = LiveFileReader.ReadLines(completionsFile);
                 if (lines.Count >= expectedCompletions)
                 {
                     return;
@@ -561,33 +436,13 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// #872: this polled for two conditions -- the file not existing yet, and the file being empty --
-    /// and read with <c>File.ReadAllTextAsync</c>, i.e. <c>FileShare.Read</c>. While the daemon holds
-    /// <c>turn-errors.log</c> open for its own append, that read throws and the exception escaped the
-    /// polling loop entirely: the retry was present, it just did not cover the failure that actually
-    /// happens. Measured on a local gates run with a second lane building concurrently, which is why
-    /// it only ever appeared under load. Same family as #839/#840/#842/#843, this time in test
-    /// infrastructure rather than product code. Reading through
-    /// <see cref="ReadTextShareTolerant"/> supplies both halves the fix needs, for the reason its
-    /// own summary gives.
+    /// #872: this used to poll for two conditions -- the file not existing yet, and the file being
+    /// empty -- while reading with <c>File.ReadAllTextAsync</c>, i.e. <c>FileShare.Read</c>. While
+    /// the daemon holds <c>turn-errors.log</c> open for its own append, that read throws and the
+    /// exception escaped the polling loop entirely: the retry was present, it just did not cover the
+    /// failure that actually happens. It now delegates to <see cref="LiveFileReader"/>, which owns
+    /// both halves of the fix and the measurement behind them.
     /// </summary>
-    private static async Task<string> WaitForFileContentAsync(string filePath)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (File.Exists(filePath))
-            {
-                var content = ReadTextShareTolerant(filePath);
-                if (!string.IsNullOrWhiteSpace(content))
-                {
-                    return content;
-                }
-            }
-
-            await Task.Delay(100);
-        }
-
-        return string.Empty;
-    }
+    private static Task<string> WaitForFileContentAsync(string filePath) =>
+        LiveFileReader.WaitForContentAsync(filePath);
 }
