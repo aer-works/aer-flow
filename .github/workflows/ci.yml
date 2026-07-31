@@ -333,6 +333,13 @@ jobs:
       #
       # Body only, and pull_request only. A commit message with the same shape is a separate defect
       # this cannot reach: the merge squashes them, and the body is what GitHub actually reads.
+      #
+      # FIXING THE BODY DOES NOT CLEAR THIS CHECK -- push something. `on: pull_request` defaults to
+      # types [opened, synchronize, reopened], so an `edited` event starts no run, and a re-run
+      # replays the original payload rather than re-reading the body. The red therefore survives the
+      # fix, which reads as "my correction did not work" (#862 weighs adding `edited`; it is not
+      # free, because a run where the test jobs are skipped must not be able to satisfy the `ci`
+      # gate on its own).
       - name: A negated closing keyword still closes the issue
         if: github.event_name == 'pull_request'
         env:
