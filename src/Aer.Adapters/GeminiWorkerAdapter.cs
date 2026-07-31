@@ -469,6 +469,12 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
     /// server and rewrites its <c>.agents/mcp_config.json</c> with canonical content (#801), mirroring
     /// <see cref="EnsureAgyWorkspace"/>'s own left-holding-canonical-content convention and its reasons.
     /// </summary>
+    /// <remarks>
+    /// <b>Carries no capture-directory path (#833)</b> -- same reason and mechanism as
+    /// <see cref="ClaudeWorkerAdapter.EnsureMemoryProposalMcpConfig"/>'s own remarks, which are
+    /// canonical; this side differs only in which vendor process <c>Aer.Mcp.Host</c> inherits
+    /// <c>AER_OUTPUT_DIR</c> from (<c>agy</c> here, <c>claude</c> there).
+    /// </remarks>
     private static string EnsureMemoryProposalWorkspace()
     {
         var workspace = Path.Combine(AerPaths.WorkerLaunchConfig, MemoryProposalWorkspaceDirectoryName);
@@ -482,7 +488,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
                 ["aer-memory-proposal"] = new
                 {
                     command = "dotnet",
-                    args = new[] { hostDllPath, "--memory-proposal-dir", ClaudeWorkerAdapter.MemoryProposalCaptureDirectory },
+                    args = new[] { hostDllPath, "--memory-proposal-tool" },
                 },
             },
         });

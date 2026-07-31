@@ -19,6 +19,13 @@ public class MemoryProposalEscalationTests : IDisposable
         _captureDirectory = Path.Combine(_tempDirectory, "memory-proposals");
     }
 
+    /// <summary>#833. <see cref="MemoryProposalEscalation.CaptureDirectoryName"/>'s own remarks explain the cross-boundary duplication this pins.</summary>
+    [Fact]
+    public void CaptureDirectoryName_is_the_literal_mirrored_on_the_Aer_Mcp_Host_side()
+    {
+        Assert.Equal("memory-proposals", MemoryProposalEscalation.CaptureDirectoryName);
+    }
+
     [Fact]
     public async Task A_captured_proposal_becomes_visible_held_work_in_the_room()
     {
@@ -75,6 +82,70 @@ public class MemoryProposalEscalationTests : IDisposable
         Assert.Empty(state.HeldWork);
     }
 
+    /// <summary>
+    /// #851 (#833 review finding): a lost dispatch race must not abort the rest of the sweep. The
+    /// idempotency projection is read before the room lock, so a concurrent sweeper can dispatch
+    /// the same ref between that read and the mutation's own re-read under the lock — the stale
+    /// first read below IS that window, made deterministic. The colliding file's dispatch throws
+    /// inside <see cref="RoomMutationInterface"/>; the sweep must treat "already dispatched" as
+    /// the goal state and keep going, so the remaining capture files still land this pass rather
+    /// than waiting for the next one.
+    /// </summary>
+    [Fact]
+    public async Task A_lost_dispatch_race_on_one_capture_does_not_abort_the_rest_of_the_sweep()
+    {
+        Directory.CreateDirectory(_captureDirectory);
+        var collidingFile = Path.Combine(_captureDirectory, "proposal-aaa.json");
+        var freshFile = Path.Combine(_captureDirectory, "proposal-bbb.json");
+        await File.WriteAllTextAsync(
+            collidingFile,
+            """{"Operation":"add","TargetPath":"raced.md","Content":"x","Rationale":"y"}""",
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            freshFile,
+            """{"Operation":"add","TargetPath":"fresh.md","Content":"x","Rationale":"y"}""",
+            TestContext.Current.CancellationToken);
+
+        var realReader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        // The concurrent sweeper wins the race: the colliding ref is already in the journal.
+        await RoomMutationInterface.DispatchHeldWorkAsync(
+            _tempDirectory, new HeldWorkRef(Path.GetFullPath(collidingFile)),
+            MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget,
+            "operator", realReader, writer, TestContext.Current.CancellationToken);
+
+        var staleReader = new StaleFirstReadRoomEventLogReader(realReader);
+
+        var state = await MemoryProposalEscalation.EscalateNewProposalsAsync(
+            _captureDirectory, _tempDirectory, "operator", staleReader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, state.HeldWork.Count);
+        Assert.Equal(
+            HeldWorkStatus.Dispatched,
+            state.HeldWork[new HeldWorkRef(Path.GetFullPath(freshFile))].Status);
+    }
+
+    /// <summary>
+    /// Simulates the race window for the test above: the first projection read returns nothing
+    /// (stale), every later read sees the journal as it really is.
+    /// </summary>
+    private sealed class StaleFirstReadRoomEventLogReader(IRoomEventLogReader inner) : IRoomEventLogReader
+    {
+        private bool _first = true;
+
+        public async Task<IReadOnlyList<RoomEvent>> ReadAllRoomEventsAsync(CancellationToken cancellationToken = default)
+        {
+            if (_first)
+            {
+                _first = false;
+                return [];
+            }
+
+            return await inner.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     [Fact]
     public async Task A_relative_capture_directory_is_refused_because_the_full_path_is_the_idempotency_key()
     {
@@ -85,6 +156,118 @@ public class MemoryProposalEscalationTests : IDisposable
             "relative/captures", _tempDirectory, "operator", reader, writer, TestContext.Current.CancellationToken));
 
         Assert.Contains("rooted", ex.Message);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_tempDirectory))
+        {
+            Directory.Delete(_tempDirectory, recursive: true);
+        }
+    }
+}
+
+/// <summary>
+/// #833: per-execution capture, and the room-attribution polarity it exists to prove. Uses its own
+/// temp directory pair rather than <see cref="MemoryProposalEscalationTests"/>'s single-directory
+/// fixture, because the whole point here is two SEPARATE room directories.
+/// </summary>
+public class MemoryProposalEscalationForRoomTests : IDisposable
+{
+    private readonly string _tempDirectory;
+
+    public MemoryProposalEscalationForRoomTests()
+    {
+        _tempDirectory = Path.Combine(Path.GetTempPath(), "aer_memory_proposal_room_tests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDirectory);
+    }
+
+    private static void WriteCapture(string roomDirectory, string executionId, string fileName)
+    {
+        var captureDir = Path.Combine(roomDirectory, "artifacts", $"execution_{executionId}", "memory-proposals");
+        Directory.CreateDirectory(captureDir);
+        File.WriteAllText(
+            Path.Combine(captureDir, fileName),
+            """{"Operation":"add","TargetPath":"fact.md","Content":"x","Rationale":"y"}""");
+    }
+
+    /// <summary>
+    /// THE defect this issue fixes, proven directly: two rooms, one execution captured under each.
+    /// Sweeping room A must dispatch only room A's proposal into room A's journal — room B's capture
+    /// must be invisible to it, and vice versa. This is impossible to state, let alone pass, against
+    /// #801's static shared directory (every room's captures lived in the exact same directory, with
+    /// no room-scoped subtree to sweep) -- there was no way to even express "room A's captures" as
+    /// distinct from "room B's". Per-execution capture under each room's own task directory is what
+    /// makes the two directory trees physically disjoint, which is what this test actually exercises.
+    /// </summary>
+    [Fact]
+    public async Task Two_rooms_each_see_only_their_own_proposals_when_swept()
+    {
+        var roomA = Path.Combine(_tempDirectory, "room-a");
+        var roomB = Path.Combine(_tempDirectory, "room-b");
+        Directory.CreateDirectory(roomA);
+        Directory.CreateDirectory(roomB);
+
+        WriteCapture(roomA, "aaaa", "proposal-a1.json");
+        WriteCapture(roomB, "bbbb", "proposal-b1.json");
+
+        var readerA = new RoomEventLogReader(Path.Combine(roomA, "room.jsonl"));
+        await using var writerA = new RoomEventLogWriter(Path.Combine(roomA, "room.jsonl"));
+        var readerB = new RoomEventLogReader(Path.Combine(roomB, "room.jsonl"));
+        await using var writerB = new RoomEventLogWriter(Path.Combine(roomB, "room.jsonl"));
+
+        var stateA = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+            roomA, "operator", readerA, writerA, TestContext.Current.CancellationToken);
+        var stateB = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+            roomB, "operator", readerB, writerB, TestContext.Current.CancellationToken);
+
+        Assert.Single(stateA.HeldWork);
+        Assert.Contains("proposal-a1.json", stateA.HeldWork.Keys.Single().Value);
+        Assert.Single(stateB.HeldWork);
+        Assert.Contains("proposal-b1.json", stateB.HeldWork.Keys.Single().Value);
+
+        // Explicit both-directions assertion (the gate's "assert polarity in both directions" —
+        // one condition apart is exactly where a subtle attribution bug would hide): room A's ref
+        // set must not contain room B's file, and vice versa.
+        Assert.DoesNotContain(stateA.HeldWork.Keys, @ref => @ref.Value.Contains("proposal-b1.json"));
+        Assert.DoesNotContain(stateB.HeldWork.Keys, @ref => @ref.Value.Contains("proposal-a1.json"));
+    }
+
+    /// <summary>
+    /// Multiple executions under the SAME room all contribute their captures to that one room —
+    /// the sweep is not limited to a single execution directory.
+    /// </summary>
+    [Fact]
+    public async Task Multiple_executions_in_one_room_all_contribute_captures()
+    {
+        var room = Path.Combine(_tempDirectory, "room-multi");
+        Directory.CreateDirectory(room);
+        WriteCapture(room, "exec1", "proposal-1.json");
+        WriteCapture(room, "exec2", "proposal-2.json");
+
+        var reader = new RoomEventLogReader(Path.Combine(room, "room.jsonl"));
+        await using var writer = new RoomEventLogWriter(Path.Combine(room, "room.jsonl"));
+
+        var state = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+            room, "operator", reader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, state.HeldWork.Count);
+    }
+
+    /// <summary>No artifacts directory at all (a brand-new room) sweeps to no-op, never throws.</summary>
+    [Fact]
+    public async Task No_artifacts_directory_yields_no_held_work_and_does_not_throw()
+    {
+        var room = Path.Combine(_tempDirectory, "room-empty");
+        Directory.CreateDirectory(room);
+
+        var reader = new RoomEventLogReader(Path.Combine(room, "room.jsonl"));
+        await using var writer = new RoomEventLogWriter(Path.Combine(room, "room.jsonl"));
+
+        var state = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+            room, "operator", reader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Empty(state.HeldWork);
     }
 
     public void Dispose()

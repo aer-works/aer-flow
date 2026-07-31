@@ -2,7 +2,10 @@ using Aer.Mcp;
 using Aer.Mcp.Host;
 
 var captureFilePath = ParseArgValue(args, "--capture-file");
-var memoryProposalDir = ParseArgValue(args, "--memory-proposal-dir");
+// #833: no literal path arrives on the command line -- see Aer.Adapters.ClaudeWorkerAdapter's
+// EnsureMemoryProposalMcpConfig for why (canonical: the resolve-once-per-binding seam and the
+// env-inheritance mechanism this flag rests on). This flag only says whether to enable the tool.
+var enableMemoryProposalTool = args.Contains("--memory-proposal-tool");
 
 List<IMcpTool> tools = [];
 if (captureFilePath is not null)
@@ -10,14 +13,23 @@ if (captureFilePath is not null)
     tools.Add(new YieldTool(captureFilePath));
 }
 
-if (memoryProposalDir is not null)
+if (enableMemoryProposalTool)
 {
-    tools.Add(new MemoryProposalTool(memoryProposalDir));
+    var outputDirectory = Environment.GetEnvironmentVariable("AER_OUTPUT_DIR");
+    if (string.IsNullOrEmpty(outputDirectory))
+    {
+        Console.Error.WriteLine(
+            "--memory-proposal-tool requires AER_OUTPUT_DIR in this process's environment (set per " +
+            "execution and inherited from the spawning vendor CLI); none was found.");
+        return 1;
+    }
+
+    tools.Add(new MemoryProposalTool(Path.Combine(outputDirectory, MemoryProposalTool.CaptureDirectoryName)));
 }
 
 if (tools.Count == 0)
 {
-    Console.Error.WriteLine("Usage: Aer.Mcp.Host [--capture-file <path>] [--memory-proposal-dir <path>]");
+    Console.Error.WriteLine("Usage: Aer.Mcp.Host [--capture-file <path>] [--memory-proposal-tool]");
     return 1;
 }
 

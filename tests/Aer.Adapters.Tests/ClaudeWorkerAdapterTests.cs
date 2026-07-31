@@ -608,10 +608,11 @@ public class ClaudeWorkerAdapterTests
     }
 
     /// <summary>
-    /// #801: opting in points `--mcp-config` at a real config naming AER's own MCP server and the
-    /// `memory-edit-proposal` tool, invoked via `Aer.Mcp.Host.dll --memory-proposal-dir <path>` --
-    /// the same `dotnet <dll>` shape #543 requires for the PreToolUse hook, for the identical
-    /// packed-global-tool deployment reason.
+    /// #801/#833: opting in points `--mcp-config` at a real config naming AER's own MCP server and
+    /// the `memory-edit-proposal` tool, invoked via `Aer.Mcp.Host.dll --memory-proposal-tool` -- the
+    /// same `dotnet <dll>` shape #543 requires for the PreToolUse hook, for the identical
+    /// packed-global-tool deployment reason. No capture-directory path rides the args (#833) -- see
+    /// `ClaudeWorkerAdapter.EnsureMemoryProposalMcpConfig`'s own remarks (canonical) for why.
     /// </summary>
     [Fact]
     public void Opting_in_to_the_memory_proposal_tool_points_mcp_config_at_a_real_server_naming_the_tool_host()
@@ -630,7 +631,7 @@ public class ClaudeWorkerAdapterTests
         Assert.Equal("dotnet", server.GetProperty("command").GetString());
         var serverArgs = server.GetProperty("args").EnumerateArray().Select(a => a.GetString()).ToList();
         Assert.Contains(serverArgs, a => a!.EndsWith("Aer.Mcp.Host.dll", StringComparison.Ordinal));
-        Assert.Contains("--memory-proposal-dir", serverArgs);
-        Assert.Contains(ClaudeWorkerAdapter.MemoryProposalCaptureDirectory, serverArgs);
+        Assert.Contains("--memory-proposal-tool", serverArgs);
+        Assert.DoesNotContain(serverArgs, a => a!.Contains("memory-proposals", StringComparison.Ordinal));
     }
 }

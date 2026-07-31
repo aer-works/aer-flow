@@ -235,6 +235,13 @@ public class MemoryProposalToolTests
         }
     }
 
+    /// <summary>Pins the literal (#833) -- see <see cref="MemoryProposalTool.CaptureDirectoryName"/>'s own doc comment for why this must agree with the Aer.Flow side.</summary>
+    [Fact]
+    public void CaptureDirectoryName_is_the_literal_mirrored_on_the_Aer_Flow_side()
+    {
+        Assert.Equal("memory-proposals", MemoryProposalTool.CaptureDirectoryName);
+    }
+
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
 
     private static string TempDir() => Path.Combine(Path.GetTempPath(), $"aer-memory-proposal-tool-test-{Guid.NewGuid():N}");

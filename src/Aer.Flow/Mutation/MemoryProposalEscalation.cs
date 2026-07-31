@@ -1,3 +1,4 @@
+using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
@@ -32,6 +33,67 @@ public static class MemoryProposalEscalation
     public const string MemoryProposalShape = "memory-proposal";
 
     /// <summary>
+    /// The decider identity every daemon-driven sweep dispatches held work under (#833) --
+    /// memory-proposal decisions always route to a person (decision 0044's point 3: this tool never
+    /// applies its own proposal), so a fixed, honest identity rather than a made-up per-room one.
+    /// </summary>
+    public const string DefaultDeciderIdentity = "operator";
+
+    /// <summary>
+    /// The capture subdirectory name relative to one execution's own <c>AER_OUTPUT_DIR</c> (#833) --
+    /// mirrors <see cref="Aer.Mcp.Host.MemoryProposalTool.CaptureDirectoryName"/>'s own constant of
+    /// the identical value; <c>Aer.Flow</c> cannot reference <c>Aer.Mcp.Host</c> (the dependency runs
+    /// the other way -- adapters and the tool host sit above the engine), so the literal is
+    /// duplicated across the boundary rather than shared, the same way
+    /// <c>HeldWorkReconciler.DefaultLaneJournalExistsProbe</c> already hardcodes <c>flow.jsonl</c>'s
+    /// name rather than importing it. <c>MemoryProposalCaptureDirectoryNameTests</c> (both projects)
+    /// pins the two literals to the same value.
+    /// </summary>
+    public const string CaptureDirectoryName = "memory-proposals";
+
+    /// <summary>
+    /// Sweeps every execution directory under <paramref name="roomDirectoryPath"/>'s own
+    /// <c>artifacts/</c> for a <see cref="CaptureDirectoryName"/> subdirectory and escalates each
+    /// one's new captures into this same room (#833). Attribution is structural, never a claim: the
+    /// room's storage form IS the task directory (spec §2), so every <c>execution_*</c> directory
+    /// found under <c>{roomDirectoryPath}/artifacts</c> was, by construction, dispatched by this room
+    /// and no other -- there is nothing here for a worker to lie about. Retires the #801 static,
+    /// shared capture directory this replaces: that directory served every room at once with no way
+    /// to tell them apart, which is the defect #833 exists to fix.
+    /// </summary>
+    public static async Task<RoomState> EscalateNewProposalsForRoomAsync(
+        string roomDirectoryPath,
+        string deciderIdentity,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(deciderIdentity);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        var state = RoomProjector.Project(await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false));
+
+        var artifactsRoot = Path.Combine(roomDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
+        if (!Directory.Exists(artifactsRoot))
+        {
+            return state;
+        }
+
+        foreach (var executionDirectory in Directory.GetDirectories(artifactsRoot, "execution_*")
+            .OrderBy(d => d, StringComparer.Ordinal))
+        {
+            var captureDirectoryPath = Path.Combine(executionDirectory, CaptureDirectoryName);
+            state = await EscalateNewProposalsAsync(
+                captureDirectoryPath, roomDirectoryPath, deciderIdentity, reader, writer, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return state;
+    }
+
+    /// <summary>
     /// Dispatches every capture file under <paramref name="captureDirectoryPath"/> that is not
     /// already held work in this room, in filename order. A capture file's own path becomes its
     /// <see cref="HeldWorkRef"/> -- there is no lane directory for a memory proposal, so this reuses
@@ -40,6 +102,9 @@ public static class MemoryProposalEscalation
     /// The idempotency key is the capture file's full path, so <paramref name="captureDirectoryPath"/>
     /// must be rooted -- a relative path would resolve against the caller's current directory and
     /// mint a second ref for the same physical file under a different cwd (#801 review).
+    /// Scope limit: dispatch keys on the file's presence alone; its JSON content is not validated
+    /// here (a half-written file is never visible thanks to
+    /// <see cref="Aer.Mcp.Host.MemoryProposalTool"/>'s atomic write -- see its own remarks).
     /// </summary>
     public static async Task<RoomState> EscalateNewProposalsAsync(
         string captureDirectoryPath,
@@ -78,9 +143,20 @@ public static class MemoryProposalEscalation
                 continue;
             }
 
-            state = await RoomMutationInterface.DispatchHeldWorkAsync(
-                roomDirectoryPath, @ref, MemoryProposalShape, NoBudget, deciderIdentity, reader, writer, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                state = await RoomMutationInterface.DispatchHeldWorkAsync(
+                    roomDirectoryPath, @ref, MemoryProposalShape, NoBudget, deciderIdentity, reader, writer, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (InvalidRoomMutationException)
+            {
+                // Lost a dispatch race (#851): the idempotency check above ran against a projection
+                // read before the room lock, and a concurrent sweeper recorded this ref in the
+                // window. "Already dispatched" is this loop's goal state, not a failure -- refresh
+                // the projection and keep sweeping so one collision never aborts the pass.
+                state = RoomProjector.Project(await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false));
+            }
         }
 
         return state;

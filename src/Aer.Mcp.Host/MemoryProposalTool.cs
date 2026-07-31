@@ -23,6 +23,16 @@ namespace Aer.Mcp.Host;
 /// </summary>
 public sealed class MemoryProposalTool(string captureDirectoryPath) : IMcpTool
 {
+    /// <summary>
+    /// The subdirectory name this tool's captures land under, relative to the execution's own
+    /// <c>AER_OUTPUT_DIR</c> (#833). <c>Aer.Mcp.Host/Program.cs</c> is the only production caller
+    /// that combines this with an output directory; mirrored as a literal in
+    /// <see cref="Aer.Flow.Mutation.MemoryProposalEscalation"/>'s own constant of the same value
+    /// (<c>Aer.Flow</c> cannot reference this project) -- the two must agree, which
+    /// <c>MemoryProposalCaptureDirectoryNameTests</c> asserts on both sides.
+    /// </summary>
+    public const string CaptureDirectoryName = "memory-proposals";
+
     public static readonly string[] AllowedOperations = ["add", "edit", "delete"];
 
     public string Name => "memory-edit-proposal";

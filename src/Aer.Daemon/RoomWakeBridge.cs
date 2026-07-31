@@ -77,6 +77,13 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
             {
                 if (state.RoomDirectoryPath is { } roomDirectoryPath)
                 {
+                    // #833: sweep for new memory-proposal captures before deriving wakes, so one
+                    // escalated this tick is already visible held work by the time
+                    // DeriveCurrentWakesAsync projects state below. Attribution is structural, not a
+                    // claim -- see MemoryProposalEscalation.EscalateNewProposalsForRoomAsync's own
+                    // doc comment (canonical) for why.
+                    await SweepMemoryProposalsAsync(roomDirectoryPath, stoppingToken).ConfigureAwait(false);
+
                     var tick = await DeriveCurrentWakesAsync(roomDirectoryPath, stoppingToken)
                         .ConfigureAwait(false);
                     state.CurrentWakes = tick.Wakes;
@@ -103,6 +110,25 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// The daemon-hosted poller #801 shipped logic for but never wired (#833): escalates every new
+    /// memory-proposal capture found under <paramref name="roomDirectoryPath"/>'s own execution
+    /// directories into that same room's <c>room.jsonl</c>. Public for the same reason
+    /// <see cref="DeriveCurrentWakesAsync"/> is — exercised directly by integration tests without a
+    /// hosted service.
+    /// </summary>
+    public static async Task SweepMemoryProposalsAsync(
+        string roomDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var roomLogPath = Path.Combine(roomDirectoryPath, RoomLogFileName);
+        var reader = new RoomEventLogReader(roomLogPath);
+        await using var writer = new RoomEventLogWriter(roomLogPath);
+
+        await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+            roomDirectoryPath, MemoryProposalEscalation.DefaultDeciderIdentity, reader, writer, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
