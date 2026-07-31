@@ -127,8 +127,8 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
                 continue;
             }
 
-            // Never probed: its ref is not a lane directory — see RoomWakeDerivation.DeriveWakes'
-            // matching guard (#832) for the rationale; this skip just avoids a nonsense probe.
+            // Never probed — the rationale is RoomWakeDerivation.DeriveWakes' matching guard
+            // (#832); this skip just avoids a nonsense probe against a non-directory ref.
             if (heldWork.Shape == MemoryProposalEscalation.MemoryProposalShape)
             {
                 continue;
