@@ -89,11 +89,38 @@ public class HeldWorkResolveEndpointTests : IAsyncLifetime
         var roomLogPath = Path.Combine(_roomDirectory, "room.jsonl");
         var reader = new RoomEventLogReader(roomLogPath);
         await using var writer = new RoomEventLogWriter(roomLogPath);
-        await RoomMutationInterface.DispatchHeldWorkAsync(
-            _roomDirectory, @ref, MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget,
-            "operator", reader, writer, TestContext.Current.CancellationToken);
 
-        return @ref;
+        // Escalate it ourselves UNLESS the room's own sweep got there first. Most tests here run
+        // against a dormant RoomWakeBridge and always take the dispatch branch; the one that arms
+        // /api/rooms/watch races a live sweep that escalates exactly the same capture file, and
+        // whoever wins is immaterial to what these tests assert. Without this the loser dies on
+        // "already been dispatched" -- measured, not defensive: it is what the watching test hit
+        // once the writer contention behind it was fixed.
+        //
+        // Checked in a loop rather than once, because the check and the dispatch are not atomic
+        // against the sweep either.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (true)
+        {
+            var state = RoomProjector.Project(
+                await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken));
+            if (state.HeldWork.ContainsKey(@ref))
+            {
+                return @ref;
+            }
+
+            try
+            {
+                await RoomMutationInterface.DispatchHeldWorkAsync(
+                    _roomDirectory, @ref, MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget,
+                    "operator", reader, writer, TestContext.Current.CancellationToken);
+                return @ref;
+            }
+            catch (InvalidRoomMutationException) when (DateTime.UtcNow < deadline)
+            {
+                // The sweep won between the check and the dispatch; re-read and take the other branch.
+            }
+        }
     }
 
     /// <summary>
