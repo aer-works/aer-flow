@@ -123,9 +123,9 @@ public class HeldWorkResolveEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// #672 review: ConcurrencyGuard.Acquire unconditionally creates the directory it locks, so
-    /// without an explicit existence guard a typo'd RoomDirectoryPath would silently create a
-    /// stray directory (with a flow.lock inside it) before failing. Asserts neither happens.
+    /// Proves the existence guard the resolve endpoint takes for the reason its own comment
+    /// records (Program.cs, <c>/api/rooms/held-work/resolve</c>): a bad-request response, and no
+    /// stray directory left behind.
     /// </summary>
     [Fact]
     public async Task Resolving_against_a_nonexistent_room_directory_returns_bad_request_and_creates_nothing()

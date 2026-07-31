@@ -27,7 +27,9 @@ namespace Aer.Flow.Mutation;
 /// and <c>delete</c> are not -- <c>add</c>'s target now already exists (post-apply guard, below) and
 /// <c>delete</c>'s target is now already gone, so both fail loudly on the retry rather than silently
 /// repeating or silently no-op'ing. Either way the retry's outcome is visible to the operator, never
-/// a silent second write.
+/// a silent second write. A wedged-looking <c>add</c>/<c>delete</c> retry is not actually stuck:
+/// <b>reject is the recovery path</b> -- it skips apply entirely and resolves the item outright, and
+/// <c>memory/</c> already reflects the (successful) first attempt regardless.
 /// </para>
 /// </summary>
 public static class MemoryProposalResolution
