@@ -337,6 +337,16 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             args.Add(invocation.WorkingDirectory);
         }
 
+        // #801: agy has no per-invocation flag equivalent to claude's --mcp-config (decision 0035),
+        // so a real workspace directory carrying .agents/mcp_config.json has to exist on disk for
+        // --add-dir to point at, same as DialogueYieldWiring's agy branch. Opt-in only, so a
+        // dispatch that does not ask for it keeps today's exact argv.
+        if (invocation.EnableMemoryProposalTool)
+        {
+            args.Add("--add-dir");
+            args.Add(EnsureMemoryProposalWorkspace());
+        }
+
         if (invocation.SessionId is not null && invocation.ResumeSession)
         {
             args.Add("--conversation");
@@ -441,6 +451,43 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         var workspace = Path.Combine(AerPaths.WorkerLaunchConfig, AgyWorkspaceDirectoryName);
         Directory.CreateDirectory(Path.Combine(workspace, ".agents"));
         AtomicLaunchConfigWriter.Write(Path.Combine(workspace, ".agents", "hooks.json"), BuildHooksJson());
+        return workspace;
+    }
+
+    /// <summary>
+    /// The name of the workspace directory AER points every memory-proposal-opted-in agy worker at,
+    /// holding the <c>.agents/mcp_config.json</c> naming AER's own MCP server (#585, #801). Separate
+    /// from <see cref="AgyWorkspaceDirectoryName"/> for the same reason that one is separate from
+    /// <see cref="AerPaths.WorkerLaunchConfig"/>'s root: <c>--add-dir</c> grants file access to
+    /// whatever it names, and this tool is opt-in, so its workspace should not be reachable (or
+    /// grant reach) on a dispatch that never asked for it.
+    /// </summary>
+    public const string MemoryProposalWorkspaceDirectoryName = "agy-memory-proposal-workspace";
+
+    /// <summary>
+    /// Creates the AER-owned workspace opted-in agy dispatches use for the memory-proposal MCP
+    /// server and rewrites its <c>.agents/mcp_config.json</c> with canonical content (#801), mirroring
+    /// <see cref="EnsureAgyWorkspace"/>'s own left-holding-canonical-content convention and its reasons.
+    /// </summary>
+    private static string EnsureMemoryProposalWorkspace()
+    {
+        var workspace = Path.Combine(AerPaths.WorkerLaunchConfig, MemoryProposalWorkspaceDirectoryName);
+        Directory.CreateDirectory(Path.Combine(workspace, ".agents"));
+
+        var hostDllPath = Path.Combine(AppContext.BaseDirectory, "Aer.Mcp.Host.dll");
+        var json = JsonSerializer.Serialize(new
+        {
+            mcpServers = new Dictionary<string, object>
+            {
+                ["aer-memory-proposal"] = new
+                {
+                    command = "dotnet",
+                    args = new[] { hostDllPath, "--memory-proposal-dir", ClaudeWorkerAdapter.MemoryProposalCaptureDirectory },
+                },
+            },
+        });
+
+        AtomicLaunchConfigWriter.Write(Path.Combine(workspace, ".agents", "mcp_config.json"), json);
         return workspace;
     }
 
