@@ -30,6 +30,19 @@ internal sealed class SlowCollisionStubAdapter : IWorkerAdapter
     public const string CompletionsFileName = ".dispatch-completions";
 
     /// <summary>
+    /// Prefix of a per-dispatch stamp file created the moment the dispatch's hold window opens.
+    /// The file's own <c>LastWriteTimeUtc</c> is the start timestamp -- filesystem clocks, no shell
+    /// date-format portability. Two dispatches on DIFFERENT directories are proven concurrent by
+    /// their start gap being under <see cref="DispatchDelay"/>: global serialisation forces the
+    /// second start to wait out the first's full hold, while true concurrency leaves only spawn
+    /// jitter (both processes pay the same interpreter cold-start, so it cancels out of the gap).
+    /// A total-wall-clock bound cannot make that distinction on a noisy CI runner -- measured: a
+    /// genuinely concurrent pair took 1390ms combined against a 1350ms bound (PR #831's first CI
+    /// run).
+    /// </summary>
+    public const string StartStampFilePrefix = ".dispatch-start-";
+
+    /// <summary>
     /// Embedded in <see cref="WorkerInvocation.PromptTemplate"/> (same convention as
     /// <c>SessionTurnStubAdapter.FailureSentinel</c>) to force this dispatch to exit non-zero after
     /// still doing its marker/collision/completions bookkeeping -- used to drive a step to a
@@ -64,6 +77,7 @@ internal sealed class SlowCollisionStubAdapter : IWorkerAdapter
             var script =
                 $"if (Test-Path '{markerFile}') {{ Add-Content -Path '{collisionFile}' -Value 'collision' }}; " +
                 $"New-Item -ItemType File -Force '{markerFile}' | Out-Null; " +
+                $"New-Item -ItemType File -Force (Join-Path '{dir}' ('{StartStampFilePrefix}' + $PID)) | Out-Null; " +
                 $"Start-Sleep -Milliseconds {DispatchDelay.TotalMilliseconds}; " +
                 $"Remove-Item -Force '{markerFile}'; " +
                 $"Add-Content -Path '{completionsFile}' -Value 'done'; " +
@@ -76,6 +90,7 @@ internal sealed class SlowCollisionStubAdapter : IWorkerAdapter
             var script =
                 $"if [ -f '{markerFile}' ]; then echo collision >> '{collisionFile}'; fi; " +
                 $"touch '{markerFile}'; " +
+                $"touch '{dir}/{StartStampFilePrefix}'$$; " +
                 $"sleep 1; " +
                 $"rm -f '{markerFile}'; " +
                 $"echo done >> '{completionsFile}'; " +

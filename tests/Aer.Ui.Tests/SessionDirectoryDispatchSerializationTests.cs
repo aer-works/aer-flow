@@ -274,19 +274,19 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             Assert.True(response.IsSuccessStatusCode);
         }
 
-        var started = DateTime.UtcNow;
         await WaitForCompletionsAsync(directoryA, expectedCompletions: 1);
         await WaitForCompletionsAsync(directoryB, expectedCompletions: 1);
-        var elapsed = DateTime.UtcNow - started;
 
-        // Tightened from the original `DispatchDelay + 5s` (5.9s): fully serialised would still be
-        // ~2x DispatchDelay (~1.8s), comfortably under that bound, so the control arm could never
-        // fail -- a v-and-v violation on its own terms (a green that proves nothing). 1.5x
-        // DispatchDelay sits strictly between "genuinely concurrent" (~1x, plus poll/process
-        // overhead) and "serialised" (~2x), so a regression to global serialisation now actually
-        // fails this assertion.
-        Assert.True(elapsed < SlowCollisionStubAdapter.DispatchDelay * 1.5,
-            $"Two different task directories took {elapsed.TotalMilliseconds:0}ms combined -- looks serialised, not concurrent.");
+        // The discriminator is the GAP between the two dispatches' start stamps, not total wall
+        // time: global serialisation forces the second start to wait out the first's full
+        // DispatchDelay hold (gap >= 900ms by construction), while true concurrency leaves only
+        // spawn jitter -- see SlowCollisionStubAdapter.StartStampFilePrefix for why the earlier
+        // wall-clock bound (1.5x DispatchDelay) failed a genuinely concurrent CI run.
+        var startA = ReadDispatchStartUtc(directoryA);
+        var startB = ReadDispatchStartUtc(directoryB);
+        var gap = (startA - startB).Duration();
+        Assert.True(gap < SlowCollisionStubAdapter.DispatchDelay,
+            $"The two dispatches' start stamps are {gap.TotalMilliseconds:0}ms apart -- looks serialised, not concurrent.");
 
         AssertNoCollision(directoryA);
         AssertNoCollision(directoryB);
@@ -303,6 +303,14 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     {
         var completionsFile = Path.Combine(taskDirectory, SlowCollisionStubAdapter.CompletionsFileName);
         return File.Exists(completionsFile) ? File.ReadAllLines(completionsFile).Length : 0;
+    }
+
+    /// <summary>The one dispatch's start-stamp file time in this directory; fails loudly on zero or several.</summary>
+    private static DateTime ReadDispatchStartUtc(string taskDirectory)
+    {
+        var stamps = Directory.GetFiles(taskDirectory, SlowCollisionStubAdapter.StartStampFilePrefix + "*");
+        var stamp = Assert.Single(stamps);
+        return File.GetLastWriteTimeUtc(stamp);
     }
 
     private static async Task<(string TaskDirectory, string BindingsFilePath)> CreateReadyTaskDirectoryAsync()
