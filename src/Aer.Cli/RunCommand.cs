@@ -45,6 +45,7 @@ public static class RunCommand
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
     /// </exception>
+    /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">See that type's own docs for why (#816).</exception>
     /// <param name="inFlightExecutions">
     /// M15 Phase 4's (issue #140) additive caller-retained delivery point — forwarded, unchanged, to
     /// <see cref="MutationInterface.StartWorkflowAsync"/>. <c>null</c> for every caller (the CLI

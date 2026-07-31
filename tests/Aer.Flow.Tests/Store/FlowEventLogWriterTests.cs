@@ -114,6 +114,56 @@ public class FlowEventLogWriterTests
     }
 
     [Fact]
+    public void Constructing_over_a_journal_already_held_open_by_another_writer_throws_FlowJournalHeldException_not_a_raw_IOException()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; on Unix the second open succeeds (see FlowJournalHeldException docs)");
+        // #816: a live 'aer run' engine holds flow.jsonl open (FileAccess.Write, FileShare.Read)
+        // for its whole pump duration, so a second command opening the same path the same way
+        // must get the typed refusal, not the raw sharing-violation IOException that used to
+        // crash 'aer decide' before validation ever ran.
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            using var liveEngineHolder = new FileStream(
+                path, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
+
+            var ex = Assert.Throws<FlowJournalHeldException>(() => new FlowEventLogWriter(path));
+
+            Assert.IsType<IOException>(ex.InnerException);
+            Assert.Contains("held open by another process", ex.Message);
+            Assert.Contains(path, ex.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_genuinely_different_IOException_surfaces_as_itself_not_the_journal_held_refusal()
+    {
+        // Discriminating control for the sharing-violation-only catch above: a path whose parent
+        // segment is itself an existing FILE (not a directory) makes Directory.CreateDirectory
+        // throw an IOException that has nothing to do with another process holding the journal
+        // open. If the catch above ever widened to "any IOException", this would start reporting
+        // the misleading "held by another process" refusal for a completely different failure.
+        var root = Path.Combine(Path.GetTempPath(), $"flow-control-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(root, []);
+            var path = Path.Combine(root, "flow.jsonl");
+
+            var ex = Assert.Throws<IOException>(() => new FlowEventLogWriter(path));
+
+            Assert.IsNotType<FlowJournalHeldException>(ex);
+        }
+        finally
+        {
+            File.Delete(root);
+        }
+    }
+
+    [Fact]
     public async Task AppendAsync_rejects_a_null_event()
     {
         using var buffer = new MemoryStream();

@@ -40,6 +40,13 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
         _leaveOpen = leaveOpen;
     }
 
+    // The Win32 HRESULT for ERROR_SHARING_VIOLATION. .NET assigns this same HRESULT to the
+    // equivalent IOException on every OS it runs on — including Unix, where it comes from the
+    // runtime's own flock-based FileShare enforcement rather than a real Win32 call — so checking
+    // it is portable and does not depend on OS-localized exception text.
+    private const int ErrorSharingViolationHResult = unchecked((int)0x80070020);
+
+    /// <exception cref="FlowJournalHeldException">See that type's own docs for why (#816).</exception>
     private static FileStream OpenAppendStream(string logFilePath)
     {
         var directory = Path.GetDirectoryName(logFilePath);
@@ -48,13 +55,26 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
             Directory.CreateDirectory(directory);
         }
 
-        return new FileStream(
-            logFilePath,
-            FileMode.Append,
-            FileAccess.Write,
-            FileShare.Read,
-            bufferSize: 1,
-            useAsync: true);
+        try
+        {
+            return new FileStream(
+                logFilePath,
+                FileMode.Append,
+                FileAccess.Write,
+                FileShare.Read,
+                bufferSize: 1,
+                useAsync: true);
+        }
+        catch (IOException ex) when (ex.HResult == ErrorSharingViolationHResult)
+        {
+            throw new FlowJournalHeldException(
+                $"'{logFilePath}' is held open by another process — usually this task's live " +
+                "'aer run' engine, which keeps the journal open for its whole run, though any " +
+                "sibling aer command mid-append briefly holds it too. Retry once nothing else " +
+                "holds the journal; for a decision, the workflow's latest attempt must be Paused " +
+                "with no live 'aer run' (see 'aer status').",
+                ex);
+        }
     }
 
     public Task AppendAsync(FlowEvent flowEvent, CancellationToken cancellationToken = default)

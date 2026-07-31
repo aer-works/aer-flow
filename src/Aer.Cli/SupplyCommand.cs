@@ -43,6 +43,9 @@ public static class SupplyCommand
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
     /// </exception>
+    /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
+    /// Same journal-held refusal as <see cref="DecideCommand"/> (#816); see that exception's own docs.
+    /// </exception>
     public static async Task<SupplyResult> ExecuteAsync(
         SupplyOptions options,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,

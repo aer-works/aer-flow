@@ -256,12 +256,12 @@ public class CrashRecoveryEndToEndTests
     }
 
     /// <summary>
-    /// Opens <paramref name="logPath"/> for append, retrying on <see cref="IOException"/> for a
-    /// short window: on Windows, a killed process's file handles are not always released by the
-    /// instant <see cref="Process.WaitForExit"/>/<see cref="Process.WaitForExitAsync"/> returns —
-    /// a real, observed gap between "the process object reports exited" and "the OS has finished
-    /// tearing down every handle it held" — so opening this same file for append immediately after
-    /// killing its previous writer can transiently collide with that teardown.
+    /// Opens <paramref name="logPath"/> for append, retrying on <see cref="FlowJournalHeldException"/>
+    /// (#816) for a short window: on Windows, a killed process's file handles are not always
+    /// released by the instant <see cref="Process.WaitForExit"/>/<see cref="Process.WaitForExitAsync"/>
+    /// returns — a real, observed gap between "the process object reports exited" and "the OS has
+    /// finished tearing down every handle it held" — so opening this same file for append
+    /// immediately after killing its previous writer can transiently collide with that teardown.
     /// </summary>
     private static async Task<FlowEventLogWriter> OpenWriterWithRetryAsync(string logPath)
     {
@@ -272,7 +272,7 @@ public class CrashRecoveryEndToEndTests
             {
                 return new FlowEventLogWriter(logPath);
             }
-            catch (IOException) when (DateTime.UtcNow < deadline)
+            catch (FlowJournalHeldException) when (DateTime.UtcNow < deadline)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
