@@ -22,17 +22,35 @@ public class EngineLivenessProbeTests
         Assert.Null(probeResult.Why);
     }
 
+    /// <summary>
+    /// A pid + start time of a process that existed and is now dead, captured WHILE the child is
+    /// provably alive: on Linux <see cref="Process.StartTime"/> is a live read of
+    /// <c>/proc/&lt;pid&gt;/stat</c>, so an immediately-exiting child (<c>true</c>) races the read
+    /// and intermittently kills the test with a <c>Win32Exception</c> before any assertion (#843,
+    /// measured on PR #841's CI). A long-sleeping child killed after capture is deterministic.
+    /// </summary>
+    private static (int Pid, DateTimeOffset StartTime) DeadProcessIdentity()
+    {
+        var psi = OperatingSystem.IsWindows()
+            ? new ProcessStartInfo("ping.exe", "-n 30 127.0.0.1") { CreateNoWindow = true }
+            : new ProcessStartInfo("sleep", "30") { CreateNoWindow = true };
+
+        using var process = Process.Start(psi)!;
+        try
+        {
+            return (process.Id, new DateTimeOffset(process.StartTime).ToUniversalTime());
+        }
+        finally
+        {
+            process.Kill();
+            process.WaitForExit();
+        }
+    }
+
     [Fact]
     public void Probe_discrimination_with_real_dead_process()
     {
-        var psi = OperatingSystem.IsWindows()
-            ? new ProcessStartInfo("cmd.exe", "/c exit 0") { CreateNoWindow = true }
-            : new ProcessStartInfo("true") { CreateNoWindow = true };
-
-        using var process = Process.Start(psi)!;
-        var deadPid = process.Id;
-        var deadStartTime = new DateTimeOffset(process.StartTime).ToUniversalTime();
-        process.WaitForExit();
+        var (deadPid, deadStartTime) = DeadProcessIdentity();
 
         var probeResult = EngineLivenessProbe.Probe(deadPid, deadStartTime);
 
@@ -57,14 +75,7 @@ public class EngineLivenessProbeTests
         var livePid = Environment.ProcessId;
         var liveStartTime = new DateTimeOffset(Process.GetCurrentProcess().StartTime).ToUniversalTime();
 
-        var psi = OperatingSystem.IsWindows()
-            ? new ProcessStartInfo("cmd.exe", "/c exit 0") { CreateNoWindow = true }
-            : new ProcessStartInfo("true") { CreateNoWindow = true };
-
-        using var process = Process.Start(psi)!;
-        var deadPid = process.Id;
-        var deadStartTime = new DateTimeOffset(process.StartTime).ToUniversalTime();
-        process.WaitForExit();
+        var (deadPid, deadStartTime) = DeadProcessIdentity();
 
         var liveAccepted = new FlowEvent.ExecutionRequestAccepted(
             MakeRequest("exec-live"), EnginePid: livePid, EngineStartTime: liveStartTime);
