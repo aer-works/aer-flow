@@ -26,6 +26,17 @@ public static class MemoryProposalApplier
     public const string IndexFileName = "INDEX.md";
 
     /// <summary>
+    /// How two filesystem paths are compared for equality here. Windows paths are case-insensitive
+    /// and Linux/macOS paths are not, and getting this wrong in either direction is a defect: too
+    /// strict refuses a legitimate path whose case differs, too loose accepts one that is genuinely
+    /// a different file. One definition so the containment check and the resolution loop cannot
+    /// disagree about what "the same path" means.
+    /// </summary>
+    private static StringComparison PathComparison => OperatingSystem.IsWindows()
+        ? StringComparison.OrdinalIgnoreCase
+        : StringComparison.Ordinal;
+
+    /// <summary>
     /// Reads <paramref name="captureFilePath"/> and applies its proposed operation to
     /// <c>{roomDirectoryPath}/memory/</c>, then regenerates <see cref="IndexFileName"/>.
     /// <paramref name="captureFilePath"/> must resolve strictly inside <c>memory/</c> after joining
@@ -180,9 +191,7 @@ public static class MemoryProposalApplier
         var realRoot = ResolveReparsePointsIgnoringMissingTail(memoryRoot);
         var realCombined = ResolveReparsePointsIgnoringMissingTail(combined);
 
-        var caseComparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var caseComparison = PathComparison;
 
         var realRootWithSeparator = realRoot.EndsWith(Path.DirectorySeparatorChar)
             ? realRoot
@@ -210,7 +219,47 @@ public static class MemoryProposalApplier
     /// symmetrically, even when an ancestor of <c>memoryRoot</c> (not memoryRoot itself) is the
     /// reparse point.
     /// </summary>
+    /// <remarks>
+    /// Walked to a FIXED POINT rather than once, because one walk is only correct if
+    /// <c>ResolveLinkTarget</c>'s own result is already fully normalised -- and that is
+    /// platform-specific, which the first version of this guard did not account for. Measured both
+    /// ways: on Windows the returned target has every ancestor resolved, while on Linux it comes
+    /// back as stored. So a link whose target is expressed *through another link* left an unresolved
+    /// ancestor in the result, and comparing that against a fully-resolved <c>memoryRoot</c> refused
+    /// a legitimate in-tree alias. That is a false refusal, not a missed escape -- but it broke on
+    /// exactly the platform the original measurement never covered, and CI on this PR is what caught
+    /// it. Re-walking until nothing changes is correct on both, and costs one extra no-op pass where
+    /// the OS has already done the work.
+    /// </remarks>
     private static string ResolveReparsePointsIgnoringMissingTail(string path)
+    {
+        // Each pass that changes anything has resolved at least one reparse point, and both OSes cap
+        // their own chain following far below this. Reaching the cap means a link arrangement that
+        // will not settle, which is refused rather than looped on -- the same posture as #874.
+        const int MaxPasses = 64;
+
+        var current = path;
+        for (var pass = 0; pass < MaxPasses; pass++)
+        {
+            var next = ResolveReparsePointsOnce(current);
+            if (string.Equals(next, current, PathComparison))
+            {
+                return current;
+            }
+
+            current = next;
+        }
+
+        throw new InvalidRoomMutationException(
+            $"Memory-proposal target path '{path}' was still changing after {MaxPasses} reparse-point resolution " +
+            "passes; refused, because a path that will not settle cannot be shown to stay inside memory/.");
+    }
+
+    /// <summary>
+    /// One resolution pass for <see cref="ResolveReparsePointsIgnoringMissingTail"/>, which owns the
+    /// reason this is called repeatedly.
+    /// </summary>
+    private static string ResolveReparsePointsOnce(string path)
     {
         var root = Path.GetPathRoot(path)!;
         var relative = Path.GetRelativePath(root, path);

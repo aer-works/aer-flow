@@ -236,6 +236,13 @@ public class MemoryProposalApplierTests : IDisposable
     /// #856 regression, symmetric-resolution requirement documented on
     /// <see cref="MemoryProposalApplier.ResolveReparsePointsIgnoringMissingTail"/>: the room
     /// directory itself is reached through a junction here, not just a path under memory/.
+    /// <para>
+    /// This is also the arm that proved the fixed-point resolution necessary, and it is worth
+    /// saying where: it passes on Windows either way, and went red on the CI Linux leg of this PR
+    /// because the two platforms disagree about whether <c>ResolveLinkTarget</c> normalises its own
+    /// result. So the control run for that half is CI itself, red before and green after -- not a
+    /// local one, because the defect cannot be reproduced on this host at all.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task A_room_directory_reached_through_a_junction_still_allows_an_in_tree_alias()
