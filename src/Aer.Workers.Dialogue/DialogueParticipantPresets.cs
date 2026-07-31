@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Aer.Workers.Dialogue;
 
@@ -23,7 +22,6 @@ namespace Aer.Workers.Dialogue;
 /// </summary>
 public static class DialogueParticipantPresets
 {
-    private const string PromptToken = "{PROMPT}";
     private const string ModelToken = "{MODEL}";
 
     private sealed record PresetShape(
@@ -68,6 +66,15 @@ public static class DialogueParticipantPresets
 
         var shapes = JsonSerializer.Deserialize<List<PresetShape>>(stream)
             ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' did not contain a JSON array.");
+
+        // The JSON writes "{PROMPT}" as a literal, decoupled from DialogueParticipant.PromptPlaceholder;
+        // this check is what re-couples them, failing at first load rather than at parse time downstream.
+        foreach (var shape in shapes.Where(s => !s.Args.Contains(DialogueParticipant.PromptPlaceholder)))
+        {
+            throw new InvalidOperationException(
+                $"Preset '{shape.Vendor}' in '{resourceName}' has no whole-element " +
+                $"'{DialogueParticipant.PromptPlaceholder}' argument — the JSON's literal has drifted from the constant.");
+        }
 
         return shapes.ToDictionary(s => s.Vendor, s => s);
     }
