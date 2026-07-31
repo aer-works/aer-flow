@@ -140,15 +140,11 @@ public static class TaskProjectionLoader
     /// present even for a never-run session that has no snapshot yet.
     /// </para>
     /// <para>
-    /// A DAG task carries no serialized timestamp anywhere: <see cref="WorkflowDefinitionSnapshot"/>
-    /// has no time field and neither the <c>flow.jsonl</c> line envelope nor any <see cref="Aer.Flow.Domain.FlowEvent"/>
-    /// records one. It therefore falls back to filesystem times of the task's own data files -- not
-    /// the directory's, whose mtime any in-directory write (e.g. writing the <c>.aer/archived</c>
-    /// marker) disturbs. <c>snapshot.json</c> is written once at creation and never mutated (spec
-    /// §11.2), so its last-write time is a stable <c>created</c>; <c>flow.jsonl</c> is append-only, so
-    /// its last-write time is the last-event-appended <c>updated</c>. Last-write time is used over
-    /// creation time because birth time is unreliable on some Linux/CI filesystems whereas mtime
-    /// always exists. The directory's own times are the last resort when neither file exists.
+    /// A DAG task's per-step timestamps are now carried in <see cref="LogEntry.WriterUtcTimestamp"/>
+    /// on each envelope (#745). Workflow-level timestamps still resolve from filesystem times: <see cref="WorkflowDefinitionSnapshot"/>
+    /// has no time field, so <c>snapshot.json</c>'s last-write time is a stable <c>created</c>, and <c>flow.jsonl</c>'s is
+    /// the last-event-appended <c>updated</c>. Last-write time is used over creation time because birth time is unreliable on
+    /// some Linux/CI filesystems whereas mtime always exists. The directory's own times are the last resort when neither file exists.
     /// </para>
     /// </summary>
     private static async Task<(DateTimeOffset Created, DateTimeOffset Updated)> ResolveTimestampsAsync(

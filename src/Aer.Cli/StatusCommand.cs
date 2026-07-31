@@ -410,14 +410,10 @@ public static class StatusCommand
 
     /// <summary>
     /// <c>flow.jsonl</c>'s own last-write time (UTC), append-only so this is exactly "when the
-    /// last event landed" — the closest honest answer available. Not a per-step value: as
-    /// <c>TaskProjectionLoader.ResolveTimestampsAsync</c> already records, "a DAG task carries no
-    /// serialized timestamp anywhere ... neither the <c>flow.jsonl</c> line envelope nor any
-    /// <see cref="FlowEvent"/> records one", so there is no finer-grained fact to report per step
-    /// without adding one to the event schema — tracked as #745 rather than done silently here,
-    /// since whether that schema change is even worth making is its own decision. Printed once, at
-    /// the whole-log grain it actually has, rather than repeated per step as if it meant something
-    /// narrower.
+    /// last event landed" — the closest honest answer available. Per-step timestamps are sourced
+    /// from <see cref="LogEntry.WriterUtcTimestamp"/> instead, which stamps each envelope at write
+    /// time (#745). Printed once here at the whole-log grain, per-step times are rendered in
+    /// <c>PrintState</c> via <c>ExtractEventTimestamps</c>.
     /// </summary>
     private static string ResolveLogUpdatedAt(string logPath) => File.Exists(logPath)
         ? File.GetLastWriteTimeUtc(logPath).ToString("O")
