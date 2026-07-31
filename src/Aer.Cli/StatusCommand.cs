@@ -360,21 +360,29 @@ public static class StatusCommand
             string? execId = null;
             DateTime? timestamp = null;
 
+            // Latest-wins by file order, so a terminal event's stamp supersedes the start's --
+            // "per-step times from the latest event per step" (#745's recorded design). Reading
+            // only accepted/started froze every finished step at its start time (review finding).
             switch (entry)
             {
                 case LogEntry.FlowLogEntry flowEntry:
                     timestamp = flowEntry.WriterUtcTimestamp;
-                    if (flowEntry.Event is FlowEvent.ExecutionRequestAccepted accepted)
+                    execId = flowEntry.Event switch
                     {
-                        execId = accepted.Request.ExecutionId.Value;
-                    }
+                        FlowEvent.ExecutionRequestAccepted accepted => accepted.Request.ExecutionId.Value,
+                        FlowEvent.ExecutionSucceeded succeeded => succeeded.ExecutionId.Value,
+                        FlowEvent.ExecutionFailed failed => failed.ExecutionId.Value,
+                        _ => null,
+                    };
                     break;
                 case LogEntry.CoreLogEntry coreEntry:
                     timestamp = coreEntry.WriterUtcTimestamp;
-                    if (coreEntry.Event is CoreEvent.ExecutionStarted started)
+                    execId = coreEntry.Event switch
                     {
-                        execId = started.ExecutionId.Value;
-                    }
+                        CoreEvent.ExecutionStarted started => started.ExecutionId.Value,
+                        CoreEvent.ExecutionExited exited => exited.ExecutionId.Value,
+                        _ => null,
+                    };
                     break;
             }
 

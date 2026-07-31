@@ -34,7 +34,9 @@ public class StatusCommandEndToEndTests
 
             var text = output.ToString();
             Assert.Contains("Workflow status: Terminal", text);
-            Assert.Contains($"architect: Succeeded (execution={architectExecutionId}", text);
+            // The " @ " keeps this as tight as the old closing-paren form: nothing may sit
+            // between the execution id and the timestamp the envelope now renders there.
+            Assert.Contains($"architect: Succeeded (execution={architectExecutionId} @ ", text);
             Assert.Contains("critic: Succeeded", text);
             Assert.Contains("publisher: Succeeded", text);
         }
