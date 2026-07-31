@@ -278,7 +278,11 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
         try
         {
             var logText = File.ReadAllText(logFilePath);
-            var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([^\s\r\n]+)");
+            // Id characters only, not "anything non-whitespace": agy's live log line reads
+            // "conversation=<uuid>, ..." and the permissive class swallowed the comma -- measured
+            // 2026-07-31; agy happens to tolerate the trailing comma on --conversation today, but a
+            // stored id should be the id (#837 tracks the daemon's identical copy of this regex).
+            var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([\w-]+)");
             if (!match.Success)
             {
                 Console.Error.WriteLine(

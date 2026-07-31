@@ -376,7 +376,7 @@ public class ProcessVendorTurnClientTests
                     + "shift\r\n"
                     + "goto :parse\r\n"
                     + ":afterparse\r\n"
-                    + "if not \"%LOGFILE%\"==\"\" echo conversation=stub-agy-conv-id> \"%LOGFILE%\"\r\n"
+                    + "if not \"%LOGFILE%\"==\"\" echo conversation=stub-agy-conv-id, extra-log-noise> \"%LOGFILE%\"\r\n"
                     + "echo %*\r\n");
                 participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", scriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
             }
@@ -392,7 +392,7 @@ public class ProcessVendorTurnClientTests
                     + "  if [ \"$1\" = \"--log-file\" ]; then logfile=\"$2\"; fi\n"
                     + "  shift\n"
                     + "done\n"
-                    + "if [ -n \"$logfile\" ]; then echo \"conversation=stub-agy-conv-id\" > \"$logfile\"; fi\n"
+                    + "if [ -n \"$logfile\" ]; then echo \"conversation=stub-agy-conv-id, extra-log-noise\" > \"$logfile\"; fi\n"
                     + "echo \"$args\"\n");
                 File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
