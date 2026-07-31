@@ -44,6 +44,13 @@ public sealed class RoomEventLogWriter : IRoomEventLogWriter, IAsyncDisposable
     /// measured on CI, not theorised. A loser now waits out a hold measured in milliseconds and
     /// then proceeds, which keeps the invariant and removes the false failure.
     /// </para>
+    /// <para>
+    /// Windows-specific in practice, and worth stating rather than leaving for the next reader to
+    /// rediscover: <see cref="FileShare"/> is only OS-enforced on Windows, so on Linux and macOS the
+    /// second open simply succeeds and this retry never engages. The single-writer invariant is
+    /// therefore <b>not</b> enforced by the filesystem there — it rests on callers going through the
+    /// room's <c>ConcurrencyGuard</c>, which is the same reason #857 exists.
+    /// </para>
     /// </summary>
     private static FileStream OpenAppendStream(string logFilePath)
     {
