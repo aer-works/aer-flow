@@ -233,48 +233,54 @@ public class MemoryProposalApplierTests : IDisposable
         Directory.CreateDirectory(realRoomDirectory);
         var roomAlias = Path.Combine(Path.GetTempPath(), "aer_memory_applier_room_alias_" + Guid.NewGuid().ToString("N"));
 
-        if (!TryCreateDirectoryReparsePoint(roomAlias, realRoomDirectory, out var skipReason))
-        {
-            Assert.Skip(skipReason);
-            return;
-        }
-
         try
         {
-            var memoryRoot = Path.Combine(roomAlias, MemoryProposalApplier.MemoryDirectoryName);
-            Directory.CreateDirectory(memoryRoot);
-            var realDirectory = Path.Combine(memoryRoot, "real");
-            Directory.CreateDirectory(realDirectory);
-
-            var aliasPath = Path.Combine(memoryRoot, "alias");
-            if (!TryCreateDirectoryReparsePoint(aliasPath, realDirectory, out var innerSkipReason))
+            if (!TryCreateDirectoryReparsePoint(roomAlias, realRoomDirectory, out var skipReason))
             {
-                Assert.Skip(innerSkipReason);
+                Assert.Skip(skipReason);
                 return;
             }
 
             try
             {
-                var capturePath = Path.Combine(_tempDirectory, "proposal-through-room-alias.json");
-                await File.WriteAllTextAsync(
-                    capturePath,
-                    """{"Operation":"add","TargetPath":"alias/fact.md","Content":"via room alias","Rationale":"learned it"}""",
-                    TestContext.Current.CancellationToken);
+                var memoryRoot = Path.Combine(roomAlias, MemoryProposalApplier.MemoryDirectoryName);
+                Directory.CreateDirectory(memoryRoot);
+                var realDirectory = Path.Combine(memoryRoot, "real");
+                Directory.CreateDirectory(realDirectory);
 
-                await MemoryProposalApplier.ApplyAsync(roomAlias, capturePath, TestContext.Current.CancellationToken);
+                var aliasPath = Path.Combine(memoryRoot, "alias");
+                if (!TryCreateDirectoryReparsePoint(aliasPath, realDirectory, out var innerSkipReason))
+                {
+                    Assert.Skip(innerSkipReason);
+                    return;
+                }
 
-                Assert.Equal(
-                    "via room alias",
-                    await File.ReadAllTextAsync(Path.Combine(realDirectory, "fact.md"), TestContext.Current.CancellationToken));
+                try
+                {
+                    var capturePath = Path.Combine(_tempDirectory, "proposal-through-room-alias.json");
+                    await File.WriteAllTextAsync(
+                        capturePath,
+                        """{"Operation":"add","TargetPath":"alias/fact.md","Content":"via room alias","Rationale":"learned it"}""",
+                        TestContext.Current.CancellationToken);
+
+                    await MemoryProposalApplier.ApplyAsync(roomAlias, capturePath, TestContext.Current.CancellationToken);
+
+                    Assert.Equal(
+                        "via room alias",
+                        await File.ReadAllTextAsync(Path.Combine(realDirectory, "fact.md"), TestContext.Current.CancellationToken));
+                }
+                finally
+                {
+                    RemoveDirectoryLink(aliasPath);
+                }
             }
             finally
             {
-                RemoveDirectoryLink(aliasPath);
+                RemoveDirectoryLink(roomAlias);
             }
         }
         finally
         {
-            RemoveDirectoryLink(roomAlias);
             Directory.Delete(realRoomDirectory, recursive: true);
         }
     }
