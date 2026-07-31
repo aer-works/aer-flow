@@ -1115,4 +1115,46 @@ public class GeminiWorkerAdapterTests
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
+
+    /// <summary>
+    /// The agy arm of the no-silent-behaviour-change requirement stated on
+    /// <see cref="ClaudeWorkerAdapterTests.Not_opting_in_to_the_memory_proposal_tool_keeps_the_empty_mcp_config"/>:
+    /// no extra `--add-dir` for a workspace nobody asked for.
+    /// </summary>
+    // record-once-ok: #801 tests/Aer.Adapters.Tests/ClaudeWorkerAdapterTests.cs
+    [Fact]
+    public void Not_opting_in_to_the_memory_proposal_tool_adds_no_extra_add_dir()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("p"), ArchitectContract);
+
+        Assert.DoesNotContain(target.Args, a => a.Contains("memory-proposal", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// #801: opting in grants an extra `--add-dir` pointing to a workspace with `.agents/mcp_config.json`
+    /// (see <see cref="GeminiWorkerAdapter.MemoryProposalWorkspaceDirectoryName"/>) -- agy's only
+    /// lever; why is the adapter's own remarks' business, not restated here.
+    /// </summary>
+    // record-once-ok: #801 src/Aer.Adapters/GeminiWorkerAdapter.cs
+    [Fact]
+    public void Opting_in_to_the_memory_proposal_tool_materializes_a_workspace_config_and_grants_it()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(
+            new WorkerInvocation("p", EnableMemoryProposalTool: true), ArchitectContract);
+
+        var expectedWorkspace = Path.Combine(
+            AerPaths.WorkerLaunchConfig, GeminiWorkerAdapter.MemoryProposalWorkspaceDirectoryName);
+        var configPath = Path.Combine(expectedWorkspace, ".agents", "mcp_config.json");
+
+        Assert.Contains(expectedWorkspace, target.Args);
+        Assert.True(File.Exists(configPath), "the workspace's mcp_config.json must already exist");
+
+        using var mcpDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(configPath));
+        var server = mcpDoc.RootElement.GetProperty("mcpServers").GetProperty("aer-memory-proposal");
+        Assert.Equal("dotnet", server.GetProperty("command").GetString());
+        var serverArgs = server.GetProperty("args").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Contains(serverArgs, a => a!.EndsWith("Aer.Mcp.Host.dll", StringComparison.Ordinal));
+        Assert.Contains("--memory-proposal-dir", serverArgs);
+        Assert.Contains(ClaudeWorkerAdapter.MemoryProposalCaptureDirectory, serverArgs);
+    }
 }

@@ -92,6 +92,16 @@ namespace Aer.Adapters;
 /// Null when the caller has no timeout to declare; adapters must treat that as "say nothing and leave
 /// the vendor's own default in effect".
 /// </param>
+/// <param name="EnableMemoryProposalTool">
+/// <see langword="true"/> to wire this dispatch to AER's own MCP server (#585, #801) carrying the
+/// <c>memory-edit-proposal</c> tool -- <see cref="ClaudeWorkerAdapter"/> points <c>--mcp-config</c>
+/// at a config naming that server instead of its default empty one;
+/// <see cref="GeminiWorkerAdapter"/> materializes a workspace directory carrying
+/// <c>.agents/mcp_config.json</c> and grants it via an extra <c>--add-dir</c>. Default
+/// <see langword="false"/> keeps today's exact argv for every dispatch that does not opt in -- this
+/// is an opt-in per #801's scope, not a default every worker now carries the way the mandatory
+/// <c>PreToolUse</c> hook is (0029).
+/// </param>
 public sealed record WorkerInvocation(
     string PromptTemplate,
     string? Model = null,
@@ -104,5 +114,6 @@ public sealed record WorkerInvocation(
     bool StreamJson = false,
     string? LogFilePath = null,
     string? Effort = null,
-    TimeSpan? Timeout = null);
+    TimeSpan? Timeout = null,
+    bool EnableMemoryProposalTool = false);
 

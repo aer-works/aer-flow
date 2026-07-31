@@ -590,4 +590,47 @@ public class ClaudeWorkerAdapterTests
             Assert.Contains(tool, hookList, StringComparison.Ordinal);
         }
     }
+
+    /// <summary>
+    /// #801: a dispatch that does not opt in must see today's exact `--mcp-config` -- the shared,
+    /// deliberately empty `claude-mcp.json` -- with no silent behaviour change from this issue's work.
+    /// </summary>
+    [Fact]
+    public void Not_opting_in_to_the_memory_proposal_tool_keeps_the_empty_mcp_config()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+
+        var mcpConfigPath = ArgValue(target, "--mcp-config");
+
+        Assert.Equal(Path.Combine(AerPaths.WorkerLaunchConfig, "claude-mcp.json"), mcpConfigPath);
+        using var mcpDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(mcpConfigPath!));
+        Assert.False(mcpDoc.RootElement.GetProperty("mcpServers").EnumerateObject().Any());
+    }
+
+    /// <summary>
+    /// #801: opting in points `--mcp-config` at a real config naming AER's own MCP server and the
+    /// `memory-edit-proposal` tool, invoked via `Aer.Mcp.Host.dll --memory-proposal-dir <path>` --
+    /// the same `dotnet <dll>` shape #543 requires for the PreToolUse hook, for the identical
+    /// packed-global-tool deployment reason.
+    /// </summary>
+    [Fact]
+    public void Opting_in_to_the_memory_proposal_tool_points_mcp_config_at_a_real_server_naming_the_tool_host()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(
+            new WorkerInvocation("Draft a plan.", EnableMemoryProposalTool: true), ArchitectContract);
+
+        var mcpConfigPath = ArgValue(target, "--mcp-config");
+
+        Assert.NotNull(mcpConfigPath);
+        Assert.NotEqual(Path.Combine(AerPaths.WorkerLaunchConfig, "claude-mcp.json"), mcpConfigPath);
+        Assert.True(File.Exists(mcpConfigPath), "the file --mcp-config points at must already exist");
+
+        using var mcpDoc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(mcpConfigPath!));
+        var server = mcpDoc.RootElement.GetProperty("mcpServers").GetProperty("aer-memory-proposal");
+        Assert.Equal("dotnet", server.GetProperty("command").GetString());
+        var serverArgs = server.GetProperty("args").EnumerateArray().Select(a => a.GetString()).ToList();
+        Assert.Contains(serverArgs, a => a!.EndsWith("Aer.Mcp.Host.dll", StringComparison.Ordinal));
+        Assert.Contains("--memory-proposal-dir", serverArgs);
+        Assert.Contains(ClaudeWorkerAdapter.MemoryProposalCaptureDirectory, serverArgs);
+    }
 }
