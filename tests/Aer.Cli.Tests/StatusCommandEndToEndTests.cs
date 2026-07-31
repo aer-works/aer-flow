@@ -417,6 +417,116 @@ public class StatusCommandEndToEndTests
         }
     }
 
+    [Fact]
+    public async Task Status_of_a_quota_parked_step_renders_its_classification_and_local_retry_time()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var (_, _, _, retryNotBefore) = await WriteParkedStepFixtureAsync(testRoot, taskDirectory);
+
+            var output = new StringWriter();
+            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+
+            var text = output.ToString();
+            var expectedLocalTime = retryNotBefore.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Contains($"implement: parked (vendor quota) — retries {expectedLocalTime}", text);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Status_of_a_step_that_retried_after_being_parked_no_longer_renders_parked()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var (_, logPath, _, _) = await WriteParkedStepFixtureAsync(testRoot, taskDirectory);
+
+            var retriedExecutionId = new ExecutionId("exec-parked-2");
+            var retriedRequest = new ExecutionRequest(
+                retriedExecutionId,
+                new WorkflowId("wf-parked"),
+                new StepId("implement"),
+                "implement",
+                Inputs: [],
+                Outputs: [],
+                Timeout: TimeSpan.FromSeconds(30),
+                Environment: [],
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(retriedRequest), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(retriedExecutionId), TestContext.Current.CancellationToken);
+            }
+
+            var output = new StringWriter();
+            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+
+            var text = output.ToString();
+            Assert.DoesNotContain("implement: parked", text);
+            Assert.Contains("implement: Succeeded", text);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// Hand-writes a snapshot plus an <c>ExecutionFailed</c>(<see cref="FailureClassification.ExhaustedUntil"/>)
+    /// / <c>StepRetryScheduled</c> pair directly to <c>flow.jsonl</c> — the shape #594's retry
+    /// scheduling actually records for a quota park — rather than driving it through
+    /// <see cref="RunCommand"/>, whose <see cref="ShellCommandWorkerAdapter"/> has no way to report
+    /// a quota classification.
+    /// </summary>
+    private static async Task<(string SnapshotPath, string LogPath, ExecutionId ExecutionId, DateTimeOffset RetryNotBefore)>
+        WriteParkedStepFixtureAsync(string testRoot, string taskDirectory)
+    {
+        Directory.CreateDirectory(taskDirectory);
+        var definition = new WorkflowDefinition(
+            new WorkflowTemplateId("parked-probe"),
+            1,
+            [new WorkflowStepDefinition(new StepId("implement"), "implement", [], ["out"], [], new RetryPolicy(3))]);
+        var snapshot = SnapshotBinder.Bind(definition);
+        var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+        await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
+
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var executionId = new ExecutionId("exec-parked-1");
+        var request = new ExecutionRequest(
+            executionId,
+            new WorkflowId("wf-parked"),
+            new StepId("implement"),
+            "implement",
+            Inputs: [],
+            Outputs: [],
+            Timeout: TimeSpan.FromSeconds(30),
+            Environment: [],
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+
+        var retryNotBefore = DateTimeOffset.UtcNow.AddMinutes(45);
+
+        await using (var writer = new FlowEventLogWriter(logPath))
+        {
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(
+                new FlowEvent.ExecutionFailed(executionId, FailureClassification.ExhaustedUntil, "quota exhausted", retryNotBefore),
+                TestContext.Current.CancellationToken);
+            await writer.AppendAsync(
+                new FlowEvent.StepRetryScheduled(new StepId("implement"), executionId, retryNotBefore, 2_700_000),
+                TestContext.Current.CancellationToken);
+        }
+
+        return (snapshotPath, logPath, executionId, retryNotBefore);
+    }
+
     private static async Task<string> WriteThreeStepWorkflowAsync(string directory)
     {
         Directory.CreateDirectory(directory);
