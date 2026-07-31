@@ -435,7 +435,7 @@ def build_workflow(
 # --dialogue mode (#813): assembles a dialogue run's three JSONs from one seed file plus flags,
 # instead of hand-rolling them from DialogueDispatchEndToEndTests/live-dialogue-smoke.md each time.
 
-DIALOGUE_PROMPT_FILE_PLACEHOLDER = "{PROMPT_FILE}"
+DIALOGUE_PROMPT_PLACEHOLDER = "{PROMPT}"
 
 # The dialogue worker's own default per-turn timeout (DialogueWorkerConfig.DefaultTurnTimeout,
 # TimeSpan.FromMinutes(5)) -- mirrored here, not read from the assembly, because this tool never
@@ -466,13 +466,14 @@ def build_dialogue_participant(vendor: str, role: str, preamble: str, model: str
     the ONE place this tool owns those shapes; every dialogue participant this tool builds goes
     through this function rather than re-deriving flags at each call site.
     """
-    instruction = f"Read instructions from {DIALOGUE_PROMPT_FILE_PLACEHOLDER} and follow them."
+    # #586 retired {PROMPT_FILE}: the bounded per-turn prompt goes straight into the {PROMPT}
+    # argv element, and the parser now refuses a participant without it.
     if vendor == "claude":
         command = "claude"
-        args = ["-p", instruction, "--allowedTools", "Write,Read", "--output-format", "text", "--model", model]
+        args = ["-p", DIALOGUE_PROMPT_PLACEHOLDER, "--allowedTools", "Write,Read", "--output-format", "text", "--model", model]
     elif vendor == "gemini":
         command = "agy"
-        args = ["-p", instruction, "--mode", "accept-edits", "--model", model]
+        args = ["-p", DIALOGUE_PROMPT_PLACEHOLDER, "--mode", "accept-edits", "--model", model]
     else:
         raise ValueError(f"no participant preset exists for vendor '{vendor}'")
 
