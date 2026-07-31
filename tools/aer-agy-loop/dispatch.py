@@ -437,8 +437,8 @@ def build_workflow(
 
 DIALOGUE_PROMPT_PLACEHOLDER = "{PROMPT}"
 
-# #836: the single source for the vendor preset shapes, also embedded into Aer.Workers.Dialogue.dll
-# and read by DialogueParticipantPresets.For (C#) -- see that file's own doc comment. Overridable
+# #836: the shared preset-shapes JSON, canonically documented on DialogueParticipantPresets'
+# own doc comment (C#), which this tool reads by repo-relative path. Overridable
 # via env var so a fault-injection control (tools/audit-completeness/controls.py) can point a
 # mutated copy of this tool at a mutated copy of the JSON without touching the tracked file; the
 # repo-relative default is __file__-resolved so it works regardless of the caller's cwd, the same
