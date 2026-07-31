@@ -12,8 +12,9 @@ version = "0.1.0"
 # Builds external/aer-core's native library. The Aer.Core.csproj ProjectReference (Aer.Flow ->
 # Aer.Core, M7 Phase 6's Core Dispatcher) copies this binary from external/aer-core/target/debug/
 # into the output directory only if it already exists there, so this must run before any dotnet
-# task that touches Aer.Flow.
-build-core = { cmd = "cargo build", cwd = "external/aer-core" }
+# task that touches Aer.Flow. The guard fails loudly on an uninitialized submodule (#845) --
+# cargo alone exits 0 against the empty directory, deferring the failure downstream.
+build-core = { cmd = "python ../../tools/check-core-submodule.py && cargo build", cwd = "external/aer-core" }
 
 # M21 Phase 5 (#242): the tsnet-embedding sidecar Aer.Daemon spawns as a child process in --remote
 # mode. Go-only (no .NET tsnet binding exists). CI installs Go explicitly via actions/setup-go
