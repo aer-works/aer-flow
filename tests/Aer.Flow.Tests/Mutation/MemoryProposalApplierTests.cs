@@ -222,14 +222,9 @@ public class MemoryProposalApplierTests : IDisposable
     }
 
     /// <summary>
-    /// #856 regression: an earlier version of the fix resolved <c>memoryRoot</c> for the
-    /// containment recheck only when memoryRoot itself was a reparse point, while resolving the
-    /// target by walking every segment beneath it. When the *room directory* is itself reached
-    /// through a junction (memoryRoot is an ordinary directory, but one of its own ancestors is a
-    /// link -- exactly what happens on macOS CI, where <c>Path.GetTempPath()</c> sits under
-    /// <c>/var</c>, itself a symlink to <c>/private/var</c>), the target resolved fully past that
-    /// ancestor while the root stayed lexical, and a legitimate in-tree alias was wrongly refused.
-    /// Both sides of the recheck must resolve through the identical walk.
+    /// #856 regression, symmetric-resolution requirement documented on
+    /// <see cref="MemoryProposalApplier.ResolveReparsePointsIgnoringMissingTail"/>: the room
+    /// directory itself is reached through a junction here, not just a path under memory/.
     /// </summary>
     [Fact]
     public async Task A_room_directory_reached_through_a_junction_still_allows_an_in_tree_alias()
