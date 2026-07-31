@@ -33,6 +33,37 @@ public partial class MainWindow : Window
     private const int MaxArtifactPreviewLength = 8000;
 
     /// <summary>
+    /// #868: monotonic request counter guarding <see cref="ArtifactPreviewBox"/> against two in-flight
+    /// <see cref="ShowArtifactPreviewAsync"/> reads racing. Every request (including a bare clear, via
+    /// <see cref="ClearArtifactPreview"/>) takes the next value; a completed read — success or error —
+    /// only writes the box if its own value is still the latest, so a slower, older read that finishes
+    /// after a newer one can never clobber it. A per-request <see cref="CancellationTokenSource"/>
+    /// would also work, but would cancel (and typically surface as an <see cref="OperationCanceledException"/>
+    /// from) the superseded file read, when the actual requirement is narrower: let it finish, just
+    /// don't let it write.
+    /// </summary>
+    private int _artifactPreviewGeneration;
+
+    /// <summary>
+    /// How a preview reads a file. Production is <see cref="File.ReadAllTextAsync(string, CancellationToken)"/>;
+    /// a test replaces it with a reader it can hold open, which is the only way to make the #868 race
+    /// deterministic rather than a bet on one file being slower than another. The first regression
+    /// test for that race forced the window with a 150MB fixture, which reproduces nothing reliably:
+    /// too fast a disk and the older read finishes before the newer request is even issued, too slow
+    /// and it never finishes inside the observation window -- both directions pass while exercising
+    /// nothing. Same seam convention as <c>HeldWorkReconciler</c>'s journal probe.
+    /// </summary>
+    internal Func<string, CancellationToken, Task<string>> ReadArtifactTextAsync { get; set; } =
+        (filePath, cancellationToken) => File.ReadAllTextAsync(filePath, cancellationToken);
+
+    /// <summary>Clears the box and supersedes any in-flight <see cref="ShowArtifactPreviewAsync"/> read, so one that completes afterward cannot silently repopulate what was just cleared.</summary>
+    private void ClearArtifactPreview()
+    {
+        Interlocked.Increment(ref _artifactPreviewGeneration);
+        ArtifactPreviewBox.Text = string.Empty;
+    }
+
+    /// <summary>
     /// This window's presentation-agnostic half (M19 Phase 2, issue #187): projection loading, pump
     /// hosting, and every mutation-interface call live on the session in <c>Aer.Ui.Core</c> — this
     /// code-behind renders the session's outcomes and raises its intents, nothing more. The
@@ -418,7 +449,7 @@ public partial class MainWindow : Window
     /// <summary>The #211 hook above's body — its own method so a test can await it deterministically instead of racing the fire-and-forget subscription.</summary>
     private Task ShowSelectedStepFirstOutputAsync()
     {
-        ArtifactPreviewBox.Text = string.Empty;
+        ClearArtifactPreview();
         var firstOutput = ViewModel.SelectedStep?.OutputFiles.FirstOrDefault();
         return firstOutput is null ? Task.CompletedTask : firstOutput.PreviewCommand.ExecuteAsync(null);
     }
@@ -1134,7 +1165,7 @@ public partial class MainWindow : Window
         LineagePanel.Children.Clear();
         ConversationExecutionsPanel.Children.Clear();
         ClearConversation();
-        ArtifactPreviewBox.Text = string.Empty;
+        ClearArtifactPreview();
         DiffPanel.Children.Clear();
         ViewModel.ClearTaskSteps();
     }
@@ -1641,18 +1672,44 @@ public partial class MainWindow : Window
     /// deterministically instead of raising a real button-click event. Truncated defensively at
     /// <see cref="MaxArtifactPreviewLength"/> — an artifact is not guaranteed to be small or textual,
     /// and this preview is deliberately the cheapest thing that could show it, not a text-viewer.
+    ///
+    /// #868: every caller (the artifact chip buttons, the auto-preview fired on step selection, and
+    /// the drill-in's own <c>previewFileAsync</c> wiring) funnels through this one method, which is
+    /// what makes <see cref="_artifactPreviewGeneration"/> a single choke point rather than something
+    /// each caller has to apply for itself. Two overlapping calls race their <c>File.ReadAllTextAsync</c>
+    /// reads exactly as before; what changes is that only the call still holding the latest generation
+    /// when its read (or its failure) completes is allowed to write the box, on both the success and
+    /// the error path — an older, slower call that finishes after a newer one silently discards its
+    /// own result instead of clobbering it.
     /// </summary>
     public async Task ShowArtifactPreviewAsync(string filePath, CancellationToken cancellationToken = default)
     {
+        var generation = Interlocked.Increment(ref _artifactPreviewGeneration);
         try
         {
-            var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var content = await ReadArtifactTextAsync(filePath, cancellationToken);
+            if (generation != Volatile.Read(ref _artifactPreviewGeneration))
+            {
+                return;
+            }
+
             ArtifactPreviewBox.Text = content.Length > MaxArtifactPreviewLength
                 ? content[..MaxArtifactPreviewLength] + "\n… (truncated)"
                 : content;
         }
+        catch (OperationCanceledException)
+        {
+            // #871: every caller here is fire-and-forget, so an escaping cancellation becomes an
+            // unobserved task exception rather than anything a person sees. A cancelled preview has
+            // nothing to say -- discard it, exactly as a superseded one does above.
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            if (generation != Volatile.Read(ref _artifactPreviewGeneration))
+            {
+                return;
+            }
+
             ArtifactPreviewBox.Text = $"Cannot preview '{System.IO.Path.GetFileName(filePath)}': {ex.Message}";
         }
     }
