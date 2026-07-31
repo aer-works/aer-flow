@@ -10,8 +10,8 @@ namespace Aer.Mcp.Host;
 /// composition root, not <see cref="Aer.Mcp.McpServerHost"/> itself, which has no idea this tool
 /// exists.
 /// <para>
-/// <b>This tool never writes <c>memory/</c>.</b> #672's item 3 is explicit: "proposals escalate;
-/// nothing writes memory but an approved decision or the operator's own editor." A call here only
+/// <b>This tool never writes <c>memory/</c>.</b> Decision 0044 owns the rule (its point 3:
+/// memory changes only by decision; this tool merely proposes). A call here only
 /// captures the proposed edit to disk for a later escalation step (<c>MemoryProposalEscalation</c>,
 /// <c>Aer.Flow</c>) to turn into room-journal held work an operator decides on.
 /// </para>
