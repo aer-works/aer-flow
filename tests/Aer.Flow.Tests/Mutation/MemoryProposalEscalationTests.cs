@@ -19,7 +19,7 @@ public class MemoryProposalEscalationTests : IDisposable
         _captureDirectory = Path.Combine(_tempDirectory, "memory-proposals");
     }
 
-    /// <summary>Pins the literal (#833) -- see <see cref="MemoryProposalEscalation.CaptureDirectoryName"/>'s own doc comment for why this must agree with the Aer.Mcp.Host side.</summary>
+    /// <summary>#833. <see cref="MemoryProposalEscalation.CaptureDirectoryName"/>'s own remarks explain the cross-boundary duplication this pins.</summary>
     [Fact]
     public void CaptureDirectoryName_is_the_literal_mirrored_on_the_Aer_Mcp_Host_side()
     {
