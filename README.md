@@ -1,13 +1,14 @@
-# AER Flow
+# Baton
 
-AER Flow is the workflow execution engine layer for the AER (Agent Execution Runtime) ecosystem.
+Baton is the AER (Agent Execution Runtime) ecosystem's workflow tool, built on `aer-flow`, its
+workflow execution engine layer.
 
 Built in .NET, it reads structured workflow definitions, dispatches them to Workers (via `aer-core`), and bridges outputs back to the engine.
 
 ## Documentation
 
 **Start here:** [Decision records](docs/decisions/) — why the product is shaped the way it is.
-[0012](docs/decisions/0012-what-aer-flow-is.md) says what AER Flow *is*; 0013–0018 follow from it.
+[0012](docs/decisions/0012-what-aer-flow-is.md) says what Baton *is*; 0013–0018 follow from it.
 
 > **If a document is in the live tree, it is current.** Anything superseded lives in
 > [`docs/archive/`](docs/archive/) and is never an authority for current work. There is no
@@ -26,7 +27,7 @@ Built in .NET, it reads structured workflow definitions, dispatches them to Work
 
 ## Vendor authentication
 
-AER Flow does not authenticate to any model provider. It spawns the vendor's own first-party CLI
+Baton does not authenticate to any model provider. It spawns the vendor's own first-party CLI
 (`claude`, `agy`) as a subprocess, and that CLI uses whatever login the operator already established
 on their own machine.
 
@@ -36,7 +37,7 @@ configuration directories, which belong to those tools. This is an enforced inva
 intention: see
 [`VendorCredentialIsolationTests`](tests/Aer.Architecture.Tests/VendorCredentialIsolationTests.cs).
 
-AER Flow is a personal tool. It is not offered as a product or a service, and it does not provide,
+Baton is a personal tool. It is not offered as a product or a service, and it does not provide,
 resell, or proxy access to any provider — you bring a CLI you have already signed into yourself.
 Each vendor CLI remains subject to its own provider's terms, between the operator and that provider.
 

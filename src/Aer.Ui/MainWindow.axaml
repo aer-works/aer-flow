@@ -11,7 +11,7 @@
         xmlns:chrome="clr-namespace:Avalonia.Controls.Chrome;assembly=Avalonia.Controls"
         x:Class="Aer.Ui.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="AER Flow"
+        Title="Baton"
         Icon="/Assets/aer.ico"
         Width="1200" Height="800"
         MinWidth="900" MinHeight="640"
@@ -44,7 +44,7 @@
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
                     Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
           <Image Source="/Assets/aer.ico" Width="16" Height="16" />
-          <TextBlock Classes="body-strong" Text="AER Flow" Foreground="{DynamicResource Color.Accent}"
+          <TextBlock Classes="body-strong" Text="Baton" Foreground="{DynamicResource Color.Accent}"
                      VerticalAlignment="Center" />
         </StackPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">

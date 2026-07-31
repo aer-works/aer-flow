@@ -12,7 +12,7 @@ public class ExitConfirmationWindow : Window
 
     public ExitConfirmationWindow(bool hasRunningTasks)
     {
-        Title = "Exit AER Flow";
+        Title = "Exit Baton";
         Width = 520;
         Height = 150;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -29,7 +29,7 @@ public class ExitConfirmationWindow : Window
 
         var messageText = hasRunningTasks
             ? "An active task is running. Cancel task and exit, or quit UI only (leaving task running)?"
-            : "Close AER Flow? You can stop the background daemon and exit, or quit the UI only (leaving the daemon running).";
+            : "Close Baton? You can stop the background daemon and exit, or quit the UI only (leaving the daemon running).";
 
         var message = new TextBlock
         {

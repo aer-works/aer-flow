@@ -1,4 +1,4 @@
-# Scrolls the AER Flow window by sending mouse-wheel notches at a window-relative point,
+# Scrolls the Baton window by sending mouse-wheel notches at a window-relative point,
 # then captures by handle. Saves/restores the user's cursor so driving the app does not
 # steal their pointer. Mirrors Click-Capture.ps1's DPI and capture handling.
 param(
@@ -31,7 +31,7 @@ public class Scr {
 
 [void][Scr]::SetProcessDPIAware()
 
-$proc = Get-Process | Where-Object { $_.MainWindowTitle -like "*AER*" } | Select-Object -First 1
+$proc = Get-Process | Where-Object { $_.MainWindowTitle -like "*Baton*" } | Select-Object -First 1
 if (-not $proc) { Write-Output "NO WINDOW"; exit 1 }
 $h = $proc.MainWindowHandle
 

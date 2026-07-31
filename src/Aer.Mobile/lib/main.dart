@@ -22,7 +22,7 @@ class AerMobileApp extends StatelessWidget {
     // whole of "system" support: ThemeMode.system resolves the OS preference itself, so the three
     // modes decision 0006 asks for need no code of ours.
     return MaterialApp(
-      title: 'AER Flow',
+      title: 'Baton',
       theme: aerTheme(Brightness.light),
       darkTheme: aerTheme(Brightness.dark),
       themeMode: ThemeMode.system,

@@ -40,7 +40,7 @@ that bounds the *documentation*, not reality.
 | 0009 | unaffected | Session lifecycle and retention — a tree you count the top of. Retention policy, independent of vendor behaviour. |
 | 0010 | unaffected | Worker capabilities are skills; the advisor is the first. Capability model; the audit found nothing that reaches its structure. |
 | 0011 | unaffected | Token-based context management. Already corrected by 0027 on its own terms; the audit measured nothing further about context accounting. |
-| 0012 | unaffected | What AER Flow is. The product thesis. Finding 4 (an API key silently disables Remote Control) *strengthens* its premise rather than changing it. |
+| 0012 | unaffected | What Baton is. The product thesis. Finding 4 (an API key silently disables Remote Control) *strengthens* its premise rather than changing it. |
 | 0013 | unaffected | Room is the user-facing noun. Naming decision. |
 | 0014 | unaffected | A shape is an ordered list that renders as a graph. Authoring model; unrelated to worker control. |
 | 0015 | amended | Its three kinds of pause stand; its **mechanism** guidance — prefer `--permission-prompt-tool` — is amended by 0029, because the gate turned out to be three mechanisms covering three tool populations. |

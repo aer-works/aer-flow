@@ -104,7 +104,7 @@ Two rules for the column:
 | [0009](0009-session-lifecycle-and-retention.md) | Session lifecycle & retention: a tree you count the top of | accepted |
 | [0010](0010-skills-and-advisor.md) | Worker capabilities are skills (app-level canonical, per-vendor realization); the advisor is the first one; addressing/namespacing added by 0024 | accepted |
 | [0011](0011-token-based-context-management.md) | Context management is token-based, per worker; running out is announced as a choice, not acted on silently (mechanics in 0027) | accepted |
-| [0012](0012-what-aer-flow-is.md) | What AER Flow is: a drop-in Claude Code replacement with more than one model in the room | accepted |
+| [0012](0012-what-aer-flow-is.md) | What Baton is: a drop-in Claude Code replacement with more than one model in the room | accepted |
 | [0013](0013-room-is-the-user-facing-noun.md) | Room is the user-facing noun; session is the vendor's | accepted |
 | [0014](0014-shapes-are-a-list-not-a-canvas.md) | A shape is an ordered list that renders as a graph; setting a step's blocker (`DependsOn`) is a list operation, GitHub-style, default blocked-by-previous (a step's contents added by 0025) | accepted |
 | [0015](0015-three-kinds-of-needs-you.md) | A pause asks for one of three things: permission, a decision, or approval (its **mechanism** guidance amended by 0029) | accepted |

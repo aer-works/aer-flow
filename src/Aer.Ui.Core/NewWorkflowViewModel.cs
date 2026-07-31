@@ -25,7 +25,7 @@ public enum GuidedStepKind
 /// format; the user just never opens them.
 /// <para>
 /// <b>Workspace decision of record (the phase's named open question):</b> authored files live in
-/// a UI-managed default workspace (<c>Documents/AER Flow/&lt;workflow-name&gt;</c>) — visible in
+/// a UI-managed default workspace (<c>Documents/Baton/&lt;workflow-name&gt;</c>) — visible in
 /// the flow and swappable via the folder picker, never required. Explicit-everywhere would put a
 /// path decision back at the start of the non-expert's very first action, which is the exact
 /// failure the audit's walkthrough recorded.
@@ -107,10 +107,7 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 
     public string EffectiveWorkspacePath => WorkspaceOverridePath.Length > 0
         ? WorkspaceOverridePath
-        : Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "AER Flow",
-            WorkflowName.Length > 0 ? WorkflowName : "new-workflow");
+        : Path.Combine(DefaultWorkspace.RootPath, WorkflowName.Length > 0 ? WorkflowName : "new-workflow");
 
     /// <summary>Raised by Save &amp; Run with the just-written file paths — the skin starts the run and navigates; this VM never executes anything (§6).</summary>
     public event Func<string, string, Task>? RunRequested;

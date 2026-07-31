@@ -10,7 +10,7 @@
 
 ---
 
-AER Flow — workers, commands, control
+Baton — workers, commands, control
 
 Interaction design · workers and control
 
