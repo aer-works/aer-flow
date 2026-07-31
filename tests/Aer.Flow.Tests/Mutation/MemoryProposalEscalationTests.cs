@@ -82,6 +82,70 @@ public class MemoryProposalEscalationTests : IDisposable
         Assert.Empty(state.HeldWork);
     }
 
+    /// <summary>
+    /// #851 (#833 review finding): a lost dispatch race must not abort the rest of the sweep. The
+    /// idempotency projection is read before the room lock, so a concurrent sweeper can dispatch
+    /// the same ref between that read and the mutation's own re-read under the lock — the stale
+    /// first read below IS that window, made deterministic. The colliding file's dispatch throws
+    /// inside <see cref="RoomMutationInterface"/>; the sweep must treat "already dispatched" as
+    /// the goal state and keep going, so the remaining capture files still land this pass rather
+    /// than waiting for the next one.
+    /// </summary>
+    [Fact]
+    public async Task A_lost_dispatch_race_on_one_capture_does_not_abort_the_rest_of_the_sweep()
+    {
+        Directory.CreateDirectory(_captureDirectory);
+        var collidingFile = Path.Combine(_captureDirectory, "proposal-aaa.json");
+        var freshFile = Path.Combine(_captureDirectory, "proposal-bbb.json");
+        await File.WriteAllTextAsync(
+            collidingFile,
+            """{"Operation":"add","TargetPath":"raced.md","Content":"x","Rationale":"y"}""",
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            freshFile,
+            """{"Operation":"add","TargetPath":"fresh.md","Content":"x","Rationale":"y"}""",
+            TestContext.Current.CancellationToken);
+
+        var realReader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        // The concurrent sweeper wins the race: the colliding ref is already in the journal.
+        await RoomMutationInterface.DispatchHeldWorkAsync(
+            _tempDirectory, new HeldWorkRef(Path.GetFullPath(collidingFile)),
+            MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget,
+            "operator", realReader, writer, TestContext.Current.CancellationToken);
+
+        var staleReader = new StaleFirstReadRoomEventLogReader(realReader);
+
+        var state = await MemoryProposalEscalation.EscalateNewProposalsAsync(
+            _captureDirectory, _tempDirectory, "operator", staleReader, writer, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, state.HeldWork.Count);
+        Assert.Equal(
+            HeldWorkStatus.Dispatched,
+            state.HeldWork[new HeldWorkRef(Path.GetFullPath(freshFile))].Status);
+    }
+
+    /// <summary>
+    /// Simulates the race window for the test above: the first projection read returns nothing
+    /// (stale), every later read sees the journal as it really is.
+    /// </summary>
+    private sealed class StaleFirstReadRoomEventLogReader(IRoomEventLogReader inner) : IRoomEventLogReader
+    {
+        private bool _first = true;
+
+        public async Task<IReadOnlyList<RoomEvent>> ReadAllRoomEventsAsync(CancellationToken cancellationToken = default)
+        {
+            if (_first)
+            {
+                _first = false;
+                return [];
+            }
+
+            return await inner.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     [Fact]
     public async Task A_relative_capture_directory_is_refused_because_the_full_path_is_the_idempotency_key()
     {

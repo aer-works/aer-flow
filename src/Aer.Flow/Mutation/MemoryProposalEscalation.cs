@@ -102,6 +102,9 @@ public static class MemoryProposalEscalation
     /// The idempotency key is the capture file's full path, so <paramref name="captureDirectoryPath"/>
     /// must be rooted -- a relative path would resolve against the caller's current directory and
     /// mint a second ref for the same physical file under a different cwd (#801 review).
+    /// Scope limit: dispatch keys on the file's presence alone; its JSON content is not validated
+    /// here (a half-written file is never visible thanks to
+    /// <see cref="Aer.Mcp.Host.MemoryProposalTool"/>'s atomic write -- see its own remarks).
     /// </summary>
     public static async Task<RoomState> EscalateNewProposalsAsync(
         string captureDirectoryPath,
@@ -140,9 +143,20 @@ public static class MemoryProposalEscalation
                 continue;
             }
 
-            state = await RoomMutationInterface.DispatchHeldWorkAsync(
-                roomDirectoryPath, @ref, MemoryProposalShape, NoBudget, deciderIdentity, reader, writer, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                state = await RoomMutationInterface.DispatchHeldWorkAsync(
+                    roomDirectoryPath, @ref, MemoryProposalShape, NoBudget, deciderIdentity, reader, writer, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (InvalidRoomMutationException)
+            {
+                // Lost a dispatch race (#851): the idempotency check above ran against a projection
+                // read before the room lock, and a concurrent sweeper recorded this ref in the
+                // window. "Already dispatched" is this loop's goal state, not a failure -- refresh
+                // the projection and keep sweeping so one collision never aborts the pass.
+                state = RoomProjector.Project(await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false));
+            }
         }
 
         return state;
