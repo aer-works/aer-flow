@@ -527,7 +527,12 @@ def parse_dialogue_preamble_files(entries: list[str]) -> dict[str, Path]:
         role, sep, path_str = entry.partition("=")
         if not sep or not role or not path_str:
             raise ValueError(f"--preamble-file '{entry}' must be ROLE=PATH.")
-        mapping[role] = Path(path_str)
+        path = Path(path_str)
+        # Preamble is a required non-empty field on the participant record; an empty file would
+        # pass silently here and fail (or worse, not fail) engine-side instead.
+        if not path.is_file() or not path.read_text(encoding="utf-8").strip():
+            raise ValueError(f"--preamble-file '{entry}': file is missing or has no non-whitespace content.")
+        mapping[role] = path
     return mapping
 
 
@@ -1012,6 +1017,15 @@ def main() -> int:
             return 2
         if args.turn_budget is None:
             print("error: the following arguments are required: --turn-budget", file=sys.stderr)
+            return 2
+        if args.turn_budget < 1:
+            print(f"error: --turn-budget must be a positive integer (got {args.turn_budget}); "
+                  f"a non-positive budget would produce a malformed dialogue Timeout.", file=sys.stderr)
+            return 2
+        if args.worktree is not None:
+            # The worktree flag belongs to the single-dispatch/lane path; --dialogue runs against
+            # the live repo's built engine and accepting it here would look honored and be ignored.
+            print("error: --dialogue cannot be combined with --worktree.", file=sys.stderr)
             return 2
         if args.final_output is None:
             print("error: the following arguments are required: --final-output", file=sys.stderr)

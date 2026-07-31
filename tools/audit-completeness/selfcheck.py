@@ -644,7 +644,30 @@ def _dialogue_arg_validation():
 
         malformed = dialogue("claude", "gemini:gemini-3.6-flash-low")
         assert malformed.returncode == 2, f"VENDOR with no colon should be refused, got exit {malformed.returncode}"
-    return "4 arg-validation shapes: 1 participant, 0 participants, unknown vendor, malformed spec"
+
+        # Second-reader findings on #813's lane: these three previously crashed (AttributeError)
+        # or passed silently instead of refusing cleanly.
+        with_worktree = dialogue("claude:sonnet", "gemini:gemini-3.6-flash-low", extra=("--worktree", "some-branch"))
+        assert with_worktree.returncode == 2 and "--worktree" in with_worktree.stderr, (
+            f"--dialogue --worktree must refuse cleanly, got exit {with_worktree.returncode}:\n"
+            f"{with_worktree.stderr.strip()[:300]}")
+
+        negative_budget = subprocess.run(
+            [sys.executable, str(DISPATCH_PY), "--dialogue", "--seed-file", str(seed_path),
+             "--participant", "claude:sonnet", "--participant", "gemini:gemini-3.6-flash-low",
+             "--turn-budget", "-20", "--final-output", "out.md", "--scratch-root", scratch, "--dry-run"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert negative_budget.returncode == 2 and "positive" in negative_budget.stderr, (
+            f"a non-positive --turn-budget must be refused, got exit {negative_budget.returncode}")
+
+        empty_preamble_path = Path(scratch) / "empty.md"
+        empty_preamble_path.write_text("   \n", encoding="utf-8")
+        empty_preamble = dialogue(
+            "claude:sonnet:reviewer", "gemini:gemini-3.6-flash-low",
+            extra=("--preamble-file", f"reviewer={empty_preamble_path}"))
+        assert empty_preamble.returncode == 2 and "non-whitespace" in empty_preamble.stderr, (
+            f"an empty --preamble-file must be refused, got exit {empty_preamble.returncode}")
+    return "7 arg-validation shapes: participants x3, malformed spec, --worktree combo, negative budget, empty preamble"
 
 
 @check("--dialogue refuses combination with --lane and --template, matching their own mutual refusal")
