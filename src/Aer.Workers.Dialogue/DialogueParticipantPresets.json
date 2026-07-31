@@ -1,0 +1,14 @@
+[
+  {
+    "Vendor": "claude",
+    "Command": "claude",
+    "Args": ["-p", "{PROMPT}", "--allowedTools", "Write,Read", "--output-format", "text"],
+    "ModelArgs": ["--model", "{MODEL}"]
+  },
+  {
+    "Vendor": "gemini",
+    "Command": "agy",
+    "Args": ["-p", "{PROMPT}", "--mode", "accept-edits"],
+    "ModelArgs": ["--model", "{MODEL}"]
+  }
+]

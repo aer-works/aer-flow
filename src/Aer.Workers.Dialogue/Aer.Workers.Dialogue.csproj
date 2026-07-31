@@ -22,4 +22,14 @@
     <InternalsVisibleTo Include="Aer.Workers.Dialogue.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- #836: the single source for DialogueParticipantPresets.For's vendor shapes, also read
+         directly by tools/aer-agy-loop/dispatch.py's build_dialogue_participant. Embedded, not
+         CopyToOutputDirectory, so every referencing project (Aer.Adapters, Aer.Ui.Core, Aer.Cli,
+         and their test projects) gets it from the assembly regardless of that project's own
+         output layout or working directory; a copied file would need re-copying into each of
+         those independently. -->
+    <EmbeddedResource Include="DialogueParticipantPresets.json" />
+  </ItemGroup>
+
 </Project>
