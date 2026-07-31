@@ -397,6 +397,16 @@ public static class StatusCommand
 
     public static string FormatStepStatus(StepState step, IReadOnlyList<FlowEvent> events)
     {
+        // A Failed step carrying a RetryNotBefore has a StepRetryScheduled recorded for it (#594)
+        // -- the machine's own paced wait, whether an ordinary backoff or a quota park (#817).
+        // StateProjector clears RetryNotBefore the moment a fresh ExecutionRequestAccepted lands
+        // for the step, so latest-state-wins here for free: a step that has since retried or
+        // succeeded never reaches this branch.
+        if (step.Status == StepStatus.Failed && step.RetryNotBefore is not null)
+        {
+            return FormatParkedStatus(step);
+        }
+
         // Probe ONLY steps claiming a live engine. Paused is a mask over an already-terminal
         // outcome (StateProjector) -- its engine has legitimately exited, and probing it stamped
         // every healthy paused step "crash recovery will classify" (the lane review's high
@@ -423,6 +433,27 @@ public static class StatusCommand
             EngineLivenessStatus.Unknown => $"liveness unknown ({probeResult.Why})",
             _ => $"liveness unknown ({probeResult.Why})",
         };
+    }
+
+    /// <summary>
+    /// An operator reading status wants "when does work resume", not a UTC instant to convert by
+    /// hand (#817) -- <see cref="StepState.RetryNotBefore"/> is rendered in local time. The
+    /// classification is <see cref="StepState.LatestFailureClassification"/> as recorded on the
+    /// attempt <see cref="FlowEvent.StepRetryScheduled"/> is pacing, mapped to the operator-facing
+    /// word: <see cref="FailureClassification.ExhaustedUntil"/> is the vendor-quota wait 0026
+    /// introduced; everything else eligible to reach here (<see cref="FailureClassification.Retryable"/>
+    /// or absent, per <see cref="Aer.Flow.Scheduling.RetryEngine.MayRetry"/>) is an ordinary
+    /// backoff.
+    /// </summary>
+    private static string FormatParkedStatus(StepState step)
+    {
+        var classification = step.LatestFailureClassification == FailureClassification.ExhaustedUntil
+            ? "vendor quota"
+            : "retryable";
+        var localRetryTime = step.RetryNotBefore!.Value.ToLocalTime()
+            .ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+        return $"parked ({classification}) — retries {localRetryTime}";
     }
 
     /// <summary>
