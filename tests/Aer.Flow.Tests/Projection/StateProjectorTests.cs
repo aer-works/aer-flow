@@ -553,6 +553,43 @@ public class StateProjectorTests
         Assert.Null(architect.LatestExecutionFailedRetryNotBefore);
     }
 
+    /// <summary>
+    /// #815: the same clearing as above, but reached via the widened validator path — a quota-
+    /// parked step that was never paused (no <see cref="FlowEvent.WorkflowPaused"/> in this log at
+    /// all), which a lane workflow's missing <see cref="WorkflowStepDefinition.PausePoint"/> makes
+    /// the ordinary case. <see cref="MutationInterface"/> always appends
+    /// <see cref="FlowEvent.WorkflowResumed"/> after recording a decision regardless of whether a
+    /// pause occurred, and this projector case already keys off the decision's
+    /// <see cref="FlowEvent.ExternalDecisionRecorded.ReferencedExecutionId"/> rather than Paused
+    /// status — so no projector change was needed for #815, only proven here.
+    /// </summary>
+    [Fact]
+    public void RetryWithRevision_clears_the_classification_for_a_quota_parked_step_with_no_prior_pause()
+    {
+        var executionId = new ExecutionId("exec-1");
+        var decisionId = new DecisionId("decision-1");
+        var retryNotBefore = DateTimeOffset.UnixEpoch.AddHours(1);
+        var events = new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+            new FlowEvent.ExecutionFailed(executionId, FailureClassification.ExhaustedUntil, "quota", retryNotBefore),
+            new FlowEvent.StepRetryScheduled(Architect, executionId, retryNotBefore, RetryDelayMs: 60_000),
+            new FlowEvent.ExternalDecisionRecorded(decisionId, executionId, DecisionType.RetryWithRevision, null, null),
+            new FlowEvent.WorkflowResumed(decisionId),
+        };
+
+        var state = StateProjector.Project(events, TwoStepSnapshot());
+
+        var architect = StepFor(state, Architect);
+        Assert.Equal(StepStatus.Failed, architect.Status);
+        Assert.Equal(0, architect.ConsecutiveFailureCount);
+        Assert.Null(architect.LatestFailureClassification);
+        Assert.Null(architect.LatestFailureReason);
+        Assert.Null(architect.LatestExecutionFailedRetryNotBefore);
+        Assert.Null(architect.RetryNotBefore);
+        Assert.Null(architect.RetryDelayMs);
+    }
+
     [Fact]
     public void RetryWithRevision_with_a_SupplementaryExecutionId_projects_it_as_pending_for_the_referenced_step()
     {

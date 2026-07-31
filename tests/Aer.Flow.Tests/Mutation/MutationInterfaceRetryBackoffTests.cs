@@ -883,4 +883,105 @@ public class MutationInterfaceRetryBackoffTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    // #815: the Test9 scenario (operator RetryWithRevision dispatches immediately, clearing the
+    // deadline), but for a step #594's classification quota-parked and never paused — the lane-
+    // workflow shape #815 measured live, where the step declares no PausePoint at all. Starts from
+    // a fabricated Failed + StepRetryScheduled(far-future) history, exactly like Test13's manual
+    // event log, so the far-future deadline proves the operator's decision — not fakeTime, which
+    // never advances — is what releases the step.
+    [Fact]
+    public async Task Test815_Operator_RetryWithRevision_against_a_quota_parked_never_paused_step_dispatches_immediately()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var now = new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);
+        var fakeTime = new FakeTimeProvider(now);
+        var farFutureResetMoment = now.AddHours(2);
+
+        try
+        {
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-retry-815"),
+                new WorkflowTemplateId("template-retry-815"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(
+                        StepA,
+                        "worker-a",
+                        Inputs: [],
+                        Outputs: [],
+                        DependsOn: [],
+                        RetryPolicy: new RetryPolicy(MaxAttempts: 2, Backoff: BackoffPolicy.Steady))
+                    // No PausePoint: the exact lane-workflow shape #815 measured live — nothing
+                    // could ever have paused this step.
+                ]);
+
+            var bindings = new Dictionary<string, WorkerBinding>
+            {
+                ["worker-a"] = new WorkerBinding.Process(
+                    new WorkerContract("worker-a", [], [], []),
+                    ExitCleanlyWithoutWriting(),
+                    TimeSpan.FromSeconds(30))
+            };
+
+            // The quota-parked history, written directly (Test13's pattern): a first attempt
+            // failed with an ExhaustedUntil-shaped classification and a scheduled retry hours in
+            // the future -- no WorkflowPaused, because this step has no PausePoint to trigger one.
+            var firstAttempt = new ExecutionId("a-1");
+            await using (var writerInit = new FlowEventLogWriter(logPath))
+            {
+                var ct = TestContext.Current.CancellationToken;
+                await writerInit.AppendAsync(new FlowEvent.ExecutionRequestAccepted(
+                    new ExecutionRequest(firstAttempt, new WorkflowId("wf-815"), StepA, "worker-a", [], [], TimeSpan.FromSeconds(30), [], new Dictionary<StepId, ExecutionId>())), ct);
+                await writerInit.AppendAsync(new FlowEvent.ExecutionFailed(
+                    firstAttempt, FailureClassification.ExhaustedUntil, "quota exhausted", farFutureResetMoment), ct);
+                await writerInit.AppendAsync(new FlowEvent.StepRetryScheduled(
+                    StepA, firstAttempt, farFutureResetMoment, RetryDelayMs: (int)TimeSpan.FromHours(2).TotalMilliseconds), ct);
+            }
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var reader = new FlowEventLogReader(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            // Operator issues RetryWithRevision against the parked (never-paused) execution.
+            // Nothing ever advances fakeTime: if the decision had been machine-deferred back to
+            // farFutureResetMoment instead of dispatching now, this would hang until the
+            // WaitAsync timeout.
+            var finalState = await MutationInterface.RecordDecisionAsync(
+                new WorkflowId("wf-815"),
+                taskDirectory,
+                snapshot,
+                bindings,
+                artifactsRoot,
+                reader,
+                writer,
+                dispatcher,
+                referencedExecutionId: firstAttempt,
+                decisionType: DecisionType.RetryWithRevision,
+                timeProvider: fakeTime,
+                jitterSource: () => 0.0,
+                cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(PumpCompletionTimeout, TestContext.Current.CancellationToken);
+
+            var stepState = finalState.Steps.Single(s => s.StepId == StepA);
+            Assert.Equal(StepStatus.Succeeded, stepState.Status);
+            Assert.NotEqual(firstAttempt, stepState.LatestExecutionId);
+
+            var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(2, events.OfType<FlowEvent.ExecutionRequestAccepted>().Count());
+            Assert.Single(events.OfType<FlowEvent.ExecutionSucceeded>());
+            // Only the fabricated first attempt's deferral -- the operator-triggered attempt was
+            // never machine-paced, matching Test9's "no StepRetryScheduled for the operator
+            // attempt" assertion.
+            Assert.Single(events.OfType<FlowEvent.StepRetryScheduled>());
+            Assert.Empty(events.OfType<FlowEvent.WorkflowPaused>());
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }

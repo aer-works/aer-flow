@@ -30,7 +30,18 @@ public static class ExternalDecisionValidator
         // has resolved this ExecutionId, WorkflowResumed has already cleared its Paused status, so a
         // further decision against it fails this same lookup.
         var referencedStep = state.Steps.SingleOrDefault(step => step.LatestExecutionId == referencedExecutionId);
-        if (referencedStep is null || referencedStep.Status != StepStatus.Paused)
+
+        // #815: RetryWithRevision (only) also reaches a step #594's classification quota-parked —
+        // Failed, with a FlowEvent.StepRetryScheduled already recorded (RetryNotBefore set) — even
+        // though it was never paused; a lane workflow declares no PausePoint at all, so nothing
+        // else can reach it. Reuses #594's existing classification-clearing consequence
+        // (StateProjector's WorkflowResumed/RetryWithRevision handling already looks the step up by
+        // ReferencedExecutionId, not by Paused status, so no change is needed there). Every other
+        // DecisionType, and a Failed step with no scheduled retry, still requires the Paused gate.
+        var isQuotaParkedRetryNow = decisionType == DecisionType.RetryWithRevision
+            && referencedStep is { Status: StepStatus.Failed, RetryNotBefore: not null };
+
+        if (referencedStep is null || (referencedStep.Status != StepStatus.Paused && !isQuotaParkedRetryNow))
         {
             throw new InvalidExternalDecisionException(
                 $"Execution '{referencedExecutionId}' is not the currently paused latest attempt of any step.");
