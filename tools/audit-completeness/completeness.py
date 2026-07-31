@@ -676,9 +676,11 @@ def step4_stale_citations():
         return None
     try:
         out = subprocess.run(
-            # Stays "aer-flow" until the flip -- see docs/runbooks/repo-rename.md step 2 for why
-            # this one line can't move early the way every markdown link in #823 did.
-            ["gh", "issue", "list", "--repo", "aer-works/aer-flow", "--state", "all",
+            # Flipped with the rename itself (docs/runbooks/repo-rename.md step 2), which is why
+            # this one line moved separately from every markdown link in #823: it is a live call,
+            # and `repo_is_unreachable` above is what makes a wrong name here loud rather than
+            # silently skipped.
+            ["gh", "issue", "list", "--repo", "aer-works/baton", "--state", "all",
              "--limit", "1000", "--json", "number,state"],
             capture_output=True, text=True, cwd=ROOT, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
