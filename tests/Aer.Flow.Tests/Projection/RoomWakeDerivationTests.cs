@@ -57,6 +57,25 @@ public class RoomWakeDerivationTests
     }
 
     [Fact]
+    public void Dispatched_memory_proposal_never_wakes_even_with_a_journalless_probe_handed_in()
+    {
+        var proposalRef = new HeldWorkRef("captures/proposal-abc.json");
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(
+                proposalRef, Aer.Flow.Mutation.MemoryProposalEscalation.MemoryProposalShape, TimeSpan.Zero, "decider-1"),
+        ]);
+
+        // The probe is handed in deliberately: the derivation's own guard must hold even when a
+        // caller probes a capture-file ref anyway -- "no journal" is this shape's normal pending
+        // state, and pre-#832 this exact input derived a spurious DispatchOrphaned.
+        var wakes = RoomWakeDerivation.DeriveWakes(
+            state,
+            new Dictionary<HeldWorkRef, LaneProbeResult> { [proposalRef] = new(JournalExists: false, IsTerminal: false) });
+
+        Assert.Empty(wakes);
+    }
+
+    [Fact]
     public void Dispatched_ref_with_running_lane_produces_no_wake()
     {
         var state = RoomProjector.Project([

@@ -60,6 +60,18 @@ public static class RoomWakeDerivation
                 continue;
             }
 
+            // A memory proposal refs its capture file (#801; the defect record is
+            // RoomProjectorTests' #832 note) — every lane-probe-derived wake kind is meaningless
+            // for it: "no journal" is its normal pending state, not an orphaned dispatch.
+            // Waiting on an operator decision is
+            // what this shape DOES; it never wakes anyone from here. Guarded in the derivation,
+            // not only the probe loop, so a caller handing in a probe for one of these refs
+            // cannot resurrect the spurious orphan.
+            if (state.Shape == Mutation.MemoryProposalEscalation.MemoryProposalShape)
+            {
+                continue;
+            }
+
             if (!laneProbes.TryGetValue(@ref, out var probe))
             {
                 continue;
