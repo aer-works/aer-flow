@@ -828,11 +828,11 @@ def step11_register_pins():
     transcribed count over a population its own text says to compute. The header's number must
     equal the records on disk.
 
-    Incident 2: the ledger's two stalest `fix` entries were the vendor version pins --
-    docs/vendor-capabilities.md and docs/vendor-doc-audit.md each carry a header naming the
-    measured `claude`/`agy` versions, and one drifted to 1.1.7 while the measured reality was
-    1.1.8. The two headers must agree per vendor. (Agreement, not currency: nothing here proves
-    the pinned version is the one installed today -- re-measuring is what refreshes both.)
+    Incident 2: the vendor version pins. The fix commit (git show f5d7ab1) corrected the same
+    drifted pin in THREE headers at once -- docs/vendor-capabilities.md, docs/vendor-doc-audit.md
+    and docs/vendor-coverage.md -- after one had said 1.1.7 while the measured reality was 1.1.8.
+    All three headers must agree per vendor. (Agreement, not currency: nothing here proves the
+    pinned version is the one installed today -- re-measuring is what refreshes them.)
     """
     rule("STEP 11 -- the register pins #797's inventory caught drifting stay consistent")
     ok = True
@@ -844,20 +844,24 @@ def step11_register_pins():
     ok &= line("decision-audit.md header count vs records on disk", claimed, on_disk,
                "the header once said 41 over a 43-record register")
 
-    audit_head = read("docs/vendor-doc-audit.md")[:600]
-    caps_head = read("docs/vendor-capabilities.md")[:600]
     ver = r"(\d+(?:\.\d+)*)"  # no trailing dot: the audit header's pin ends a sentence
-    a = re.search(rf"`claude` {ver} and `agy` {ver}", audit_head)
-    c = re.search(rf"`claude` {ver} / `agy` {ver}", caps_head)
-    if not a or not c:
-        which = "vendor-doc-audit.md" if not a else "vendor-capabilities.md"
-        print(f"    !! {which}'s header version pin is missing or reshaped -- agreement"
-              " cannot be judged; fix the header or this pattern together")
-        return False
-    ok &= line("claude header pin, audit vs capabilities", a.group(1), c.group(1),
-               "one file drifting alone is the caught incident")
-    ok &= line("agy header pin, audit vs capabilities", a.group(2), c.group(2),
-               "one file drifting alone is the caught incident")
+    pins = {}
+    for name, sep in [("vendor-doc-audit.md", "and"), ("vendor-capabilities.md", "/"),
+                      ("vendor-coverage.md", "and")]:
+        # Collapse whitespace first: vendor-coverage.md's pin wraps across a line break.
+        head = re.sub(r"\s+", " ", read(f"docs/{name}")[:600])
+        m = re.search(rf"`claude` {ver} {sep} `agy` {ver}", head)
+        if not m:
+            print(f"    !! {name}'s header version pin is missing or reshaped -- agreement"
+                  " cannot be judged; fix the header or this pattern together")
+            return False
+        pins[name] = m.groups()
+    reference = pins["vendor-doc-audit.md"]
+    for name in ("vendor-capabilities.md", "vendor-coverage.md"):
+        ok &= line(f"claude header pin, audit vs {name.split('-')[1].split('.')[0]}",
+                   pins[name][0], reference[0], "one file drifting alone is the caught incident")
+        ok &= line(f"agy header pin, audit vs {name.split('-')[1].split('.')[0]}",
+                   pins[name][1], reference[1], "one file drifting alone is the caught incident")
     return ok
 
 
@@ -931,8 +935,8 @@ def main() -> int:
         "  the register is a recording, and re-running `agy models` is what refreshes it.",
         "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
         "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
-        "Step 11 checks the two version headers AGREE, never that either is the version",
-        "  installed today -- re-measuring against the live CLIs is what refreshes both.",
+        "Step 11 checks the three version headers AGREE, never that any is the version",
+        "  installed today -- re-measuring against the live CLIs is what refreshes them.",
         "Step 10 only sees citations that use the WORD 'gate'. Referring to a gate by its title,",
         "  its position ('the sixth one'), or by quoting its text goes unnoticed -- and a slug that",
         "  is correct is not thereby CITED CORRECTLY: this checks the shape, never the aptness.",
