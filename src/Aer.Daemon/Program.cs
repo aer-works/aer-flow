@@ -790,8 +790,7 @@ namespace Aer.Daemon
                 // remarks) -- bindings.json here can carry the same persisted vendor SessionId a
                 // chat turn minted (Program.cs's ExecuteSessionTurnCoreAsync), and this endpoint has
                 // no lock of its own, so a /api/sessions/send racing this call would otherwise
-                // dispatch that id twice concurrently (vendor-doc-audit.md, "`--session-id` is
-                // guarded by an existence check, not a lock").
+                // dispatch that id twice concurrently (see vendor-doc-audit.md on --session-id).
                 _ = Task.Run(async () =>
                 {
                     var turnLock = SessionTurnLockFor(request.DirectoryPath);
@@ -1526,12 +1525,12 @@ namespace Aer.Daemon
         /// construction: this runs inside a catch, so it must never throw over the top of the
         /// original error.
         ///
-        /// #828: the same gap exists for <c>/api/tasks/run</c> and <c>/api/tasks/decide</c> -- both
-        /// answer 200 before their fire-and-forget dispatch body runs, and until now a failure there
+        /// #828: the same gap exists for both task dispatch endpoints -- they answer 200 before
+        /// their fire-and-forget dispatch body runs, and until now a failure there
         /// (e.g. this directory's <c>WorkflowLockedException</c>, swallowed by
         /// <see cref="TaskSession.RunAsync"/>/<see cref="TaskSession.DecideAsync"/>'s own
-        /// <c>catch (AerFlowException)</c>) reached <c>Console.Error</c> and nowhere else. Reused here
-        /// (record-once) rather than a second log convention -- <paramref name="context"/> generalizes
+        /// <c>catch (AerFlowException)</c>) reached <c>Console.Error</c> and nowhere else. A single
+        /// log convention rather than splitting by call site -- <paramref name="context"/> generalizes
         /// the chat call site's "message" label to whatever identifies the failed operation.
         /// <paramref name="error"/> is <c>object</c>, not <see cref="Exception"/>, so a
         /// <see cref="TaskSession.MutationOutcome"/>'s <c>ErrorMessage</c> string -- the only place
@@ -1567,10 +1566,9 @@ namespace Aer.Daemon
         ///
         /// #590: also the daemon's single-writer-per-vendor-session lock. A chat turn persists its
         /// vendor <c>SessionId</c> into <c>bindings.json</c> (<see cref="ExecuteSessionTurnCoreAsync"/>),
-        /// and <c>/api/tasks/run</c> / <c>/api/tasks/decide</c> dispatch whatever that file says with no
-        /// lock of their own -- the vendor CLI's own <c>--session-id</c> guard will not catch two
-        /// concurrent dispatches of the same id (vendor-doc-audit.md, "`--session-id` is guarded by an
-        /// existence check, not a lock"), so this in-process lock is the only thing that does. Keyed by
+        /// and both task dispatch endpoints dispatch whatever that file says with no lock of their own
+        /// (see <see cref="SessionDirectoryDispatchSerializationTests"/> for guard details),
+        /// so this in-process lock is the only thing that serializes concurrent dispatches. Keyed by
         /// directory rather than the vendor session id itself because the id is re-minted on handoff
         /// while the directory is stable, and because this lock also serialises the
         /// <c>session.json</c> read-modify-write an id-keyed lock would miss.
@@ -2048,7 +2046,7 @@ namespace Aer.Daemon
             // One edge is deliberately left unestablished: a vendor that succeeds while producing no
             // answer at all, so the next turn re-sends `--session-id` rather than `--resume`.
             // Whether that is the safe direction is an OPEN QUESTION, not a fact -- the register
-            // (vendor-doc-audit.md, "`--session-id` is guarded by an existence check") measured
+            // (see vendor-doc-audit.md) measured
             // sequential reuse of an existing id as REFUSED, which would make the re-send fail
             // rather than retry harmlessly. It is unreconciled because the pre-fix symptom was
             // silent memory loss rather than a hard turn-2 failure, and #537 never verified turn 2
