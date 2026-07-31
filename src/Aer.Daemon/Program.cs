@@ -786,8 +786,16 @@ namespace Aer.Daemon
                     await broadcast.BroadcastStateAsync(immediateOutcome.Projection, request.DirectoryPath);
                 }
 
+                // #590: same per-directory serialisation as chat turns (SessionTurnLockFor's
+                // remarks) -- bindings.json here can carry the same persisted vendor SessionId a
+                // chat turn minted (Program.cs's ExecuteSessionTurnCoreAsync), and this endpoint has
+                // no lock of its own, so a /api/sessions/send racing this call would otherwise
+                // dispatch that id twice concurrently (vendor-doc-audit.md, "`--session-id` is
+                // guarded by an existence check, not a lock").
                 _ = Task.Run(async () =>
                 {
+                    var turnLock = SessionTurnLockFor(request.DirectoryPath);
+                    await turnLock.WaitAsync().ConfigureAwait(false);
                     try
                     {
                         await session.RunAsync(
@@ -798,6 +806,10 @@ namespace Aer.Daemon
                     catch (Exception ex)
                     {
                         Console.Error.WriteLine($"Error executing task run in background: {ex}");
+                    }
+                    finally
+                    {
+                        turnLock.Release();
                     }
                 });
 
@@ -837,8 +849,12 @@ namespace Aer.Daemon
                     }
                 }
 
+                // #590: see the matching lock in /api/tasks/run above -- same persisted-SessionId
+                // exposure, same fix.
                 _ = Task.Run(async () =>
                 {
+                    var turnLock = SessionTurnLockFor(request.DirectoryPath);
+                    await turnLock.WaitAsync().ConfigureAwait(false);
                     try
                     {
                         await session.DecideAsync(
@@ -854,6 +870,10 @@ namespace Aer.Daemon
                     catch (Exception ex)
                     {
                         Console.Error.WriteLine($"Error executing task decide in background: {ex}");
+                    }
+                    finally
+                    {
+                        turnLock.Release();
                     }
                 });
 
@@ -1507,6 +1527,16 @@ namespace Aer.Daemon
         /// already-returned 200, so two overlapping <c>POST /api/sessions/send</c> calls for the same
         /// session genuinely interleave there. <see cref="IsSessionSafeToReMaterialize"/> (#354) makes
         /// the delete refuse in the unsafe states; this closes the ordering hole itself.
+        ///
+        /// #590: also the daemon's single-writer-per-vendor-session lock. A chat turn persists its
+        /// vendor <c>SessionId</c> into <c>bindings.json</c> (<see cref="ExecuteSessionTurnCoreAsync"/>),
+        /// and <c>/api/tasks/run</c> / <c>/api/tasks/decide</c> dispatch whatever that file says with no
+        /// lock of their own -- the vendor CLI's own <c>--session-id</c> guard will not catch two
+        /// concurrent dispatches of the same id (vendor-doc-audit.md, "`--session-id` is guarded by an
+        /// existence check, not a lock"), so this in-process lock is the only thing that does. Keyed by
+        /// directory rather than the vendor session id itself because the id is re-minted on handoff
+        /// while the directory is stable, and because this lock also serialises the
+        /// <c>session.json</c> read-modify-write an id-keyed lock would miss.
         ///
         /// Keyed by the session's task directory: that is what the deletes target, it matches Flow's
         /// own lock granularity, and it is the one identifier all three call sites (create, send,
