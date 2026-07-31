@@ -1,4 +1,5 @@
 using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
 using Aer.Flow.Projection;
 
 namespace Aer.Flow.Tests.Projection;
@@ -106,5 +107,85 @@ public class RoomProjectorTests
 
         Assert.True(state.HeldWork.ContainsKey(LaneRefA));
         Assert.False(state.HeldWork.ContainsKey(LaneRefB));
+    }
+
+    // #832: a memory-proposal held-work item's Ref is a capture FILE, not a lane directory. Before
+    // #832, RenderStatus had no shape concept and joined every ref against "<ref>/flow.jsonl" --
+    // for a file ref that join can never exist, so every memory-proposal item rendered the loud
+    // "lane never started" line regardless of whether its capture file was actually still there.
+
+    private static readonly HeldWorkRef MemoryProposalRef = new("captures/proposal-1.json");
+
+    [Fact]
+    public void Reconciler_status_arm_lane_shaped_item_with_journal_renders_todays_line()
+    {
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
+        ]);
+
+        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => true);
+
+        Assert.Equal("dispatched", rendered);
+    }
+
+    [Fact]
+    public void Reconciler_status_arm_lane_shaped_item_without_journal_renders_todays_orphan_line()
+    {
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
+        ]);
+
+        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => false);
+
+        Assert.Equal(
+            $"dispatch recorded; lane never started (no journal found at {LaneRefA.LaneDirectoryPath})",
+            rendered);
+    }
+
+    [Fact]
+    public void Reconciler_status_arm_memory_proposal_with_capture_file_renders_operator_wait_line()
+    {
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(
+                MemoryProposalRef, MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget, "decider-1"),
+        ]);
+
+        var rendered = HeldWorkReconciler.RenderStatus(
+            state.HeldWork[MemoryProposalRef], memoryProposalFileExistsProbe: _ => true);
+
+        Assert.Equal("awaiting operator decision (memory proposal)", rendered);
+    }
+
+    [Fact]
+    public void Reconciler_status_arm_memory_proposal_without_capture_file_renders_missing_file_line()
+    {
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(
+                MemoryProposalRef, MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget, "decider-1"),
+        ]);
+
+        var rendered = HeldWorkReconciler.RenderStatus(
+            state.HeldWork[MemoryProposalRef], memoryProposalFileExistsProbe: _ => false);
+
+        Assert.Equal(
+            $"proposal file missing (memory proposal; no capture file found at {MemoryProposalRef.Value})",
+            rendered);
+    }
+
+    [Fact]
+    public void Reconciler_status_arm_unknown_future_shape_deliberately_keeps_the_lane_probe()
+    {
+        // No shape other than memory-proposal is distinguished today (#832) -- an unrecognised
+        // shape falls through to the lane probe deliberately, not silently; this test pins that
+        // choice so a future shape added without its own case is caught here, not in production.
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(LaneRefA, "some-future-shape", TimeSpan.FromMinutes(10), "decider-1"),
+        ]);
+
+        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => false);
+
+        Assert.Equal(
+            $"dispatch recorded; lane never started (no journal found at {LaneRefA.LaneDirectoryPath})",
+            rendered);
     }
 }
