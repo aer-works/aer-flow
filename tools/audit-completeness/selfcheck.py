@@ -925,11 +925,9 @@ def _negated_close_lint():
 
 @check("--pr-body refuses a path argument instead of passing over the empty stdin it leaves")
 def _pr_body_reads_stdin_only():
-    """#860: called as `--pr-body <path>`, the mode read empty stdin and printed OK -- a pass
-    indistinguishable from a real one, which reported a genuinely faulty body as clean three
-    times before CI caught it. The arms below are the two states that must stay distinguishable:
-    a stray argument is a usage fault (loud), a piped empty body is a real pass (an empty body
-    can close nothing).
+    """#860, whose cost `completeness.pr_body_mode`'s own docstring records. The arms here are the
+    two states that must stay distinguishable: a stray argument is a usage fault (loud), a piped
+    empty body is a real pass (an empty body can close nothing).
     """
     def run(argv: list[str], stdin_text: str) -> tuple[int, str]:
         saved_argv, saved_stdin, saved_stdout = sys.argv, sys.stdin, sys.stdout

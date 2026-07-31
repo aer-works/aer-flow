@@ -330,9 +330,9 @@ def _negated_close_cries_wolf():
 @control("--pr-body refuses a path argument instead of passing over the empty stdin it leaves",
          "the stray-argument refusal is removed, so a path argument reads empty stdin and passes")
 def _pr_body_takes_a_path_again():
-    # The #860 defect restored exactly: read stdin regardless of what argv carried. Under this,
-    # `--pr-body some/body.md` prints OK over a body it never opened -- the pass that reported a
-    # genuinely faulty body as clean three times running.
+    # The #860 defect restored exactly: read stdin regardless of what argv carried, so
+    # `--pr-body some/body.md` prints OK over a body it never opened. What that cost is recorded
+    # once, in `completeness.pr_body_mode`.
     def reads_stdin_whatever_the_argv() -> int:
         faults = selfcheck.completeness.negated_close_faults(sys.stdin.read())
         print("OK" if not faults else "!!")
