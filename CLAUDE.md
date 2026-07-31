@@ -1,6 +1,6 @@
-# AER Flow — Claude Code Instructions
+# Baton — Claude Code Instructions
 
-AER Flow is the workflow execution engine layer for the AER (Agent Execution Runtime) ecosystem. Built in .NET, it reads structured workflow definitions, dispatches them to Workers (via `aer-core`), and bridges outputs back to the engine.
+The product is **Baton** (decision 0045); "AER" stays the name of the ecosystem around it, and `aer-flow` stays this repo's engine layer. Built in .NET, that layer reads structured workflow definitions, dispatches them to Workers (via `aer-core`), and bridges outputs back to the engine.
 
 ---
 

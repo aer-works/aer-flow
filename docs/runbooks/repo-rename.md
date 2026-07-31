@@ -99,6 +99,13 @@ run of `pixi run gates` between the rename and that commit has STEP 4 silently s
   `aer-works/...` string passed to something that executes, rather than one a person reads) before
   assuming the flip is complete.
 
+## What this rename does not touch, stated because the question comes up
+
+`external/aer-core` is a **submodule pointing at a different repository**, `aer-works/aer-core`,
+and it is not being renamed: its name is ecosystem-scoped and engine-internal, which the operator's
+2026-07-31 decision keeps. So `.gitmodules` needs no edit, `git submodule` needs no re-init, and a
+submodule URL showing `aer-core` after the flip is correct rather than missed.
+
 ## Verification, after
 
 Run these from a worktree of the local clone, after `git remote set-url`:
