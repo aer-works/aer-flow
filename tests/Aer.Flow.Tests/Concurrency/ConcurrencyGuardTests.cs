@@ -196,7 +196,9 @@ public class ConcurrencyGuardTests
             var exception = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
 
             Assert.DoesNotContain("most likely a live 'aer run' pump", exception.Message, StringComparison.Ordinal);
-            Assert.Contains("room sweep", exception.Message, StringComparison.Ordinal);
+            // Deliberately not "room sweep" -- BuildLockedMessage's own summary owns why. What is
+            // pinned here is that the second shape a holder can take is still named at all.
+            Assert.Contains("background component", exception.Message, StringComparison.Ordinal);
         }
         finally
         {
