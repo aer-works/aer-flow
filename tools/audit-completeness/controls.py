@@ -327,6 +327,35 @@ def _negated_close_cries_wolf():
         yield
 
 
+@control("--pr-body refuses a path argument instead of passing over the empty stdin it leaves",
+         "the stray-argument refusal is removed, so a path argument reads empty stdin and passes")
+def _pr_body_takes_a_path_again():
+    # The #860 defect restored exactly: read stdin regardless of what argv carried, so
+    # `--pr-body some/body.md` prints OK over a body it never opened. What that cost is recorded
+    # once, in `completeness.pr_body_mode`.
+    def reads_stdin_whatever_the_argv() -> int:
+        faults = selfcheck.completeness.negated_close_faults(sys.stdin.read())
+        print("OK" if not faults else "!!")
+        return 1 if faults else 0
+
+    with swap(selfcheck.completeness, "pr_body_mode", reads_stdin_whatever_the_argv):
+        yield
+
+
+@control("--pr-body refuses a path argument instead of passing over the empty stdin it leaves",
+         "an empty piped body is refused too, so a usage fault and a real pass stop being distinct")
+def _pr_body_refuses_everything():
+    # The opposite direction, and the one that makes the guard unusable rather than blind: if an
+    # empty body fails as loudly as a misuse, CI reds on a legitimately empty PR body and the
+    # distinction the arm asserts -- usage fault loud, empty body a real pass -- is gone.
+    def refuses_everything() -> int:
+        print("!! nothing was checked")
+        return 1
+
+    with swap(selfcheck.completeness, "pr_body_mode", refuses_everything):
+        yield
+
+
 @control("the gate-citation lint separates a slug from an ordinal",
          "the lint stops flagging anything (a numeric citation walks past it)")
 def _gate_lint_blind():
