@@ -168,15 +168,28 @@ public static class MemoryProposalApplier
         // memoryRoot can redirect the write outside it even though the string-only check above is
         // satisfied. A link that resolves back inside memoryRoot is left alone (item 2, #856) --
         // this only refuses the case where resolution actually escapes.
-        var realRoot = ResolveIfReparsePoint(memoryRoot);
-        var realCombined = ResolveReparsePointsIgnoringMissingTail(memoryRoot, combined);
+        //
+        // Both sides of this comparison MUST go through the identical resolution walk. An earlier
+        // version of this fix resolved memoryRoot only if memoryRoot itself was a reparse point,
+        // while resolving combined by walking every segment beneath it -- so if the room directory
+        // is itself reached through a junction (memoryRoot is an ordinary directory, but one of
+        // its own ancestors is a link), realCombined came back fully resolved past that ancestor
+        // while realRoot stayed lexical, and a legitimate in-tree alias was wrongly refused. Proven
+        // by reproduction: rooting the temp room directory itself behind a junction and re-running
+        // the allow-arm reproduced exactly this false positive before this fix.
+        var realRoot = ResolveReparsePointsIgnoringMissingTail(memoryRoot);
+        var realCombined = ResolveReparsePointsIgnoringMissingTail(combined);
+
+        var caseComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
         var realRootWithSeparator = realRoot.EndsWith(Path.DirectorySeparatorChar)
             ? realRoot
             : realRoot + Path.DirectorySeparatorChar;
 
-        if (!string.Equals(realCombined, realRoot, StringComparison.Ordinal)
-            && !realCombined.StartsWith(realRootWithSeparator, StringComparison.Ordinal))
+        if (!string.Equals(realCombined, realRoot, caseComparison)
+            && !realCombined.StartsWith(realRootWithSeparator, caseComparison))
         {
             throw new InvalidRoomMutationException(
                 $"Memory-proposal targetPath '{targetPath}' resolves outside memory/ through a reparse point " +
@@ -187,24 +200,28 @@ public static class MemoryProposalApplier
     }
 
     /// <summary>
-    /// Walks <paramref name="combined"/>'s path segments below <paramref name="memoryRoot"/> one at
-    /// a time, resolving each existing ancestor that is itself a reparse point (following chained
+    /// Fully resolves <paramref name="path"/> by walking every segment from its filesystem root
+    /// down, resolving each existing ancestor that is itself a reparse point (following chained
     /// links via <c>returnFinalTarget: true</c>) before appending the next segment. A segment that
     /// does not exist yet (the common case for an 'add' whose parent directories get created later
     /// by <see cref="ApplyAsync"/>) is appended literally with no resolution attempted -- there is
-    /// nothing on disk yet for it to redirect through.
+    /// nothing on disk yet for it to redirect through. Starting from the root rather than from
+    /// <c>memoryRoot</c> is what lets <c>memoryRoot</c> itself and a target beneath it be resolved
+    /// symmetrically, even when an ancestor of <c>memoryRoot</c> (not memoryRoot itself) is the
+    /// reparse point.
     /// </summary>
-    private static string ResolveReparsePointsIgnoringMissingTail(string memoryRoot, string combined)
+    private static string ResolveReparsePointsIgnoringMissingTail(string path)
     {
-        var relative = Path.GetRelativePath(memoryRoot, combined);
+        var root = Path.GetPathRoot(path)!;
+        var relative = Path.GetRelativePath(root, path);
         if (relative == ".")
         {
-            return ResolveIfReparsePoint(memoryRoot);
+            return ResolveIfReparsePoint(root);
         }
 
         var segments = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
 
-        var current = ResolveIfReparsePoint(memoryRoot);
+        var current = root;
         foreach (var segment in segments)
         {
             current = Path.Combine(current, segment);

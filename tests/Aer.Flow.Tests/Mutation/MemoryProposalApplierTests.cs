@@ -222,6 +222,69 @@ public class MemoryProposalApplierTests : IDisposable
     }
 
     /// <summary>
+    /// #856 regression: an earlier version of the fix resolved <c>memoryRoot</c> for the
+    /// containment recheck only when memoryRoot itself was a reparse point, while resolving the
+    /// target by walking every segment beneath it. When the *room directory* is itself reached
+    /// through a junction (memoryRoot is an ordinary directory, but one of its own ancestors is a
+    /// link -- exactly what happens on macOS CI, where <c>Path.GetTempPath()</c> sits under
+    /// <c>/var</c>, itself a symlink to <c>/private/var</c>), the target resolved fully past that
+    /// ancestor while the root stayed lexical, and a legitimate in-tree alias was wrongly refused.
+    /// Both sides of the recheck must resolve through the identical walk.
+    /// </summary>
+    [Fact]
+    public async Task A_room_directory_reached_through_a_junction_still_allows_an_in_tree_alias()
+    {
+        var realRoomDirectory = Path.Combine(Path.GetTempPath(), "aer_memory_applier_room_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(realRoomDirectory);
+        var roomAlias = Path.Combine(Path.GetTempPath(), "aer_memory_applier_room_alias_" + Guid.NewGuid().ToString("N"));
+
+        if (!TryCreateDirectoryReparsePoint(roomAlias, realRoomDirectory, out var skipReason))
+        {
+            Assert.Skip(skipReason);
+            return;
+        }
+
+        try
+        {
+            var memoryRoot = Path.Combine(roomAlias, MemoryProposalApplier.MemoryDirectoryName);
+            Directory.CreateDirectory(memoryRoot);
+            var realDirectory = Path.Combine(memoryRoot, "real");
+            Directory.CreateDirectory(realDirectory);
+
+            var aliasPath = Path.Combine(memoryRoot, "alias");
+            if (!TryCreateDirectoryReparsePoint(aliasPath, realDirectory, out var innerSkipReason))
+            {
+                Assert.Skip(innerSkipReason);
+                return;
+            }
+
+            try
+            {
+                var capturePath = Path.Combine(_tempDirectory, "proposal-through-room-alias.json");
+                await File.WriteAllTextAsync(
+                    capturePath,
+                    """{"Operation":"add","TargetPath":"alias/fact.md","Content":"via room alias","Rationale":"learned it"}""",
+                    TestContext.Current.CancellationToken);
+
+                await MemoryProposalApplier.ApplyAsync(roomAlias, capturePath, TestContext.Current.CancellationToken);
+
+                Assert.Equal(
+                    "via room alias",
+                    await File.ReadAllTextAsync(Path.Combine(realDirectory, "fact.md"), TestContext.Current.CancellationToken));
+            }
+            finally
+            {
+                RemoveDirectoryLink(aliasPath);
+            }
+        }
+        finally
+        {
+            RemoveDirectoryLink(roomAlias);
+            Directory.Delete(realRoomDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Unlinks a reparse point created by <see cref="TryCreateDirectoryReparsePoint"/> without
     /// touching its target -- <c>Directory.Delete(path, recursive: false)</c> on a junction or
     /// directory symlink removes the link itself, never the linked-to contents.
