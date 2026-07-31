@@ -44,6 +44,18 @@ public partial class MainWindow : Window
     /// </summary>
     private int _artifactPreviewGeneration;
 
+    /// <summary>
+    /// How a preview reads a file. Production is <see cref="File.ReadAllTextAsync(string, CancellationToken)"/>;
+    /// a test replaces it with a reader it can hold open, which is the only way to make the #868 race
+    /// deterministic rather than a bet on one file being slower than another. The first regression
+    /// test for that race forced the window with a 150MB fixture, which reproduces nothing reliably:
+    /// too fast a disk and the older read finishes before the newer request is even issued, too slow
+    /// and it never finishes inside the observation window -- both directions pass while exercising
+    /// nothing. Same seam convention as <c>HeldWorkReconciler</c>'s journal probe.
+    /// </summary>
+    internal Func<string, CancellationToken, Task<string>> ReadArtifactTextAsync { get; set; } =
+        (filePath, cancellationToken) => File.ReadAllTextAsync(filePath, cancellationToken);
+
     /// <summary>Clears the box and supersedes any in-flight <see cref="ShowArtifactPreviewAsync"/> read, so one that completes afterward cannot silently repopulate what was just cleared.</summary>
     private void ClearArtifactPreview()
     {
@@ -1675,7 +1687,7 @@ public partial class MainWindow : Window
         var generation = Interlocked.Increment(ref _artifactPreviewGeneration);
         try
         {
-            var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            var content = await ReadArtifactTextAsync(filePath, cancellationToken);
             if (generation != Volatile.Read(ref _artifactPreviewGeneration))
             {
                 return;
@@ -1684,6 +1696,12 @@ public partial class MainWindow : Window
             ArtifactPreviewBox.Text = content.Length > MaxArtifactPreviewLength
                 ? content[..MaxArtifactPreviewLength] + "\n… (truncated)"
                 : content;
+        }
+        catch (OperationCanceledException)
+        {
+            // #871: every caller here is fire-and-forget, so an escaping cancellation becomes an
+            // unobserved task exception rather than anything a person sees. A cancelled preview has
+            // nothing to say -- discard it, exactly as a superseded one does above.
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
