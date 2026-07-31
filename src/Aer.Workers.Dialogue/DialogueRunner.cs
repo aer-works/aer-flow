@@ -123,15 +123,42 @@ public sealed class DialogueRunner(IVendorTurnClient turnClient)
 
     /// <summary>
     /// The bounded per-turn increment decision 0039 asks for: <paramref name="speaker"/>'s own
-    /// preamble plus either <paramref name="seedPrompt"/> (nothing has been said yet — the exchange's
-    /// very first turn) or the single immediately preceding turn (every turn after that). Deliberately
-    /// never the accumulated <paramref name="priorTurns"/> beyond its last element — a resumed vendor
-    /// session already remembers everything earlier, which is what keeps this bounded by construction
-    /// rather than by an argv-length workaround (see this class's own remarks).
+    /// preamble plus exactly the turns this speaker has not yet seen — everything after its own
+    /// last turn, prefixed by <paramref name="seedPrompt"/> only if it has never spoken (a
+    /// participant's resumed vendor session remembers what IT was previously sent, and nothing
+    /// else). Never the single last turn alone: with three or more participants that drops every
+    /// intervening speaker's turn from the exchange entirely (this branch's review caught it).
+    /// Still bounded by construction — in round-robin the unseen window is at most the other
+    /// participants' one turn each, independent of how long the exchange runs.
     /// </summary>
     private static string BuildPrompt(DialogueParticipant speaker, string seedPrompt, IReadOnlyList<TranscriptTurn> priorTurns)
     {
-        var increment = priorTurns.Count == 0 ? seedPrompt : FormatTurnLine(priorTurns[^1]);
+        var lastOwnTurnIndex = -1;
+        for (var i = priorTurns.Count - 1; i >= 0; i--)
+        {
+            if (priorTurns[i].Role == speaker.Role)
+            {
+                lastOwnTurnIndex = i;
+                break;
+            }
+        }
+
+        var increment = new StringBuilder();
+        if (lastOwnTurnIndex < 0)
+        {
+            increment.Append(seedPrompt);
+        }
+
+        for (var i = lastOwnTurnIndex + 1; i < priorTurns.Count; i++)
+        {
+            if (increment.Length > 0)
+            {
+                increment.Append("\n\n");
+            }
+
+            increment.Append(FormatTurnLine(priorTurns[i]));
+        }
+
         return $"{speaker.Preamble}\n\n{increment}";
     }
 

@@ -18,6 +18,14 @@ public class DialogueRunnerTests
             new DialogueParticipant("responder", "stub-gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]),
         ]);
 
+    private static DialogueWorkerConfig BuildThreePartyConfig(int turnBudget) => BuildConfig(
+        turnBudget,
+        [
+            new DialogueParticipant("first", "stub-a", null, "First preamble", "stub-a", ["{PROMPT}"]),
+            new DialogueParticipant("second", "stub-b", null, "Second preamble", "stub-b", ["{PROMPT}"]),
+            new DialogueParticipant("third", "stub-c", null, "Third preamble", "stub-c", ["{PROMPT}"]),
+        ]);
+
     private static DialogueWorkerConfig BuildConfig(int turnBudget, IReadOnlyList<DialogueParticipant> participants) => new(
         SeedPrompt: "seed",
         TurnBudget: turnBudget,
@@ -61,9 +69,11 @@ public class DialogueRunnerTests
     [Fact]
     public async Task Each_turns_prompt_is_bounded_to_preamble_plus_the_immediately_preceding_reply()
     {
-        // Decision 0039: no more full-transcript resend. Turn 1 has nothing preceding it, so it gets
-        // the seed instead; every turn after that gets only the single immediately preceding turn's
-        // text, never anything further back.
+        // Decision 0039: no more full-transcript resend. Each turn carries exactly what its
+        // speaker has not yet seen: the seed on a participant's own FIRST turn (its fresh vendor
+        // session knows nothing yet — the original full-history prompt gave everyone the seed,
+        // and dropping it for the second speaker was a silent regression in this branch's first
+        // cut), then only the turns since that speaker last spoke.
         var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
         var runner = new DialogueRunner(client);
         var outputDirectory = CreateTempDir();
@@ -74,9 +84,11 @@ public class DialogueRunnerTests
             Assert.Contains("seed", turns[0].Prompt);
             Assert.Contains("Initiator preamble", turns[0].Prompt);
 
+            // The responder's first turn: a fresh session, so it gets the seed AND the opener's
+            // reply — everything it has never seen.
             Assert.Contains("Responder preamble", turns[1].Prompt);
             Assert.Contains(turns[0].Text, turns[1].Prompt);
-            Assert.DoesNotContain("seed", turns[1].Prompt);
+            Assert.Contains("seed", turns[1].Prompt);
 
             // Turn 3 carries turn 2's text, never turn 1's or the seed -- the bounded-increment
             // property this whole change exists to establish.
@@ -89,6 +101,44 @@ public class DialogueRunnerTests
             Assert.Contains(turns[2].Text, turns[3].Prompt);
             Assert.DoesNotContain(turns[0].Text, turns[3].Prompt);
             Assert.DoesNotContain(turns[1].Text, turns[3].Prompt);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task With_three_participants_each_turn_carries_every_turn_since_that_speaker_last_spoke()
+    {
+        // The review's confirmed high on this branch: threading only priorTurns[^1] means an
+        // A/B/C round-robin never shows A what B said. The contract is "everything since this
+        // speaker's own last turn" — bounded by the other participants' one turn each, never by
+        // exchange length.
+        var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
+        var runner = new DialogueRunner(client);
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var turns = await runner.RunAsync(BuildThreePartyConfig(turnBudget: 5), outputDirectory);
+
+            // C's first turn: seed plus BOTH prior turns (fresh session, seen nothing).
+            Assert.Contains("seed", turns[2].Prompt);
+            Assert.Contains(turns[0].Text, turns[2].Prompt);
+            Assert.Contains(turns[1].Text, turns[2].Prompt);
+
+            // A's second turn (turn 4): B's and C's intervening turns, NOT its own turn 1's text
+            // as context and NOT the seed (A saw the seed on its first turn).
+            Assert.Contains(turns[1].Text, turns[3].Prompt);
+            Assert.Contains(turns[2].Text, turns[3].Prompt);
+            Assert.DoesNotContain("seed", turns[3].Prompt);
+
+            // B's second turn (turn 5): C's turn and A's second turn only — B's own first turn and
+            // everything before it are its session's memory, not re-sent.
+            Assert.Contains(turns[2].Text, turns[4].Prompt);
+            Assert.Contains(turns[3].Text, turns[4].Prompt);
+            Assert.DoesNotContain(turns[0].Text, turns[4].Prompt);
+            Assert.DoesNotContain("seed", turns[4].Prompt);
         }
         finally
         {

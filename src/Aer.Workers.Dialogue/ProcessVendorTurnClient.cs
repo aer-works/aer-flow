@@ -121,17 +121,7 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
 
             foreach (var arg in participant.Args)
             {
-                var substituted = arg == DialogueParticipant.PromptPlaceholder ? prompt : arg;
-
-                if (substituted.Length > MaxArgumentLength)
-                {
-                    throw new DialogueArgumentTooLargeException(
-                        $"Turn for role '{participant.Role}' substituted an argument of {substituted.Length} characters, "
-                        + $"exceeding the safe threshold of {MaxArgumentLength} (decision 0039's defensive guard). "
-                        + "A bounded per-turn prompt should never approach this -- this is very likely an unbounded value reaching argv unexpectedly.");
-                }
-
-                startInfo.ArgumentList.Add(substituted);
+                startInfo.ArgumentList.Add(arg == DialogueParticipant.PromptPlaceholder ? prompt : arg);
             }
 
             // Vendor-native session continuation (decision 0039), detected the same way
@@ -178,6 +168,20 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                 startInfo.ArgumentList.Add(FormatPrintTimeout(effectiveTurnTimeout));
             }
 
+            // The oversize guard runs over the FINAL argv, after session/timeout flags are
+            // appended, so its claim ("argv broadly") matches what it measures — the review
+            // caught the earlier substitution-only placement covering less than its doc said.
+            foreach (var finalArg in startInfo.ArgumentList)
+            {
+                if (finalArg.Length > MaxArgumentLength)
+                {
+                    throw new DialogueArgumentTooLargeException(
+                        $"Turn for role '{participant.Role}' produced an argv element of {finalArg.Length} characters, "
+                        + $"exceeding the safe threshold of {MaxArgumentLength} (decision 0039's defensive guard). "
+                        + "A bounded per-turn prompt should never approach this -- this is very likely an unbounded value reaching argv unexpectedly.");
+                }
+            }
+
             using var process = new Process { StartInfo = startInfo };
             process.Start();
             process.StandardInput.Close();
@@ -217,7 +221,7 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
 
                 if (agyLogFilePath is not null)
                 {
-                    establishedSessionId = TryScrapeAgyConversationId(agyLogFilePath);
+                    establishedSessionId = TryScrapeAgyConversationId(agyLogFilePath, participant.Role);
                 }
 
                 return new VendorTurnResult(
@@ -259,10 +263,15 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
     /// its own establishment-tracking semantics this worker does not need (record-once ties this
     /// comment to that behavior, not to a shared helper the two have no other reason to share).
     /// </summary>
-    private static string? TryScrapeAgyConversationId(string logFilePath)
+    private static string? TryScrapeAgyConversationId(string logFilePath, string participantRole)
     {
+        // Null is a legitimate outcome (the next turn retries the fresh path), but never a SILENT
+        // one: an unscrapeable id quietly defeats session continuation for this participant's whole
+        // exchange, so each miss says so on stderr with the reason (this branch's review).
         if (!File.Exists(logFilePath))
         {
+            Console.Error.WriteLine(
+                $"agy session continuation for '{participantRole}': log file '{logFilePath}' was never written; this turn's conversation id is unknown and the next turn starts fresh.");
             return null;
         }
 
@@ -270,10 +279,19 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
         {
             var logText = File.ReadAllText(logFilePath);
             var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([^\s\r\n]+)");
-            return match.Success ? match.Groups[1].Value : null;
+            if (!match.Success)
+            {
+                Console.Error.WriteLine(
+                    $"agy session continuation for '{participantRole}': no conversation=<id> line in '{logFilePath}'; the next turn starts fresh.");
+                return null;
+            }
+
+            return match.Groups[1].Value;
         }
-        catch (IOException)
+        catch (IOException ex)
         {
+            Console.Error.WriteLine(
+                $"agy session continuation for '{participantRole}': could not read '{logFilePath}' ({ex.Message}); the next turn starts fresh.");
             return null;
         }
     }

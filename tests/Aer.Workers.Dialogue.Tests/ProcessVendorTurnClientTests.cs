@@ -419,6 +419,51 @@ public class ProcessVendorTurnClientTests
         }
     }
 
+    [Fact]
+    public async Task An_unscrapeable_agy_log_yields_a_null_session_and_says_so_on_stderr()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"vendor-turn-client-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var originalError = Console.Error;
+        var capturedError = new StringWriter();
+        Console.SetError(capturedError);
+        try
+        {
+            // A stub agy that accepts --log-file but writes NOTHING into it -- the
+            // regex-miss path the silent-fallback used to hide (this branch's review).
+            DialogueParticipant participant;
+            if (OperatingSystem.IsWindows())
+            {
+                var scriptPath = Path.Combine(root, "agy.cmd");
+                File.WriteAllText(scriptPath, "@echo off\r\necho %*\r\n");
+                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", scriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+            }
+            else
+            {
+                var shScriptPath = Path.Combine(root, "agy");
+                File.WriteAllText(shScriptPath, "#!/bin/sh\necho \"$@\"\n");
+                File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+            }
+
+            var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
+
+            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null);
+
+            Assert.Null(fresh.SessionId);
+            Assert.Contains("responder", capturedError.ToString());
+            Assert.Contains("starts fresh", capturedError.ToString());
+        }
+        finally
+        {
+            Console.SetError(originalError);
+            if (Directory.Exists(root))
+            {
+                DirectoryCleanup.DeleteRecursively(root);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("--print-timeout", "10s")]
     [InlineData("--print-timeout=10s", null)]
