@@ -1,7 +1,7 @@
-# Audit completeness ledger — the whole chain, in one place
+# Audit completeness register — the whole chain, in one place
 
-**Date: 2026-07-25.** The #527 audit ran as an eight-step chain. This is the ledger that makes
-*"nothing was left out"* checkable rather than asserted.
+**Date: 2026-07-25.** The #527 audit ran as an eight-step chain. This is the audit register that
+makes *"nothing was left out"* checkable rather than asserted.
 
 ```
 pixi run audit-completeness
@@ -15,15 +15,15 @@ it. A step with no enumerable population says so instead of pretending.
 **No population size is written down here.** Every count in this chain is computed by the command
 above, and a number copied into prose is a number that goes stale silently — this file carried three
 different check counts in one afternoon before the copies were removed. Where you want a figure, run
-the command; it prints each population next to what it expected. That is the same rule the ledger
-enforces on everything else, applied to the ledger.
+the command; it prints each population next to what it expected. That is the same rule the audit
+register enforces on everything else, applied to the audit register.
 
 ## The chain
 
 | # | step | population | artifact | recomputed |
 |---|---|---|---|---|
 | 1 | No doc source missed | the source families | [`vendor-doc-audit.md § Sources`](vendor-doc-audit.md) + `vendor_survey.py` | **yes** |
-| 2 | Every source actually read | the mirrored pages | ledger + [`vendor-doc-audit.md`](vendor-doc-audit.md) dispositions | **yes** |
+| 2 | Every source actually read | the mirrored pages | the audit register + [`vendor-doc-audit.md`](vendor-doc-audit.md) dispositions | **yes** |
 | 3 | Gaps verified against real behaviour | the registered checks | [`tools/vendor-verify/`](../tools/vendor-verify/README.md) | **yes** |
 | 4 | Gaps fixed or filed | defects + open questions | GitHub issues (below) | no — needs the network |
 | 5 | What reality changed | the registered checks | [`architecture-impact.md`](architecture-impact.md) | **yes** |
@@ -76,7 +76,7 @@ Steps 1–2 are new work the plan did not have before this audit. That is the au
 **not a reordering of milestones, but three pieces of foundation discovered underneath the first
 one.**
 
-## What this ledger cannot do
+## What this audit register cannot do
 
 - **Find a source nobody thought of.** Enumeration cannot find its own blind spot. What bounds it is
   that step 2 dispositioned every mirrored page rather than sampling — but that bounds the *documentation*,

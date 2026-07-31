@@ -138,7 +138,7 @@ public class RoomProjectorTests
         var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => false);
 
         Assert.Equal(
-            $"dispatch recorded; lane never started (no journal found at {LaneRefA.LaneDirectoryPath})",
+            $"dispatch recorded; lane never started (no ledger found at {LaneRefA.LaneDirectoryPath})",
             rendered);
     }
 
@@ -200,7 +200,7 @@ public class RoomProjectorTests
         var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => false);
 
         Assert.Equal(
-            $"dispatch recorded; lane never started (no journal found at {LaneRefA.LaneDirectoryPath})",
+            $"dispatch recorded; lane never started (no ledger found at {LaneRefA.LaneDirectoryPath})",
             rendered);
     }
 }

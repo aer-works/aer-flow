@@ -50,7 +50,7 @@ public static class HeldWorkReconciler
     {
         if (state.Status != HeldWorkStatus.Resolved && !laneJournalExistsProbe(state.Ref.LaneDirectoryPath))
         {
-            return $"dispatch recorded; lane never started (no journal found at {state.Ref.LaneDirectoryPath})";
+            return $"dispatch recorded; lane never started (no ledger found at {state.Ref.LaneDirectoryPath})";
         }
 
         return RenderStatusLine(state);

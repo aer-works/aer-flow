@@ -108,12 +108,12 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
             }
             catch (JsonException ex)
             {
-                throw new FlowEventLogReadException($"Malformed flow.jsonl line: {line}", ex);
+                throw new FlowEventLogReadException($"Malformed line in the ledger: {line}", ex);
             }
 
             if (entry is null)
             {
-                throw new FlowEventLogReadException($"flow.jsonl line deserialized to null: {line}");
+                throw new FlowEventLogReadException($"Line in the ledger deserialized to null: {line}");
             }
 
             entries.Add(entry);

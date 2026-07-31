@@ -1,4 +1,4 @@
-"""Recompute the audit's completeness ledger, so "we did all of it" is checkable rather than claimed.
+"""Recompute the audit's completeness register, so "we did all of it" is checkable rather than claimed.
 
 WHY THIS EXISTS
 ---------------
@@ -90,10 +90,10 @@ def step1_sources():
 
 
 def step2_corpus():
-    rule("STEP 2 -- every mirrored page carries a ledger disposition")
+    rule("STEP 2 -- every mirrored page carries an audit-register disposition")
     ledger = read(".vendor-survey/ledger.tsv")
     if not ledger.strip():
-        print("    !! no ledger found -- run `pixi run vendor-survey` first")
+        print("    !! no audit register found -- run `pixi run vendor-survey` first")
         return False
     rows = [r for r in ledger.splitlines()[1:] if r.strip()]
     corpus_dir = os.path.join(ROOT, ".vendor-survey", "corpus")
@@ -105,23 +105,23 @@ def step2_corpus():
         if len(parts) >= 2:
             dispositions[parts[-1].strip()] = dispositions.get(parts[-1].strip(), 0) + 1
     # Two environments, deliberately two different claims (#589). Locally the mirrored corpus sits
-    # beside the ledger, so the strongest check available is a cross-check: every file on disk has a
-    # row. In CI only ledger.tsv is committed -- the 11MB corpus stays ignored -- so that cross-check
-    # is IMPOSSIBLE rather than merely inconvenient, and reporting it as passing anyway would be the
-    # "green means verified" failure this tool exists to catch. There the ledger is treated as the
-    # snapshot it is and the check narrows to one it can actually make: every row carries a
-    # disposition. Both arms still fail loudly; the CI arm just claims less.
+    # beside the audit register, so the strongest check available is a cross-check: every file on disk
+    # has a row. In CI only ledger.tsv is committed -- the 11MB corpus stays ignored -- so that
+    # cross-check is IMPOSSIBLE rather than merely inconvenient, and reporting it as passing anyway
+    # would be the "green means verified" failure this tool exists to catch. There the audit register
+    # is treated as the snapshot it is and the check narrows to one it can actually make: every row
+    # carries a disposition. Both arms still fail loudly; the CI arm just claims less.
     if corpus_present:
         ok = line("pages mirrored", pages)
-        ok &= line("pages with a ledger row", len(rows), pages,
+        ok &= line("pages with an audit-register row", len(rows), pages,
                    "every page must have a disposition")
     else:
         dispositioned = [r for r in rows if r.split("	")[-1].strip()]
-        ok = line("ledger rows carrying a disposition", len(dispositioned), len(rows),
+        ok = line("audit-register rows carrying a disposition", len(dispositioned), len(rows),
                   "corpus not mirrored here, so the file-count cross-check cannot run -- "
                   "a local run with the corpus present is what does that")
 
-    # `PENDING-DEPTH` in the ledger is the HARVEST's recommendation ("worth a depth read"), not an
+    # `PENDING-DEPTH` in the audit register is the HARVEST's recommendation ("worth a depth read"), not an
     # outcome -- vendor_survey.py runs before anyone reads anything. Counting it as a disposition
     # let this step report full coverage while 137 pages sat flagged, one of which (SEP-1036,
     # URL-mode elicitation) changed decision 0029. Same defect as a title column passing for a
@@ -166,13 +166,13 @@ def page_is_cited(name, vendor):
     with a delimiter around it, or `mcp` would match every sentence containing the word.
 
     A page's identity is vendor + name: `claude/mcp` and `agy/mcp` are different pages, and the
-    ledger keeps the vendor in its own column. The fully-qualified form is always accepted, which
-    is what makes short leaves like `mcp` citable at all.
+    audit register keeps the vendor in its own column. The fully-qualified form is always accepted,
+    which is what makes short leaves like `mcp` citable at all.
     """
     global _prose
     if _prose is None:
         _prose = "".join(read(d) for d in AUDIT_PROSE).lower()
-    # _prose is lowercased, so the patterns must be too -- ledger names carry original case
+    # _prose is lowercased, so the patterns must be too -- audit-register names carry original case
     # (`github-CHANGELOG`), and matching case-sensitively silently reported a dispositioned page
     # as unread.
     slug = name.replace("__", "/").lower()
