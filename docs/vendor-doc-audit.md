@@ -769,7 +769,7 @@ exactly the problem 0015's durable gate and the room store both have.
 raw `.md` pages; agy `llms.txt` + `sitemap.xml` → 77 server-rendered pages) and harvests sentences
 matching a fixed grammar (*skips, only, cannot, must, requires, before v, will become*) corpus-wide:
 **249 pages / 7.0 MB → 1,475 unique constraint sentences**, tagged against AER's open questions with
-page:line provenance, plus an audit register giving **every page a disposition**. 100% page coverage at ~1%
+page:line provenance; the per-page dispositions live in `docs/vendor-coverage.md`. 100% page coverage at ~1%
 of the bytes — several findings below come from `glossary`, `channels`, `chrome`, `context-window`
 and `desktop-scheduled-tasks`, pages a depth-first read would not have reached.
 

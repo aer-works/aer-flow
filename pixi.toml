@@ -185,7 +185,7 @@ vendor-probe = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --out docs
 # summarizing fetch is lossy — that produced the first, wrong reading of claude's `defer`. Every
 # finding that changed a decision was one sentence sharing a recognisable grammar ("Bare mode skips
 # OAuth and keychain reads"), so this harvests that class corpus-wide: 100% page coverage at ~1% of
-# the bytes, plus an audit register giving every page a disposition so coverage is checkable, not asserted.
+# the bytes; docs/vendor-coverage.md holds each page's disposition, so coverage stays checkable, not asserted.
 #
 # Re-run on every vendor version bump — VendorProbeStalenessTests already fails when a CLI moves.
 vendor-survey = { cmd = "python tools/vendor-survey/vendor_survey.py" }
