@@ -106,6 +106,29 @@ public class DialogueYieldWiringTests
         }
     }
 
+    [Fact]
+    public void A_malformed_capture_file_throws_the_typed_execution_exception_and_is_still_consumed()
+    {
+        var outputDirectory = CreateTempDir();
+        try
+        {
+            var captureFilePath = Path.Combine(outputDirectory, "yield-capture.json");
+            File.WriteAllText(captureFilePath, "{ not json");
+
+            // Loud and typed, never a raw JsonException out of the runner (second-reader finding
+            // on #585's wiring) -- and consumed either way, so a corrupt file cannot re-fail
+            // every subsequent turn.
+            var ex = Assert.Throws<DialogueExecutionException>(
+                () => DialogueYieldWiring.ReadAndConsumeCapture(captureFilePath));
+            Assert.Contains("malformed JSON", ex.Message);
+            Assert.False(File.Exists(captureFilePath));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outputDirectory);
+        }
+    }
+
     private static string CreateTempDir()
     {
         var path = Path.Combine(Path.GetTempPath(), $"dialogue-yield-wiring-{Guid.NewGuid():N}");

@@ -15,8 +15,9 @@ namespace Aer.Workers.Dialogue;
 /// <param name="TurnBudget">
 /// The maximum number of turns <see cref="DialogueRunner"/> runs, round-robining through
 /// <see cref="Participants"/> in list order starting from index 0. The exchange may end earlier than
-/// this if a turn's text contains <see cref="StopSentinel"/> (M17 Phase 3, #166); it never runs more
-/// than <see cref="HardTurnCeiling"/> turns regardless of this value (M23 Phase 1's "safe by
+/// this when a participant calls the <c>aer yield</c> MCP tool (#585 — see
+/// <see cref="StopSentinel"/>'s own doc for the retired text-matching mechanism this replaced); it
+/// never runs more than <see cref="HardTurnCeiling"/> turns regardless of this value (M23 Phase 1's "safe by
 /// default" requirement) — a configured value above the ceiling is silently clamped, never a config
 /// error, since the ceiling exists to bound worst case cost, not to reject authoring intent.
 /// </param>

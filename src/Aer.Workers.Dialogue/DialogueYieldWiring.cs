@@ -64,6 +64,13 @@ internal static class DialogueYieldWiring
             var json = File.ReadAllText(captureFilePath);
             return JsonSerializer.Deserialize<YieldCapture>(json);
         }
+        catch (JsonException ex)
+        {
+            // Loud and typed like every other malformed input the runner reads -- a corrupt or
+            // partial capture is a real failure of the yield channel, never something to limp past.
+            throw new DialogueExecutionException(
+                $"yield capture file '{captureFilePath}' contained malformed JSON: {ex.Message}", ex);
+        }
         finally
         {
             File.Delete(captureFilePath);
