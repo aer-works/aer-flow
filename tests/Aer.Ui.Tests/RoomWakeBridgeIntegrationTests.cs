@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Aer.Daemon;
 using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
@@ -265,6 +266,44 @@ public class RoomWakeBridgeIntegrationTests
             var failure = Assert.Single(tick.ProbeFailures);
             Assert.Equal(sickLane, failure.Ref.Value);
             Assert.False(string.IsNullOrWhiteSpace(failure.Error));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    /// <summary>
+    /// #833: the daemon-hosted poller the bridge now runs each tick. Proves the wiring end to end --
+    /// a capture written under the room's own execution directory becomes visible held work in that
+    /// SAME room's journal after <see cref="RoomWakeBridge.SweepMemoryProposalsAsync"/> runs, with no
+    /// room identifier passed anywhere except the room directory itself.
+    /// </summary>
+    [Fact]
+    public async Task SweepMemoryProposalsAsync_escalates_a_capture_under_the_rooms_own_execution_directory()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"wake-bridge-sweep-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(testRoot, "room");
+        try
+        {
+            var captureDir = Path.Combine(roomDirectory, "artifacts", "execution_exec-1", "memory-proposals");
+            Directory.CreateDirectory(captureDir);
+            var captureFile = Path.Combine(captureDir, "proposal-1.json");
+            await File.WriteAllTextAsync(
+                captureFile,
+                """{"Operation":"add","TargetPath":"fact.md","Content":"x","Rationale":"y"}""",
+                TestContext.Current.CancellationToken);
+
+            await RoomWakeBridge.SweepMemoryProposalsAsync(roomDirectory, TestContext.Current.CancellationToken);
+
+            var state = RoomProjector.Project(
+                await new RoomEventLogReader(Path.Combine(roomDirectory, "room.jsonl"))
+                    .ReadAllRoomEventsAsync(TestContext.Current.CancellationToken));
+
+            var @ref = new HeldWorkRef(Path.GetFullPath(captureFile));
+            Assert.Single(state.HeldWork);
+            Assert.Equal(MemoryProposalEscalation.MemoryProposalShape, state.HeldWork[@ref].Shape);
+            Assert.Equal(MemoryProposalEscalation.DefaultDeciderIdentity, state.HeldWork[@ref].DeciderIdentity);
         }
         finally
         {

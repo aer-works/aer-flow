@@ -77,6 +77,15 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
             {
                 if (state.RoomDirectoryPath is { } roomDirectoryPath)
                 {
+                    // #833: sweep for new memory-proposal captures under this room's OWN execution
+                    // directories before deriving wakes, so a proposal escalated this tick is already
+                    // visible held work by the time DeriveCurrentWakesAsync projects state below.
+                    // Attribution is structural (the room's storage form IS the task directory,
+                    // spec §2) -- nothing here is told which room a capture belongs to, because
+                    // there is nothing to tell it: every execution_* directory under this room's own
+                    // artifacts/ was dispatched by this room and no other.
+                    await SweepMemoryProposalsAsync(roomDirectoryPath, stoppingToken).ConfigureAwait(false);
+
                     var tick = await DeriveCurrentWakesAsync(roomDirectoryPath, stoppingToken)
                         .ConfigureAwait(false);
                     state.CurrentWakes = tick.Wakes;
@@ -103,6 +112,25 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// The daemon-hosted poller #801 shipped logic for but never wired (#833): escalates every new
+    /// memory-proposal capture found under <paramref name="roomDirectoryPath"/>'s own execution
+    /// directories into that same room's <c>room.jsonl</c>. Public for the same reason
+    /// <see cref="DeriveCurrentWakesAsync"/> is — exercised directly by integration tests without a
+    /// hosted service.
+    /// </summary>
+    public static async Task SweepMemoryProposalsAsync(
+        string roomDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var roomLogPath = Path.Combine(roomDirectoryPath, RoomLogFileName);
+        var reader = new RoomEventLogReader(roomLogPath);
+        await using var writer = new RoomEventLogWriter(roomLogPath);
+
+        await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+            roomDirectoryPath, MemoryProposalEscalation.DefaultDeciderIdentity, reader, writer, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

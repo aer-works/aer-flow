@@ -362,24 +362,25 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     }
 
     /// <summary>
-    /// The directory <see cref="MemoryProposalCaptureDirectory"/> resolves to -- shared by every
-    /// dispatch that opts in (#801), same as <c>claude-mcp.json</c>/<c>claude-settings.json</c> are
-    /// one static file across every spawn rather than a per-execution one (see
-    /// <see cref="EnsureLaunchConfigFiles"/>'s own remarks). Proposals from concurrent dispatches do
-    /// not collide because <c>MemoryProposalTool</c> names each capture file uniquely
-    /// (<c>proposal-&lt;guid&gt;.json</c>); attributing a capture back to the dispatch that produced
-    /// it, if ever needed, is out of this issue's scope (#801's OUT list: no curation, no auto-approval).
-    /// </summary>
-    public static string MemoryProposalCaptureDirectory =>
-        Path.Combine(AerPaths.WorkerLaunchConfig, "memory-proposals");
-
-    /// <summary>
     /// Ensures the <c>--mcp-config</c> file naming AER's own MCP server (#585) and its
     /// <c>memory-edit-proposal</c> tool (#801) exists, returning its path. Left holding canonical
     /// content on every resolve, mirroring <see cref="EnsureLaunchConfigFiles"/>'s settings file
     /// rather than the plain empty <c>claude-mcp.json</c>'s once-only semantics -- this file's
     /// content is exactly as load-bearing as the PreToolUse hook's, just opt-in rather than mandatory.
     /// </summary>
+    /// <remarks>
+    /// <b>Carries no capture-directory path (#833).</b> #801 shipped this file naming a static,
+    /// shared capture directory literally in its <c>args</c> -- every room's proposals landed in one
+    /// place with no room attribution, which is why no daemon poller was ever wired to consume it
+    /// (#833's fork). This file is resolved once per worker-binding entry, before any execution's
+    /// <c>AER_OUTPUT_DIR</c> exists (<see cref="Resolve"/> runs once per binding, not per execution --
+    /// see <see cref="Aer.Adapters.WorkerInvocation"/>'s own doc comment for why), so nothing baked in
+    /// here can vary per execution. The <c>--memory-proposal-tool</c> flag alone tells
+    /// <c>Aer.Mcp.Host</c> to enable the tool; the process derives its own per-execution capture
+    /// directory from <c>AER_OUTPUT_DIR</c>, which it inherits from the <c>claude</c> process that
+    /// spawns it as an MCP server -- the same inheritance <c>Aer.Cli.Program</c>'s <c>hook-check</c>
+    /// branch already rests on for the identical reason.
+    /// </remarks>
     private static string EnsureMemoryProposalMcpConfig()
     {
         Directory.CreateDirectory(AerPaths.WorkerLaunchConfig);
@@ -392,7 +393,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
                 ["aer-memory-proposal"] = new
                 {
                     command = "dotnet",
-                    args = new[] { hostDllPath, "--memory-proposal-dir", MemoryProposalCaptureDirectory },
+                    args = new[] { hostDllPath, "--memory-proposal-tool" },
                 },
             },
         });

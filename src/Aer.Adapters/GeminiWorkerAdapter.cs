@@ -469,6 +469,15 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
     /// server and rewrites its <c>.agents/mcp_config.json</c> with canonical content (#801), mirroring
     /// <see cref="EnsureAgyWorkspace"/>'s own left-holding-canonical-content convention and its reasons.
     /// </summary>
+    /// <remarks>
+    /// <b>Carries no capture-directory path (#833)</b>, for the same reason
+    /// <see cref="ClaudeWorkerAdapter.EnsureMemoryProposalMcpConfig"/>'s own remarks give: this
+    /// workspace is materialized once per worker-binding entry, before any execution's
+    /// <c>AER_OUTPUT_DIR</c> exists. The <c>--memory-proposal-tool</c> flag alone tells
+    /// <c>Aer.Mcp.Host</c> to enable the tool; the process derives its per-execution capture
+    /// directory from <c>AER_OUTPUT_DIR</c>, inherited from <c>agy</c> the same way it is from
+    /// <c>claude</c> on the other adapter.
+    /// </remarks>
     private static string EnsureMemoryProposalWorkspace()
     {
         var workspace = Path.Combine(AerPaths.WorkerLaunchConfig, MemoryProposalWorkspaceDirectoryName);
@@ -482,7 +491,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
                 ["aer-memory-proposal"] = new
                 {
                     command = "dotnet",
-                    args = new[] { hostDllPath, "--memory-proposal-dir", ClaudeWorkerAdapter.MemoryProposalCaptureDirectory },
+                    args = new[] { hostDllPath, "--memory-proposal-tool" },
                 },
             },
         });

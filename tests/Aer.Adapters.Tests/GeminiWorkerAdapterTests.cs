@@ -1154,7 +1154,7 @@ public class GeminiWorkerAdapterTests
         Assert.Equal("dotnet", server.GetProperty("command").GetString());
         var serverArgs = server.GetProperty("args").EnumerateArray().Select(a => a.GetString()).ToList();
         Assert.Contains(serverArgs, a => a!.EndsWith("Aer.Mcp.Host.dll", StringComparison.Ordinal));
-        Assert.Contains("--memory-proposal-dir", serverArgs);
-        Assert.Contains(ClaudeWorkerAdapter.MemoryProposalCaptureDirectory, serverArgs);
+        Assert.Contains("--memory-proposal-tool", serverArgs);
+        Assert.DoesNotContain(serverArgs, a => a!.Contains("memory-proposals", StringComparison.Ordinal));
     }
 }
