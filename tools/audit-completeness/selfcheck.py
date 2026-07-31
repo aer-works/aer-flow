@@ -923,6 +923,37 @@ def _negated_close_lint():
             f"incident bodies) + {len(must_not_fire)} must NOT fire")
 
 
+@check("a wrong repo name fails STEP 4 loudly; every other gh failure still skips")
+def _step4_names_a_missing_repo():
+    """The rollup excludes skips, so "the repo does not exist" and "we are offline" must not both
+    be skips -- `completeness.repo_is_unreachable` records what that cost. The must-fire half is
+    the wording `gh` actually returns; the must-NOT-fire half is every ordinary reason a developer
+    without network or auth should still get a green local run.
+    """
+    must_fire = [
+        ("gh GraphQL, verbatim shape", "GraphQL: Could not resolve to a Repository with the name 'aer-works/baton'."),
+        ("REST wording", "gh: Not Found (HTTP 404)"),
+        ("case-insensitive", "COULD NOT RESOLVE TO A REPOSITORY"),
+    ]
+    must_not_fire = [
+        ("offline", "error connecting to api.github.com: dial tcp: lookup api.github.com: no such host"),
+        ("unauthenticated", "gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable"),
+        ("rate limited", "API rate limit exceeded for user ID 12345."),
+        # The empty string is what a crashed-without-stderr call leaves. It must skip, not fail:
+        # asserting a wrong NAME from no evidence at all is the false-confidence direction.
+        ("no stderr at all", ""),
+    ]
+    for label, text in must_fire:
+        assert completeness.repo_is_unreachable(text), (
+            f"step 4: [{label}] would have SKIPPED, so a wrong repo name checks nothing while the "
+            f"rollup stays green: {text!r}")
+    for label, text in must_not_fire:
+        assert not completeness.repo_is_unreachable(text), (
+            f"step 4: [{label}] would FAIL the gate, so a developer offline or unauthenticated "
+            f"cannot get a green local run: {text!r}")
+    return f"{len(must_fire)} must fire + {len(must_not_fire)} must NOT fire"
+
+
 @check("--pr-body refuses a path argument instead of passing over the empty stdin it leaves")
 def _pr_body_reads_stdin_only():
     """#860, whose cost `completeness.pr_body_mode`'s own docstring records. The arms here are the

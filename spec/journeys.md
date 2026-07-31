@@ -32,7 +32,7 @@ moves. Written against the target product; today's product fails most of these, 
 to Fails, and that is the audit's sharpest single result. It was Partial because `--disallowedTools`
 shipped and its engine test passed; measurement then showed the flag never bounded the capability at
 all — a model denied `Write` writes the file through `Bash`
-([#529](https://github.com/aer-works/aer-flow/issues/529)). **A journey status can be too generous
+([#529](https://github.com/aer-works/baton/issues/529)). **A journey status can be too generous
 as well as too stale**, and a green test on the mechanism is what hid it. The reconcile gate (#489)
 compares declared status against test results; it cannot catch a test that asserts the wrong thing.
 
@@ -179,7 +179,7 @@ is enforced, not merely displayed.
   `ClaudeWorkerAdapter` and the engine leg is green, which is why this read *Partial*. The vendor
   audit (#527) then measured that **tool restriction is not a capability boundary**: a model denied
   `Write` reaches for `Bash` and writes the file
-  ([#529](https://github.com/aer-works/aer-flow/issues/529),
+  ([#529](https://github.com/aer-works/baton/issues/529),
   `pixi run vendor-verify -- --only gate.allowedtools-is-preapproval-not-ceiling`). So the flag that
   made this Partial never enforced the promise as written above.
   [0029](../docs/decisions/0029-the-gate-is-three-mechanisms.md) is the answer: a `PreToolUse` hook

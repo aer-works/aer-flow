@@ -17,7 +17,7 @@ State transitions: unlabelled → `needs-triage` → one of `needs-info`, `ready
 
 ## These labels do not exist on GitHub yet
 
-`gh label list` on `aer-works/aer-flow` shows `type/*`, `layer/*`, `platform/*`,
+`gh label list` on `aer-works/baton` shows `type/*`, `layer/*`, `platform/*`,
 `triage/design-checked`, and `next-up` — none of the five above. `gh issue edit --add-label` fails
 on a label that does not exist, so the first `/triage` run must create them:
 

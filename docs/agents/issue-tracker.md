@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues in **`aer-works/aer-flow`**. Use the `gh` CLI.
+Issues and specs for this repo live as GitHub issues in **`aer-works/baton`**. Use the `gh` CLI.
 `gh` infers the repo from `git remote -v` when run inside a clone.
 
 ## The repo's own rules come first
@@ -77,9 +77,9 @@ children are still boarded and milestoned like any other issue.
   `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>`
   (`research`/`prototype`/`grilling`/`task`). Once claimed, assign to the driving dev.
 - **Blocking**: GitHub's native issue dependencies. Add an edge with `gh api --method POST
-  repos/aer-works/aer-flow/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`,
+  repos/aer-works/baton/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`,
   where `<blocker-db-id>` is the blocker's numeric **database id**
-  (`gh api repos/aer-works/aer-flow/issues/<n> --jq .id`, *not* the `#number` or `node_id`).
+  (`gh api repos/aer-works/baton/issues/<n> --jq .id`, *not* the `#number` or `node_id`).
   GitHub reports open blockers in `issue_dependencies_summary.blocked_by`.
 - **Frontier query**: list the map's open children, drop any with an open blocker or an assignee;
   first in map order wins.

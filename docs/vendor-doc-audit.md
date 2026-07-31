@@ -624,7 +624,7 @@ prints a valid verdict and leaves any process holding that handle fails open. Re
 that was the quoting above — but it is a live trap for any future handler that backgrounds anything.
 
 **Proving the gate fired is asymmetric across the two vendors, and on `agy` it is UNRESOLVED
-(2026-07-28).** [#532](https://github.com/aer-works/aer-flow/issues/532) proposes proving the
+(2026-07-28).** [#532](https://github.com/aer-works/baton/issues/532) proposes proving the
 mandatory hook can execute by probing on claude's `SessionStart` "at zero model cost". Two things the
 documented surface above settles, and one it does not:
 
@@ -906,7 +906,7 @@ Five statements carry most of the weight below. Everything else is support or de
    succeeds**. The four mechanisms that actually stop an action — hook exit-2, an explicit `ask`
    rule, a hook's `permissionDecision: "ask"`, and `requiresUserInteraction` on MCP tools — all
    gate the operation, which is exactly why substitution doesn't defeat them. This is already a
-   live defect in `src/` ([#529](https://github.com/aer-works/aer-flow/issues/529)).
+   live defect in `src/` ([#529](https://github.com/aer-works/baton/issues/529)).
 2. **Isolation has exactly three levers, and one of them is better than first recorded.**
    `--add-dir` carries no config at all; `--bare` disables hooks outright and has no remedy; but
    `CLAUDE_CONFIG_DIR` gives a worker a genuinely separate root, and a fresh root's `Not logged in`
@@ -989,12 +989,12 @@ tell "`Write` was permitted" from "the model used `Bash` instead" — and the su
 finding, not noise. Third time this audit that the instrument, not the vendor, was the thing
 that needed fixing.
 
-#### This is a live defect in `src/`, not a hypothetical — [#529](https://github.com/aer-works/aer-flow/issues/529)
+#### This is a live defect in `src/`, not a hypothetical — [#529](https://github.com/aer-works/baton/issues/529)
 
 `ClaudeWorkerAdapter.BuildDisallowedTools` maps each withheld grant category to the tools that
 reach it. The categories are independent, so a grant with `WriteFiles = false` and
 `RunShellCommands = true` emitted exactly `--disallowedTools Edit,Write,NotebookEdit` and left
-`Bash` available. (Since [#649](https://github.com/aer-works/aer-flow/issues/649) those three names
+`Bash` available. (Since [#649](https://github.com/aer-works/baton/issues/649) those three names
 travel on the `PreToolUse` hook instead, so the hook can allow the write landing in
 `AER_OUTPUT_DIR` — the substitution below is unaffected, since it is about what `Bash` reaches.)
 Running **that exact string**:
@@ -1763,7 +1763,7 @@ Evidence class: **verified**.
 
 Note the direct contradiction with `gate.add-dir-loads-no-config`, which measured that on `claude`
 `--add-dir` loads **no** configuration. Both are true; neither is general. #533's constraint 1 stated
-the claude behaviour unscoped, and is [cross-referenced there](https://github.com/aer-works/aer-flow/issues/533#issuecomment-5079218678)
+the claude behaviour unscoped, and is [cross-referenced there](https://github.com/aer-works/baton/issues/533#issuecomment-5079218678)
 so the spawn path carries the asymmetry rather than one rule.
 
 ### Environment starvation: `agy` needs `USERPROFILE`, `claude` needs nothing (#549, 2026-07-29)

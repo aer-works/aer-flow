@@ -59,10 +59,10 @@ Two things worth knowing before reaching for one:
   see the lane section below for why.)
 - **A read-only dispatch is refused before it can spend**, because a worker satisfies its
   `ProducedOutputs` contract only by writing into `AER_OUTPUT_DIR`
-  ([#629](https://github.com/aer-works/aer-flow/issues/629)). Granting the shell instead is not an
+  ([#629](https://github.com/aer-works/baton/issues/629)). Granting the shell instead is not an
   escape: a granted shell reaches reads, writes and the network whatever the other flags say, so AER
   refuses that combination at bind time and `dispatch.py` refuses it here first
-  ([#529](https://github.com/aer-works/aer-flow/issues/529)). "Read-only reviewer" is therefore not
+  ([#529](https://github.com/aer-works/baton/issues/529)). "Read-only reviewer" is therefore not
   expressible — both routes to it are closed. The guard in `dispatch.py` carries which arm is
   measured on which vendor; that scope is not repeated here.
 
@@ -76,7 +76,7 @@ steps are the shape of every shipping lane — `implement` (your brief) → `jan
 `janitor-prompt.md`, verbatim) → `review` (a generated adversarial brief over `git diff main...HEAD`,
 producing the schema-checked `verdict.json` the review template requires) — chained with `DependsOn`,
 each step carrying exactly its template's settings, and the engine's own scheduling replacing the
-three hand-orchestrated dispatches this loop used to run ([#741](https://github.com/aer-works/aer-flow/issues/741)).
+three hand-orchestrated dispatches this loop used to run ([#741](https://github.com/aer-works/baton/issues/741)).
 
 Because each step resolves from its own template, the single-dispatch knobs (`--template`,
 `--worker-name`, `--output-name`, and every model/effort/grant/timeout override) are **refused, not
@@ -97,7 +97,7 @@ pixi run aer-dispatch -- --dialogue \
 Assembles all three files a dialogue run needs — `workflow.json`, `bindings.json`, and the
 `DialogueWorkerConfig` sidecar (`dialogue-config.json`) — replacing what used to be hand-rolled from
 `DialogueDispatchEndToEndTests` fixtures and `docs/runbooks/live-dialogue-smoke.md` each time
-([#813](https://github.com/aer-works/aer-flow/issues/813)).
+([#813](https://github.com/aer-works/baton/issues/813)).
 
 `<vendor>` is `claude` or `gemini` (mirrors `Aer.Workers.Dialogue.DialogueParticipantPresets.KnownVendors`
 — `gemini` resolves to the `agy` binary). `<role>` defaults to `participant-1`/`participant-2`/... in
@@ -131,7 +131,7 @@ in that build. A dry run that skipped it would validate only the half that was n
 Grants the guards **refuse** still exit 2 under `--dry-run` — it reports what a real run would do,
 and a real run would be refused. That is the property that makes it a test surface: exit 0 means
 dispatchable, exit 2 means refused, and both are now free to ask.
-[#639](https://github.com/aer-works/aer-flow/issues/639) is why it exists: before it, only the
+[#639](https://github.com/aer-works/baton/issues/639) is why it exists: before it, only the
 refused combinations could be checked without paying, so verifying that an *allowed* grant is
 allowed cost a live run — and the one time that was checked, it did.
 
@@ -166,7 +166,7 @@ actually helps; bumping effort is not a substitute for it.
 `--run-shell-commands` without `--network-access` is refused client-side, before ever calling `aer
 run`, and so is `--run-shell-commands` with reads or writes withheld. Both are the same rule: **a
 granted shell reaches reads, writes and the network whatever the other flags say**, so withholding
-one of them does not withhold it ([#529](https://github.com/aer-works/aer-flow/issues/529)). AER
+one of them does not withhold it ([#529](https://github.com/aer-works/baton/issues/529)). AER
 refuses these at bind time; `dispatch.py` refuses them here so the flags fail before you commit to
 them rather than after.
 

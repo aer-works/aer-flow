@@ -648,6 +648,26 @@ CITATION_EXCLUDE = ("docs/archive/", "docs/decisions/README.md", "docs/milestone
 ISSUE_RE = re.compile(r"#(\d{2,5})\b")
 
 
+def repo_is_unreachable(stderr: str) -> bool:
+    """Does this `gh` failure mean the REPO NAME is wrong, rather than the network being down?
+
+    The distinction is the whole point: a wrong name is the one failure mode that must not skip.
+    Pointed at a repo that does not exist, `gh issue list` fails, STEP 4 prints SKIPPED, and
+    `main()`'s rollup excludes skips -- so the stale-citation check silently stops running while
+    `pixi run audit-completeness` keeps exiting 0. That happened once already, in the branch that
+    prepared the baton rename: every markdown link could move ahead of the flip, and this live call
+    could not. GitHub's GraphQL layer resolves the current name and does not follow the rename
+    redirect that rescues links, so the window between repointing this line and the flip is exactly
+    when the check would go quiet.
+    """
+    text = (stderr or "").lower()
+    return any(marker in text for marker in (
+        "could not resolve to a repository",   # GraphQL, the shape `gh issue list` returns
+        "not found",                           # REST-flavoured wording, e.g. `gh api`
+        "no such repository",
+    ))
+
+
 def step4_stale_citations():
     rule("STEP 4 -- no doc cites a closed issue as though it were still open")
     gh = _shutil_which("gh")
@@ -656,6 +676,8 @@ def step4_stale_citations():
         return None
     try:
         out = subprocess.run(
+            # Stays "aer-flow" until the flip -- see docs/runbooks/repo-rename.md step 2 for why
+            # this one line can't move early the way every markdown link in #823 did.
             ["gh", "issue", "list", "--repo", "aer-works/aer-flow", "--state", "all",
              "--limit", "1000", "--json", "number,state"],
             capture_output=True, text=True, cwd=ROOT, timeout=30)
@@ -663,6 +685,13 @@ def step4_stale_citations():
         print("    SKIPPED -- `gh` did not respond (offline, or not authenticated).")
         return None
     if out.returncode != 0:
+        if repo_is_unreachable(out.stderr):
+            print(f"    !! the repo this step queries does not resolve: {out.stderr.strip()[:200]}")
+            print("       This is not a skip. Every other failure here (offline, unauthenticated,")
+            print("       rate-limited) leaves the repo NAME correct; this one means the name is")
+            print("       wrong, and a wrong name makes STEP 4 check nothing while the rollup stays")
+            print("       green. See docs/runbooks/repo-rename.md step 2.")
+            return False
         print(f"    SKIPPED -- `gh issue list` failed: {out.stderr.strip()[:200]}")
         return None
     import json

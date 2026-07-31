@@ -660,7 +660,7 @@ as though they were established.
 
 > **Corrected 2026-07-25 (#527).** This section was headed *"expresses a family ceiling"*. Every
 > measurement in it still holds, but **"ceiling" was a guarantee word the evidence had not earned**,
-> and this document is where [#529](https://github.com/aer-works/aer-flow/issues/529) came from.
+> and this document is where [#529](https://github.com/aer-works/baton/issues/529) came from.
 >
 > What was measured below is that the **pattern discriminates between commands of the same tool**.
 > What was *not* measured is whether the model can reach the same goal through a **different tool** —
