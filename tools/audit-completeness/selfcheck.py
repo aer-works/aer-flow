@@ -923,6 +923,41 @@ def _negated_close_lint():
             f"incident bodies) + {len(must_not_fire)} must NOT fire")
 
 
+@check("--pr-body refuses a path argument instead of passing over the empty stdin it leaves")
+def _pr_body_reads_stdin_only():
+    """#860: called as `--pr-body <path>`, the mode read empty stdin and printed OK -- a pass
+    indistinguishable from a real one, which reported a genuinely faulty body as clean three
+    times before CI caught it. The arms below are the two states that must stay distinguishable:
+    a stray argument is a usage fault (loud), a piped empty body is a real pass (an empty body
+    can close nothing).
+    """
+    def run(argv: list[str], stdin_text: str) -> tuple[int, str]:
+        saved_argv, saved_stdin, saved_stdout = sys.argv, sys.stdin, sys.stdout
+        sys.argv, sys.stdin, sys.stdout = argv, io.StringIO(stdin_text), io.StringIO()
+        try:
+            code = completeness.pr_body_mode()
+            return code, sys.stdout.getvalue()
+        finally:
+            sys.argv, sys.stdin, sys.stdout = saved_argv, saved_stdin, saved_stdout
+
+    faulty = "filed, not fixed: #688\n"
+
+    code, out = run(["completeness.py", "--pr-body", "some/body.md"], "")
+    assert code == 1, "a path argument was accepted, so nothing was checked and it still passed"
+    assert "STDIN" in out, f"the refusal must say where the body goes; got {out!r}"
+
+    # The control that makes the arm above mean something: the SAME faulty body that a path
+    # argument would have hidden is caught the moment it actually arrives on stdin.
+    code, _ = run(["completeness.py", "--pr-body"], faulty)
+    assert code == 1, "a real fault on stdin stopped being caught"
+
+    code, out = run(["completeness.py", "--pr-body"], "   \n")
+    assert code == 0, "a genuinely empty piped body must pass -- it can close nothing"
+    assert "empty" in out, f"an empty body's pass must say so, not read as a checked pass; got {out!r}"
+
+    return "3 arms: path argument refused, real fault on stdin still caught, empty body passes loudly"
+
+
 @check("the gate-citation lint separates a slug from an ordinal")
 def _gate_lint_discriminates():
     # Step 10's population is the whole repo, so it can only ever report "0 faults" -- which is what

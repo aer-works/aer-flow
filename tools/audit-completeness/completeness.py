@@ -889,8 +889,27 @@ def pr_body_mode() -> int:
 
     Its own mode rather than a step, because the body is not in the tree -- only CI has it, and only
     while the PR is still editable, which is the one moment the fault is free to fix.
+
+    STDIN is the only input, so a caller who passes a path instead gets a loud refusal rather than
+    a pass over the empty stdin that a path argument leaves behind (#860). That silent pass let a
+    body with a real fault be reported locally as clean, three times, until CI caught the fault the
+    local run had already been asked about.
     """
-    faults = negated_close_faults(sys.stdin.read())
+    stray = [a for a in sys.argv[1:] if a != "--pr-body"]
+    if stray:
+        print(f"!! --pr-body reads the body on STDIN and takes no argument; got: {' '.join(stray)}")
+        print("   Nothing was checked. Pipe the body in instead:")
+        print("     gh pr view <n> --json body -q .body | python completeness.py --pr-body")
+        return 1
+
+    body = sys.stdin.read()
+    if not body.strip():
+        # Genuinely empty is a real pass: a body with no text can close nothing. The misuse that
+        # LOOKS like this -- a path argument -- is refused above, before stdin is ever read.
+        print("OK the body is empty; there is no keyword that could close anything.")
+        return 0
+
+    faults = negated_close_faults(body)
     if not faults:
         print("OK every closing keyword is on a declaration line; nothing closes by accident.")
         return 0
