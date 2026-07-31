@@ -786,18 +786,42 @@ namespace Aer.Daemon
                     await broadcast.BroadcastStateAsync(immediateOutcome.Projection, request.DirectoryPath);
                 }
 
+                // #590: same per-directory serialisation as chat turns (SessionTurnLockFor's
+                // remarks) -- bindings.json here can carry the same persisted vendor SessionId a
+                // chat turn minted (Program.cs's ExecuteSessionTurnCoreAsync), and this endpoint has
+                // no lock of its own, so a /api/sessions/send racing this call would otherwise
+                // dispatch that id twice concurrently (see vendor-doc-audit.md on --session-id).
                 _ = Task.Run(async () =>
                 {
+                    var turnLock = SessionTurnLockFor(request.DirectoryPath);
+                    await turnLock.WaitAsync().ConfigureAwait(false);
                     try
                     {
-                        await session.RunAsync(
+                        // #828: this dispatch runs fire-and-forget behind an already-returned 200 --
+                        // Console.Error alone is gone the moment the daemon exits, and unlike the chat
+                        // path (#341's turn-errors.log) nothing else recorded the failure. TaskSession.
+                        // RunAsync's in-process fallback catches every AerFlowException itself and
+                        // returns a MutationOutcome rather than throwing (see its own remarks), so the
+                        // outcome's ErrorMessage -- not an escaping exception -- is the only place most
+                        // dispatch failures (e.g. this directory's own WorkflowLockedException) are ever
+                        // observable; the catch below is defense in depth for whatever can still escape.
+                        var outcome = await session.RunAsync(
                             request.DirectoryPath,
                             request.WorkflowTemplateFilePath,
                             request.BindingsFilePath);
+                        if (outcome.ErrorMessage is { } errorMessage)
+                        {
+                            await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/run", errorMessage).ConfigureAwait(false);
+                        }
                     }
                     catch (Exception ex)
                     {
                         Console.Error.WriteLine($"Error executing task run in background: {ex}");
+                        await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/run", ex).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        turnLock.Release();
                     }
                 });
 
@@ -837,11 +861,20 @@ namespace Aer.Daemon
                     }
                 }
 
+                // #590: see the matching lock in /api/tasks/run above -- same persisted-SessionId
+                // exposure, same fix.
                 _ = Task.Run(async () =>
                 {
+                    var turnLock = SessionTurnLockFor(request.DirectoryPath);
+                    await turnLock.WaitAsync().ConfigureAwait(false);
                     try
                     {
-                        await session.DecideAsync(
+                        // #828: same gap as /api/tasks/run above -- TaskSession.DecideAsync's
+                        // in-process fallback also catches AerFlowException/FileNotFoundException
+                        // itself and returns a MutationOutcome rather than throwing, so its
+                        // ErrorMessage is the primary place a failure here (e.g. this decision losing
+                        // a race to ExternalDecisionValidator) is observable.
+                        var outcome = await session.DecideAsync(
                             request.DirectoryPath,
                             new StepId(request.StepId),
                             new ExecutionId(request.ExecutionId),
@@ -850,10 +883,19 @@ namespace Aer.Daemon
                             revisionFilePath,
                             request.SupplementaryWorker,
                             request.SupplementaryOutputName);
+                        if (outcome.ErrorMessage is { } errorMessage)
+                        {
+                            await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/decide", errorMessage).ConfigureAwait(false);
+                        }
                     }
                     catch (Exception ex)
                     {
                         Console.Error.WriteLine($"Error executing task decide in background: {ex}");
+                        await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/decide", ex).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        turnLock.Release();
                     }
                 });
 
@@ -1482,14 +1524,28 @@ namespace Aer.Daemon
         /// leaving a stalled chat with no recoverable evidence anywhere. Best-effort by
         /// construction: this runs inside a catch, so it must never throw over the top of the
         /// original error.
+        ///
+        /// #828: the same gap exists for both task dispatch endpoints -- they answer 200 before
+        /// their fire-and-forget dispatch body runs, and until now a failure there
+        /// (e.g. this directory's <c>WorkflowLockedException</c>, swallowed by
+        /// <see cref="TaskSession.RunAsync"/>/<see cref="TaskSession.DecideAsync"/>'s own
+        /// <c>catch (AerFlowException)</c>) reached <c>Console.Error</c> and nowhere else. A single
+        /// log convention rather than splitting by call site -- <paramref name="context"/> generalizes
+        /// the chat call site's "message" label to whatever identifies the failed operation.
+        /// <paramref name="error"/> is <c>object</c>, not <see cref="Exception"/>, so a
+        /// <see cref="TaskSession.MutationOutcome"/>'s <c>ErrorMessage</c> string -- the only place
+        /// most task-endpoint dispatch failures actually surface, since
+        /// <see cref="TaskSession.RunAsync"/>/<see cref="TaskSession.DecideAsync"/>'s in-process
+        /// fallback catches every <c>AerFlowException</c> itself and returns normally -- can be
+        /// recorded without fabricating an exception instance to wrap it in.
         /// </summary>
-        private static async Task AppendTurnErrorAsync(string directoryPath, string userMessage, Exception error)
+        private static async Task AppendTurnErrorAsync(string directoryPath, string context, object error)
         {
             try
             {
                 var aerDir = Path.Combine(directoryPath, ".aer");
                 Directory.CreateDirectory(aerDir);
-                var line = $"{DateTimeOffset.UtcNow:O}\tmessage={userMessage.ReplaceLineEndings(" ")}\t{error}";
+                var line = $"{DateTimeOffset.UtcNow:O}\tmessage={context.ReplaceLineEndings(" ")}\t{error}";
                 await File.AppendAllTextAsync(Path.Combine(aerDir, "turn-errors.log"), line + Environment.NewLine).ConfigureAwait(false);
             }
             catch (Exception recordError)
@@ -1507,6 +1563,15 @@ namespace Aer.Daemon
         /// already-returned 200, so two overlapping <c>POST /api/sessions/send</c> calls for the same
         /// session genuinely interleave there. <see cref="IsSessionSafeToReMaterialize"/> (#354) makes
         /// the delete refuse in the unsafe states; this closes the ordering hole itself.
+        ///
+        /// #590: also the daemon's single-writer-per-vendor-session lock. A chat turn persists its
+        /// vendor <c>SessionId</c> into <c>bindings.json</c> (<see cref="ExecuteSessionTurnCoreAsync"/>),
+        /// and both task dispatch endpoints dispatch whatever that file says with no lock of their own
+        /// (see <see cref="SessionDirectoryDispatchSerializationTests"/> for guard details),
+        /// so this in-process lock is the only thing that serializes concurrent dispatches. Keyed by
+        /// directory rather than the vendor session id itself because the id is re-minted on handoff
+        /// while the directory is stable, and because this lock also serialises the
+        /// <c>session.json</c> read-modify-write an id-keyed lock would miss.
         ///
         /// Keyed by the session's task directory: that is what the deletes target, it matches Flow's
         /// own lock granularity, and it is the one identifier all three call sites (create, send,
@@ -1981,7 +2046,7 @@ namespace Aer.Daemon
             // One edge is deliberately left unestablished: a vendor that succeeds while producing no
             // answer at all, so the next turn re-sends `--session-id` rather than `--resume`.
             // Whether that is the safe direction is an OPEN QUESTION, not a fact -- the register
-            // (vendor-doc-audit.md, "`--session-id` is guarded by an existence check") measured
+            // (see vendor-doc-audit.md) measured
             // sequential reuse of an existing id as REFUSED, which would make the re-send fail
             // rather than retry harmlessly. It is unreconciled because the pre-fix symptom was
             // silent memory loss rather than a hard turn-2 failure, and #537 never verified turn 2
