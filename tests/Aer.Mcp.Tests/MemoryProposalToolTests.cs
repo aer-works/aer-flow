@@ -235,13 +235,7 @@ public class MemoryProposalToolTests
         }
     }
 
-    /// <summary>
-    /// Pins the literal <see cref="MemoryProposalTool.CaptureDirectoryName"/> value (#833) --
-    /// <c>Aer.Flow.Mutation.MemoryProposalEscalation.CaptureDirectoryName</c> duplicates the same
-    /// string on the other side of a project boundary this project cannot reach across (see both
-    /// constants' own doc comments); a change here without a matching change there would silently
-    /// break room attribution, so this at least catches an accidental edit on this side.
-    /// </summary>
+    /// <summary>Pins the literal (#833) -- see <see cref="MemoryProposalTool.CaptureDirectoryName"/>'s own doc comment for why this must agree with the Aer.Flow side.</summary>
     [Fact]
     public void CaptureDirectoryName_is_the_literal_mirrored_on_the_Aer_Flow_side()
     {

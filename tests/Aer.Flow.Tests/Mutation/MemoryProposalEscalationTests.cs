@@ -19,12 +19,7 @@ public class MemoryProposalEscalationTests : IDisposable
         _captureDirectory = Path.Combine(_tempDirectory, "memory-proposals");
     }
 
-    /// <summary>
-    /// Pins the literal <see cref="MemoryProposalEscalation.CaptureDirectoryName"/> value (#833) --
-    /// mirrored on the other side of a project boundary this project cannot reach across as
-    /// <c>Aer.Mcp.Host.MemoryProposalTool.CaptureDirectoryName</c> (see both constants' own doc
-    /// comments); catches an accidental edit on this side.
-    /// </summary>
+    /// <summary>Pins the literal (#833) -- see <see cref="MemoryProposalEscalation.CaptureDirectoryName"/>'s own doc comment for why this must agree with the Aer.Mcp.Host side.</summary>
     [Fact]
     public void CaptureDirectoryName_is_the_literal_mirrored_on_the_Aer_Mcp_Host_side()
     {

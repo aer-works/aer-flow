@@ -77,13 +77,11 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
             {
                 if (state.RoomDirectoryPath is { } roomDirectoryPath)
                 {
-                    // #833: sweep for new memory-proposal captures under this room's OWN execution
-                    // directories before deriving wakes, so a proposal escalated this tick is already
-                    // visible held work by the time DeriveCurrentWakesAsync projects state below.
-                    // Attribution is structural (the room's storage form IS the task directory,
-                    // spec §2) -- nothing here is told which room a capture belongs to, because
-                    // there is nothing to tell it: every execution_* directory under this room's own
-                    // artifacts/ was dispatched by this room and no other.
+                    // #833: sweep for new memory-proposal captures before deriving wakes, so one
+                    // escalated this tick is already visible held work by the time
+                    // DeriveCurrentWakesAsync projects state below. Attribution is structural, not a
+                    // claim -- see MemoryProposalEscalation.EscalateNewProposalsForRoomAsync's own
+                    // doc comment (canonical) for why.
                     await SweepMemoryProposalsAsync(roomDirectoryPath, stoppingToken).ConfigureAwait(false);
 
                     var tick = await DeriveCurrentWakesAsync(roomDirectoryPath, stoppingToken)

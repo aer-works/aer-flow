@@ -470,13 +470,10 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
     /// <see cref="EnsureAgyWorkspace"/>'s own left-holding-canonical-content convention and its reasons.
     /// </summary>
     /// <remarks>
-    /// <b>Carries no capture-directory path (#833)</b>, for the same reason
-    /// <see cref="ClaudeWorkerAdapter.EnsureMemoryProposalMcpConfig"/>'s own remarks give: this
-    /// workspace is materialized once per worker-binding entry, before any execution's
-    /// <c>AER_OUTPUT_DIR</c> exists. The <c>--memory-proposal-tool</c> flag alone tells
-    /// <c>Aer.Mcp.Host</c> to enable the tool; the process derives its per-execution capture
-    /// directory from <c>AER_OUTPUT_DIR</c>, inherited from <c>agy</c> the same way it is from
-    /// <c>claude</c> on the other adapter.
+    /// <b>Carries no capture-directory path (#833)</b> -- same reason and mechanism as
+    /// <see cref="ClaudeWorkerAdapter.EnsureMemoryProposalMcpConfig"/>'s own remarks, which are
+    /// canonical; this side differs only in which vendor process <c>Aer.Mcp.Host</c> inherits
+    /// <c>AER_OUTPUT_DIR</c> from (<c>agy</c> here, <c>claude</c> there).
     /// </remarks>
     private static string EnsureMemoryProposalWorkspace()
     {
