@@ -9,4 +9,9 @@ public sealed class InvalidRoomMutationException : AerFlowException
         : base(message)
     {
     }
+
+    public InvalidRoomMutationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

@@ -16,6 +16,8 @@ using Aer.Flow.Artifacts;
 using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
+using Aer.Flow.Projection;
+using Aer.Flow.Store;
 using Aer.Ui.Core;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -650,6 +652,79 @@ namespace Aer.Daemon
                 Wakes = wakeState.CurrentWakes.Select(w => new { Ref = w.Ref.Value, Kind = w.Kind.ToString() }).ToList(),
                 ProbeFailures = wakeState.CurrentProbeFailures.Select(f => new { Ref = f.Ref.Value, f.Error }).ToList(),
             }));
+
+            // #672: the operator's decision surface for held work escalated into a room, and the
+            // seam where approving a memory-proposal-shaped item actually applies it (decision
+            // 0044 point 3). One endpoint with an Outcome field, mirroring /api/tasks/decide's own
+            // shape above, rather than two endpoints -- the daemon's existing decide-style
+            // convention, not a new one invented for this lane. Synchronous (unlike
+            // /api/tasks/decide's fire-and-forget dispatch): a resolve is one journal append plus,
+            // at most, one small file write -- not a worker turn -- so the operator gets the actual
+            // outcome (including a traversal refusal or a loud missing-delete-target failure) back
+            // in the response instead of polling turn-errors.log for it.
+            app.MapPost("/api/rooms/held-work/resolve", async ([FromBody] ResolveHeldWorkRequest request) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.RoomDirectoryPath))
+                {
+                    return Results.BadRequest("RoomDirectoryPath is required.");
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Ref))
+                {
+                    return Results.BadRequest("Ref is required.");
+                }
+
+                // #672 review: RoomMutationInterface's own ConcurrencyGuard.Acquire unconditionally
+                // creates the directory it locks, so without this check a typo'd RoomDirectoryPath
+                // would still leave a stray directory (with a flow.lock) on disk before the "not
+                // found" 400 below ever fires -- matching /api/tasks/open's own invalid-directory
+                // guard above.
+                if (!Directory.Exists(request.RoomDirectoryPath))
+                {
+                    return Results.BadRequest($"RoomDirectoryPath '{request.RoomDirectoryPath}' does not exist.");
+                }
+
+                bool approve;
+                if (string.Equals(request.Outcome, "approve", StringComparison.OrdinalIgnoreCase))
+                {
+                    approve = true;
+                }
+                else if (string.Equals(request.Outcome, "reject", StringComparison.OrdinalIgnoreCase))
+                {
+                    approve = false;
+                }
+                else
+                {
+                    return Results.BadRequest("Outcome must be 'approve' or 'reject'.");
+                }
+
+                var roomLogPath = Path.Combine(request.RoomDirectoryPath, "room.jsonl");
+                var reader = new RoomEventLogReader(roomLogPath);
+                await using var writer = new RoomEventLogWriter(roomLogPath);
+
+                try
+                {
+                    var state = await MemoryProposalResolution.ResolveAsync(
+                        request.RoomDirectoryPath, new HeldWorkRef(request.Ref), approve, reader, writer)
+                        .ConfigureAwait(false);
+
+                    var resolved = state.HeldWork[new HeldWorkRef(request.Ref)];
+                    return Results.Ok(new
+                    {
+                        Ref = resolved.Ref.Value,
+                        Status = resolved.Status.ToString(),
+                        Outcome = request.Outcome,
+                    });
+                }
+                catch (InvalidRoomMutationException ex)
+                {
+                    return Results.BadRequest(ex.Message);
+                }
+                catch (WorkflowLockedException ex)
+                {
+                    return Results.Conflict(ex.Message);
+                }
+            });
 
             // REST endpoints
             app.MapGet("/api/templates", () =>
@@ -2273,4 +2348,7 @@ namespace Aer.Daemon
 
     /// <summary>#799: points <see cref="RoomWakeBridge"/> at the room directory to watch.</summary>
     public record WatchRoomRequest(string RoomDirectoryPath);
+
+    /// <summary>#672: <paramref name="Outcome"/> is "approve" or "reject" (case-insensitive); <paramref name="Ref"/> is the <see cref="HeldWorkRef"/>'s own string value.</summary>
+    public record ResolveHeldWorkRequest(string RoomDirectoryPath, string Ref, string Outcome);
 }
