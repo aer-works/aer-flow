@@ -286,6 +286,102 @@ public class MemoryProposalApplierTests : IDisposable
     }
 
     /// <summary>
+    /// #856's chain-following claim, which its own doc comment on
+    /// <see cref="MemoryProposalApplier.ResolveReparsePointsIgnoringMissingTail"/> makes
+    /// (<c>returnFinalTarget: true</c>) but nothing exercised until here. The shape is chosen so it
+    /// can only pass by following the whole chain: the first hop lands <b>inside</b> memory/, so a
+    /// single-hop resolution would find an in-tree path and allow the write, while the write itself
+    /// would still land outside. A test using a first hop that already points outside would pass
+    /// either way and prove nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_chained_reparse_point_whose_first_hop_stays_inside_memory_is_still_refused()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
+        Directory.CreateDirectory(outsideDirectory);
+
+        // hop2 sits inside memory/ and points outside; hop1 sits inside memory/ and points at hop2.
+        var secondHop = Path.Combine(_memoryRoot, "hop2");
+        if (!TryCreateDirectoryReparsePoint(secondHop, outsideDirectory, out var secondHopSkipReason))
+        {
+            Assert.Skip(secondHopSkipReason);
+            return;
+        }
+
+        try
+        {
+            var firstHop = Path.Combine(_memoryRoot, "hop1");
+            if (!TryCreateDirectoryReparsePoint(firstHop, secondHop, out var firstHopSkipReason))
+            {
+                Assert.Skip(firstHopSkipReason);
+                return;
+            }
+
+            try
+            {
+                var capture = WriteCapture(
+                    """{"Operation":"add","TargetPath":"hop1/pwned.md","Content":"pwned","Rationale":"malicious"}""");
+
+                await Assert.ThrowsAsync<InvalidRoomMutationException>(
+                    () => MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken));
+
+                Assert.False(File.Exists(Path.Combine(outsideDirectory, "pwned.md")));
+            }
+            finally
+            {
+                RemoveDirectoryLink(firstHop);
+            }
+        }
+        finally
+        {
+            RemoveDirectoryLink(secondHop);
+        }
+    }
+
+    /// <summary>
+    /// Covers the file half of <c>ResolveIfReparsePoint</c>'s <c>isDirectory ? Directory... :
+    /// File...</c> branch, which the directory tests above leave unexercised. A file symlink is
+    /// unprivileged on Linux/macOS but needs admin or Developer Mode on Windows, so this skips
+    /// rather than fakes where it cannot be created.
+    /// </summary>
+    [Fact]
+    public async Task A_file_reparse_point_under_memory_that_resolves_outside_it_is_refused()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
+        Directory.CreateDirectory(outsideDirectory);
+        var outsideFile = Path.Combine(outsideDirectory, "real.md");
+        await File.WriteAllTextAsync(outsideFile, "outside content", TestContext.Current.CancellationToken);
+
+        var linkPath = Path.Combine(_memoryRoot, "fact-link.md");
+        try
+        {
+            File.CreateSymbolicLink(linkPath, outsideFile);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip($"Could not create a file symlink in this environment: {ex.Message}");
+            return;
+        }
+
+        try
+        {
+            var capture = WriteCapture(
+                """{"Operation":"edit","TargetPath":"fact-link.md","Content":"pwned","Rationale":"malicious"}""");
+
+            await Assert.ThrowsAsync<InvalidRoomMutationException>(
+                () => MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken));
+
+            Assert.Equal("outside content", await File.ReadAllTextAsync(outsideFile, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(linkPath);
+        }
+    }
+
+    /// <summary>
     /// Unlinks a reparse point created by <see cref="TryCreateDirectoryReparsePoint"/> without
     /// touching its target -- <c>Directory.Delete(path, recursive: false)</c> on a junction or
     /// directory symlink removes the link itself, never the linked-to contents.
