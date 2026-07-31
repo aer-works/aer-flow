@@ -160,7 +160,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         args.Add("--settings");
         args.Add(settingsPath);
         args.Add("--mcp-config");
-        args.Add(mcpConfigPath);
+        args.Add(invocation.EnableMemoryProposalTool ? EnsureMemoryProposalMcpConfig() : mcpConfigPath);
 
         // #331: --allowedTools only *pre-approves* tools so they don't prompt; it is not a sandbox,
         // and omitting a tool leaves it in the model's reach (a shell-denied session ran `hostname`
@@ -359,6 +359,46 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         EnsureFileExists(mcpConfigPath, "{\"mcpServers\":{}}");
 
         return (settingsPath, mcpConfigPath);
+    }
+
+    /// <summary>
+    /// The directory <see cref="MemoryProposalCaptureDirectory"/> resolves to -- shared by every
+    /// dispatch that opts in (#801), same as <c>claude-mcp.json</c>/<c>claude-settings.json</c> are
+    /// one static file across every spawn rather than a per-execution one (see
+    /// <see cref="EnsureLaunchConfigFiles"/>'s own remarks). Proposals from concurrent dispatches do
+    /// not collide because <c>MemoryProposalTool</c> names each capture file uniquely
+    /// (<c>proposal-&lt;guid&gt;.json</c>); attributing a capture back to the dispatch that produced
+    /// it, if ever needed, is out of this issue's scope (#801's OUT list: no curation, no auto-approval).
+    /// </summary>
+    public static string MemoryProposalCaptureDirectory =>
+        Path.Combine(AerPaths.WorkerLaunchConfig, "memory-proposals");
+
+    /// <summary>
+    /// Ensures the <c>--mcp-config</c> file naming AER's own MCP server (#585) and its
+    /// <c>memory-edit-proposal</c> tool (#801) exists, returning its path. Left holding canonical
+    /// content on every resolve, mirroring <see cref="EnsureLaunchConfigFiles"/>'s settings file
+    /// rather than the plain empty <c>claude-mcp.json</c>'s once-only semantics -- this file's
+    /// content is exactly as load-bearing as the PreToolUse hook's, just opt-in rather than mandatory.
+    /// </summary>
+    private static string EnsureMemoryProposalMcpConfig()
+    {
+        Directory.CreateDirectory(AerPaths.WorkerLaunchConfig);
+        var hostDllPath = Path.Combine(AppContext.BaseDirectory, "Aer.Mcp.Host.dll");
+        var configPath = Path.Combine(AerPaths.WorkerLaunchConfig, "claude-mcp-memory-proposal.json");
+        var json = JsonSerializer.Serialize(new
+        {
+            mcpServers = new Dictionary<string, object>
+            {
+                ["aer-memory-proposal"] = new
+                {
+                    command = "dotnet",
+                    args = new[] { hostDllPath, "--memory-proposal-dir", MemoryProposalCaptureDirectory },
+                },
+            },
+        });
+
+        AtomicLaunchConfigWriter.Write(configPath, json);
+        return configPath;
     }
 
     /// <summary>
