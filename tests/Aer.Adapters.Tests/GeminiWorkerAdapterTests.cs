@@ -1117,9 +1117,11 @@ public class GeminiWorkerAdapterTests
     }
 
     /// <summary>
-    /// #801: a dispatch that does not opt in must see today's exact argv -- no extra `--add-dir` for
-    /// a workspace nobody asked for.
+    /// #801: a dispatch that does not opt in must see today's exact argv (see
+    /// <see cref="ClaudeWorkerAdapterTests.Not_opting_in_to_the_memory_proposal_tool_keeps_the_empty_mcp_config"/>
+    /// for the Claude equivalent) -- no extra `--add-dir` for a workspace nobody asked for.
     /// </summary>
+    // record-once-ok: #801 tests/Aer.Adapters.Tests/ClaudeWorkerAdapterTests.cs
     [Fact]
     public void Not_opting_in_to_the_memory_proposal_tool_adds_no_extra_add_dir()
     {
@@ -1129,10 +1131,11 @@ public class GeminiWorkerAdapterTests
     }
 
     /// <summary>
-    /// #801: opting in materializes a workspace carrying `.agents/mcp_config.json` naming AER's own
-    /// MCP server, granted via an extra, repeated `--add-dir` -- agy's only lever, since it has no
-    /// per-invocation flag equivalent to claude's `--mcp-config` (decision 0035).
+    /// #801: opting in grants an extra `--add-dir` pointing to a workspace with `.agents/mcp_config.json`
+    /// (see <see cref="GeminiWorkerAdapter.MemoryProposalWorkspaceDirectoryName"/>) -- agy's only lever,
+    /// since it has no per-invocation flag equivalent to claude's `--mcp-config` (decision 0035).
     /// </summary>
+    // record-once-ok: #801 src/Aer.Adapters/GeminiWorkerAdapter.cs
     [Fact]
     public void Opting_in_to_the_memory_proposal_tool_materializes_a_workspace_config_and_grants_it()
     {

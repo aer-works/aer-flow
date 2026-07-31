@@ -6,9 +6,10 @@ namespace Aer.Flow.Mutation;
 
 /// <summary>
 /// Turns a captured <c>Aer.Mcp.Host.MemoryProposalTool</c> call into room-journal held work (#801),
-/// so a memory-edit proposal reaches the operator through the same escalation surface every other
-/// held item already uses (<see cref="RoomMutationInterface"/>) rather than a new one -- #672 item 3's
-/// "proposals escalate; nothing writes memory but an approved decision or the operator's own editor".
+/// so proposals reach the operator through the same escalation surface every other held item uses
+/// (<see cref="RoomMutationInterface"/>) rather than a new one -- for the design constraint, see
+/// <see cref="Aer.Mcp.Host.MemoryProposalTool"/> (#672 item 3).
+/// <!-- record-once-ok: #801 src/Aer.Mcp.Host/MemoryProposalTool.cs -->
 /// <para>
 /// Deliberately narrow: this class only turns a capture file into a dispatched <see cref="HeldWorkRef"/>.
 /// It never reads <c>memory/</c>, never applies a proposal, and never escalates or resolves one past
