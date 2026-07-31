@@ -1960,7 +1960,9 @@ namespace Aer.Daemon
                 try
                 {
                     var logText = await File.ReadAllTextAsync(logFilePath).ConfigureAwait(false);
-                    var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([^\s\r\n]+)");
+                    // #837: agy's log line trails the id with a comma (`conversation=<uuid>, ...`);
+                    // a non-whitespace class captured it into the stored id.
+                    var match = System.Text.RegularExpressions.Regex.Match(logText, @"conversation=([\w-]+)");
                     if (match.Success)
                     {
                         vendorSessionId = match.Groups[1].Value;
@@ -1989,7 +1991,8 @@ namespace Aer.Daemon
                 try
                 {
                     var freshLogText = await File.ReadAllTextAsync(logFilePath).ConfigureAwait(false);
-                    agyLogFreshThisTurn = System.Text.RegularExpressions.Regex.IsMatch(freshLogText, @"conversation=([^\s\r\n]+)");
+                    // #837: same trailing-comma shape as the scrape above.
+                    agyLogFreshThisTurn = System.Text.RegularExpressions.Regex.IsMatch(freshLogText, @"conversation=([\w-]+)");
                 }
                 catch { }
             }

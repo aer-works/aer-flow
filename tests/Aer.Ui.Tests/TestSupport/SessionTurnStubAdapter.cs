@@ -57,7 +57,8 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
 
     /// <summary>
     /// Sentinel forcing an agy turn to SUCCEED while writing no output file, writing a fake agy log
-    /// file containing <c>conversation=&lt;id&gt;</c> to <see cref="WorkerInvocation.LogFilePath"/> instead (#545).
+    /// file containing a comma-tailed <c>conversation=&lt;id&gt;,</c> line (#837) to
+    /// <see cref="WorkerInvocation.LogFilePath"/> instead (#545).
     /// </summary>
     public const string AgyNoOutputFileSentinel = "STUB_AGY_NO_OUTPUT_FILE";
 
@@ -134,7 +135,8 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
                 Directory.CreateDirectory(dir);
             }
 
-            File.WriteAllText(logPath, $"conversation={StubAgyConversationId}\n");
+            // #837: match agy's real `--log-file` format (see Program.cs's scrape comment).
+            File.WriteAllText(logPath, $"conversation={StubAgyConversationId}, model=stub\n");
             return OperatingSystem.IsWindows()
                 ? new CoreDispatchTarget("cmd", ["/c", "exit 0"])
                 : new CoreDispatchTarget("sh", ["-c", "exit 0"]);

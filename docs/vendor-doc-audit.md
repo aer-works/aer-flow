@@ -1792,6 +1792,26 @@ say which vendor it measured.
 claim about a full turn, and not measured on Linux or macOS. `env -i` was verified to actually clear
 (three surviving variables, all MSYS-injected) rather than assumed.
 
+### `agy --log-file` trails the conversation id with a comma, and `--conversation` tolerates the damage (#837, 2026-07-31)
+
+Measured live while verifying #586's session continuation. The log line agy writes is
+`conversation=<uuid>, ...` — the id is followed immediately by a comma and further fields, and
+nothing in agy's documentation states the line's format at all. Two scrape regexes in this repo
+were written against an assumed "id runs to whitespace" shape (`[^\s\r\n]+`), which captures the
+comma into the stored id.
+
+Both arms were measured directly: `agy -p "Remember BANANA-42" --log-file …`, then
+`agy --conversation <id> -p "what codeword?"` with a **clean** id and with a **comma-tailed** id —
+both recalled the codeword. So agy currently accepts a malformed conversation id, which is the only
+reason the captured comma was latent rather than a live defect: the resume worked by resting on
+undocumented vendor tolerance, not on a correct id. The scrape class is now `[\w-]+` at every site
+(the dialogue worker's under #586, the daemon's two under #837), scoped to the observed UUID
+alphabet.
+
+**Scope.** `agy` 1.1.8, Windows, non-interactive `-p` runs with `--log-file`; the tolerance claim
+is about `--conversation` specifically and could be withdrawn by any agy release without notice —
+which is exactly why no design should rest on it again.
+
 ### Still not settled — recorded as untested, not refuted
 
 - **`defer`'s single-tool-call limit.** Three attempts failed to make the model batch tool calls
