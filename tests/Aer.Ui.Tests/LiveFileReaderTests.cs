@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Aer.Ui.Tests.TestSupport;
 using Xunit;
 
@@ -13,18 +14,38 @@ namespace Aer.Ui.Tests;
 public class LiveFileReaderTests
 {
     /// <summary>
+    /// How long the writer holds the file. Well inside <see cref="LiveFileReader.ShareRetryBudget"/>
+    /// so a correct reader still has most of its retries left, while a reader without the retry
+    /// fails on its first open.
+    /// </summary>
+    private static readonly TimeSpan HoldDuration = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
     /// The defect only ever appeared as a flake under machine load, so nothing in the suite could
     /// tell a fixed reader from a lucky one. Here the contended window is created deliberately: a
     /// writer holds the file with <c>FileShare.None</c> — the same shape as the momentary open the
-    /// appender takes — and a background task releases it while the read is in flight.
+    /// appender takes — and releases it while the read is in flight.
     /// <para>
-    /// The ordering is guaranteed rather than raced for, which an earlier draft of this test got
-    /// wrong. That draft started the reader on a background task and slept before releasing, so a
-    /// thread-pool delay could let the reader make its first attempt <b>after</b> the release — it
-    /// would still pass, without ever having hit a sharing violation. A test that can pass without
-    /// discriminating is the thing being guarded against here, so the read now runs on the calling
-    /// thread, begun while the lock is provably still held, and the release is what happens in the
-    /// background.
+    /// <b>Neither side of this test may depend on the thread pool, and both earlier drafts learned
+    /// that the hard way.</b> The first ran the reader on <c>Task.Run</c> and slept before
+    /// releasing, so a scheduling delay could let the reader make its first attempt after the
+    /// release — passing without ever hitting a sharing violation. The second fixed that but still
+    /// released from a pool task, and it failed on the very next full-suite run: under load the
+    /// release was starved past <see cref="LiveFileReader.ShareRetryBudget"/>, so the reader
+    /// correctly gave up and the test reported a defect that was not there. Pool starvation is the
+    /// condition this whole bug family lives in, so a test for it cannot be scheduled on the pool.
+    /// </para>
+    /// <para>
+    /// Both halves are now pool-independent. The release runs on a dedicated thread, whose
+    /// <c>Thread.Sleep</c> wakes on time regardless of pool pressure. The read runs on the calling
+    /// thread and its retry loop also uses <c>Thread.Sleep</c>, so its first
+    /// <see cref="LiveFileReader.ShareRetryBudget"/> of retrying needs no pool thread either.
+    /// </para>
+    /// <para>
+    /// Contention is asserted by elapsed time rather than by a flag, because a flag set just after
+    /// the handle closes has its own race: the read can legitimately succeed between the release and
+    /// the flag. If the read returned before the hold elapsed, it was never contended and the arm
+    /// proved nothing — so that fails rather than passes quietly.
     /// </para>
     /// <para>
     /// Windows-only, scoped to the mechanism rather than for convenience: <c>FileShare.None</c> is
@@ -51,26 +72,29 @@ public class LiveFileReaderTests
             await File.WriteAllTextAsync(path, "the dispatch failure text", TestContext.Current.CancellationToken);
 
             var exclusive = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
-            var released = false;
-
-            // Captured out here rather than read inside the lambda: TestContext.Current is
-            // AsyncLocal, and this test should not quietly depend on how it flows into Task.Run.
-            var cancellationToken = TestContext.Current.CancellationToken;
             try
             {
-                // Released well inside LiveFileReader.ShareRetryBudget, so a correct reader still
-                // has most of its retries left; a reader without the retry fails on its first open.
-                var release = Task.Run(async () =>
+                var release = new Thread(() =>
                 {
-                    await Task.Delay(250, cancellationToken);
-                    released = true;
+                    Thread.Sleep(HoldDuration);
                     exclusive.Dispose();
-                }, cancellationToken);
+                })
+                {
+                    IsBackground = true,
+                    Name = "aer-872-release",
+                };
 
-                var content = await LiveFileReader.WaitForContentAsync(path);
-                await release;
+                var elapsed = Stopwatch.StartNew();
+                release.Start();
 
-                Assert.True(released, "The read returned before the writer released -- the lock was not actually contended.");
+                var content = LiveFileReader.ReadText(path);
+                elapsed.Stop();
+                release.Join(TimeSpan.FromSeconds(10));
+
+                Assert.True(
+                    elapsed.Elapsed >= HoldDuration,
+                    $"The read returned in {elapsed.ElapsedMilliseconds}ms, inside the {HoldDuration.TotalMilliseconds}ms " +
+                    "hold -- the writer's lock was never actually contended, so this arm proved nothing.");
                 Assert.Equal("the dispatch failure text", content);
             }
             finally
