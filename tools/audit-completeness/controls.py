@@ -627,6 +627,58 @@ def _recordonce_pin_is_vacuous():
         yield
 
 
+DIALOGUE_DRY_RUN = "--dialogue dry-runs a two-participant cross-vendor exchange into byte-shape-correct JSONs"
+DIALOGUE_ARG_VALIDATION = "--dialogue refuses fewer than two participants and an unknown vendor, naming the known ones"
+DIALOGUE_EXCLUSIVITY = "--dialogue refuses combination with --lane and --template, matching their own mutual refusal"
+
+
+@control(DIALOGUE_DRY_RUN, "the claude participant preset reverts to the stale runbook shape (--allowedTools Write, not Write,Read)")
+def _dialogue_preset_reverts_to_stale_shape():
+    # The exact discrepancy #813's own research found between live-dialogue-smoke.md's prose and
+    # Aer.Workers.Dialogue.DialogueParticipantPresets.For's real code -- proving the golden test
+    # would actually notice the Python mirror drifting from the measured C# shape, not just from
+    # itself.
+    with mutated_tree(
+        "tools/aer-agy-loop/dispatch.py",
+        lambda s: s.replace('"--allowedTools", "Write,Read", "--output-format", "text", "--model", model]',
+                            '"--allowedTools", "Write", "--output-format", "text", "--model", model]')
+    ) as path:
+        with swap(selfcheck, "DISPATCH_PY", path):
+            yield
+
+
+@control(DIALOGUE_ARG_VALIDATION, "the two-participant floor drops to one, so a single --participant dry-runs clean")
+def _dialogue_minimum_participants_weakened():
+    with mutated_tree(
+        "tools/aer-agy-loop/dispatch.py",
+        lambda s: s.replace("if len(args.participants) < 2:", "if len(args.participants) < 1:")
+    ) as path:
+        with swap(selfcheck, "DISPATCH_PY", path):
+            yield
+
+
+@control(DIALOGUE_ARG_VALIDATION, "an unknown vendor is no longer refused, so it reaches the generated config unrejected")
+def _dialogue_vendor_validation_dropped():
+    with mutated_tree(
+        "tools/aer-agy-loop/dispatch.py",
+        lambda s: s.replace("if vendor not in DIALOGUE_KNOWN_VENDORS:", "if False:")
+    ) as path:
+        with swap(selfcheck, "DISPATCH_PY", path):
+            yield
+
+
+@control(DIALOGUE_EXCLUSIVITY, "the symmetric --lane+--dialogue guard is dropped, so --lane --dialogue no longer refuses")
+def _dialogue_lane_symmetry_dropped():
+    with mutated_tree(
+        "tools/aer-agy-loop/dispatch.py",
+        lambda s: s.replace(
+            'if args.lane and args.dialogue:\n        print("error: --lane cannot be combined with --dialogue", file=sys.stderr)\n        return 2\n\n    if args.lane:',
+            "if args.lane:")
+    ) as path:
+        with swap(selfcheck, "DISPATCH_PY", path):
+            yield
+
+
 def main() -> int:
     print(__doc__.strip().splitlines()[0])
     print("=" * 78)
