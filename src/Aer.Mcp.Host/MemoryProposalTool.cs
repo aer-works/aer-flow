@@ -69,7 +69,10 @@ public sealed class MemoryProposalTool(string captureDirectoryPath) : IMcpTool
         // Structural validation only, per #801's scope -- this tool never touches memory/ itself, so
         // it cannot confirm targetPath resolves inside it. What it CAN and must reject is a path
         // shaped to escape a future consumer's own root join (0004's fail-closed posture).
-        if (Path.IsPathRooted(targetPath) || targetPath.Split('/', '\\').Contains(".."))
+        // Path.IsPathRooted answers for the RUNNING platform only -- 'C:/etc/passwd' is not rooted
+        // on Unix -- so the guard names both platforms' rooted shapes itself; a proposal is data
+        // that may be consumed on a different OS than the one that captured it.
+        if (IsRootedOnAnyPlatform(targetPath) || targetPath.Split('/', '\\').Contains(".."))
         {
             return new McpToolCallResult(
                 $"'targetPath' must be a relative path with no '..' segments; got '{targetPath}'.", IsError: true);
@@ -80,9 +83,18 @@ public sealed class MemoryProposalTool(string captureDirectoryPath) : IMcpTool
             return new McpToolCallResult(error!, IsError: true);
         }
 
-        string? content = arguments.TryGetProperty("content", out var contentElement) && contentElement.ValueKind == JsonValueKind.String
-            ? contentElement.GetString()
-            : null;
+        string? content = null;
+        if (arguments.TryGetProperty("content", out var contentElement)
+            && contentElement.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+        {
+            if (contentElement.ValueKind != JsonValueKind.String)
+            {
+                return new McpToolCallResult(
+                    "'content' must be a string when present.", IsError: true);
+            }
+
+            content = contentElement.GetString();
+        }
 
         if (content is null && operation is "add" or "edit")
         {
@@ -104,6 +116,15 @@ public sealed class MemoryProposalTool(string captureDirectoryPath) : IMcpTool
 
         return new McpToolCallResult($"Recorded a '{operation}' proposal for '{targetPath}'; escalated for operator decision.");
     }
+
+    /// <summary>
+    /// Rooted on Windows OR Unix, regardless of the running platform: a leading slash or
+    /// backslash, or a drive-letter prefix. See the call site's remarks for why
+    /// <see cref="Path.IsPathRooted(string?)"/> is not enough here.
+    /// </summary>
+    private static bool IsRootedOnAnyPlatform(string path) =>
+        path.StartsWith('/') || path.StartsWith('\\')
+        || (path.Length >= 2 && char.IsAsciiLetter(path[0]) && path[1] == ':');
 
     private static bool TryGetRequiredString(JsonElement arguments, string propertyName, out string value, out string? error)
     {

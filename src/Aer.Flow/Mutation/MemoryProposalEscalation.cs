@@ -37,6 +37,9 @@ public static class MemoryProposalEscalation
     /// <see cref="HeldWorkRef"/> -- there is no lane directory for a memory proposal, so this reuses
     /// the ref's role as "the thing to point an operator at" rather than "a lane with a flow.jsonl".
     /// Idempotent: re-running against the same directory re-dispatches nothing already recorded.
+    /// The idempotency key is the capture file's full path, so <paramref name="captureDirectoryPath"/>
+    /// must be rooted -- a relative path would resolve against the caller's current directory and
+    /// mint a second ref for the same physical file under a different cwd (#801 review).
     /// </summary>
     public static async Task<RoomState> EscalateNewProposalsAsync(
         string captureDirectoryPath,
@@ -47,6 +50,14 @@ public static class MemoryProposalEscalation
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(captureDirectoryPath);
+        if (!Path.IsPathRooted(captureDirectoryPath))
+        {
+            throw new ArgumentException(
+                $"captureDirectoryPath must be rooted; got '{captureDirectoryPath}'. The full path is the " +
+                "held-work idempotency key, and a relative path keys on the caller's current directory.",
+                nameof(captureDirectoryPath));
+        }
+
         ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentException.ThrowIfNullOrEmpty(deciderIdentity);
         ArgumentNullException.ThrowIfNull(reader);

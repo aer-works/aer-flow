@@ -46,8 +46,40 @@ public class MemoryProposalToolTests
         }
     }
 
+    // Both platforms' rooted shapes, asserted on EVERY platform: Path.IsPathRooted alone accepts
+    // 'C:/etc/passwd' on Unix (not rooted there), which is exactly the CI leg where the original
+    // single-arm test could not discriminate (#801 review).
+    [Theory]
+    [InlineData("C:/etc/passwd")]
+    [InlineData("C:\\etc\\passwd")]
+    [InlineData("/etc/passwd")]
+    [InlineData("\\\\server\\share\\x.md")]
+    public void RootedTargetPath_ReturnsErrorAndWritesNoCaptureFile(string rootedPath)
+    {
+        var dir = TempDir();
+        try
+        {
+            var tool = new MemoryProposalTool(dir);
+
+            var result = tool.Call(Parse(JsonSerializer.Serialize(new
+            {
+                operation = "add",
+                targetPath = rootedPath,
+                rationale = "why",
+                content = "x",
+            })));
+
+            Assert.True(result.IsError);
+            Assert.False(Directory.Exists(dir) && Directory.GetFiles(dir).Length > 0);
+        }
+        finally
+        {
+            DeleteIfExists(dir);
+        }
+    }
+
     [Fact]
-    public void RootedTargetPath_ReturnsErrorAndWritesNoCaptureFile()
+    public void NonStringContentForDelete_ReturnsErrorAndWritesNoCaptureFile()
     {
         var dir = TempDir();
         try
@@ -55,9 +87,10 @@ public class MemoryProposalToolTests
             var tool = new MemoryProposalTool(dir);
 
             var result = tool.Call(Parse(
-                "{\"operation\":\"add\",\"targetPath\":\"C:/etc/passwd\",\"rationale\":\"why\",\"content\":\"x\"}"));
+                "{\"operation\":\"delete\",\"targetPath\":\"foo.md\",\"rationale\":\"why\",\"content\":42}"));
 
             Assert.True(result.IsError);
+            Assert.Contains("content", result.Text, StringComparison.OrdinalIgnoreCase);
             Assert.False(Directory.Exists(dir) && Directory.GetFiles(dir).Length > 0);
         }
         finally

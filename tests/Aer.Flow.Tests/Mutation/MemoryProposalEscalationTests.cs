@@ -75,6 +75,18 @@ public class MemoryProposalEscalationTests : IDisposable
         Assert.Empty(state.HeldWork);
     }
 
+    [Fact]
+    public async Task A_relative_capture_directory_is_refused_because_the_full_path_is_the_idempotency_key()
+    {
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => MemoryProposalEscalation.EscalateNewProposalsAsync(
+            "relative/captures", _tempDirectory, "operator", reader, writer, TestContext.Current.CancellationToken));
+
+        Assert.Contains("rooted", ex.Message);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))
