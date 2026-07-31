@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
 import shutil
 import sys
@@ -67,6 +68,37 @@ def swap(obj, attr, value):
             delattr(obj, attr)
         else:
             setattr(obj, attr, prior)
+
+
+@contextlib.contextmanager
+def env_override(name: str, value: str):
+    """Temporarily set an env var, restoring (or deleting) it even if the check raises."""
+    missing = object()
+    prior = os.environ.get(name, missing)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if prior is missing:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = prior
+
+
+@contextlib.contextmanager
+def mutated_presets_json(edit):
+    """#836: DialogueParticipantPresets.json (`src/Aer.Workers.Dialogue/`) is outside `tools/`, so
+    `mutated_tree`'s copytree of `tools/` alone can't reach it. dispatch.py reads the file via
+    AER_DIALOGUE_PRESETS_PATH when set (falling back to the repo-relative default otherwise) for
+    exactly this: point it at an edited copy in its own temp dir, no tracked file touched.
+    """
+    original = (ROOT / "src" / "Aer.Workers.Dialogue" / "DialogueParticipantPresets.json").read_text(encoding="utf-8")
+    edited = edit(original)
+    assert edited != original, "the edit to DialogueParticipantPresets.json did not apply -- this arm measures nothing"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "DialogueParticipantPresets.json"
+        path.write_text(edited, encoding="utf-8")
+        yield path
 
 
 @contextlib.contextmanager
@@ -638,12 +670,14 @@ def _dialogue_preset_reverts_to_stale_shape():
     # Aer.Workers.Dialogue.DialogueParticipantPresets.For's real code -- proving the golden test
     # would actually notice the Python mirror drifting from the measured C# shape, not just from
     # itself.
-    with mutated_tree(
-        "tools/aer-agy-loop/dispatch.py",
-        lambda s: s.replace('"--allowedTools", "Write,Read", "--output-format", "text", "--model", model]',
-                            '"--allowedTools", "Write", "--output-format", "text", "--model", model]')
+    #
+    # #836: the shape moved from a dispatch.py literal into DialogueParticipantPresets.json (the
+    # single source dispatch.py now reads instead of hand-mirroring), so the fault is injected
+    # there instead, via AER_DIALOGUE_PRESETS_PATH -- see mutated_presets_json's own docstring.
+    with mutated_presets_json(
+        lambda s: s.replace('"Write,Read"', '"Write"')
     ) as path:
-        with swap(selfcheck, "DISPATCH_PY", path):
+        with env_override("AER_DIALOGUE_PRESETS_PATH", str(path)):
             yield
 
 
