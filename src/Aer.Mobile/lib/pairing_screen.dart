@@ -61,7 +61,7 @@ class _PairingScreenState extends State<PairingScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'That QR code isn\'t an AER pairing code — enter the host and code by hand instead.',
+              'That QR code isn\'t a Baton pairing code — enter the host and code by hand instead.',
             ),
           ),
         );
@@ -181,7 +181,7 @@ class _PairingScreenState extends State<PairingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pair with Aer')),
+      appBar: AppBar(title: const Text('Pair with Baton')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Form(
@@ -190,7 +190,7 @@ class _PairingScreenState extends State<PairingScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
-                'On the desktop, open Aer Flow\'s Remote Access screen and turn on remote access — '
+                'On the desktop, open Baton\'s Remote Access screen and turn on remote access — '
                 'then scan its QR code, or enter the host and code shown there by hand.',
               ),
               const SizedBox(height: 16),

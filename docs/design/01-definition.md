@@ -129,7 +129,7 @@ One source of truth per room. Every surface — switcher row, header, inbox, pho
 
 Not the current app — what the definition above asks for. Rooms always visible, the current one in the middle, and a gate answered where you already are.
 
-● AER Flow
+● Baton
 
 ▤ ✎ ◈ ⚙
 

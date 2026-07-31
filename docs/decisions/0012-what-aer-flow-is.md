@@ -1,4 +1,4 @@
-# 0012 — What AER Flow is
+# 0012 — What Baton is
 
 Status: accepted
 Date: 2026-07-24
@@ -32,7 +32,7 @@ neither screen is what it measures.
 
 ## Decision
 
-**AER Flow is a drop-in replacement for Claude Code that puts more than one model in the room, and
+**Baton is a drop-in replacement for Claude Code that puts more than one model in the room, and
 lets you leave the room without losing it.**
 
 Three commitments follow, and every one of them constrains what may be built:

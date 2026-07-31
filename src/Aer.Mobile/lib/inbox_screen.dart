@@ -566,12 +566,12 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     final projection = _projection;
 
     final taskTitle = projection?.directoryPath == null
-        ? (projection?.workflowTemplateId ?? 'Aer')
+        ? (projection?.workflowTemplateId ?? 'Baton')
         : projection!.directoryPath!.split(RegExp(r'[\\/]')).last;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(projection == null ? 'Aer' : '$taskTitle — ${projection.status}'),
+        title: Text(projection == null ? 'Baton' : '$taskTitle — ${projection.status}'),
         actions: [
           IconButton(icon: const Icon(Icons.chat_bubble_outline), tooltip: 'Start new chat', onPressed: _startNewChat),
           IconButton(icon: const Icon(Icons.add), tooltip: 'Start from template', onPressed: _showTemplatePicker),

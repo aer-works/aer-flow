@@ -29,11 +29,11 @@ One screen, one action, and the answer to the question that actually breaks firs
 
 Desktop · nothing yet
 
-AER Flow
+Baton
 
 ▤ ◱ ⚙
 
-Point AER Flow at a folder
+Point Baton at a folder
 
 A room is a conversation about one folder. Open one and start talking; add a second worker whenever it is worth it.
 
@@ -49,7 +49,7 @@ One room, one worker. This is the screen you look at most, so it has to be borin
 
 Desktop · one worker
 
-AER Flow
+Baton
 
 ▤ ◱ ⚙
 
@@ -83,7 +83,7 @@ The escalation. You added a reviewer, it disagreed, and now something needs you.
 
 Desktop · two workers · decision inline
 
-AER Flow
+Baton
 
 ▤ ◱ ⚙
 
@@ -132,7 +132,7 @@ A failure is a state, not an absence. The rule this screen exists to enforce: a 
 
 Desktop · failed room
 
-AER Flow
+Baton
 
 ▤ ◱ ⚙
 
@@ -162,7 +162,7 @@ Shaped work has to be about as cheap to start as a bare conversation, or nobody 
 
 Desktop · new room from a template
 
-AER Flow · New room
+Baton · New room
 
 ▤ ◱ ⚙
 
@@ -196,7 +196,7 @@ The one place the product asks you to think structurally. It gets the strongest 
 
 Desktop · template editor
 
-AER Flow · draft → review
+Baton · draft → review
 
 ▤ ◱ ⚙
 
@@ -254,7 +254,7 @@ Three groups, one screen, no tabs. Settings should be somewhere you visit rarely
 
 Desktop · settings
 
-AER Flow · Settings
+Baton · Settings
 
 ▤ ◱ ⚙
 
@@ -292,7 +292,7 @@ Phone · first run · rooms · a gate · a notification
 
 Connect First run
 
-Open AER Flow on your computer, go to Settings → Your phone, and enter the code it shows.
+Open Baton on your computer, go to Settings → Your phone, and enter the code it shows.
 
 4 7 2 · · ·
 
@@ -333,10 +333,10 @@ Reply… ↑
 
 Locked Notification
 
-AER Flow · aer-flow agy corrected claude's patch — a decision is waiting.
+Baton · aer-flow agy corrected claude's patch — a decision is waiting.
 Open
 
-AER Flow · migration Failed — the worker exited before finishing.
+Baton · migration Failed — the worker exited before finishing.
 
 A notification says enough to judge whether it is worth opening, and never decides anything.
 
@@ -371,7 +371,7 @@ count reads as what's configured on it, not as a replacement for it.
 Desktop · worker chip skill-attach popover
 
 ```
-AER Flow · aer-flow
+Baton · aer-flow
 ▤ ◱ ⚙
 
 Rooms + New            aer-flow  [👑 claude · 2 skills ▼]  [+ Add worker]
@@ -443,7 +443,7 @@ narrower place for it to start out living.
 Desktop · skill creation drawer (progressive disclosure)
 
 ```
-AER Flow · Create Skill
+Baton · Create Skill
 ▤ ◱ ⚙
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -495,7 +495,7 @@ orchestrator or removing a worker — must preserve room state integrity and enf
 Desktop · room header with orchestrator pin & mid-gate blocked state
 
 ```
-AER Flow · aer-flow
+Baton · aer-flow
 ▤ ◱ ⚙
 
 Rooms + New            aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]  [+ Add]
@@ -517,7 +517,7 @@ you · gate #3         Needs you · permission requested
 Desktop · removing the current orchestrator is refused outright
 
 ```
-AER Flow · aer-flow
+Baton · aer-flow
 ▤ ◱ ⚙
 
 Rooms + New            aer-flow  [👑 claude · 2 skills ✕]  [agy · 1 skill]
@@ -534,7 +534,7 @@ Rooms + New            aer-flow  [👑 claude · 2 skills ✕]  [agy · 1 skill]
 Desktop · removing a non-orchestrator worker with in-flight work & DAG dependency refusal
 
 ```
-AER Flow · aer-flow
+Baton · aer-flow
 ▤ ◱ ⚙
 
 Rooms + New            aer-flow  [👑 claude · 2 skills]  [agy · 1 skill ✕]
@@ -563,7 +563,7 @@ Removing a worker mid-room checks three things, in order:
    different worker first, then remove ([0032](../decisions/0032-room-orchestrator-is-mandatory.md)).
    There is no override for this one; a room cannot be left without an orchestrator, even
    momentarily.
-2. **In-flight execution stop.** If the worker is currently executing a task, AER Flow invokes
+2. **In-flight execution stop.** If the worker is currently executing a task, Baton invokes
    `InFlightExecutionRegistry.RequestCancellationAsync` to halt the CLI worker before updating room
    state — the real, already-existing mechanism, not a new one.
 3. **DAG dependency check (v1 refusal).** If the room has an active workflow where a downstream step
@@ -584,7 +584,7 @@ Desktop · room header with workflow toggle ON vs OFF
 ```
 Desktop · Workflow ON (shape panel visible)
 
-AER Flow · aer-flow                                          Workflow [● ON ]
+Baton · aer-flow                                          Workflow [● ON ]
 ▤ ◱ ⚙
 
 aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]
@@ -602,7 +602,7 @@ claude · working Editing auth.ts...                           Shape
 
 Desktop · Workflow OFF (shape panel hidden, workers remain as free-form workers)
 
-AER Flow · aer-flow                                          Workflow [○ OFF]
+Baton · aer-flow                                          Workflow [○ OFF]
 ▤ ◱ ⚙
 
 aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]
