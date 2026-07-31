@@ -821,6 +821,46 @@ def step10_gate_citations():
     return ok
 
 
+def step11_register_pins():
+    """The two register drifts #797's inventory actually caught, made permanent checks.
+
+    Incident 1: docs/decision-audit.md's header said 41 over a 43-record register -- a
+    transcribed count over a population its own text says to compute. The header's number must
+    equal the records on disk.
+
+    Incident 2: the ledger's two stalest `fix` entries were the vendor version pins --
+    docs/vendor-capabilities.md and docs/vendor-doc-audit.md each carry a header naming the
+    measured `claude`/`agy` versions, and one drifted to 1.1.7 while the measured reality was
+    1.1.8. The two headers must agree per vendor. (Agreement, not currency: nothing here proves
+    the pinned version is the one installed today -- re-measuring is what refreshes both.)
+    """
+    rule("STEP 11 -- the register pins #797's inventory caught drifting stay consistent")
+    ok = True
+
+    d = os.path.join(ROOT, "docs", "decisions")
+    on_disk = len([f for f in os.listdir(d) if re.match(r"^\d{4}-", f)]) if os.path.isdir(d) else 0
+    m = re.search(r"currently (\d+)", read("docs/decision-audit.md")[:600])
+    claimed = int(m.group(1)) if m else -1
+    ok &= line("decision-audit.md header count vs records on disk", claimed, on_disk,
+               "the header once said 41 over a 43-record register")
+
+    audit_head = read("docs/vendor-doc-audit.md")[:600]
+    caps_head = read("docs/vendor-capabilities.md")[:600]
+    ver = r"(\d+(?:\.\d+)*)"  # no trailing dot: the audit header's pin ends a sentence
+    a = re.search(rf"`claude` {ver} and `agy` {ver}", audit_head)
+    c = re.search(rf"`claude` {ver} / `agy` {ver}", caps_head)
+    if not a or not c:
+        which = "vendor-doc-audit.md" if not a else "vendor-capabilities.md"
+        print(f"    !! {which}'s header version pin is missing or reshaped -- agreement"
+              " cannot be judged; fix the header or this pattern together")
+        return False
+    ok &= line("claude header pin, audit vs capabilities", a.group(1), c.group(1),
+               "one file drifting alone is the caught incident")
+    ok &= line("agy header pin, audit vs capabilities", a.group(2), c.group(2),
+               "one file drifting alone is the caught incident")
+    return ok
+
+
 def _shutil_which(name):
     import shutil
     return shutil.which(name)
@@ -872,7 +912,7 @@ def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
-               step9_pinned_models_exist(), step10_gate_citations()]
+               step9_pinned_models_exist(), step10_gate_citations(), step11_register_pins()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [
@@ -891,6 +931,8 @@ def main() -> int:
         "  the register is a recording, and re-running `agy models` is what refreshes it.",
         "Step 4 only catches a citation near a staleness WORD -- a doc that calls a closed issue",
         "  \"resolved\" while still describing the old, wrong behaviour reads clean to this check.",
+        "Step 11 checks the two version headers AGREE, never that either is the version",
+        "  installed today -- re-measuring against the live CLIs is what refreshes both.",
         "Step 10 only sees citations that use the WORD 'gate'. Referring to a gate by its title,",
         "  its position ('the sixth one'), or by quoting its text goes unnoticed -- and a slug that",
         "  is correct is not thereby CITED CORRECTLY: this checks the shape, never the aptness.",
