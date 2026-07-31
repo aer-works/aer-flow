@@ -72,6 +72,7 @@ that bounds the *documentation*, not reality.
 | 0041 | unaffected | Phone template authoring ships with the shapes milestone. Scope/timing rule, no vendor dependency. |
 | 0042 | unaffected | Retry backoff is a derived obligation with a steady default. Written after #527 against the engine's own event log and clock ownership; the only vendor-adjacent fact (rate-limited CLIs punish hot retry loops) motivates it but nothing in it depends on a vendor mechanism. |
 | 0043 | unaffected | Structured verdict as a schema'd contract output. Written after #527 against the engine's own contract-validation machinery; no vendor mechanism anywhere in it — the writers happen to be vendor CLI workers, but the schema is enforced by Flow on bytes on disk. |
+| 0044 | unaffected | Memory belongs to the room and changes only by decision. Written 2026-07-30, long after #527; its one vendor-adjacent dependency (a portable structured worker→AER channel) rests on 0029/0035's post-audit measurements and #585's shipped host, named in its own Rests on table. |
 
 ## Decisions whose dependencies are now recorded
 
