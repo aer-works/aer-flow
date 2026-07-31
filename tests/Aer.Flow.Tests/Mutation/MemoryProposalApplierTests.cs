@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Aer.Flow.Mutation;
 
@@ -138,6 +139,149 @@ public class MemoryProposalApplierTests : IDisposable
         Assert.Equal(
             "nested fact",
             await File.ReadAllTextAsync(Path.Combine(_memoryRoot, "topics", "fact.md"), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// #856: the lexical guard is `Path.GetFullPath` + prefix check, which never asks the
+    /// filesystem whether a path component is a reparse point. A junction placed under memory/
+    /// pointing outside it passes that string check -- proven red here against unmodified code
+    /// (before the fix, this test fails: the write lands in <c>outsideDirectory</c>). On
+    /// Windows, directory junctions are creatable with plain filesystem write access (no admin,
+    /// no Developer Mode) via <c>mklink /J</c>; that's the mechanism actually measured here. On
+    /// Linux/macOS, `Directory.CreateSymbolicLink` for a directory symlink needs no elevation
+    /// either, so the same escape shape is provable with a real symlink instead.
+    /// </summary>
+    [Fact]
+    public async Task A_reparse_point_under_memory_that_resolves_outside_it_is_refused()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var outsideDirectory = Path.Combine(_tempDirectory, "outside");
+        Directory.CreateDirectory(outsideDirectory);
+
+        var linkPath = Path.Combine(_memoryRoot, "escape");
+        if (!TryCreateDirectoryReparsePoint(linkPath, outsideDirectory, out var skipReason))
+        {
+            Assert.Skip(skipReason);
+            return;
+        }
+
+        try
+        {
+            var capture = WriteCapture(
+                """{"Operation":"add","TargetPath":"escape/pwned.md","Content":"pwned","Rationale":"malicious"}""");
+
+            await Assert.ThrowsAsync<InvalidRoomMutationException>(
+                () => MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken));
+
+            Assert.False(File.Exists(Path.Combine(outsideDirectory, "pwned.md")));
+        }
+        finally
+        {
+            // Recursive delete of a directory containing a reparse point is flaky on Windows
+            // (Access to the path denied) -- unlink it explicitly first so Dispose()'s recursive
+            // delete of _tempDirectory only ever walks real directories.
+            RemoveDirectoryLink(linkPath);
+        }
+    }
+
+    /// <summary>
+    /// Other polarity (#856 item 2): a reparse point under memory/ that resolves back inside
+    /// memory/ -- e.g. someone symlinking one fact file to another for their own reasons -- must
+    /// keep working. Refusing every reparse point would be a different, broader behaviour change
+    /// than closing the outside-escape above.
+    /// </summary>
+    [Fact]
+    public async Task A_reparse_point_under_memory_that_resolves_back_inside_it_is_allowed()
+    {
+        Directory.CreateDirectory(_memoryRoot);
+        var realDirectory = Path.Combine(_memoryRoot, "real");
+        Directory.CreateDirectory(realDirectory);
+
+        var linkPath = Path.Combine(_memoryRoot, "alias");
+        if (!TryCreateDirectoryReparsePoint(linkPath, realDirectory, out var skipReason))
+        {
+            Assert.Skip(skipReason);
+            return;
+        }
+
+        try
+        {
+            var capture = WriteCapture(
+                """{"Operation":"add","TargetPath":"alias/fact.md","Content":"via alias","Rationale":"learned it"}""");
+
+            await MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken);
+
+            Assert.Equal(
+                "via alias",
+                await File.ReadAllTextAsync(Path.Combine(realDirectory, "fact.md"), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            RemoveDirectoryLink(linkPath);
+        }
+    }
+
+    /// <summary>
+    /// Unlinks a reparse point created by <see cref="TryCreateDirectoryReparsePoint"/> without
+    /// touching its target -- <c>Directory.Delete(path, recursive: false)</c> on a junction or
+    /// directory symlink removes the link itself, never the linked-to contents.
+    /// </summary>
+    private static void RemoveDirectoryLink(string linkPath)
+    {
+        if (Directory.Exists(linkPath))
+        {
+            Directory.Delete(linkPath, recursive: false);
+        }
+    }
+
+    /// <summary>
+    /// Creates a directory reparse point at <paramref name="linkPath"/> pointing at <paramref
+    /// name="targetPath"/>: a junction on Windows (via <c>mklink /J</c>, spawned directly rather
+    /// than through a shell so path quoting cannot mangle it -- unprivileged, unlike a Windows
+    /// directory symlink which needs admin or Developer Mode), or a directory symlink elsewhere
+    /// (unprivileged on Linux/macOS). Returns false with a reason if the environment cannot host
+    /// either -- the caller must skip rather than fake the arm.
+    /// </summary>
+    private static bool TryCreateDirectoryReparsePoint(string linkPath, string targetPath, out string skipReason)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(linkPath, targetPath);
+                skipReason = "";
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                skipReason = $"Could not create a directory symlink in this environment: {ex.Message}";
+                return false;
+            }
+        }
+
+        var startInfo = new ProcessStartInfo("cmd.exe")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("mklink");
+        startInfo.ArgumentList.Add("/J");
+        startInfo.ArgumentList.Add(linkPath);
+        startInfo.ArgumentList.Add(targetPath);
+
+        using var process = Process.Start(startInfo)!;
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            skipReason = $"'mklink /J' exited {process.ExitCode}: {process.StandardError.ReadToEnd()}";
+            return false;
+        }
+
+        skipReason = "";
+        return true;
     }
 
     [Fact]

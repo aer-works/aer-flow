@@ -131,6 +131,19 @@ public static class MemoryProposalApplier
     /// outside <paramref name="memoryRoot"/> exactly like a <c>../</c> escape does — one guard
     /// catches both shapes, non-negotiable per #672.
     /// </summary>
+    /// <remarks>
+    /// <see cref="Path.GetFullPath(string)"/> is purely lexical: it collapses <c>..</c> segments
+    /// textually but never asks the filesystem whether a directory along the way is a junction or
+    /// symlink. #856: a reparse point already sitting under <paramref name="memoryRoot"/> (a
+    /// junction is creatable by anything with plain write access to the room directory, no admin
+    /// needed on Windows -- see <see cref="ResolveReparsePointsIgnoringMissingTail"/>) passes the
+    /// lexical check above and would let the actual disk write land wherever the link points,
+    /// because the OS follows reparse points transparently for every normal file API. This is
+    /// defense-in-depth for the engine's own promise that an approved apply writes strictly inside
+    /// <c>memory/</c> -- not a privilege boundary: an attacker who can already place a junction
+    /// under <c>memory/</c> already has write access to the room directory and could edit
+    /// <c>memory/</c> directly.
+    /// </remarks>
     internal static string ResolveTargetPathStrictlyInsideMemory(string memoryRoot, string targetPath)
     {
         if (string.IsNullOrWhiteSpace(targetPath))
@@ -150,7 +163,83 @@ public static class MemoryProposalApplier
                 $"Memory-proposal targetPath '{targetPath}' resolves outside memory/ (to '{combined}'); refused.");
         }
 
+        // The lexical check above passed. Re-check containment against the reparse-resolved path:
+        // a junction/symlink for an ancestor directory (or the leaf itself) that exists today under
+        // memoryRoot can redirect the write outside it even though the string-only check above is
+        // satisfied. A link that resolves back inside memoryRoot is left alone (item 2, #856) --
+        // this only refuses the case where resolution actually escapes.
+        var realRoot = ResolveIfReparsePoint(memoryRoot);
+        var realCombined = ResolveReparsePointsIgnoringMissingTail(memoryRoot, combined);
+
+        var realRootWithSeparator = realRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? realRoot
+            : realRoot + Path.DirectorySeparatorChar;
+
+        if (!string.Equals(realCombined, realRoot, StringComparison.Ordinal)
+            && !realCombined.StartsWith(realRootWithSeparator, StringComparison.Ordinal))
+        {
+            throw new InvalidRoomMutationException(
+                $"Memory-proposal targetPath '{targetPath}' resolves outside memory/ through a reparse point " +
+                $"(to '{realCombined}'); refused.");
+        }
+
         return combined;
+    }
+
+    /// <summary>
+    /// Walks <paramref name="combined"/>'s path segments below <paramref name="memoryRoot"/> one at
+    /// a time, resolving each existing ancestor that is itself a reparse point (following chained
+    /// links via <c>returnFinalTarget: true</c>) before appending the next segment. A segment that
+    /// does not exist yet (the common case for an 'add' whose parent directories get created later
+    /// by <see cref="ApplyAsync"/>) is appended literally with no resolution attempted -- there is
+    /// nothing on disk yet for it to redirect through.
+    /// </summary>
+    private static string ResolveReparsePointsIgnoringMissingTail(string memoryRoot, string combined)
+    {
+        var relative = Path.GetRelativePath(memoryRoot, combined);
+        if (relative == ".")
+        {
+            return ResolveIfReparsePoint(memoryRoot);
+        }
+
+        var segments = relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
+
+        var current = ResolveIfReparsePoint(memoryRoot);
+        foreach (var segment in segments)
+        {
+            current = Path.Combine(current, segment);
+            if (Directory.Exists(current) || File.Exists(current))
+            {
+                current = ResolveIfReparsePoint(current);
+            }
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// Returns <paramref name="path"/> unchanged unless it exists and is itself a reparse point, in
+    /// which case returns the fully-resolved final target (chained junctions/symlinks included).
+    /// </summary>
+    private static string ResolveIfReparsePoint(string path)
+    {
+        var isDirectory = Directory.Exists(path);
+        if (!isDirectory && !File.Exists(path))
+        {
+            return path;
+        }
+
+        var attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.ReparsePoint) == 0)
+        {
+            return path;
+        }
+
+        var resolved = isDirectory
+            ? Directory.ResolveLinkTarget(path, returnFinalTarget: true)
+            : File.ResolveLinkTarget(path, returnFinalTarget: true);
+
+        return resolved?.FullName ?? path;
     }
 
     private static void RegenerateIndex(string memoryRoot)
