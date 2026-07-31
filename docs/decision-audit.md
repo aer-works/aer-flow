@@ -100,3 +100,17 @@ pixi run audit-completeness
 It fails if any record on disk lacks a row, if a row's disposition is not one of the four words, if
 a row gives no reason, or if either of 0029/0030 loses its `Rests on` table. It cannot check whether
 a *reason* is correct — only that one was given.
+
+## Near-twin resolutions (#797 Phase 3, box 5)
+
+Phase 1a's inventory flagged three decision pairs as textual near-duplicates and required a
+human-grade read — absorb, supersede, or a named reason to keep both. All three resolve to
+**keep both**: each flagged similarity turned out to be deliberate structure, not drift. The
+first cell deliberately does not lead with a bare decision number, so these rows stay invisible
+to the sweep parser above (it keys any number-leading row).
+
+| pair | resolution | why |
+|---|---|---|
+| pair 0011 ↔ 0027 | keep both — rule ↔ mechanics | 0011 decides the trigger currency (tokens, not turns); 0027 opens as "the mechanics behind 0011" and decides the unit (the worker) and the contract (announce, do not act; disclosed backstop), carrying its own measured Rests on table. Each cites the other for its half. Absorbing would bloat the rule with code-level facts that move independently; superseding would orphan a decision the other does not contradict. |
+| pair 0017 ↔ 0023 | keep both — rule ↔ reasoning | 0017 decides the three-axis split (vendor / model / effort); 0023 opens as the naming rule's "full reasoning and empirical evidence" and is where amendments accrue — it already carries the 2026-07-28 #510 amendment (agy's two effort controls, holes in the combination set). That accretion is exactly why it stays separate from the axis decision it serves. |
+| pair 0016 ↔ 0021, with 0035 adjacent | keep both — instance ↔ general | 0021 states the relation itself: room memory "is an instance of this record rather than a separate mechanism." 0016 owns whose the memory is and who may write it; 0021 owns what any artifact is. They share a model, not a subject. 0035 is the yield/proposal channel both ride on — a mechanism dependency, not overlapping text. 0016's proposal clause is since refined by 0044 (writes only by decision; proposals as held work), which cites 0016 rather than restating it. |
