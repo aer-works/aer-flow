@@ -4,6 +4,8 @@
     <Project Path="src/Aer.Cli/Aer.Cli.csproj" />
     <Project Path="src/Aer.Daemon/Aer.Daemon.csproj" />
     <Project Path="src/Aer.Flow/Aer.Flow.csproj" />
+    <Project Path="src/Aer.Mcp/Aer.Mcp.csproj" />
+    <Project Path="src/Aer.Mcp.Host/Aer.Mcp.Host.csproj" />
     <Project Path="src/Aer.Ui.Core/Aer.Ui.Core.csproj" />
     <Project Path="src/Aer.Ui/Aer.Ui.csproj" />
     <Project Path="src/Aer.Workers.Dialogue/Aer.Workers.Dialogue.csproj" />
@@ -17,6 +19,7 @@
     <Project Path="tests/Aer.Cli.Tests/Aer.Cli.Tests.csproj" />
     <Project Path="tests/Aer.Flow.CrashTestHost/Aer.Flow.CrashTestHost.csproj" />
     <Project Path="tests/Aer.Flow.Tests/Aer.Flow.Tests.csproj" />
+    <Project Path="tests/Aer.Mcp.Tests/Aer.Mcp.Tests.csproj" />
     <Project Path="tests/Aer.Plan.Tests/Aer.Plan.Tests.csproj" />
     <Project Path="tests/Aer.Ui.Tests/Aer.Ui.Tests.csproj" />
     <Project Path="tests/Aer.Workers.Dialogue.Tests/Aer.Workers.Dialogue.Tests.csproj" />

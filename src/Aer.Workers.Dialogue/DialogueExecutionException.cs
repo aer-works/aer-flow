@@ -29,4 +29,9 @@ public sealed class DialogueExecutionException : Exception
         : base(message)
     {
     }
+
+    public DialogueExecutionException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }

@@ -14,6 +14,11 @@ CLAUDE.md's "Live-vendor smoke tests" section. `DialogueRunner` shells out to wh
 be provisioned headlessly from inside an agent session, and it shouldn't be worked around (e.g. by
 dropping in an API key) just to make the gate pass.
 
+**Since #585's wiring landed**, both participants' commands are now also MCP-wired for the `yield`
+tool (`--mcp-config`/`--strict-mcp-config` for claude, `--add-dir` for agy) — see
+[`aer-yield-mcp-wiring.md`](./aer-yield-mcp-wiring.md) for what that adds and, importantly, what it
+does *not* yet verify (this test's debate prompt gives neither side a reason to call `yield`).
+
 ## Prerequisites
 
 - An authenticated `claude` CLI on `PATH` — see [`live-claude-smoke.md`](./live-claude-smoke.md)'s

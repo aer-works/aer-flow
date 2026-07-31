@@ -64,8 +64,11 @@ public class ProcessVendorTurnClientEndToEndTests
     }
 
     [Fact]
-    public async Task A_stop_sentinel_from_a_real_stub_process_ends_the_exchange_early()
+    public async Task A_stop_sentinel_from_a_real_stub_process_no_longer_ends_the_exchange()
     {
+        // #585/decision 0035 retired the text-sentinel mechanism -- a real stub process producing
+        // sentinel-looking text (configured via the still-parsed StopSentinel field) must run the full
+        // turn budget, the polarity flip on this test's old "...ends_the_exchange_early" behavior.
         var root = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-{Guid.NewGuid():N}");
         var scriptDirectory = Path.Combine(root, "scripts");
         var outputDirectory = Path.Combine(root, "output");
@@ -75,7 +78,7 @@ public class ProcessVendorTurnClientEndToEndTests
             var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "You are the critic.", " APPROVED");
             var config = new DialogueWorkerConfig(
                 SeedPrompt: "Design a cache.",
-                TurnBudget: 6,
+                TurnBudget: 4,
                 FinalOutputName: "transcript-summary.md",
                 StopSentinel: "APPROVED",
                 Participants: [initiator, responder]);
@@ -83,10 +86,9 @@ public class ProcessVendorTurnClientEndToEndTests
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
             var turns = await runner.RunAsync(config, outputDirectory);
 
-            // Responder's second turn (sequence 2) always carries the sentinel, so the exchange
-            // stops right there instead of running all 6 budgeted turns.
-            Assert.Equal(2, turns.Count);
-            Assert.DoesNotContain("APPROVED", turns[^1].Text);
+            Assert.Equal(4, turns.Count);
+            Assert.Contains("APPROVED", turns[1].Text);
+            Assert.All(turns, t => Assert.Null(t.YieldOutcome));
         }
         finally
         {

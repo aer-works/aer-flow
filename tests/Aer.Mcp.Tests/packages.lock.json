@@ -107,12 +107,6 @@
         "dependencies": {
           "Aer.Mcp": "[0.14.0, )"
         }
-      },
-      "aer.workers.dialogue": {
-        "type": "Project",
-        "dependencies": {
-          "Aer.Mcp.Host": "[0.14.0, )"
-        }
       }
     }
   }
