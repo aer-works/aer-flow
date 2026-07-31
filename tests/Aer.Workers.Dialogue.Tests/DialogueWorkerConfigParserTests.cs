@@ -200,6 +200,35 @@ public class DialogueWorkerConfigParserTests
         Assert.Contains(parsed.Participants[1].Args, a => a == DialogueParticipant.PromptPlaceholder);
     }
 
+    /// <summary>
+    /// #836: the test above only ever passes model: null, so it never parser-judges ModelArgs --
+    /// the half of DialogueParticipantPresets.json that tools/aer-agy-loop/dispatch.py always uses
+    /// (its --participant flag makes a model mandatory). Without this arm, a broken ModelArgs
+    /// entry in the shared JSON could stay green here while every generated dialogue config with a
+    /// model still fails at parse time -- the #586 failure mode, relocated rather than closed.
+    /// </summary>
+    [Fact]
+    public void A_participant_built_from_a_preset_with_a_model_parses()
+    {
+        var config = new DialogueWorkerConfig(
+            SeedPrompt: "Propose a design.",
+            TurnBudget: 4,
+            FinalOutputName: "transcript-summary.md",
+            Participants:
+            [
+                DialogueParticipantPresets.For("claude", "initiator", "You are the architect.", model: "sonnet"),
+                DialogueParticipantPresets.For("gemini", "responder", "You are the critic.", model: "gemini-3.6-flash-high"),
+            ]);
+        var json = System.Text.Json.JsonSerializer.Serialize(config);
+
+        var parsed = DialogueWorkerConfigParser.Parse(json);
+
+        Assert.Contains(parsed.Participants[0].Args, a => a == DialogueParticipant.PromptPlaceholder);
+        Assert.Contains(parsed.Participants[1].Args, a => a == DialogueParticipant.PromptPlaceholder);
+        Assert.Contains("sonnet", parsed.Participants[0].Args);
+        Assert.Contains("gemini-3.6-flash-high", parsed.Participants[1].Args);
+    }
+
     /// <summary>The negative arm: a participant with no {PROMPT} element at all — not even embedded in a longer string — must be rejected.</summary>
     [Fact]
     public void A_participant_with_no_placeholder_throws()

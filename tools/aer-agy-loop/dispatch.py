@@ -437,6 +437,26 @@ def build_workflow(
 
 DIALOGUE_PROMPT_PLACEHOLDER = "{PROMPT}"
 
+# #836: the shared preset-shapes JSON, canonically documented on DialogueParticipantPresets'
+# own doc comment (C#), which this tool reads by repo-relative path. Overridable
+# via env var so a fault-injection control (tools/audit-completeness/controls.py) can point a
+# mutated copy of this tool at a mutated copy of the JSON without touching the tracked file; the
+# repo-relative default is __file__-resolved so it works regardless of the caller's cwd, the same
+# convention resolve()'s own repo_root already uses below.
+DIALOGUE_PRESETS_PATH = Path(
+    os.environ.get("AER_DIALOGUE_PRESETS_PATH")
+    or Path(__file__).resolve().parents[2] / "src" / "Aer.Workers.Dialogue" / "DialogueParticipantPresets.json"
+)
+
+
+def _load_dialogue_presets() -> dict:
+    """Vendor -> preset shape, straight off the shared JSON -- no hand-typed Command/Args copy."""
+    raw = json.loads(DIALOGUE_PRESETS_PATH.read_text(encoding="utf-8"))
+    return {entry["Vendor"]: entry for entry in raw}
+
+
+DIALOGUE_PRESETS = _load_dialogue_presets()
+
 # The dialogue worker's own default per-turn timeout (DialogueWorkerConfig.DefaultTurnTimeout,
 # TimeSpan.FromMinutes(5)) -- mirrored here, not read from the assembly, because this tool never
 # loads .NET types. The formula below relies on this staying in sync with that constant; a drift
@@ -460,22 +480,20 @@ def dialogue_timeout_minutes(turn_budget: int) -> int:
 
 
 def build_dialogue_participant(vendor: str, role: str, preamble: str, model: str) -> dict:
-    """One participant's Command/Args, mirroring Aer.Workers.Dialogue.DialogueParticipantPresets.For
-    (C#) exactly -- the vendor invocation shapes measured for live-dialogue-smoke.md and rebuilt by
-    DialogueWorkerAdapter.Gate() at bind time for any participant declaring a known Vendor. This is
-    the ONE place this tool owns those shapes; every dialogue participant this tool builds goes
-    through this function rather than re-deriving flags at each call site.
+    """One participant's Command/Args, built from DIALOGUE_PRESETS -- the same
+    DialogueParticipantPresets.json that Aer.Workers.Dialogue.DialogueParticipantPresets.For (C#)
+    embeds and reads (#836). This tool owns no hand-typed Command/Args copy of its own; every
+    dialogue participant this tool builds goes through this function rather than re-deriving flags
+    at each call site, and this function derives them from the shared JSON rather than a literal.
     """
-    # #586 retired {PROMPT_FILE}: the bounded per-turn prompt goes straight into the {PROMPT}
-    # argv element, and the parser now refuses a participant without it.
-    if vendor == "claude":
-        command = "claude"
-        args = ["-p", DIALOGUE_PROMPT_PLACEHOLDER, "--allowedTools", "Write,Read", "--output-format", "text", "--model", model]
-    elif vendor == "gemini":
-        command = "agy"
-        args = ["-p", DIALOGUE_PROMPT_PLACEHOLDER, "--mode", "accept-edits", "--model", model]
-    else:
+    preset = DIALOGUE_PRESETS.get(vendor)
+    if preset is None:
         raise ValueError(f"no participant preset exists for vendor '{vendor}'")
+
+    command = preset["Command"]
+    args = list(preset["Args"])
+    if model:
+        args += [a.replace("{MODEL}", model) for a in preset["ModelArgs"]]
 
     return {
         "Role": role,
@@ -489,8 +507,9 @@ def build_dialogue_participant(vendor: str, role: str, preamble: str, model: str
 
 
 # The only vendors build_dialogue_participant has a preset for -- what --participant validates
-# against, and what an unknown-vendor error names, so the two never drift apart.
-DIALOGUE_KNOWN_VENDORS = ("claude", "gemini")
+# against, and what an unknown-vendor error names, so the two never drift apart. Derived from
+# DIALOGUE_PRESETS (the shared JSON's own key order), not a separate literal.
+DIALOGUE_KNOWN_VENDORS = tuple(DIALOGUE_PRESETS.keys())
 
 
 def parse_dialogue_participant_spec(spec: str, index: int) -> dict:

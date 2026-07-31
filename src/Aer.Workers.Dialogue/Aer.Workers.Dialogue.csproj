@@ -22,4 +22,13 @@
     <InternalsVisibleTo Include="Aer.Workers.Dialogue.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- #836: the single source for the vendor preset shapes — who reads it and why is on
+         DialogueParticipantPresets' own doc comment. Embedded, not CopyToOutputDirectory, so
+         every referencing project gets it from the assembly regardless of that project's own
+         output layout or working directory; a copied file would need re-copying into each of
+         those independently. -->
+    <EmbeddedResource Include="DialogueParticipantPresets.json" />
+  </ItemGroup>
+
 </Project>
