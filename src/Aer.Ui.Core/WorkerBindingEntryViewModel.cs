@@ -46,12 +46,12 @@ namespace Aer.Ui.Core;
 /// </para>
 /// <para>
 /// <b>The dialogue worker as a first-class step type (M23 Phase 1, #270):</b> before this, a
-/// <c>"dialogue"</c>-adapter row's actual behavior (participants, seed prompt, turn budget, stop
-/// sentinel) lived in a config sidecar file only <see cref="NewWorkflowViewModel"/>'s guided wizard
-/// knew how to author — opening one here showed only the opaque <see cref="PromptTemplate"/> path
-/// pointing at it, no different from any other adapter's prompt text. <see cref="DialogueParticipants"/>
+/// <c>"dialogue"</c>-adapter row's actual behavior (participants, seed prompt, turn budget) lived in
+/// a config sidecar file only <see cref="NewWorkflowViewModel"/>'s guided wizard knew how to author —
+/// opening one here showed only the opaque <see cref="PromptTemplate"/> path pointing at it, no
+/// different from any other adapter's prompt text. <see cref="DialogueParticipants"/>
 /// plus <see cref="DialogueSeedPromptText"/>/<see cref="DialogueTurnBudgetText"/>/
-/// <see cref="DialogueStopSentinelText"/>/<see cref="DialogueFinalOutputNameText"/> give this row the
+/// <see cref="DialogueFinalOutputNameText"/> give this row the
 /// same structured editing the wizard already had, N participants and all (the wizard itself stays
 /// fixed at two — Claude initiator, Gemini responder — since it optimizes for the common case, not
 /// full generality). <see cref="TryBuildDialogueConfig"/> is deliberately not folded into
@@ -162,9 +162,6 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
 
     [ObservableProperty]
     private string dialogueTurnBudgetText = "4";
-
-    [ObservableProperty]
-    private string dialogueStopSentinelText = string.Empty;
 
     /// <summary>The dialogue config's own declared final output — kept as its own field rather than derived from <see cref="ProducedOutputsJson"/>, the same opaque-vs-structured split this file already draws for that field.</summary>
     [ObservableProperty]
@@ -297,7 +294,6 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             vm.DialogueParticipants.Clear();
             vm.DialogueSeedPromptText = dialogueConfig.SeedPrompt;
             vm.DialogueTurnBudgetText = dialogueConfig.TurnBudget.ToString();
-            vm.DialogueStopSentinelText = dialogueConfig.StopSentinel ?? string.Empty;
             vm.DialogueFinalOutputNameText = dialogueConfig.FinalOutputName;
             vm._dialogueFinalOutputMode = dialogueConfig.FinalOutputMode;
             vm._dialogueTurnTimeout = dialogueConfig.TurnTimeout;
@@ -606,7 +602,6 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             DialogueSeedPromptText,
             turnBudget,
             DialogueFinalOutputNameText,
-            string.IsNullOrWhiteSpace(DialogueStopSentinelText) ? null : DialogueStopSentinelText,
             participants,
             TurnTimeout: _dialogueTurnTimeout,
             FinalOutputMode: _dialogueFinalOutputMode);

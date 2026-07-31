@@ -34,7 +34,6 @@ public class DialogueParticipantGatingTests : IDisposable
             SeedPrompt: "Open with your position.",
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
-            StopSentinel: null,
             Participants: [subject, Foil])));
         return path;
     }

@@ -151,7 +151,6 @@ public class ConversationRoundTripTests
             SeedPrompt: "Open with your position.",
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
-            StopSentinel: null,
             Participants:
             [
                 // Two distinct stub labels, so the projection still renders alternating speakers

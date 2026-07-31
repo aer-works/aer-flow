@@ -38,9 +38,9 @@ namespace Aer.Workers.Dialogue;
 /// is wired, by <see cref="DialogueYieldWiring"/>, to its own instance of <c>Aer.Mcp.Host</c>, which a
 /// turn can call the <c>yield</c> tool against. After a turn's process exits, this runner checks that
 /// specific participant's own capture file — never another participant's, and never the turn's own
-/// text — for a call, giving structural (not text-inferred) attribution of who yielded.
-/// <see cref="DialogueWorkerConfig.StopSentinel"/> is still parsed onto every config but no longer acted
-/// on here; see that property's own remarks and #820.
+/// text — for a call, giving structural (not text-inferred) attribution of who yielded. The old
+/// text-sentinel field itself was retired from <see cref="DialogueWorkerConfig"/> and the authoring
+/// surface by #820.
 /// </para>
 /// </summary>
 public sealed class DialogueRunner(IVendorTurnClient turnClient)

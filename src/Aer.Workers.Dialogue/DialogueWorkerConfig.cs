@@ -15,25 +15,18 @@ namespace Aer.Workers.Dialogue;
 /// <param name="TurnBudget">
 /// The maximum number of turns <see cref="DialogueRunner"/> runs, round-robining through
 /// <see cref="Participants"/> in list order starting from index 0. The exchange may end earlier than
-/// this when a participant calls the <c>aer yield</c> MCP tool (#585 — see
-/// <see cref="StopSentinel"/>'s own doc for the retired text-matching mechanism this replaced); it
-/// never runs more than <see cref="HardTurnCeiling"/> turns regardless of this value (M23 Phase 1's "safe by
-/// default" requirement) — a configured value above the ceiling is silently clamped, never a config
-/// error, since the ceiling exists to bound worst case cost, not to reject authoring intent.
+/// this when a participant calls the <c>aer yield</c> MCP tool (#585/decision 0035 — see
+/// <see cref="DialogueYieldWiring"/>; this replaced the original M17 Phase 3 text-sentinel mechanism,
+/// retired from the config surface entirely by #820); it never runs more than
+/// <see cref="HardTurnCeiling"/> turns regardless of this value (M23 Phase 1's "safe by default"
+/// requirement) — a configured value above the ceiling is silently clamped, never a config error,
+/// since the ceiling exists to bound worst case cost, not to reject authoring intent.
 /// </param>
 /// <param name="FinalOutputName">
 /// The declared output file name this worker writes on completion — the "declared final output" the
 /// phase plan names, present so a caller's <c>WorkerContract</c> has something to validate once
 /// Phase 4 wires dispatch up. What it contains is <see cref="FinalOutputMode"/>'s call — see that
 /// parameter.
-/// </param>
-/// <param name="StopSentinel">
-/// The original M17 Phase 3 (#166) early-stop mechanism — a literal string a turn's text could
-/// contain to end the exchange early. <b>Parsed and carried on every config, but no longer acted on by
-/// <see cref="DialogueRunner"/></b>: #585/decision 0035 replaced it with a structured <c>yield</c> MCP
-/// tool call (see <see cref="DialogueYieldWiring"/>). Retiring the field itself — and the authoring
-/// surface in <c>Aer.Ui</c>/<c>Aer.Ui.Core</c> that still sets it — is #820's scope, deliberately not
-/// done here.
 /// </param>
 /// <param name="Participants">
 /// The exchange's sides, in speaking order — turn 1 goes to <c>Participants[0]</c>, turn 2 to
@@ -54,7 +47,6 @@ public sealed record DialogueWorkerConfig(
     string SeedPrompt,
     int TurnBudget,
     string FinalOutputName,
-    string? StopSentinel,
     IReadOnlyList<DialogueParticipant> Participants,
     TimeSpan? TurnTimeout = null,
     [property: JsonConverter(typeof(FinalOutputModeJsonConverter))] FinalOutputMode? FinalOutputMode = null)

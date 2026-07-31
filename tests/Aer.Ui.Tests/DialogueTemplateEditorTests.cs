@@ -51,7 +51,6 @@ public class DialogueTemplateEditorTests
 
             entry.DialogueSeedPromptText = "Propose a caching strategy.";
             entry.DialogueTurnBudgetText = "6";
-            entry.DialogueStopSentinelText = "CONSENSUS";
             entry.DialogueFinalOutputNameText = "verdict.md";
 
             entry.DialogueParticipants[0].Role = "architect";
@@ -86,7 +85,6 @@ public class DialogueTemplateEditorTests
             var sidecarConfig = await DialogueWorkerConfigParser.LoadFromFileAsync(sidecarPath, TestContext.Current.CancellationToken);
             Assert.Equal("Propose a caching strategy.", sidecarConfig.SeedPrompt);
             Assert.Equal(6, sidecarConfig.TurnBudget);
-            Assert.Equal("CONSENSUS", sidecarConfig.StopSentinel);
             Assert.Equal("verdict.md", sidecarConfig.FinalOutputName);
             Assert.Equal(3, sidecarConfig.Participants.Count);
             Assert.Equal(["architect", "critic", "arbiter"], sidecarConfig.Participants.Select(p => p.Role));
@@ -102,7 +100,6 @@ public class DialogueTemplateEditorTests
             Assert.True(reopened.IsDialogueAdapter);
             Assert.Equal("Propose a caching strategy.", reopened.DialogueSeedPromptText);
             Assert.Equal("6", reopened.DialogueTurnBudgetText);
-            Assert.Equal("CONSENSUS", reopened.DialogueStopSentinelText);
             Assert.Equal("verdict.md", reopened.DialogueFinalOutputNameText);
             Assert.Equal(3, reopened.DialogueParticipants.Count);
             Assert.Equal(["architect", "critic", "arbiter"], reopened.DialogueParticipants.Select(p => p.Role));
@@ -217,6 +214,65 @@ public class DialogueTemplateEditorTests
 
             var resavedConfig = await DialogueWorkerConfigParser.LoadFromFileAsync(sidecarPath, TestContext.Current.CancellationToken);
             Assert.Equal(TimeSpan.FromMinutes(20), resavedConfig.TurnTimeout);
+            Assert.Equal(5, resavedConfig.TurnBudget);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// #820 compat polarity: a sidecar persisted before StopSentinel was retired from
+    /// <see cref="DialogueWorkerConfig"/> still opens in the authoring surface (the field is simply
+    /// unmapped — <see cref="DialogueWorkerConfigParserTests.A_config_carrying_the_retired_StopSentinel_key_still_parses"/>
+    /// pins the parser side of this), and re-saving through the editor rewrites the sidecar without
+    /// the retired key at all rather than round-tripping it back in.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task A_sidecar_carrying_the_retired_StopSentinel_key_opens_and_resave_drops_it()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"dialogue-template-editor-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = TempBindingsPath(directory);
+        try
+        {
+            var window = NewWindow();
+            window.NewBindings();
+            window.ViewModel.BindingsEditor.AddEntry();
+            var entry = window.ViewModel.BindingsEditor.Entries[0];
+            entry.WorkerName = "debate";
+            entry.Adapter = "dialogue";
+            entry.TimeoutText = "00:05:00";
+            entry.DialogueSeedPromptText = "Propose a caching strategy.";
+            entry.DialogueFinalOutputNameText = "verdict.md";
+            entry.DialogueParticipants[0].Preamble = "Side A.";
+            entry.DialogueParticipants[1].Preamble = "Side B.";
+
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+            var savedEntry = (await WorkerBindingConfigParser.LoadFromFileAsync(path, TestContext.Current.CancellationToken))["debate"];
+            var sidecarPath = Path.Combine(directory, savedEntry.PromptTemplate);
+
+            // Hand-author the retired key directly onto the sidecar JSON — the record no longer
+            // declares it, so this is the only way to reproduce an old, pre-#820 persisted file.
+            var rawSidecarJson = await File.ReadAllTextAsync(sidecarPath, TestContext.Current.CancellationToken);
+            var legacySidecarJson = rawSidecarJson.Replace(
+                "\"FinalOutputName\": \"verdict.md\"",
+                "\"FinalOutputName\": \"verdict.md\", \"StopSentinel\": \"CONSENSUS\"");
+            Assert.Contains("StopSentinel", legacySidecarJson);
+            Assert.NotEqual(rawSidecarJson, legacySidecarJson);
+            await File.WriteAllTextAsync(sidecarPath, legacySidecarJson, TestContext.Current.CancellationToken);
+
+            await window.OpenBindingsInEditorAsync(path, TestContext.Current.CancellationToken);
+            var reopened = window.ViewModel.BindingsEditor.Entries.Single(e => e.WorkerName == "debate");
+            Assert.Equal("Propose a caching strategy.", reopened.DialogueSeedPromptText);
+
+            reopened.DialogueTurnBudgetText = "5";
+            await window.SaveBindingsAsync(path, TestContext.Current.CancellationToken);
+
+            var resavedJson = await File.ReadAllTextAsync(sidecarPath, TestContext.Current.CancellationToken);
+            Assert.DoesNotContain("StopSentinel", resavedJson);
+            var resavedConfig = await DialogueWorkerConfigParser.LoadFromFileAsync(sidecarPath, TestContext.Current.CancellationToken);
             Assert.Equal(5, resavedConfig.TurnBudget);
         }
         finally

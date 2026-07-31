@@ -195,7 +195,6 @@ public class DialogueDispatchEndToEndTests
             SeedPrompt: "Open with your position.",
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
-            StopSentinel: null,
             Participants:
             [
                 EchoingParticipant(scriptDirectory, "initiator", "stub", "You argue for."),
@@ -226,7 +225,6 @@ public class DialogueDispatchEndToEndTests
             SeedPrompt: "Open with your position.",
             TurnBudget: 5,
             FinalOutputName: "verdict.md",
-            StopSentinel: null,
             Participants:
             [
                 EchoingParticipant(scriptDirectory, "architect", "stub", "You design."),
@@ -270,7 +268,6 @@ public class DialogueDispatchEndToEndTests
             SeedPrompt: "Open with your position.",
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
-            StopSentinel: null,
             Participants:
             [
                 EchoingParticipant(scriptDirectory, "initiator", "stub", "You argue for."),
