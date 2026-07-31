@@ -7,9 +7,11 @@ namespace Aer.Flow.Store;
 /// Reads the combined <c>flow.jsonl</c> back into ordered event lists (spec §5.1):
 /// <see cref="ReadAllAsync"/> for Flow's own half, which the State Projector (§12) consumes,
 /// <see cref="ReadAllCoreEventsAsync"/> for the Core Dispatcher's half (M7 Phase 6), which M10
-/// Phase 3's crash reconciliation reads back for §6's causal link, and <see cref="ReadSnapshotAsync"/>
-/// for a caller needing both from a single read pass. Pairs with <see cref="FlowEventLogWriter"/>,
-/// which guarantees each entry is a single, complete, newline-terminated line (§5.3).
+/// Phase 3's crash reconciliation reads back for §6's causal link, <see cref="ReadSnapshotAsync"/>
+/// for a caller needing both from a single read pass, and <see cref="ReadAllEntriesWithTimestampsAsync"/>
+/// for callers that need entries with their writer-stamped timestamps (#745) — used by status
+/// reporting to display per-step times. Pairs with <see cref="FlowEventLogWriter"/>, which guarantees
+/// each entry is a single, complete, newline-terminated line (§5.3).
 /// </summary>
 public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
 {
