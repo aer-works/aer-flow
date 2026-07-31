@@ -56,6 +56,7 @@ public class DecideCommandEndToEndTests
     public async Task Deciding_against_a_task_whose_journal_is_held_open_by_another_process_throws_FlowJournalHeldException_not_a_raw_IOException()
     {
         // #816's measured crash, decide's half; see FlowEventLogWriterTests for the mechanism.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; the Unix arm below proves the open just succeeds there");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try
@@ -85,6 +86,46 @@ public class DecideCommandEndToEndTests
     }
 
     [Fact]
+    public async Task On_unix_a_held_open_journal_does_not_block_decide_the_open_succeeds_and_validation_answers()
+    {
+        // The other polarity of the platform gate above: .NET's FileStream stopped enforcing
+        // FileShare on Unix (the .NET 6 rewrite), so the #816 crash class cannot arise there --
+        // the second open succeeds and the command proceeds to ordinary validation, which is the
+        // discriminating claim this arm pins. If this test ever starts failing on Unix with
+        // FlowJournalHeldException, the runtime's sharing semantics changed and the gate above
+        // (plus FlowJournalHeldException's platform note) must be revisited together.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows OS-enforces the sharing violation; the tests above pin that arm");
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-unix-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            using var liveEngineHolder = new FileStream(
+                logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
+
+            var decideOptions = new DecideOptions(
+                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                SupplementaryExecutionId: null, bindingsFilePath);
+
+            // No FlowJournalHeldException, no raw IOException: the decision against the genuinely
+            // paused attempt just works, exactly as it would with no holder at all.
+            var result = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotNull(result);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
     public async Task Decide_against_a_held_open_journal_through_the_real_CLI_process_exits_1_with_one_line_and_no_stack_trace()
     {
         // The full claim #816 makes is about Program.cs's top-level exception handling and the
@@ -92,6 +133,7 @@ public class DecideCommandEndToEndTests
         // DecideCommand.ExecuteAsync tests above can observe, since Program.cs's top-level
         // statements aren't otherwise reachable from a unit test. This spawns the real built
         // Aer.Cli executable, the same way an operator would invoke 'aer decide'.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; the Unix arm below proves the open just succeeds there");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-proc-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try

@@ -25,6 +25,7 @@ public class CancelCommandEndToEndTests
     {
         // #816's population: the same shared FlowEventLogWriter construction CancelCommand uses
         // must surface the typed refusal too, not just DecideCommand.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; see DecideCommandEndToEndTests' Unix arm");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try

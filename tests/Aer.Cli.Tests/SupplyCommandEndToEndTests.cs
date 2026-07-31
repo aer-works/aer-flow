@@ -55,6 +55,7 @@ public class SupplyCommandEndToEndTests
     {
         // #816's population: SupplyCommand shares the same FlowEventLogWriter construction as
         // decide/cancel, so it must surface the typed refusal too.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; see DecideCommandEndToEndTests' Unix arm");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try
