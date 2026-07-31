@@ -1,3 +1,4 @@
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Projection;
@@ -37,6 +38,59 @@ public class MemoryProposalResolutionTests : IDisposable
             "operator", reader, writer, TestContext.Current.CancellationToken);
 
         return @ref;
+    }
+
+    /// <summary>
+    /// #858: every other test here retries SEQUENTIALLY, which proves the already-resolved check
+    /// but not the race the lock hold exists for. Two resolves are issued genuinely concurrently
+    /// against the same ref. Asserts the invariant rather than a winner — whoever loses fails
+    /// either fast on the lock (<see cref="WorkflowLockedException"/>) or on the already-resolved
+    /// check (<see cref="InvalidRoomMutationException"/>), and the apply happens exactly once
+    /// either way. Control arm read first, not assumed: with the guard line deleted this test
+    /// fails 3/3, and it fails because BOTH callers reached the apply and collided writing the
+    /// same temp file (an <see cref="IOException"/> from
+    /// <see cref="MemoryProposalApplier"/>) — the two-appliers state the lock hold exists to
+    /// prevent, not merely a different error.
+    /// </summary>
+    [Fact]
+    public async Task Two_concurrent_resolves_of_the_same_ref_apply_exactly_once()
+    {
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        var @ref = await DispatchMemoryProposalAsync(reader, writer, operation: "add");
+
+        async Task<Exception?> ResolveCapturingFailureAsync()
+        {
+            try
+            {
+                await MemoryProposalResolution.ResolveAsync(
+                    _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return ex;
+            }
+        }
+
+        var outcomes = await Task.WhenAll(
+            Task.Run(ResolveCapturingFailureAsync, TestContext.Current.CancellationToken),
+            Task.Run(ResolveCapturingFailureAsync, TestContext.Current.CancellationToken));
+
+        Assert.Single(outcomes, outcome => outcome is null);
+        var loser = Assert.Single(outcomes, outcome => outcome is not null)!;
+        Assert.True(
+            loser is WorkflowLockedException or InvalidRoomMutationException,
+            $"the losing resolve should fail on the lock or the already-resolved check; got {loser}");
+
+        // The apply ran exactly once: a second one would have thrown on `add`'s own
+        // already-exists guard, but that guard is inside the apply -- what this asserts is that
+        // the file is present with its proposed content and nothing wrote past it.
+        Assert.Equal(
+            "the fact",
+            await File.ReadAllTextAsync(Path.Combine(_memoryRoot, "fact.md"), TestContext.Current.CancellationToken));
+        var finalState = RoomProjector.Project(await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(HeldWorkStatus.Resolved, finalState.HeldWork[@ref].Status);
     }
 
     /// <summary>Approval of a memory-proposal-shaped item both applies the write and resolves the held-work item.</summary>
