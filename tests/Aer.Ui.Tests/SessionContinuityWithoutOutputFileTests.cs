@@ -201,7 +201,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
         Assert.True(secondTurn.NativeSessionResumed,
             "turn 2 did not resume the agy vendor session, so a directory-less agy chat starts fresh every "
             + "turn and carries no memory (#545)");
-        // #837: agy's log line trails the id with a comma; the scrape must not capture it.
+        // #837: see Program.cs's comment on the trailing-comma scrape.
         Assert.Equal(SessionTurnStubAdapter.StubAgyConversationId, metadata.CurrentVendorSessionId);
     }
 

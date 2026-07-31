@@ -135,9 +135,7 @@ internal sealed class SessionTurnStubAdapter : IWorkerAdapter
                 Directory.CreateDirectory(dir);
             }
 
-            // #837: agy's real `--log-file` line trails the id with a comma
-            // (`conversation=<uuid>, ...`) -- a bare id here would leave the daemon's scrape
-            // untested against the shape that actually ships.
+            // #837: match agy's real `--log-file` format (see Program.cs's scrape comment).
             File.WriteAllText(logPath, $"conversation={StubAgyConversationId}, model=stub\n");
             return OperatingSystem.IsWindows()
                 ? new CoreDispatchTarget("cmd", ["/c", "exit 0"])
