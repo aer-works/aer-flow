@@ -74,7 +74,6 @@ public class FlowEventLogWriterTests
     public async Task A_torn_write_never_leaves_a_partial_event_observable_as_a_complete_line()
     {
         using var buffer = new MemoryStream();
-        var firstEventJson = JsonSerializer.Serialize(new LogEntry.FlowLogEntry(MakeEvent("exec-1")), typeof(LogEntry), FlowEventLogJson.Options);
 
         await using var faulting = new TornWriteStream(buffer, callsBeforeFault: 1, truncateToBytes: 5);
         await using var writer = new FlowEventLogWriter(faulting, leaveOpen: true);
@@ -92,7 +91,9 @@ public class FlowEventLogWriterTests
         // tailing the file splits on '\n' — the dangling fragment has no terminator, so it must
         // never surface as a complete second event.
         Assert.Single(completeLines);
-        Assert.Equal(firstEventJson, completeLines[0]);
+        var firstEntry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(completeLines[0], FlowEventLogJson.Options));
+        var firstEvent = Assert.IsType<FlowEvent.ExecutionSucceeded>(firstEntry.Event);
+        Assert.Equal("exec-1", firstEvent.ExecutionId.Value);
         Assert.False(text.EndsWith('\n'));
     }
 
@@ -198,6 +199,40 @@ public class FlowEventLogWriterTests
         var coreEntry = Assert.IsType<LogEntry.CoreLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[1], FlowEventLogJson.Options));
         var started = Assert.IsType<CoreEvent.ExecutionStarted>(coreEntry.Event);
         Assert.Equal(123u, started.Pid);
+    }
+
+    [Fact]
+    public async Task AppendAsync_stamps_WriterUtcTimestamp_on_flow_events()
+    {
+        using var buffer = new MemoryStream();
+        await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
+
+        var before = DateTime.UtcNow;
+        await writer.AppendAsync(MakeEvent("exec-1"), TestContext.Current.CancellationToken);
+        var after = DateTime.UtcNow;
+
+        var lines = Encoding.UTF8.GetString(buffer.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var entry = Assert.IsType<LogEntry.FlowLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[0], FlowEventLogJson.Options));
+
+        Assert.NotNull(entry.WriterUtcTimestamp);
+        Assert.True(entry.WriterUtcTimestamp >= before && entry.WriterUtcTimestamp <= after);
+    }
+
+    [Fact]
+    public async Task AppendAsync_stamps_WriterUtcTimestamp_on_core_events()
+    {
+        using var buffer = new MemoryStream();
+        await using var writer = new FlowEventLogWriter(buffer, leaveOpen: true);
+
+        var before = DateTime.UtcNow;
+        await writer.AppendAsync(new CoreEvent.ExecutionStarted(new ExecutionId("exec-1"), Pid: 123), TestContext.Current.CancellationToken);
+        var after = DateTime.UtcNow;
+
+        var lines = Encoding.UTF8.GetString(buffer.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var entry = Assert.IsType<LogEntry.CoreLogEntry>(JsonSerializer.Deserialize<LogEntry>(lines[0], FlowEventLogJson.Options));
+
+        Assert.NotNull(entry.WriterUtcTimestamp);
+        Assert.True(entry.WriterUtcTimestamp >= before && entry.WriterUtcTimestamp <= after);
     }
 
     private static FlowEvent.ExecutionSucceeded DeserializeExecutionSucceeded(string line)

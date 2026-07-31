@@ -34,7 +34,9 @@ public class StatusCommandEndToEndTests
 
             var text = output.ToString();
             Assert.Contains("Workflow status: Terminal", text);
-            Assert.Contains($"architect: Succeeded (execution={architectExecutionId})", text);
+            // The " @ " keeps this as tight as the old closing-paren form: nothing may sit
+            // between the execution id and the timestamp the envelope now renders there.
+            Assert.Contains($"architect: Succeeded (execution={architectExecutionId} @ ", text);
             Assert.Contains("critic: Succeeded", text);
             Assert.Contains("publisher: Succeeded", text);
         }
@@ -380,6 +382,34 @@ public class StatusCommandEndToEndTests
             }
 
             await runTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Status_output_includes_per_step_timestamp_for_events_with_writer_timestamp()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+
+            var output = new StringWriter();
+            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+
+            var text = output.ToString();
+            // Timestamp format is ISO 8601 (O format), which looks like "2026-01-15T12:34:56.1234567Z"
+            // and appears in output as "@ 2026-01-15T12:34:56.1234567Z"
+            Assert.Matches(@"@ \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z", text);
         }
         finally
         {

@@ -23,15 +23,15 @@ public abstract record LogEntry
     }
 
     /// <summary>A line written by Flow's own mutation logic (spec §5.1's <c>flow.jsonl</c> owner).</summary>
-    public sealed record FlowLogEntry(FlowEvent Event) : LogEntry;
+    public sealed record FlowLogEntry(FlowEvent Event, DateTime? WriterUtcTimestamp = null) : LogEntry;
 
     /// <summary>
     /// A line written by the Core Dispatcher on Core's behalf (spec §5.1's <c>events.jsonl</c>
     /// owner) — Flow never originates these, it only durably records what Core reported.
     /// </summary>
-    public sealed record CoreLogEntry(CoreEvent Event) : LogEntry;
+    public sealed record CoreLogEntry(CoreEvent Event, DateTime? WriterUtcTimestamp = null) : LogEntry;
 
     /// <summary>A line written by the holding room's engine (spec §5.1's <c>room.jsonl</c> owner).</summary>
-    public sealed record RoomLogEntry(RoomEvent Event) : LogEntry;
+    public sealed record RoomLogEntry(RoomEvent Event, DateTime? WriterUtcTimestamp = null) : LogEntry;
 }
 

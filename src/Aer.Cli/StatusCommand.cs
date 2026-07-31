@@ -62,10 +62,20 @@ public static class StatusCommand
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
         var reader = new FlowEventLogReader(logPath);
-        var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
+
+        var events = new List<FlowEvent>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (entry is LogEntry.FlowLogEntry flowLogEntry)
+            {
+                events.Add(flowLogEntry.Event);
+            }
+        }
+
         var state = StateProjector.Project(events, snapshot);
 
-        PrintState(output, state, logPath, events);
+        PrintState(output, state, logPath, events, entries);
 
         if (options.Follow)
         {
@@ -319,22 +329,70 @@ public static class StatusCommand
     }
 
     private static void PrintState(
-        TextWriter output, FlowState state, string logPath, IReadOnlyList<FlowEvent> events)
+        TextWriter output, FlowState state, string logPath, IReadOnlyList<FlowEvent> events, IReadOnlyList<LogEntry> entries)
     {
         output.WriteLine($"Workflow status: {state.Status}");
         output.WriteLine($"Log last updated: {ResolveLogUpdatedAt(logPath)}");
+
+        var eventTimestamps = ExtractEventTimestamps(entries);
 
         foreach (var step in state.Steps)
         {
             var executionText = step.LatestExecutionId?.ToString() ?? "none";
             var statusText = FormatStepStatus(step, events);
-            output.WriteLine($"  {step.StepId}: {statusText} (execution={executionText})");
+            var timeText = step.LatestExecutionId is not null && eventTimestamps.TryGetValue(step.LatestExecutionId.Value.Value, out var time)
+                ? $" @ {time:O}"
+                : string.Empty;
+            output.WriteLine($"  {step.StepId}: {statusText} (execution={executionText}{timeText})");
         }
 
         foreach (var stepLess in state.StepLessExecutions)
         {
             output.WriteLine($"  (supplementary) {stepLess.Worker}: execution={stepLess.ExecutionId} pending");
         }
+    }
+
+    private static Dictionary<string, DateTime> ExtractEventTimestamps(IReadOnlyList<LogEntry> entries)
+    {
+        var timestamps = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        foreach (var entry in entries)
+        {
+            string? execId = null;
+            DateTime? timestamp = null;
+
+            // Latest-wins by file order, so a terminal event's stamp supersedes the start's --
+            // "per-step times from the latest event per step" (#745's recorded design). Reading
+            // only accepted/started froze every finished step at its start time (review finding).
+            switch (entry)
+            {
+                case LogEntry.FlowLogEntry flowEntry:
+                    timestamp = flowEntry.WriterUtcTimestamp;
+                    execId = flowEntry.Event switch
+                    {
+                        FlowEvent.ExecutionRequestAccepted accepted => accepted.Request.ExecutionId.Value,
+                        FlowEvent.ExecutionSucceeded succeeded => succeeded.ExecutionId.Value,
+                        FlowEvent.ExecutionFailed failed => failed.ExecutionId.Value,
+                        _ => null,
+                    };
+                    break;
+                case LogEntry.CoreLogEntry coreEntry:
+                    timestamp = coreEntry.WriterUtcTimestamp;
+                    execId = coreEntry.Event switch
+                    {
+                        CoreEvent.ExecutionStarted started => started.ExecutionId.Value,
+                        CoreEvent.ExecutionExited exited => exited.ExecutionId.Value,
+                        _ => null,
+                    };
+                    break;
+            }
+
+            if (execId is not null && timestamp.HasValue)
+            {
+                timestamps[execId] = timestamp.Value;
+            }
+        }
+
+        return timestamps;
     }
 
     public static string FormatStepStatus(StepState step, IReadOnlyList<FlowEvent> events)
@@ -369,14 +427,10 @@ public static class StatusCommand
 
     /// <summary>
     /// <c>flow.jsonl</c>'s own last-write time (UTC), append-only so this is exactly "when the
-    /// last event landed" — the closest honest answer available. Not a per-step value: as
-    /// <c>TaskProjectionLoader.ResolveTimestampsAsync</c> already records, "a DAG task carries no
-    /// serialized timestamp anywhere ... neither the <c>flow.jsonl</c> line envelope nor any
-    /// <see cref="FlowEvent"/> records one", so there is no finer-grained fact to report per step
-    /// without adding one to the event schema — tracked as #745 rather than done silently here,
-    /// since whether that schema change is even worth making is its own decision. Printed once, at
-    /// the whole-log grain it actually has, rather than repeated per step as if it meant something
-    /// narrower.
+    /// last event landed" — the closest honest answer available. Per-step timestamps are sourced
+    /// from <see cref="LogEntry.WriterUtcTimestamp"/> instead, which stamps each envelope at write
+    /// time (#745). Printed once here at the whole-log grain, per-step times are rendered in
+    /// <c>PrintState</c> via <c>ExtractEventTimestamps</c>.
     /// </summary>
     private static string ResolveLogUpdatedAt(string logPath) => File.Exists(logPath)
         ? File.GetLastWriteTimeUtc(logPath).ToString("O")

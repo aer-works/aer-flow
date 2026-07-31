@@ -45,7 +45,7 @@ public sealed class RoomEventLogWriter : IRoomEventLogWriter, IAsyncDisposable
     public Task AppendAsync(RoomEvent roomEvent, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(roomEvent);
-        return AppendEntryAsync(new LogEntry.RoomLogEntry(roomEvent), cancellationToken);
+        return AppendEntryAsync(new LogEntry.RoomLogEntry(roomEvent, DateTime.UtcNow), cancellationToken);
     }
 
     private async Task AppendEntryAsync(LogEntry entry, CancellationToken cancellationToken)

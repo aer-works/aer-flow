@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 
@@ -48,6 +50,25 @@ public class RoomEventLogReaderWriterTests : IDisposable
 
         var reader = new RoomEventLogReader(_roomLogPath);
         await Assert.ThrowsAsync<FlowEventLogReadException>(async () => await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task AppendAsync_stamps_WriterUtcTimestamp_on_room_events()
+    {
+        var laneRef = new HeldWorkRef("lanes/lane-1");
+
+        using var buffer = new MemoryStream();
+        await using var writer = new RoomEventLogWriter(buffer, leaveOpen: true);
+
+        var before = DateTime.UtcNow;
+        await writer.AppendAsync(new RoomEvent.HeldWorkDispatched(laneRef, "shape-1", TimeSpan.FromMinutes(10), "op-1"), TestContext.Current.CancellationToken);
+        var after = DateTime.UtcNow;
+
+        var text = Encoding.UTF8.GetString(buffer.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var entry = Assert.IsType<LogEntry.RoomLogEntry>(JsonSerializer.Deserialize<LogEntry>(text[0], FlowEventLogJson.Options));
+
+        Assert.NotNull(entry.WriterUtcTimestamp);
+        Assert.True(entry.WriterUtcTimestamp >= before && entry.WriterUtcTimestamp <= after);
     }
 
     public void Dispose()
