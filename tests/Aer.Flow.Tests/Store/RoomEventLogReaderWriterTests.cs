@@ -71,6 +71,53 @@ public class RoomEventLogReaderWriterTests : IDisposable
         Assert.True(entry.WriterUtcTimestamp >= before && entry.WriterUtcTimestamp <= after);
     }
 
+    /// <summary>
+    /// #880, measured on CI before it was fixed: a second writer opening the same room log while the
+    /// first still held it threw <see cref="IOException"/> out of the constructor — and in the
+    /// daemon's resolve endpoint that construction happens before the lock meant to serialise it, so
+    /// it escaped as a 500 rather than the 409 the operator could at least act on.
+    /// <para>
+    /// The single-writer invariant is NOT relaxed and this test would fail if it were: the second
+    /// writer must not open while the first holds the file. What it must do is wait, then proceed.
+    /// Elapsed time asserts it genuinely waited, so a run where the release beat the open fails
+    /// rather than passing on a technicality.
+    /// </para>
+    /// <para>
+    /// Pool-independent on both sides — dedicated release thread, <c>Thread.Sleep</c> in the retry —
+    /// for the reason #872 measured the hard way: a contention test scheduled on the pool stops
+    /// discriminating exactly when the machine is busy.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_second_writer_waits_for_the_first_to_release_rather_than_throwing()
+    {
+        var hold = TimeSpan.FromMilliseconds(250);
+        var first = new RoomEventLogWriter(_roomLogPath);
+
+        var release = new Thread(() =>
+        {
+            Thread.Sleep(hold);
+            first.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        })
+        {
+            IsBackground = true,
+            Name = "aer-880-release",
+        };
+
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        release.Start();
+
+        var second = new RoomEventLogWriter(_roomLogPath);
+        elapsed.Stop();
+        release.Join(TimeSpan.FromSeconds(10));
+        await second.DisposeAsync();
+
+        Assert.True(
+            elapsed.Elapsed >= hold,
+            $"The second writer opened in {elapsed.ElapsedMilliseconds}ms, inside the {hold.TotalMilliseconds}ms " +
+            "hold -- the file was never actually contended, so this proves nothing.");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))
