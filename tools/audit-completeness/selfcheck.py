@@ -531,6 +531,155 @@ def _templates_dry_run():
             "+ 2 refusal polarities")
 
 
+@check("--dialogue dry-runs a two-participant cross-vendor exchange into byte-shape-correct JSONs")
+def _dialogue_dry_run():
+    """#813: dispatch.py --dialogue assembles workflow.json/bindings.json/dialogue-config.json from
+    a seed file plus flags. No `Aer.Cli.exe` is required to check this (CI's `audit` job has none --
+    `_templates_dry_run` above already relies on the same property), and no `DialogueWorkerConfigParser`
+    is reachable from Python either way, so this is structural: every key AER's own real call sites
+    (`DialogueDispatchEndToEndTests.cs`, `LiveDialogueSmokeTest.cs`) and
+    `Aer.Workers.Dialogue.DialogueParticipantPresets.For` actually produce, asserted against what
+    this generates.
+    """
+    with tempfile.TemporaryDirectory() as scratch:
+        seed_path = Path(scratch) / "seed.md"
+        seed_path.write_text("Propose three names for the new module.\n", encoding="utf-8")
+        preamble_path = Path(scratch) / "proposer-preamble.md"
+        preamble_path.write_text("You go first; be concrete.\n", encoding="utf-8")
+
+        cmd = [sys.executable, str(DISPATCH_PY), "--dialogue",
+               "--seed-file", str(seed_path),
+               "--participant", "gemini:gemini-3.6-flash-high:proposer",
+               "--participant", "claude:sonnet:reviewer",
+               "--turn-budget", "6", "--final-output", "shortlist.md",
+               "--preamble-file", f"proposer={preamble_path}",
+               "--scratch-root", scratch, "--dry-run"]
+        done = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert done.returncode == 0, f"--dialogue --dry-run exits {done.returncode}:\n{done.stderr.strip()[:400]}"
+        assert "DRY RUN -- nothing was dispatched" in done.stdout, (
+            "--dialogue --dry-run exited 0 without the dry-run marker -- it may have DISPATCHED")
+
+        workflow = json.loads((Path(scratch) / "workflow.json").read_text(encoding="utf-8"))
+        assert workflow["WorkflowTemplateVersion"] == 1, "WorkflowTemplateVersion must be an int (the #513 bug)"
+        step = workflow["Steps"][0]
+        assert step["Worker"] == step["StepId"] == "dialogue"
+        assert step["Outputs"] == ["shortlist.md"]
+        assert step["Inputs"] == [] and step["DependsOn"] == [], "must be JSON arrays, not objects (the #513 bug)"
+
+        bindings = json.loads((Path(scratch) / "bindings.json").read_text(encoding="utf-8"))
+        entry = bindings["dialogue"]
+        assert entry["Adapter"] == "dialogue"
+        assert entry["Contract"]["ProducedOutputs"] == [{"Name": "shortlist.md"}]
+        assert entry["Contract"]["RequiredInputs"] == [] and entry["Contract"]["OptionalMetadata"] == [], (
+            "must be JSON arrays, not objects (the #513 bug)")
+        # No PermissionGrant / WorkingDirectory -- every real dialogue bindings entry omits both
+        # (DialogueDispatchEndToEndTests.cs, LiveDialogueSmokeTest.cs); a dialogue step is direct
+        # vendor-CLI spawns inside the worker, not repo work.
+        assert "PermissionGrant" not in entry and "WorkingDirectory" not in entry
+        # 6 turns * the worker's 5-minute-per-turn default + 5 minutes slack -- see
+        # dialogue_timeout_minutes's own docstring for why this is the floor, not a tuned guess.
+        assert entry["Timeout"] == "00:35:00", f"6*5+5=35 minutes expected, got {entry['Timeout']!r}"
+        config_path = Path(entry["PromptTemplate"])
+        assert config_path.is_absolute() and config_path.exists(), (
+            "PromptTemplate must point at the sidecar config AER actually resolves (DialogueWorkerAdapter's "
+            "own doc comment: 'carries the dialogue-worker config file's static path')")
+
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        assert config["SeedPrompt"] == seed_path.read_text(encoding="utf-8"), (
+            "the seed file's content must be copied verbatim, never templated (#813: 'not templating the content')")
+        assert config["TurnBudget"] == 6
+        assert config["FinalOutputName"] == "shortlist.md"
+        assert config["StopSentinel"] is None
+        participants = config["Participants"]
+        assert [p["Role"] for p in participants] == ["proposer", "reviewer"]
+        assert [p["Vendor"] for p in participants] == ["gemini", "claude"], (
+            "Vendor is the DialogueParticipantPresets name ('gemini'), never the resolved Command ('agy')")
+        proposer, reviewer = participants
+        assert proposer["Preamble"] == preamble_path.read_text(encoding="utf-8"), (
+            "an authored --preamble-file must be copied verbatim")
+        assert reviewer["Preamble"], "an omitted --preamble-file must still get a non-empty mechanical fallback"
+        # The one place this tool owns vendor invocation shapes -- mirrors
+        # Aer.Workers.Dialogue.DialogueParticipantPresets.For exactly, since DialogueWorkerAdapter.Gate
+        # rebuilds a known-vendor participant's Command/Args from that same formula at bind time.
+        assert proposer["Command"] == "agy" and reviewer["Command"] == "claude"
+        assert proposer["Args"] == [
+            "-p", "Read instructions from {PROMPT_FILE} and follow them.",
+            "--mode", "accept-edits", "--model", "gemini-3.6-flash-high"]
+        assert reviewer["Args"] == [
+            "-p", "Read instructions from {PROMPT_FILE} and follow them.",
+            "--allowedTools", "Write,Read", "--output-format", "text", "--model", "sonnet"]
+        for p in participants:
+            assert any(dispatch.DIALOGUE_PROMPT_FILE_PLACEHOLDER in a for a in p["Args"]), (
+                f"participant '{p['Role']}' has no {{PROMPT_FILE}} placeholder -- "
+                "DialogueWorkerConfigParser.ValidateParticipant would refuse this config")
+    return "1 dry-run x 3 generated JSONs (workflow/bindings/dialogue-config), 2 cross-vendor participants"
+
+
+@check("--dialogue refuses fewer than two participants and an unknown vendor, naming the known ones")
+def _dialogue_arg_validation():
+    with tempfile.TemporaryDirectory() as scratch:
+        seed_path = Path(scratch) / "seed.md"
+        seed_path.write_text("Seed.\n", encoding="utf-8")
+
+        def dialogue(*participant_flags, extra=()):
+            cmd = [sys.executable, str(DISPATCH_PY), "--dialogue", "--seed-file", str(seed_path),
+                   *[a for spec in participant_flags for a in ("--participant", spec)],
+                   "--turn-budget", "4", "--final-output", "out.md", "--scratch-root", scratch,
+                   "--dry-run", *extra]
+            return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+
+        one = dialogue("claude:sonnet")
+        assert one.returncode == 2, f"a single --participant should be refused, got exit {one.returncode}"
+        assert "at least two" in one.stderr, f"refusal did not name the actual defect:\n{one.stderr.strip()[:300]}"
+
+        zero = dialogue()
+        assert zero.returncode == 2, f"zero --participant entries should be refused, got exit {zero.returncode}"
+
+        bad_vendor = dialogue("openai:gpt-5", "claude:sonnet")
+        assert bad_vendor.returncode == 2, f"an unknown vendor should be refused, got exit {bad_vendor.returncode}"
+        for vendor in dispatch.DIALOGUE_KNOWN_VENDORS:
+            assert vendor in bad_vendor.stderr, (
+                f"unknown-vendor refusal must name the known vendors (missing {vendor!r}):\n"
+                f"{bad_vendor.stderr.strip()[:300]}")
+
+        malformed = dialogue("claude", "gemini:gemini-3.6-flash-low")
+        assert malformed.returncode == 2, f"VENDOR with no colon should be refused, got exit {malformed.returncode}"
+    return "4 arg-validation shapes: 1 participant, 0 participants, unknown vendor, malformed spec"
+
+
+@check("--dialogue refuses combination with --lane and --template, matching their own mutual refusal")
+def _dialogue_mode_exclusivity():
+    with tempfile.TemporaryDirectory() as scratch:
+        seed_path = Path(scratch) / "seed.md"
+        seed_path.write_text("Seed.\n", encoding="utf-8")
+        common = ["--seed-file", str(seed_path), "--participant", "claude:sonnet",
+                  "--participant", "gemini:gemini-3.6-flash-low", "--turn-budget", "4",
+                  "--final-output", "out.md", "--scratch-root", scratch, "--dry-run"]
+
+        with_lane = subprocess.run(
+            [sys.executable, str(DISPATCH_PY), "--dialogue", "--lane",
+             "--prompt-file", str(seed_path), "--working-directory", str(ROOT), "--dry-run"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert with_lane.returncode == 2, f"--dialogue --lane should be refused, got exit {with_lane.returncode}"
+        assert "cannot be combined" in with_lane.stderr, with_lane.stderr.strip()[:300]
+
+        with_template = subprocess.run(
+            [sys.executable, str(DISPATCH_PY), "--dialogue", "--template", "review", *common],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert with_template.returncode == 2, f"--dialogue --template should be refused, got exit {with_template.returncode}"
+        assert "cannot be combined" in with_template.stderr, with_template.stderr.strip()[:300]
+
+        # Symmetric: --lane's own guard must refuse --dialogue too, not just the reverse -- the
+        # #741 review's "silently ignored flag is worse than a refusal" reasoning cuts both ways.
+        lane_with_dialogue = subprocess.run(
+            [sys.executable, str(DISPATCH_PY), "--lane", "--dialogue",
+             "--prompt-file", str(seed_path), "--working-directory", str(ROOT), "--dry-run"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert lane_with_dialogue.returncode == 2
+        assert "cannot be combined" in lane_with_dialogue.stderr, lane_with_dialogue.stderr.strip()[:300]
+    return "3 mutual-exclusion pairs: --dialogue+--lane, --dialogue+--template, --lane+--dialogue"
+
+
 @check("workspace truth renders probe failures loudly, never as a clean tree")
 def _workspace_truth_probe_failures_are_loud():
     """#780: a failed git probe rendered identically to a clean tree -- `(none)` -- and the
