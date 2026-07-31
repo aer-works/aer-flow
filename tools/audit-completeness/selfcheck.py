@@ -589,7 +589,8 @@ def _dialogue_dry_run():
             "the seed file's content must be copied verbatim, never templated (#813: 'not templating the content')")
         assert config["TurnBudget"] == 6
         assert config["FinalOutputName"] == "shortlist.md"
-        assert config["StopSentinel"] is None
+        assert "StopSentinel" not in config, (
+            "the sentinel is retired (#820) -- dispatch.py must not resurrect the key in generated configs")
         participants = config["Participants"]
         assert [p["Role"] for p in participants] == ["proposer", "reviewer"]
         assert [p["Vendor"] for p in participants] == ["gemini", "claude"], (

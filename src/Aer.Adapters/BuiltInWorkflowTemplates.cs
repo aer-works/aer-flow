@@ -91,7 +91,6 @@ public static class BuiltInWorkflowTemplates
                 SeedPrompt: string.IsNullOrWhiteSpace(customPrompt) ? "Discuss the topic thoroughly, considering multiple angles." : customPrompt,
                 TurnBudget: 6,
                 FinalOutputName: finalOutputName,
-                StopSentinel: null,
                 Participants:
                 [
                     DialogueParticipantPresets.For(

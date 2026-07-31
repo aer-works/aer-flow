@@ -25,7 +25,6 @@ public class ProcessVendorTurnClientEndToEndTests
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 3,
                 FinalOutputName: "transcript-summary.md",
-                StopSentinel: null,
                 Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
@@ -64,42 +63,6 @@ public class ProcessVendorTurnClientEndToEndTests
     }
 
     [Fact]
-    public async Task A_stop_sentinel_from_a_real_stub_process_no_longer_ends_the_exchange()
-    {
-        // #585/decision 0035 retired the text-sentinel mechanism -- a real stub process producing
-        // sentinel-looking text (configured via the still-parsed StopSentinel field) must run the full
-        // turn budget, the polarity flip on this test's old "...ends_the_exchange_early" behavior.
-        var root = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-{Guid.NewGuid():N}");
-        var scriptDirectory = Path.Combine(root, "scripts");
-        var outputDirectory = Path.Combine(root, "output");
-        try
-        {
-            var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", "You are the architect.", " [drafted]");
-            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "You are the critic.", " APPROVED");
-            var config = new DialogueWorkerConfig(
-                SeedPrompt: "Design a cache.",
-                TurnBudget: 4,
-                FinalOutputName: "transcript-summary.md",
-                StopSentinel: "APPROVED",
-                Participants: [initiator, responder]);
-
-            var runner = new DialogueRunner(new ProcessVendorTurnClient());
-            var turns = await runner.RunAsync(config, outputDirectory);
-
-            Assert.Equal(4, turns.Count);
-            Assert.Contains("APPROVED", turns[1].Text);
-            Assert.All(turns, t => Assert.Null(t.YieldOutcome));
-        }
-        finally
-        {
-            if (Directory.Exists(root))
-            {
-                DirectoryCleanup.DeleteRecursively(root);
-            }
-        }
-    }
-
-    [Fact]
     public async Task A_real_stub_process_exiting_non_zero_fails_the_exchange_and_writes_no_final_output()
     {
         var root = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-{Guid.NewGuid():N}");
@@ -113,7 +76,6 @@ public class ProcessVendorTurnClientEndToEndTests
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 4,
                 FinalOutputName: "transcript-summary.md",
-                StopSentinel: null,
                 Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
@@ -149,7 +111,6 @@ public class ProcessVendorTurnClientEndToEndTests
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 4,
                 FinalOutputName: "transcript-summary.md",
-                StopSentinel: null,
                 Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
@@ -183,7 +144,6 @@ public class ProcessVendorTurnClientEndToEndTests
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 1,
                 FinalOutputName: "transcript-summary.md",
-                StopSentinel: null,
                 Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());

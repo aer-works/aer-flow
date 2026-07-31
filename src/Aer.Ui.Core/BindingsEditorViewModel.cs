@@ -498,7 +498,6 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
         return a.SeedPrompt == b.SeedPrompt
             && a.TurnBudget == b.TurnBudget
             && a.FinalOutputName == b.FinalOutputName
-            && a.StopSentinel == b.StopSentinel
             && a.TurnTimeout == b.TurnTimeout
             && a.FinalOutputMode == b.FinalOutputMode
             && a.Participants.Count == b.Participants.Count

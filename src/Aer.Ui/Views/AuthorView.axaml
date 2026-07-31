@@ -310,8 +310,6 @@
                     <TextBox Text="{Binding DialogueTurnBudgetText}" Width="60" />
                     <TextBlock Text="Final output file:" VerticalAlignment="Center" />
                     <TextBox Text="{Binding DialogueFinalOutputNameText}" Width="150" />
-                    <TextBlock Text="Stop sentinel:" VerticalAlignment="Center" />
-                    <TextBox Text="{Binding DialogueStopSentinelText}" Width="150" PlaceholderText="(optional)" />
                   </StackPanel>
                   <TextBlock Text="Seed prompt:" />
                   <TextBox Text="{Binding DialogueSeedPromptText}" AcceptsReturn="True" TextWrapping="Wrap" Height="50" />

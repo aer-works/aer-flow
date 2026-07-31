@@ -16,6 +16,14 @@ Worker from Flow's perspective, not Flow's own routing code, so the rule does no
 Either way, a sentinel is brittle: a participant discussing the concept of consensus, or quoting the
 sentinel string itself, can trigger a false stop; a formatting quirk can suppress an intended one.
 
+**Corrected 2026-07-31 (#820).** This record's present tense is now historical: everything it
+proposed has shipped, and the mechanism it replaced is gone. The MCP server host and `aer yield`
+landed with #585 (`Aer.Mcp`/`Aer.Mcp.Host`, wired per participant by `DialogueYieldWiring`), which
+also deleted `DialogueRunner.TryStripStopSentinel`; #820 then removed the `StopSentinel` field and
+every authoring surface that wrote it. The Context section and the first `Rests on` row describe
+the world as measured on this record's date — read them as the problem statement this decision
+solved, not as current code.
+
 Checking what mechanism is actually available to build this on (not assumed from the dialogue's own
 text, which had no source access): [0029](0029-the-gate-is-three-mechanisms.md) already establishes
 that **AER's own MCP tools are the one channel that carries a structured signal from a worker without

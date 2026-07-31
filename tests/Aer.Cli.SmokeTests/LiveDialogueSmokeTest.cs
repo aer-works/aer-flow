@@ -97,7 +97,6 @@ public class LiveDialogueSmokeTest
             SeedPrompt: "In one sentence, name the single most important quality of a good workflow engine.",
             TurnBudget: 2,
             FinalOutputName: "verdict.md",
-            StopSentinel: null,
             // Both models are the cheapest each vendor offers, and both names are checked against
             // the vendor's own catalogue rather than assumed. That matters asymmetrically:
             //

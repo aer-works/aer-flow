@@ -458,7 +458,6 @@ public sealed partial class GuidedStepViewModel : ObservableObject
             SeedPrompt,
             int.Parse(TurnBudgetText),
             ProducesFileName,
-            StopSentinel: null,
             Participants:
             [
                 DialogueParticipantPresets.For("claude", "initiator", InitiatorPreamble, Model.Length > 0 ? Model : null),

@@ -9,7 +9,6 @@ public class DialogueWorkerConfigParserTests
           "SeedPrompt": "Propose a design.",
           "TurnBudget": 4,
           "FinalOutputName": "transcript-summary.md",
-          "StopSentinel": null,
           "Participants": [
             {
               "Role": "initiator",
@@ -39,13 +38,30 @@ public class DialogueWorkerConfigParserTests
         Assert.Equal("Propose a design.", config.SeedPrompt);
         Assert.Equal(4, config.TurnBudget);
         Assert.Equal("transcript-summary.md", config.FinalOutputName);
-        Assert.Null(config.StopSentinel);
         Assert.Equal(2, config.Participants.Count);
         Assert.Equal("initiator", config.Participants[0].Role);
         Assert.Equal("claude", config.Participants[0].Vendor);
         Assert.Equal("responder", config.Participants[1].Role);
         Assert.Equal("gemini", config.Participants[1].Vendor);
         Assert.Equal(TimeSpan.FromMinutes(5), config.TurnTimeout);
+    }
+
+    /// <summary>
+    /// #820: an old config persisted before StopSentinel was retired from the record still parses —
+    /// System.Text.Json's default UnmappedMemberHandling.Skip drops the unknown key rather than
+    /// throwing, so nothing needs a compat shim on the reading side.
+    /// </summary>
+    [Fact]
+    public void A_config_carrying_the_retired_StopSentinel_key_still_parses()
+    {
+        var json = ValidJson.Replace(
+            "\"FinalOutputName\": \"transcript-summary.md\",",
+            "\"FinalOutputName\": \"transcript-summary.md\", \"StopSentinel\": \"STOP\",");
+
+        var config = DialogueWorkerConfigParser.Parse(json);
+
+        Assert.Equal("transcript-summary.md", config.FinalOutputName);
+        Assert.Equal(2, config.Participants.Count);
     }
 
     [Fact]
@@ -172,7 +188,6 @@ public class DialogueWorkerConfigParserTests
             SeedPrompt: "Propose a design.",
             TurnBudget: 4,
             FinalOutputName: "transcript-summary.md",
-            StopSentinel: null,
             Participants:
             [
                 DialogueParticipantPresets.For("claude", "initiator", "You are the architect.", model: null),
@@ -220,7 +235,6 @@ public class DialogueWorkerConfigParserTests
               "SeedPrompt": "Propose a design.",
               "TurnBudget": 4,
               "FinalOutputName": "transcript-summary.md",
-              "StopSentinel": null,
               "Participants": [
                 {
                   "Role": "initiator",

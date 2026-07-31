@@ -6,11 +6,10 @@ namespace Aer.Workers.Dialogue.Tests;
 
 public class DialogueRunnerTests
 {
-    private static DialogueWorkerConfig BuildConfig(int turnBudget, string? stopSentinel = null) => new(
+    private static DialogueWorkerConfig BuildConfig(int turnBudget) => new(
         SeedPrompt: "seed",
         TurnBudget: turnBudget,
         FinalOutputName: "final.md",
-        StopSentinel: stopSentinel,
         Participants:
         [
             // These exercise turn sequencing and never needed a vendor identity; stub-claude is not
@@ -19,18 +18,16 @@ public class DialogueRunnerTests
             new DialogueParticipant("responder", "stub-gemini", null, "Responder preamble", "stub-gemini", ["{PROMPT}"]),
         ]);
 
-    private static DialogueWorkerConfig BuildConfig(int turnBudget, IReadOnlyList<DialogueParticipant> participants, string? stopSentinel = null) => new(
+    private static DialogueWorkerConfig BuildConfig(int turnBudget, IReadOnlyList<DialogueParticipant> participants) => new(
         SeedPrompt: "seed",
         TurnBudget: turnBudget,
         FinalOutputName: "final.md",
-        StopSentinel: stopSentinel,
         Participants: participants);
 
     private static DialogueWorkerConfig BuildConfig(int turnBudget, FinalOutputMode finalOutputMode) => new(
         SeedPrompt: "seed",
         TurnBudget: turnBudget,
         FinalOutputName: "final.md",
-        StopSentinel: null,
         Participants:
         [
             new DialogueParticipant("initiator", "stub-claude", null, "Initiator preamble", "stub-claude", ["{PROMPT}"]),
@@ -162,33 +159,6 @@ public class DialogueRunnerTests
                 < finalOutput.IndexOf(turns[1].Text, StringComparison.Ordinal));
             Assert.True(finalOutput.IndexOf(turns[1].Text, StringComparison.Ordinal)
                 < finalOutput.IndexOf(turns[2].Text, StringComparison.Ordinal));
-        }
-        finally
-        {
-            DirectoryCleanup.DeleteRecursively(outputDirectory);
-        }
-    }
-
-    [Fact]
-    public async Task Sentinel_looking_turn_text_no_longer_ends_the_exchange()
-    {
-        // #585/decision 0035 retired the text-sentinel mechanism. Configuring StopSentinel and having
-        // a turn's text contain it must NOT end the exchange anymore -- this is the polarity flip on
-        // the old "A_stop_sentinel_ends_the_exchange..." test, proving the substring path is actually
-        // gone rather than just unreachable from BuildConfig.
-        var client = new ScriptedTurnClient(callIndex => callIndex == 2
-            ? new VendorTurnResult("Looks good. STOP_DIALOGUE", 0, "")
-            : new VendorTurnResult($"response-{callIndex}", 0, ""));
-        var runner = new DialogueRunner(client);
-        var outputDirectory = CreateTempDir();
-        try
-        {
-            var turns = await runner.RunAsync(BuildConfig(6, stopSentinel: "STOP_DIALOGUE"), outputDirectory);
-
-            Assert.Equal(6, turns.Count);
-            Assert.Equal(6, client.CallCount);
-            Assert.Contains("STOP_DIALOGUE", turns[1].Text);
-            Assert.All(turns, t => Assert.Null(t.YieldOutcome));
         }
         finally
         {
