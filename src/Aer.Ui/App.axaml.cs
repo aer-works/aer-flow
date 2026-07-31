@@ -1,3 +1,4 @@
+using Aer.Ui.Core;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -13,6 +14,16 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnExplicitShutdown;
+
+            // #823: the old Documents/AER Flow folder is real data on real installs. Migrate it to
+            // Documents/Baton before the window that reads from that path opens; if both already
+            // exist, don't guess which one wins — say so instead.
+            var migration = WorkspaceMigration.Run();
+            if (migration.Outcome == WorkspaceMigrationOutcome.BothPresentNoAction)
+            {
+                new WorkspaceMigrationNoticeWindow(migration.Message!).Show();
+            }
+
             var window = new MainWindow();
             desktop.MainWindow = window;
 

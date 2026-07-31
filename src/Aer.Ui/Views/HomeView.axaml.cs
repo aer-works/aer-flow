@@ -72,7 +72,7 @@ public partial class HomeView : UserControl
     /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>TaskCards</c>) — the
     /// best "default" for a task you've already run. What was missing was a starting point for a
     /// task you haven't opened yet: this picker now opens in the same
-    /// <c>Documents/AER Flow</c> workspace root <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/>
+    /// <c>Documents/Baton</c> workspace root <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/>
     /// writes guided-flow output under, instead of wherever the OS last remembered — that's the one
     /// place a fresh task is actually likely to be.
     /// </para>
@@ -99,6 +99,5 @@ public partial class HomeView : UserControl
         }
     }
 
-    private static string DefaultWorkspaceDirectoryPath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AER Flow");
+    private static string DefaultWorkspaceDirectoryPath => DefaultWorkspace.RootPath;
 }
