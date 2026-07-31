@@ -157,6 +157,21 @@ public class RoomProjectorTests
     }
 
     [Fact]
+    public void Reconciler_status_arm_escalated_memory_proposal_renders_the_generic_escalation_line()
+    {
+        var state = RoomProjector.Project([
+            new RoomEvent.HeldWorkDispatched(
+                MemoryProposalRef, MemoryProposalEscalation.MemoryProposalShape, MemoryProposalEscalation.NoBudget, "decider-1"),
+            new RoomEvent.HeldWorkEscalated(MemoryProposalRef, "operator"),
+        ]);
+
+        var rendered = HeldWorkReconciler.RenderStatus(
+            state.HeldWork[MemoryProposalRef], memoryProposalFileExistsProbe: _ => true);
+
+        Assert.Equal("escalated to operator", rendered);
+    }
+
+    [Fact]
     public void Reconciler_status_arm_memory_proposal_without_capture_file_renders_missing_file_line()
     {
         var state = RoomProjector.Project([

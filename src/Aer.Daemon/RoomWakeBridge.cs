@@ -1,4 +1,5 @@
 using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
 using Microsoft.Extensions.Hosting;
@@ -122,6 +123,13 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
         foreach (var (@ref, heldWork) in roomState.HeldWork)
         {
             if (heldWork.Status == HeldWorkStatus.Resolved)
+            {
+                continue;
+            }
+
+            // Never probed: its ref is not a lane directory — see RoomWakeDerivation.DeriveWakes'
+            // matching guard (#832) for the rationale; this skip just avoids a nonsense probe.
+            if (heldWork.Shape == MemoryProposalEscalation.MemoryProposalShape)
             {
                 continue;
             }
