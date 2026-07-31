@@ -41,18 +41,19 @@ public class WorkspaceMigrationTests
     /// real open handle rather than a stubbed failure, because that is the condition an editor or
     /// a sync client actually creates.
     /// </summary>
+    /// <summary>
+    /// The cross-platform arm: something that is not a directory already occupies the destination
+    /// name, so <see cref="Directory.Exists"/> does not see it and the move is attempted and
+    /// fails. Windows and Linux both throw here, unlike the open-handle arm below.
+    /// </summary>
     [Fact]
     public void A_move_that_cannot_complete_reports_it_instead_of_throwing_at_startup()
     {
         var legacy = NewTempRoot();
         var current = NewTempRoot();
         Directory.CreateDirectory(legacy);
-        var lockedFile = Path.Combine(legacy, "held-open.txt");
-        File.WriteAllText(lockedFile, "in use");
-
-        // A real lock, not a stubbed failure: an open handle with no sharing is what an editor or a
-        // sync client holds, and it is what makes Directory.Move throw on Windows.
-        using var holdOpen = new FileStream(lockedFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        File.WriteAllText(Path.Combine(legacy, "marker.txt"), "kept");
+        File.WriteAllText(current, "a stray file wearing the folder's name");
 
         try
         {
@@ -63,6 +64,43 @@ public class WorkspaceMigrationTests
             Assert.Contains(current, result.Message);
             // Nothing was half-moved: the data is still where it was, and the app can open on the
             // new path regardless.
+            Assert.True(Directory.Exists(legacy));
+            Assert.Equal("kept", File.ReadAllText(Path.Combine(legacy, "marker.txt")));
+        }
+        finally
+        {
+            if (Directory.Exists(legacy)) Directory.Delete(legacy, recursive: true);
+            if (File.Exists(current)) File.Delete(current);
+        }
+    }
+
+    /// <summary>
+    /// The condition an editor or a sync client actually creates, which is Windows-only: a handle
+    /// opened with <see cref="FileShare.None"/> blocks the move there, while POSIX locking is
+    /// advisory and the move simply succeeds. Asserting the Windows behaviour everywhere is what
+    /// reddened this PR's first CI run on Linux -- the arm is real, its population is not.
+    /// </summary>
+    [Fact]
+    public void An_open_handle_in_the_legacy_folder_reports_instead_of_throwing_on_windows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("FileShare.None is advisory off Windows, so an open handle does not block the move here.");
+        }
+
+        var legacy = NewTempRoot();
+        var current = NewTempRoot();
+        Directory.CreateDirectory(legacy);
+        var lockedFile = Path.Combine(legacy, "held-open.txt");
+        File.WriteAllText(lockedFile, "in use");
+
+        using var holdOpen = new FileStream(lockedFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        try
+        {
+            var result = WorkspaceMigration.Run(legacy, current);
+
+            Assert.Equal(WorkspaceMigrationOutcome.CouldNotMove, result.Outcome);
             Assert.True(Directory.Exists(legacy));
             Assert.True(File.Exists(lockedFile));
         }
