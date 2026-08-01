@@ -1,0 +1,36 @@
+name: PR body lint
+
+# The PR-body guard, split out of ci.yml's `audit` job (#862). It lives alone, and on `edited`,
+# for one reason: when it reds a faulty body, fixing the body must CLEAR it. Inside `ci.yml` it
+# could not -- `on: pull_request` defaults to types [opened, synchronize, reopened], so an edit
+# started no run and `gh run rerun` replayed the stale body, leaving the red to survive the fix
+# until an unrelated push. Adding `edited` to ci.yml instead was rejected: an edit-only run skips
+# the test jobs, and the `ci` aggregate treats a skipped job as fine, so editing a description
+# could satisfy the merge gate on a PR whose tests failed. A standalone check has no such blast
+# radius -- it runs only this lint, so an edit can green only this lint.
+#
+# This is a SECOND branch-protection required check alongside `ci`; `ci` still gates the heavy
+# jobs. The negated-close LOGIC stays tested by `audit-selfcheck` in ci.yml's audit job (its
+# polarity arms run both incident bodies verbatim); only the live PR-body invocation moved here.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  pr-body-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No submodule, no .NET, no build: this reads the PR body as text through completeness.py.
+      # Same setup the audit job uses -- let `pixi run` do the implicit install.
+      - uses: prefix-dev/setup-pixi@v0.8.0
+        with:
+          run-install: false
+          cache: false
+      # Body only. A commit message with the same shape is a separate defect this cannot reach:
+      # the merge squashes them, and the body is what GitHub actually reads.
+      - name: A negated closing keyword still closes the issue
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$BODY" | pixi run audit-completeness -- --pr-body
