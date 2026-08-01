@@ -34,6 +34,7 @@ failure behind it.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -453,8 +454,9 @@ def step9_pinned_models_exist():
         equivalent to reading the code. It finds names in a pin POSITION -- next to `--model`, or as
         a `"model":` value -- which is what keeps prose about model names out of the population. A
         pin built at runtime, or written in a shape this pattern does not match, is invisible to it.
-        `dispatch.py`'s `TEMPLATES` is additionally imported and read structurally, so that one
-        source does not rest on the regex.
+        `WorkerTiers.json` (the shared worker-role catalog, #888) is additionally read directly, so
+        the tier model pins do not rest on the regex -- and, unlike importing `dispatch.py`, that read
+        survives dispatch.py's retirement when the front door replaces it (#887).
     """
     rule("STEP 9 -- every pinned agy model name is one `agy models` lists")
     accepted, why = register_models()
@@ -470,38 +472,29 @@ def step9_pinned_models_exist():
 
     pins = []  # (where, model)
 
-    # dispatch.py is import-safe (its main() sits behind an `if __name__` guard), so read the real
-    # dict rather than regexing a copy of it -- a regex would go stale against the literal it parses.
-    disp_path = os.path.join(ROOT, "tools", "aer-agy-loop", "dispatch.py")
-    if not os.path.exists(disp_path):
+    # The tier model pins live in the shared worker-role catalog now (#888), not a dispatch.py literal:
+    # WorkerTiers.json maps each tier to {adapter, model, effort}, and both dispatch.py and the engine
+    # read it. Check that source DIRECTLY rather than importing dispatch.py -- the check then reads the
+    # truth instead of a Python view rebuilt from the same file, and it survives dispatch.py's
+    # retirement (the front door replaces it, #887) instead of breaking with it.
+    tiers_path = os.path.join(ROOT, "src", "Aer.Adapters", "WorkerTiers.json")
+    if not os.path.exists(tiers_path):
         # A missing source is a HARD failure, not a quiet skip. Skipping would let a rename drop the
-        # template pins from the population while `verify.py`'s pin kept the step green -- a check
-        # that passes because it stopped looking, which is the exact defect step 2's comment names.
-        print(f"    !! {disp_path} not found -- the template pins cannot be checked, so this step"
+        # tier pins from the population while `verify.py`'s pin kept the step green -- a check that
+        # passes because it stopped looking, which is the exact defect step 2's comment names.
+        print(f"    !! {tiers_path} not found -- the tier model pins cannot be checked, so this step"
               " cannot make its claim")
         return False
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("_aer_dispatch_audit", disp_path)
-    mod = importlib.util.module_from_spec(spec)
-    # Importing writes `tools/aer-agy-loop/__pycache__/` otherwise. A read-only audit that dirties
-    # `git status` teaches everyone who runs it to ignore its output's neighbours, so suppress the
-    # bytecode write rather than adding a .gitignore line for a directory that need not exist.
-    prior, sys.dont_write_bytecode = sys.dont_write_bytecode, True
-    try:
-        spec.loader.exec_module(mod)
-    finally:
-        sys.dont_write_bytecode = prior
-    # Resolved through dispatch's own defaults, not read raw: a template that OMITS `adapter` still
-    # dispatches to gemini (BUILT_IN fills it), and `tpl.get("adapter") == "gemini"` would have
-    # skipped exactly that template -- the population shrinking by one, silently, with no bad pin
-    # needed to hide in it.
-    for name, tpl in getattr(mod, "TEMPLATES", {}).items():
-        settings = mod.resolve(tpl)
-        if settings["adapter"] == "gemini" and settings["model"]:
-            pins.append((f"dispatch.py TEMPLATES[{name!r}]", settings["model"]))
+    with open(tiers_path, encoding="utf-8") as f:
+        tier_map = json.load(f)
+    for tier_name, tier in tier_map.items():
+        # gemini/agy tiers only -- the claude pins are CLI aliases this step's SCOPE excludes. A tier
+        # that omits `model` (the vendor's own default) pins nothing to check.
+        if tier.get("adapter") == "gemini" and tier.get("model"):
+            pins.append((f"WorkerTiers.json[{tier_name!r}]", tier["model"]))
     if not pins:
-        print("    !! dispatch.py loaded but contributed no agy model pin -- TEMPLATES has been"
+        print("    !! WorkerTiers.json defines no gemini tier with a model pin -- the catalog has been"
               " emptied, renamed, or restructured, so this step is no longer checking it")
         return False
 

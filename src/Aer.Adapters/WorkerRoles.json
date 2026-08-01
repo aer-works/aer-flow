@@ -1,0 +1,57 @@
+[
+  {
+    "id": "advise",
+    "tier": "standard",
+    "read_files": true,
+    "write_files": true,
+    "run_shell_commands": false,
+    "network_access": false,
+    "timeout_minutes": 25,
+    "verdict_schema": false,
+    "purpose": "Open design question with real options to weigh, BEFORE building. Cross-vendor on purpose: a second opinion from the same family that wrote the code is one instrument twice."
+  },
+  {
+    "id": "implement",
+    "tier": "standard",
+    "read_files": true,
+    "write_files": true,
+    "run_shell_commands": true,
+    "network_access": true,
+    "timeout_minutes": 40,
+    "verdict_schema": false,
+    "purpose": "A bounded change with the approach already decided. Exercises the write path and agy's skip-permissions translation, which is the half of AER that review-only dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's timeout exercises that equally -- so do not reach for the skip-permissions grant expecting it to buy that."
+  },
+  {
+    "id": "review",
+    "tier": "frontier",
+    "read_files": true,
+    "write_files": false,
+    "run_shell_commands": false,
+    "network_access": false,
+    "timeout_minutes": 25,
+    "verdict_schema": true,
+    "purpose": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose rationale asserts something. The default for any PR touching src/ or making a claim in docs/."
+  },
+  {
+    "id": "fact-check",
+    "tier": "minimal",
+    "read_files": true,
+    "write_files": false,
+    "run_shell_commands": false,
+    "network_access": false,
+    "timeout_minutes": 15,
+    "verdict_schema": false,
+    "purpose": "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the list determines the work and a cheap model runs it. NOT for anything where noticing something absent from the list is the point."
+  },
+  {
+    "id": "janitor",
+    "tier": "cheap",
+    "read_files": true,
+    "write_files": true,
+    "run_shell_commands": true,
+    "network_access": true,
+    "timeout_minutes": 15,
+    "verdict_schema": false,
+    "purpose": "After an implementer commits: run the named mechanical checkers and make them green without changing behavior (#729). The canonical brief is janitor-prompt.md next to dispatch.py -- pass it via --prompt-file rather than restating the contract. The checkers determine the work, so the cheap tier runs it; anything needing judgment comes back [NOT DONE], not guessed at."
+  }
+]
