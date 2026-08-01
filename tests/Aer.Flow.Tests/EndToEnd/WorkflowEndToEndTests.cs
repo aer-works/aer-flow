@@ -389,19 +389,75 @@ public class WorkflowEndToEndTests
     }
 
     [Fact]
-    public async Task Re_reading_the_full_event_log_every_scheduling_round_stays_fast_at_realistic_scale()
+    public async Task Re_reading_the_full_event_log_every_scheduling_round_scales_linearly_not_worse()
     {
-        // Measures §21's "manifest cache if scale demands" question directly: the M8 Phase 3
-        // reactive loop re-reads the entire flow.jsonl every scheduling round rather than tailing
-        // it. This measures that re-read's cost at a log size already larger than any workflow in
-        // this suite reaches, to record whether a manifest cache (§12.1) is warranted yet — see
-        // docs/milestone-history.md (M8, "Manifest cache deferred") for the measured figure this bound is based on.
+        // §21's "manifest cache if scale demands" question, measured as a SHAPE rather than a
+        // wall-clock budget. The M8 Phase 3 reactive loop re-reads the whole flow.jsonl every
+        // scheduling round instead of tailing it, so what actually decides whether a manifest cache
+        // (§12.1) is warranted is whether that re-read's cost stays proportional to event count
+        // (linear — no cache needed) or grows faster (super-linear — it is).
+        //
+        // The old form asserted a fixed 50ms/round budget, which silently encoded "this machine,
+        // mostly idle" as a precondition it never stated and could not check: on a box also building
+        // a lane's test suite it measured 55ms and red a change that touched nothing on the path
+        // (#861). Comparing the cost at two log sizes removes that — a machine 15x slower inflates
+        // BOTH measurements equally, so their ratio is load-invariant while an O(n²) regression still
+        // moves it. See docs/milestone-history.md (M8, "Manifest cache deferred") for the shape this
+        // is drawn around.
+        const int small = 500;
+        const int large = 2000; // 4x, so quadratic (~16x time) is well clear of linear (~4x)
+
+        var smallMs = await MeasureReadMsPerRound(small);
+        var largeMs = await MeasureReadMsPerRound(large);
+
+        Assert.True(
+            ReadCostScalesLinearly(smallMs, small, largeMs, large),
+            $"Re-read cost grew faster than linearly: {smallMs:F3}ms at {small} events, "
+            + $"{largeMs:F3}ms at {large} (a {large / small}x size increase should stay within ~{large / small}x "
+            + "time). This is the signal §12.1's manifest cache exists for, not a machine-speed check.");
+    }
+
+    /// <summary>
+    /// The control for the shape test above: proves the classifier actually rejects a super-linear
+    /// re-read and accepts a linear one, with synthetic timings, so the guard's discrimination does
+    /// not depend on wall-clock at all (which is the whole point of #861). Polarity is asserted in
+    /// both directions at the threshold.
+    /// </summary>
+    [Fact]
+    public void ReadCostScalesLinearly_accepts_linear_and_rejects_super_linear()
+    {
+        // 4x events, ~4x time (plus noise) — linear, accepted.
+        Assert.True(ReadCostScalesLinearly(smallMs: 10, smallEvents: 500, largeMs: 42, largeEvents: 2000));
+        // 4x events, ~16x time — quadratic, rejected: the manifest-cache-worthy blowup reds.
+        Assert.False(ReadCostScalesLinearly(smallMs: 10, smallEvents: 500, largeMs: 160, largeEvents: 2000));
+        // Right at the linear-with-slack boundary (ratio == 4 * 2) stays accepted; a hair past reds.
+        Assert.True(ReadCostScalesLinearly(smallMs: 10, smallEvents: 500, largeMs: 80, largeEvents: 2000));
+        Assert.False(ReadCostScalesLinearly(smallMs: 10, smallEvents: 500, largeMs: 81, largeEvents: 2000));
+    }
+
+    /// <summary>
+    /// Load-invariant shape check: does re-read time scale no worse than proportionally to event
+    /// count? Linear cost gives <c>timeRatio ≈ sizeRatio</c>; a super-linear cost gives
+    /// <c>timeRatio ≈ sizeRatio^k</c>. Allowing up to <paramref name="slack"/>× the size ratio keeps
+    /// a linear reader (whose ratio is actually ≤ sizeRatio, since fixed per-read overhead does not
+    /// scale) comfortably inside while a quadratic one at a 4× size increase (16×) is well outside.
+    /// </summary>
+    private static bool ReadCostScalesLinearly(
+        double smallMs, int smallEvents, double largeMs, int largeEvents, double slack = 2.0)
+    {
+        var sizeRatio = (double)largeEvents / smallEvents;
+        var timeRatio = largeMs / smallMs;
+        return timeRatio <= sizeRatio * slack;
+    }
+
+    private static async Task<double> MeasureReadMsPerRound(int events)
+    {
         var logPath = Path.Combine(Path.GetTempPath(), $"perf-{Guid.NewGuid():N}.jsonl");
         try
         {
             await using (var writer = new FlowEventLogWriter(logPath))
             {
-                for (var i = 0; i < 200; i++)
+                for (var i = 0; i < events / 2; i++)
                 {
                     var executionId = new ExecutionId($"exec-{i}");
                     var request = new ExecutionRequest(
@@ -422,18 +478,21 @@ public class WorkflowEndToEndTests
 
             var reader = new FlowEventLogReader(logPath);
             const int rounds = 50;
-            var stopwatch = Stopwatch.StartNew();
+
+            // MIN across rounds, not the average: the fastest observed round is the one the scheduler
+            // stole the least time from, so it tracks compute cost. An average folds contention spikes
+            // back into the number — exactly what #861 is removing — and would also break the
+            // load-invariance the two-size ratio depends on.
+            var best = double.MaxValue;
             for (var i = 0; i < rounds; i++)
             {
+                var stopwatch = Stopwatch.StartNew();
                 await reader.ReadAllAsync(TestContext.Current.CancellationToken);
+                stopwatch.Stop();
+                best = Math.Min(best, stopwatch.Elapsed.TotalMilliseconds);
             }
 
-            stopwatch.Stop();
-            var millisecondsPerRound = stopwatch.Elapsed.TotalMilliseconds / rounds;
-
-            Assert.True(
-                millisecondsPerRound < 50,
-                $"Full re-read averaged {millisecondsPerRound:F2}ms/round at 400 events, exceeding the 50ms budget.");
+            return best;
         }
         finally
         {
