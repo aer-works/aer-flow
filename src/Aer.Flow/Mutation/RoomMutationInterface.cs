@@ -90,7 +90,7 @@ public static class RoomMutationInterface
     public static async Task<RoomState> ResolveHeldWorkAsync(
         string roomDirectoryPath,
         HeldWorkRef @ref,
-        LaneJournalCitation citation,
+        HeldWorkCitation citation,
         IRoomEventLogReader reader,
         IRoomEventLogWriter writer,
         CancellationToken cancellationToken = default)
@@ -122,7 +122,7 @@ public static class RoomMutationInterface
     /// </summary>
     internal static async Task<RoomState> ResolveHeldWorkLockedAsync(
         HeldWorkRef @ref,
-        LaneJournalCitation citation,
+        HeldWorkCitation citation,
         IReadOnlyList<RoomEvent> existingEvents,
         RoomState currentState,
         IRoomEventLogWriter writer,

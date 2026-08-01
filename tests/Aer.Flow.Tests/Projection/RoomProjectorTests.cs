@@ -8,7 +8,7 @@ public class RoomProjectorTests
 {
     private static readonly HeldWorkRef LaneRefA = new("lanes/lane-a");
     private static readonly HeldWorkRef LaneRefB = new("lanes/lane-b");
-    private static readonly ExecutionId ExecId = new("exec-lane-a");
+    private const string CitedSubject = "exec-lane-a";
 
     [Fact]
     public void Projects_held_work_lifecycle_purely_and_deterministically()
@@ -17,7 +17,7 @@ public class RoomProjectorTests
         {
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
             new RoomEvent.HeldWorkEscalated(LaneRefA, "supervisor-bob"),
-            new RoomEvent.HeldWorkResolved(LaneRefA, new LaneJournalCitation("lanes/lane-a", ExecId, "executionSucceeded", 2)),
+            new RoomEvent.HeldWorkResolved(LaneRefA, new HeldWorkCitation(CitedSubject, "executionSucceeded", 2)),
             new RoomEvent.HeldWorkDispatched(LaneRefB, "shape-2", TimeSpan.FromMinutes(5), "decider-2"),
         };
 
@@ -29,7 +29,7 @@ public class RoomProjectorTests
         Assert.Equal(HeldWorkStatus.Resolved, itemA.Status);
         Assert.Equal("supervisor-bob", itemA.EscalatedTo);
         Assert.NotNull(itemA.Citation);
-        Assert.Equal(ExecId, itemA.Citation.ExecutionId);
+        Assert.Equal(CitedSubject, itemA.Citation.Subject);
 
         var itemB = state.HeldWork[LaneRefB];
         Assert.Equal(HeldWorkStatus.Dispatched, itemB.Status);
@@ -72,7 +72,7 @@ public class RoomProjectorTests
         {
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
             new RoomEvent.HeldWorkEscalated(LaneRefB, "supervisor-bob"),
-            new RoomEvent.HeldWorkResolved(LaneRefB, new LaneJournalCitation("lanes/lane-b", ExecId, "executionSucceeded", 1)),
+            new RoomEvent.HeldWorkResolved(LaneRefB, new HeldWorkCitation(CitedSubject, "executionSucceeded", 1)),
         };
 
         var state = RoomProjector.Project(events);

@@ -7,7 +7,7 @@ public class RoomWakeDerivationTests
 {
     private static readonly HeldWorkRef LaneRefA = new("lanes/lane-a");
     private static readonly HeldWorkRef LaneRefB = new("lanes/lane-b");
-    private static readonly ExecutionId ExecId = new("exec-lane-a");
+    private const string CitedSubject = "exec-lane-a";
 
     [Fact]
     public void Dispatched_ref_with_terminal_lane_wakes_as_DispatchedLaneTerminated()
@@ -108,7 +108,7 @@ public class RoomWakeDerivationTests
     {
         var state = RoomProjector.Project([
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
-            new RoomEvent.HeldWorkResolved(LaneRefA, new LaneJournalCitation("lanes/lane-a", ExecId, "executionSucceeded", 2)),
+            new RoomEvent.HeldWorkResolved(LaneRefA, new HeldWorkCitation(CitedSubject, "executionSucceeded", 2)),
         ]);
 
         // Same lane probe result as the terminal-wakes test above -- only the room's own mutation

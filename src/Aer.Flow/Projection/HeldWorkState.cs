@@ -9,4 +9,4 @@ public sealed record HeldWorkState(
     string DeciderIdentity,
     HeldWorkStatus Status,
     string? EscalatedTo = null,
-    LaneJournalCitation? Citation = null);
+    HeldWorkCitation? Citation = null);

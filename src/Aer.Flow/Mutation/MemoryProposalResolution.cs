@@ -105,8 +105,10 @@ public static class MemoryProposalResolution
                 .ConfigureAwait(false);
         }
 
-        var citation = new LaneJournalCitation(
-            @ref.Value, new ExecutionId(@ref.Value), approve ? ApprovedEventType : RejectedEventType);
+        // No lane and no execution: the subject IS the held-work ref itself (the capture file). Not
+        // wrapped in an ExecutionId, which is Core's join key and joins to nothing here (#855).
+        var citation = new HeldWorkCitation(
+            @ref.Value, approve ? ApprovedEventType : RejectedEventType);
 
         return await RoomMutationInterface.ResolveHeldWorkLockedAsync(
             @ref, citation, existingEvents, state, writer, cancellationToken).ConfigureAwait(false);

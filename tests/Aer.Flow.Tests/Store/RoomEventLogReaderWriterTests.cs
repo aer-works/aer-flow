@@ -21,7 +21,7 @@ public class RoomEventLogReaderWriterTests : IDisposable
     public async Task RoundTrips_room_events_through_writer_and_reader()
     {
         var laneRef = new HeldWorkRef("lanes/lane-1");
-        var citation = new LaneJournalCitation("lanes/lane-1", new ExecutionId("exec-1"), "executionSucceeded", 0);
+        var citation = new HeldWorkCitation("exec-1", "executionSucceeded", 0);
 
         await using (var writer = new RoomEventLogWriter(_roomLogPath))
         {

@@ -122,7 +122,7 @@ public class RoomWakeBridgeIntegrationTests
             {
                 await writer.AppendAsync(
                     new RoomEvent.HeldWorkResolved(
-                        laneRef, new LaneJournalCitation(terminalLane, new ExecutionId("exec-wake-bridge-1"), "executionSucceeded", 1)),
+                        laneRef, new HeldWorkCitation("exec-wake-bridge-1", "executionSucceeded", 1)),
                     TestContext.Current.CancellationToken);
             }
 
