@@ -39,9 +39,11 @@ namespace Aer.Flow.Dispatch;
 /// already contribute (#533). This is the adapter's own seam, not the engine's: a variable like
 /// Claude Code's <c>CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH</c> is a vendor quirk, and Architecture Rule
 /// 2 keeps vendor quirks inside <c>Aer.Adapters</c> rather than letting <c>Aer.Flow</c> know the
-/// variable's name exists. <see langword="null"/> or empty contributes nothing. The child process
-/// still inherits the daemon's own environment otherwise (<c>AerTask.WithClearEnv</c> is never
-/// called) — this only ever adds variables, it does not scope what a worker can already see.
+/// variable's name exists. <see langword="null"/> or empty contributes nothing. Since #549 the child
+/// does NOT inherit the daemon's whole environment: <c>AerTask.WithClearEnv</c> is called first, so it
+/// sees only <see cref="AssembleChildEnvironment"/>'s set — the <c>InheritedEnvironment</c> allowlist,
+/// request's AER-computed variables, and these. This param adds to that set and, applied last, wins on
+/// a name collision; it does not widen what the allowlist already scopes out (#895).
 /// </param>
 public sealed record CoreDispatchTarget(
     string Program,
