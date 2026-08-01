@@ -67,21 +67,23 @@ public class WorkerRoleCatalogTests
             .Set(WorkerRoleCatalog.TiersPathEnvironmentVariable, cat.Write("tiers.json", tiersJson))
             .Set(WorkerRoleCatalog.RolesPathEnvironmentVariable, cat.Write("roles.json", rolesJson));
 
-    // A test that reads the SHIPPED default must neutralize the runtime overrides first: with no env
-    // set, ResolvePath falls through {AER_HOME|~/.aer}/worker-*.json, so on a machine where an
+    // A test that reads the SHIPPED default must be hermetic against the runtime overrides: with no
+    // env set, ResolvePath falls through {AER_HOME|~/.aer}/worker-*.json, so on a machine where an
     // operator has used that documented override the test would silently read their file instead of
-    // the shipped one. Point AER_HOME at an empty dir (no override present) and clear the env paths.
-    private static EnvScope ShippedDefault(TempCatalog cat) =>
+    // the shipped one. Point the catalog's OWN env vars straight at the shipped files under
+    // AppContext.BaseDirectory (copied there by the csproj's CopyToOutputDirectory). Deliberately NOT
+    // via AER_HOME: that variable is global process state AerPaths.Root reads, so mutating it here
+    // raced a parallel AerProfileStore.DefaultPath and red an unrelated test (#893). AER_WORKER_*_PATH
+    // is read only by WorkerRoleCatalog, so nothing else can see it.
+    private static EnvScope ShippedDefault() =>
         new EnvScope()
-            .Set("AER_HOME", cat.Dir)
-            .Set(WorkerRoleCatalog.TiersPathEnvironmentVariable, null)
-            .Set(WorkerRoleCatalog.RolesPathEnvironmentVariable, null);
+            .Set(WorkerRoleCatalog.TiersPathEnvironmentVariable, Path.Combine(AppContext.BaseDirectory, "WorkerTiers.json"))
+            .Set(WorkerRoleCatalog.RolesPathEnvironmentVariable, Path.Combine(AppContext.BaseDirectory, "WorkerRoles.json"));
 
     [Fact]
     public void The_shipped_catalog_resolves_each_role_against_its_tier()
     {
-        using var cat = new TempCatalog();
-        using var env = ShippedDefault(cat);
+        using var env = ShippedDefault();
 
         var review = WorkerRoleCatalog.For("review");
         Assert.Equal("claude", review.Adapter);
@@ -141,8 +143,7 @@ public class WorkerRoleCatalogTests
     [Fact]
     public void An_unknown_role_id_throws_naming_the_known_ones()
     {
-        using var cat = new TempCatalog();
-        using var env = ShippedDefault(cat);
+        using var env = ShippedDefault();
 
         var ex = Assert.Throws<KeyNotFoundException>(() => WorkerRoleCatalog.For("does-not-exist"));
         Assert.Contains("review", ex.Message);
