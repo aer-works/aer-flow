@@ -22,16 +22,21 @@ namespace Aer.Flow.Dispatch;
 internal static class PosixProcessLimits
 {
     // sysconf's _SC_ARG_MAX name is NOT portable: glibc/Linux defines it as 0, the BSD/macOS libc
-    // headers as 1. Sourced from <bits/confname.h> (glibc) and <sys/unistd.h> (Apple libc). The Linux
-    // value is exercised on CI's ubuntu leg; the macOS value first runs on the post-merge macOS leg
-    // (PRs don't build macOS — see ci.yml), so ArgMaxBytes fails safe if it ever resolves wrong there.
+    // headers as 1. Sourced from <bits/confname.h> (glibc) and <sys/unistd.h> (Apple libc). Only the
+    // Linux value runs in PR CI; where the macOS value is checked, and why a wrong one fails safe, are
+    // covered at MinPlausibleArgMax below and its named test.
     private const int LinuxScArgMax = 0;
     private const int MacScArgMax = 1;
 
-    // POSIX guarantees ARG_MAX >= _POSIX_ARG_MAX (4096). A sysconf answer below that means the name
-    // resolved to something other than ARG_MAX on this platform; treat it as "unknown" and fall back
-    // to aer-core's own E2BIG rather than refuse healthy dispatches against a bogus ceiling.
-    private const long MinPlausibleArgMax = 4096;
+    // The smallest ARG_MAX we treat as real. NOT POSIX's _POSIX_ARG_MAX floor (4096): that is 32-256x
+    // below any actual Linux/macOS ARG_MAX (glibc's legacy floor is 131072; macOS kern.argmax is 262144
+    // or 1048576), so a mis-resolved _SC_* symbol that happened to return some other mid-size resource
+    // limit would clear 4096 and arm the total guard with a bogus small ceiling — the exact false
+    // refusal of a healthy dispatch this fallback exists to prevent. 131072 is the glibc floor every
+    // real target clears by 2-8x: a sub-floor answer therefore means the symbol resolved wrong, so fall
+    // back to aer-core's own E2BIG (status quo) rather than guard against a fiction. A wrong macOS
+    // _SC_ARG_MAX is caught loudly by ArgMaxBytes_returns_a_plausible_limit, which asserts this floor.
+    private const long MinPlausibleArgMax = 131072;
 
     // DllImport, not LibraryImport: the source-generated marshaller requires <AllowUnsafeBlocks> and
     // Aer.Flow deliberately does not enable unsafe code project-wide for one blittable libc call. The
@@ -48,11 +53,10 @@ internal static class PosixProcessLimits
 
     /// <summary>
     /// The kernel's ARG_MAX for the running POSIX OS — the byte ceiling on argv+envp for one
-    /// <c>exec</c> — or <see langword="null"/> when it cannot be determined (a non-POSIX OS, a
-    /// <c>sysconf</c> "no definite limit" of -1, or an implausibly small answer per
-    /// <see cref="MinPlausibleArgMax"/>). <see langword="null"/> deliberately means "no total guard,
-    /// fall back to the backstop": a ceiling that refused healthy dispatches would be worse than the
-    /// aer-core E2BIG it replaces.
+    /// <c>exec</c> — or <see langword="null"/> when it cannot be determined: a non-POSIX OS, or a
+    /// <c>sysconf</c> answer below <see cref="MinPlausibleArgMax"/> (which covers both a -1 "no definite
+    /// limit" and a mis-resolved symbol). A <see langword="null"/> skips the total guard by design — see
+    /// <see cref="MinPlausibleArgMax"/> for why that is the safe direction.
     /// </summary>
     internal static long? ArgMaxBytes()
     {

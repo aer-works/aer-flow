@@ -1257,8 +1257,8 @@ public class CoreDispatcherTests
     }
 
     // Issue #612: POSIX has no single UTF-16 ceiling like Windows. Two byte-based caps are guarded
-    // instead -- a per-argument MAX_ARG_STRLEN (Linux) and a total ARG_MAX across argv+envp -- so the
-    // over-long spawn is refused up-front as CommandLineTooLongException (Permanent) rather than reaching
+    // instead -- a per-argument MAX_ARG_STRLEN (Linux) and a total ARG_MAX that also counts the
+    // environment -- so the over-long spawn is refused up-front as CommandLineTooLongException (Permanent) rather than reaching
     // aer-core and coming back as a Retryable E2BIG that retries a deterministic failure to exhaustion.
     // The classifiers below take their caps as arguments, so the boundary is exercised on every OS the
     // suite runs on; only the wiring (which cap applies on which platform) is platform-gated.
@@ -1335,9 +1335,9 @@ public class CoreDispatcherTests
     }
 
     /// <summary>
-    /// Pins the total-bytes accounting the ARG_MAX cap is compared against -- program, then each argument,
-    /// then each environment entry, each charged its UTF-8 bytes, a NUL, and a 64-bit pointer. A change to
-    /// the accounting has to be a deliberate edit here rather than a silent shift in where the guard fires.
+    /// Pins the total-bytes accounting MeasurePosixTotalBytes documents, so a change to it has to be a
+    /// deliberate edit here rather than a silent shift in where the guard fires. The worked figures below
+    /// (program, then arguments, then environment) are what its formula must reproduce.
     /// </summary>
     [Fact]
     public void MeasurePosixTotalBytes_counts_the_program_its_arguments_and_the_environment()
@@ -1364,10 +1364,10 @@ public class CoreDispatcherTests
     }
 
     /// <summary>
-    /// ARG_MAX is a total across argv AND envp, so a large environment alone -- identical program and
-    /// arguments -- can trip it. This is the property that would silently vanish if the guard measured only
-    /// the arguments, and the reason <see cref="CoreDispatcher.AssembleChildEnvironment"/> is measured at
-    /// all.
+    /// The total cap counts the environment, not just the arguments, so a large environment alone --
+    /// identical program and arguments -- can trip it. The property would silently vanish if the guard
+    /// measured only the arguments, and is the reason <see cref="CoreDispatcher.AssembleChildEnvironment"/>
+    /// is measured at all.
     /// </summary>
     [Fact]
     public void GuardPosixTotalLength_charges_the_environment_so_a_big_env_alone_can_trip_it()
@@ -1397,9 +1397,8 @@ public class CoreDispatcherTests
 
     /// <summary>
     /// The assembled child environment is exactly what the ARG_MAX guard must measure and what WithEnv
-    /// applies: the inherited allowlist first, then request's AER-computed variables, then the target
-    /// adapter's own -- and a PassThrough variable, whose value is resolved elsewhere, is excluded.
-    /// Same-source-for-both is what keeps the guard's measurement honest.
+    /// applies. Asserts the source order AssembleChildEnvironment documents, and that a PassThrough
+    /// variable (its value resolved elsewhere) is excluded. Same-source-for-both keeps the guard honest.
     /// </summary>
     [Fact]
     public void AssembleChildEnvironment_orders_inherited_then_computed_then_target_and_drops_passthrough()
@@ -1441,10 +1440,15 @@ public class CoreDispatcherTests
 
         var argMax = PosixProcessLimits.ArgMaxBytes();
         Assert.NotNull(argMax);
+
+        // Asserted against 131072 -- the glibc legacy floor every real Linux/macOS ARG_MAX clears by
+        // 2-8x (macOS kern.argmax is >= 262144) -- and NOT POSIX's toothless 4096. A 4096 assertion
+        // would pass on almost any garbage a mis-resolved _SC_ARG_MAX could return, so it could not
+        // catch the one thing this test exists to catch on the macOS leg: the symbol resolving wrong.
         Assert.True(
-            argMax >= 4096,
-            $"sysconf(_SC_ARG_MAX) returned {argMax}, below POSIX's guaranteed _POSIX_ARG_MAX minimum of 4096 "
-            + "-- the _SC_ARG_MAX symbol likely resolved wrong on this platform.");
+            argMax >= 131072,
+            $"sysconf(_SC_ARG_MAX) returned {argMax}, below the 131072 floor every real Linux/macOS "
+            + "ARG_MAX clears -- the _SC_ARG_MAX symbol likely resolved wrong on this platform.");
     }
 
     /// <summary>
@@ -1480,6 +1484,47 @@ public class CoreDispatcherTests
             var exception = await Assert.ThrowsAsync<CommandLineTooLongException>(
                 () => dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken));
             Assert.Contains("MAX_ARG_STRLEN", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            File.Delete(logPath);
+        }
+    }
+
+    /// <summary>
+    /// The control arm #612 asks for by name -- the guard must fire above the real boundary "and not
+    /// below" it. An argument just UNDER MAX_ARG_STRLEN (a genuine ~130 KB single argument, the shape a
+    /// real inline prompt takes, and well under ARG_MAX) dispatches successfully on Linux, so the refusal
+    /// above is shown to key on the real limit rather than refusing every large spawn. Injected-cap
+    /// boundary tests cannot prove this: only a real near-limit dispatch does.
+    /// </summary>
+    [Fact]
+    public async Task DispatchAsync_dispatches_an_argument_just_under_max_arg_strlen_on_linux()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            Assert.Skip("MAX_ARG_STRLEN is a Linux per-argument cap; this control arm is Linux-specific.");
+        }
+
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+
+            // Just under the per-argument cap. sh ignores arguments after the -c command string, so
+            // "exit 0" still runs and returns 0 -- a pass cannot come from the command failing on its own.
+            var nearLimitArgument = new string('x', PosixProcessLimits.LinuxMaxArgStrlen - 1_000);
+            var target = new CoreDispatchTarget("sh", ["-c", "exit 0", nearLimitArgument]);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var result = await new CoreDispatcher(writer)
+                .DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(CoreExitReason.Natural, result.Reason);
         }
         finally
         {

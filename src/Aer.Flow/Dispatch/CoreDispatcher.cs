@@ -666,9 +666,9 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             // POSIX (#612): two byte-based caps rather than one UTF-16 ceiling. The per-argument
             // MAX_ARG_STRLEN is Linux-only — macOS has no per-argument cap and bounds the prompt through
             // ARG_MAX alone — and ARG_MAX is queried at runtime, skipped when it cannot be determined
-            // (PosixProcessLimits.ArgMaxBytes falls back to aer-core's own E2BIG rather than a bogus
-            // ceiling). Both throw CommandLineTooLongException, which MutationInterface records as
-            // Permanent — the same up-front, non-retried refusal the Windows path already produces.
+            // (see PosixProcessLimits.ArgMaxBytes). Both throw CommandLineTooLongException, which
+            // MutationInterface records as Permanent — the same up-front, non-retried refusal the Windows
+            // path already produces.
             if (OperatingSystem.IsLinux())
             {
                 GuardPosixArgumentLength(target.Program, expandedArgs, PosixProcessLimits.LinuxMaxArgStrlen);
@@ -713,10 +713,8 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         // #549: the child inherited the operator's ENTIRE environment until WithClearEnv existed, so a
         // CLAUDE_CODE_SIMPLE=1 exported anywhere in the shell that started the daemon disabled the
         // mandatory gate on every worker, silently. WithClearEnv means the child sees only
-        // childEnvironment — assembled above (AssembleChildEnvironment) in application order: the
-        // inherited allowlist first, then request's AER-computed variables, then the adapter's own last,
-        // so an AER-computed value and an adapter's gate variables win (the ordering
-        // ClaudeWorkerAdapter.SimpleModeVariable depends on). See InheritedEnvironment for what survives.
+        // childEnvironment, whose source order and override semantics AssembleChildEnvironment's own doc
+        // states. See InheritedEnvironment for what survives.
         task.WithClearEnv();
         foreach (var (name, value) in childEnvironment)
         {
