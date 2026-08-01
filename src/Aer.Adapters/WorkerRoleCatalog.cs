@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Aer.Adapters;
 
@@ -9,7 +10,7 @@ namespace Aer.Adapters;
 /// needs no rebuild (drop a <c>worker-tiers.json</c> under <see cref="AerPaths.Root"/>, or point
 /// <see cref="WorkerRoleCatalog.TiersPathEnvironmentVariable"/> at one).
 /// </summary>
-public sealed record WorkerTier(string Adapter, string? Model, string? Effort);
+public sealed record WorkerTier([property: JsonRequired] string Adapter, string? Model, string? Effort);
 
 /// <summary>
 /// A composable worker-role profile — the building block the front door (#887) composes into
@@ -55,11 +56,12 @@ public static class WorkerRoleCatalog
     private const string TiersOverrideFileName = "worker-tiers.json";
     private const string RolesOverrideFileName = "worker-roles.json";
 
+    // Plain JSON only — no comments, no trailing commas. dispatch.py reads the same two files through
+    // stdlib json.loads, which tolerates neither; matching that here keeps "one shared source" a real
+    // guarantee rather than a file only the C# side can parse (#888 finding).
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
     };
 
     /// <summary>Every role in the catalog, resolved against the current tiers, in file order.</summary>
@@ -149,14 +151,18 @@ public static class WorkerRoleCatalog
             ?? throw new InvalidOperationException($"The worker-role catalog's {what} at '{path}' parsed to null.");
     }
 
+    // Every field is [JsonRequired]: a missing member would otherwise deserialize to its default
+    // (false / 0 / null) and silently ship a role nobody authored — a false capability, an
+    // instant-timeout, a dropped verdict schema. The catalog's contract is to fail loudly at load, so
+    // a typo'd or omitted key throws here rather than surfacing at dispatch time (#888 finding).
     private sealed record RawRole(
-        string Id,
-        string Tier,
-        bool ReadFiles,
-        bool WriteFiles,
-        bool RunShellCommands,
-        bool NetworkAccess,
-        int TimeoutMinutes,
-        bool VerdictSchema,
-        string Purpose);
+        [property: JsonRequired] string Id,
+        [property: JsonRequired] string Tier,
+        [property: JsonRequired] bool ReadFiles,
+        [property: JsonRequired] bool WriteFiles,
+        [property: JsonRequired] bool RunShellCommands,
+        [property: JsonRequired] bool NetworkAccess,
+        [property: JsonRequired] int TimeoutMinutes,
+        [property: JsonRequired] bool VerdictSchema,
+        [property: JsonRequired] string Purpose);
 }

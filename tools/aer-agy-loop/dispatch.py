@@ -752,7 +752,9 @@ def verdict_preamble() -> str:
 #   - Tier pins are operator directive #742 (frontier = sonnet/high; standard/cheap = agy flash tiers).
 #     STEP 9 of `audit-completeness` checks the agy ones against `agy models` (#547's failure class),
 #     now reading WorkerTiers.json directly. Frontier effort is an explicit --model override for a pass
-#     that must notice something off-list, never a default.
+#     that must notice something off-list, never a default. The agy tiers leave effort null on purpose:
+#     which agy control wins is unprobed (#510) -- see docs/vendor-capabilities.md's `agy models`
+#     section. WorkerTiers.json is plain JSON and cannot carry that WHY inline, so it lives here.
 #   - `review`/`fact-check` withhold WriteFiles (#649): a reviewer's deliverable is its report, which a
 #     withheld write still reaches in AER_OUTPUT_DIR on claude -- a workspace write would let it edit
 #     the very code it reviews.
@@ -787,7 +789,12 @@ def _load_worker_catalog() -> dict:
     templates = {}
     for role in roles:
         tier = tiers[role["tier"]]
-        templates[role["id"]] = {
+        role_id = role["id"]
+        if role_id in templates:
+            # Loud, matching WorkerRoleCatalog's C# side (#888 finding): a plain dict would let a
+            # duplicate silently overwrite, so dispatch would serve a different role than intended.
+            raise ValueError(f"Duplicate worker role id {role_id!r} in the catalog.")
+        templates[role_id] = {
             "adapter": tier["adapter"],
             "model": tier.get("model"),
             "effort": tier.get("effort"),

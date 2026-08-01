@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aer.Adapters;
 using Xunit;
 
@@ -66,9 +67,22 @@ public class WorkerRoleCatalogTests
             .Set(WorkerRoleCatalog.TiersPathEnvironmentVariable, cat.Write("tiers.json", tiersJson))
             .Set(WorkerRoleCatalog.RolesPathEnvironmentVariable, cat.Write("roles.json", rolesJson));
 
+    // A test that reads the SHIPPED default must neutralize the runtime overrides first: with no env
+    // set, ResolvePath falls through {AER_HOME|~/.aer}/worker-*.json, so on a machine where an
+    // operator has used that documented override the test would silently read their file instead of
+    // the shipped one. Point AER_HOME at an empty dir (no override present) and clear the env paths.
+    private static EnvScope ShippedDefault(TempCatalog cat) =>
+        new EnvScope()
+            .Set("AER_HOME", cat.Dir)
+            .Set(WorkerRoleCatalog.TiersPathEnvironmentVariable, null)
+            .Set(WorkerRoleCatalog.RolesPathEnvironmentVariable, null);
+
     [Fact]
     public void The_shipped_catalog_resolves_each_role_against_its_tier()
     {
+        using var cat = new TempCatalog();
+        using var env = ShippedDefault(cat);
+
         var review = WorkerRoleCatalog.For("review");
         Assert.Equal("claude", review.Adapter);
         Assert.Equal("sonnet", review.Model);
@@ -127,7 +141,39 @@ public class WorkerRoleCatalogTests
     [Fact]
     public void An_unknown_role_id_throws_naming_the_known_ones()
     {
+        using var cat = new TempCatalog();
+        using var env = ShippedDefault(cat);
+
         var ex = Assert.Throws<KeyNotFoundException>(() => WorkerRoleCatalog.For("does-not-exist"));
         Assert.Contains("review", ex.Message);
+    }
+
+    [Fact]
+    public void A_role_missing_a_required_field_fails_loudly()
+    {
+        using var cat = new TempCatalog();
+        // `purpose` omitted. Without [JsonRequired] this would deserialize to a null Purpose and ship a
+        // role nobody authored; the catalog's contract is to fail at load, not at dispatch.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            """[{"id":"x","tier":"t","read_files":true,"write_files":false,"run_shell_commands":false,"network_access":false,"timeout_minutes":10,"verdict_schema":false}]""");
+
+        Assert.Throws<JsonException>(() => _ = WorkerRoleCatalog.All);
+    }
+
+    [Fact]
+    public void A_catalog_file_with_comments_fails_loudly_so_both_readers_agree()
+    {
+        using var cat = new TempCatalog();
+        // dispatch.py reads the same files through stdlib json.loads, which rejects comments. The C#
+        // reader must reject them too, or an operator's inline // WHY loads in the engine and breaks
+        // every dispatch.
+        using var env = PointAt(
+            cat,
+            "{\n  // #742 operator directive\n  \"t\":{\"adapter\":\"gemini\",\"model\":\"m\",\"effort\":null}\n}",
+            $"[{Role("x", "t")}]");
+
+        Assert.Throws<JsonException>(() => _ = WorkerRoleCatalog.All);
     }
 }

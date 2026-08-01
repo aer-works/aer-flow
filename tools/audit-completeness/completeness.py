@@ -417,7 +417,13 @@ def is_probe_input(line: str) -> bool:
 
 
 def step9_pinned_models_exist():
-    """Every `agy` model name pinned in a tool is one `agy models` actually lists.
+    """Every `agy` model name pinned in the worker-role catalog or a tool is one `agy models` lists.
+
+    Population, precisely: the shared tier pins in `src/Aer.Adapters/WorkerTiers.json` (#888, the
+    canonical source both the engine and `dispatch.py` read), `verify.py`'s `CHEAP['agy']`, and any
+    `agy` model name in a pin POSITION under `tools/`. The catalog moved out of `tools/` when the pins
+    left the `dispatch.py` literal, so "in a tool" alone no longer bounds it -- the src/ file is read
+    directly (see the tier-pin arm below), and the `tools/` textual walk covers the rest.
 
     Paid for the same day this step was written. `dispatch.py`'s new template set -- written partly
     to STOP stale pins -- shipped its first draft pinning `gemini-3.1-pro`. `agy models` lists
@@ -514,9 +520,9 @@ def step9_pinned_models_exist():
         return False
 
     # Everything else under tools/, found in a PIN POSITION rather than anywhere in the prose. The
-    # docstring's population claim is "every agy model name pinned in a tool"; without this arm the
-    # code read two named sources while the claim covered the tree, which is the claim-wider-than-
-    # measurement defect this whole step exists to catch, in the step itself.
+    # docstring's population includes "any agy model name in a pin position under tools/"; without this
+    # arm the code read two named sources while the claim covered that tree, which is the claim-wider-
+    # than-measurement defect this whole step exists to catch, in the step itself.
     pin_position = re.compile(
         r'(?:--model["\s,]+|"[Mm]odel"\s*:\s*")([A-Za-z][A-Za-z0-9.\-]*)')
     seen = {(w, m) for w, m in pins}
