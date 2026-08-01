@@ -266,6 +266,34 @@ def _precedence_dropped():
             yield
 
 
+@control("--lane wires the review's branch diff to the janitor's output, and refuses a non-git tree",
+         "the review step stops declaring the janitor's diff as an input, so it reviews HEAD again (#789)")
+def _lane_review_input_dropped():
+    # The exact #789 regression: drop the one line threading branch.diff into the review step and the
+    # reviewer is back to auditing HEAD with no diff -- the state the whole issue is about. The check
+    # must go red on review's empty Inputs/RequiredInputs.
+    with mutated_tree(
+        "tools/aer-agy-loop/dispatch.py",
+        lambda s: s.replace('"inputs": [LANE_DIFF_OUTPUT_NAME],', '"inputs": [],')
+    ) as path:
+        with swap(selfcheck, "DISPATCH_PY", path):
+            yield
+
+
+@control("--lane wires the review's branch diff to the janitor's output, and refuses a non-git tree",
+         "the head_before guard stops firing, so a lane in a non-git tree no longer refuses (#789 finding 4d)")
+def _lane_head_guard_neutered():
+    # Neuter only the guard, leaving everything else: a non-git --lane then builds a diff command
+    # with no real base SHA and dry-runs clean instead of exiting 2. The check's non-git polarity arm
+    # must catch that it stopped refusing.
+    with mutated_tree(
+        "tools/aer-agy-loop/dispatch.py",
+        lambda s: s.replace("if head_before is None:", "if head_before is None and False:")
+    ) as path:
+        with swap(selfcheck, "DISPATCH_PY", path):
+            yield
+
+
 @control("every permission boolean can be turned OFF from the command line",
          "the --no- arm is declared FIRST, so argparse takes the default from it")
 def _flag_order_swapped():
