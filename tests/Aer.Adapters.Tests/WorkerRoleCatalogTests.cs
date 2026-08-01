@@ -1,5 +1,7 @@
+using System.Linq;
 using System.Text.Json;
 using Aer.Adapters;
+using Aer.Flow.Domain;
 using Xunit;
 
 namespace Aer.Adapters.Tests;
@@ -54,12 +56,14 @@ public class WorkerRoleCatalogTests
         }
     }
 
+    private const string DefaultOutputs = """[{"name":"out.md","schema":"none","instruction":"Write to out.md."}]""";
+
     private static string Role(string id, string tier, bool write = false, bool shell = false, bool net = false,
-        int timeout = 10, bool verdict = false) =>
+        int timeout = 10, bool verdict = false, string outputs = DefaultOutputs) =>
         $$"""
           {"id":"{{id}}","tier":"{{tier}}","read_files":true,"write_files":{{(write ? "true" : "false")}},
            "run_shell_commands":{{(shell ? "true" : "false")}},"network_access":{{(net ? "true" : "false")}},
-           "timeout_minutes":{{timeout}},"verdict_schema":{{(verdict ? "true" : "false")}},"purpose":"p"}
+           "timeout_minutes":{{timeout}},"verdict_schema":{{(verdict ? "true" : "false")}},"purpose":"p","outputs":{{outputs}}}
           """;
 
     private static EnvScope PointAt(TempCatalog cat, string tiersJson, string rolesJson) =>
@@ -176,5 +180,139 @@ public class WorkerRoleCatalogTests
             $"[{Role("x", "t")}]");
 
         Assert.Throws<JsonException>(() => _ = WorkerRoleCatalog.All);
+    }
+
+    [Fact]
+    public void The_shipped_review_role_declares_a_prose_report_and_a_schema_checked_verdict()
+    {
+        using var env = ShippedDefault();
+
+        var outputs = WorkerRoleCatalog.For("review").Outputs;
+
+        var verdict = outputs.Single(o => o.Name == "verdict.json");
+        Assert.Equal(OutputSchema.ReviewVerdict, verdict.Schema);
+        Assert.Contains("verdict.json", verdict.Instruction, StringComparison.Ordinal);
+
+        var prose = outputs.Single(o => o.Name == "report.md");
+        Assert.Equal(OutputSchema.None, prose.Schema);
+    }
+
+    [Fact]
+    public void The_shipped_mutation_roles_declare_their_handoff_outputs()
+    {
+        using var env = ShippedDefault();
+
+        // implement's summary is a floor + handoff, existence-only -- its correctness is a review's job.
+        var changes = Assert.Single(WorkerRoleCatalog.For("implement").Outputs);
+        Assert.Equal("changes.md", changes.Name);
+        Assert.Equal(OutputSchema.None, changes.Schema);
+
+        // janitor declares its report AND branch.diff -- the diff is the ground truth a following review
+        // reads (#789). Both named, so dropping either from the catalog fails here (the #741 failure was
+        // a wrong filename on this exact role).
+        var janitor = WorkerRoleCatalog.For("janitor").Outputs;
+        Assert.Contains(janitor, o => o.Name == "janitor.md");
+        Assert.Contains(janitor, o => o.Name == "branch.diff");
+        Assert.All(janitor, o => Assert.Equal(OutputSchema.None, o.Schema));
+    }
+
+    [Fact]
+    public void An_output_maps_its_schema_from_the_catalog_string()
+    {
+        using var cat = new TempCatalog();
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("r", "t", outputs: """[{"name":"verdict.json","schema":"review_verdict","instruction":"i"}]""")}]");
+
+        var output = Assert.Single(WorkerRoleCatalog.For("r").Outputs);
+        Assert.Equal(OutputSchema.ReviewVerdict, output.Schema);
+    }
+
+    [Fact]
+    public void An_output_with_an_unknown_schema_fails_loudly()
+    {
+        using var cat = new TempCatalog();
+        // A typo'd schema must throw at load, not default to None and silently drop the verdict check.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("r", "t", outputs: """[{"name":"x","schema":"verdikt","instruction":"i"}]""")}]");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _ = WorkerRoleCatalog.All);
+        Assert.Contains("verdikt", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_role_missing_the_outputs_field_fails_loudly()
+    {
+        using var cat = new TempCatalog();
+        // outputs is [JsonRequired] like every other field: an omitted array would deserialize to null
+        // and ship a role that declares nothing, dispatching a worker told to write no artifact.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            """[{"id":"r","tier":"t","read_files":true,"write_files":false,"run_shell_commands":false,"network_access":false,"timeout_minutes":10,"verdict_schema":false,"purpose":"p"}]""");
+
+        Assert.Throws<JsonException>(() => _ = WorkerRoleCatalog.All);
+    }
+
+    [Fact]
+    public void An_output_missing_a_required_field_fails_loudly()
+    {
+        using var cat = new TempCatalog();
+        // instruction omitted -- without [JsonRequired] it would bind to null and dispatch a worker
+        // never told to produce the file the contract then fails it for not producing.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("r", "t", outputs: """[{"name":"x","schema":"none"}]""")}]");
+
+        Assert.Throws<JsonException>(() => _ = WorkerRoleCatalog.All);
+    }
+
+    [Fact]
+    public void A_role_declaring_an_empty_outputs_list_fails_loudly()
+    {
+        using var cat = new TempCatalog();
+        // Present but empty: [JsonRequired] is satisfied, so only an explicit count guard catches this.
+        // A role that declares nothing has no floor -- a silent no-op worker would pass.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("r", "t", outputs: "[]")}]");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _ = WorkerRoleCatalog.All);
+        Assert.Contains("r", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_role_declaring_a_null_outputs_value_fails_loudly_by_name()
+    {
+        using var cat = new TempCatalog();
+        // outputs present but null passes [JsonRequired]; without the guard it throws an unnamed
+        // ArgumentNullException out of Select, unlike every other failure here which names the role.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("r", "t", outputs: "null")}]");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _ = WorkerRoleCatalog.All);
+        Assert.Contains("r", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_output_named_with_a_leading_dot_fails_loudly_at_load()
+    {
+        using var cat = new TempCatalog();
+        // '.'-prefixed names are reserved for engine stream logs; ProducedOutput refuses them at
+        // dispatch, so the catalog must refuse them at load rather than defer the failure.
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("r", "t", outputs: """[{"name":".notes.md","schema":"none","instruction":"i"}]""")}]");
+
+        var ex = Assert.Throws<InvalidOperationException>(() => _ = WorkerRoleCatalog.All);
+        Assert.Contains(".notes.md", ex.Message, StringComparison.Ordinal);
     }
 }
