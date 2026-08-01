@@ -133,8 +133,12 @@ NOISE = re.compile(r"#\d{3,}|https?://\S+")
 # three shapes md`, entirely `](0003-templates-collapse-to-three-shapes.md)` link text with no shared
 # prose. That is "a reference proliferating is the register working," the false-positive class this
 # checker's own design disavows. Stripped BEFORE MARKUP, which dissolves the `]( )` that identifies a
-# target; only the target is dropped, the visible `[text]` stays and normalises as prose. `[^)]*` is
-# safe because no `.md` link target in this repo nests a paren (measured before landing).
+# target; only the target is dropped, the visible `[text]` stays and normalises as prose. This drops
+# ANY inline-link target -- `.md` cross-link, external URL, image -- not only decision links. `[^)]*`
+# stops at the first `)`, so a target that nests a paren (a `(...Foo_(bar))` URL) would leak its tail
+# as stray prose; none exists anywhere in the repo today (measured across docs/, src/, tests/, tools/
+# before landing), and a leak could at most add a shingle a real duplication already carries, never
+# drop one -- the safe direction, same as every other narrowing in this file.
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
 
 
