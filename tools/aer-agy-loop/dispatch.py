@@ -739,84 +739,77 @@ def verdict_preamble() -> str:
 # Only `implement` differs: it adds shell + network, which is agy's `--dangerously-skip-permissions`
 # translation and the path #596, #611, #623 and #624 all came from. A session that only ever
 # dispatches reviews never exercises it.
-TEMPLATES = {
-    "advise": {
-        "_use": "Open design question with real options to weigh, BEFORE building. Cross-vendor on "
-                "purpose: a second opinion from the same family that wrote the code is one instrument "
-                "twice.",
-        # Effort is in the model name; the flag is left unset because which control wins is unprobed
-        # (#510) -- see `docs/vendor-capabilities.md`'s `agy models` section. `verify.py`'s CHEAP pins
-        # the same way. STEP 9 of `pixi run audit-completeness` checks these names against that
-        # register, because a name the CLI will not accept is #547's failure class.
-        #
-        # Flash tier by operator directive (#742): frontier effort is an explicit --model override
-        # for the pass that must notice something off-list, never the default.
-        "adapter": "gemini", "model": "gemini-3.6-flash-high", "effort": None,
-        "read_files": True, "write_files": True,
-        "run_shell_commands": False, "network_access": False,
-        "timeout_minutes": 25,
-        "verdict_schema": False,
-    },
-    "implement": {
-        "_use": "A bounded change with the approach already decided. Exercises the write path and "
-                "agy's skip-permissions translation, which is the half of AER that review-only "
-                "dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's "
-                "timeout exercises that equally -- so do not reach for the skip-permissions grant "
-                "expecting it to buy that.",
-        # Same tier directive as `advise` (#742).
-        "adapter": "gemini", "model": "gemini-3.6-flash-high", "effort": None,
-        "read_files": True, "write_files": True,
-        "run_shell_commands": True, "network_access": True,
-        "timeout_minutes": 40,
-        "verdict_schema": False,
-    },
-    "review": {
-        "_use": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose "
-                "rationale asserts something. The default for any PR touching src/ or making a claim "
-                "in docs/.",
-        # No workspace write (#649). A reviewer's deliverable is its report, which lands in
-        # AER_OUTPUT_DIR — a directory a withheld write still reaches on this adapter. Until that
-        # existed, every dispatch here granted the reviewer the ability to edit the very code it was
-        # reviewing, purely so it could save a file.
-        #
-        # sonnet/high by operator directive (#742): four sonnet passes on 2026-07-30 caught
-        # only-verified findings, one proven by reverting the fix under the new tests. What sonnet
-        # would MISS versus a frontier pass is unmeasured (no parallel arm ran) -- escalate with an
-        # explicit --model override when the review must notice something off-list.
-        "adapter": "claude", "model": "sonnet", "effort": "high",
-        "read_files": True, "write_files": False,
-        "run_shell_commands": False, "network_access": False,
-        "timeout_minutes": 25,
-        # #732 / spec §4.2: reviews also produce a schema-checked verdict.json the engine validates
-        # at completion, so this loop stops regex-grepping severity words out of prose reports.
-        "verdict_schema": True,
-    },
-    "fact-check": {
-        "_use": "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the "
-                "list determines the work and a cheap model runs it. NOT for anything where noticing "
-                "something absent from the list is the point.",
-        "adapter": "claude", "model": "haiku", "effort": "low",
-        "read_files": True, "write_files": False,  # #649, same reason as `review` above.
-        "run_shell_commands": False, "network_access": False,
-        "timeout_minutes": 15,
-        "verdict_schema": False,
-    },
-    "janitor": {
-        "_use": "After an implementer commits: run the named mechanical checkers and make them green "
-                "without changing behavior (#729). The canonical brief is janitor-prompt.md next to "
-                "this file -- pass it via --prompt-file rather than restating the contract. The "
-                "checkers determine the work, so the cheap tier runs it; anything needing judgment "
-                "comes back [NOT DONE], not guessed at.",
-        # The full grant is what running `pixi run ...` costs (see grant_refusal: a shell grant
-        # refuses every withheld category), not a statement of trust -- the model stays the
-        # cheapest one dispatchable. Same pin as verify.py's CHEAP for agy.
-        "adapter": "gemini", "model": "gemini-3.6-flash-low", "effort": None,
-        "read_files": True, "write_files": True,
-        "run_shell_commands": True, "network_access": True,
-        "timeout_minutes": 15,
-        "verdict_schema": False,
-    },
-}
+# The worker-role catalog. Its DATA -- each role's grant/timeout/verdict, and the vendor/model/effort
+# of the TIER it names -- lives in src/Aer.Adapters/WorkerRoles.json + WorkerTiers.json (#888), the one
+# source the engine's own WorkerRoleCatalog reads too (the #836 shared-JSON pattern, one level up).
+# Read at RUNTIME, never baked in, so a model swap is a one-line edit to WorkerTiers.json with no
+# rebuild. Resolution matches the engine's, per file: the AER_WORKER_*_PATH override, then
+# {AER_HOME or ~/.aer}/worker-*.json, then the tracked default beside the engine.
+#
+# The load-bearing WHYs the old inline dict carried, kept here because they are operator directives and
+# hard-won grant decisions rather than defaults (the implement/janitor shell grant is the exception --
+# its rationale is the comment block just above):
+#   - Tier pins are operator directive #742 (frontier = sonnet/high; standard/cheap = agy flash tiers).
+#     STEP 9 of `audit-completeness` checks the agy ones against `agy models` (#547's failure class),
+#     now reading WorkerTiers.json directly. Frontier effort is an explicit --model override for a pass
+#     that must notice something off-list, never a default. The agy tiers leave effort null on purpose:
+#     which agy control wins is unprobed (#510) -- see docs/vendor-capabilities.md's `agy models`
+#     section. WorkerTiers.json is plain JSON and cannot carry that WHY inline, so it lives here.
+#   - `review`/`fact-check` withhold WriteFiles (#649): a reviewer's deliverable is its report, which a
+#     withheld write still reaches in AER_OUTPUT_DIR on claude -- a workspace write would let it edit
+#     the very code it reviews.
+#   - `review` emits a schema-checked verdict.json the engine validates (#732 / spec §4.2).
+
+
+def _worker_catalog_path(env_var: str, override_name: str, default_name: str) -> Path:
+    """Resolve one catalog file: the env override, then the {AER_HOME|~/.aer} runtime override, then
+    the tracked default under src/Aer.Adapters. Mirrors WorkerRoleCatalog's C# resolution so both read
+    the same file (#888)."""
+    env = os.environ.get(env_var)
+    if env and env.strip():
+        return Path(env)
+    home = os.environ.get("AER_HOME") or ""
+    root = Path(home) if home.strip() else Path.home() / ".aer"
+    override = root / override_name
+    if override.exists():
+        return override
+    return Path(__file__).resolve().parents[2] / "src" / "Aer.Adapters" / default_name
+
+
+def _load_worker_catalog() -> dict:
+    """Build the TEMPLATES dict (role id -> resolved settings) from the shared roles + tiers JSON.
+
+    A role names a tier; the tier supplies adapter/model/effort. A role naming an undefined tier is a
+    loud KeyError, not a silent default -- the same intolerance `resolve()`/BUILT_IN gave the old
+    literal, now enforced by the join rather than by every literal spelling out every key."""
+    tiers = json.loads(_worker_catalog_path(
+        "AER_WORKER_TIERS_PATH", "worker-tiers.json", "WorkerTiers.json").read_text(encoding="utf-8"))
+    roles = json.loads(_worker_catalog_path(
+        "AER_WORKER_ROLES_PATH", "worker-roles.json", "WorkerRoles.json").read_text(encoding="utf-8"))
+    templates = {}
+    for role in roles:
+        tier = tiers[role["tier"]]
+        role_id = role["id"]
+        if role_id in templates:
+            # Loud, matching WorkerRoleCatalog's C# side (#888 finding): a plain dict would let a
+            # duplicate silently overwrite, so dispatch would serve a different role than intended.
+            raise ValueError(f"Duplicate worker role id {role_id!r} in the catalog.")
+        templates[role_id] = {
+            "adapter": tier["adapter"],
+            "model": tier.get("model"),
+            "effort": tier.get("effort"),
+            "read_files": role["read_files"],
+            "write_files": role["write_files"],
+            "run_shell_commands": role["run_shell_commands"],
+            "network_access": role["network_access"],
+            "timeout_minutes": role["timeout_minutes"],
+            "verdict_schema": role["verdict_schema"],
+            "_use": role["purpose"],
+        }
+    return templates
+
+
+TEMPLATES = _load_worker_catalog()
 
 # Below the gate's own floor -- a typo, a version bump, a comment fix asserting nothing -- dispatch
 # NOTHING. There is deliberately no template for that case: running a cheap reviewer out of habit is
