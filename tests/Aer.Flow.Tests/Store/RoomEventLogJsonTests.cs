@@ -8,7 +8,9 @@ namespace Aer.Flow.Tests.Store;
 
 /// <summary>
 /// Verifies serialization discipline for <c>room.jsonl</c> entries:
-/// required parameter removal failure tests (the #784 pattern) extended to every <see cref="RoomEvent"/> variant.
+/// required parameter removal failure tests (the #784 pattern) extended to every <see cref="RoomEvent"/>
+/// variant, and — since #885 — descending into every nested record a variant carries, so a required
+/// member of e.g. <see cref="HeldWorkCitation"/> is exercised too, not only the outer event's members.
 /// </summary>
 public class RoomEventLogJsonTests
 {
@@ -43,13 +45,17 @@ public class RoomEventLogJsonTests
         var node = JsonNode.Parse(
             JsonSerializer.Serialize(original, typeof(RoomEvent), FlowEventLogJson.Options))!.AsObject();
 
-        var members = node.Select(pair => pair.Key).Where(k => k != "eventType").ToList();
+        // Every removable member, top-level AND nested (e.g. citation.subject), each carrying the
+        // record type that DECLARES it — so IsOptional is asked of HeldWorkCitation for a citation
+        // member, not of the outer RoomEvent variant. A whole nested object (citation) is still a
+        // target too, so removing a required nested record stays covered as before.
+        var members = RemovableMembers(node, original.GetType());
         Assert.NotEmpty(members);
 
         foreach (var member in members)
         {
             var damaged = JsonNode.Parse(node.ToJsonString())!.AsObject();
-            Assert.True(damaged.Remove(member));
+            RemoveAt(damaged, member.Path);
 
             var json = damaged.ToJsonString();
             var exception = Record.Exception(
@@ -60,15 +66,36 @@ public class RoomEventLogJsonTests
                 var round = JsonSerializer.Deserialize<RoomEvent>(json, FlowEventLogJson.Options);
                 Assert.NotNull(round);
                 Assert.True(
-                    IsOptional(original.GetType(), member),
-                    $"{original.GetType().Name}.{member} deserialized while absent but is not an optional "
-                    + "parameter — silent corruption path.");
+                    IsOptional(member.DeclaringType, member.Name),
+                    $"{member.DeclaringType.Name}.{member.Name} (at {string.Join('.', member.Path)}) "
+                    + "deserialized while absent but is not an optional parameter — silent corruption path.");
             }
             else
             {
                 Assert.IsType<JsonException>(exception);
             }
         }
+    }
+
+    /// <summary>
+    /// The control for the theory above: proves the removal walk actually DESCENDS into a nested
+    /// record rather than skimming top-level keys. If the recursion in <see cref="RemovableMembers"/>
+    /// regressed to top-level only, the theory would still pass (it just checks fewer members), so
+    /// nothing else would catch the hole #885 named — this test is what discriminates.
+    /// </summary>
+    [Fact]
+    public void The_removal_walk_descends_into_a_nested_record()
+    {
+        var resolved = new RoomEvent.HeldWorkResolved(
+            LaneRef, new HeldWorkCitation(CitedSubject, "executionSucceeded", 0));
+        var node = JsonNode.Parse(
+            JsonSerializer.Serialize(resolved, typeof(RoomEvent), FlowEventLogJson.Options))!.AsObject();
+
+        var members = RemovableMembers(node, resolved.GetType());
+
+        Assert.Contains(members, m => m.Path.Count >= 2
+            && m.DeclaringType == typeof(HeldWorkCitation)
+            && string.Equals(m.Name, "subject", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -82,9 +109,61 @@ public class RoomEventLogJsonTests
             json, JsonSerializer.Serialize(deserialized, typeof(RoomEvent), FlowEventLogJson.Options));
     }
 
-    private static bool IsOptional(Type eventType, string memberName) =>
-        eventType.GetConstructors()
+    private static bool IsOptional(Type declaringType, string memberName) =>
+        declaringType.GetConstructors()
             .SelectMany(c => c.GetParameters())
             .Any(p => string.Equals(p.Name, memberName, StringComparison.OrdinalIgnoreCase)
                 && p.HasDefaultValue);
+
+    /// <summary>A member the walk can remove: where it sits, and the record type that declares it.</summary>
+    private sealed record RemovableMember(IReadOnlyList<string> Path, Type DeclaringType, string Name);
+
+    /// <summary>
+    /// Every removable member of <paramref name="root"/>, descending into nested JSON objects. Each
+    /// carries the CLR type that declares it (resolved via the owning record's constructor parameter),
+    /// so a nested member is checked against its own record rather than the outer event.
+    /// </summary>
+    private static IReadOnlyList<RemovableMember> RemovableMembers(JsonObject root, Type variantType)
+    {
+        var targets = new List<RemovableMember>();
+        Collect(root, variantType, [], isRoot: true, targets);
+        return targets;
+    }
+
+    private static void Collect(
+        JsonObject obj, Type owningType, List<string> path, bool isRoot, List<RemovableMember> targets)
+    {
+        foreach (var key in obj.Select(pair => pair.Key).ToList())
+        {
+            // "eventType" is the polymorphic discriminator ONLY at the root — nested records (e.g.
+            // HeldWorkCitation.EventType) carry a real member of that name, so the skip is root-only.
+            if (isRoot && key == "eventType")
+            {
+                continue;
+            }
+
+            var memberPath = new List<string>(path) { key };
+            targets.Add(new RemovableMember(memberPath, owningType, key));
+
+            var param = owningType.GetConstructors()
+                .SelectMany(c => c.GetParameters())
+                .FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+
+            if (obj[key] is JsonObject child && param is not null)
+            {
+                Collect(child, param.ParameterType, memberPath, isRoot: false, targets);
+            }
+        }
+    }
+
+    private static void RemoveAt(JsonObject root, IReadOnlyList<string> path)
+    {
+        var cursor = root;
+        for (var i = 0; i < path.Count - 1; i++)
+        {
+            cursor = cursor[path[i]]!.AsObject();
+        }
+
+        Assert.True(cursor.Remove(path[^1]));
+    }
 }
