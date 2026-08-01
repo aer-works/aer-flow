@@ -44,10 +44,11 @@ if (args.Length >= 1 && args[0] == "agy-hook-check")
     return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools, agyOutputDir, agyWorkspaceDir);
 }
 
-var knownSubcommands = new[] { "run", "cancel", "decide", "supply", "status" };
+var knownSubcommands = new[] { "run", "dispatch", "cancel", "decide", "supply", "status" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
     Console.Error.WriteLine(RunOptionsParser.Usage);
+    Console.Error.WriteLine($"       {DispatchOptionsParser.Usage[7..]}");
     Console.Error.WriteLine(
         "       aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine(
@@ -96,6 +97,14 @@ try
             {
                 var options = RunOptionsParser.Parse(args[1..]);
                 result = await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: hostStopSource.Token)
+                    .ConfigureAwait(false);
+                break;
+            }
+
+        case "dispatch":
+            {
+                var options = DispatchOptionsParser.Parse(args[1..]);
+                result = await DispatchCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, hostStopSource.Token)
                     .ConfigureAwait(false);
                 break;
             }

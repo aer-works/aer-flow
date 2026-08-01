@@ -1,0 +1,82 @@
+using System.Linq;
+using Aer.Adapters;
+using Aer.Flow.Domain;
+
+namespace Aer.Adapters.Tests;
+
+/// <summary>
+/// The role -> binding mapping behind <c>aer dispatch</c> (#900): a role's declared outputs become the
+/// contract the engine enforces, its grant/timeout/model/effort ride along, and its output
+/// instructions are appended to the spec so the worker is told to produce exactly what the contract
+/// asserts. Exercised against the shipped catalog, since that is what the command actually dispatches.
+/// </summary>
+[Collection(WorkerRoleCatalogCollection.Name)]
+public class RoleDispatchTests
+{
+    private static WorkerRole Review => WorkerRoleCatalog.For("review");
+
+    [Fact]
+    public void A_roles_declared_outputs_become_the_contracts_produced_outputs_with_their_schema()
+    {
+        var binding = RoleDispatch.ToBinding(Review, "Review the change.");
+
+        var outputs = binding.Contract.ProducedOutputs;
+        Assert.Contains(outputs, o => o.Name == "report.md" && o.Schema == OutputSchema.None);
+        // The schema is carried through, not dropped to None — a verdict.json that is not a
+        // ReviewVerdict must fail the contract, and that only happens if the schema survives the map.
+        Assert.Contains(outputs, o => o.Name == "verdict.json" && o.Schema == OutputSchema.ReviewVerdict);
+        Assert.Equal(Review.Outputs.Count, outputs.Count);
+    }
+
+    [Fact]
+    public void The_prompt_is_the_spec_followed_by_every_output_instruction()
+    {
+        var binding = RoleDispatch.ToBinding(Review, "Review the change.");
+
+        Assert.StartsWith("Review the change.", binding.PromptTemplate);
+        foreach (var output in Review.Outputs)
+        {
+            Assert.Contains(output.Instruction, binding.PromptTemplate);
+        }
+    }
+
+    [Fact]
+    public void The_binding_carries_the_roles_grant_timeout_model_and_effort()
+    {
+        var binding = RoleDispatch.ToBinding(Review, "spec");
+
+        Assert.Equal(Review.Grant, binding.PermissionGrant);
+        Assert.Equal(Review.Timeout, binding.Timeout);
+        Assert.Equal(Review.Model, binding.Model);
+        Assert.Equal(Review.Effort, binding.Effort);
+    }
+
+    [Fact]
+    public void The_adapter_defaults_to_the_roles_tier_but_an_override_wins()
+    {
+        // review is a claude-tier role; overriding to gemini must change it (and normalize case),
+        // so the two arms differ regardless of which tier review sits on later.
+        Assert.Equal(Review.Adapter, RoleDispatch.ToBinding(Review, "spec").Adapter);
+        var overridden = RoleDispatch.ToBinding(Review, "spec", "Gemini").Adapter;
+        Assert.Equal("gemini", overridden);
+        Assert.NotEqual(Review.Adapter, overridden);
+    }
+
+    [Fact]
+    public void Materialize_produces_one_step_keyed_by_the_role_id_whose_outputs_mirror_the_contract()
+    {
+        var (definition, bindings) = RoleDispatch.Materialize(Review, "spec");
+
+        var step = Assert.Single(definition.Steps);
+        Assert.Equal("review", step.StepId.Value);
+        Assert.Equal("review", step.Worker);
+        Assert.Empty(step.DependsOn);
+        // Step output names mirror the contract's; this pins that alignment (its rationale lives on RoleDispatch).
+        Assert.Equal(
+            Review.Outputs.Select(o => o.Name).OrderBy(n => n),
+            step.Outputs.OrderBy(n => n));
+
+        var binding = Assert.Contains("review", bindings);
+        Assert.Equal(step.Outputs.OrderBy(n => n), binding.Contract.ProducedOutputs.Select(o => o.Name).OrderBy(n => n));
+    }
+}
