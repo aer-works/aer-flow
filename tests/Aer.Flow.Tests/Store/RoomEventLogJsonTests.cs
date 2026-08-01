@@ -13,13 +13,13 @@ namespace Aer.Flow.Tests.Store;
 public class RoomEventLogJsonTests
 {
     private static readonly HeldWorkRef LaneRef = new("lanes/lane-1");
-    private static readonly ExecutionId ExecId = new("exec-lane-1");
+    private const string CitedSubject = "exec-lane-1";
 
     public static TheoryData<RoomEvent> AllRoomEventVariants() =>
     [
         new RoomEvent.HeldWorkDispatched(LaneRef, "shape-flow", TimeSpan.FromMinutes(15), "operator-decider"),
         new RoomEvent.HeldWorkEscalated(LaneRef, "escalation-target"),
-        new RoomEvent.HeldWorkResolved(LaneRef, new LaneJournalCitation("lanes/lane-1", ExecId, "executionSucceeded", 0)),
+        new RoomEvent.HeldWorkResolved(LaneRef, new HeldWorkCitation(CitedSubject, "executionSucceeded", 0)),
     ];
 
     [Fact]

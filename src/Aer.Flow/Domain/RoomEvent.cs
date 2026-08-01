@@ -28,8 +28,8 @@ public abstract record RoomEvent
         HeldWorkRef Ref,
         string ToWhom) : RoomEvent;
 
-    /// <summary>Records that held work was resolved, citing the lane's terminal event.</summary>
+    /// <summary>Records that held work was resolved, citing the thing it was decided on.</summary>
     public sealed record HeldWorkResolved(
         HeldWorkRef Ref,
-        LaneJournalCitation Citation) : RoomEvent;
+        HeldWorkCitation Citation) : RoomEvent;
 }

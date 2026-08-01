@@ -7,13 +7,13 @@ namespace Aer.Flow.Tests.Domain;
 public class RoomEventSerializationTests
 {
     private static readonly HeldWorkRef LaneRef = new("lanes/lane-1");
-    private static readonly ExecutionId ExecId = new("exec-lane-1");
+    private const string CitedSubject = "exec-lane-1";
 
     public static TheoryData<RoomEvent> AllRoomEventVariants() =>
     [
         new RoomEvent.HeldWorkDispatched(LaneRef, "shape-flow", TimeSpan.FromMinutes(10), "operator-alice"),
         new RoomEvent.HeldWorkEscalated(LaneRef, "operator-bob"),
-        new RoomEvent.HeldWorkResolved(LaneRef, new LaneJournalCitation("lanes/lane-1", ExecId, "executionSucceeded", 1)),
+        new RoomEvent.HeldWorkResolved(LaneRef, new HeldWorkCitation(CitedSubject, "executionSucceeded", 1)),
     ];
 
     [Theory]

@@ -38,7 +38,7 @@ public class RoomMutationInterfaceTests : IDisposable
         Assert.Equal(HeldWorkStatus.Escalated, state2.HeldWork[laneRef].Status);
         Assert.Equal("op-bob", state2.HeldWork[laneRef].EscalatedTo);
 
-        var citation = new LaneJournalCitation("lanes/lane-1", new ExecutionId("exec-1"), "executionSucceeded", 1);
+        var citation = new HeldWorkCitation("exec-1", "executionSucceeded", 1);
         var state3 = await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken);
 
         Assert.Equal(HeldWorkStatus.Resolved, state3.HeldWork[laneRef].Status);
@@ -78,7 +78,7 @@ public class RoomMutationInterfaceTests : IDisposable
 
         await RoomMutationInterface.DispatchHeldWorkAsync(_tempDirectory, laneRef, "shape-1", TimeSpan.FromMinutes(10), "op-alice", reader, writer, TestContext.Current.CancellationToken);
 
-        var citation = new LaneJournalCitation("lanes/lane-1", new ExecutionId("exec-1"), "executionSucceeded", 1);
+        var citation = new HeldWorkCitation("exec-1", "executionSucceeded", 1);
         await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<InvalidRoomMutationException>(async () =>
@@ -92,7 +92,7 @@ public class RoomMutationInterfaceTests : IDisposable
         var reader = new RoomEventLogReader(_roomLogPath);
         await using var writer = new RoomEventLogWriter(_roomLogPath);
 
-        var citation = new LaneJournalCitation("lanes/unknown", new ExecutionId("exec-1"), "executionSucceeded", 1);
+        var citation = new HeldWorkCitation("exec-1", "executionSucceeded", 1);
         await Assert.ThrowsAsync<InvalidRoomMutationException>(async () =>
             await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken));
     }
@@ -105,7 +105,7 @@ public class RoomMutationInterfaceTests : IDisposable
         await using var writer = new RoomEventLogWriter(_roomLogPath);
 
         await RoomMutationInterface.DispatchHeldWorkAsync(_tempDirectory, laneRef, "shape-1", TimeSpan.FromMinutes(10), "op-alice", reader, writer, TestContext.Current.CancellationToken);
-        var citation = new LaneJournalCitation("lanes/lane-1", new ExecutionId("exec-1"), "executionSucceeded", 1);
+        var citation = new HeldWorkCitation("exec-1", "executionSucceeded", 1);
         await RoomMutationInterface.ResolveHeldWorkAsync(_tempDirectory, laneRef, citation, reader, writer, TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<InvalidRoomMutationException>(async () =>

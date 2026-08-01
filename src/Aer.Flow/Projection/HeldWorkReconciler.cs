@@ -74,7 +74,7 @@ public static class HeldWorkReconciler
     {
         HeldWorkStatus.Dispatched => "dispatched",
         HeldWorkStatus.Escalated => $"escalated to {state.EscalatedTo}",
-        HeldWorkStatus.Resolved => $"resolved ({state.Citation?.EventType} execution {state.Citation?.ExecutionId})",
+        HeldWorkStatus.Resolved => $"resolved ({state.Citation?.EventType} {state.Citation?.Subject})",
         _ => state.Status.ToString(),
     };
 }
