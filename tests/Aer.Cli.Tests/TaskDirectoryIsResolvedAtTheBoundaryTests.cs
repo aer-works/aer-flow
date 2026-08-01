@@ -23,6 +23,9 @@ public class TaskDirectoryIsResolvedAtTheBoundaryTests
         [typeof(RunOptionsParser)] = () =>
             RunOptionsParser.Parse(["workflow.json", "--bindings", "b.json", "--task-dir", Relative])
                 .TaskDirectoryPath,
+        [typeof(DispatchOptionsParser)] = () =>
+            DispatchOptionsParser.Parse(["review", "--spec", "s.md", "--task-dir", Relative])
+                .TaskDirectoryPath,
         [typeof(CancelOptionsParser)] = () =>
             CancelOptionsParser.Parse([Relative, "--execution", "e1", "--bindings", "b.json"])
                 .TaskDirectoryPath,
