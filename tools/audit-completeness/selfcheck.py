@@ -1354,6 +1354,14 @@ def _recordonce_discriminates():
          {"docs/decisions/0042-x.md": one(f"# 0042 - {title}"),
           "docs/decisions/README.md": one(f"| [0042](0042-x.md) | {title} | M26 |"),
           "docs/plan.md": one(f"| 0042 | {title} | done |")}, False),
+        # Two decision records linking the SAME prior decision in prose collide on the slug words
+        # baked into the `](nnnn-slug.md)` link target, not on any shared sentence -- the exact 0046/0047
+        # false positive `LINK_TARGET` in recordonce.py strips. Without that strip two consecutive links
+        # form a 9-gram across both files; with it only the bare visible `[NNNN]` text survives.
+        ("two decisions linking the same prior decision",
+         {p: one("Builds on [0003](0003-templates-collapse-to-three-shapes.md) and "
+                 "[0025](0025-a-step-is-an-instruction-with-a-gate-toggle.md).")
+          for p in ("docs/decisions/0090-p.md", "docs/decisions/0091-q.md")}, False),
         ("a regenerated banner in two generated files",
          {"src/Aer.Ui.Core/Generated.cs": [banner], "src/Aer.Mobile/lib/tokens.dart": [banner]}, False),
         ("the same command block fenced in two runbooks",
