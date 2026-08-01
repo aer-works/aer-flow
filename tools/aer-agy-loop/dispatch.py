@@ -306,16 +306,55 @@ def shell_rules_preamble(run_shell_commands: bool) -> str:
 def lane_review_prompt(output_name: str) -> str:
     """Generate the prompt for the review step in --lane mode.
 
-    Instructs an adversarial review of the branch diff (git diff origin/main...HEAD in the
-    working directory -- the REMOTE ref: lanes branch from origin/main, and the local main ref
-    lags on this host, which inflated one review's surface ~14x and silently shrank its
-    coverage, #852), requiring file:line evidence for findings and prose output to output_name.
+    The reviewer's grant is deliberately read-only (no shell), so it cannot run git itself -- and
+    #789 was the failure that made concrete: a review told to `git diff` in a shell it did not have
+    silently reviewed HEAD instead of the change, verifying the worker's claims against docstrings
+    the worker itself wrote. The diff is now handed in as an input artifact (`branch.diff`, the
+    janitor's second output), so the review reads THE CHANGE rather than re-deriving it against a
+    ref that may not resolve on the worker's host (the earlier #852 fragility, now removed at the
+    source rather than patched with the right ref name). The adapter appends the concrete
+    AER_INPUT_n path for `branch.diff` from the contract's RequiredInputs, so this prose only has
+    to name it as the ground truth and say what an empty one means.
     """
     return (
-        f"Perform an adversarial review of the branch's diff (`git diff origin/main...HEAD` in the working directory).\n"
+        f"Perform an adversarial review of the branch's change. Your ground truth is the diff handed "
+        f"to you as the input artifact `{LANE_DIFF_OUTPUT_NAME}` (its exact path is listed below) -- "
+        f"the implement and janitor commits this lane produced. Review THAT change, not the current "
+        f"state of HEAD: a claim is only supported if the diff shows it.\n"
+        f"If `{LANE_DIFF_OUTPUT_NAME}` is empty, that is itself a finding -- the lane produced no "
+        f"change, or the diff was not captured -- not a clean review; say so and do not certify.\n"
         f"Identify any defects, correctness issues, unverified claims, or missing test coverage. "
         f"Every finding must include file:line evidence.\n"
         f"Write your prose report to `{output_name}` in AER_OUTPUT_DIR.\n"
+    )
+
+
+def lane_janitor_diff_instruction(base_sha: str) -> str:
+    """The janitor's #789 diff-emission suffix, appended to janitor-prompt.md.
+
+    The janitor is the only lane step that runs after every commit exists (implement's, then its
+    own) AND holds a shell grant, so it is where the review's input diff has to be captured -- the
+    dispatcher cannot compute it up front, because at build time the implement/janitor commits do
+    not exist yet (HEAD == base_sha). This mildly widens the janitor's job beyond "make checkers
+    green"; the alternative was an engine change (a deterministic diff step -- NoOpWorkerAdapter
+    runs a fixed `echo`, not an arbitrary command), which #789 rules out as tools-side-only.
+
+    `base_sha` is the concrete HEAD the dispatcher recorded before the run (the same value the
+    workspace-truth block diffs against), baked in here rather than left as a symbolic ref: the
+    reviewer's earlier `origin/main...HEAD` guess is exactly what #852 showed resolves differently
+    on the worker's host. Two-dot `base..HEAD`, matching the workspace-truth block, so the reviewer
+    sees the same change the operator reads in that block -- one register, one ref.
+    """
+    return (
+        "\n\n---\n"
+        f"FINAL ACTION (#789), after any janitor commit above: capture the branch diff the "
+        f"downstream reviewer reads as its ground truth. Run exactly this command, unchanged -- do "
+        f"not substitute a different ref:\n"
+        f"    git diff {base_sha}..HEAD\n"
+        f"Write its complete, unedited output to `{LANE_DIFF_OUTPUT_NAME}` in AER_OUTPUT_DIR. If the "
+        f"diff is empty (nothing changed), still create `{LANE_DIFF_OUTPUT_NAME}` as an empty file -- "
+        f"its absence fails your output contract, and the reviewer treats an empty diff as a finding "
+        f"in its own right.\n"
     )
 
 
@@ -370,12 +409,22 @@ def build_bindings(
             # whose verdict.json is missing or malformed is a FAILED execution regardless of the prose
             # report's quality. The shape instruction rides the prompt below.
             produced_outputs.append({"Name": VERDICT_OUTPUT_NAME, "Schema": "ReviewVerdict"})
+        # #789: a step declaring extra_outputs (e.g. the janitor's branch.diff) makes each a required
+        # ProducedOutput -- ContractValidator File.Exists-checks it at completion, so a step that
+        # fails to write it FAILS loudly rather than leaving a downstream input silently absent.
+        for extra in s.get("extra_outputs", []):
+            produced_outputs.append({"Name": extra})
 
         entry = {
             "Adapter": s["adapter"],
             "Contract": {
                 "WorkerName": s["worker_name"],
-                "RequiredInputs": [],
+                # #789: bare strings (WorkerContract.RequiredInputs is IReadOnlyList<string>, unlike
+                # ProducedOutputs). The adapter surfaces each as `- <name>: AER_INPUT_<i>` in the
+                # worker's prompt, in this order; the engine resolves AER_INPUT_<i>'s value from the
+                # workflow step's Inputs (ArtifactManager), so the two must list the same names in the
+                # same order -- build_workflow reads the same s["inputs"].
+                "RequiredInputs": list(s.get("inputs", [])),
                 "ProducedOutputs": produced_outputs,
                 "OptionalMetadata": [],
             },
@@ -417,11 +466,16 @@ def build_workflow(
 
     workflow_steps = []
     for s in steps:
-        outputs = [s["output_name"]] + ([VERDICT_OUTPUT_NAME] if s.get("verdict_schema") else [])
+        # #789: extra_outputs and inputs must mirror what build_bindings sets for the same step, or
+        # the artifact graph and the contract disagree -- ArtifactManager.FindProducer resolves a
+        # review Input by matching its name against a DependsOn step's Outputs, so the diff name has
+        # to appear in the janitor's Outputs here AND its ProducedOutputs there.
+        outputs = [s["output_name"]] + ([VERDICT_OUTPUT_NAME] if s.get("verdict_schema") else []) \
+            + list(s.get("extra_outputs", []))
         workflow_steps.append({
             "StepId": s["step_id"],
             "Worker": s["worker_name"],
-            "Inputs": [],
+            "Inputs": list(s.get("inputs", [])),
             "Outputs": outputs,
             "DependsOn": s.get("depends_on", []),
             "RetryPolicy": {"MaxAttempts": 1},
@@ -634,6 +688,13 @@ def build_dialogue_workflow(worker_name: str, final_output_name: str) -> dict:
 # One name, used by the contract, the workflow, and the prompt below -- a drifted copy here would
 # make the engine demand a file the prompt never asked the worker to write.
 VERDICT_OUTPUT_NAME = "verdict.json"
+
+# #789: the branch diff the janitor emits and the review reads as its ground truth. One name across
+# three places -- the janitor's ProducedOutput, the review step's Input (resolved by name against the
+# janitor's Outputs, ArtifactManager.FindProducer), and the janitor prompt line that writes it. A
+# drift between any two silently breaks the wiring: the engine resolves the review's input to a file
+# the janitor never wrote, or fails the janitor's own output contract.
+LANE_DIFF_OUTPUT_NAME = "branch.diff"
 
 
 def verdict_preamble() -> str:
@@ -1109,6 +1170,13 @@ def main() -> int:
         working_directory = provision_worktree(working_directory, args.worktree)
         print(f"[dispatch.py] worktree: {working_directory} (branch {args.worktree})")
 
+    # Captured here, once, from the final working_directory (after any worktree swap above) and
+    # before any step is built: the lane bakes this concrete base SHA into the janitor's diff
+    # command (#789), and the workspace-truth block below reads the same value (record-once). Safe
+    # to take now -- nothing between here and the engine run moves HEAD, so it equals what a capture
+    # right before dispatch would give. Dialogue carries no WorkingDirectory / repo to diff.
+    head_before, head_before_err = (None, None) if args.dialogue else _git_head(working_directory)
+
     if args.dialogue:
         seed_prompt = args.seed_file.read_text(encoding="utf-8")
         dialogue_worker_name = "dialogue"
@@ -1145,8 +1213,21 @@ def main() -> int:
             print(f"error: janitor prompt file not found at {janitor_prompt_path}", file=sys.stderr)
             return 2
 
+        # #789: the lane bakes this base SHA into the janitor's diff command, so a lane that cannot
+        # establish it cannot hand the reviewer its ground truth -- and a review of HEAD-instead-of-
+        # the-change is the exact defect #789 removes. Fail before spending a frontier run rather
+        # than after, unlike the workspace-truth block below which can only report post-hoc.
+        if head_before is None:
+            print(
+                f"error: --lane needs the working directory's HEAD to give the reviewer the branch "
+                f"diff (#789), but it could not be read: "
+                f"{head_before_err or 'git rev-parse HEAD failed'}",
+                file=sys.stderr)
+            return 2
+
         implement_prompt = args.prompt_file.read_text(encoding="utf-8")
-        janitor_prompt = janitor_prompt_path.read_text(encoding="utf-8")
+        janitor_prompt = janitor_prompt_path.read_text(encoding="utf-8") \
+            + lane_janitor_diff_instruction(head_before)
         review_prompt = lane_review_prompt("report.md")
 
         step_specs = [
@@ -1168,6 +1249,9 @@ def main() -> int:
                 # the canonical brief never mentions -- the #741 review's finding 1, found before any
                 # lane was paid for.
                 "output_name": "janitor.md",
+                # #789: the janitor also emits the branch diff, declared as a required output so the
+                # engine fails the step if it is missing, and read by the review step below by name.
+                "extra_outputs": [LANE_DIFF_OUTPUT_NAME],
                 "depends_on": ["implement"],
                 "working_directory": working_directory,
                 **resolve(TEMPLATES["janitor"]),
@@ -1177,6 +1261,9 @@ def main() -> int:
                 "worker_name": "review",
                 "prompt_text": review_prompt,
                 "output_name": "report.md",
+                # #789: the diff the janitor produced, resolved by name against the janitor's Outputs
+                # (DependsOn below) and surfaced to the reviewer as AER_INPUT_0.
+                "inputs": [LANE_DIFF_OUTPUT_NAME],
                 "depends_on": ["janitor"],
                 "working_directory": working_directory,
                 **resolve(TEMPLATES["review"]),
@@ -1284,9 +1371,9 @@ def main() -> int:
     # stale prefix be sliced off and labelled instead of silently prepended.
     log_bytes_before = log_path.stat().st_size if log_path.exists() else None
     log_mtime_before = log_path.stat().st_mtime if log_path.exists() else None
-    # Dialogue runs carry no WorkingDirectory (see above) -- there is no repo to diff, so the
-    # workspace-truth probe is skipped rather than run against `git -C None`.
-    head_before, head_before_err = (None, None) if args.dialogue else _git_head(working_directory)
+    # head_before / head_before_err were captured above, right after worktree provisioning, so the
+    # lane could bake the base SHA into the janitor's diff command (#789). HEAD has not moved since
+    # (nothing here commits), so the value is what a capture at this point would have given.
 
     outer_deadline_minutes = dialogue_timeout + 5 if args.dialogue else sum(s["timeout_minutes"] for s in step_specs) + 5
     outer_deadline_seconds = outer_deadline_minutes * 60
