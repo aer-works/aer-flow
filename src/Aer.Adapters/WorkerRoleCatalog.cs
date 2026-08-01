@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Aer.Flow.Domain;
 
 namespace Aer.Adapters;
 
@@ -28,7 +29,22 @@ public sealed record WorkerRole(
     PermissionGrant Grant,
     TimeSpan Timeout,
     bool ProducesVerdict,
-    string Purpose);
+    string Purpose,
+    IReadOnlyList<WorkerRoleOutput> Outputs);
+
+/// <summary>
+/// One file a role's dispatch produces in <c>AER_OUTPUT_DIR</c> (#897) — the structured, per-role
+/// form of what <c>tools/aer-agy-loop/dispatch.py</c> spells out inline today. The front door (#887)
+/// declares it as a <see cref="ProducedOutput"/> the engine's <c>ContractValidator</c> checks, and
+/// appends <see cref="Instruction"/> to the dispatch prompt so the worker is told to produce exactly
+/// what the contract asserts — the name, the shape, and the instruction single-sourced here so a spec
+/// prompt stays just the task.
+/// </summary>
+/// <param name="Schema">
+/// The document shape the file must parse as — <see cref="OutputSchema.None"/> for existence-only, or
+/// <see cref="OutputSchema.ReviewVerdict"/> for a schema-checked verdict (decision 0043, parse-only).
+/// </param>
+public sealed record WorkerRoleOutput(string Name, OutputSchema Schema, string Instruction);
 
 /// <summary>
 /// The single, shared worker-role catalog — the same <c>WorkerRoles.json</c>/<c>WorkerTiers.json</c>
@@ -104,6 +120,18 @@ public static class WorkerRoleCatalog
                     $"Known tiers: {string.Join(", ", tiers.Keys)}.");
             }
 
+            // [JsonRequired] guarantees the `outputs` key is present, not that it is non-null or
+            // non-empty. Both would ship a role that declares nothing — silently defeating the floor
+            // every role's primary output exists to be (a worker that writes nothing fails loudly).
+            // Named like every other guard here, unlike the bare ArgumentNullException a null Outputs
+            // would otherwise throw out of the Select below.
+            if (raw.Outputs is null || raw.Outputs.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Worker role '{raw.Id}' declares no outputs. Every role declares at least one output " +
+                    "file the worker writes to AER_OUTPUT_DIR — the floor that catches a silent no-op.");
+            }
+
             roles.Add(new WorkerRole(
                 Id: raw.Id,
                 Tier: raw.Tier,
@@ -117,10 +145,40 @@ public static class WorkerRoleCatalog
                     NetworkAccess: raw.NetworkAccess),
                 Timeout: TimeSpan.FromMinutes(raw.TimeoutMinutes),
                 ProducesVerdict: raw.VerdictSchema,
-                Purpose: raw.Purpose));
+                Purpose: raw.Purpose,
+                Outputs: raw.Outputs.Select(o => ResolveOutput(raw.Id, o)).ToList()));
         }
 
         return roles;
+    }
+
+    private static WorkerRoleOutput ResolveOutput(string roleId, RawOutput raw)
+    {
+        // Reject a '.'-prefixed name at load, mirroring ProducedOutput's own constructor (those names
+        // are reserved for engine stream logs). Without this the invalid name would sail through the
+        // catalog and only throw when the front door converts it to a ProducedOutput at dispatch —
+        // the exact "fail at dispatch, not at load" this catalog exists to prevent.
+        if (raw.Name.StartsWith('.'))
+        {
+            throw new InvalidOperationException(
+                $"Worker role '{roleId}' output name '{raw.Name}' is invalid: names starting with '.' are " +
+                "reserved for engine stream logs.");
+        }
+
+        // Mapped explicitly rather than deserialized straight into OutputSchema: the catalog's wire
+        // form is snake_case (dispatch.py reads the same file), and an unknown value must fail loudly
+        // at load — a silently-defaulted OutputSchema.None would drop a verdict's schema check and
+        // pass a file that is not a verdict, the exact false capability the RawRole discipline forbids.
+        var schema = raw.Schema switch
+        {
+            "none" => OutputSchema.None,
+            "review_verdict" => OutputSchema.ReviewVerdict,
+            _ => throw new InvalidOperationException(
+                $"Worker role '{roleId}' output '{raw.Name}' declares unknown schema '{raw.Schema}'. " +
+                "Known schemas: none, review_verdict."),
+        };
+
+        return new WorkerRoleOutput(raw.Name, schema, raw.Instruction);
     }
 
     private static string ResolvePath(string envVar, string overrideFileName, string defaultFileName)
@@ -164,5 +222,11 @@ public static class WorkerRoleCatalog
         [property: JsonRequired] bool NetworkAccess,
         [property: JsonRequired] int TimeoutMinutes,
         [property: JsonRequired] bool VerdictSchema,
-        [property: JsonRequired] string Purpose);
+        [property: JsonRequired] string Purpose,
+        [property: JsonRequired] IReadOnlyList<RawOutput> Outputs);
+
+    private sealed record RawOutput(
+        [property: JsonRequired] string Name,
+        [property: JsonRequired] string Schema,
+        [property: JsonRequired] string Instruction);
 }

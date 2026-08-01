@@ -8,7 +8,14 @@
     "network_access": false,
     "timeout_minutes": 25,
     "verdict_schema": false,
-    "purpose": "Open design question with real options to weigh, BEFORE building. Cross-vendor on purpose: a second opinion from the same family that wrote the code is one instrument twice."
+    "purpose": "Open design question with real options to weigh, BEFORE building. Cross-vendor on purpose: a second opinion from the same family that wrote the code is one instrument twice.",
+    "outputs": [
+      {
+        "name": "advice.md",
+        "schema": "none",
+        "instruction": "Write your recommendation -- the options you weighed and your reasoning -- to $AER_OUTPUT_DIR/advice.md."
+      }
+    ]
   },
   {
     "id": "implement",
@@ -19,7 +26,14 @@
     "network_access": true,
     "timeout_minutes": 40,
     "verdict_schema": false,
-    "purpose": "A bounded change with the approach already decided. Exercises the write path and agy's skip-permissions translation, which is the half of AER that review-only dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's timeout exercises that equally -- so do not reach for the skip-permissions grant expecting it to buy that."
+    "purpose": "A bounded change with the approach already decided. Exercises the write path and agy's skip-permissions translation, which is the half of AER that review-only dispatches never touch. Its 40 minutes is NOT the #588 path -- every template's timeout exercises that equally -- so do not reach for the skip-permissions grant expecting it to buy that.",
+    "outputs": [
+      {
+        "name": "changes.md",
+        "schema": "none",
+        "instruction": "Write a summary of the changes you made -- which files, and what and why -- to $AER_OUTPUT_DIR/changes.md. This is a floor and a handoff, not proof the change is correct; a following review verifies that against the diff."
+      }
+    ]
   },
   {
     "id": "review",
@@ -30,7 +44,19 @@
     "network_access": false,
     "timeout_minutes": 25,
     "verdict_schema": true,
-    "purpose": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose rationale asserts something. The default for any PR touching src/ or making a claim in docs/."
+    "purpose": "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose rationale asserts something. The default for any PR touching src/ or making a claim in docs/.",
+    "outputs": [
+      {
+        "name": "report.md",
+        "schema": "none",
+        "instruction": "Write your prose review -- each finding with file:line evidence -- to $AER_OUTPUT_DIR/report.md."
+      },
+      {
+        "name": "verdict.json",
+        "schema": "review_verdict",
+        "instruction": "Also write your findings as a ReviewVerdict JSON to $AER_OUTPUT_DIR/verdict.json (the machine-checked structured form of the same review)."
+      }
+    ]
   },
   {
     "id": "fact-check",
@@ -41,7 +67,14 @@
     "network_access": false,
     "timeout_minutes": 15,
     "verdict_schema": false,
-    "purpose": "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the list determines the work and a cheap model runs it. NOT for anything where noticing something absent from the list is the point."
+    "purpose": "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the list determines the work and a cheap model runs it. NOT for anything where noticing something absent from the list is the point.",
+    "outputs": [
+      {
+        "name": "findings.md",
+        "schema": "none",
+        "instruction": "Write your findings -- each claim from the list and whether it holds, with evidence -- to $AER_OUTPUT_DIR/findings.md."
+      }
+    ]
   },
   {
     "id": "janitor",
@@ -52,6 +85,18 @@
     "network_access": true,
     "timeout_minutes": 15,
     "verdict_schema": false,
-    "purpose": "After an implementer commits: run the named mechanical checkers and make them green without changing behavior (#729). The canonical brief is janitor-prompt.md next to dispatch.py -- pass it via --prompt-file rather than restating the contract. The checkers determine the work, so the cheap tier runs it; anything needing judgment comes back [NOT DONE], not guessed at."
+    "purpose": "After an implementer commits: run the named mechanical checkers and make them green without changing behavior (#729). The canonical brief is janitor-prompt.md next to dispatch.py -- pass it via --prompt-file rather than restating the contract. The checkers determine the work, so the cheap tier runs it; anything needing judgment comes back [NOT DONE], not guessed at.",
+    "outputs": [
+      {
+        "name": "janitor.md",
+        "schema": "none",
+        "instruction": "Write a report of what you changed and which checkers are now green to $AER_OUTPUT_DIR/janitor.md."
+      },
+      {
+        "name": "branch.diff",
+        "schema": "none",
+        "instruction": "Write the full diff of the committed change to $AER_OUTPUT_DIR/branch.diff -- this is the ground truth a following review reads, so it must be the diff of the change, not of HEAD."
+      }
+    ]
   }
 ]
