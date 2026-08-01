@@ -616,6 +616,88 @@ def _dialogue_dry_run():
     return "1 dry-run x 3 generated JSONs (workflow/bindings/dialogue-config), 2 cross-vendor participants"
 
 
+@check("--lane wires the review's branch diff to the janitor's output, and refuses a non-git tree")
+def _lane_dry_run():
+    """#789: the lane's read-only reviewer reads THE CHANGE (a `branch.diff` input artifact the
+    janitor produces), not HEAD. That wiring lives entirely in dispatch.py's step-spec build --
+    janitor `Outputs`/`ProducedOutputs` and review `Inputs`/`RequiredInputs` must all carry the one
+    name, resolved against each other by `ArtifactManager.FindProducer`, and the janitor prompt must
+    carry the concrete base SHA (not the `origin/main...HEAD` symbolic ref #852 showed resolves
+    wrong on the worker's host). None of it had a structural check before; a drop of the
+    `inputs=`/`extra_outputs=` threading would silently return every lane review to auditing HEAD.
+
+    Also pins the guard finding 4d surfaced: `--lane` in a tree whose HEAD cannot be read fails
+    before it builds anything -- the same pre-build class as the missing-janitor-prompt and grant
+    refusals, asserted on the guard's own message so a different exit-2 path (argparse, missing CLI)
+    cannot pass for it.
+    """
+    diff_name = dispatch.LANE_DIFF_OUTPUT_NAME
+    with tempfile.TemporaryDirectory() as scratch:
+        prompt_path = Path(scratch) / "impl.md"
+        prompt_path.write_text("Implement the bounded change.\n", encoding="utf-8")
+
+        cmd = [sys.executable, str(DISPATCH_PY), "--lane",
+               "--prompt-file", str(prompt_path),
+               "--working-directory", str(ROOT),
+               "--scratch-root", scratch, "--dry-run"]
+        done = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert done.returncode == 0, f"--lane --dry-run exits {done.returncode}:\n{done.stderr.strip()[:400]}"
+        assert "DRY RUN -- nothing was dispatched" in done.stdout, (
+            "--lane --dry-run exited 0 without the dry-run marker -- it may have DISPATCHED")
+
+        workflow = json.loads((Path(scratch) / "workflow.json").read_text(encoding="utf-8"))
+        steps = {s["StepId"]: s for s in workflow["Steps"]}
+        assert diff_name in steps["janitor"]["Outputs"], (
+            f"janitor must OUTPUT {diff_name!r} or the review's input resolves to a file no step "
+            f"produces (ArtifactManager.FindProducer); got {steps['janitor']['Outputs']}")
+        assert steps["review"]["Inputs"] == [diff_name], (
+            f"review must take {diff_name!r} as its sole Input; got {steps['review']['Inputs']}")
+        assert steps["review"]["DependsOn"] == ["janitor"], (
+            "review must DependsOn janitor for the diff to resolve against janitor's Outputs")
+        # Polarity: a step that opted into neither key stays empty -- the threading must not leak
+        # onto every step (the #513 arrays-not-objects family, and the backward-compat claim).
+        assert steps["implement"]["Inputs"] == [], "implement declares no inputs and must stay empty"
+
+        bindings = json.loads((Path(scratch) / "bindings.json").read_text(encoding="utf-8"))
+        jan_outputs = [o["Name"] for o in bindings["janitor"]["Contract"]["ProducedOutputs"]]
+        assert diff_name in jan_outputs, (
+            f"janitor's ProducedOutputs must include {diff_name!r} so ContractValidator.File.Exists "
+            f"fails the step loudly when the diff is not written; got {jan_outputs}")
+        assert bindings["review"]["Contract"]["RequiredInputs"] == [diff_name], (
+            f"review's RequiredInputs must be [{diff_name!r}] (bare strings) -- that is what the "
+            f"adapter surfaces as the AER_INPUT_0 pointer; got "
+            f"{bindings['review']['Contract']['RequiredInputs']}")
+
+        # The concrete base SHA, not a symbolic ref: the janitor prompt must bake the tree's real
+        # HEAD (#852). Anything symbolic here is the exact defect -- a ref that resolves differently
+        # on the worker's host.
+        head, _ = dispatch._git_head(ROOT)
+        jan_prompt = bindings["janitor"]["PromptTemplate"]
+        assert head and head in jan_prompt, (
+            f"janitor prompt must bake the concrete base SHA {head!r}; a symbolic ref reopens #852")
+        assert f"git diff {head}..HEAD" in jan_prompt, (
+            "janitor prompt must instruct the two-dot diff against the baked SHA, matching the "
+            "workspace-truth block's own ref")
+        assert diff_name in jan_prompt, f"janitor prompt must name {diff_name!r} as the file to write"
+
+    # Polarity, finding 4d: a lane whose HEAD cannot be read refuses before building anything,
+    # asserted on the guard's own message (exit 2 alone is also argparse / missing-CLI).
+    with tempfile.TemporaryDirectory() as not_a_repo:
+        prompt_path = Path(not_a_repo) / "impl.md"
+        prompt_path.write_text("Implement the bounded change.\n", encoding="utf-8")
+        refused = subprocess.run(
+            [sys.executable, str(DISPATCH_PY), "--lane", "--prompt-file", str(prompt_path),
+             "--working-directory", str(not_a_repo), "--scratch-root", not_a_repo, "--dry-run"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
+        assert refused.returncode == 2, (
+            f"--lane on a non-git tree must exit 2, got {refused.returncode}")
+        assert "give the reviewer the branch diff (#789)" in refused.stderr, (
+            "--lane on a non-git tree must refuse with the #789 head_before guard's own message, not "
+            f"some other exit-2 path:\n{refused.stderr.strip()[:300]}")
+
+    return f"1 lane dry-run x wired {diff_name} (janitor output -> review input) + baked SHA, 1 non-git refusal"
+
+
 @check("--dialogue refuses fewer than two participants and an unknown vendor, naming the known ones")
 def _dialogue_arg_validation():
     with tempfile.TemporaryDirectory() as scratch:
