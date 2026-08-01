@@ -805,10 +805,12 @@ public static class MutationInterface
         catch (Aer.Core.AerException ex)
         {
             // The rest of the refusal family (#747's review): the OS declining the spawn — missing
-            // binary, bad working directory, an over-long command line on the platforms whose
-            // ceiling is unmeasured and unguarded (#612) — surfaces as the binding's AerException,
-            // not the typed guard above. Retryable, not Permanent: these are not proven
-            // deterministic, and a genuinely stuck cause terminates through RetryPolicy exhaustion
+            // binary, bad working directory, or an over-long command line only in the residual case the
+            // typed guard above cannot pre-empt (#612 now measures and refuses it up-front on every
+            // platform whose ceiling resolves — the residue is POSIX where ARG_MAX came back
+            // indeterminate and PosixProcessLimits.ArgMaxBytes fell back to null) — surfaces as the
+            // binding's AerException, not the typed guard above. Retryable, not Permanent: these are not
+            // proven deterministic, and a genuinely stuck cause terminates through RetryPolicy exhaustion
             // instead. Same reason as above for recording at all; OperationCanceledException stays
             // deliberately uncaught either way.
             await eventLogWriter.AppendAsync(

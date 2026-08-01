@@ -1,3 +1,4 @@
+using System.Text;
 using Aer.Core;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
@@ -38,9 +39,11 @@ namespace Aer.Flow.Dispatch;
 /// already contribute (#533). This is the adapter's own seam, not the engine's: a variable like
 /// Claude Code's <c>CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH</c> is a vendor quirk, and Architecture Rule
 /// 2 keeps vendor quirks inside <c>Aer.Adapters</c> rather than letting <c>Aer.Flow</c> know the
-/// variable's name exists. <see langword="null"/> or empty contributes nothing. The child process
-/// still inherits the daemon's own environment otherwise (<c>AerTask.WithClearEnv</c> is never
-/// called) — this only ever adds variables, it does not scope what a worker can already see.
+/// variable's name exists. <see langword="null"/> or empty contributes nothing. Since #549 the child
+/// does NOT inherit the daemon's whole environment: <c>AerTask.WithClearEnv</c> is called first, so it
+/// sees only <see cref="AssembleChildEnvironment"/>'s set — the <c>InheritedEnvironment</c> allowlist,
+/// request's AER-computed variables, and these. This param adds to that set and, applied last, wins on
+/// a name collision; it does not widen what the allowlist already scopes out (#895).
 /// </param>
 public sealed record CoreDispatchTarget(
     string Program,
@@ -377,15 +380,18 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     internal const int WindowsCommandLineCeiling = 32_000;
 
     /// <summary>
-    /// The command-line ceiling for the running OS, or <see langword="null"/> where this guard claims
-    /// no limit. Windows is the only platform carrying a number because it is the only one whose
-    /// limit was measured here against a real failure (#579's <c>Win32Exception (206)</c>). POSIX
-    /// limits both exist and differ in shape — a per-argument <c>MAX_ARG_STRLEN</c> alongside a total
-    /// <c>ARG_MAX</c>, queryable rather than constant — so putting a number here for them would be a
-    /// claim about platforms nothing in this repo has measured. An over-long command line still fails
-    /// on those platforms exactly as it does today — and worse than it does on Windows, because
-    /// aer-core's <c>AerException</c> is not an <c>AerFlowException</c> and so escapes <c>Aer.Cli</c>'s
-    /// top-level handler as a raw stack trace. Measuring those limits is #612, not guessed at here.
+    /// The single-integer, UTF-16 command-line ceiling for the running OS, or <see langword="null"/>
+    /// where the platform's limit is not that shape. Windows carries a number — its
+    /// <c>CreateProcessW</c> <c>lpCommandLine</c> maximum, measured here against #579's
+    /// <c>Win32Exception (206)</c>. POSIX returns <see langword="null"/> deliberately: its limit is not
+    /// one integer but two byte-based caps — a per-argument <c>MAX_ARG_STRLEN</c> and a total
+    /// <c>ARG_MAX</c> across argv+envp — enforced by <see cref="GuardPosixArgumentLength"/> and
+    /// <see cref="GuardPosixTotalLength"/> instead (#612), so there is no single number to hand back.
+    /// <see langword="null"/> here therefore means "guarded elsewhere", not "unguarded":
+    /// <see cref="DispatchAsync"/> branches on it. An over-long POSIX command line is now refused
+    /// up-front as a <see cref="CommandLineTooLongException"/> — the same <c>AerFlowException</c> the
+    /// Windows path raises, so it no longer escapes <c>Aer.Cli</c>'s top-level handler as a raw stack
+    /// trace the way it did before this guard existed.
     /// </summary>
     internal static int? PlatformCommandLineCeiling =>
         OperatingSystem.IsWindows() ? WindowsCommandLineCeiling : null;
@@ -480,6 +486,130 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     }
 
     /// <summary>
+    /// The byte image a single argument occupies in a POSIX <c>exec</c> — its UTF-8 encoding plus the
+    /// terminating NUL. POSIX counts bytes, not the UTF-16 code units <see cref="MeasureCommandLineLength"/>
+    /// counts for <c>CreateProcessW</c>, so a non-ASCII prompt weighs more here than on Windows.
+    /// </summary>
+    internal static int PosixArgBytes(string value) => Encoding.UTF8.GetByteCount(value) + 1;
+
+    /// <summary>
+    /// Throws <see cref="CommandLineTooLongException"/> when any single argument's byte image reaches
+    /// <paramref name="maxArgStrlen"/> — Linux's per-argument <c>MAX_ARG_STRLEN</c>, which both adapters'
+    /// single-inline-prompt shape is exactly what exceeds first (#612). Takes the cap as an argument
+    /// rather than reading <see cref="PosixProcessLimits.LinuxMaxArgStrlen"/> itself, so the boundary is
+    /// exercisable on every OS the suite runs on and not only Linux — the same reason
+    /// <see cref="GuardCommandLineLength"/> takes its ceiling in. The kernel refuses an argument whose
+    /// bytes-including-NUL exceed the cap, so <see cref="PosixArgBytes"/> is compared with <c>&gt;</c>.
+    /// </summary>
+    internal static void GuardPosixArgumentLength(string program, IReadOnlyList<string> args, int maxArgStrlen)
+    {
+        foreach (var arg in args)
+        {
+            var bytes = PosixArgBytes(arg);
+            if (bytes <= maxArgStrlen)
+            {
+                continue;
+            }
+
+            throw new CommandLineTooLongException(
+                $"Cannot dispatch '{program}': one of its arguments is about {bytes} bytes, past the "
+                + $"{maxArgStrlen}-byte per-argument limit this platform enforces (MAX_ARG_STRLEN). A "
+                + "worker's prompt is passed inline as one argument, so that is usually the one to shorten.");
+        }
+    }
+
+    /// <summary>
+    /// A conservative upper bound on the bytes the program, its arguments, and the child's environment
+    /// occupy in one POSIX <c>exec</c> image — the total <c>ARG_MAX</c> is charged against (a limit
+    /// across argv <em>and</em> envp, #612). Each string is charged its UTF-8 bytes, a NUL, and a 64-bit
+    /// pointer slot, and a duplicated environment name is charged twice, so the figure can only over-shoot
+    /// the kernel's real accounting, never under-shoot it — the same over-estimate discipline
+    /// <see cref="MeasureCommandLineLength"/> uses for Windows.
+    /// </summary>
+    internal static long MeasurePosixTotalBytes(
+        string program,
+        IReadOnlyList<string> args,
+        IReadOnlyList<(string Name, string Value)> environment)
+    {
+        // Every platform AER ships on is 64-bit, so each argv/envp entry costs an 8-byte pointer on top
+        // of its string. Counting it makes the bound an over-estimate of the kernel's real accounting.
+        const int pointerBytes = 8;
+
+        long total = PosixArgBytes(program) + pointerBytes;
+        foreach (var arg in args)
+        {
+            total += PosixArgBytes(arg) + pointerBytes;
+        }
+
+        foreach (var (name, value) in environment)
+        {
+            // "NAME=VALUE\0" plus its envp pointer.
+            total += Encoding.UTF8.GetByteCount(name) + 1 + Encoding.UTF8.GetByteCount(value) + 1 + pointerBytes;
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Throws <see cref="CommandLineTooLongException"/> when <see cref="MeasurePosixTotalBytes"/> exceeds
+    /// <paramref name="argMax"/> — the kernel's <c>ARG_MAX</c>, a total across argv <em>and</em> envp,
+    /// which is why <paramref name="environment"/> is passed and measured here and not just the arguments
+    /// (#612). Takes the cap as an argument for the same cross-OS testability reason as the guards above.
+    /// </summary>
+    internal static void GuardPosixTotalLength(
+        string program,
+        IReadOnlyList<string> args,
+        IReadOnlyList<(string Name, string Value)> environment,
+        long argMax)
+    {
+        var total = MeasurePosixTotalBytes(program, args, environment);
+        if (total <= argMax)
+        {
+            return;
+        }
+
+        throw new CommandLineTooLongException(
+            $"Cannot dispatch '{program}': its command line and environment assemble to about {total} "
+            + $"bytes, past this platform's {argMax}-byte ARG_MAX (a combined limit on arguments and "
+            + "environment). A worker's prompt is passed inline as one argument, so that is usually the "
+            + "one to shorten.");
+    }
+
+    /// <summary>
+    /// The exact environment the spawned child receives, in application order: the inherited allowlist
+    /// (<see cref="InheritedEnvironment"/>), then <paramref name="request"/>'s AER-computed variables,
+    /// then <paramref name="target"/>'s own adapter variables — later entries overriding earlier ones by
+    /// name when applied, the ordering <c>ClaudeWorkerAdapter.SimpleModeVariable</c> depends on. One
+    /// assembly point so <see cref="GuardPosixTotalLength"/> measures precisely what
+    /// <see cref="DispatchAsync"/> applies: two enumerations of these three sources would drift the
+    /// moment a fourth is added, and the drift would silently mis-size the ARG_MAX guard.
+    /// </summary>
+    internal static IReadOnlyList<(string Name, string Value)> AssembleChildEnvironment(
+        ExecutionRequest request, CoreDispatchTarget target)
+    {
+        var environment = new List<(string Name, string Value)>();
+        environment.AddRange(InheritedEnvironment.Resolve());
+
+        foreach (var environmentVariable in request.Environment)
+        {
+            // PassThrough variable *values* are resolved by whatever wires a concrete worker adapter
+            // (spec §3) — out of scope here. Only AER-computed variables (paths the Artifact Manager
+            // already resolved) are set.
+            if (environmentVariable is EnvironmentVariable.AerComputed aerComputed)
+            {
+                environment.Add((aerComputed.Name, aerComputed.Value));
+            }
+        }
+
+        if (target.Environment is { } targetEnvironment)
+        {
+            environment.AddRange(targetEnvironment);
+        }
+
+        return environment;
+    }
+
+    /// <summary>
     /// Spawns <paramref name="target"/> with <paramref name="request"/>'s AER-computed environment
     /// variables and timeout, and returns once the process has exited, timed out, or been
     /// cancelled. Never throws for any of those three outcomes — each is a normal result §8 must
@@ -501,6 +631,11 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
 
         // Perform expansion on target arguments
         var expandedArgs = target.Args.Select(arg => ExpandVariables(arg, pathVariables)).ToList();
+
+        // The child's environment, assembled once so the ARG_MAX guard below measures exactly what
+        // WithEnv applies further down — POSIX ARG_MAX is a total across argv AND envp, so the guard
+        // cannot be honest without the environment in hand at guard time.
+        var childEnvironment = AssembleChildEnvironment(request, target);
 
         // Issue #292: durably capture the resolved prompt an ordinary (non-dialogue) step's worker
         // was actually invoked with — the same UI/audit transparency a dialogue step's transcript.jsonl
@@ -525,6 +660,24 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         if (PlatformCommandLineCeiling is { } ceiling)
         {
             GuardCommandLineLength(target.Program, expandedArgs, ceiling);
+        }
+        else
+        {
+            // POSIX (#612): two byte-based caps rather than one UTF-16 ceiling. The per-argument
+            // MAX_ARG_STRLEN is Linux-only — macOS has no per-argument cap and bounds the prompt through
+            // ARG_MAX alone — and ARG_MAX is queried at runtime, skipped when it cannot be determined
+            // (see PosixProcessLimits.ArgMaxBytes). Both throw CommandLineTooLongException, which
+            // MutationInterface records as Permanent — the same up-front, non-retried refusal the Windows
+            // path already produces.
+            if (OperatingSystem.IsLinux())
+            {
+                GuardPosixArgumentLength(target.Program, expandedArgs, PosixProcessLimits.LinuxMaxArgStrlen);
+            }
+
+            if (PosixProcessLimits.ArgMaxBytes() is { } argMax)
+            {
+                GuardPosixTotalLength(target.Program, expandedArgs, childEnvironment, argMax);
+            }
         }
 
         // Only ever invoked for a WorkerBinding.Process dispatch (MutationInterface never calls a
@@ -557,36 +710,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         // cost nothing, which would have been read as "we checked".
         task.WithCaptureOutput(true);
 
-        // #549: the child inherited the operator's ENTIRE environment until this line existed, so a
+        // #549: the child inherited the operator's ENTIRE environment until WithClearEnv existed, so a
         // CLAUDE_CODE_SIMPLE=1 exported anywhere in the shell that started the daemon disabled the
-        // mandatory gate on every worker, silently. WithClearEnv means the child sees only what is
-        // set below — see InheritedEnvironment for what survives and what was measured to be
-        // load-bearing.
+        // mandatory gate on every worker, silently. WithClearEnv means the child sees only
+        // childEnvironment, whose source order and override semantics AssembleChildEnvironment's own doc
+        // states. See InheritedEnvironment for what survives.
         task.WithClearEnv();
-        foreach (var (name, value) in InheritedEnvironment.Resolve())
+        foreach (var (name, value) in childEnvironment)
         {
             task.WithEnv(name, value);
-        }
-
-        // Applied AFTER the inherited set, deliberately, so an AER-computed value and an adapter's
-        // gate variables win — the ordering ClaudeWorkerAdapter.SimpleModeVariable depends on.
-        foreach (var environmentVariable in request.Environment)
-        {
-            // PassThrough variable *values* are resolved by whatever wires a concrete worker adapter
-            // (spec §3) — out of scope here. Only AER-computed variables (paths the Artifact Manager
-            // already resolved) are set.
-            if (environmentVariable is EnvironmentVariable.AerComputed aerComputed)
-            {
-                task.WithEnv(aerComputed.Name, aerComputed.Value);
-            }
-        }
-
-        if (target.Environment is { } targetEnvironment)
-        {
-            foreach (var (name, value) in targetEnvironment)
-            {
-                task.WithEnv(name, value);
-            }
         }
 
         var exitCode = 0;
