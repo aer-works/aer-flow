@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Aer.Flow.Artifacts;
+using Aer.Flow.Concurrency;
 using Aer.Flow.CrashTestHost;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
@@ -245,14 +246,37 @@ public class CrashRecoveryEndToEndTests
         var reader = new FlowEventLogReader(logPath);
         var dispatcher = new CoreDispatcher(writer);
 
-        var completed = await Task.WhenAny(
-            MutationInterface.StartWorkflowAsync(
-                Scenarios.WorkflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher),
-            Task.Delay(TimeSpan.FromSeconds(30)));
+        // #891: retry the recovery pump's §15 lock acquisition on WorkflowLockedException for a short
+        // window — the same killed-process teardown gap OpenWriterWithRetryAsync (above) handles for the
+        // log. On Windows a killed host's flow.lock handle is not always released by the instant
+        // Process.WaitForExit returns, so the recovery pump can transiently lose the lock to a holder
+        // that is already dead. The lock is fail-fast by design (a live double-pump must error, not
+        // wait — see ConcurrencyGuard), so this tolerance lives in the test harness, which manufactures
+        // the race by killing and recovering within milliseconds, not in the product, where a real
+        // recovery never races a still-terminating host. StartWorkflowAsync acquires the lock before it
+        // writes anything, so a failed attempt mutated nothing and retrying the whole pump is safe.
+        var lockRetryDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            var completed = await Task.WhenAny(
+                MutationInterface.StartWorkflowAsync(
+                    Scenarios.WorkflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher),
+                Task.Delay(TimeSpan.FromSeconds(30)));
 
-        return completed is Task<FlowState> stateTask
-            ? await stateTask
-            : throw new TimeoutException("Recovery run did not reach a fixed point in time.");
+            if (completed is not Task<FlowState> stateTask)
+            {
+                throw new TimeoutException("Recovery run did not reach a fixed point in time.");
+            }
+
+            try
+            {
+                return await stateTask;
+            }
+            catch (WorkflowLockedException) when (DateTime.UtcNow < lockRetryDeadline)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
+        }
     }
 
     /// <summary>
