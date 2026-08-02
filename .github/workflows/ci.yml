@@ -150,6 +150,27 @@ jobs:
       - name: Test
         run: pixi run test
 
+      # Diagnostic for the #398 file-lock flake class. On a Windows test failure, capture whether
+      # Defender real-time protection is actually on (PR #922 measured that windows-latest excludes
+      # C:\ and D:\ whole-drive, so realtime is almost certainly irrelevant to these files — this
+      # confirms it) plus a snapshot of the scan-capable services. The transient handle itself is
+      # already gone by the time this post-hoc step runs, which is exactly why the in-process holder
+      # name now rides in FlowJournalHeldException's message (src/Aer.Flow/Store/FileHolderProbe.cs);
+      # this step is the environmental context around that. Never fails the job.
+      - name: Capture file-lock diagnostics on failure (Windows)
+        if: ${{ failure() && runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          try {
+            Get-MpComputerStatus |
+              Select-Object RealTimeProtectionEnabled, AntivirusEnabled, IsTamperProtected, AMRunningMode |
+              Format-List
+          } catch { Write-Warning "Get-MpComputerStatus unavailable: $($_.Exception.Message)" }
+          try {
+            Get-Service -Name WSearch, WinDefend -ErrorAction SilentlyContinue |
+              Select-Object Name, Status | Format-Table -AutoSize
+          } catch { Write-Warning "Get-Service unavailable: $($_.Exception.Message)" }
+
       # The journey reconcile gate (#313, #489). Aer.Journeys.Tests lives OUTSIDE AerFlow.slnx on
       # purpose -- the journey tests themselves are red-specs that fail until a promise is kept, so
       # `pixi run test` must not build them. But the reconcile half is designed to pass: it asserts
