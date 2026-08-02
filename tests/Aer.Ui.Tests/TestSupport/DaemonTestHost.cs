@@ -20,7 +20,12 @@ namespace Aer.Ui.Tests.TestSupport;
 /// </summary>
 internal static class DaemonTestHost
 {
-    private static readonly TimeSpan DefaultBindTimeout = TimeSpan.FromSeconds(10);
+    // A hang-backstop, not a health check (#846). A genuine startup failure faults the daemon task and
+    // WaitForBoundBaseUrlAsync rethrows it immediately (the IsFaulted branch below), so this budget is
+    // only ever consumed by a healthy daemon that is slow to bind under full-suite load on a contended
+    // CI runner — the exact false failure #846 logged. 60s tolerates that without weakening failure
+    // detection: a real fault still fails fast; this only stops a slow-but-fine start being called dead.
+    private static readonly TimeSpan DefaultBindTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
 
     public static async Task<DaemonTestInstance> StartAsync(
