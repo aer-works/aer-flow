@@ -1,0 +1,135 @@
+using Aer.Flow.Domain;
+
+namespace Aer.Adapters;
+
+/// <summary>
+/// Composes a <see cref="WorkflowTemplate"/> (an ordered list of role-phases, decision 0047) into the
+/// <see cref="WorkflowDefinition"/> + bindings the engine runs — the multi-step analogue of
+/// <see cref="RoleDispatch.Materialize"/>, which handles a single role. Each phase names a role
+/// (resolved through <see cref="WorkerRoleCatalog"/>) and never re-declares that role's grant, outputs,
+/// or timeout; the phases lay out as a Pipeline with sequential <c>DependsOn</c> edges.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Input flow is single-blocker (decision 0025).</b> A step has exactly one blocker whose output
+/// flows in as its input — by default the previous phase. There is no composition syntax; a step never
+/// reads two upstream outputs. So each node's <see cref="WorkflowStepDefinition.Inputs"/> is its
+/// blocker's <see cref="WorkflowStepDefinition.Outputs"/> and its <c>DependsOn</c> is that one blocker.
+/// </para>
+/// <para>
+/// <b>The capture step is spliced into the chain, not added as a second input.</b> A phase that
+/// declares the closed symbolic input <see cref="DiffOfWorkSoFarInput"/> (decision 0047 §3) gets a
+/// capture node inserted immediately before it: <c>… → prior-phase → capture → this-phase</c>. The
+/// capture becomes this phase's single blocker, so the diff flows in implicitly and 0025's one-blocker
+/// rule holds. This composer only emits the capture <em>step</em>; the engine-run <c>capture</c> adapter
+/// that actually runs <c>git diff</c> is a later slice, so a template that declares the diff input
+/// composes here but cannot run end to end until that adapter exists.
+/// </para>
+/// <para>
+/// <b>Keys are phase names, not role ids.</b> A template may name the same role in two phases, so every
+/// step id, worker, and binding key is the phase name (<see cref="WorkflowTemplatePhase.Name"/>), which
+/// the catalog already enforces unique within a template.
+/// </para>
+/// </remarks>
+public static class WorkflowTemplateComposer
+{
+    /// <summary>The one closed symbolic input this slice understands (mirrors the catalog's closed set).</summary>
+    public const string DiffOfWorkSoFarInput = "diff-of-work-so-far";
+
+    /// <summary>The adapter name the spliced capture step runs on — the engine-run capture worker (later slice).</summary>
+    public const string CaptureAdapter = "capture";
+
+    /// <summary>The artifact a capture step produces and its consuming phase reads.</summary>
+    public const string CaptureOutputName = "diff-of-work-so-far.diff";
+
+    private const int DefaultRetryAttempts = 3;
+
+    /// <summary>
+    /// Turn a template into the definition + bindings the engine runs. Throws
+    /// <see cref="KeyNotFoundException"/> (via <see cref="WorkerRoleCatalog.For"/>) if a phase names a
+    /// role that is not in the catalog — the same failure the catalog raises at load, surfaced again
+    /// here because roles resolve fresh at compose time.
+    /// </summary>
+    /// <param name="template">The resolved template (see <see cref="WorkflowTemplateCatalog.For"/>).</param>
+    /// <param name="adapterOverride">
+    /// A vendor adapter to run every phase's role on instead of its tier default — the <c>--adapter</c>
+    /// escape hatch, applied uniformly, exactly as <see cref="RoleDispatch"/> applies it to one role.
+    /// The spliced capture step ignores it: capture is engine-run, not a vendor.
+    /// </param>
+    public static (WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings) Materialize(
+        WorkflowTemplate template, string? adapterOverride = null)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+
+        var steps = new List<WorkflowStepDefinition>();
+        var bindings = new Dictionary<string, WorkerBindingConfigEntry>(StringComparer.Ordinal);
+
+        // The single node whose output flows into the next one (0025). Null/[] before the first node.
+        StepId? blockerId = null;
+        IReadOnlyList<string> blockerOutputs = [];
+
+        foreach (var phase in template.Phases)
+        {
+            var role = WorkerRoleCatalog.For(phase.RoleId);
+
+            // Capture splice: a phase declaring the diff input gets a capture node before it, which
+            // becomes this phase's blocker so the diff is its single implicit input.
+            if (phase.Inputs.Contains(DiffOfWorkSoFarInput, StringComparer.Ordinal))
+            {
+                var captureId = new StepId($"{phase.Name}-capture");
+                steps.Add(new WorkflowStepDefinition(
+                    StepId: captureId,
+                    Worker: captureId.Value,
+                    Inputs: [],                                        // runs git against the workspace; reads no artifact
+                    Outputs: [CaptureOutputName],
+                    DependsOn: blockerId is { } priorForCapture ? [priorForCapture] : [],
+                    RetryPolicy: new RetryPolicy(DefaultRetryAttempts),
+                    PausePoint: null));
+                bindings[captureId.Value] = CaptureBinding(captureId.Value);
+
+                blockerId = captureId;
+                blockerOutputs = [CaptureOutputName];
+            }
+
+            var stepId = new StepId(phase.Name);
+            var outputs = role.Outputs.Select(o => o.Name).ToList();
+            steps.Add(new WorkflowStepDefinition(
+                StepId: stepId,
+                Worker: phase.Name,
+                Inputs: blockerOutputs,                                // the single blocker's output flows in (0025)
+                Outputs: outputs,
+                DependsOn: blockerId is { } blocker ? [blocker] : [],
+                RetryPolicy: new RetryPolicy(DefaultRetryAttempts),
+                // AskFirst is 0025's gate toggle. An empty SupersedeTargets is a plain approval gate
+                // (Resume/Reject/RetryWithRevision); the template model carries no supersede targets, so
+                // empty is the faithful mapping until it does.
+                PausePoint: phase.AskFirst ? new PausePoint([]) : null));
+            bindings[phase.Name] = RoleDispatch.ToBinding(role, phase.Instruction, adapterOverride, workerName: phase.Name);
+
+            blockerId = stepId;
+            blockerOutputs = outputs;
+        }
+
+        var definition = new WorkflowDefinition(
+            WorkflowTemplateId: new WorkflowTemplateId(template.Id),
+            WorkflowTemplateVersion: 1,
+            Steps: steps);
+        return (definition, bindings);
+    }
+
+    // The capture step's binding: the engine-run capture adapter, a contract that produces just the
+    // diff artifact, and NO vendor permission grant — it is deterministic engine machinery (git diff
+    // with engine-controlled args), not a worker, so it carries no grant to translate (0047 §4). The
+    // adapter that fulfils this binding is a later slice; the binding is the seam it plugs into.
+    private static WorkerBindingConfigEntry CaptureBinding(string workerName) =>
+        new(
+            Adapter: CaptureAdapter,
+            Contract: new WorkerContract(
+                WorkerName: workerName,
+                RequiredInputs: [],
+                ProducedOutputs: [new ProducedOutput(CaptureOutputName)],
+                OptionalMetadata: []),
+            PromptTemplate: string.Empty,
+            Timeout: TimeSpan.FromMinutes(2),
+            PermissionGrant: new PermissionGrant());
+}

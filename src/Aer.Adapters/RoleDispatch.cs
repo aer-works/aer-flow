@@ -31,13 +31,18 @@ public static class RoleDispatch
     /// the <c>--adapter</c> escape hatch. A role never names a vendor, so this is the only place a
     /// caller picks one, and it does not change the role's capability.
     /// </param>
-    public static WorkerBindingConfigEntry ToBinding(WorkerRole role, string spec, string? adapterOverride = null)
+    /// <param name="workerName">
+    /// The binding/contract key for this worker, defaulting to <see cref="WorkerRole.Id"/>. A
+    /// multi-phase composer passes a phase-unique name instead — see
+    /// <see cref="WorkflowTemplateComposer"/> for why role ids will not do there.
+    /// </param>
+    public static WorkerBindingConfigEntry ToBinding(WorkerRole role, string spec, string? adapterOverride = null, string? workerName = null)
     {
         ArgumentNullException.ThrowIfNull(role);
         ArgumentNullException.ThrowIfNull(spec);
 
         var contract = new WorkerContract(
-            WorkerName: role.Id,
+            WorkerName: string.IsNullOrWhiteSpace(workerName) ? role.Id : workerName,
             RequiredInputs: [],
             ProducedOutputs: role.Outputs.Select(o => new ProducedOutput(o.Name, Schema: o.Schema)).ToList(),
             OptionalMetadata: []);
