@@ -77,7 +77,7 @@ public class SnapshotBinderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -184,25 +184,10 @@ public class SnapshotBinderTests
         }
         finally
         {
-            // Windows can briefly hold the last reader's handle open past the awaited read
-            // completing (overlapped-I/O completion timing) -- retry the scratch-file cleanup
-            // rather than let that timing artifact fail the test. Best effort only: a leftover
-            // uniquely-named file under %TEMP% costs nothing the test itself depends on.
-            for (var attempt = 1; attempt <= 20; attempt++)
-            {
-                try
-                {
-                    File.Delete(path);
-                    break;
-                }
-                catch (IOException) when (attempt < 20)
-                {
-                    await Task.Delay(50, TestContext.Current.CancellationToken);
-                }
-                catch (IOException)
-                {
-                }
-            }
+            // Best-effort scratch cleanup: FileCleanup.Delete retries the transient Windows lock
+            // (Defender/indexer holding the just-written file) and swallows a persistent one, so a
+            // leftover uniquely-named temp file can't mask the test's real result (#295 / #918).
+            FileCleanup.Delete(path);
         }
     }
 
@@ -319,8 +304,8 @@ public class SnapshotBinderTests
         }
         finally
         {
-            File.Delete(templatePath);
-            File.Delete(snapshotPath);
+            FileCleanup.Delete(templatePath);
+            FileCleanup.Delete(snapshotPath);
         }
     }
 }

@@ -41,7 +41,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -62,7 +62,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -108,7 +108,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -124,7 +124,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -150,7 +150,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -189,7 +189,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -212,7 +212,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -228,7 +228,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -258,7 +258,7 @@ public class FlowEventLogReaderTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 }

@@ -12,7 +12,9 @@
        run as spawned children (Aer.Flow.CrashTestHost) is safe — they inherit the parent's root. -->
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Shared\AerHomeRedirect.cs" Link="TestSupport\AerHomeRedirect.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\CleanupRetry.cs" Link="TestSupport\CleanupRetry.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Shared\DirectoryCleanup.cs" Link="TestSupport\DirectoryCleanup.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\FileCleanup.cs" Link="TestSupport\FileCleanup.cs" />
   </ItemGroup>
 
   <ItemGroup>

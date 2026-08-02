@@ -142,7 +142,7 @@ public class YieldToolTests
     {
         if (File.Exists(path))
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 }

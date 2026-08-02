@@ -59,7 +59,7 @@ public class WorkflowDefinitionParserTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -106,7 +106,7 @@ public class WorkflowDefinitionParserTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 

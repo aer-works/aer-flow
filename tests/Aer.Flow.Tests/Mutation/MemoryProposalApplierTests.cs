@@ -457,7 +457,7 @@ public class MemoryProposalApplierTests : IDisposable
         }
         finally
         {
-            File.Delete(linkPath);
+            FileCleanup.Delete(linkPath);
         }
     }
 
@@ -620,7 +620,7 @@ public class MemoryProposalApplierTests : IDisposable
         }
         finally
         {
-            File.Delete(linkPath);
+            FileCleanup.Delete(linkPath);
         }
     }
 

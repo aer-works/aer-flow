@@ -41,7 +41,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -74,7 +74,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -107,7 +107,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -145,7 +145,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -178,7 +178,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -201,7 +201,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -225,7 +225,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -265,7 +265,7 @@ public class CoreDispatcherTests
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
             DirectoryCleanup.DeleteRecursively(configuredWorkingDirectory);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -398,7 +398,7 @@ public class CoreDispatcherTests
         {
             Environment.SetEnvironmentVariable(variableName, original);
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -442,7 +442,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -486,7 +486,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -521,7 +521,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -545,7 +545,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -572,7 +572,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -601,7 +601,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -649,7 +649,7 @@ public class CoreDispatcherTests
         }
         finally
         {
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
             DirectoryCleanup.DeleteRecursively(payloadDirectory);
         }
     }
@@ -1177,7 +1177,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -1209,7 +1209,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -1252,7 +1252,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -1488,7 +1488,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
@@ -1529,7 +1529,7 @@ public class CoreDispatcherTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(artifactsRoot);
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 }

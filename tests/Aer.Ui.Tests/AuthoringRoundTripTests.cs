@@ -123,7 +123,7 @@ public class AuthoringRoundTripTests
         }
         finally
         {
-            File.Delete(templatePath);
+            FileCleanup.Delete(templatePath);
             if (Directory.Exists(taskDirectory))
             {
                 DirectoryCleanup.DeleteRecursively(taskDirectory);
@@ -181,7 +181,7 @@ public class AuthoringRoundTripTests
         }
         finally
         {
-            File.Delete(templatePath);
+            FileCleanup.Delete(templatePath);
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
@@ -232,8 +232,8 @@ public class AuthoringRoundTripTests
         }
         finally
         {
-            File.Delete(templatePath);
-            File.Delete(bindingsPath);
+            FileCleanup.Delete(templatePath);
+            FileCleanup.Delete(bindingsPath);
             if (Directory.Exists(taskDirectory))
             {
                 DirectoryCleanup.DeleteRecursively(taskDirectory);

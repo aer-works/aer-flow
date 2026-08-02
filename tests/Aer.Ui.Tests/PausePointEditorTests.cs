@@ -73,7 +73,7 @@ public class PausePointEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -155,7 +155,7 @@ public class PausePointEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 

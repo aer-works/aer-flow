@@ -496,7 +496,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            File.Delete(logPath);
+            FileCleanup.Delete(logPath);
         }
     }
 
