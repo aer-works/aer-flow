@@ -190,12 +190,15 @@ def run_stdin(cmd, stdin_text, timeout=300, cwd=None, extra_env=None):
 @check("lifecycle.claude-print-reads-prompt-from-stdin", "lifecycle",
        "claude -p reads the prompt from stdin when no positional prompt is given (#932 / 0048)")
 def _claude_stdin_prompt():
-    token = "STDINPROMPT7F3A"
-    instruction = f"Reply with ONLY this exact token and nothing else: {token}"
-    # Control arm: prompt as the positional argument -- today's path. Proves the model/auth work.
+    # A benign multi-word phrase, not an opaque "token": the cheap model refuses "reply with only this
+    # exact token: <hex>" as a credential-echo, which flakes the control arm to INCONCLUSIVE. Real words
+    # in a plain "reply with this phrase" framing echo reliably while staying unique to detect.
+    token = "marigold-quokka-lantern"
+    instruction = f"Reply with only this phrase, exactly, and nothing else: {token}"
+    # Control arm: prompt as the flag value -- today's path. Proves the model/auth/echo work.
     rc, out, err = run(["claude", "-p", instruction, "--output-format", "text"])
     if token not in (out or ""):
-        return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
+        return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the phrase; rc={rc} {(out + err)[-160:]}"
     # Arm under test: no positional prompt; the same instruction delivered on stdin.
     rc2, out2, err2 = run_stdin(["claude", "-p", "--output-format", "text"], instruction)
     if token in (out2 or ""):
@@ -204,20 +207,35 @@ def _claude_stdin_prompt():
 
 
 @check("lifecycle.agy-print-requires-prompt-argument", "lifecycle",
-       "agy -p (print mode) does NOT read the prompt from stdin -- it requires the positional argument (#932 / 0048)")
+       "agy -p (print mode) takes the prompt as the -p/--print flag VALUE and does NOT read it from "
+       "stdin -- not as a prompt, not as context (#932 / 0048)")
 def _agy_stdin_prompt():
-    token = "STDINPROMPT9C2B"
-    instruction = f"Reply with ONLY this exact token and nothing else: {token}"
-    # Control arm: prompt as the positional argument -- today's path. Proves the model/auth work.
-    rc, out, err = run(["agy", "-p", instruction])
+    # Three arms, because the test arm's evidence is a model's behaviour, not a rc. `agy -p` with no
+    # value dies in Go's flag parser BEFORE any prompt-reading code (rc=2, "flag needs an argument"),
+    # so that invocation would prove flag arity, not that stdin is ignored -- it can't back this claim.
+    # Instead: give -p a valid instruction that TELLS agy to use stdin, and discriminate.
+    # Benign words, not a "secret token": the same credential-echo refusal that flakes the claude arm
+    # can flake a stricter gemini too. A plain "codeword in a context block" framing echoes reliably.
+    token = "marigold-quokka-beacon"
+    ctx = f"CONTEXT-BLOCK-BEGIN\nThe codeword is {token}.\nCONTEXT-BLOCK-END"
+    ask = "A context block was provided to you. Reply with only the codeword from it, nothing else."
+    # Control A: prompt as the -p flag value -- today's path. Proves model/auth/echo work at all.
+    rc, out, err = run(["agy", "-p", f"Reply with only this phrase, exactly, and nothing else: {token}"])
     if token not in (out or ""):
-        return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
-    # Arm under test: no positional prompt; the same instruction delivered on stdin. Print mode has no
-    # --input-format and no prompt-file flag, so the expectation is that stdin is IGNORED here.
-    rc2, out2, err2 = run_stdin(["agy", "-p"], instruction)
+        return INCONCLUSIVE, f"control A (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
+    # Control B (positive control for the stdin channel): the SAME ask, but with the context inlined in
+    # the -p value. The token MUST appear -- that proves the ask is followable and the token echoable,
+    # so a token-absent test arm is about the stdin channel, not the phrasing. Else INCONCLUSIVE.
+    rc1, out1, err1 = run(["agy", "-p", f"{ask}\n\n{ctx}"])
+    if token not in (out1 or ""):
+        return INCONCLUSIVE, f"control B (context-in-arg) did not echo the token; rc={rc1} {(out1 + err1)[-160:]}"
+    # Arm under test: identical ask on the -p value, context ONLY on stdin. -p has a valid value, so agy
+    # runs its prompt path; if it consumed stdin the token would surface. Absent => stdin is not a
+    # prompt/context source, and the only off-argv path (stdin) is closed for agy.
+    rc2, out2, err2 = run_stdin(["agy", "-p", ask], ctx)
     if token in (out2 or ""):
-        return FAIL, "agy -p unexpectedly read the prompt from stdin -- #932's asymmetry no longer holds"
-    return PASS, "agy -p ignored the stdin prompt (requires the positional argument), as #932 measured"
+        return FAIL, "agy -p read the context from stdin -- #932's asymmetry no longer holds"
+    return PASS, "agy -p ignored the stdin context (prompt must be the -p flag value), as #932 measured"
 
 
 def mcp_config(path, server, sentinel_dir, extra_env=None):

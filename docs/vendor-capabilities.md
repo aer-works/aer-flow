@@ -51,7 +51,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | | `claude` 2.1.220 | `agy` 1.1.9 |
 |---|---|---|
 | Headless flag | `-p` / `--print` | `-p` / `--print` |
-| Prompt delivery | **stdin OR positional arg** — `-p` reads the prompt from stdin when none is given (+ `--input-format` for streaming) | **positional argument only** — `-p` ignores stdin; no `--input-format`, no prompt-file flag |
+| Prompt delivery | **stdin OR positional arg** — `-p` (boolean) reads the prompt from stdin when no positional is given (+ `--input-format` for streaming) | **`-p` flag value only** — the prompt is the *value* of `-p`/`--print`; stdin is read neither as prompt nor as context; no `--input-format`, no prompt-file flag |
 | Effort | `--effort low\|medium\|high\|xhigh\|max` | `--effort low\|medium\|high` |
 | Extra directories | `--add-dir` | `--add-dir` (repeatable) |
 | MCP | `mcp` subcommand, `--mcp-config`, `--strict-mcp-config` | **config file only** — `~/.gemini/config/mcp_config.json` |
@@ -81,8 +81,10 @@ Whether the prompt can move **off** the command line — delivered via stdin —
 - **`claude -p` reads the prompt from stdin** when no positional prompt is given, with
   `--output-format stream-json --verbose` intact. Guarded by
   `verify.py::lifecycle.claude-print-reads-prompt-from-stdin`.
-- **`agy -p` does not** — print mode requires the positional argument and ignores stdin (bare `agy`,
-  the interactive path, reads stdin, but that is not AER's structured `--print` mode). Guarded by
+- **`agy -p` does not** — print mode takes the prompt as the *value* of the `-p`/`--print` flag and
+  reads nothing from stdin: not as a prompt (`-p ""` errors `empty prompt`; `-p -` treats `-` as the
+  literal prompt), and not as context (told to use a piped context block, agy reports it received
+  nothing on stdin). No `--input-format`, no prompt-file flag. Guarded by
   `verify.py::lifecycle.agy-print-requires-prompt-argument`.
 
 Consequence: stdin lifts the command-line ceiling for `claude`, but a large `agy` prompt stays

@@ -73,7 +73,7 @@ This table runs the other direction: from measurement to design.
 | `lifecycle.bg-projection` | `claude agents --json` projects state with a vocabulary | AER can read background session state structurally rather than scraping. **No design change** — confirms 0008's projection model is buildable. |
 | `lifecycle.daemon-status` | `claude daemon status` reports machine-readable readiness | Supervisor input for `Aer.Daemon` (#478). **No design change.** |
 | `lifecycle.claude-print-reads-prompt-from-stdin` | `claude -p` consumes the prompt from stdin when no positional prompt is given | The #932 enabler: the claude path can take its prompt off the command line, so the `ARG_MAX` ceiling that refuses a large prompt (#598/#612) is liftable for claude via stdin. Control-armed — the prompt-as-argument arm must pass first. |
-| `lifecycle.agy-print-requires-prompt-argument` | `agy -p` ignores stdin; the prompt must be the positional argument | Makes the #932 fix **vendor-asymmetric**: agy print mode has no off-argv prompt path (no `--input-format`, no prompt-file flag), so a large gemini prompt stays `ARG_MAX`-bound until agy grows one. Control-armed. |
+| `lifecycle.agy-print-requires-prompt-argument` | `agy -p` reads nothing from stdin (prompt or context); the prompt must be the `-p`/`--print` flag value | Makes the #932 fix **vendor-asymmetric**: agy print mode has no off-argv prompt path (no stdin, no `--input-format`, no prompt-file flag), so a large gemini prompt stays `ARG_MAX`-bound until agy grows one. Three-armed (arg echo, context-in-arg positive control, stdin arm). |
 
 ## agy
 
