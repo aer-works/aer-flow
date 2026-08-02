@@ -4,25 +4,35 @@ using System.Text.Json.Serialization;
 namespace Aer.Adapters;
 
 /// <summary>
-/// A phase within a <see cref="WorkflowTemplate"/> — names a worker role to run, along with phase-specific
-/// instruction prose and an optional approval gate toggle.
+/// A phase within a <see cref="WorkflowTemplate"/> — names a phase identity and worker role to run, along with
+/// phase-specific instruction prose, an optional approval gate toggle, and symbolic inputs.
 /// </summary>
+/// <param name="Name">The unique identifier of the phase within its template.</param>
 /// <param name="RoleId">The worker role to run for this phase (must resolve against <see cref="WorkerRoleCatalog"/>).</param>
 /// <param name="Instruction">The prose body / instruction for this phase.</param>
 /// <param name="AskFirst">Per-step gate toggle (decision 0025) — whether to prompt the operator before executing.</param>
-public sealed record WorkflowTemplatePhase(string RoleId, string Instruction, bool AskFirst);
+/// <param name="Inputs">The list of inputs required by this phase (must be from the closed set).</param>
+public sealed record WorkflowTemplatePhase(string Name, string RoleId, string Instruction, bool AskFirst, IReadOnlyList<string> Inputs);
 
 /// <summary>
 /// A reusable workflow template definition composed as data over the existing worker-role catalog.
 /// </summary>
 /// <param name="Id">The unique identifier of the workflow template.</param>
 /// <param name="Phases">The ordered list of phases that make up the workflow template.</param>
-/// <param name="Inputs">The list of inputs required by the workflow template (must be from the closed set).</param>
-public sealed record WorkflowTemplate(string Id, IReadOnlyList<WorkflowTemplatePhase> Phases, IReadOnlyList<string> Inputs);
+public sealed record WorkflowTemplate(string Id, IReadOnlyList<WorkflowTemplatePhase> Phases);
 
 /// <summary>
 /// The runtime-resolved catalog of workflow templates.
 /// </summary>
+/// <remarks>
+/// Resolution order per file, evaluated fresh on every access (the same "resolve, never capture"
+/// discipline <see cref="AerPaths"/> keeps, so a test or a live edit is honoured immediately):
+/// <list type="number">
+/// <item>the <c>AER_WORKFLOW_TEMPLATES_PATH</c> environment override, when set — for a one-off experiment;</item>
+/// <item><c>{AerPaths.Root}/workflow-templates.json</c> when it exists — the operator's durable, rebuild-free override;</item>
+/// <item>the default shipped next to the assembly (<see cref="AppContext.BaseDirectory"/>).</item>
+/// </list>
+/// </remarks>
 public static class WorkflowTemplateCatalog
 {
     public const string TemplatesPathEnvironmentVariable = "AER_WORKFLOW_TEMPLATES_PATH";
@@ -31,9 +41,11 @@ public static class WorkflowTemplateCatalog
     private const string TemplatesOverrideFileName = "workflow-templates.json";
 
     // Plain JSON only — no comments, no trailing commas.
+    // Unmapped member handling is set to Disallow because templates are user-authored (unlike engine-shipped WorkerRoles.json), so typo'd or smuggled fields must fail loudly.
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     // The engine-defined, closed set of valid inputs (decision 0047). New members are added here by the engine,
@@ -83,34 +95,49 @@ public static class WorkflowTemplateCatalog
             }
 
             var phases = new List<WorkflowTemplatePhase>(raw.Phases.Count);
+            var phaseNames = new HashSet<string>(StringComparer.Ordinal);
+
             foreach (var rawPhase in raw.Phases)
             {
+                if (string.IsNullOrWhiteSpace(rawPhase.Name))
+                {
+                    throw new InvalidOperationException(
+                        $"Workflow template '{raw.Id}' has a phase with a null or blank name.");
+                }
+
+                if (!phaseNames.Add(rawPhase.Name))
+                {
+                    throw new InvalidOperationException(
+                        $"Workflow template '{raw.Id}' duplicate phase name '{rawPhase.Name}'. Phase names must be unique within a template.");
+                }
+
                 if (!knownRoleIds.Contains(rawPhase.RoleId))
                 {
                     throw new InvalidOperationException(
-                        $"Workflow template '{raw.Id}' phase names role '{rawPhase.RoleId}', which is not defined in the worker-role catalog. " +
+                        $"Workflow template '{raw.Id}' phase '{rawPhase.Name}' names role '{rawPhase.RoleId}', which is not defined in the worker-role catalog. " +
                         $"Known roles: {string.Join(", ", WorkerRoleCatalog.All.Select(r => r.Id))}.");
                 }
 
-                phases.Add(new WorkflowTemplatePhase(rawPhase.RoleId, rawPhase.Instruction, rawPhase.AskFirst));
-            }
-
-            if (raw.Inputs is null)
-            {
-                throw new InvalidOperationException($"Workflow template '{raw.Id}' declares null inputs.");
-            }
-
-            foreach (var input in raw.Inputs)
-            {
-                if (!ClosedInputs.Contains(input))
+                if (rawPhase.Inputs is null)
                 {
                     throw new InvalidOperationException(
-                        $"Workflow template '{raw.Id}' declares unknown input '{input}'. " +
-                        $"Known inputs: {string.Join(", ", ClosedInputs)}.");
+                        $"Workflow template '{raw.Id}' phase '{rawPhase.Name}' declares null inputs.");
                 }
+
+                foreach (var input in rawPhase.Inputs)
+                {
+                    if (!ClosedInputs.Contains(input))
+                    {
+                        throw new InvalidOperationException(
+                            $"Workflow template '{raw.Id}' phase '{rawPhase.Name}' declares unknown input '{input}'. " +
+                            $"Known inputs: {string.Join(", ", ClosedInputs)}.");
+                    }
+                }
+
+                phases.Add(new WorkflowTemplatePhase(rawPhase.Name, rawPhase.RoleId, rawPhase.Instruction, rawPhase.AskFirst, rawPhase.Inputs));
             }
 
-            templates.Add(new WorkflowTemplate(raw.Id, phases, raw.Inputs));
+            templates.Add(new WorkflowTemplate(raw.Id, phases));
         }
 
         return templates;
@@ -150,11 +177,12 @@ public static class WorkflowTemplateCatalog
     // surfacing at runtime.
     private sealed record RawTemplate(
         [property: JsonRequired] string Id,
-        [property: JsonRequired] IReadOnlyList<RawPhase> Phases,
-        [property: JsonRequired] IReadOnlyList<string> Inputs);
+        [property: JsonRequired] IReadOnlyList<RawPhase> Phases);
 
     private sealed record RawPhase(
+        [property: JsonRequired] string Name,
         [property: JsonRequired] string RoleId,
         [property: JsonRequired] string Instruction,
-        [property: JsonRequired] bool AskFirst);
+        [property: JsonRequired] bool AskFirst,
+        [property: JsonRequired] IReadOnlyList<string> Inputs);
 }
