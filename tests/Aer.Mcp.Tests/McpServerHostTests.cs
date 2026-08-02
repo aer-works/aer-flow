@@ -48,10 +48,10 @@ public class McpServerHostTests
                 "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"yield\",\"arguments\":{\"outcome\":\"concluded\"}}}\n");
             var output = new StringWriter();
 
-            await host.RunAsync(input, output);
+            await host.RunAsync(input, output, TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(captureFile));
-            Assert.Contains("concluded", await File.ReadAllTextAsync(captureFile));
+            Assert.Contains("concluded", await File.ReadAllTextAsync(captureFile, TestContext.Current.CancellationToken));
             Assert.Contains("Recorded yield", output.ToString());
         }
         finally
@@ -155,7 +155,7 @@ public class McpServerHostTests
             "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n");
         var output = new StringWriter();
 
-        await host.RunAsync(input, output);
+        await host.RunAsync(input, output, TestContext.Current.CancellationToken);
 
         var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var responses = lines.Select(l => System.Text.Json.Nodes.JsonNode.Parse(l)!.AsObject()).ToList();

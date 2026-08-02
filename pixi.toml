@@ -4,6 +4,18 @@ name = "aer-flow"
 platforms = ["win-64", "linux-64", "osx-arm64"]
 version = "0.1.0"
 
+# Disable MSBuild out-of-process node reuse. With reuse on (the default), a build leaves persistent
+# worker nodes alive to be reused by the NEXT build, shared across all worktrees for the user. Two
+# builds running at once — e.g. a self-dispatched worker running `pixi run gates` in one worktree
+# while another build runs in a sibling worktree — then race over that shared node pool: one recycles
+# a node the other is mid-pipe with, the pipe breaks (`System.IO.IOException: Pipe is broken`), and
+# MSBuild reports `MSB4166: Child node exited prematurely`, killing the whole build. Set here in the
+# activation env (not a shell) so EVERY `pixi run` build inherits it, including a dispatched worker's
+# self-gate, which is the case that needs it. Cost is a small per-build startup penalty; the win is
+# that concurrent worktree builds each own throwaway nodes and cannot collide.
+[activation.env]
+MSBUILDDISABLENODEREUSE = "1"
+
 [tasks]
 # Every toolchain below (Rust, Go, Flutter/Dart, .NET) is installed separately and is NOT
 # pixi-managed. CLAUDE.md's "Running tasks" section owns that fact and the install instructions;

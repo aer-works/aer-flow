@@ -51,7 +51,7 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(4), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(4), outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(4, turns.Count);
             Assert.Equal(["initiator", "responder", "initiator", "responder"], turns.Select(t => t.Role));
@@ -79,7 +79,7 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(4), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(4), outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Contains("seed", turns[0].Prompt);
             Assert.Contains("Initiator preamble", turns[0].Prompt);
@@ -120,7 +120,7 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildThreePartyConfig(turnBudget: 5), outputDirectory);
+            var turns = await runner.RunAsync(BuildThreePartyConfig(turnBudget: 5), outputDirectory, TestContext.Current.CancellationToken);
 
             // C's first turn: seed plus BOTH prior turns (fresh session, seen nothing).
             Assert.Contains("seed", turns[2].Prompt);
@@ -158,7 +158,7 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            await runner.RunAsync(BuildConfig(4), outputDirectory);
+            await runner.RunAsync(BuildConfig(4), outputDirectory, TestContext.Current.CancellationToken);
 
             // Call 1 = initiator's first turn, call 2 = responder's first turn: both null in (nothing
             // established yet for either participant).
@@ -186,11 +186,11 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(2), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(2), outputDirectory, TestContext.Current.CancellationToken);
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
             Assert.True(File.Exists(transcriptPath));
-            var lines = await File.ReadAllLinesAsync(transcriptPath);
+            var lines = await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken);
             Assert.Equal(2, lines.Length);
             foreach (var line in lines)
             {
@@ -200,7 +200,7 @@ public class DialogueRunnerTests
 
             var finalOutputPath = Path.Combine(outputDirectory, "final.md");
             Assert.True(File.Exists(finalOutputPath));
-            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath));
+            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -216,10 +216,10 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(2, FinalOutputMode.FinalTurn), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(2, FinalOutputMode.FinalTurn), outputDirectory, TestContext.Current.CancellationToken);
 
             var finalOutputPath = Path.Combine(outputDirectory, "final.md");
-            var finalOutput = await File.ReadAllTextAsync(finalOutputPath);
+            var finalOutput = await File.ReadAllTextAsync(finalOutputPath, TestContext.Current.CancellationToken);
             Assert.Equal(turns[^1].Text, finalOutput);
             Assert.DoesNotContain("initiator", finalOutput);
         }
@@ -237,10 +237,10 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(3, FinalOutputMode.Transcript), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(3, FinalOutputMode.Transcript), outputDirectory, TestContext.Current.CancellationToken);
 
             var finalOutputPath = Path.Combine(outputDirectory, "final.md");
-            var finalOutput = await File.ReadAllTextAsync(finalOutputPath);
+            var finalOutput = await File.ReadAllTextAsync(finalOutputPath, TestContext.Current.CancellationToken);
 
             // Every turn's role and text show up, and the last turn's text does not appear alone —
             // this is the whole exchange, not just the final turn.
@@ -283,7 +283,7 @@ public class DialogueRunnerTests
             });
             var runner = new DialogueRunner(client);
 
-            var turns = await runner.RunAsync(config, outputDirectory);
+            var turns = await runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(2, turns.Count);
             Assert.Equal(2, client.CallCount);
@@ -292,7 +292,7 @@ public class DialogueRunnerTests
             Assert.False(File.Exists(captureFilePath), "the capture file must be consumed (deleted) once read");
 
             var finalOutputPath = Path.Combine(outputDirectory, "final.md");
-            Assert.Equal("response-2", await File.ReadAllTextAsync(finalOutputPath));
+            Assert.Equal("response-2", await File.ReadAllTextAsync(finalOutputPath, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -322,7 +322,7 @@ public class DialogueRunnerTests
             });
             var runner = new DialogueRunner(client);
 
-            var turns = await runner.RunAsync(config, outputDirectory);
+            var turns = await runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Single(turns);
             Assert.Equal("stalemate", turns[^1].YieldOutcome);
@@ -354,7 +354,7 @@ public class DialogueRunnerTests
             var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
             var runner = new DialogueRunner(client);
 
-            var turns = await runner.RunAsync(config, outputDirectory);
+            var turns = await runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Single(turns);
             Assert.Null(turns[0].YieldOutcome);
@@ -382,7 +382,7 @@ public class DialogueRunnerTests
             var client = new ScriptedTurnClient(callIndex => new VendorTurnResult($"response-{callIndex}", 0, ""));
             var runner = new DialogueRunner(client);
 
-            var turns = await runner.RunAsync(config, outputDirectory);
+            var turns = await runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken);
 
             // The stale file IS consumed on turn 1 -- same participant, same path, and DialogueRunner
             // has no way to distinguish "written before this run" from "written during turn 1", which
@@ -410,7 +410,7 @@ public class DialogueRunnerTests
         try
         {
             var ex = await Assert.ThrowsAsync<DialogueExecutionException>(
-                () => runner.RunAsync(BuildConfig(6), outputDirectory));
+                () => runner.RunAsync(BuildConfig(6), outputDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains("2", ex.Message);
             Assert.Contains("responder", ex.Message);
@@ -419,7 +419,7 @@ public class DialogueRunnerTests
             // The failing turn's own line is never appended, but the one turn that succeeded before
             // it stays on disk as a forensic record (§18.2's "no partial resumption" tradeoff).
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
-            var lines = await File.ReadAllLinesAsync(transcriptPath);
+            var lines = await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken);
             Assert.Single(lines);
 
             Assert.False(File.Exists(Path.Combine(outputDirectory, "final.md")));
@@ -441,7 +441,7 @@ public class DialogueRunnerTests
         try
         {
             var ex = await Assert.ThrowsAsync<DialogueExecutionException>(
-                () => runner.RunAsync(BuildConfig(6), outputDirectory));
+                () => runner.RunAsync(BuildConfig(6), outputDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains("no text", ex.Message);
             Assert.False(File.Exists(Path.Combine(outputDirectory, "final.md")));
@@ -466,7 +466,7 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(7, participants), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(7, participants), outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(7, turns.Count);
             Assert.Equal(
@@ -488,7 +488,7 @@ public class DialogueRunnerTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var turns = await runner.RunAsync(BuildConfig(DialogueWorkerConfig.HardTurnCeiling * 10), outputDirectory);
+            var turns = await runner.RunAsync(BuildConfig(DialogueWorkerConfig.HardTurnCeiling * 10), outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(DialogueWorkerConfig.HardTurnCeiling, turns.Count);
             Assert.Equal(DialogueWorkerConfig.HardTurnCeiling, client.CallCount);
@@ -509,7 +509,7 @@ public class DialogueRunnerTests
         {
             var config = BuildConfig(2);
             var ex = await Assert.ThrowsAsync<DialogueExecutionException>(
-                () => runner.RunAsync(config, outputDirectory));
+                () => runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains("timed out", ex.Message);
             Assert.Contains("initiator", ex.Message);
@@ -533,7 +533,7 @@ public class DialogueRunnerTests
         {
             var config = BuildConfig(2);
             var ex = await Assert.ThrowsAsync<DialogueExecutionException>(
-                () => runner.RunAsync(config, outputDirectory));
+                () => runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains("exited with code 124", ex.Message);
             Assert.DoesNotContain("timed out", ex.Message);

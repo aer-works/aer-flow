@@ -13,8 +13,8 @@ public class TranscriptWriterTests
         using var stream = new MemoryStream();
         await using (var writer = new TranscriptWriter(stream, leaveOpen: true))
         {
-            await writer.AppendAsync(new TranscriptTurn(1, "initiator", "claude", "prompt one", "text one"));
-            await writer.AppendAsync(new TranscriptTurn(2, "responder", "gemini", "prompt two", "text two"));
+            await writer.AppendAsync(new TranscriptTurn(1, "initiator", "claude", "prompt one", "text one"), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new TranscriptTurn(2, "responder", "gemini", "prompt two", "text two"), TestContext.Current.CancellationToken);
         }
 
         var content = Encoding.UTF8.GetString(stream.ToArray());
@@ -44,11 +44,11 @@ public class TranscriptWriterTests
         {
             await using (var writer = new TranscriptWriter(transcriptPath))
             {
-                await writer.AppendAsync(new TranscriptTurn(1, "initiator", "claude", "p", "t"));
+                await writer.AppendAsync(new TranscriptTurn(1, "initiator", "claude", "p", "t"), TestContext.Current.CancellationToken);
             }
 
             Assert.True(File.Exists(transcriptPath));
-            var lines = await File.ReadAllLinesAsync(transcriptPath);
+            var lines = await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken);
             Assert.Single(lines);
         }
         finally

@@ -28,7 +28,7 @@ public class ProcessVendorTurnClientEndToEndTests
                 Participants: [initiator, responder]);
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
-            var turns = await runner.RunAsync(config, outputDirectory);
+            var turns = await runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(3, turns.Count);
             Assert.Equal(["initiator", "responder", "initiator"], turns.Select(t => t.Role));
@@ -46,12 +46,12 @@ public class ProcessVendorTurnClientEndToEndTests
             Assert.Contains("[reviewed]", turns[2].Text);
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
-            var lines = await File.ReadAllLinesAsync(transcriptPath);
+            var lines = await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken);
             Assert.Equal(3, lines.Length);
 
             var finalOutputPath = Path.Combine(outputDirectory, "transcript-summary.md");
             Assert.True(File.Exists(finalOutputPath));
-            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath));
+            Assert.Equal(turns[^1].Text, await File.ReadAllTextAsync(finalOutputPath, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -80,13 +80,13 @@ public class ProcessVendorTurnClientEndToEndTests
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
 
-            var ex = await Assert.ThrowsAsync<DialogueExecutionException>(() => runner.RunAsync(config, outputDirectory));
+            var ex = await Assert.ThrowsAsync<DialogueExecutionException>(() => runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains("quota exhausted", ex.Message);
             Assert.False(File.Exists(Path.Combine(outputDirectory, "transcript-summary.md")));
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
-            Assert.Single(await File.ReadAllLinesAsync(transcriptPath));
+            Assert.Single(await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -115,7 +115,7 @@ public class ProcessVendorTurnClientEndToEndTests
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
 
-            var ex = await Assert.ThrowsAsync<DialogueExecutionException>(() => runner.RunAsync(config, outputDirectory));
+            var ex = await Assert.ThrowsAsync<DialogueExecutionException>(() => runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains("no text", ex.Message);
             Assert.False(File.Exists(Path.Combine(outputDirectory, "transcript-summary.md")));
@@ -155,7 +155,7 @@ public class ProcessVendorTurnClientEndToEndTests
 
             var runner = new DialogueRunner(new ProcessVendorTurnClient());
 
-            await Assert.ThrowsAsync<DialogueArgumentTooLargeException>(() => runner.RunAsync(config, outputDirectory));
+            await Assert.ThrowsAsync<DialogueArgumentTooLargeException>(() => runner.RunAsync(config, outputDirectory, TestContext.Current.CancellationToken));
         }
         finally
         {
