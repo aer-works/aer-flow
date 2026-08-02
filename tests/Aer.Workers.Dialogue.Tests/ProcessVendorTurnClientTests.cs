@@ -14,7 +14,7 @@ public class ProcessVendorTurnClientTests
             var participant = StubVendorScripts.EchoingSuffix(root, "initiator", "claude", "preamble", suffix: "");
 
             var result = await new ProcessVendorTurnClient().SendTurnAsync(
-                participant, "hello {PROMPT} world, {PROMPT} again");
+                participant, "hello {PROMPT} world, {PROMPT} again", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal("hello {PROMPT} world, {PROMPT} again", result.Text);
         }
@@ -35,7 +35,7 @@ public class ProcessVendorTurnClientTests
         {
             var participant = StubVendorScripts.EchoingSuffix(root, "initiator", "claude", "preamble", suffix: "");
 
-            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, "hi there");
+            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, "hi there", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal("hi there", result.Text);
             Assert.DoesNotContain('\n', result.Text);
@@ -58,7 +58,7 @@ public class ProcessVendorTurnClientTests
         {
             var participant = StubVendorScripts.ExitingWithCode(root, "initiator", "claude", "preamble", exitCode: 3, stderrText: "vendor CLI blew up");
 
-            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, "hi there");
+            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, "hi there", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(3, result.ExitCode);
             Assert.Contains("vendor CLI blew up", result.StandardError);
@@ -81,7 +81,7 @@ public class ProcessVendorTurnClientTests
         {
             var participant = StubVendorScripts.ProducingEmptyOutput(root, "initiator", "claude", "preamble");
 
-            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, "hi there");
+            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, "hi there", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
             Assert.Equal("", result.Text);
@@ -119,7 +119,7 @@ public class ProcessVendorTurnClientTests
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMilliseconds(200));
-            var result = await client.SendTurnAsync(participant, "hi there");
+            var result = await client.SendTurnAsync(participant, "hi there", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("Turn timed out", result.StandardError);
@@ -160,7 +160,7 @@ public class ProcessVendorTurnClientTests
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
-            var result = await client.SendTurnAsync(participant, "hello");
+            var result = await client.SendTurnAsync(participant, "hello", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("--print-timeout 360s", result.Text);
@@ -199,7 +199,7 @@ public class ProcessVendorTurnClientTests
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
-            var result = await client.SendTurnAsync(participant, "hello");
+            var result = await client.SendTurnAsync(participant, "hello", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
             Assert.Contains("--print-timeout 10m", result.Text);
@@ -239,7 +239,7 @@ public class ProcessVendorTurnClientTests
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
-            var result = await client.SendTurnAsync(participant, "hello");
+            var result = await client.SendTurnAsync(participant, "hello", cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
             Assert.DoesNotContain("--print-timeout", result.Text);
@@ -263,7 +263,7 @@ public class ProcessVendorTurnClientTests
             var oversizePrompt = new string('x', ProcessVendorTurnClient.MaxArgumentLength + 1);
 
             var ex = await Assert.ThrowsAsync<DialogueArgumentTooLargeException>(
-                () => new ProcessVendorTurnClient().SendTurnAsync(participant, oversizePrompt));
+                () => new ProcessVendorTurnClient().SendTurnAsync(participant, oversizePrompt, cancellationToken: TestContext.Current.CancellationToken));
 
             Assert.Contains("initiator", ex.Message);
         }
@@ -286,7 +286,7 @@ public class ProcessVendorTurnClientTests
             var participant = StubVendorScripts.EchoingSuffix(root, "initiator", "claude", "preamble", suffix: "");
             var atThresholdPrompt = new string('x', ProcessVendorTurnClient.MaxArgumentLength);
 
-            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, atThresholdPrompt);
+            var result = await new ProcessVendorTurnClient().SendTurnAsync(participant, atThresholdPrompt, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(0, result.ExitCode);
         }
@@ -328,13 +328,13 @@ public class ProcessVendorTurnClientTests
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
 
-            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null);
+            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Contains("--session-id", fresh.Text);
             Assert.DoesNotContain("--resume", fresh.Text);
             Assert.NotNull(fresh.SessionId);
             Assert.Contains(fresh.SessionId!, fresh.Text);
 
-            var resumed = await client.SendTurnAsync(participant, "hello again", sessionId: fresh.SessionId);
+            var resumed = await client.SendTurnAsync(participant, "hello again", sessionId: fresh.SessionId, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Contains($"--resume {fresh.SessionId}", resumed.Text);
             Assert.DoesNotContain("--session-id", resumed.Text);
             Assert.Equal(fresh.SessionId, resumed.SessionId);
@@ -400,12 +400,12 @@ public class ProcessVendorTurnClientTests
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
 
-            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null);
+            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Contains("--log-file", fresh.Text);
             Assert.DoesNotContain("--conversation", fresh.Text);
             Assert.Equal("stub-agy-conv-id", fresh.SessionId);
 
-            var resumed = await client.SendTurnAsync(participant, "hello again", sessionId: fresh.SessionId);
+            var resumed = await client.SendTurnAsync(participant, "hello again", sessionId: fresh.SessionId, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Contains("--conversation stub-agy-conv-id", resumed.Text);
             Assert.DoesNotContain("--log-file", resumed.Text);
             Assert.Equal("stub-agy-conv-id", resumed.SessionId);
@@ -448,7 +448,7 @@ public class ProcessVendorTurnClientTests
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
 
-            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null);
+            var fresh = await client.SendTurnAsync(participant, "hello", sessionId: null, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Null(fresh.SessionId);
             Assert.Contains("responder", capturedError.ToString());
@@ -491,7 +491,7 @@ public class ProcessVendorTurnClientTests
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
             var ex = await Assert.ThrowsAsync<DialogueWorkerConfigException>(
-                () => client.SendTurnAsync(participant, "hello"));
+                () => client.SendTurnAsync(participant, "hello", cancellationToken: TestContext.Current.CancellationToken));
 
             Assert.Contains("--print-timeout", ex.Message);
         }
