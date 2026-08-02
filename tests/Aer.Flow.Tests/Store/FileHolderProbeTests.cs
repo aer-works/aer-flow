@@ -27,8 +27,9 @@ public class FileHolderProbeTests
         using (new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         {
             // The only holder is this test process. Naming our own pid proves the probe read the live
-            // handle table, not a placeholder — the discriminating check.
-            Assert.Contains($"pid {Environment.ProcessId}", FileHolderProbe.DescribeHolders(path));
+            // handle table, not a placeholder — the discriminating check. The closing paren is part of
+            // the match so a pid that is a numeric prefix of another's (123 vs 1234) can't false-match.
+            Assert.Contains($"(pid {Environment.ProcessId})", FileHolderProbe.DescribeHolders(path));
         }
 
         FileCleanup.Delete(path);
@@ -47,8 +48,9 @@ public class FileHolderProbeTests
         try
         {
             // Negative control: robust even if an external scanner transiently grabs the file (it would
-            // name the scanner, never us). A blind probe returning a canned "held by pid <self>" fails here.
-            Assert.DoesNotContain($"pid {Environment.ProcessId}", FileHolderProbe.DescribeHolders(path));
+            // name the scanner, never us). A blind probe returning a canned "held by pid <self>" fails
+            // here. The closing paren guards against a scanner whose pid our pid is a numeric prefix of.
+            Assert.DoesNotContain($"(pid {Environment.ProcessId})", FileHolderProbe.DescribeHolders(path));
         }
         finally
         {

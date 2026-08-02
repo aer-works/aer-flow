@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text;
 
 namespace Aer.Flow.Store;
 
@@ -52,6 +53,7 @@ internal static class FileHolderProbe
     private const int ErrorMoreData = 234;
     private const int MaxAppName = 255;
     private const int MaxSvcName = 63;
+    private const int SessionKeyLength = 32; // CCH_RM_SESSION_KEY
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RmUniqueProcess
@@ -80,7 +82,7 @@ internal static class FileHolderProbe
     }
 
     [DllImport("rstrtmgr.dll", CharSet = CharSet.Unicode)]
-    private static extern int RmStartSession(out uint pSessionHandle, int dwSessionFlags, string strSessionKey);
+    private static extern int RmStartSession(out uint pSessionHandle, int dwSessionFlags, StringBuilder strSessionKey);
 
     [DllImport("rstrtmgr.dll")]
     private static extern int RmEndSession(uint pSessionHandle);
@@ -98,9 +100,11 @@ internal static class FileHolderProbe
     [SupportedOSPlatform("windows")]
     private static string DescribeHoldersWindows(string path)
     {
-        // Restart Manager wants a caller-supplied session key; a fresh GUID keeps concurrent test
-        // sessions from colliding on it.
-        var sessionKey = Guid.NewGuid().ToString("N");
+        // strSessionKey is an [out] parameter: Restart Manager GENERATES the key into a caller-allocated
+        // buffer of CCH_RM_SESSION_KEY+1 wchars. A StringBuilder is the correct marshal for a buffer
+        // native code writes into — never a `string`, whose backing store the CLR does not expect native
+        // code to mutate.
+        var sessionKey = new StringBuilder(SessionKeyLength + 1);
         var result = RmStartSession(out var session, 0, sessionKey);
         if (result != 0)
         {
