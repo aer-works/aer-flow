@@ -262,6 +262,10 @@ vendor-check = { cmd = "dotnet run --project tools/Aer.VendorProbe -- --check" }
 # orchestrating a multi-step worker exchange (implementer/reviewer or otherwise), same spirit as
 # vendor-verify being a re-runnable instrument rather than a one-off script.
 aer-dispatch = { cmd = "python tools/aer-agy-loop/dispatch.py" }
+# Pure-Python red/green check that dispatch.py's denied-tool guard (#912) discriminates: a real agy
+# "auto-denied" stderr line is caught, a clean run is not. Gated (in FAST) so an agy rewording that
+# would silently disable the guard fails a gate instead.
+aer-dispatch-selftest = { cmd = "python tools/aer-agy-loop/dispatch.py --selftest" }
 
 # M13 Phase 4 (#110), the milestone's completion gate: unlike smoke-claude/smoke-mixed-vendor
 # above, this needs no live vendor auth, so it runs unattended in default CI rather than a gated
