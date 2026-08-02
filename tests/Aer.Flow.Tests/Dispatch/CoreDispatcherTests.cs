@@ -1118,6 +1118,8 @@ public class CoreDispatcherTests
         Assert.Contains(
             $"past the {ceiling.ToString(CultureInfo.InvariantCulture)}", exception.Message, StringComparison.Ordinal);
         Assert.Contains("longest single argument is 200 characters", exception.Message, StringComparison.Ordinal);
+        // Pins the file-passing pointer the refusal now carries (#932).
+        Assert.Contains("as a file it reads under its read-files grant", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1332,6 +1334,7 @@ public class CoreDispatcherTests
         Assert.Contains("'agy'", exception.Message, StringComparison.Ordinal);
         Assert.Contains("MAX_ARG_STRLEN", exception.Message, StringComparison.Ordinal);
         Assert.Contains(cap.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
+        Assert.Contains("as a file it reads under its read-files grant", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1393,6 +1396,7 @@ public class CoreDispatcherTests
 
         Assert.Contains("'agy'", exception.Message, StringComparison.Ordinal);
         Assert.Contains("ARG_MAX", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("as a file it reads under its read-files grant", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
