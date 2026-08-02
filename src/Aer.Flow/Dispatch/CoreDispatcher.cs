@@ -476,13 +476,16 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         // adapters embed the whole prompt as one argument, so that figure is the prompt nearly every
         // time — but not always: a long PermissionScope or several --add-dir paths contribute too, and
         // an operator whose longest argument turns out to be small needs to see that rather than be
-        // sent to shorten a prompt that was never the problem.
+        // sent to shorten content that was never the problem. The guidance points at the fix decision
+        // 0048 settled on — file-passing — not "make the prompt shorter", because the overflow is
+        // almost always inlined content, which belongs in a file the worker reads.
         var longest = args.Count == 0 ? 0 : args.Max(arg => arg.Length);
         throw new CommandLineTooLongException(
             $"Cannot dispatch '{program}': its command line assembles to about {length} characters, "
             + $"past the {ceiling} this platform is guarded at. Its longest single argument is "
-            + $"{longest} characters — a worker's prompt is passed inline as one argument, so that is "
-            + "usually the one to shorten.");
+            + $"{longest} characters — a worker's prompt is passed inline as one argument. Hand large "
+            + "content to the worker as a file it reads under its read-files grant (as the review lane "
+            + "does), rather than inlining it in the prompt.");
     }
 
     /// <summary>
@@ -514,7 +517,9 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             throw new CommandLineTooLongException(
                 $"Cannot dispatch '{program}': one of its arguments is about {bytes} bytes, past the "
                 + $"{maxArgStrlen}-byte per-argument limit this platform enforces (MAX_ARG_STRLEN). A "
-                + "worker's prompt is passed inline as one argument, so that is usually the one to shorten.");
+                + "worker's prompt is passed inline as one argument. Hand large content to the worker as "
+                + "a file it reads under its read-files grant (as the review lane does), rather than "
+                + "inlining it in the prompt.");
         }
     }
 
@@ -571,8 +576,9 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         throw new CommandLineTooLongException(
             $"Cannot dispatch '{program}': its command line and environment assemble to about {total} "
             + $"bytes, past this platform's {argMax}-byte ARG_MAX (a combined limit on arguments and "
-            + "environment). A worker's prompt is passed inline as one argument, so that is usually the "
-            + "one to shorten.");
+            + "environment). A worker's prompt is passed inline as one argument. Hand large content to "
+            + "the worker as a file it reads under its read-files grant (as the review lane does), "
+            + "rather than inlining it in the prompt.");
     }
 
     /// <summary>
