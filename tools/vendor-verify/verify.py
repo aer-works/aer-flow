@@ -201,6 +201,8 @@ def _claude_stdin_prompt():
         return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the phrase; rc={rc} {(out + err)[-160:]}"
     # Arm under test: no positional prompt; the same instruction delivered on stdin.
     rc2, out2, err2 = run_stdin(["claude", "-p", "--output-format", "text"], instruction)
+    if rc2 is None:  # timeout / binary-not-found: the arm never completed, so it settles nothing.
+        return INCONCLUSIVE, f"stdin arm did not complete (timeout/binary): {err2}"
     if token in (out2 or ""):
         return PASS, "claude -p consumed the prompt from stdin (control via arg also passed)"
     return FAIL, f"claude -p did NOT read the prompt from stdin; rc={rc2} {(out2 + err2)[-160:]}"
@@ -210,32 +212,37 @@ def _claude_stdin_prompt():
        "agy -p (print mode) takes the prompt as the -p/--print flag VALUE and does NOT read it from "
        "stdin -- not as a prompt, not as context (#932 / 0048)")
 def _agy_stdin_prompt():
-    # Three arms, because the test arm's evidence is a model's behaviour, not a rc. `agy -p` with no
-    # value dies in Go's flag parser BEFORE any prompt-reading code (rc=2, "flag needs an argument"),
-    # so that invocation would prove flag arity, not that stdin is ignored -- it can't back this claim.
-    # Instead: give -p a valid instruction that TELLS agy to use stdin, and discriminate.
-    # Benign words, not a "secret token": the same credential-echo refusal that flakes the claude arm
-    # can flake a stricter gemini too. A plain "codeword in a context block" framing echoes reliably.
+    # The claim has two halves, measured by different arms. Prompt-half: there is no way to ENTER print
+    # mode with the prompt anywhere but the -p value -- `agy -p` with no value dies in Go's flag parser
+    # (rc=2, "flag needs an argument"), and an empty value is rejected too (arm 2, free, no model call).
+    # Context-half: even with a valid -p value, a piped context block is not read (arms 3 = positive
+    # control, 4 = test). Benign words, not a "secret token": the credential-echo refusal that flakes
+    # the claude arm can flake a stricter gemini too, so "codeword in a context block" is the framing.
     token = "marigold-quokka-beacon"
     ctx = f"CONTEXT-BLOCK-BEGIN\nThe codeword is {token}.\nCONTEXT-BLOCK-END"
     ask = "A context block was provided to you. Reply with only the codeword from it, nothing else."
-    # Control A: prompt as the -p flag value -- today's path. Proves model/auth/echo work at all.
+    # Arm 1 -- control: prompt as the -p flag value (today's path). Proves model/auth/echo work at all.
     rc, out, err = run(["agy", "-p", f"Reply with only this phrase, exactly, and nothing else: {token}"])
     if token not in (out or ""):
         return INCONCLUSIVE, f"control A (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
-    # Control B (positive control for the stdin channel): the SAME ask, but with the context inlined in
-    # the -p value. The token MUST appear -- that proves the ask is followable and the token echoable,
-    # so a token-absent test arm is about the stdin channel, not the phrasing. Else INCONCLUSIVE.
+    # Arm 2 -- prompt-half (free, no model): an empty -p value is rejected, so the prompt cannot be
+    # delivered as "empty flag + stdin". Backs the "not as a prompt" half with a real receipt.
+    rce, oute, erre = run(["agy", "-p", ""])
+    if rce == 0 or "empty prompt" not in (oute + erre).lower():
+        return FAIL, f"agy -p '' was NOT rejected as an empty prompt; rc={rce} {(oute + erre)[-160:]}"
+    # Arm 3 -- positive control for the stdin channel: the SAME ask, but with the context inlined in the
+    # -p value. The token MUST appear -- else a token-absent test arm is about phrasing, not stdin.
     rc1, out1, err1 = run(["agy", "-p", f"{ask}\n\n{ctx}"])
     if token not in (out1 or ""):
         return INCONCLUSIVE, f"control B (context-in-arg) did not echo the token; rc={rc1} {(out1 + err1)[-160:]}"
-    # Arm under test: identical ask on the -p value, context ONLY on stdin. -p has a valid value, so agy
-    # runs its prompt path; if it consumed stdin the token would surface. Absent => stdin is not a
-    # prompt/context source, and the only off-argv path (stdin) is closed for agy.
+    # Arm 4 -- test: identical ask on the -p value, context ONLY on stdin. -p has a valid value, so agy
+    # runs its prompt path; a COMPLETED run whose output lacks the token => stdin was not read.
     rc2, out2, err2 = run_stdin(["agy", "-p", ask], ctx)
+    if rc2 is None:  # timeout / binary-not-found: absence of the token settles nothing here.
+        return INCONCLUSIVE, f"stdin arm did not complete (timeout/binary): {err2}"
     if token in (out2 or ""):
         return FAIL, "agy -p read the context from stdin -- #932's asymmetry no longer holds"
-    return PASS, "agy -p ignored the stdin context (prompt must be the -p flag value), as #932 measured"
+    return PASS, "agy -p rejects an empty prompt and ignores piped context (prompt is the -p flag value)"
 
 
 def mcp_config(path, server, sentinel_dir, extra_env=None):

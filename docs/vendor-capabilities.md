@@ -82,10 +82,10 @@ Whether the prompt can move **off** the command line — delivered via stdin —
   `--output-format stream-json --verbose` intact. Guarded by
   `verify.py::lifecycle.claude-print-reads-prompt-from-stdin`.
 - **`agy -p` does not** — print mode takes the prompt as the *value* of the `-p`/`--print` flag and
-  reads nothing from stdin: not as a prompt (`-p ""` errors `empty prompt`; `-p -` treats `-` as the
-  literal prompt), and not as context (told to use a piped context block, agy reports it received
-  nothing on stdin). No `--input-format`, no prompt-file flag. Guarded by
-  `verify.py::lifecycle.agy-print-requires-prompt-argument`.
+  reads nothing from stdin: not as a prompt (print mode cannot be entered without a `-p` value — an
+  empty one errors `empty prompt`), and not as context (given a valid `-p` value that tells it to use
+  a piped context block, agy reports it received nothing on stdin). No `--input-format`, no
+  prompt-file flag. Guarded by `verify.py::lifecycle.agy-print-requires-prompt-argument`.
 
 Consequence: stdin lifts the command-line ceiling for `claude`, but a large `agy` prompt stays
 argv-bound until agy grows an off-argv path. Both checks carry a prompt-as-argument control arm that
