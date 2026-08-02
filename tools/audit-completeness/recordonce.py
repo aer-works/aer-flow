@@ -126,6 +126,21 @@ LEADER = re.compile(r"^\s*(///|//|/\*|\*/|\*|#+|--|<!--|-->|-|\d+\.)\s*")
 MARKUP = re.compile(r"</?[a-zA-Z][^>]*>|[`*_\[\]()<>]|&\w+;")
 NOISE = re.compile(r"#\d{3,}|https?://\S+")
 
+# A markdown inline-link TARGET -- the `(nnnn-slug.md)` after a `]` -- is a pointer to a canonical
+# record, not prose, exactly as an issue number or a bare URL is (both dropped by NOISE). Two decision
+# records that legitimately link the same decision would otherwise collide on the slug words baked into
+# the target path: 0046 and 0047 shared exactly one shingle -- `md 0003 0003 templates collapse to
+# three shapes md`, entirely `](0003-templates-collapse-to-three-shapes.md)` link text with no shared
+# prose. That is "a reference proliferating is the register working," the false-positive class this
+# checker's own design disavows. Stripped BEFORE MARKUP, which dissolves the `]( )` that identifies a
+# target; only the target is dropped, the visible `[text]` stays and normalises as prose. This drops
+# ANY inline-link target -- `.md` cross-link, external URL, image -- not only decision links. `[^)]*`
+# stops at the first `)`, so a target that nests a paren (a `(...Foo_(bar))` URL) would leak its tail
+# as stray prose; none exists anywhere in the repo today (measured across docs/, src/, tests/, tools/
+# before landing), and a leak could at most add a shingle a real duplication already carries, never
+# drop one -- the safe direction, same as every other narrowing in this file.
+LINK_TARGET = re.compile(r"\]\([^)]*\)")
+
 
 # Prose only. Duplicated *code* across files is ordinary -- two tests legitimately open with the same
 # `var grant = new PermissionGrant(...)` and the same `using var stderr = new StringWriter()`, and
@@ -323,6 +338,7 @@ def marked_runs(path: str, hunks: list[list[str]]) -> list[tuple[list[str], tupl
 
 def normalise(line: str) -> list[str]:
     text = LEADER.sub("", line)
+    text = LINK_TARGET.sub("]", text)    # a link target is a pointer, not prose (see LINK_TARGET)
     text = MARKUP.sub(" ", text)
     text = NOISE.sub(" ", text)          # the issue number is not the fact
     text = re.sub(r"[^a-z0-9 ]+", " ", text.lower())

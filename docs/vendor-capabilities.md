@@ -12,6 +12,7 @@ and where a row says something is *absent*, it names the surfaces that absence w
 
 | established | against | covers |
 |---|---|---|
+| 2026-08-01 | `agy` **1.1.9** (`claude` carried) | the six probe-suite rows re-established after `agy` self-updated 1.1.8→1.1.9: usage, per-turn cost, structured output, `--permission-prompt-tool`, effort, `--add-dir` — **every reading unchanged**; only the version and the RPC server's random port moved. The subcommand rows below are older (#472/#527) and were not in this run. |
 | 2026-07-25, `#527` | `claude` **2.1.220**, `agy` **1.1.8** | the rows the probe suite regenerates: usage, per-turn cost, structured output, `--permission-prompt-tool`, effort, `--add-dir`, plus the subcommand findings below — **re-probed after claude self-updated mid-audit** |
 | 2026-07-25, `#527` | `claude` **2.1.220**, `agy` **1.1.8** | everything in [`vendor-doc-audit.md § Verified by running it`](vendor-doc-audit.md), all 29 `pixi run vendor-verify` checks |
 | 2026-07-24, `#472` | `claude` 2.1.219, `agy` **1.1.6** | everything else — the permission grammar, `--sandbox` enforcement, the cwd finding, `--remote-control`, the blocking-MCP proof |
@@ -47,7 +48,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 
 ## Capability matrix
 
-| | `claude` 2.1.220 | `agy` 1.1.8 |
+| | `claude` 2.1.220 | `agy` 1.1.9 |
 |---|---|---|
 | Headless flag | `-p` / `--print` | `-p` / `--print` |
 | Effort | `--effort low\|medium\|high\|xhigh\|max` | `--effort low\|medium\|high` |
