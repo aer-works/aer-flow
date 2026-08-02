@@ -20,7 +20,10 @@ namespace Aer.Cli.SmokeTests.TestSupport;
 /// </summary>
 internal static class DaemonTestHost
 {
-    private static readonly TimeSpan DefaultBindTimeout = TimeSpan.FromSeconds(10);
+    // Raised from 10s to 60s for #846 (a healthy daemon that binds slowly under full-suite CI load was
+    // being called a failure); the Aer.Ui.Tests copy of this file documents why a larger backstop loses
+    // no failure detection. These two DaemonTestHost copies are duplicated across the two test projects.
+    private static readonly TimeSpan DefaultBindTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(20);
 
     public static async Task<DaemonTestInstance> StartAsync(
