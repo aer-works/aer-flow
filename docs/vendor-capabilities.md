@@ -51,6 +51,7 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | | `claude` 2.1.220 | `agy` 1.1.9 |
 |---|---|---|
 | Headless flag | `-p` / `--print` | `-p` / `--print` |
+| Prompt delivery | **stdin OR positional arg** — `-p` (boolean) reads the prompt from stdin when no positional is given (+ `--input-format` for streaming) | **`-p` flag value only** — the prompt is the *value* of `-p`/`--print`; stdin is read neither as prompt nor as context; no `--input-format`, no prompt-file flag |
 | Effort | `--effort low\|medium\|high\|xhigh\|max` | `--effort low\|medium\|high` |
 | Extra directories | `--add-dir` | `--add-dir` (repeatable) |
 | MCP | `mcp` subcommand, `--mcp-config`, `--strict-mcp-config` | **config file only** — `~/.gemini/config/mcp_config.json` |
@@ -69,6 +70,26 @@ env $STRIP claude -p --output-format stream-json --verbose "..."
 | Plan usage & reset | **`/usage` (and `/cost`) — works headlessly, see below** | **none** — `/usage` is not a real command |
 | Per-turn cost | **`total_cost_usd` in every `stream-json` result** | none |
 | Other | `--agents <json>` | `--remote-control`, `--agent`, `--project` |
+
+## Prompt delivery splits the vendors (#932)
+
+**Measured 2026-08-02, live, control-armed.** A worker's prompt is passed today as the `-p` argument,
+so `ARG_MAX` caps its size and `CoreDispatcher`'s ceiling guard (#598/#612) refuses an over-long one.
+Whether the prompt can move **off** the command line — delivered via stdin — is what decides #932
+(decision 0048), and the two CLIs differ:
+
+- **`claude -p` reads the prompt from stdin** when no positional prompt is given, with
+  `--output-format stream-json --verbose` intact. Guarded by
+  `verify.py::lifecycle.claude-print-reads-prompt-from-stdin`.
+- **`agy -p` does not** — print mode takes the prompt as the *value* of the `-p`/`--print` flag and
+  reads nothing from stdin: not as a prompt (print mode cannot be entered without a `-p` value — an
+  empty one errors `empty prompt`), and not as context (given a valid `-p` value that tells it to use
+  a piped context block, agy reports it received nothing on stdin). No `--input-format`, no
+  prompt-file flag. Guarded by `verify.py::lifecycle.agy-print-requires-prompt-argument`.
+
+Consequence: stdin lifts the command-line ceiling for `claude`, but a large `agy` prompt stays
+argv-bound until agy grows an off-argv path. Both checks carry a prompt-as-argument control arm that
+must pass first, so each verdict reflects real stdin behaviour rather than a harness artifact.
 
 ## Corrections to earlier assumptions
 

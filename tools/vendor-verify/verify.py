@@ -159,6 +159,92 @@ def run(cmd, timeout=300, cwd=None, extra_env=None):
         return None, "", "(binary not found)"
 
 
+def run_stdin(cmd, stdin_text, timeout=300, cwd=None, extra_env=None):
+    """Like run(), but PIPES stdin_text to the process instead of closing stdin.
+
+    The single reason this exists: probing whether a vendor CLI reads the *prompt* from stdin rather
+    than from its positional argument (#932). Everything else -- the CLAUDE_* strip and the
+    cheap-model injection -- matches run() exactly, so a difference in result is about stdin alone.
+    """
+    e = env()
+    e.update(extra_env or {})
+    cmd = list(cmd)
+    if cmd and os.path.basename(cmd[0]).split(".")[0] in CHEAP and "--model" not in cmd:
+        cmd[1:1] = model_flags(os.path.basename(cmd[0]).split(".")[0])
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, cwd=cwd, env=e, input=stdin_text)
+        return p.returncode, (p.stdout or ""), (p.stderr or "")
+    except subprocess.TimeoutExpired:
+        return None, "", "(timeout)"
+    except FileNotFoundError:
+        return None, "", "(binary not found)"
+
+
+# --- #932: how each vendor CLI takes its prompt (on the command line vs off it) -------------------
+# The receipt for decision 0048's precondition: can a worker's prompt reach the vendor via stdin
+# instead of the -p argument the OS length-limits (#598/#612)? The answer differs per vendor -- the
+# narrative and the consequence live in docs/vendor-capabilities.md. Each check runs a
+# prompt-as-argument control arm first, so a stdin verdict is about stdin, not the harness.
+
+@check("lifecycle.claude-print-reads-prompt-from-stdin", "lifecycle",
+       "claude -p reads the prompt from stdin when no positional prompt is given (#932 / 0048)")
+def _claude_stdin_prompt():
+    # A benign multi-word phrase, not an opaque "token": the cheap model refuses "reply with only this
+    # exact token: <hex>" as a credential-echo, which flakes the control arm to INCONCLUSIVE. Real words
+    # in a plain "reply with this phrase" framing echo reliably while staying unique to detect.
+    token = "marigold-quokka-lantern"
+    instruction = f"Reply with only this phrase, exactly, and nothing else: {token}"
+    # Control arm: prompt as the flag value -- today's path. Proves the model/auth/echo work.
+    rc, out, err = run(["claude", "-p", instruction, "--output-format", "text"])
+    if token not in (out or ""):
+        return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the phrase; rc={rc} {(out + err)[-160:]}"
+    # Arm under test: no positional prompt; the same instruction delivered on stdin.
+    rc2, out2, err2 = run_stdin(["claude", "-p", "--output-format", "text"], instruction)
+    if rc2 is None:  # timeout / binary-not-found: the arm never completed, so it settles nothing.
+        return INCONCLUSIVE, f"stdin arm did not complete (timeout/binary): {err2}"
+    if token in (out2 or ""):
+        return PASS, "claude -p consumed the prompt from stdin (control via arg also passed)"
+    return FAIL, f"claude -p did NOT read the prompt from stdin; rc={rc2} {(out2 + err2)[-160:]}"
+
+
+@check("lifecycle.agy-print-requires-prompt-argument", "lifecycle",
+       "agy -p (print mode) takes the prompt as the -p/--print flag VALUE and does NOT read it from "
+       "stdin -- not as a prompt, not as context (#932 / 0048)")
+def _agy_stdin_prompt():
+    # The claim has two halves, measured by different arms. Prompt-half: there is no way to ENTER print
+    # mode with the prompt anywhere but the -p value -- `agy -p` with no value dies in Go's flag parser
+    # (rc=2, "flag needs an argument"), and an empty value is rejected too (arm 2, free, no model call).
+    # Context-half: even with a valid -p value, a piped context block is not read (arms 3 = positive
+    # control, 4 = test). Benign words, not a "secret token": the credential-echo refusal that flakes
+    # the claude arm can flake a stricter gemini too, so "codeword in a context block" is the framing.
+    token = "marigold-quokka-beacon"
+    ctx = f"CONTEXT-BLOCK-BEGIN\nThe codeword is {token}.\nCONTEXT-BLOCK-END"
+    ask = "A context block was provided to you. Reply with only the codeword from it, nothing else."
+    # Arm 1 -- control: prompt as the -p flag value (today's path). Proves model/auth/echo work at all.
+    rc, out, err = run(["agy", "-p", f"Reply with only this phrase, exactly, and nothing else: {token}"])
+    if token not in (out or ""):
+        return INCONCLUSIVE, f"control A (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
+    # Arm 2 -- prompt-half (free, no model): an empty -p value is rejected, so the prompt cannot be
+    # delivered as "empty flag + stdin". Backs the "not as a prompt" half with a real receipt.
+    rce, oute, erre = run(["agy", "-p", ""])
+    if rce == 0 or "empty prompt" not in (oute + erre).lower():
+        return FAIL, f"agy -p '' was NOT rejected as an empty prompt; rc={rce} {(oute + erre)[-160:]}"
+    # Arm 3 -- positive control for the stdin channel: the SAME ask, but with the context inlined in the
+    # -p value. The token MUST appear -- else a token-absent test arm is about phrasing, not stdin.
+    rc1, out1, err1 = run(["agy", "-p", f"{ask}\n\n{ctx}"])
+    if token not in (out1 or ""):
+        return INCONCLUSIVE, f"control B (context-in-arg) did not echo the token; rc={rc1} {(out1 + err1)[-160:]}"
+    # Arm 4 -- test: identical ask on the -p value, context ONLY on stdin. -p has a valid value, so agy
+    # runs its prompt path; a COMPLETED run whose output lacks the token => stdin was not read.
+    rc2, out2, err2 = run_stdin(["agy", "-p", ask], ctx)
+    if rc2 is None:  # timeout / binary-not-found: absence of the token settles nothing here.
+        return INCONCLUSIVE, f"stdin arm did not complete (timeout/binary): {err2}"
+    if token in (out2 or ""):
+        return FAIL, "agy -p read the context from stdin -- #932's asymmetry no longer holds"
+    return PASS, "agy -p rejects an empty prompt and ignores piped context (prompt is the -p flag value)"
+
+
 def mcp_config(path, server, sentinel_dir, extra_env=None):
     e = {"AER_SENTINEL_DIR": sentinel_dir}
     e.update(extra_env or {})
