@@ -929,6 +929,97 @@ def grant_refusal(grant: dict) -> str | None:
     return None
 
 
+# --- worker health: a denied required tool must not read as success (#912) ------------------------
+
+# agy auto-denies a tool the grant withheld and still exits 0, writing only a stderr line. So a worker
+# that reached for a tool it lacked -- most often a write-only implementer trying to compile/verify --
+# produces a plausible contract artifact and the run reads as success with its verification silently
+# skipped. AER's event model carries no tool-call events (FlowEvent.cs / CoreEvent.cs, #638), so this
+# stderr line is the ONLY signal there is. Both substrings must be present: the real marker carries
+# each, and requiring both keeps a stray "permission" or "auto-denied" elsewhere from false-firing.
+# `_selftest` below pins the exact marker, so an agy rewording fails THERE, loudly, rather than
+# silently disabling this guard in a live dispatch.
+DENIED_TOOL_STDERR_MARKERS = ("auto-denied", "permission")
+
+
+def denied_tool_message(artifacts_dir: Path) -> str | None:
+    """The first agy 'a required tool was auto-denied' line across the run's stderr logs, or None.
+
+    A denied required tool means the worker could not do something it tried to -- most often verify its
+    own work -- yet agy exits 0 and the contract artifact is still written, so without this the run
+    reads as a clean success (#912).
+    """
+    if not artifacts_dir.exists():
+        return None
+    # Scan the rollover file too, not just the live one. ExecutionStreamLogger rolls the stream at
+    # 8 MiB by moving the older content to `.stderr.log.1` and restarting `.stderr.log` empty
+    # (ExecutionStreamLogger.cs). An auto-denial is written EARLY, so after a rollover it lands in
+    # `.stderr.log.1` -- globbing only the live file would lose the one signal there is (#913 review).
+    # The rollover keeps at most those two names; `.1` is scanned first because that is where an early
+    # denial ends up once the live file has restarted.
+    for pattern in ("*/.stderr.log.1", "*/.stderr.log"):
+        for stderr_log in sorted(artifacts_dir.glob(pattern)):
+            try:
+                text = stderr_log.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                if all(marker in line for marker in DENIED_TOOL_STDERR_MARKERS):
+                    return line.strip()
+    return None
+
+
+def _selftest() -> int:
+    """Red/green control for denied_tool_message (#912): the real agy auto-denied line is caught
+    (including after an 8 MiB stderr rollover to `.stderr.log.1`), a clean run is not, and a run with
+    no stderr logs is not.
+
+    This guards the MATCHING LOGIC against regression -- it does NOT detect a live agy rewording. The
+    fixture is a frozen copy of agy's message; if agy reworded, fixture and code would stay in sync
+    with each other (green) while both drifted from reality. Catching real drift would need a live
+    probe (a vendor-verify sentinel), not this. The pinned fixture's value is that a change to the
+    matcher that broke real-message handling fails here first."""
+    import tempfile
+
+    # The exact line agy writes when a required tool is denied in headless mode (ground truth, captured
+    # 2026-08-02 from a real run). If agy changes this wording, this fixture AND the guard must move
+    # together -- that this test breaks first is the point.
+    real_denied = ('jetski: no output produced — a tool required the "command" permission that '
+                   'headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under '
+                   'permissions.allow in settings.json (e.g. command(<target>)).')
+    clean = "worker: Succeeded\n[worker] wrote implementation-summary.md\n"
+    failures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "execution_denied").mkdir()
+        (root / "execution_denied" / ".stderr.log").write_text(real_denied, encoding="utf-8")
+        if denied_tool_message(root) is None:
+            failures.append("RED arm did not fire: missed the real agy auto-denied marker")
+    with tempfile.TemporaryDirectory() as tmp:
+        # Rollover arm: an early denial that got rolled into `.stderr.log.1` while the live
+        # `.stderr.log` restarted empty must still be caught (#913 review found this gap).
+        root = Path(tmp)
+        (root / "execution_rolled").mkdir()
+        (root / "execution_rolled" / ".stderr.log.1").write_text(real_denied, encoding="utf-8")
+        (root / "execution_rolled" / ".stderr.log").write_text("... 8 MiB of later output ...\n", encoding="utf-8")
+        if denied_tool_message(root) is None:
+            failures.append("ROLLOVER arm did not fire: missed a denial rolled into .stderr.log.1")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "execution_clean").mkdir()
+        (root / "execution_clean" / ".stderr.log").write_text(clean, encoding="utf-8")
+        if denied_tool_message(root) is not None:
+            failures.append("GREEN arm fired: false-flagged a clean run")
+    with tempfile.TemporaryDirectory() as tmp:
+        if denied_tool_message(Path(tmp)) is not None:
+            failures.append("false-flagged a run with no stderr logs")
+    if failures:
+        print("aer-dispatch selftest: FAIL -- " + "; ".join(failures), file=sys.stderr)
+        return 1
+    print("aer-dispatch selftest: pass (denied-tool guard discriminates)")
+    return 0
+
+
 def build_parser(argv=None) -> argparse.ArgumentParser:
     """The command line, built rather than described, so a checker can parse a grant instead of
     grepping for one. A substring test for `"--no-write-files"` passes on a source file that
@@ -1017,6 +1108,10 @@ def main() -> int:
     # this function's own success-path print, after the workflow itself had already succeeded.
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
+
+    # Not a registered arg -- a pure self-check for the denied-tool guard, wired into gates.
+    if "--selftest" in sys.argv:
+        return _selftest()
 
     args = build_parser().parse_args()
 
@@ -1450,6 +1545,17 @@ def main() -> int:
     if not output_files:
         print(f"error: workflow reported success but no '{primary_output_name}' artifact was found under {artifacts_dir}", file=sys.stderr)
         return 3
+
+    denied = denied_tool_message(artifacts_dir)
+    if denied:
+        print(
+            "error: the worker reached for a tool its grant withheld and agy auto-denied it, so its "
+            "output may rest on a step -- often self-verification -- that silently did not run. The "
+            "contract artifact exists, but this run is NOT a clean success (#912). agy said:\n  "
+            + denied + "\nWiden the grant (an implementer that must build needs --run-shell-commands "
+            "--network-access) or treat the artifact as unverified. It is at:\n  " + str(output_files[0]),
+            file=sys.stderr)
+        return 4
 
     output_content = output_files[0].read_text(encoding="utf-8")
     print(output_content)
