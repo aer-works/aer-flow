@@ -131,15 +131,6 @@ public class RoomEventLogReaderWriterTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_tempDirectory))
-        {
-            try
-            {
-                Directory.Delete(_tempDirectory, recursive: true);
-            }
-            catch
-            {
-            }
-        }
+        DirectoryCleanup.DeleteRecursively(_tempDirectory);
     }
 }

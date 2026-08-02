@@ -1,4 +1,4 @@
-namespace Aer.Cli.Tests.TestSupport;
+namespace Aer.Tests.Shared;
 
 /// <summary>
 /// Wraps <see cref="Directory.Delete(string, bool)"/> with a short retry/backoff loop for the

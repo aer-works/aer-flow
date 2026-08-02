@@ -20,10 +20,7 @@ public sealed class LegacyStorageMigrationTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_root))
-        {
-            Directory.Delete(_root, recursive: true);
-        }
+        DirectoryCleanup.DeleteRecursively(_root);
     }
 
     /// <summary>Writes a plausible record: a snapshot, an event log and a nested artifact.</summary>

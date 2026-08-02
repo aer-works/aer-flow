@@ -160,10 +160,7 @@ public class MemoryProposalEscalationTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_tempDirectory))
-        {
-            Directory.Delete(_tempDirectory, recursive: true);
-        }
+        DirectoryCleanup.DeleteRecursively(_tempDirectory);
     }
 }
 
@@ -272,9 +269,6 @@ public class MemoryProposalEscalationForRoomTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_tempDirectory))
-        {
-            Directory.Delete(_tempDirectory, recursive: true);
-        }
+        DirectoryCleanup.DeleteRecursively(_tempDirectory);
     }
 }

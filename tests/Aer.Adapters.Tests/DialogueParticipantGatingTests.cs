@@ -18,7 +18,7 @@ public class DialogueParticipantGatingTests : IDisposable
 
     public void Dispose()
     {
-        Directory.Delete(root, recursive: true);
+        DirectoryCleanup.DeleteRecursively(root);
         GC.SuppressFinalize(this);
     }
 

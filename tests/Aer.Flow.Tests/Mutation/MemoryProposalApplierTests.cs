@@ -299,7 +299,7 @@ public class MemoryProposalApplierTests : IDisposable
         }
         finally
         {
-            Directory.Delete(realRoomDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(realRoomDirectory);
         }
     }
 
@@ -575,7 +575,7 @@ public class MemoryProposalApplierTests : IDisposable
         }
         finally
         {
-            Directory.Delete(roomDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -791,9 +791,6 @@ public class MemoryProposalApplierTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_tempDirectory))
-        {
-            Directory.Delete(_tempDirectory, recursive: true);
-        }
+        DirectoryCleanup.DeleteRecursively(_tempDirectory);
     }
 }

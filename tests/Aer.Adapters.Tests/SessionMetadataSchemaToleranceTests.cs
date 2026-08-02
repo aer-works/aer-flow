@@ -80,7 +80,7 @@ public class SessionMetadataSchemaToleranceTests
         }
         finally
         {
-            Directory.Delete(dir, recursive: true);
+            DirectoryCleanup.DeleteRecursively(dir);
         }
     }
 

@@ -80,7 +80,7 @@ public class OutboxPathTests
         finally
         {
             Directory.SetCurrentDirectory(priorCwd);
-            Directory.Delete(outbox, recursive: true);
+            DirectoryCleanup.DeleteRecursively(outbox);
         }
     }
 }
