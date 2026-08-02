@@ -136,7 +136,10 @@ public class SupplyCommandEndToEndTests
             var missingSourcePath = Path.Combine(testRoot, "does-not-exist.txt");
             var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", missingSourcePath, bindingsFilePath);
 
-            await Assert.ThrowsAsync<FileNotFoundException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
+            // Typed CliArgumentException, not a raw FileNotFoundException: the latter is not an
+            // AerFlowException and would escape Program's typed boundary as a crash rather than a clean
+            // CLI failure — the missing-file class fixed alongside the file loaders.
+            await Assert.ThrowsAsync<CliArgumentException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
 
             var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
             Assert.DoesNotContain(await reader.ReadAllAsync(TestContext.Current.CancellationToken), e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId is null);

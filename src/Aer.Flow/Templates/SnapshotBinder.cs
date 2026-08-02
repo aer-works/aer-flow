@@ -32,10 +32,16 @@ public static class SnapshotBinder
     }
 
     /// <summary>
-    /// Bounded retry budget for a rename that loses a transient sharing violation — see
-    /// <see cref="PersistAsync"/>'s remarks for what contends since #842 and what did before.
+    /// Wall-clock retry budget for a rename that loses a transient sharing violation — see
+    /// <see cref="PersistAsync"/>'s remarks for what contends since #842 and what did before. Bounded by
+    /// elapsed time, not attempt count, for the anti-starvation reason <c>Aer.Adapters.AtomicLaunchConfigWriter</c>
+    /// documents; the switch was made after a 10-attempt (~675ms) budget here was measured exhausting
+    /// under full-suite load (#931).
     /// </summary>
-    private const int MaxRenameAttempts = 10;
+    private static readonly TimeSpan DefaultRenameRetryBudget = TimeSpan.FromSeconds(5);
+
+    /// <summary>Backoff between rename attempts, capped so a long budget still retries often.</summary>
+    private const double MaxRenameBackoffMs = 250;
 
     /// <summary>
     /// Persists <paramref name="snapshot"/> as JSON at <paramref name="snapshotFilePath"/>, creating
@@ -64,10 +70,22 @@ public static class SnapshotBinder
     /// the repo's own readers are no longer that contention; the retry stays for foreign handles.
     /// </para>
     /// </remarks>
-    public static async Task PersistAsync(
+    public static Task PersistAsync(
         WorkflowDefinitionSnapshot snapshot,
         string snapshotFilePath,
         CancellationToken cancellationToken = default)
+        => PersistAsync(snapshot, snapshotFilePath, DefaultRenameRetryBudget, cancellationToken);
+
+    /// <summary>
+    /// The budget-injecting form of <see cref="PersistAsync(WorkflowDefinitionSnapshot, string, CancellationToken)"/>.
+    /// Internal so a test can force the exhaustion (rethrow) path with a tiny budget instead of waiting
+    /// out the production one; production always calls the public overload's <see cref="DefaultRenameRetryBudget"/>.
+    /// </summary>
+    internal static async Task PersistAsync(
+        WorkflowDefinitionSnapshot snapshot,
+        string snapshotFilePath,
+        TimeSpan renameRetryBudget,
+        CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(snapshotFilePath);
         if (!string.IsNullOrEmpty(directory))
@@ -81,7 +99,12 @@ public static class SnapshotBinder
         {
             await File.WriteAllTextAsync(tempPath, json, cancellationToken).ConfigureAwait(false);
 
-            for (var attempt = 1; ; attempt++)
+            // Wall-clock bounded (not attempt-count): keep retrying the rename for a real interval,
+            // however scheduling starves the individual attempts. The first attempt always runs before
+            // the deadline is consulted, so a zero budget still tries exactly once.
+            var deadlineTicks = Environment.TickCount64 + (long)renameRetryBudget.TotalMilliseconds;
+            var backoffMs = 15.0;
+            while (true)
             {
                 try
                 {
@@ -90,12 +113,13 @@ public static class SnapshotBinder
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    if (attempt >= MaxRenameAttempts)
+                    if (Environment.TickCount64 >= deadlineTicks)
                     {
                         throw;
                     }
 
-                    await Task.Delay(15 * attempt, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMilliseconds(backoffMs), cancellationToken).ConfigureAwait(false);
+                    backoffMs = Math.Min(backoffMs * 2, MaxRenameBackoffMs);
                 }
             }
         }
@@ -133,12 +157,22 @@ public static class SnapshotBinder
         // in flight during the rename keeps the old file object; atomicity is the rename's, either
         // way.
         string json;
-        using (var reader = new StreamReader(new FileStream(
-            snapshotFilePath, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096,
-            FileOptions.Asynchronous | FileOptions.SequentialScan)))
+        try
         {
+            using var reader = new StreamReader(new FileStream(
+                snapshotFilePath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096,
+                FileOptions.Asynchronous | FileOptions.SequentialScan));
             json = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // Most callers pre-check existence and throw their own SnapshotLoadException, but not all
+            // (TaskProjectionLoader, StatusCommand, LaneTerminalProbe read straight through), and a
+            // pre-check races a file that vanishes before the open. Translating here makes the loader
+            // self-protecting: a raw FileNotFoundException is not an AerFlowException and would escape
+            // the CLI's typed boundary as a crash.
+            throw new SnapshotLoadException($"Snapshot file '{snapshotFilePath}' does not exist.", ex);
         }
 
         WorkflowDefinitionSnapshot? snapshot;

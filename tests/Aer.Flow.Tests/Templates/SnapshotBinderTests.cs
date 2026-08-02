@@ -210,9 +210,12 @@ public class SnapshotBinderTests
         try
         {
             // File.Move onto an existing directory surfaces as IOException on some platforms and
-            // UnauthorizedAccessException on others -- either way it must not be swallowed.
+            // UnauthorizedAccessException on others -- either way it must not be swallowed. A tiny retry
+            // budget forces the exhaustion (rethrow) path immediately rather than waiting out the
+            // production wall-clock budget, which this permanent failure would otherwise burn in full.
             await Assert.ThrowsAnyAsync<Exception>(
-                () => SnapshotBinder.PersistAsync(snapshot, path, TestContext.Current.CancellationToken));
+                () => SnapshotBinder.PersistAsync(
+                    snapshot, path, TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken));
 
             var leftoverTempFiles = Directory.GetFiles(directory, "*.tmp");
             Assert.Empty(leftoverTempFiles);
@@ -307,5 +310,62 @@ public class SnapshotBinderTests
             FileCleanup.Delete(templatePath);
             FileCleanup.Delete(snapshotPath);
         }
+    }
+
+    [Fact]
+    public async Task PersistAsync_survives_a_transient_holder_that_outlasts_the_old_attempt_count_budget()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("A default-share reader only blocks the overwrite-rename's delete requirement on Windows.");
+        }
+
+        // The regression guard for the wall-clock retry (#398 class): a foreign handle (OS indexer/AV)
+        // holds the just-written destination without FileShare.Delete for longer than the old
+        // attempt-count budget (10 attempts, ~675ms of backoff) could survive. The wall-clock budget
+        // (5s) keeps retrying until the holder releases, so the rename lands instead of throwing.
+        var snapshot = SnapshotBinder.Bind(SampleDefinition());
+        var directory = Path.Combine(Path.GetTempPath(), $"snapshot-hold-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "snapshot.json");
+        // Seed a file so the rename is an OVERWRITE — the case a foreign reader blocks on Windows.
+        await File.WriteAllTextAsync(path, "seed", TestContext.Current.CancellationToken);
+
+        var holder = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        try
+        {
+            // A deliberately generous injected budget (30s), not the production default: the test proves
+            // the wall-clock retry survives a hold that outlasts the old attempt-count budget, and the
+            // wide margin keeps the test itself deterministic even if its own 800ms Task.Delay is starved
+            // under CI load — the retry only needs to still be running when the holder releases.
+            var persist = SnapshotBinder.PersistAsync(
+                snapshot, path, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+            // Hold well past the old ~675ms attempt-count budget, then release with room to spare.
+            await Task.Delay(800, TestContext.Current.CancellationToken);
+            holder.Dispose();
+
+            await persist; // must NOT throw — the old attempt-count budget would have exhausted by now.
+
+            var reloaded = await SnapshotBinder.LoadFromFileAsync(path, TestContext.Current.CancellationToken);
+            Assert.Equal(snapshot.WorkflowTemplateVersion, reloaded.WorkflowTemplateVersion);
+        }
+        finally
+        {
+            holder.Dispose();
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFromFileAsync_on_a_missing_snapshot_throws_SnapshotLoadException_not_a_raw_FileNotFound()
+    {
+        // A missing snapshot must surface as the typed SnapshotLoadException — the loader translates it
+        // itself, since not every caller pre-checks existence (see LoadFromFileAsync for why).
+        var missing = Path.Combine(Path.GetTempPath(), $"no-such-snapshot-{Guid.NewGuid():N}.json");
+
+        var ex = await Assert.ThrowsAsync<SnapshotLoadException>(
+            () => SnapshotBinder.LoadFromFileAsync(missing, TestContext.Current.CancellationToken));
+        Assert.Contains("does not exist", ex.Message);
     }
 }

@@ -14,6 +14,7 @@ namespace Aer.Cli.Tests;
 /// binding → capture HEAD → adapter receives it) is proven without a live LLM and without git having to
 /// produce a real diff. The one namespace rule (0047 §5) and the role-vs-template spec split are here too.
 /// </summary>
+[Collection(WorkerCatalogEnvCollection.Name)]
 public sealed class DispatchTemplateEndToEndTests : IDisposable
 {
     private readonly string? _priorRoles = Environment.GetEnvironmentVariable(WorkerRoleCatalog.RolesPathEnvironmentVariable);
@@ -220,6 +221,51 @@ public sealed class DispatchTemplateEndToEndTests : IDisposable
             var ex = await Assert.ThrowsAsync<CliArgumentException>(() => DispatchCommand.ExecuteAsync(
                 options, WorkerAdapterRegistry.Default, TestContext.Current.CancellationToken));
             Assert.Contains("namespace", ex.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task A_template_whose_composition_faults_is_a_typed_argument_error_not_a_crash()
+    {
+        // Discriminates the widened catch in DispatchCommand.MaterializeAsync (#929): a catalog fault
+        // raised during *composition* — after the isTemplate/isRole probes have already read the catalog
+        // cleanly — must still surface as a typed CliArgumentException, not escape Program's boundary as a
+        // raw crash. The probes only enumerate ids on structurally-valid JSON, so they cannot raise this;
+        // WorkflowTemplateComposer.Materialize does, when a phase's generated capture-step id collides
+        // with a real phase name. This template loads clean (unique phase names, known roles, valid
+        // inputs) yet the phase declaring the diff input generates capture id 'review-capture', which
+        // collides with the phase literally named 'review-capture' — the composer's guard throws. Before
+        // the catch wrapped the whole materialization (it wrapped only the probes), that InvalidOperation
+        // escaped MaterializeTemplateAsync raw.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"dispatch-tmpl-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(testRoot);
+            var faultingCatalog = Path.Combine(testRoot, "workflow-templates.json");
+            await File.WriteAllTextAsync(
+                faultingCatalog,
+                """
+                [
+                  { "id": "faulting-tmpl", "phases": [
+                    { "name": "review-capture", "role_id": "review", "instruction": "x", "ask_first": false, "inputs": [] },
+                    { "name": "review", "role_id": "implement", "instruction": "y", "ask_first": false, "inputs": ["diff-of-work-so-far"] } ] }
+                ]
+                """,
+                TestContext.Current.CancellationToken);
+            Environment.SetEnvironmentVariable(
+                WorkflowTemplateCatalog.TemplatesPathEnvironmentVariable, faultingCatalog);
+
+            var options = new DispatchOptions("faulting-tmpl", SpecFilePath: null, Path.Combine(testRoot, "task"));
+
+            var ex = await Assert.ThrowsAsync<CliArgumentException>(() => DispatchCommand.ExecuteAsync(
+                options, WorkerAdapterRegistry.Default, TestContext.Current.CancellationToken));
+            // Discriminating: the composer's own collision message, proving the fault came from
+            // composition (not the both-names or unknown-name branches) and was translated, not masked.
+            Assert.Contains("collides with a phase named", ex.Message);
         }
         finally
         {

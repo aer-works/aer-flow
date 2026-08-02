@@ -39,7 +39,7 @@ public static class SupplyCommand
     /// An adapter the bindings file names is missing from <paramref name="adapters"/> — raised
     /// only when the resume pump first looks that worker up (<see cref="WorkerBindingResolver.ResolveLazily"/>, #662).
     /// </exception>
-    /// <exception cref="FileNotFoundException"><see cref="SupplyOptions.SourceFilePath"/> does not exist.</exception>
+    /// <exception cref="CliArgumentException"><see cref="SupplyOptions.SourceFilePath"/> does not exist.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
     /// Another Flow instance already holds this task directory's lock.
     /// </exception>
@@ -56,7 +56,10 @@ public static class SupplyCommand
 
         if (!File.Exists(options.SourceFilePath))
         {
-            throw new FileNotFoundException($"Source file '{options.SourceFilePath}' does not exist.", options.SourceFilePath);
+            // CliArgumentException (an AerFlowException), not a raw FileNotFoundException: the latter is
+            // not caught by Program's typed boundary and would escape as a crash — the same class fixed
+            // across the file loaders. Mirrors DispatchCommand's "Spec file 'X' does not exist" refusal.
+            throw new CliArgumentException($"Source file '{options.SourceFilePath}' does not exist.");
         }
 
         var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);

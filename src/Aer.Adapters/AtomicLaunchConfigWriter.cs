@@ -45,30 +45,55 @@ namespace Aer.Adapters;
 /// </para>
 /// <para>
 /// <b>A losing rename is not a losing writer (#682):</b> the first resolve against a fresh or
-/// drifted file still writes, and enough concurrent cold-start writers exhausted <see
-/// cref="MaxAttempts"/> before every failed rename re-checked <see cref="AlreadyHolds"/> -- the
-/// content-identity argument above applies to the loser too, not only to the skip. Measured on the
-/// same platform, and under the same "Why the retry" sharing violation, as the paragraph above.
-/// Raising <see cref="MaxAttempts"/> would have moved the threshold rather than removed it, which is
-/// why the budget itself is unchanged. That fix narrowed the window without closing it -- the probe
-/// read can lose the same race on every re-check -- and #840 measured exactly that; the
-/// post-exhaustion settle loop in <see cref="Write"/> is what finally closes it for a file that
-/// becomes readable at all.
+/// drifted file still writes, and enough concurrent cold-start writers exhausted the retry budget
+/// before every failed rename re-checked <see cref="AlreadyHolds"/> -- the content-identity argument
+/// above applies to the loser too, not only to the skip. Measured on the same platform, and under
+/// the same "Why the retry" sharing violation, as the paragraph above. That fix narrowed the window
+/// without closing it -- the probe read can lose the same race on every re-check -- and #840 measured
+/// exactly that; the post-exhaustion settle loop in <see cref="Write"/> is what finally closes it
+/// for a file that becomes readable at all.
+/// </para>
+/// <para>
+/// <b>The budget is wall-clock, not attempt-count:</b> a fixed attempt count with per-attempt backoff
+/// burns its whole budget in far less wall-clock time than a foreign holder (OS Search indexer, AV
+/// scanner) needs to release, and under full-suite CPU starvation the attempts themselves are starved
+/// -- so the count exhausts while barely any real time has passed. Bounding the retry (and the settle
+/// window) by elapsed time keeps retrying for a real interval regardless of scheduling. This is the
+/// anti-whack-a-mole form of the old "raising the attempt count only moves the threshold" note: the
+/// deadline removes the threshold rather than relocating it.
 /// </para>
 /// </remarks>
 internal static class AtomicLaunchConfigWriter
 {
-    private const int MaxAttempts = 5;
+    /// <summary>
+    /// Wall-clock retry budget for the rename, bounded by elapsed time rather than a fixed attempt
+    /// count: under full-suite CPU starvation a small attempt count with per-attempt backoff burns its
+    /// whole budget in far less wall-clock time than a foreign holder needs to release, so a deadline
+    /// keeps retrying for a real interval however scheduling starves the attempts. The happy path (an
+    /// <see cref="AlreadyHolds"/> skip or a first-attempt rename) never pays it.
+    /// </summary>
+    private static readonly TimeSpan DefaultRetryBudget = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Post-exhaustion probe count. Sleeps at most 100ms plus the probes' own reads, and only on the
-    /// path that previously threw outright (#840) -- the happy path never pays it. The cost lands on
-    /// callers as roughly doubled worst-case latency to REPORT a failure (the pre-#840 backoff
-    /// sleeps also summed to ~100ms); the success path is unchanged.
+    /// Post-exhaustion settle window (#840): after the retry budget is spent, the herd member that lost
+    /// every rename AND every probe read waits for the winners' renames to drain and reads again. Only
+    /// the path that previously threw outright pays it; the happy path never does. Wall-clock, for the
+    /// same reason as the retry budget.
     /// </summary>
-    private const int SettleProbes = 5;
+    private static readonly TimeSpan DefaultSettleBudget = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Per-attempt backoff ceiling, so even a long budget keeps its retries frequent.</summary>
+    private const double MaxBackoffMs = 250;
 
     public static void Write(string path, string content)
+        => Write(path, content, DefaultRetryBudget, DefaultSettleBudget);
+
+    /// <summary>
+    /// The <see cref="Write(string, string)"/> overload that takes explicit budgets. Kept internal only
+    /// for the failure-injection tests, which pass tiny values to reach the settle-then-rethrow path
+    /// without waiting out the production defaults the public overload supplies.
+    /// </summary>
+    internal static void Write(string path, string content, TimeSpan retryBudget, TimeSpan settleBudget)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(content);
@@ -78,7 +103,11 @@ internal static class AtomicLaunchConfigWriter
             return;
         }
 
-        for (var attempt = 1; ; attempt++)
+        // Wall-clock bounded (not attempt-count): a zero budget still makes exactly one rename attempt,
+        // because the deadline is only checked after a failure.
+        var deadlineTicks = Environment.TickCount64 + (long)retryBudget.TotalMilliseconds;
+        var backoffMs = 10.0;
+        while (true)
         {
             // Unique per attempt, never per process: a process-keyed name makes two concurrent
             // writers in one process race for the same temp file, which is the defect this
@@ -98,23 +127,23 @@ internal static class AtomicLaunchConfigWriter
                 TryDeleteTemp(tempPath);
 
                 // #682: a losing rename did not need to win -- if some other writer's identical
-                // content already landed, this attempt's goal is already satisfied, regardless of
-                // how many attempts remain. Checked on every failure, not only at MaxAttempts.
-                // AlreadyHolds' own read can lose the same sharing-violation race (its catch
-                // returns false); the settle loop below is what catches the herd member that
-                // loses it on every attempt (#840).
+                // content already landed, this attempt's goal is already satisfied, regardless of how
+                // much budget remains. Checked on every failure, not only at exhaustion. AlreadyHolds'
+                // own read can lose the same sharing-violation race (its catch returns false); the
+                // settle loop below is what catches the herd member that loses it on every attempt (#840).
                 if (AlreadyHolds(path, content))
                 {
                     return;
                 }
 
-                if (attempt >= MaxAttempts)
+                if (Environment.TickCount64 >= deadlineTicks)
                 {
-                    // #840: the herd member that lost every rename AND every probe read still has
-                    // one honest way to be satisfied -- wait for the winners' renames to drain and
-                    // read again. Bounded and loud: a file that never becomes readable, or holds
-                    // someone else's content, still surfaces the original exception.
-                    for (var settle = 0; settle < SettleProbes; settle++)
+                    // #840: the herd member that lost every rename AND every probe read still has one
+                    // honest way to be satisfied -- wait for the winners' renames to drain and read
+                    // again. Bounded and loud: a file that never becomes readable, or holds someone
+                    // else's content, still surfaces the original exception.
+                    var settleDeadlineTicks = Environment.TickCount64 + (long)settleBudget.TotalMilliseconds;
+                    while (Environment.TickCount64 < settleDeadlineTicks)
                     {
                         Thread.Sleep(TimeSpan.FromMilliseconds(20));
                         if (AlreadyHolds(path, content))
@@ -126,7 +155,8 @@ internal static class AtomicLaunchConfigWriter
                     throw;
                 }
 
-                Thread.Sleep(TimeSpan.FromMilliseconds(10 * attempt));
+                Thread.Sleep(TimeSpan.FromMilliseconds(backoffMs));
+                backoffMs = Math.Min(backoffMs * 2, MaxBackoffMs);
             }
             catch
             {

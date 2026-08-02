@@ -407,4 +407,16 @@ public class WorkflowDefinitionParserTests
             $"template-graph converters and the covered set diverge. discovered: [{string.Join(", ", discovered)}] " +
             $"covered: [{string.Join(", ", covered)}]. See ConverterMessagePrefixes in WorkflowDefinitionParser.");
     }
+
+    [Fact]
+    public async Task LoadFromFileAsync_on_a_missing_file_throws_the_typed_exception_not_a_raw_FileNotFound()
+    {
+        // Missing --workflow -> the typed WorkflowDefinitionValidationException, never a raw
+        // FileNotFoundException; RunCommand's fresh-bind path reads through here with no existence check.
+        var missing = Path.Combine(Path.GetTempPath(), $"no-such-template-{Guid.NewGuid():N}.json");
+
+        var ex = await Assert.ThrowsAsync<WorkflowDefinitionValidationException>(
+            () => WorkflowDefinitionParser.LoadFromFileAsync(missing, TestContext.Current.CancellationToken));
+        Assert.Contains("does not exist", ex.Message);
+    }
 }
