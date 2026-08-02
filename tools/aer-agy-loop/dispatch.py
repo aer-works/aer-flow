@@ -951,21 +951,34 @@ def denied_tool_message(artifacts_dir: Path) -> str | None:
     """
     if not artifacts_dir.exists():
         return None
-    for stderr_log in sorted(artifacts_dir.glob("*/.stderr.log")):
-        try:
-            text = stderr_log.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            if all(marker in line for marker in DENIED_TOOL_STDERR_MARKERS):
-                return line.strip()
+    # Scan the rollover file too, not just the live one. ExecutionStreamLogger rolls the stream at
+    # 8 MiB by moving the older content to `.stderr.log.1` and restarting `.stderr.log` empty
+    # (ExecutionStreamLogger.cs). An auto-denial is written EARLY, so after a rollover it lands in
+    # `.stderr.log.1` -- globbing only the live file would lose the one signal there is (#913 review).
+    # The rollover keeps at most those two names; `.1` is scanned first because that is where an early
+    # denial ends up once the live file has restarted.
+    for pattern in ("*/.stderr.log.1", "*/.stderr.log"):
+        for stderr_log in sorted(artifacts_dir.glob(pattern)):
+            try:
+                text = stderr_log.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for line in text.splitlines():
+                if all(marker in line for marker in DENIED_TOOL_STDERR_MARKERS):
+                    return line.strip()
     return None
 
 
 def _selftest() -> int:
-    """Red/green control for denied_tool_message (#912): the real agy auto-denied line is caught, a
-    clean stderr is not, and a run with no stderr logs is not. Pins the exact marker so an agy
-    rewording fails HERE rather than silently in a live dispatch."""
+    """Red/green control for denied_tool_message (#912): the real agy auto-denied line is caught
+    (including after an 8 MiB stderr rollover to `.stderr.log.1`), a clean run is not, and a run with
+    no stderr logs is not.
+
+    This guards the MATCHING LOGIC against regression -- it does NOT detect a live agy rewording. The
+    fixture is a frozen copy of agy's message; if agy reworded, fixture and code would stay in sync
+    with each other (green) while both drifted from reality. Catching real drift would need a live
+    probe (a vendor-verify sentinel), not this. The pinned fixture's value is that a change to the
+    matcher that broke real-message handling fails here first."""
     import tempfile
 
     # The exact line agy writes when a required tool is denied in headless mode (ground truth, captured
@@ -982,6 +995,15 @@ def _selftest() -> int:
         (root / "execution_denied" / ".stderr.log").write_text(real_denied, encoding="utf-8")
         if denied_tool_message(root) is None:
             failures.append("RED arm did not fire: missed the real agy auto-denied marker")
+    with tempfile.TemporaryDirectory() as tmp:
+        # Rollover arm: an early denial that got rolled into `.stderr.log.1` while the live
+        # `.stderr.log` restarted empty must still be caught (#913 review found this gap).
+        root = Path(tmp)
+        (root / "execution_rolled").mkdir()
+        (root / "execution_rolled" / ".stderr.log.1").write_text(real_denied, encoding="utf-8")
+        (root / "execution_rolled" / ".stderr.log").write_text("... 8 MiB of later output ...\n", encoding="utf-8")
+        if denied_tool_message(root) is None:
+            failures.append("ROLLOVER arm did not fire: missed a denial rolled into .stderr.log.1")
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         (root / "execution_clean").mkdir()
