@@ -1,19 +1,19 @@
 namespace Aer.Cli.Tests;
 
 /// <summary>
-/// <c>aer dispatch</c>'s argument parsing (#900): the role is positional, <c>--spec</c> is required,
-/// and every malformed invocation is a typed <see cref="CliArgumentException"/> rather than a bare
-/// throw (CLAUDE.md's error-handling rules).
+/// <c>aer dispatch</c>'s argument parsing: the name is positional and <c>--spec</c> is optional at parse
+/// time (<see cref="DispatchOptionsParser"/> has the why). These pin the parse-level shapes — the
+/// positional name, an optional spec, and a typed error on every malformed invocation.
 /// </summary>
 public class DispatchOptionsParserTests
 {
     [Fact]
-    public void Parses_the_role_spec_adapter_task_dir_and_workflow_id()
+    public void Parses_the_name_spec_adapter_task_dir_and_workflow_id()
     {
         var options = DispatchOptionsParser.Parse(
             ["review", "--spec", "task.md", "--adapter", "gemini", "--task-dir", "out", "--workflow-id", "wf"]);
 
-        Assert.Equal("review", options.RoleId);
+        Assert.Equal("review", options.Name);
         Assert.Equal("task.md", options.SpecFilePath);
         Assert.Equal("gemini", options.Adapter);
         Assert.Equal("wf", options.WorkflowId);
@@ -21,17 +21,21 @@ public class DispatchOptionsParserTests
     }
 
     [Fact]
-    public void A_missing_role_is_a_typed_argument_error()
+    public void A_name_without_a_spec_parses_because_a_template_takes_none()
     {
-        var ex = Assert.Throws<CliArgumentException>(() => DispatchOptionsParser.Parse(["--spec", "task.md"]));
-        Assert.Contains("<role>", ex.Message);
+        // The parser no longer requires --spec: a template dispatch has none, and rejecting it here
+        // would refuse a valid invocation before the catalog is even consulted.
+        var options = DispatchOptionsParser.Parse(["implement-review"]);
+
+        Assert.Equal("implement-review", options.Name);
+        Assert.Null(options.SpecFilePath);
     }
 
     [Fact]
-    public void A_missing_spec_is_a_typed_argument_error()
+    public void A_missing_name_is_a_typed_argument_error()
     {
-        var ex = Assert.Throws<CliArgumentException>(() => DispatchOptionsParser.Parse(["review"]));
-        Assert.Contains("--spec", ex.Message);
+        var ex = Assert.Throws<CliArgumentException>(() => DispatchOptionsParser.Parse(["--spec", "task.md"]));
+        Assert.Contains("<name>", ex.Message);
     }
 
     [Fact]

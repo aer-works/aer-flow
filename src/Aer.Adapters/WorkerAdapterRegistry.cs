@@ -19,5 +19,6 @@ public static class WorkerAdapterRegistry
         ["gemini"] = new GeminiWorkerAdapter(),
         ["dialogue"] = new DialogueWorkerAdapter(),
         [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
+        [WorkflowTemplateComposer.CaptureAdapter] = new CaptureWorkerAdapter(),
     };
 }

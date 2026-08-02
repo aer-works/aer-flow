@@ -44,8 +44,10 @@ same way the role catalog is, and composed into a DAG by the engine.**
    [0002](0002-one-vocabulary.md).)
 
 4. **The capture step is a closed, fixed, engine-defined operation — never a template-supplied command.**
-   `diff-of-work-so-far` maps to the engine's own `git diff base..HEAD`, invoked with engine-controlled
-   arguments (directly, not by interpolating into a shell string). It is deterministic engine machinery,
+   `diff-of-work-so-far` maps to the engine's own `git diff <base>` — the base ref (the workspace HEAD at
+   workflow start, injected by the run entrypoint) against the **working tree**, not `base..HEAD`, so
+   committed *and* uncommitted work land in the diff and no upstream worker is forced to commit. It is
+   invoked with engine-controlled arguments (directly, not by interpolating into a shell string). It is deterministic engine machinery,
    so it carries no vendor grant — but it is safe **only because it is not arbitrary.** The engine runs
    any `CoreDispatchTarget` it is handed with **no permission check of its own**; enforcement lives
    entirely in the vendor adapters' `Resolve` (the `PreToolUse` hook), and the 0034 project ceiling is
