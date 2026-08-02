@@ -1,0 +1,25 @@
+[
+  {
+    "id": "implement-review",
+    "phases": [
+      {
+        "role_id": "implement",
+        "instruction": "Implement the change described in the spec.",
+        "ask_first": false
+      },
+      {
+        "role_id": "janitor",
+        "instruction": "Commit the work and prepare the tree.",
+        "ask_first": false
+      },
+      {
+        "role_id": "review",
+        "instruction": "Review the implemented change against the spec.",
+        "ask_first": false
+      }
+    ],
+    "inputs": [
+      "diff-of-work-so-far"
+    ]
+  }
+]

@@ -25,6 +25,7 @@
          same tracked files, so there is one source. -->
     <None Include="WorkerRoles.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="WorkerTiers.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="WorkflowTemplates.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
