@@ -177,7 +177,7 @@ public sealed class InteractiveSessionTests
         }
         finally
         {
-            Directory.Delete(emptyOutputDirectory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(emptyOutputDirectory);
         }
     }
 

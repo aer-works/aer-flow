@@ -30,8 +30,8 @@ public class WorkspaceMigrationTests
         }
         finally
         {
-            if (Directory.Exists(legacy)) Directory.Delete(legacy, recursive: true);
-            if (Directory.Exists(current)) Directory.Delete(current, recursive: true);
+            DirectoryCleanup.DeleteRecursively(legacy);
+            DirectoryCleanup.DeleteRecursively(current);
         }
     }
 
@@ -69,7 +69,7 @@ public class WorkspaceMigrationTests
         }
         finally
         {
-            if (Directory.Exists(legacy)) Directory.Delete(legacy, recursive: true);
+            DirectoryCleanup.DeleteRecursively(legacy);
             if (File.Exists(current)) File.Delete(current);
         }
     }
@@ -107,8 +107,8 @@ public class WorkspaceMigrationTests
         finally
         {
             holdOpen.Dispose();
-            if (Directory.Exists(legacy)) Directory.Delete(legacy, recursive: true);
-            if (Directory.Exists(current)) Directory.Delete(current, recursive: true);
+            DirectoryCleanup.DeleteRecursively(legacy);
+            DirectoryCleanup.DeleteRecursively(current);
         }
     }
 
@@ -137,8 +137,8 @@ public class WorkspaceMigrationTests
         }
         finally
         {
-            Directory.Delete(legacy, recursive: true);
-            Directory.Delete(current, recursive: true);
+            DirectoryCleanup.DeleteRecursively(legacy);
+            DirectoryCleanup.DeleteRecursively(current);
         }
     }
 

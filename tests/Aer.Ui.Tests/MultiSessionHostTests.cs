@@ -119,18 +119,7 @@ public class MultiSessionHostTests : IAsyncLifetime
 
         _client.Dispose();
 
-        try
-        {
-            if (Directory.Exists(_markerDirectory))
-            {
-                Directory.Delete(_markerDirectory, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // A stub process on its way out can still hold a handle. Leaking a temp directory is not
-            // worth failing a passing test over.
-        }
+        DirectoryCleanup.DeleteRecursively(_markerDirectory);
     }
 
     [Fact]

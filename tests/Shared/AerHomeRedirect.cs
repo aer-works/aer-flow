@@ -56,10 +56,7 @@ internal static class AerHomeRedirect
         {
             try
             {
-                if (Directory.Exists(runRoot))
-                {
-                    Directory.Delete(runRoot, recursive: true);
-                }
+                DirectoryCleanup.DeleteRecursively(runRoot);
             }
             catch (Exception ex)
             {

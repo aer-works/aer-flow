@@ -248,9 +248,6 @@ public class MemoryProposalToolTests
 
     private static void DeleteIfExists(string path)
     {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
+        DirectoryCleanup.DeleteRecursively(path);
     }
 }

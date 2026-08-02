@@ -177,7 +177,7 @@ public class OutboxWriteExemptionTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 
@@ -208,7 +208,7 @@ public class OutboxWriteExemptionTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 
@@ -245,7 +245,7 @@ public class OutboxWriteExemptionTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 
@@ -292,7 +292,7 @@ public class OutboxWriteExemptionTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 
@@ -333,7 +333,7 @@ public class OutboxWriteExemptionTests
         }
         finally
         {
-            Directory.Delete(root, recursive: true);
+            DirectoryCleanup.DeleteRecursively(root);
         }
     }
 

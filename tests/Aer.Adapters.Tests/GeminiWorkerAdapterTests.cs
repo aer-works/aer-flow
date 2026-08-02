@@ -871,7 +871,7 @@ public class GeminiWorkerAdapterTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 
@@ -905,7 +905,7 @@ public class GeminiWorkerAdapterTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 

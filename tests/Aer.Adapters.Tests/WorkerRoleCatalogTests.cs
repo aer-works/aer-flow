@@ -50,10 +50,7 @@ public class WorkerRoleCatalogTests
 
         public void Dispose()
         {
-            if (Directory.Exists(Dir))
-            {
-                Directory.Delete(Dir, recursive: true);
-            }
+            DirectoryCleanup.DeleteRecursively(Dir);
         }
     }
 

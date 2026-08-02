@@ -104,7 +104,7 @@ public class LiveFileReaderTests
         }
         finally
         {
-            Directory.Delete(directory, recursive: true);
+            DirectoryCleanup.DeleteRecursively(directory);
         }
     }
 }
