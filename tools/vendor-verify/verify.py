@@ -159,6 +159,67 @@ def run(cmd, timeout=300, cwd=None, extra_env=None):
         return None, "", "(binary not found)"
 
 
+def run_stdin(cmd, stdin_text, timeout=300, cwd=None, extra_env=None):
+    """Like run(), but PIPES stdin_text to the process instead of closing stdin.
+
+    The single reason this exists: probing whether a vendor CLI reads the *prompt* from stdin rather
+    than from its positional argument (#932). Everything else -- the CLAUDE_* strip and the
+    cheap-model injection -- matches run() exactly, so a difference in result is about stdin alone.
+    """
+    e = env()
+    e.update(extra_env or {})
+    cmd = list(cmd)
+    if cmd and os.path.basename(cmd[0]).split(".")[0] in CHEAP and "--model" not in cmd:
+        cmd[1:1] = model_flags(os.path.basename(cmd[0]).split(".")[0])
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, cwd=cwd, env=e, input=stdin_text)
+        return p.returncode, (p.stdout or ""), (p.stderr or "")
+    except subprocess.TimeoutExpired:
+        return None, "", "(timeout)"
+    except FileNotFoundError:
+        return None, "", "(binary not found)"
+
+
+# --- #932: how each vendor CLI takes its prompt (on the command line vs off it) -------------------
+# The receipt for decision 0048's precondition: can a worker's prompt reach the vendor via stdin
+# instead of the -p argument the OS length-limits (#598/#612)? The answer differs per vendor -- the
+# narrative and the consequence live in docs/vendor-capabilities.md. Each check runs a
+# prompt-as-argument control arm first, so a stdin verdict is about stdin, not the harness.
+
+@check("lifecycle.claude-print-reads-prompt-from-stdin", "lifecycle",
+       "claude -p reads the prompt from stdin when no positional prompt is given (#932 / 0048)")
+def _claude_stdin_prompt():
+    token = "STDINPROMPT7F3A"
+    instruction = f"Reply with ONLY this exact token and nothing else: {token}"
+    # Control arm: prompt as the positional argument -- today's path. Proves the model/auth work.
+    rc, out, err = run(["claude", "-p", instruction, "--output-format", "text"])
+    if token not in (out or ""):
+        return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
+    # Arm under test: no positional prompt; the same instruction delivered on stdin.
+    rc2, out2, err2 = run_stdin(["claude", "-p", "--output-format", "text"], instruction)
+    if token in (out2 or ""):
+        return PASS, "claude -p consumed the prompt from stdin (control via arg also passed)"
+    return FAIL, f"claude -p did NOT read the prompt from stdin; rc={rc2} {(out2 + err2)[-160:]}"
+
+
+@check("lifecycle.agy-print-requires-prompt-argument", "lifecycle",
+       "agy -p (print mode) does NOT read the prompt from stdin -- it requires the positional argument (#932 / 0048)")
+def _agy_stdin_prompt():
+    token = "STDINPROMPT9C2B"
+    instruction = f"Reply with ONLY this exact token and nothing else: {token}"
+    # Control arm: prompt as the positional argument -- today's path. Proves the model/auth work.
+    rc, out, err = run(["agy", "-p", instruction])
+    if token not in (out or ""):
+        return INCONCLUSIVE, f"control (prompt-as-arg) did not echo the token; rc={rc} {(out + err)[-160:]}"
+    # Arm under test: no positional prompt; the same instruction delivered on stdin. Print mode has no
+    # --input-format and no prompt-file flag, so the expectation is that stdin is IGNORED here.
+    rc2, out2, err2 = run_stdin(["agy", "-p"], instruction)
+    if token in (out2 or ""):
+        return FAIL, "agy -p unexpectedly read the prompt from stdin -- #932's asymmetry no longer holds"
+    return PASS, "agy -p ignored the stdin prompt (requires the positional argument), as #932 measured"
+
+
 def mcp_config(path, server, sentinel_dir, extra_env=None):
     e = {"AER_SENTINEL_DIR": sentinel_dir}
     e.update(extra_env or {})

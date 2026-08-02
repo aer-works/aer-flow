@@ -72,6 +72,8 @@ This table runs the other direction: from measurement to design.
 | `durability.config-dir-redirect-breaks-auth` | a fresh `CLAUDE_CONFIG_DIR` is not logged in | The cost of the row above: a fresh root needs a one-time interactive `claude auth login` **by the operator**. That is a human signing in, not AER handling a credential. |
 | `lifecycle.bg-projection` | `claude agents --json` projects state with a vocabulary | AER can read background session state structurally rather than scraping. **No design change** — confirms 0008's projection model is buildable. |
 | `lifecycle.daemon-status` | `claude daemon status` reports machine-readable readiness | Supervisor input for `Aer.Daemon` (#478). **No design change.** |
+| `lifecycle.claude-print-reads-prompt-from-stdin` | `claude -p` consumes the prompt from stdin when no positional prompt is given | The #932 enabler: the claude path can take its prompt off the command line, so the `ARG_MAX` ceiling that refuses a large prompt (#598/#612) is liftable for claude via stdin. Control-armed — the prompt-as-argument arm must pass first. |
+| `lifecycle.agy-print-requires-prompt-argument` | `agy -p` ignores stdin; the prompt must be the positional argument | Makes the #932 fix **vendor-asymmetric**: agy print mode has no off-argv prompt path (no `--input-format`, no prompt-file flag), so a large gemini prompt stays `ARG_MAX`-bound until agy grows one. Control-armed. |
 
 ## agy
 
