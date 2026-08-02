@@ -58,7 +58,7 @@ public class McpServerHostTests
         {
             if (File.Exists(captureFile))
             {
-                File.Delete(captureFile);
+                FileCleanup.Delete(captureFile);
             }
         }
     }
@@ -198,7 +198,7 @@ public class McpServerHostTests
         {
             if (File.Exists(captureFile))
             {
-                File.Delete(captureFile);
+                FileCleanup.Delete(captureFile);
             }
         }
     }

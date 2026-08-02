@@ -47,7 +47,7 @@ public class FlowEventLogWriterTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -66,7 +66,7 @@ public class FlowEventLogWriterTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -136,7 +136,7 @@ public class FlowEventLogWriterTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -160,7 +160,7 @@ public class FlowEventLogWriterTests
         }
         finally
         {
-            File.Delete(root);
+            FileCleanup.Delete(root);
         }
     }
 

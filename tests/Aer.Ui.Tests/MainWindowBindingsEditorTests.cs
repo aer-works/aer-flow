@@ -76,7 +76,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -120,7 +120,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -141,7 +141,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -166,7 +166,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -201,7 +201,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -224,7 +224,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -245,7 +245,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -277,7 +277,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -303,7 +303,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -330,7 +330,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -373,7 +373,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(bindingsPath);
+            FileCleanup.Delete(bindingsPath);
         }
     }
 
@@ -390,7 +390,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(bindingsPath);
+            FileCleanup.Delete(bindingsPath);
         }
     }
 
@@ -446,7 +446,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -478,7 +478,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -509,7 +509,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -618,7 +618,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -651,7 +651,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -678,7 +678,7 @@ public class MainWindowBindingsEditorTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 }

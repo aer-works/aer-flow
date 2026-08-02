@@ -70,7 +70,7 @@ public class WorkspaceMigrationTests
         finally
         {
             DirectoryCleanup.DeleteRecursively(legacy);
-            if (File.Exists(current)) File.Delete(current);
+            if (File.Exists(current)) FileCleanup.Delete(current);
         }
     }
 

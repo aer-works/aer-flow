@@ -186,7 +186,7 @@ public class WorkerBindingConfigParserTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
@@ -202,7 +202,7 @@ public class WorkerBindingConfigParserTests
         }
         finally
         {
-            File.Delete(path);
+            FileCleanup.Delete(path);
         }
     }
 
