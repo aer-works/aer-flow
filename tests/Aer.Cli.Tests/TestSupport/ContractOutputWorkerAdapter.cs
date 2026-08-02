@@ -13,7 +13,16 @@ namespace Aer.Cli.Tests.TestSupport;
 /// each declared output into <c>$AER_OUTPUT_DIR</c>; when false it exits 0 having written nothing — the
 /// exact "exit 0 but produced nothing" the role's contract floor exists to catch.
 /// </summary>
-internal sealed class ContractOutputWorkerAdapter(bool satisfyOutputs) : IWorkerAdapter
+/// <param name="satisfyOutputs">Whether to write the declared outputs at all.</param>
+/// <param name="outputFixtures">
+/// Optional map of output name → a source file to copy in place of the placeholder <c>x</c>. An output
+/// whose contract is a schema (e.g. <c>verdict.json</c> must parse as a <c>ReviewVerdict</c>) needs a
+/// conforming document, not <c>x</c>; the test pre-writes that document with a real file API and this
+/// copies it — no JSON is assembled through a shell echo. Outputs not in the map still get <c>x</c>.
+/// </param>
+internal sealed class ContractOutputWorkerAdapter(
+    bool satisfyOutputs,
+    IReadOnlyDictionary<string, string>? outputFixtures = null) : IWorkerAdapter
 {
     public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
     {
@@ -28,7 +37,21 @@ internal sealed class ContractOutputWorkerAdapter(bool satisfyOutputs) : IWorker
             : new CoreDispatchTarget("sh", ["-c", script], invocation.WorkingDirectory);
     }
 
-    private static string WriteCommand(string outputName) => OperatingSystem.IsWindows()
-        ? $"echo x>%AER_OUTPUT_DIR%\\{outputName}"
-        : $"echo x > \"$AER_OUTPUT_DIR/{outputName}\"";
+    private string WriteCommand(string outputName)
+    {
+        if (outputFixtures is not null && outputFixtures.TryGetValue(outputName, out var source))
+        {
+            // Unquoted paths on Windows on purpose: aer-core wraps this whole space-containing script
+            // in quotes for CreateProcess, so inner quotes collide and cmd reports a bogus path. The
+            // rest of this fake already assumes space-free temp paths (its echo redirects are unquoted
+            // too), so this keeps the same assumption rather than adding a new one.
+            return OperatingSystem.IsWindows()
+                ? $"copy /y {source} %AER_OUTPUT_DIR%\\{outputName}"
+                : $"cp \"{source}\" \"$AER_OUTPUT_DIR/{outputName}\"";
+        }
+
+        return OperatingSystem.IsWindows()
+            ? $"echo x>%AER_OUTPUT_DIR%\\{outputName}"
+            : $"echo x > \"$AER_OUTPUT_DIR/{outputName}\"";
+    }
 }

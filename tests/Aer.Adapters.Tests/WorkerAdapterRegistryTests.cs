@@ -1,5 +1,6 @@
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
+using Aer.Flow.Templates;
 
 namespace Aer.Adapters.Tests;
 
@@ -104,6 +105,16 @@ public class WorkerAdapterRegistryTests
 
         Assert.Contains(adapters, adapter => adapter is IPermissionGrantTranslator);
         Assert.Contains(adapters, adapter => adapter is not IPermissionGrantTranslator);
+    }
+
+    [Fact]
+    public void The_capture_capability_resolves_to_the_engine_run_capture_adapter()
+    {
+        // The composer keys a diff-of-work-so-far step's binding on this capability name; template
+        // dispatch is only runnable if the production registry resolves it to the git-diffing adapter.
+        Assert.True(WorkerAdapterRegistry.Default.TryGetValue(
+            WorkflowTemplateComposer.CaptureAdapter, out var adapter));
+        Assert.IsType<CaptureWorkerAdapter>(adapter);
     }
 
     [Fact]

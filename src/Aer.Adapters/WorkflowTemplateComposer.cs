@@ -22,8 +22,9 @@ namespace Aer.Adapters;
 /// capture node inserted immediately before it: <c>… → prior-phase → capture → this-phase</c>. The
 /// capture becomes this phase's single blocker, so the diff flows in implicitly and 0025's one-blocker
 /// rule holds. This composer only emits the capture <em>step</em>; the engine-run <c>capture</c> adapter
-/// that actually runs <c>git diff</c> is a later slice, so a template that declares the diff input
-/// composes here but cannot run end to end until that adapter exists.
+/// that actually runs <c>git diff</c> is <see cref="CaptureWorkerAdapter"/>, and the run entrypoint
+/// (<c>aer dispatch</c>) injects the base ref it diffs against — so a template declaring the diff input
+/// runs end to end.
 /// </para>
 /// <para>
 /// <b>Keys are phase names, not role ids.</b> A template may name the same role in two phases, so every
@@ -36,7 +37,7 @@ public static class WorkflowTemplateComposer
     /// <summary>The one closed symbolic input this slice understands (mirrors the catalog's closed set).</summary>
     public const string DiffOfWorkSoFarInput = "diff-of-work-so-far";
 
-    /// <summary>The adapter name the spliced capture step runs on — the engine-run capture worker (later slice).</summary>
+    /// <summary>The adapter name the spliced capture step runs on — the engine-run <see cref="CaptureWorkerAdapter"/>.</summary>
     public const string CaptureAdapter = "capture";
 
     /// <summary>The artifact a capture step produces and its consuming phase reads.</summary>
@@ -132,8 +133,9 @@ public static class WorkflowTemplateComposer
 
     // The capture step's binding: the engine-run capture adapter, a contract that produces just the
     // diff artifact, and NO vendor permission grant — it is deterministic engine machinery (git diff
-    // with engine-controlled args), not a worker, so it carries no grant to translate (0047 §4). The
-    // adapter that fulfils this binding is a later slice; the binding is the seam it plugs into.
+    // with engine-controlled args), not a worker, so it carries no grant to translate (0047 §4).
+    // CaptureWorkerAdapter (registered under CaptureAdapter) fulfils this binding; PromptTemplate is
+    // empty here and the run entrypoint injects the base ref before dispatch.
     private static WorkerBindingConfigEntry CaptureBinding(string workerName) =>
         new(
             Adapter: CaptureAdapter,

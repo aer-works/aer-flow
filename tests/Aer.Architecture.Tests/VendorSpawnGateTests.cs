@@ -45,6 +45,7 @@ public class VendorSpawnGateTests
         ["src/Aer.Daemon/Program.cs"] = "The Go sidecar, not a vendor CLI.",
         ["src/Aer.Ui.Core/TaskSession.Connection.cs"] = "The daemon itself, not a vendor CLI.",
         ["src/Aer.Ui/MainWindow.axaml.cs"] = "Hands a URL to the OS browser.",
+        ["src/Aer.Cli/WorkspaceHead.cs"] = "Read-only 'git rev-parse HEAD' to capture a capture step's base ref — git, not a vendor CLI; no -p, no tool execution.",
     };
 
     private static readonly string[] SpawnMarkers = ["new ProcessStartInfo", "Process.Start", "new AerTask"];
