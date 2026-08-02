@@ -11,6 +11,7 @@ namespace Aer.Cli.Tests;
 /// means Failed. The fake adapter (<see cref="ContractOutputWorkerAdapter"/>) stands in for the worker
 /// so no live LLM is needed; the role, its outputs, and the contract are the real ones.
 /// </summary>
+[Collection(WorkerCatalogEnvCollection.Name)]
 public sealed class DispatchCommandEndToEndTests : IDisposable
 {
     private static readonly IReadOnlyDictionary<string, IWorkerAdapter> Adapters =
@@ -26,8 +27,11 @@ public sealed class DispatchCommandEndToEndTests : IDisposable
     // Pin the shipped catalog. Without this these tests resolve through ResolvePath's middle rung
     // ({AerPaths.Root}/worker-roles.json) and would silently read an operator's local override on a
     // machine that has one -- the exact hazard WorkerRoleCatalogTests.ShippedDefault documents and
-    // guards. Only this class reads the catalog in this assembly, and its methods run serially, so
-    // the process-global env edit is set and restored per test with no bleed.
+    // guards. The env edit is process-global, and one test below deliberately points the roles path at a
+    // malformed catalog -- so this class is not the only catalog reader that matters. It shares
+    // [Collection(WorkerCatalogEnvCollection.Name)] with DispatchTemplateEndToEndTests precisely so that
+    // malformed path cannot bleed across into a parallel template dispatch mid-run (#929); the ctor/Dispose
+    // set-and-restore keeps it clean within this serialized group.
     public DispatchCommandEndToEndTests()
     {
         Environment.SetEnvironmentVariable(

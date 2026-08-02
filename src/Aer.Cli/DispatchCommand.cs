@@ -58,40 +58,46 @@ public static class DispatchCommand
     private static async Task<(WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings)>
         MaterializeAsync(DispatchOptions options, string workspaceDirectory, CancellationToken cancellationToken)
     {
-        bool isTemplate;
-        bool isRole;
         try
         {
-            // The catalog read is the fail-loud set both catalogs share: a missing file, malformed JSON,
-            // or a structural fault (duplicate id, empty outputs). None derive from AerFlowException, so
+            // The catalog reads are the fail-loud set both catalogs share: a missing file (FileNotFound),
+            // malformed JSON (JsonException), a structural fault (InvalidOperationException — duplicate id,
+            // empty outputs, capture-id collision), or a phase naming a role the catalog lacks
+            // (KeyNotFoundException, via WorkerRoleCatalog.For). None derive from AerFlowException, so
             // without this they escape Program's boundary as a crash rather than the clean exit promised.
-            isTemplate = WorkflowTemplateCatalog.All.Any(t => string.Equals(t.Id, options.Name, StringComparison.Ordinal));
-            isRole = WorkerRoleCatalog.All.Any(r => string.Equals(r.Id, options.Name, StringComparison.Ordinal));
+            // This wraps the WHOLE materialization, not just the isTemplate/isRole probes: a template
+            // dispatch re-reads the catalog fresh during composition (WorkflowTemplateCatalog.For, and
+            // WorkerRoleCatalog.For per phase — All => Load() opens the file on every access, it is not
+            // cached), and a fault there must surface as a typed CliArgumentException too (#929). The
+            // deliberate CliArgumentException throws below (and WorkspaceHead's non-git refusal) are not in
+            // the filter, so they pass through unwrapped.
+            var isTemplate = WorkflowTemplateCatalog.All.Any(t => string.Equals(t.Id, options.Name, StringComparison.Ordinal));
+            var isRole = WorkerRoleCatalog.All.Any(r => string.Equals(r.Id, options.Name, StringComparison.Ordinal));
+
+            if (isTemplate && isRole)
+            {
+                throw new CliArgumentException(
+                    $"'{options.Name}' is both a workflow template and a worker role. Dispatch is one "
+                    + "namespace (decision 0047 §5) — rename one so a dispatch is unambiguous.");
+            }
+
+            if (isTemplate)
+            {
+                return await MaterializeTemplateAsync(options, workspaceDirectory, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (isRole)
+            {
+                return await MaterializeRoleAsync(options, cancellationToken).ConfigureAwait(false);
+            }
+
+            throw new CliArgumentException(
+                $"No worker role or workflow template named '{options.Name}'.");
         }
-        catch (Exception ex) when (ex is FileNotFoundException or JsonException or InvalidOperationException)
+        catch (Exception ex) when (ex is FileNotFoundException or JsonException or InvalidOperationException or KeyNotFoundException)
         {
             throw new CliArgumentException(ex.Message);
         }
-
-        if (isTemplate && isRole)
-        {
-            throw new CliArgumentException(
-                $"'{options.Name}' is both a workflow template and a worker role. Dispatch is one "
-                + "namespace (decision 0047 §5) — rename one so a dispatch is unambiguous.");
-        }
-
-        if (isTemplate)
-        {
-            return await MaterializeTemplateAsync(options, workspaceDirectory, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (isRole)
-        {
-            return await MaterializeRoleAsync(options, cancellationToken).ConfigureAwait(false);
-        }
-
-        throw new CliArgumentException(
-            $"No worker role or workflow template named '{options.Name}'.");
     }
 
     private static async Task<(WorkflowDefinition, IReadOnlyDictionary<string, WorkerBindingConfigEntry>)>
