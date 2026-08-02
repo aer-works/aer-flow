@@ -112,6 +112,34 @@ public class WorkflowTemplateComposerTests
     }
 
     [Fact]
+    public void A_capture_declaring_first_phase_gets_a_capture_step_with_no_dependency()
+    {
+        // The one branch where the capture has no prior phase to order after (blockerId is null).
+        var template = new WorkflowTemplate("t",
+            [Phase("review", "review", inputs: WorkflowTemplateComposer.DiffOfWorkSoFarInput)]);
+
+        var (definition, _) = WorkflowTemplateComposer.Materialize(template);
+
+        Assert.Equal(new[] { "review-capture", "review" }, definition.Steps.Select(s => s.StepId.Value).ToArray());
+        Assert.Empty(definition.Steps[0].DependsOn);                             // no prior phase
+        Assert.Equal(new[] { new StepId("review-capture") }, definition.Steps[1].DependsOn);
+        WorkflowDefinitionValidator.Validate(definition);                        // still a valid DAG
+    }
+
+    [Fact]
+    public void A_phase_named_like_a_generated_capture_id_is_rejected()
+    {
+        var template = new WorkflowTemplate("t",
+        [
+            Phase("review-capture", "review"),
+            Phase("review", "review", inputs: WorkflowTemplateComposer.DiffOfWorkSoFarInput),
+        ]);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => WorkflowTemplateComposer.Materialize(template));
+        Assert.Contains("collides", ex.Message);
+    }
+
+    [Fact]
     public void Composed_definitions_satisfy_the_engines_own_WorkflowDefinitionValidator()
     {
         // The structural asserts above encode the composer's intended shape; this checks the ENGINE's

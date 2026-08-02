@@ -64,6 +64,12 @@ public static class WorkflowTemplateComposer
         var steps = new List<WorkflowStepDefinition>();
         var bindings = new Dictionary<string, WorkerBindingConfigEntry>(StringComparer.Ordinal);
 
+        // A capture step's id is the declaring phase's name + "-capture". Guard against a phase literally
+        // named that: without this the capture binding would silently overwrite the real phase's binding
+        // in the dictionary below. The engine's validator would still reject the duplicate step id, but
+        // catching it here names the actual cause ("phase X collides with Y's generated capture id").
+        var phaseNames = template.Phases.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
         // The single node whose output flows into the next one (0025). Null/[] before the first node.
         StepId? blockerId = null;
         IReadOnlyList<string> blockerOutputs = [];
@@ -77,6 +83,13 @@ public static class WorkflowTemplateComposer
             if (phase.Inputs.Contains(DiffOfWorkSoFarInput, StringComparer.Ordinal))
             {
                 var captureId = new StepId($"{phase.Name}-capture");
+                if (phaseNames.Contains(captureId.Value))
+                {
+                    throw new InvalidOperationException(
+                        $"Phase '{phase.Name}' declares '{DiffOfWorkSoFarInput}', but its generated capture " +
+                        $"step id '{captureId.Value}' collides with a phase named '{captureId.Value}'. Rename one.");
+                }
+
                 steps.Add(new WorkflowStepDefinition(
                     StepId: captureId,
                     Worker: captureId.Value,
