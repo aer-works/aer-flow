@@ -147,6 +147,28 @@ jobs:
             : > "$RUNNER_TEMP/aer-before.txt"
           fi
 
+      # Bucket-A flake root cause (#398, #891, and the closed #295/#418/#918 pile): on Windows,
+      # Defender's real-time scan briefly holds a handle on a just-written file, so the next
+      # rename/delete/open in a test races it and throws "used by another process" /
+      # UnauthorizedAccessException. The retries dotted through the suite (tests/Shared/CleanupRetry.cs,
+      # SnapshotBinder's rename loop) treat the symptom; excluding the paths the tests actually churn
+      # removes the scanner that is the cause. Best-effort: a failure to set the exclusion (a managed
+      # Defender, tamper protection) must NOT fail the job -- it is caught and logged, and the in-suite
+      # retries stay as backup. The exclusion covers both temp roots a test's Path.GetTempPath() can
+      # resolve to and the workspace where build outputs churn.
+      - name: Exclude test scratch from Defender (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $paths = @($env:RUNNER_TEMP, $env:TEMP, $env:TMP, $env:GITHUB_WORKSPACE) |
+            Where-Object { $_ } | Select-Object -Unique
+          foreach ($p in $paths) {
+            try { Add-MpPreference -ExclusionPath $p -ErrorAction Stop; Write-Host "Excluded from Defender: $p" }
+            catch { Write-Warning "Could not exclude '$p' from Defender (best-effort): $($_.Exception.Message)" }
+          }
+          try { (Get-MpPreference).ExclusionPath | ForEach-Object { Write-Host "Active Defender exclusion: $_" } }
+          catch { Write-Warning "Could not read back Defender exclusions: $($_.Exception.Message)" }
+
       - name: Test
         run: pixi run test
 
