@@ -286,4 +286,16 @@ public class WorkerBindingConfigParserTests
 
         Assert.Equal(TimeSpan.FromMinutes(20), WorkerBindingConfigParser.Parse(json)["architect"].Timeout);
     }
+
+    [Fact]
+    public async Task LoadFromFileAsync_on_a_missing_file_throws_the_typed_exception_not_a_raw_FileNotFound()
+    {
+        // Missing --bindings -> the typed WorkerBindingConfigException; run/decide/supply/cancel all read
+        // through here with no existence check, so this loader is their shared missing-file guard.
+        var missing = Path.Combine(Path.GetTempPath(), $"no-such-bindings-{Guid.NewGuid():N}.json");
+
+        var ex = await Assert.ThrowsAsync<WorkerBindingConfigException>(
+            () => WorkerBindingConfigParser.LoadFromFileAsync(missing, TestContext.Current.CancellationToken));
+        Assert.Contains("does not exist", ex.Message);
+    }
 }

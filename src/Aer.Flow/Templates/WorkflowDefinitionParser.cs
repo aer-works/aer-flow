@@ -53,9 +53,24 @@ public static class WorkflowDefinitionParser
     }
 
     /// <summary>Reads <paramref name="path"/> and parses it as a <see cref="WorkflowDefinition"/> template.</summary>
+    /// <exception cref="WorkflowDefinitionValidationException">
+    /// The file does not exist (or its directory does not), or its contents are malformed/invalid.
+    /// A missing file is translated here rather than left as a raw <see cref="FileNotFoundException"/>:
+    /// that BCL type is not an <c>AerFlowException</c>, so an unwrapped one escapes the CLI's typed
+    /// boundary as a crash — the same class this loader's malformed-JSON handling already covers.
+    /// </exception>
     public static async Task<WorkflowDefinition> LoadFromFileAsync(string path, CancellationToken cancellationToken = default)
     {
-        var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            throw new WorkflowDefinitionValidationException([$"Template file '{path}' does not exist."], ex);
+        }
+
         return Parse(json, path);
     }
 

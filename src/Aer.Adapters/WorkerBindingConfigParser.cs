@@ -106,10 +106,27 @@ public static class WorkerBindingConfigParser
     }
 
     /// <summary>Reads <paramref name="path"/> and parses it as a worker-binding config.</summary>
+    /// <exception cref="WorkerBindingConfigException">
+    /// A missing file (or missing parent directory), or malformed/invalid contents. A missing file
+    /// surfaces as this typed exception, not the raw <see cref="FileNotFoundException"/> the CLI boundary
+    /// cannot catch — the same translation <c>WorkflowDefinitionParser.LoadFromFileAsync</c> documents.
+    /// Every command that resumes a task (run/decide/supply/cancel) loads its <c>--bindings</c> through
+    /// here without a prior existence check, so this is the single place the missing-file case is caught
+    /// for all of them.
+    /// </exception>
     public static async Task<IReadOnlyDictionary<string, WorkerBindingConfigEntry>> LoadFromFileAsync(
         string path, CancellationToken cancellationToken = default)
     {
-        var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            throw new WorkerBindingConfigException($"Worker-binding config file '{path}' does not exist.", ex);
+        }
+
         return Parse(json, path);
     }
 }

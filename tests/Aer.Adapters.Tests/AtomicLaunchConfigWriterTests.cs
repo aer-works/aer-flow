@@ -142,8 +142,12 @@ public sealed class AtomicLaunchConfigWriterTests : IDisposable
 
         using var readable = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
 
+        // Tiny budgets force the settle-then-rethrow path immediately: this reader holds the
+        // destination for the whole call, so the rename can never land and waiting out the production
+        // wall-clock budget would only slow the test.
         var thrown = Record.Exception(
-            () => AtomicLaunchConfigWriter.Write(path, """{"hooks":"canonical"}"""));
+            () => AtomicLaunchConfigWriter.Write(
+                path, """{"hooks":"canonical"}""", TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(50)));
 
         Assert.NotNull(thrown);
         Assert.Contains("Move", thrown.StackTrace ?? string.Empty, StringComparison.Ordinal);

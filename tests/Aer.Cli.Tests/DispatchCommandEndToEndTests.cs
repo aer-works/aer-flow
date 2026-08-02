@@ -27,11 +27,11 @@ public sealed class DispatchCommandEndToEndTests : IDisposable
     // Pin the shipped catalog. Without this these tests resolve through ResolvePath's middle rung
     // ({AerPaths.Root}/worker-roles.json) and would silently read an operator's local override on a
     // machine that has one -- the exact hazard WorkerRoleCatalogTests.ShippedDefault documents and
-    // guards. The env edit is process-global, and one test below deliberately points the roles path at a
-    // malformed catalog -- so this class is not the only catalog reader that matters. It shares
-    // [Collection(WorkerCatalogEnvCollection.Name)] with DispatchTemplateEndToEndTests precisely so that
-    // malformed path cannot bleed across into a parallel template dispatch mid-run (#929); the ctor/Dispose
-    // set-and-restore keeps it clean within this serialized group.
+    // guards. The env edit is process-global, and one test below sets a deliberately-broken roles path --
+    // so this class is not the only catalog reader that matters. It shares
+    // [Collection(WorkerCatalogEnvCollection.Name)] with DispatchTemplateEndToEndTests (see that
+    // collection for the bleed it prevents); the ctor/Dispose set-and-restore keeps it clean within the
+    // serialized group.
     public DispatchCommandEndToEndTests()
     {
         Environment.SetEnvironmentVariable(
