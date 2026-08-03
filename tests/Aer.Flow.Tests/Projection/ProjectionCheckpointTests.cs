@@ -8,6 +8,12 @@ public class ProjectionCheckpointTests
 {
     private static readonly StepId Step1 = new("step1");
     private static readonly StepId Step2 = new("step2");
+    private static readonly StepId Step3 = new("step3");
+    private static readonly StepId Step4 = new("step4");
+    private static readonly StepId Step5 = new("step5");
+    private static readonly StepId Step6 = new("step6");
+    private static readonly StepId Step7 = new("step7");
+    private static readonly StepId Step8 = new("step8");
 
     private static WorkflowDefinitionSnapshot TestSnapshot() => new(
         new WorkflowDefinitionSnapshotId("snapshot-checkpoint-test"),
@@ -19,7 +25,26 @@ public class ProjectionCheckpointTests
             new WorkflowStepDefinition(Step2, "worker2", ["output1"], ["output2"], DependsOn: [Step1], RetryPolicy: new RetryPolicy(2)),
         ]);
 
-    private static ExecutionRequest MakeRequest(ExecutionId executionId, StepId stepId) => new(
+    private static WorkflowDefinitionSnapshot ComprehensiveTestSnapshot() => new(
+        new WorkflowDefinitionSnapshotId("snapshot-comprehensive-checkpoint-test"),
+        new WorkflowTemplateId("template-comprehensive"),
+        WorkflowTemplateVersion: 1,
+        Steps:
+        [
+            new WorkflowStepDefinition(Step1, "worker1", [], ["output1"], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step2, "worker2", ["output1"], ["output2"], DependsOn: [Step1], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step3, "worker3", [], [], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step4, "worker4", [], [], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step5, "worker5", [], [], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step6, "worker6", [], [], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step7, "worker7", [], [], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+            new WorkflowStepDefinition(Step8, "worker8", [], [], DependsOn: [], RetryPolicy: new RetryPolicy(2)),
+        ]);
+
+    private static ExecutionRequest MakeRequest(
+        ExecutionId executionId,
+        StepId? stepId,
+        Dictionary<StepId, ExecutionId>? upstreamExecutionIds = null) => new(
         executionId,
         new WorkflowId("wf-1"),
         stepId,
@@ -28,7 +53,7 @@ public class ProjectionCheckpointTests
         Outputs: [],
         Timeout: TimeSpan.FromMinutes(10),
         Environment: [],
-        UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+        UpstreamExecutionIds: upstreamExecutionIds ?? new Dictionary<StepId, ExecutionId>());
 
     private static void AssertFlowStateEqual(FlowState expected, FlowState actual)
     {
@@ -78,24 +103,103 @@ public class ProjectionCheckpointTests
     [Fact]
     public void Equivalence_checkpoint_plus_tail_equals_full_replay()
     {
-        var snapshot = TestSnapshot();
+        var snapshot = ComprehensiveTestSnapshot();
         var exec1 = new ExecutionId("exec-1");
         var exec2 = new ExecutionId("exec-2");
+        var exec3 = new ExecutionId("exec-3");
+        var exec4 = new ExecutionId("exec-4");
+        var exec5 = new ExecutionId("exec-5");
+        var exec6 = new ExecutionId("exec-6");
+        var exec7 = new ExecutionId("exec-7");
+        var exec8 = new ExecutionId("exec-8");
+        var execStepless = new ExecutionId("exec-stepless");
+        var execRejected = new ExecutionId("exec-rejected");
+        var execSupp = new ExecutionId("exec-supp");
+
+        var decision1 = new DecisionId("dec-1");
+        var now = DateTimeOffset.UtcNow;
+        var retryNotBefore = now.AddMinutes(5);
 
         var midwayEvents = new List<FlowEvent>
         {
-            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec1, Step1), 100, DateTimeOffset.UtcNow),
+            // 1. ExecutionRequestAccepted & ExecutionSucceeded
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec1, Step1), 100, now),
             new FlowEvent.ExecutionSucceeded(exec1),
+
+            // 2. ExecutionRequestAccepted with upstream execution IDs
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec2, Step2, new Dictionary<StepId, ExecutionId> { [Step1] = exec1 }), 101, now),
+
+            // 3. ExecutionRequestAccepted & WorkflowPaused (remains paused)
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec3, Step3), 102, now),
+            new FlowEvent.WorkflowPaused(exec3, Step3),
+
+            // 4. WorkflowPaused, ExternalDecisionRecorded (Supersede), WorkflowResumed
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec4, Step4), 103, now),
+            new FlowEvent.WorkflowPaused(exec4, Step4),
+            new FlowEvent.ExternalDecisionRecorded(decision1, exec4, DecisionType.Supersede, TargetStepId: Step4, SupplementaryExecutionId: execSupp),
+            new FlowEvent.WorkflowResumed(decision1),
+
+            // 5. ExecutionFailed
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec5, Step5), 104, now),
+            new FlowEvent.ExecutionFailed(exec5, FailureClassification.Retryable, "Connection timeout", retryNotBefore),
+
+            // 6. StepRetryScheduled
+            new FlowEvent.StepRetryScheduled(Step6, exec6, retryNotBefore, 5000),
+
+            // 7. ExecutionCancelled
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec7, Step7), 105, now),
+            new FlowEvent.ExecutionCancelled(exec7),
+
+            // 8. CancellationRequested
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec8, Step8), 106, now),
+            new FlowEvent.CancellationRequested(exec8),
+
+            // 9. Stepless ExecutionRequestAccepted
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(execStepless, null), 107, now),
+
+            // 10. ExecutionRequestRejected
+            new FlowEvent.ExecutionRequestRejected(execRejected, "Concurrency cap reached"),
         };
 
         var (midwayState, checkpointMidway) = StateProjector.ProjectAndCheckpoint(midwayEvents, snapshot);
-        Assert.Equal(2, checkpointMidway.EventOffset);
-        Assert.Equal(StepStatus.Succeeded, Assert.Single(midwayState.Steps, s => s.StepId == Step1).Status);
+        Assert.Equal(midwayEvents.Count, checkpointMidway.EventOffset);
+
+        // Guard assertions: verify each of the 21 checkpoint collections is non-empty at checkpoint boundary
+        Assert.NotEmpty(checkpointMidway.State.LatestExecutionIdByStepId);
+        Assert.NotEmpty(checkpointMidway.State.UpstreamExecutionIdsByStepId);
+        Assert.NotEmpty(checkpointMidway.State.TerminalStatusByExecutionId);
+        Assert.NotEmpty(checkpointMidway.State.PausedExecutionIds);
+        Assert.NotEmpty(checkpointMidway.State.EverPausedExecutionIds);
+        Assert.NotEmpty(checkpointMidway.State.ReferencedExecutionIdByDecisionId);
+        Assert.NotEmpty(checkpointMidway.State.DecisionTypeByDecisionId);
+        Assert.NotEmpty(checkpointMidway.State.TargetStepIdByDecisionId);
+        Assert.NotEmpty(checkpointMidway.State.SupplementaryExecutionIdByDecisionId);
+        Assert.NotEmpty(checkpointMidway.State.StepIdByExecutionId);
+        Assert.NotEmpty(checkpointMidway.State.ConsecutiveFailureCountByStepId);
+        Assert.NotEmpty(checkpointMidway.State.LatestFailureClassificationByStepId);
+        Assert.NotEmpty(checkpointMidway.State.LatestFailureReasonByStepId);
+        Assert.NotEmpty(checkpointMidway.State.LatestExecutionFailedRetryNotBeforeByStepId);
+        Assert.NotEmpty(checkpointMidway.State.CancellationRequestedExecutionIds);
+        Assert.NotEmpty(checkpointMidway.State.StepLessExecutionsInOrder);
+        Assert.NotEmpty(checkpointMidway.State.PendingSupplementaryExecutionIdByStepId);
+        Assert.NotEmpty(checkpointMidway.State.PendingSupersedeTargetStepIds);
+        Assert.NotEmpty(checkpointMidway.State.RetryNotBeforeByStepId);
+        Assert.NotEmpty(checkpointMidway.State.RetryDelayMsByStepId);
+        Assert.NotEmpty(checkpointMidway.State.RetryScheduledForExecutionIdByStepId);
 
         var allEvents = new List<FlowEvent>(midwayEvents)
         {
-            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec2, Step2), 101, DateTimeOffset.UtcNow),
+            // Fulfill the supersede supplementary execution on Step4
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(execSupp, Step4), 108, now),
+            new FlowEvent.ExecutionSucceeded(execSupp),
+
+            // Fulfill the scheduled retry on Step6
+            new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec6, Step6), 109, now),
+            new FlowEvent.ExecutionSucceeded(exec6),
+
+            // Complete Step2 and Step8
             new FlowEvent.ExecutionSucceeded(exec2),
+            new FlowEvent.ExecutionCancelled(exec8),
         };
 
         // Projected via checkpoint + tail replay
@@ -106,8 +210,6 @@ public class ProjectionCheckpointTests
 
         // Deep structural equality assertion
         AssertFlowStateEqual(stateFromFullReplay, stateFromCheckpoint);
-        Assert.Equal(WorkflowStatus.Terminal, stateFromCheckpoint.Status);
-        Assert.Equal(StepStatus.Succeeded, Assert.Single(stateFromCheckpoint.Steps, s => s.StepId == Step2).Status);
     }
 
     [Fact]
