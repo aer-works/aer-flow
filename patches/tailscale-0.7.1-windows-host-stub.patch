@@ -12,9 +12,9 @@ native asset for the *host*, so on a Windows dev host the whole test suite dies 
 a single test runs.
 
 This adds the minimum for the dylib to compile and load: empty registries, no-op
-close/reset hooks, an error-returning Reactor surface (the same posture as upstream's
-reactor_unsupported.go), and the Identity field the dylib entry point reads on the two
-_unsupported request types. The Dart test suite never opens a tailnet — its transport
+close/reset hooks, an error-returning Reactor surface (reactor.go carries the whole public
+Reactor API behind !windows, which is why these stubs must exist), and the Identity field
+the dylib entry point reads on the two _unsupported request types. The Dart test suite never opens a tailnet — its transport
 tests run against mock sockets — so the stub is honest for tests while real tailnet
 networking on Windows stays unsupported, exactly as upstream declares.
 
@@ -68,8 +68,8 @@ new file mode 100644
 +
 +func resetTailnetHTTPTransport() {}
 +
-+// The fd reactor (reactor.go, !windows) backs the shared POSIX socket path — its whole
-+// public surface returns "unsupported" here, matching reactor_unsupported.go's posture.
++// reactor.go carries the fd reactor's whole public API behind !windows — that build tag is
++// why these stubs must exist. Every entry point reports unsupported rather than pretending.
 +var errReactorUnsupported = errors.New("fd reactor is not supported on windows")
 +
 +func ReactorCreate() (int64, error) { return 0, errReactorUnsupported }

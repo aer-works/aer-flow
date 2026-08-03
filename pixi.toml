@@ -94,8 +94,7 @@ lint = { cmd = "dotnet build -warnaserror --no-incremental", depends-on = ["buil
 mobile-analyze = { cmd = "flutter analyze", cwd = "src/Aer.Mobile" }
 # Excludes the `journey` tag: journey tests (#313) are red-specs run separately via
 # `pixi run journey-mobile`, so the default suite stays green (see dart_test.yaml).
-# Through the toolchain shim: flutter test builds the tailscale native asset for the host,
-# which hits the same scrubbed-environment hook as mobile-build (#958; why in mobile-build.sh).
+# Routed through a script for the same reason mobile-build is — the script's header says why (#958).
 mobile-test = { cmd = "bash scripts/mobile-test.sh" }
 # Wrapped rather than a plain `flutter build apk`: Flutter's native-asset hook runner strips the
 # environment before invoking Go, so the build cache can't be located and the tailscale native
