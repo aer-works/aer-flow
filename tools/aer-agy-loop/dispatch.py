@@ -437,8 +437,17 @@ def build_bindings(
             # and #588 makes a larger number the natural next thing an operator reaches for.
             "Timeout": "{:02d}:{:02d}:00".format(*divmod(s["timeout_minutes"], 60)),
             "PermissionGrant": permission_grant,
-            "WorkingDirectory": _forward_slashes(s["working_directory"]),
         }
+        # #669: a step reviewing a ref carries a Worktree the engine provisions and tears down, in
+        # place of a pre-existing WorkingDirectory. The two are mutually exclusive by construction here
+        # (the engine also refuses both at bind time) -- the repository is the working directory.
+        if s.get("worktree_ref"):
+            entry["Worktree"] = {
+                "Repository": _forward_slashes(s["working_directory"]),
+                "Ref": s["worktree_ref"],
+            }
+        else:
+            entry["WorkingDirectory"] = _forward_slashes(s["working_directory"])
         if s.get("model"):
             entry["Model"] = s["model"]
         if s.get("effort"):
@@ -1064,6 +1073,7 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
     parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: a published COPY of the repo bin (refreshed when the repo bin is newer) so the engine never holds the repo's own binaries -- #717. Passing this flag skips the copy entirely.")
     parser.add_argument("--worktree", metavar="BRANCH", default=None, help="Provision (or reuse) a sibling git worktree of --working-directory on this existing branch -- submodules initialised, native lib built -- and dispatch there instead. #717: a worker that builds or tests never works in the live repo.")
+    parser.add_argument("--review-ref", metavar="REF", default=None, help="Review a ref without checking it out: the ENGINE provisions a read-only worktree of --working-directory (defaults to the current directory) at REF and tears it down on completion (#669). No native build -- for reviews, which do not build. Mutually exclusive with --worktree; --working-directory becomes optional.")
     parser.add_argument("--dialogue", action="store_true",
                         help="Assemble and run a multi-participant dialogue (workflow.json + bindings.json + the DialogueWorkerConfig sidecar) from one seed file plus flags, instead of hand-rolling the three JSONs. See #813.")
     parser.add_argument("--seed-file", default=None, type=Path, help="Path to the dialogue's opening prompt, copied verbatim as DialogueWorkerConfig.SeedPrompt. --dialogue only.")
@@ -1149,6 +1159,10 @@ def main() -> int:
         if args.output_name is not None:
             print("error: --lane cannot be combined with --output-name", file=sys.stderr)
             return 2
+        if args.review_ref is not None:
+            print("error: --review-ref applies to a single review dispatch; a lane's review step reviews "
+                  "the work done in the lane, not an arbitrary ref.", file=sys.stderr)
+            return 2
 
         # The #741 review's finding 2: these all default to None and are template-resolved per step
         # in lane mode, so an explicit value would be silently ignored -- and a flag that looks
@@ -1169,6 +1183,9 @@ def main() -> int:
     elif args.dialogue:
         if args.template is not None:
             print("error: --dialogue cannot be combined with --template", file=sys.stderr)
+            return 2
+        if args.review_ref is not None:
+            print("error: --dialogue cannot be combined with --review-ref", file=sys.stderr)
             return 2
 
         # --dialogue builds its own bindings from --seed-file/--participant/etc; a single-dispatch
@@ -1221,6 +1238,14 @@ def main() -> int:
             print(f"error: --seed-file not found: {args.seed_file}", file=sys.stderr)
             return 2
     else:
+        if args.review_ref is not None:
+            if args.worktree is not None:
+                print("error: --review-ref and --worktree both set the workspace; use one.", file=sys.stderr)
+                return 2
+            # #669: --review-ref makes --working-directory optional -- the repository to worktree
+            # defaults to the current directory.
+            if args.working_directory is None:
+                args.working_directory = Path.cwd()
         if args.prompt_file is None:
             print("error: the following arguments are required: --prompt-file", file=sys.stderr)
             return 2
@@ -1294,6 +1319,7 @@ def main() -> int:
             "run_shell_commands": args.run_shell_commands,
             "network_access": args.network_access,
             "verdict_schema": args.verdict_schema,
+            "worktree_ref": args.review_ref,
         }]
     else:
         janitor_prompt_path = Path(__file__).resolve().parent / "janitor-prompt.md"

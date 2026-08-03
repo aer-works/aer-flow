@@ -46,6 +46,7 @@ public class VendorSpawnGateTests
         ["src/Aer.Ui.Core/TaskSession.Connection.cs"] = "The daemon itself, not a vendor CLI.",
         ["src/Aer.Ui/MainWindow.axaml.cs"] = "Hands a URL to the OS browser.",
         ["src/Aer.Cli/WorkspaceHead.cs"] = "Read-only 'git rev-parse HEAD' to capture a capture step's base ref — git, not a vendor CLI; no -p, no tool execution.",
+        ["src/Aer.Flow/Workspaces/WorktreeProvisioner.cs"] = "'git worktree add/remove' plus 'git status' to provision and tear down a worker's workspace (#669) — git, not a vendor CLI; spawns no vendor process.",
     };
 
     private static readonly string[] SpawnMarkers = ["new ProcessStartInfo", "Process.Start", "new AerTask"];

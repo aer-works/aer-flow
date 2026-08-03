@@ -1,4 +1,5 @@
 using Aer.Flow.Domain;
+using Aer.Flow.Workspaces;
 
 namespace Aer.Cli;
 
@@ -15,9 +16,19 @@ namespace Aer.Cli;
 /// command leaves this at its default — they resume by definition, and saying so per-command would
 /// be noise rather than news.
 /// </param>
+/// <param name="WorktreeTeardowns">
+/// Worktree teardowns worth surfacing from a Terminal run (#669) — a tree kept because it carried
+/// uncommitted changes, or a removal that could not complete. A clean removal is not listed; empty is
+/// the common case.
+/// </param>
 public sealed record CommandResult(
     FlowState State,
     WorkflowDefinitionSnapshot Snapshot,
     bool ResumedFromSnapshot = false,
-    string? TaskDirectoryPath = null);
+    string? TaskDirectoryPath = null,
+    IReadOnlyList<WorktreeTeardownResult>? WorktreeTeardowns = null)
+{
+    /// <summary>Defaults to empty rather than <c>null</c> for callers that omit the argument.</summary>
+    public IReadOnlyList<WorktreeTeardownResult> WorktreeTeardowns { get; init; } = WorktreeTeardowns ?? [];
+}
 

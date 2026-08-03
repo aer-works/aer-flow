@@ -85,6 +85,51 @@ public class WorkingDirectoryEndToEndTests
         }
     }
 
+    [Fact]
+    public async Task A_step_with_a_worktree_workspace_runs_in_the_provisioned_tree_which_is_torn_down_on_a_clean_run()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-cwd-worktree-{Guid.NewGuid():N}");
+        var repository = Path.Combine(testRoot, "repo");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            Directory.CreateDirectory(repository);
+            await File.WriteAllTextAsync(
+                Path.Combine(repository, "notes.txt"), "from-the-worktree", TestContext.Current.CancellationToken);
+            await RunGitAsync(repository, "init");
+            await RunGitAsync(repository, "add", "notes.txt");
+            await RunGitAsync(repository, "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "seed");
+            await RunGitAsync(repository, "branch", "review-target"); // a ref not checked out in the main tree
+
+            var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteWorktreeBindingsAsync(testRoot, repository, "review-target");
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var finalState =
+                (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+            Assert.Equal(StepStatus.Succeeded, Assert.Single(finalState.Steps).Status);
+
+            // The worker read notes.txt by its bare name — proof its cwd was the provisioned worktree,
+            // which the engine created from the ref with nobody checking anything out.
+            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var executionId = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
+                .OfType<FlowEvent.ExecutionSucceeded>().Single().ExecutionId;
+            var outputPath = Path.Combine(taskDirectory, "artifacts", $"execution_{executionId}", "output");
+            Assert.Equal(
+                "from-the-worktree", (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
+
+            // A clean Terminal run removes the worktree (the worker wrote only to AER_OUTPUT_DIR).
+            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "reader");
+            Assert.False(Directory.Exists(worktreePath), "a clean Terminal run should tear the provisioned worktree down");
+        }
+        finally
+        {
+            ForceDeleteDirectory(testRoot);
+        }
+    }
+
     private static async Task RunAgainstConfiguredDirectoryAsync(string testRoot, string taskDirectory, string workingDirectory)
     {
         var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
@@ -125,6 +170,28 @@ public class WorkingDirectoryEndToEndTests
                 readRelativeFileCommand,
                 TimeSpan.FromSeconds(30),
                 WorkingDirectory: workingDirectory),
+        };
+
+        var path = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
+        return path;
+    }
+
+    private static async Task<string> WriteWorktreeBindingsAsync(string directory, string repository, string reference)
+    {
+        Directory.CreateDirectory(directory);
+        var readRelativeFileCommand = OperatingSystem.IsWindows()
+            ? "type notes.txt>%AER_OUTPUT_DIR%\\output"
+            : "cat notes.txt > \"$AER_OUTPUT_DIR/output\"";
+
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["reader"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("reader", [], [new ProducedOutput("output")], []),
+                readRelativeFileCommand,
+                TimeSpan.FromSeconds(30),
+                Worktree: new WorktreeWorkspace(repository, reference)),
         };
 
         var path = Path.Combine(directory, "bindings.json");
