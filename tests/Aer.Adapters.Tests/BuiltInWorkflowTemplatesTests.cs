@@ -56,7 +56,7 @@ public class BuiltInWorkflowTemplatesTests
         var (_, bindings) = BuiltInWorkflowTemplates.Materialize("review-run", "claude", "gemini", "Write a roast");
 
         Assert.Equal(
-            "Review draft.md carefully, provide feedback and recommendations, and write to review.md.",
+            "Review draft.md carefully, provide feedback and recommendations, and write to report.md.",
             bindings["review-worker"].PromptTemplate);
     }
 

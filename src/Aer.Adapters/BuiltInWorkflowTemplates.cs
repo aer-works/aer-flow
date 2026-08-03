@@ -205,7 +205,7 @@ public static class BuiltInWorkflowTemplates
                         StepId: new StepId("review"),
                         Worker: "review-worker",
                         Inputs: ["draft.md"],
-                        Outputs: ["review.md"],
+                        Outputs: ["report.md"],
                         DependsOn: [new StepId("draft")],
                         RetryPolicy: new RetryPolicy(3),
                         PausePoint: new PausePoint([new StepId("draft")]))
@@ -228,9 +228,9 @@ public static class BuiltInWorkflowTemplates
                     Contract: new WorkerContract(
                         WorkerName: "review-worker",
                         RequiredInputs: ["draft.md"],
-                        ProducedOutputs: [new ProducedOutput("review.md")],
+                        ProducedOutputs: [new ProducedOutput("report.md")],
                         OptionalMetadata: []),
-                    PromptTemplate: string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "Review draft.md carefully, provide feedback and recommendations, and write to review.md." : secondaryCustomPrompt,
+                    PromptTemplate: string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "Review draft.md carefully, provide feedback and recommendations, and write to report.md." : secondaryCustomPrompt,
                     Timeout: TimeSpan.FromMinutes(10),
                     PermissionGrant: defaultGrant)
             };
