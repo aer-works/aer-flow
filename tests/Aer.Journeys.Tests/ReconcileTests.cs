@@ -1,18 +1,20 @@
 namespace Aer.Journeys.Tests;
 
 /// <summary>
-/// The reconcile gate's <b>structural</b> half (#313) — the seed #314 grows into a required CI
-/// check. Since #952 the registry <em>joins</em> titles and statuses from <c>spec/journeys.md</c>
+/// The reconcile gate's <b>structural</b> half (#313). Since #952 the registry <em>joins</em>
+/// titles and statuses from <c>spec/journeys.md</c>
 /// at load (<see cref="SpecJourneys"/>), so the old byte-drift tests are impossible by
 /// construction and were deleted: a registry id the spec lacks throws inside
 /// <see cref="Journeys.All"/> itself. What a join cannot catch is the other direction — a journey
 /// written into the spec with no registry entry (and therefore no legs, no coverage audit) — and
 /// that is what this asserts.
 /// <para>
-/// #314 adds the <em>behavioural</em> half — comparing each declared status against the journey
-/// tests' actual pass/fail, so a journey that starts passing but still reads "Fails" (or the
-/// reverse) also breaks the build. That half needs the tests' results, which is why it is a
-/// separate gate; this half needs only the two documents and runs on its own.
+/// The <em>behavioural</em> half — comparing each declared status against the journey tests'
+/// actual pass/fail, so a journey that starts passing but still reads "Fails" (or the reverse)
+/// also breaks the build — belongs to the status-truthfulness umbrella (#752) and lands with the
+/// UI arc, when statuses actually start flipping. (#314 turned out to own the *spec* structural
+/// claims; its close reason and #752's thread carry this split.) That half needs the tests'
+/// results, which is why it is a separate gate; this half needs only the two documents.
 /// </para>
 /// </summary>
 [Trait("Category", "Reconcile")]
