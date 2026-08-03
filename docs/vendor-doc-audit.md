@@ -1502,8 +1502,9 @@ item — not something an agent session can close.
 `vendor_survey.py`'s `PENDING-DEPTH` disposition is a **recommendation** (score ≥ 10), not an
 attestation that someone read the page — a script that runs before anyone reads anything cannot know
 that. `tools/audit-completeness`'s `step2_corpus` computes the real read-state instead, by checking
-whether each depth-flagged page is actually cited in this audit's prose: currently 107 of 137 are,
-**30 are not**, printed on every run, relevance-ordered. Citation is weaker evidence than an
+whether each depth-flagged page is actually cited in this audit's prose — the current split is
+printed on every run, relevance-ordered (run it rather than trusting a number transcribed here;
+#952 removed the snapshot this sentence used to carry). Citation is weaker evidence than an
 attestation, but it is recomputed every time rather than recorded once and trusted.
 
 ### The remaining 30 depth-flagged pages, each with a disposition
