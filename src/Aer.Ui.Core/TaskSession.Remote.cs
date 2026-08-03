@@ -171,8 +171,8 @@ public sealed partial class TaskSession
         var status = await GetRemoteAccessStatusAsync(cancellationToken).ConfigureAwait(true);
         if (status == null)
         {
-            LogToggleDiagnostic("GetRemoteAccessStatusAsync returned null -> Could not reach Aer.Daemon.");
-            return new MutationOutcome("Could not reach Aer.Daemon.");
+            LogToggleDiagnostic("GetRemoteAccessStatusAsync returned null -> Could not reach Aer.Daemon."); // vocabulary-ok: diagnostic log
+            return new MutationOutcome("Could not reach the Baton daemon.");
         }
         LogToggleDiagnostic($"status: IsRemote={status.IsRemote}, HasRunningTasks={status.HasRunningTasks}, Port={status.Port}");
         if (status.HasRunningTasks) return new MutationOutcome("Can't change remote access while a task is running — finish or pause it first.");
@@ -197,12 +197,12 @@ public sealed partial class TaskSession
         LogToggleDiagnostic($"WaitForDaemonToExitAsync returned {exited}");
         if (!exited)
         {
-            return new MutationOutcome("Aer.Daemon is taking a while to shut down — try again in a moment.");
+            return new MutationOutcome("The Baton daemon is taking a while to shut down — try again in a moment.");
         }
 
         var started = await SpawnDaemonProcessAsync(enabled ? "--remote" : "", cancellationToken).ConfigureAwait(true);
         LogToggleDiagnostic($"SpawnDaemonProcessAsync returned {started}");
-        return started ? new MutationOutcome(null) : new MutationOutcome("Could not restart Aer.Daemon.");
+        return started ? new MutationOutcome(null) : new MutationOutcome("Could not restart the Baton daemon.");
     }
 
     private static void LogToggleDiagnostic(string line)

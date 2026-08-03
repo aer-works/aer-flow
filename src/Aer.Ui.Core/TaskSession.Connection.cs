@@ -118,7 +118,7 @@ public sealed partial class TaskSession
 
             if (OperatingSystem.IsWindows())
             {
-                daemonPath = Path.Combine(baseDir, "Aer.Daemon.exe");
+                daemonPath = Path.Combine(baseDir, "Aer.Daemon.exe"); // vocabulary-ok: binary file path
                 if (!File.Exists(daemonPath))
                 {
                     daemonPath = "dotnet";
@@ -127,7 +127,7 @@ public sealed partial class TaskSession
             }
             else
             {
-                daemonPath = Path.Combine(baseDir, "Aer.Daemon");
+                daemonPath = Path.Combine(baseDir, "Aer.Daemon"); // vocabulary-ok: binary file path
                 if (!File.Exists(daemonPath))
                 {
                     daemonPath = "dotnet";
@@ -140,8 +140,8 @@ public sealed partial class TaskSession
                 args = string.IsNullOrEmpty(args) ? extraArgs : $"{args} {extraArgs}";
             }
 
-            var hasDll = File.Exists(Path.Combine(baseDir, "Aer.Daemon.dll"));
-            var hasExe = File.Exists(Path.Combine(baseDir, "Aer.Daemon.exe")) || File.Exists(Path.Combine(baseDir, "Aer.Daemon"));
+            var hasDll = File.Exists(Path.Combine(baseDir, "Aer.Daemon.dll")); // vocabulary-ok: binary file path
+            var hasExe = File.Exists(Path.Combine(baseDir, "Aer.Daemon.exe")) || File.Exists(Path.Combine(baseDir, "Aer.Daemon")); // vocabulary-ok: binary file path
 
             if (hasExe || hasDll)
             {

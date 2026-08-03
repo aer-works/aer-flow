@@ -272,7 +272,7 @@ public class NavigationShellTests
             Assert.Equal(PausePointKind.NeedsInput, item.Kind);
             Assert.Equal("Waiting for your reply", item.StatusText);
             Assert.Equal("Reply", item.ActionLabel);
-            Assert.Equal("1 session is waiting for your reply.", window.ViewModel.Home.InboxSummaryText);
+            Assert.Equal("1 room is waiting for your reply.", window.ViewModel.Home.InboxSummaryText);
         }
         finally
         {

@@ -101,7 +101,7 @@ public static class TaskProjectionLoader
 
         var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(taskDirectoryPath));
         var isArchived = TaskLifecycle.IsArchived(taskDirectoryPath);
-        var isSession = File.Exists(Path.Combine(taskDirectoryPath, ".aer", "session.json"));
+        var isSession = File.Exists(Path.Combine(taskDirectoryPath, ".aer", "session.json")); // vocabulary-ok: technical file path
         var (created, updated) = await ResolveTimestampsAsync(taskDirectoryPath, isSession, cancellationToken).ConfigureAwait(false);
 
         var snapshotPath = Path.Combine(taskDirectoryPath, SnapshotFileName);
@@ -112,13 +112,13 @@ public static class TaskProjectionLoader
             // A DAG task directory with no snapshot yet shouldn't exist by construction, but is
             // represented the same defensive way rather than thrown on.
             return new TaskFleetItem(
-                taskDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow",
+                taskDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow", // vocabulary-ok: internal type label
                 isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived, created, updated,
                 isSession);
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
-        var typeLabel = isSession ? "interactive session" : snapshot.WorkflowTemplateId.Value;
+        var typeLabel = isSession ? "interactive session" : snapshot.WorkflowTemplateId.Value; // vocabulary-ok: internal type label
 
         var logPath = Path.Combine(taskDirectoryPath, LogFileName);
         var reader = new FlowEventLogReader(logPath);
@@ -152,7 +152,7 @@ public static class TaskProjectionLoader
     {
         if (isSession)
         {
-            var sessionMetadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
+            var sessionMetadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
             var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(sessionMetadataPath, cancellationToken).ConfigureAwait(false);
             if (metadata is not null)
             {

@@ -31,6 +31,7 @@ FAST = [
     "audit-completeness",
     "audit-selfcheck",
     "audit-controls",
+    "audit-vocabulary",
     "audit-recordonce",
     "aer-dispatch-selftest",
     "test-scripts",

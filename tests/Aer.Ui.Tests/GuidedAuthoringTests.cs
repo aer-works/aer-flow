@@ -201,13 +201,13 @@ public class GuidedAuthoringTests
         Assert.Equal(
             [
                 "Claude: available",
-                "Gemini: not found — install and sign in to the agy CLI to run steps with it",
+                "Agy: not found — install and sign in to the agy CLI to run steps with it",
             ],
             flow.VendorReadinessLines);
 
         // Readiness is informational only: nothing in the guidance path reads it, so an
         // unavailable vendor never blocks authoring or saving.
-        Assert.DoesNotContain(flow.GuidanceMessages, message => message.Contains("Gemini"));
+        Assert.DoesNotContain(flow.GuidanceMessages, message => message.Contains("Agy"));
     }
 
     // M21 Phase 1 follow-up (owner feedback on the initial per-entry-only builder): permissions are

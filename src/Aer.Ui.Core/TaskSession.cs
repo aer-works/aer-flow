@@ -530,7 +530,7 @@ public sealed partial class TaskSession
             }
             if (!string.IsNullOrWhiteSpace(bindingsFilePath))
             {
-                await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false);
+                await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false); // vocabulary-ok: technical file path
             }
         }
         catch

@@ -125,7 +125,7 @@ class _PairingScreenState extends State<PairingScreen> {
     } catch (e) {
       setState(
         () => _errorText =
-            'Could not reach $host — check the host and that Aer.Daemon is running with --remote. ($e)',
+            'Could not reach $host — check the host and that the Baton daemon is running with --remote. ($e)',
       );
     } finally {
       if (mounted) {

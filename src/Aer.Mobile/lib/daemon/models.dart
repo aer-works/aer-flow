@@ -19,7 +19,7 @@ class StepDefinition {
 
   factory StepDefinition.fromJson(Map<String, dynamic> json) {
     final j = caseInsensitive(json);
-    final pausePoint = j['pausepoint'] as Map<String, dynamic>?;
+    final pausePoint = j['pausepoint'] as Map<String, dynamic>?; // vocabulary-ok: payload field key
     final targets = pausePoint == null
         ? <String>[]
         : ((caseInsensitive(pausePoint)['supersedetargets'] as List<dynamic>?) ?? [])

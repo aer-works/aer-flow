@@ -49,7 +49,7 @@
       </Border>
 
       <Border Classes="card" IsVisible="{Binding Tasks.HasNoItems}">
-        <TextBlock Classes="secondary" Text="No tasks or sessions yet." />
+        <TextBlock Classes="secondary" Text="No rooms yet." />
       </Border>
 
       <ItemsControl x:Name="TasksList" ItemsSource="{Binding Tasks.Items}">

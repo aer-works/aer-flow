@@ -735,7 +735,7 @@ public partial class MainWindow : Window
             var outcome = await StartInteractiveSessionAsync(request).ConfigureAwait(true);
             if (outcome.Metadata is not { } metadata)
             {
-                chat.StatusText = outcome.ErrorMessage ?? "Failed to start the session.";
+                chat.StatusText = outcome.ErrorMessage ?? "Failed to start the room.";
                 return;
             }
 
@@ -805,7 +805,7 @@ public partial class MainWindow : Window
         {
             case "/compact":
                 var compactOutcome = await _session.CompactSessionAsync(sessionId).ConfigureAwait(true);
-                chat.StatusText = compactOutcome.ErrorMessage ?? "Compacting session context…";
+                chat.StatusText = compactOutcome.ErrorMessage ?? "Compacting room context…";
                 break;
 
             case "/clear":
@@ -813,11 +813,11 @@ public partial class MainWindow : Window
                 if (cleared != null && chat.TaskDirectoryPath is { } taskDirectoryPath)
                 {
                     chat.LoadFromMetadata(cleared, taskDirectoryPath);
-                    chat.StatusText = "Session context cleared.";
+                    chat.StatusText = "Room context cleared.";
                 }
                 else
                 {
-                    chat.StatusText = clearError ?? "Failed to clear session context.";
+                    chat.StatusText = clearError ?? "Failed to clear room context.";
                 }
                 break;
 
@@ -1059,7 +1059,7 @@ public partial class MainWindow : Window
         var stepsFingerprint = string.Join(",", projection.State.Steps.Select(s => $"{s.StepId.Value}:{s.Status}:{s.LatestExecutionId?.Value}"));
         var attemptsCount = projection.History.AttemptsByStepId.Sum(kv => kv.Value.Count);
         var convLength = _conversationOutputDirectory != null && File.Exists(System.IO.Path.Combine(_conversationOutputDirectory, "transcript.jsonl")) ? new FileInfo(System.IO.Path.Combine(_conversationOutputDirectory, "transcript.jsonl")).Length : 0;
-        var fingerprint = $"{taskDirectoryPath}|{projection.State.Status}|{stepsFingerprint}|{attemptsCount}|{projection.History.Decisions.Count}|{projection.Lineage.Executions.Count}|{convLength}";
+        var fingerprint = $"{taskDirectoryPath}|{projection.State.Status}|{stepsFingerprint}|{attemptsCount}|{projection.History.Decisions.Count}|{projection.Lineage.Executions.Count}|{convLength}"; // vocabulary-ok: state fingerprint key
 
         if (_lastRenderedProjectionFingerprint == fingerprint)
         {
@@ -1079,14 +1079,14 @@ public partial class MainWindow : Window
             WorkflowTemplatePathBox.Text = id;
         }
 
-        var bindingsPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path");
+        var bindingsPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path
         if (File.Exists(bindingsPathFile))
         {
             try { BindingsFilePathBox.Text = File.ReadAllText(bindingsPathFile).Trim(); } catch { }
         }
 
         ViewModel.IsTaskFinished = projection.State.Status == WorkflowStatus.Terminal;
-        StatusText.Text = $"Workflow status: {projection.State.Status}";
+        StatusText.Text = $"Workflow status: {projection.State.Status}"; // vocabulary-ok: technical status display
 
         StepsPanel.Children.Clear();
         foreach (var step in projection.State.Steps)
@@ -1121,11 +1121,11 @@ public partial class MainWindow : Window
         var targetBindingsFile = bindingsFilePath;
         if (string.IsNullOrWhiteSpace(targetBindingsFile) || !File.Exists(targetBindingsFile))
         {
-            targetBindingsFile = System.IO.Path.Combine(taskDirectoryPath, "bindings.json");
+            targetBindingsFile = System.IO.Path.Combine(taskDirectoryPath, "bindings.json"); // vocabulary-ok: technical file path
         }
         if (!File.Exists(targetBindingsFile))
         {
-            var metaFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path");
+            var metaFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path
             if (File.Exists(metaFile))
             {
                 try { targetBindingsFile = File.ReadAllText(metaFile).Trim(); } catch { }
@@ -1139,7 +1139,7 @@ public partial class MainWindow : Window
                 using var doc = System.Text.Json.JsonDocument.Parse(json);
                 foreach (var prop in doc.RootElement.EnumerateObject())
                 {
-                    if (prop.Value.TryGetProperty("Adapter", out var adapterProp) || prop.Value.TryGetProperty("adapter", out adapterProp))
+                    if (prop.Value.TryGetProperty("Adapter", out var adapterProp) || prop.Value.TryGetProperty("adapter", out adapterProp)) // vocabulary-ok: JSON property name
                     {
                         if (adapterProp.GetString() is { } adapterStr)
                         {
@@ -1440,7 +1440,7 @@ public partial class MainWindow : Window
                 var supersedeTargets = pausePoint?.SupersedeTargets is { Count: > 0 } targets
                     ? string.Join(", ", targets)
                     : "none";
-                summary += $", paused (underlying outcome={stepState.PausedOutcome}), supersede targets=[{supersedeTargets}]";
+                summary += $", paused (underlying outcome={stepState.PausedOutcome}), supersede targets=[{supersedeTargets}]"; // vocabulary-ok: internal step summary
             }
 
             if (stepState.PendingSupplementaryExecutionId is { } pendingSupplement)
@@ -1450,7 +1450,7 @@ public partial class MainWindow : Window
 
             if (stepState.IsPendingSupersedeTarget)
             {
-                summary += ", pending supersede dispatch";
+                summary += ", pending supersede dispatch"; // vocabulary-ok: internal step summary
             }
 
             // Wraps for the same reason the attempt rows above do — a half-wrapped panel is worse
@@ -1944,7 +1944,7 @@ public partial class MainWindow : Window
 
             if (changedStep.PausePointChanged)
             {
-                changedFields.Add("pausePoint");
+                changedFields.Add("pausePoint"); // vocabulary-ok: internal field name
             }
 
             DiffPanel.Children.Add(new TextBlock { Text = $"~ {changedStep.StepId} changed: {string.Join(", ", changedFields)}" });

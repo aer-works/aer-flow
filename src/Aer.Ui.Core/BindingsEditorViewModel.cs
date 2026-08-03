@@ -173,7 +173,7 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
     public void StartNewFile()
     {
         StartNew();
-        StatusText = "New worker-bindings file — add entries, then Save.";
+        StatusText = "New worker-bindings file — add entries, then Save."; // vocabulary-ok: technical file concept
     }
 
     /// <summary>
@@ -209,13 +209,13 @@ public sealed partial class BindingsEditorViewModel : ObservableObject
     {
         if (!IsOpen)
         {
-            StatusText = "Nothing to save — create a new bindings file or open one in the editor first.";
+            StatusText = "Nothing to save — create a new bindings file or open one in the editor first."; // vocabulary-ok: technical file concept
             return;
         }
 
         if (string.IsNullOrWhiteSpace(bindingsFilePath))
         {
-            StatusText = "Enter a bindings file path to save to.";
+            StatusText = "Enter a bindings file path to save to."; // vocabulary-ok: technical file concept
             return;
         }
 

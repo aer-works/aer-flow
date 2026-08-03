@@ -77,6 +77,7 @@ LINT_DIRS = (ROOT / "tools" / "audit-completeness", ROOT / "tools" / "aer-agy-lo
 
 dispatch = load(DISPATCH_PY, "_selfcheck_dispatch")
 completeness = load(ROOT / "tools" / "audit-completeness" / "completeness.py", "_selfcheck_audit")
+vocabulary = load(ROOT / "tools" / "audit-completeness" / "vocabulary.py", "_selfcheck_vocabulary")
 
 
 def register_models() -> set[str]:
@@ -1539,6 +1540,67 @@ def _recordonce_still_fires_on_real_data():
     assert ok, "record-once no longer finds what it found in " + rec.PROVEN_SHA[:7] + ":\n  " \
         + "\n  ".join(detail)
     return detail[0]
+
+
+@check("the vocabulary checker flags engine terms in user-facing string literals")
+def _vocabulary_discriminates():
+    rec = vocabulary
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 0, f"empty tree produced violations: {violations}"
+
+        ui_dir = tmp_path / "src" / "Aer.Ui"
+        ui_dir.mkdir(parents=True)
+        (ui_dir / "Test.axaml").write_text('<TextBlock Text="PausePoint" />', encoding="utf-8")
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"planted AXAML violation not caught: {violations}"
+
+        (ui_dir / "Test.axaml").write_text('<TextBlock Text="PausePoint" /> <!-- vocabulary-ok: test -->', encoding="utf-8")
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 0, f"allowlist comment failed to suppress AXAML: {violations}"
+
+        core_dir = tmp_path / "src" / "Aer.Ui.Core"
+        core_dir.mkdir(parents=True)
+        (core_dir / "TestViewModel.cs").write_text('var x = "gemini";', encoding="utf-8")
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"planted C# violation not caught: {violations}"
+
+        (core_dir / "TestViewModel.cs").write_text('var x = "gemini"; // vocabulary-ok: test', encoding="utf-8")
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 0, f"allowlist comment failed to suppress C#: {violations}"
+
+        mobile_dir = tmp_path / "src" / "Aer.Mobile" / "lib"
+        mobile_dir.mkdir(parents=True)
+        (mobile_dir / "screen.dart").write_text("var x = 'Aer.Daemon';", encoding="utf-8")
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"planted Dart violation not caught: {violations}"
+
+        # Literals that span lines — the per-line pass is blind inside them (#315's second
+        # reader), so the full-text pass must catch a leak on a continuation line.
+        (mobile_dir / "screen.dart").write_text("var x = 'clean';", encoding="utf-8")
+        (core_dir / "TestViewModel.cs").write_text(
+            'var x = @"line one\nthe Session leaks here";', encoding="utf-8"
+        )
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"multiline C# verbatim leak not caught: {violations}"
+
+        # A trailing comment can't sit on the opening line (it would be inside the string),
+        # so a multiline literal is allowlisted from the line above it.
+        (core_dir / "TestViewModel.cs").write_text(
+            '// vocabulary-ok: test\nvar x = @"line one\nthe Session leaks here";', encoding="utf-8"
+        )
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 0, f"allowlist failed to suppress multiline C#: {violations}"
+
+        (core_dir / "TestViewModel.cs").write_text("var x = 1;", encoding="utf-8")
+        (mobile_dir / "screen.dart").write_text(
+            "var x = '''line one\nthe lane leaks here''';", encoding="utf-8"
+        )
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"multiline Dart triple-quoted leak not caught: {violations}"
+
+    return "AXAML, C#, Dart populations + allowlist suppression + multiline literal leaks"
 
 
 def main() -> int:

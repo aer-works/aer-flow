@@ -161,7 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted && _isSending) {
         setState(() {
           _isSending = false;
-          _sendError = 'No response after 5 minutes — the session may still be working in the background.';
+          _sendError = 'No response after 5 minutes — the room may still be working in the background.';
         });
       }
     });
@@ -283,7 +283,7 @@ class _ChatScreenState extends State<ChatScreen> {
         try {
           await widget.client.compactSession(widget.sessionId);
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compacting session context…')));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Compacting room context…')));
           }
         } on DaemonException catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -295,7 +295,7 @@ class _ChatScreenState extends State<ChatScreen> {
           final cleared = await widget.client.clearSession(widget.sessionId);
           if (mounted) {
             setState(() => _metadata = cleared);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session context cleared.')));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room context cleared.')));
           }
         } on DaemonException catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));

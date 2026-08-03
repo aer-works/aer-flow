@@ -147,7 +147,7 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
         VendorReadinessLines.Clear();
         foreach (var status in VendorCliPresence.Probe(isOnPath))
         {
-            var vendorLabel = char.ToUpperInvariant(status.AdapterName[0]) + status.AdapterName[1..];
+            var vendorLabel = char.ToUpperInvariant(status.BinaryName[0]) + status.BinaryName[1..];
             VendorReadinessLines.Add(status.IsAvailable
                 ? $"{vendorLabel}: available"
                 : $"{vendorLabel}: not found — install and sign in to the {status.BinaryName} CLI to run steps with it");
@@ -200,7 +200,7 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 
             var adapterNamesInUse = Steps
                 .Where(step => !step.IsDialogue)
-                .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini")
+                .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini") // vocabulary-ok: technical adapter key
                 .Distinct();
             foreach (var adapterName in adapterNamesInUse)
             {
@@ -257,7 +257,7 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
             bindings[step.Name] = await step.BuildBindingEntryAsync(workspacePath, cancellationToken).ConfigureAwait(true);
         }
 
-        var bindingsFilePath = Path.Combine(workspacePath, "bindings.json");
+        var bindingsFilePath = Path.Combine(workspacePath, "bindings.json"); // vocabulary-ok: technical file path
         await WorkerBindingConfigWriter.SaveToFileAsync(bindings, bindingsFilePath, cancellationToken).ConfigureAwait(true);
 
         StatusText = $"Saved to {workspacePath}.";
@@ -442,7 +442,7 @@ public sealed partial class GuidedStepViewModel : ObservableObject
         {
             var grant = _owner.BuildPermissionGrant();
             return new WorkerBindingConfigEntry(
-                Kind == GuidedStepKind.Claude ? "claude" : "gemini",
+                Kind == GuidedStepKind.Claude ? "claude" : "gemini", // vocabulary-ok: technical adapter key
                 contract,
                 Prompt,
                 DefaultTimeout,
@@ -458,7 +458,7 @@ public sealed partial class GuidedStepViewModel : ObservableObject
             Participants:
             [
                 DialogueParticipantPresets.For("claude", "initiator", InitiatorPreamble, Model.Length > 0 ? Model : null),
-                DialogueParticipantPresets.For("gemini", "responder", ResponderPreamble, model: null),
+                DialogueParticipantPresets.For("gemini", "responder", ResponderPreamble, model: null), // vocabulary-ok: internal vendor key
             ]);
 
         var sidecarPath = Path.Combine(workspacePath, $"dialogue-{Name}.json");
