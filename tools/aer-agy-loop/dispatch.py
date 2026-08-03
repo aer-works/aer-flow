@@ -65,7 +65,10 @@ def _forward_slashes(path: Path) -> str:
 
 
 def _default_cli_path(repo_root: Path) -> Path:
-    return repo_root / "src" / "Aer.Cli" / "bin" / "Debug" / "net10.0" / "Aer.Cli.exe"
+    # Apphost name is per-OS: Aer.Cli.exe on Windows, Aer.Cli elsewhere. The non-Windows arm
+    # became reachable when the CI audit job started loading the catalog through the CLI (#887).
+    bin_dir = repo_root / "src" / "Aer.Cli" / "bin" / "Debug" / "net10.0"
+    return bin_dir / ("Aer.Cli.exe" if os.name == "nt" else "Aer.Cli")
 
 
 def refresh_published_engine(repo_root: Path) -> Path:
