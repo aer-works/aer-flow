@@ -894,6 +894,10 @@ def step13_structural_claims():
     on_disk = {d for d in os.listdir(src) if os.path.isdir(os.path.join(src, d))} if os.path.isdir(src) else set()
     block = re.search(r"## Repo structure.*?```(.*?)```", read("CLAUDE.md"), re.S)
     mapped = set(re.findall(r"(Aer\.[A-Za-z.]+)/", block.group(1))) if block else set()
+    # A check over an empty population passes vacuously — assert the anchors held before
+    # trusting the comparison (found by #314's second reader).
+    ok &= line("src/ directories found (a 0 here means the scan itself broke)", 1 if on_disk else 0, 1)
+    ok &= line("repo-map entries parsed from CLAUDE.md (0 = anchor regex broke)", 1 if mapped else 0, 1)
     missing = sorted(on_disk - mapped)
     ghosts = sorted(m for m in mapped - on_disk if os.path.isdir(os.path.join(ROOT, "src")))
     ok &= line("src/ projects missing from CLAUDE.md's repo map", len(missing), 0,

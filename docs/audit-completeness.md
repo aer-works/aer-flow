@@ -20,6 +20,13 @@ register enforces on everything else, applied to the audit register.
 
 ## The chain
 
+The table below is the chain **as #527 ran it** — provenance, kept because the
+population/artifact/recompute framing is what each later step copied. The live chain has
+grown past it (STEPs 9, 10, 12 and 13 were added by later work and STEP 11 was retired by
+\#952); this file does not restate the current list, for the same reason it carries no
+counts — the authority is what `pixi run audit-completeness` prints, and each step's own
+docstring in `completeness.py` says what it checks and why.
+
 | # | step | population | artifact | recomputed |
 |---|---|---|---|---|
 | 1 | No doc source missed | the source families | [`vendor-doc-audit.md § Sources`](vendor-doc-audit.md) + `vendor_survey.py` | **yes** |
