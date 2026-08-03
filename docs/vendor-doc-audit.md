@@ -1,6 +1,8 @@
 # Vendor documentation audit — every documented capability, and whether we verified it
 
-Measured against `claude` 2.1.220 and `agy` 1.1.8. Read the docs, then verify each claim against the
+Measured against the #527 audit versions, pinned once in
+[`vendor-capabilities.md`](vendor-capabilities.md)'s dated history table (#952 — one pin, pointed
+at, never restated). Read the docs, then verify each claim against the
 live CLI — `vendor-capabilities.md` was built the other way (probe binaries and help text first) and
 several rows were wrong as a result, all the same shape: **a capability was recorded as absent
 because the surface checked did not mention it.** The documentation mentions it.
@@ -1500,8 +1502,9 @@ item — not something an agent session can close.
 `vendor_survey.py`'s `PENDING-DEPTH` disposition is a **recommendation** (score ≥ 10), not an
 attestation that someone read the page — a script that runs before anyone reads anything cannot know
 that. `tools/audit-completeness`'s `step2_corpus` computes the real read-state instead, by checking
-whether each depth-flagged page is actually cited in this audit's prose: currently 107 of 137 are,
-**30 are not**, printed on every run, relevance-ordered. Citation is weaker evidence than an
+whether each depth-flagged page is actually cited in this audit's prose — the current split is
+printed on every run, relevance-ordered (run it rather than trusting a number transcribed here;
+#952 removed the snapshot this sentence used to carry). Citation is weaker evidence than an
 attestation, but it is recomputed every time rather than recorded once and trusted.
 
 ### The remaining 30 depth-flagged pages, each with a disposition

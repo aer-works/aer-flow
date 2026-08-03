@@ -52,6 +52,32 @@ public class DesignTokenDriftTests
     }
 
     /// <summary>
+    /// #952's sweep found the one token copy nothing checked: <c>AerFonts</c>' two family names,
+    /// whose own doc comments say "must match <c>design/tokens.json</c>" — and nothing did. Read
+    /// from source text (this project deliberately does not reference <c>Aer.Ui</c>, and the
+    /// suite's own style is file assertions). The avares URI's fragment (after <c>#</c>) is the
+    /// family name Avalonia resolves, so that is the half compared; the asset path before it is
+    /// Avalonia packaging, not a token.
+    /// </summary>
+    [Fact]
+    public void AerFontsFamilyNamesMatchTheTokenFile()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var tokensJson = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.TokensPath));
+        var families = Regex.Match(
+            tokensJson, "\"fontFamily\":\\s*\\{\\s*\"sans\":\\s*\"([^\"]+)\",\\s*\"mono\":\\s*\"([^\"]+)\"");
+        Assert.True(families.Success, $"{TokenGenerator.TokensPath} no longer carries type.fontFamily.sans/mono — update this test with it.");
+
+        var aerFonts = File.ReadAllText(Path.Combine(repositoryRoot, "src", "Aer.Ui", "AerFonts.cs"));
+        var sans = Regex.Match(aerFonts, "Sans = \"[^\"]*#([^\"]+)\"");
+        var mono = Regex.Match(aerFonts, "Mono = \"[^\"]*#([^\"]+)\"");
+        Assert.True(sans.Success && mono.Success, "AerFonts.cs no longer declares Sans/Mono avares constants — update this test with it.");
+
+        Assert.Equal(families.Groups[1].Value, sans.Groups[1].Value);
+        Assert.Equal(families.Groups[2].Value, mono.Groups[1].Value);
+    }
+
+    /// <summary>
     /// #458's gate: every status names a mark, and both toolkits must actually draw it.
     /// </summary>
     /// <remarks>

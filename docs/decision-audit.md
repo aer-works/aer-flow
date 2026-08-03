@@ -1,16 +1,20 @@
 # Decision audit — every record's disposition against measured vendor reality
 
 **Started 2026-07-25 against #527's findings; kept current since.** Population: every numbered
-record in [`decisions/`](decisions/), currently 49 (counted via `ls docs/decisions/`). Disposition vocabulary is fixed —
+record in [`decisions/`](decisions/) dated on or before the audit — a later record cannot have been
+affected by it, and its rigor is its own mandatory `Rests on` table (#952). Count records via
+`ls docs/decisions/`, never a number transcribed here. Disposition vocabulary is fixed —
 `unaffected`, `amended`, `superseded`, `rewritten` — and enforced by `pixi run audit-completeness`,
-which also requires a reason in its own column and fails if any decision on disk has no row.
+which also requires a reason in its own column and fails if any pre-audit decision has no row.
 
 This exists because the audit falsified vendor claims that several decisions were built on, and
 "which decisions did that break?" had to be recovered by re-reading everything. That recovery is
 what made [`Rests on`](decisions/README.md#rests-on--the-load-bearing-facts-and-what-would-falsify-them)
-mandatory going forward, and what this sweep checks for every record — including ones written well
-after #527, since a new decision can still rest on nothing the audit measured, or on everything it
-did. **Add a row when you add a decision** — the checker will fail the PR otherwise.
+mandatory going forward. A decision written after the audit answers to its own `Rests on` table
+(which the checker requires) rather than to a row here — a new record can still rest on something
+the audit measured, and its `Rests on` is where that dependency gets named. Rows below for
+post-audit records are provenance from before #952 narrowed the population; new ones are welcome
+when genuinely informative, never required.
 
 ## What "unaffected" means here, and what it does not
 
