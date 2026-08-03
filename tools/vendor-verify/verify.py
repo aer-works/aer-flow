@@ -2998,9 +2998,10 @@ def _agy_terminate():
 
 
 @check("gate.agy-toolcall-injection-does-not-work", "gate",
-       "agy's documented PreInvocation/PostInvocation injectSteps 'toolCall' step is not "
-       "implemented in the installed CLI -- the one theoretical zero-cost path to proving the "
-       "PreToolUse gate fires on agy, since agy has no session-level event at all (#948)")
+       "agy's documented PreInvocation injectSteps 'toolCall' step is not implemented in the "
+       "installed CLI -- the one theoretical zero-cost path to proving the PreToolUse gate fires "
+       "on agy, since agy has no session-level event at all. PostInvocation shares the identical "
+       "failure per a one-time manual run, disclosed but not re-verified by this check (#948)")
 def _agy_toolcall_injection():
     """docs/vendor-doc-audit.md 's "Proving the gate fired is asymmetric" section left this as
     genuinely open: the schema table documents `toolCall` as a valid `injectSteps` member, but the
@@ -3027,6 +3028,16 @@ def _agy_toolcall_injection():
     model actually listed the directory). Re-adding it to every run would double the live cost of a
     check whose own claim is that the cheap path is unavailable -- the positive control's job was to
     rule out "the harness itself cannot observe PreToolUse", which is now established.
+
+    `PostInvocation` is NOT exercised by the two arms below -- this check only measures
+    `PreInvocation`, despite the schema documenting `injectSteps` as shared between the two hook
+    points. A one-time manual run against `PostInvocation` with the identical inject payload (same
+    2026-08-03 session) hit the same internal log line this check keys on
+    (`unknown injected step type`), non-fatally rather than killing the run as the `PreInvocation`
+    arm below does. That is a real, disclosed finding -- not a re-run guarantee. A future run of
+    this check that flips PASS/FAIL says nothing about whether `PostInvocation` has also changed;
+    if the two hook points ever need to be told apart with confidence, this needs a third arm, not
+    an inference from the one manual observation recorded here.
     """
     def arm(label, preinvocation_body, prompt):
         wd = tempfile.mkdtemp(prefix="v-agytc-")

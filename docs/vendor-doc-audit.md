@@ -635,13 +635,15 @@ the documented surface above settles, and two that live measurement has now sett
   `PreToolUse`'s; `terminationBehavior` is `PostInvocation`'s.)
 - **Settled, live (`gate.agy-toolcall-injection-does-not-work`, FAIL).** The `toolCall` injected-step
   kind — *"a tool call to execute"* — is documented but **not implemented** in the installed CLI
-  (measured on 1.1.9, then re-confirmed on 1.1.10 after agy auto-updated mid-session). Measured
-  from both hook points the schema claims share it: injecting
-  `{"toolCall": {"name": "list_dir", "args": {...}}}` from `PreInvocation` kills the run outright
-  (`error in pre-invocation hook: ... unknown injected step type: <nil>`); the identical payload from
-  `PostInvocation` hits the same internal error, non-fatally. Two independent hook points, same
-  runtime rejection, no changelog entry for it ever working — this is not an unlucky invocation shape,
-  it is the vendor's own code not recognising a field its own docs list. **agy has no free way to
+  (measured on 1.1.9, then re-confirmed on 1.1.10 after agy auto-updated mid-session). The checked-in
+  check measures `PreInvocation` only: injecting `{"toolCall": {"name": "list_dir", "args": {...}}}`
+  there kills the run outright (`error in pre-invocation hook: ... unknown injected step type:
+  <nil>`). A one-time manual run against `PostInvocation` — which the schema documents as sharing the
+  identical `injectSteps` contract — hit the same internal log line, non-fatally; that observation is
+  disclosed in the check's own docstring but is not re-verified on every run, so treat it as a strong
+  corroborating data point rather than an equally-measured claim. Either way, no changelog entry
+  exists for `toolCall` injection ever working — this is not an unlucky invocation shape, it is the
+  vendor's own code not recognising a field its own docs list. **agy has no free way to
   prove the gate fired.** Any proof costs at least one real, model-driven tool call.
 - **Settled, live (`gate.sessionstart-without-a-turn`, PASS-with-scope).** No claude invocation shape
   tested produced a *successful* run reporting `num_turns: 0` — every shape that completes far enough
