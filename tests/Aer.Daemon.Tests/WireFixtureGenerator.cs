@@ -1,0 +1,144 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Aer.Daemon;
+using Aer.Flow.Domain;
+using Aer.Ui.Core;
+
+namespace Aer.Daemon.Tests;
+
+public static class WireFixtureGenerator
+{
+    public const string RelativeFixturesPath = "src/Aer.Mobile/test/fixtures/wire";
+
+    public static Dictionary<string, string> GenerateAll()
+    {
+        var fixtures = new Dictionary<string, string>();
+
+        var projection = BuildRepresentativeProjection();
+
+        // 1. TaskProjection REST (camelCase)
+        var restNode = JsonSerializer.SerializeToNode(projection, DaemonSerializerOptions.Rest)!.AsObject();
+        restNode["directoryPath"] = "C:/tasks/foo";
+        restNode["sessionId"] = "session-123";
+        var workerAdaptersRest = new JsonObject { ["critic"] = "agy" };
+        restNode["workerAdapters"] = workerAdaptersRest;
+        fixtures[Path.Combine(RelativeFixturesPath, "task_projection.rest.json")] = FormatJson(restNode, DaemonSerializerOptions.Rest);
+
+        // 2. TaskProjection WS (PascalCase envelope)
+        var wsNode = JsonSerializer.SerializeToNode(projection, DaemonSerializerOptions.WebSocket)!.AsObject();
+        wsNode["DirectoryPath"] = "C:/tasks/foo";
+        wsNode["SessionId"] = "session-123";
+        var workerAdaptersWs = new JsonObject { ["critic"] = "agy" };
+        wsNode["WorkerAdapters"] = workerAdaptersWs;
+        fixtures[Path.Combine(RelativeFixturesPath, "task_projection.ws.json")] = FormatJson(wsNode, DaemonSerializerOptions.WebSocket);
+
+        // 3. TaskFleetItem REST (camelCase)
+        var fleetItem = new TaskFleetItem(
+            "C:/Users/pbree/.aer/tasks/foo",
+            "foo",
+            "solo-run-template",
+            "Running",
+            2,
+            false,
+            new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero),
+            false);
+        fixtures[Path.Combine(RelativeFixturesPath, "fleet_item.rest.json")] = JsonSerializer.Serialize(fleetItem, IndentedOptions(DaemonSerializerOptions.Rest));
+
+        // 4. TaskFleetItem WS (PascalCase)
+        fixtures[Path.Combine(RelativeFixturesPath, "fleet_item.ws.json")] = JsonSerializer.Serialize(fleetItem, IndentedOptions(DaemonSerializerOptions.WebSocket));
+
+        return fixtures;
+    }
+
+    public static TaskProjection BuildRepresentativeProjection()
+    {
+        var snapId = new WorkflowDefinitionSnapshotId("snap-953");
+        var templateId = new WorkflowTemplateId("golden-wire-contract");
+
+        var stepPlanner = new WorkflowStepDefinition(
+            new StepId("planner"),
+            "agy",
+            [],
+            ["plan.md"],
+            [],
+            new RetryPolicy(3));
+
+        var stepCritic = new WorkflowStepDefinition(
+            new StepId("critic"),
+            "agy",
+            ["plan.md"],
+            ["review.md"],
+            [new StepId("planner")],
+            new RetryPolicy(3),
+            new PausePoint([new StepId("architect")], PausePointKind.ReadyForReview));
+
+        var stepCoder = new WorkflowStepDefinition(
+            new StepId("coder"),
+            "agy",
+            ["review.md"],
+            ["code.py"],
+            [new StepId("critic")],
+            new RetryPolicy(3));
+
+        var snapshot = new WorkflowDefinitionSnapshot(
+            snapId,
+            templateId,
+            1,
+            [stepPlanner, stepCritic, stepCoder]);
+
+        var stateSteps = new List<StepState>
+        {
+            new(
+                StepId: new StepId("planner"),
+                Status: StepStatus.Running,
+                LatestExecutionId: new ExecutionId("exec-1"),
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()),
+            new(
+                StepId: new StepId("critic"),
+                Status: StepStatus.Paused,
+                LatestExecutionId: new ExecutionId("exec-2"),
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId> { { new StepId("planner"), new ExecutionId("exec-1") } },
+                PauseRecordedForLatestExecution: true),
+            new(
+                StepId: new StepId("coder"),
+                Status: StepStatus.Failed,
+                LatestExecutionId: new ExecutionId("exec-3"),
+                UpstreamExecutionIds: new Dictionary<StepId, ExecutionId> { { new StepId("critic"), new ExecutionId("exec-2") } },
+                ConsecutiveFailureCount: 1,
+                LatestFailureClassification: FailureClassification.Permanent,
+                LatestFailureReason: "Syntax error on line 42")
+        };
+
+        var state = new FlowState(
+            WorkflowDefinitionSnapshotId: snapId,
+            Steps: stateSteps,
+            Status: WorkflowStatus.Paused);
+
+        var attempts = new Dictionary<StepId, IReadOnlyList<ExecutionAttempt>>
+        {
+            { new StepId("planner"), [new ExecutionAttempt(new ExecutionId("exec-1"), "agy", StepStatus.Running, null, false)] },
+            { new StepId("critic"), [new ExecutionAttempt(new ExecutionId("exec-2"), "agy", StepStatus.Paused, null, false)] },
+            { new StepId("coder"), [new ExecutionAttempt(new ExecutionId("exec-3"), "agy", StepStatus.Failed, FailureClassification.Permanent, false, "Syntax error on line 42")] }
+        };
+
+        var history = new ExecutionHistory(attempts, [], []);
+
+        var executions = new List<ExecutionArtifacts>
+        {
+            new(new ExecutionId("exec-1"), new StepId("planner"), "agy", ["plan.md"], []),
+            new(new ExecutionId("exec-2"), new StepId("critic"), "agy", ["review.md"], [new ArtifactInputLink("plan.md", new StepId("planner"), new ExecutionId("exec-1"))]),
+            new(new ExecutionId("exec-3"), new StepId("coder"), "agy", ["code.py"], [new ArtifactInputLink("review.md", new StepId("critic"), new ExecutionId("exec-2"))])
+        };
+
+        var lineage = new ArtifactLineage(executions);
+
+        return new TaskProjection(snapshot, state, history, lineage);
+    }
+
+    private static JsonSerializerOptions IndentedOptions(JsonSerializerOptions baseOptions) =>
+        new(baseOptions) { WriteIndented = true };
+
+    private static string FormatJson(JsonNode node, JsonSerializerOptions baseOptions) =>
+        node.ToJsonString(IndentedOptions(baseOptions));
+}

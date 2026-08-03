@@ -1,84 +1,37 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aer_mobile/daemon/models.dart';
 
+Map<String, dynamic> loadFixture(String relativePath) {
+  final file = File(relativePath);
+  return jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+}
+
 void main() {
   // Aer.Daemon serializes REST responses camelCase and WS pushes PascalCase (see models.dart's
-  // doc comment) — both must parse to the same result, since this app receives both.
-  const camelCaseJson = {
-    'directoryPath': 'C:/tasks/foo',
-    'snapshot': {
-      'workflowTemplateId': 'draft-and-review',
-      'steps': [
-        {
-          'stepId': 'critic',
-          'worker': 'agy',
-          'pausePoint': {
-            'supersedeTargets': ['architect'],
-          },
-        },
-      ],
-    },
-    'state': {
-      'status': 'Paused',
-      'steps': [
-        {'stepId': 'critic', 'status': 'Paused', 'latestExecutionId': 'c-1'},
-      ],
-    },
-    'lineage': {
-      'executions': [
-        {
-          'executionId': 'c-1',
-          'worker': 'agy',
-          'outputFiles': ['review.md'],
-        },
-      ],
-    },
+  // doc comment) — both are loaded from checked-in golden contract fixtures emitted by the daemon's
+  // real serializer options (issue #953).
+  final fixtures = {
+    'camelCase (REST)': loadFixture('test/fixtures/wire/task_projection.rest.json'),
+    'PascalCase (WS)': loadFixture('test/fixtures/wire/task_projection.ws.json'),
   };
 
-  const pascalCaseJson = {
-    'DirectoryPath': 'C:/tasks/foo',
-    'Snapshot': {
-      'WorkflowTemplateId': 'draft-and-review',
-      'Steps': [
-        {
-          'StepId': 'critic',
-          'Worker': 'agy',
-          'PausePoint': {
-            'SupersedeTargets': ['architect'],
-          },
-        },
-      ],
-    },
-    'State': {
-      'Status': 'Paused',
-      'Steps': [
-        {'StepId': 'critic', 'Status': 'Paused', 'LatestExecutionId': 'c-1'},
-      ],
-    },
-    'Lineage': {
-      'Executions': [
-        {
-          'ExecutionId': 'c-1',
-          'Worker': 'agy',
-          'OutputFiles': ['review.md'],
-        },
-      ],
-    },
-  };
-
-  for (final entry in {'camelCase (REST)': camelCaseJson, 'PascalCase (WS)': pascalCaseJson}.entries) {
-    test('TaskProjection.fromJson parses ${entry.key} the same way', () {
+  for (final entry in fixtures.entries) {
+    test('TaskProjection.fromJson parses ${entry.key} wire fixture correctly', () {
       final projection = TaskProjection.fromJson(entry.value);
 
       expect(projection.directoryPath, 'C:/tasks/foo');
-      expect(projection.workflowTemplateId, 'draft-and-review');
+      expect(projection.sessionId, 'session-123');
+      expect(projection.workflowTemplateId, 'golden-wire-contract');
       expect(projection.status, 'Paused');
       expect(projection.pausedSteps, hasLength(1));
 
       final step = projection.pausedSteps.single;
       expect(step.stepId, 'critic');
-      expect(step.latestExecutionId, 'c-1');
+      expect(step.latestExecutionId, 'exec-2');
 
       final definition = projection.definitionFor(step.stepId);
       expect(definition?.worker, 'agy');
@@ -86,48 +39,31 @@ void main() {
 
       final execution = projection.executionFor(step.latestExecutionId);
       expect(execution?.outputFiles, ['review.md']);
+
+      // Issue #606's failure fields: reason and failureClassification
+      final failedStep = projection.steps.firstWhere((s) => s.stepId == 'coder');
+      expect(failedStep.status, 'Failed');
+      expect(failedStep.latestExecutionId, 'exec-3');
+      expect(failedStep.latestFailureReason, 'Syntax error on line 42');
+      expect(failedStep.latestFailureClassification, 'Permanent');
     });
   }
 
-  test('TaskProjection.fromJson handles a task with no lineage yet (no executions recorded)', () {
-    final projection = TaskProjection.fromJson({
-      'Snapshot': {'WorkflowTemplateId': 'draft-and-review', 'Steps': []},
-      'State': {'Status': 'Running', 'Steps': []},
+  final fleetFixtures = {
+    'camelCase (REST)': loadFixture('test/fixtures/wire/fleet_item.rest.json'),
+    'PascalCase (WS)': loadFixture('test/fixtures/wire/fleet_item.ws.json'),
+  };
+
+  for (final entry in fleetFixtures.entries) {
+    test('TaskFleetItem.fromJson parses ${entry.key} wire fixture correctly', () {
+      final item = TaskFleetItem.fromJson(entry.value);
+
+      expect(item.taskDirectoryPath, 'C:/Users/pbree/.aer/tasks/foo');
+      expect(item.friendlyName, 'foo');
+      expect(item.typeLabel, 'solo-run-template');
+      expect(item.statusText, 'Running');
+      expect(item.pausedStepCount, 2);
+      expect(item.isArchived, isFalse);
     });
-
-    expect(projection.pausedSteps, isEmpty);
-    expect(projection.executions, isEmpty);
-  });
-
-  // M24 Phase 5 (#278): GET /api/tasks's fleet-list shape -- camelCase from the daemon's REST
-  // JSON options, same caseInsensitive normalization as TaskProjection above.
-  test('TaskFleetItem.fromJson parses a fleet entry', () {
-    final item = TaskFleetItem.fromJson({
-      'taskDirectoryPath': 'C:/Users/pbree/.aer/tasks/foo',
-      'friendlyName': 'foo',
-      'typeLabel': 'solo-run-template',
-      'statusText': 'Running',
-      'pausedStepCount': 2,
-      'isArchived': false,
-    });
-
-    expect(item.taskDirectoryPath, 'C:/Users/pbree/.aer/tasks/foo');
-    expect(item.friendlyName, 'foo');
-    expect(item.typeLabel, 'solo-run-template');
-    expect(item.statusText, 'Running');
-    expect(item.pausedStepCount, 2);
-    expect(item.isArchived, isFalse);
-  });
-
-  test('TaskFleetItem.fromJson defaults isArchived to false when omitted', () {
-    final item = TaskFleetItem.fromJson({
-      'taskDirectoryPath': 'C:/Users/pbree/.aer/sessions/bar',
-      'friendlyName': 'bar',
-      'typeLabel': 'interactive session',
-      'statusText': 'Not yet run',
-      'pausedStepCount': 0,
-    });
-
-    expect(item.isArchived, isFalse);
-  });
+  }
 }

@@ -1,0 +1,183 @@
+{
+  "Snapshot": {
+    "WorkflowDefinitionSnapshotId": "snap-953",
+    "WorkflowTemplateId": "golden-wire-contract",
+    "WorkflowTemplateVersion": 1,
+    "Steps": [
+      {
+        "StepId": "planner",
+        "Worker": "agy",
+        "Inputs": [],
+        "Outputs": [
+          "plan.md"
+        ],
+        "DependsOn": [],
+        "RetryPolicy": {
+          "MaxAttempts": 3,
+          "Backoff": "steady"
+        }
+      },
+      {
+        "StepId": "critic",
+        "Worker": "agy",
+        "Inputs": [
+          "plan.md"
+        ],
+        "Outputs": [
+          "review.md"
+        ],
+        "DependsOn": [
+          "planner"
+        ],
+        "RetryPolicy": {
+          "MaxAttempts": 3,
+          "Backoff": "steady"
+        },
+        "PausePoint": {
+          "SupersedeTargets": [
+            "architect"
+          ],
+          "Kind": "ReadyForReview"
+        }
+      },
+      {
+        "StepId": "coder",
+        "Worker": "agy",
+        "Inputs": [
+          "review.md"
+        ],
+        "Outputs": [
+          "code.py"
+        ],
+        "DependsOn": [
+          "critic"
+        ],
+        "RetryPolicy": {
+          "MaxAttempts": 3,
+          "Backoff": "steady"
+        }
+      }
+    ]
+  },
+  "State": {
+    "WorkflowDefinitionSnapshotId": "snap-953",
+    "Steps": [
+      {
+        "StepId": "planner",
+        "Status": "Running",
+        "LatestExecutionId": "exec-1",
+        "UpstreamExecutionIds": {},
+        "ConsecutiveFailureCount": 0,
+        "PauseRecordedForLatestExecution": false,
+        "IsPendingSupersedeTarget": false
+      },
+      {
+        "StepId": "critic",
+        "Status": "Paused",
+        "LatestExecutionId": "exec-2",
+        "UpstreamExecutionIds": {
+          "planner": "exec-1"
+        },
+        "ConsecutiveFailureCount": 0,
+        "PauseRecordedForLatestExecution": true,
+        "IsPendingSupersedeTarget": false
+      },
+      {
+        "StepId": "coder",
+        "Status": "Failed",
+        "LatestExecutionId": "exec-3",
+        "UpstreamExecutionIds": {
+          "critic": "exec-2"
+        },
+        "ConsecutiveFailureCount": 1,
+        "LatestFailureClassification": "Permanent",
+        "LatestFailureReason": "Syntax error on line 42",
+        "PauseRecordedForLatestExecution": false,
+        "IsPendingSupersedeTarget": false
+      }
+    ],
+    "Status": "Paused",
+    "StepLessExecutions": [],
+    "CancellationRequestedExecutionIds": []
+  },
+  "History": {
+    "AttemptsByStepId": {
+      "planner": [
+        {
+          "ExecutionId": "exec-1",
+          "Worker": "agy",
+          "Status": "Running",
+          "IsNonProcess": false
+        }
+      ],
+      "critic": [
+        {
+          "ExecutionId": "exec-2",
+          "Worker": "agy",
+          "Status": "Paused",
+          "IsNonProcess": false
+        }
+      ],
+      "coder": [
+        {
+          "ExecutionId": "exec-3",
+          "Worker": "agy",
+          "Status": "Failed",
+          "FailureClassification": "Permanent",
+          "IsNonProcess": false,
+          "Reason": "Syntax error on line 42"
+        }
+      ]
+    },
+    "StepLessExecutions": [],
+    "Decisions": []
+  },
+  "Lineage": {
+    "Executions": [
+      {
+        "ExecutionId": "exec-1",
+        "StepId": "planner",
+        "Worker": "agy",
+        "OutputFiles": [
+          "plan.md"
+        ],
+        "Inputs": []
+      },
+      {
+        "ExecutionId": "exec-2",
+        "StepId": "critic",
+        "Worker": "agy",
+        "OutputFiles": [
+          "review.md"
+        ],
+        "Inputs": [
+          {
+            "InputName": "plan.md",
+            "ProducerStepId": "planner",
+            "ProducerExecutionId": "exec-1"
+          }
+        ]
+      },
+      {
+        "ExecutionId": "exec-3",
+        "StepId": "coder",
+        "Worker": "agy",
+        "OutputFiles": [
+          "code.py"
+        ],
+        "Inputs": [
+          {
+            "InputName": "review.md",
+            "ProducerStepId": "critic",
+            "ProducerExecutionId": "exec-2"
+          }
+        ]
+      }
+    ]
+  },
+  "DirectoryPath": "C:/tasks/foo",
+  "SessionId": "session-123",
+  "WorkerAdapters": {
+    "critic": "agy"
+  }
+}

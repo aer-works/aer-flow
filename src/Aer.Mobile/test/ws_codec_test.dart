@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -201,9 +202,10 @@ void main() {
       final messages = <String>[];
       final sub = channel.stream.listen((msg) => messages.add(msg));
 
-      // Push text frame from server
+      // Push text frame from server (using real WS push fixture)
+      final wsFixture = File('test/fixtures/wire/task_projection.ws.json').readAsStringSync();
       final msgFrame = encodeWsFrame(
-        utf8.encode('{"DirectoryPath":"C:/task","State":{"Status":"Running"}}'),
+        utf8.encode(wsFixture),
         opcode: 0x1,
         fin: true,
         masked: false,
@@ -212,7 +214,7 @@ void main() {
 
       await pumpEventQueue();
       expect(messages, hasLength(1));
-      expect(messages[0], contains('"DirectoryPath":"C:/task"'));
+      expect(messages[0], contains('"DirectoryPath":"C:/tasks/foo"'));
 
       // Push Ping frame from server
       final pingFrame = encodeWsFrame(utf8.encode('ping-data'), opcode: 0x9, fin: true, masked: false);
