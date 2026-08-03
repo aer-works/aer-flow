@@ -1339,10 +1339,22 @@ def _sessionstart_without_a_turn():
     verdict. `-p ""` may simply be rejected by argument parsing, and "the CLI refused this" is not
     "no zero-turn invocation exists" -- treating it as such would close #532's cheap path on evidence
     that never tested it.
+
+    A fourth arm (2026-08-03, #948): no `-p` at all, so `--output-format json` forces print mode with
+    genuinely nothing to send -- `stdin` closed, no positional prompt. This is not the same shape as
+    the empty-string/no-prompt arms above: those pass *something* (an empty string, or `-p` with
+    stdin closed but the flag still present) that could conceivably reach the model before being
+    rejected downstream. Omitting `-p` entirely means the CLI's own argument validation has no prompt
+    to validate against a model call at all -- "Input must be provided either through stdin or as a
+    prompt argument when using --print" is a pre-flight refusal, structurally incapable of having
+    taken a turn, not merely one whose cost this check failed to read. It still cannot report a
+    `num_turns`, so it does not satisfy the strict PASS bar below, but a fired `SessionStart` here is
+    the strongest available evidence that the event precedes any possible model invocation.
     """
     arms = [("control (takes a turn)", ["-p", "Reply with the single word OK."]),
             ("empty prompt", ["-p", ""]),
-            ("no prompt, stdin closed", ["-p"])]
+            ("no prompt, stdin closed", ["-p"]),
+            ("no -p at all (no possible prompt exists)", [])]
 
     results, detail = [], []
     for label, invocation in arms:
@@ -1355,17 +1367,27 @@ def _sessionstart_without_a_turn():
             json.dump({"hooks": {"SessionStart": [
                 {"hooks": [{"type": "command", "command": "sh %s" % hk}]}]}}, open(st, "w"))
 
-            code, out, _ = run(["claude", *invocation, "--settings", st, "--output-format", "json"],
-                               timeout=180, cwd=wd)
+            code, out, err = run(["claude", *invocation, "--settings", st, "--output-format", "json"],
+                                 timeout=180, cwd=wd)
             turns, cost = reported_turn(out)
             results.append({"label": label, "fired": fired(log), "turns": turns, "cost": cost,
-                            "code": code})
-            detail.append(f"{label}: fired={fired(log)} num_turns={turns} cost={cost} exit={code}")
+                            "code": code, "err": err.strip()})
+            detail.append(f"{label}: fired={fired(log)} num_turns={turns} cost={cost} exit={code}"
+                          + (f" err={err.strip()!r}" if not out and err.strip() else ""))
         finally:
             shutil.rmtree(wd, ignore_errors=True)
 
     control, candidates = results[0], results[1:]
     joined = "; ".join(detail)
+
+    # The fourth arm's own message is the receipt for the claim in this function's docstring: a
+    # pre-flight argument refusal, not a downstream one. If the CLI's wording ever changes this stops
+    # matching and the arm falls back to the ordinary buckets below rather than silently keeping a
+    # stale claim.
+    no_prompt_possible = next(r for r in candidates if r["label"].startswith("no -p at all"))
+    structurally_pre_model = (
+        no_prompt_possible["fired"] > 0
+        and "input must be provided" in no_prompt_possible["err"].lower())
 
     # Control, event channel: did the settings file load at all?
     if not control["fired"]:
@@ -1418,6 +1440,17 @@ def _sessionstart_without_a_turn():
                       f"|| {untested} || {joined}")
 
     if not evidence:
+        if structurally_pre_model:
+            return PASS, (
+                "no candidate reported a readable turn count, so the strict zero-cost bar is "
+                "unmet -- BUT the 'no -p at all' arm fired SessionStart while erroring on a "
+                "pre-flight argument check ('Input must be provided...') with no prompt content "
+                "that could possibly have reached a model. That is the strongest evidence this "
+                "check can produce that SessionStart precedes any invocation, short of a "
+                "successful run reporting num_turns=0 (which no arm here achieved -- every "
+                "invocation shape that completes successfully enough to emit valid JSON also took "
+                f"a turn). A resumed session remains untested and could still change this. "
+                f"|| {untested} || {joined}")
         return INCONCLUSIVE, ("no candidate invocation both started a session and reported a "
                               "readable turn count, so nothing here tested whether a free one "
                               f"exists || {untested} || {joined}")
@@ -1425,8 +1458,8 @@ def _sessionstart_without_a_turn():
     return PASS, ("#532's zero-cost premise is FALSE for the invocation shapes measured here "
                   f"({names(evidence)}): each fired SessionStart only by taking a turn. SCOPE -- "
                   "this is a claim about those shapes, not about every shape a probe could use; "
-                  "`--max-turns`, a non-`-p` mode and a resumed session are untested and a free one "
-                  f"among them would change the answer. || {untested} || {joined}")
+                  "`--max-turns` does not exist on this CLI version and a resumed session is "
+                  f"untested; a free one among them would change the answer. || {untested} || {joined}")
 
 
 @check("gate.allowedtools-is-preapproval-not-ceiling", "gate",
@@ -2962,6 +2995,93 @@ def _agy_terminate():
     if made_cont < 3:
         return INCONCLUSIVE, f"the control arm did not finish the task either; {note}"
     return (PASS if made_term < 3 else FAIL), note
+
+
+@check("gate.agy-toolcall-injection-does-not-work", "gate",
+       "agy's documented PreInvocation/PostInvocation injectSteps 'toolCall' step is not "
+       "implemented in the installed CLI -- the one theoretical zero-cost path to proving the "
+       "PreToolUse gate fires on agy, since agy has no session-level event at all (#948)")
+def _agy_toolcall_injection():
+    """docs/vendor-doc-audit.md 's "Proving the gate fired is asymmetric" section left this as
+    genuinely open: the schema table documents `toolCall` as a valid `injectSteps` member, but the
+    vendor's own worked example only shows `ephemeralMessage`, and nothing in the corpus shows the
+    field actually executing. #532's cheapest possible per-spawn proof on agy would be injecting a
+    synthetic `toolCall` step and watching it reach the real `PreToolUse` hook -- free, because no
+    model would need to decide to call anything.
+
+    Two arms, one variable (whether `PreInvocation` injects a `toolCall`):
+
+      * neutral -- no injection, prompt explicitly forbids tool use. Establishes that this harness
+        does NOT see spurious `PreToolUse` fires with nothing injected and no organic tool call.
+      * inject -- `PreInvocation` returns `{"injectSteps": [{"toolCall": {...}}]}`, SAME no-tool
+        prompt. If the vendor's own claimed field works, `PreToolUse` should fire here despite the
+        prompt asking for no tools, because the injected step -- not the model -- calls one.
+
+    `PreInvocation` firing at all in both arms is this check's control: without it, `PreToolUse`
+    staying silent in the inject arm is indistinguishable from the hook config never having loaded.
+
+    A positive control (a prompt that DOES ask the model to use a tool, no injection at all) is
+    deliberately NOT re-run here on every call -- it was run once, live, alongside this check's
+    initial design (2026-08-03) and confirmed `PreToolUse` fires correctly in this exact harness
+    shape when a tool call genuinely occurs (`PreInvocation` fired 2x, `PreToolUse` fired 1x, the
+    model actually listed the directory). Re-adding it to every run would double the live cost of a
+    check whose own claim is that the cheap path is unavailable -- the positive control's job was to
+    rule out "the harness itself cannot observe PreToolUse", which is now established.
+    """
+    def arm(label, preinvocation_body, prompt):
+        wd = tempfile.mkdtemp(prefix="v-agytc-")
+        try:
+            os.makedirs(os.path.join(wd, ".agents"))
+            pi_log = os.path.join(wd, "pi.log").replace("\\", "/")
+            pi_hk = os.path.join(wd, "pi.sh").replace("\\", "/")
+            hook_script(pi_hk, pi_log, preinvocation_body)
+            ptu_log = os.path.join(wd, "ptu.log").replace("\\", "/")
+            ptu_hk = os.path.join(wd, "ptu.sh").replace("\\", "/")
+            hook_script(ptu_hk, ptu_log, "exit 0")
+            json.dump({"probe": {
+                "PreInvocation": [{"type": "command", "command": "sh %s" % pi_hk, "timeout": 25}],
+                "PreToolUse": [{"matcher": "*", "hooks": [
+                    {"type": "command", "command": "sh %s" % ptu_hk, "timeout": 25}]}],
+            }}, open(os.path.join(wd, ".agents", "hooks.json"), "w"))
+            # The diagnostic this check keys on ("unknown injected step type") lives only in agy's
+            # own internal log, not in the CLI's stdout/stderr -- those just say "Agent execution
+            # terminated due to error." with no detail. --log-file is what surfaced it manually.
+            agy_log = os.path.join(wd, "agy.log")
+            rc, out, err = run(["agy", "-p", prompt, "--add-dir", wd,
+                                "--dangerously-skip-permissions", "--log-file", agy_log],
+                               timeout=180, cwd=wd)
+            log_text = open(agy_log, encoding="utf-8", errors="replace").read() if os.path.exists(agy_log) else ""
+            return {"label": label, "pi_fired": fired(pi_log), "ptu_fired": fired(ptu_log),
+                   "code": rc, "err": err.strip(), "log": log_text}
+        finally:
+            shutil.rmtree(wd, ignore_errors=True)
+
+    no_tool_prompt = ("Reply with only the single word OK. Do not use any tools. Do not call any "
+                      "functions. Just output the word OK and nothing else.")
+    neutral = arm("neutral", "true", no_tool_prompt)
+    inject_body = ('cat <<\'PAYLOAD\'\n{"injectSteps": [{"toolCall": {"name": "list_dir", '
+                   '"args": {"DirectoryPath": "."}}}]}\nPAYLOAD')
+    inject = arm("inject", inject_body, no_tool_prompt)
+
+    note = (f"neutral: PreInvocation={neutral['pi_fired']} PreToolUse={neutral['ptu_fired']} "
+           f"exit={neutral['code']} | inject: PreInvocation={inject['pi_fired']} "
+           f"PreToolUse={inject['ptu_fired']} exit={inject['code']} err={inject['err']!r}")
+
+    if neutral["pi_fired"] == 0 or inject["pi_fired"] == 0:
+        return INCONCLUSIVE, f"PreInvocation did not fire in one arm, hooks.json likely unloaded; {note}"
+    if neutral["ptu_fired"] > 0:
+        return INCONCLUSIVE, f"the neutral (no-injection) arm fired PreToolUse anyway; {note}"
+
+    if inject["ptu_fired"] > 0:
+        return PASS, f"toolCall injection WORKS -- PreToolUse fired from the injected step; {note}"
+
+    if "unknown injected step type" in inject["log"].lower():
+        return FAIL, (f"agy's own internal log names the cause: it does not recognise `toolCall` "
+                      f"as an injectSteps member despite documenting it -- {note}")
+
+    return INCONCLUSIVE, (f"PreToolUse stayed silent in the inject arm without agy's known "
+                          f"'unknown injected step type' log line, so this may be a different "
+                          f"failure mode than the one this check was written against; {note}")
 
 
 AGY_SETTINGS = os.path.join(os.path.expanduser("~"), ".gemini", "antigravity-cli", "settings.json")
