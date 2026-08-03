@@ -6,30 +6,28 @@ namespace Aer.Plan.Tests;
 /// <summary>
 /// The freshness gate for <c>docs/plan.md</c> (#373). The plan is a thin index that <em>names</em>
 /// decisions and journeys but defers their status to the sources that keep it. These tests assert it
-/// cannot lie about either: the decisions it lists are exactly the ones in <c>docs/decisions/</c>
-/// (and its index), and every journey it references exists in <c>spec/journeys.md</c>. This is the
-/// build failure — not a note — that stops the plan rotting the way its GitHub-issue predecessor did
-/// (five stale claims, nothing checking). It runs in default CI because it is meant to pass.
+/// cannot lie about either: every decision it names exists in <c>docs/decisions/</c> (the index
+/// itself is generated from the records — #952, checked by <c>completeness.py</c> STEP 12), and
+/// every journey it references exists in <c>spec/journeys.md</c>. This is the build failure — not a
+/// note — that stops the plan rotting the way its GitHub-issue predecessor did (five stale claims,
+/// nothing checking). It runs in default CI because it is meant to pass.
 /// </summary>
 public class PlanConsistencyTests
 {
     [Fact]
-    public void The_plan_lists_exactly_the_decisions_that_exist_and_the_index_agrees()
+    public void Every_decision_the_plan_names_exists_on_disk()
     {
         var inPlan = FourDigits(Read("docs/plan.md"), @"decisions/(\d{4})-");
         var onDisk = DecisionFilesOnDisk();
-        var inIndex = FourDigits(Read(Path.Combine("docs", "decisions", "README.md")), @"\((\d{4})-");
 
-        // Three-way: the plan, the actual files, and the decisions index must name the same set.
-        // A decision added but not indexed, or referenced in the plan but never written, or written
-        // but dropped from the plan — any of the three drifting — fails here (the exact shape of the
-        // #283 rot, where the table stopped at 0007 while 0008/0009 shipped).
+        // Subset, not the old three-way equality: #952 retired the plan's own copy of the decision
+        // table (the index is generated from the records; completeness.py STEP 12 guards its
+        // freshness), so the plan now only *mentions* the decisions its prose leans on. What can
+        // still rot here is a mention of a record that never existed or was renamed.
+        var unknown = inPlan.Except(onDisk).ToList();
         Assert.True(
-            inPlan.SetEquals(onDisk) && onDisk.SetEquals(inIndex),
-            "Decision drift:\n"
-            + $"  docs/plan.md names:      {Show(inPlan)}\n"
-            + $"  docs/decisions/ has:     {Show(onDisk)}\n"
-            + $"  decisions/README index:  {Show(inIndex)}");
+            unknown.Count == 0,
+            $"docs/plan.md names decisions that do not exist in docs/decisions/: {Show(unknown)}");
     }
 
     [Fact]

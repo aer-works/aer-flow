@@ -423,6 +423,15 @@
           "Aer.Core": "[1.0.0, )"
         }
       },
+      "aer.mcp": {
+        "type": "Project"
+      },
+      "aer.mcp.host": {
+        "type": "Project",
+        "dependencies": {
+          "Aer.Mcp": "[0.14.0, )"
+        }
+      },
       "aer.ui": {
         "type": "Project",
         "dependencies": {
@@ -430,7 +439,6 @@
           "Aer.Ui.Core": "[0.14.0, )",
           "Avalonia": "[12.1.0, )",
           "Avalonia.Desktop": "[12.1.0, )",
-          "Avalonia.Fonts.Inter": "[12.1.0, )",
           "Avalonia.Themes.Fluent": "[12.1.0, )"
         }
       },
@@ -446,7 +454,10 @@
         }
       },
       "aer.workers.dialogue": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Aer.Mcp.Host": "[0.14.0, )"
+        }
       }
     }
   }

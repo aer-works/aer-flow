@@ -579,11 +579,25 @@ def step7_milestones():
 
 
 def step6_decisions():
-    rule("STEP 6 -- every decision record has a disposition in the audit sweep")
+    rule("STEP 6 -- every pre-audit decision record has a disposition in the audit sweep")
     d = os.path.join(ROOT, "docs", "decisions")
-    files = sorted(f for f in os.listdir(d) if re.match(r"^\d{4}-", f)) if os.path.isdir(d) else []
+    all_files = sorted(f for f in os.listdir(d) if re.match(r"^\d{4}-", f)) if os.path.isdir(d) else []
+
+    # #952: the disposition sweep is the #527 audit's own record, so its required population is the
+    # records that existed to be audited -- dated before RESTS_ON_CUTOFF (the audit's date). A
+    # record written after the audit cannot have been affected by it, and its rigor is the
+    # mandatory `Rests on` table checked below over exactly the complementary population; requiring
+    # a boilerplate "unaffected -- written post-audit" row per new record taught nothing. A file
+    # with no parseable date is required here too (fail loud, not silently exempt), matching
+    # decisions_requiring_rests_on's own posture.
+    def predates_audit(f):
+        m = re.search(r"^Date:\s*(\d{4})-(\d{2})-(\d{2})", read(f"docs/decisions/{f}"), re.M)
+        return m is None or tuple(int(x) for x in m.groups()) < RESTS_ON_CUTOFF
+
+    files = [f for f in all_files if predates_audit(f)]
     sweep = read("docs/decision-audit.md")
-    line("decision records on disk", len(files))
+    line("decision records on disk", len(all_files))
+    line("of which pre-date the #527 audit (disposition required)", len(files))
     if not sweep.strip():
         print("    !! docs/decision-audit.md not written yet -- step 6 incomplete")
         return False
@@ -615,7 +629,7 @@ def step6_decisions():
                         else f"row names none of {'/'.join(DISPOSITIONS)}"))
         elif not reason:
             bad.append((f, f"'{verb}' asserted with no reason given"))
-    line("decisions with a vocabulary disposition + reason", len(files) - len(bad), len(files))
+    line("pre-audit decisions with a vocabulary disposition + reason", len(files) - len(bad), len(files))
     for f, why in bad:
         print(f"      INCOMPLETE: {f:<52} {why}")
 
@@ -851,48 +865,28 @@ def step10_gate_citations():
     return ok
 
 
-def step11_register_pins():
-    """The two register drifts #797's inventory actually caught, made permanent checks.
+# STEP 11 (register-pin agreement) was retired by #952, which removed the hand-written copies it
+# policed instead of keeping them synchronized: decision-audit.md no longer transcribes a record
+# count (its text cites the command that computes one), and the vendor version pin lives only in
+# vendor-capabilities.md's dated history table, pointed at by the other two headers. The two #797
+# incidents that step guarded against are impossible without the copies. History: git log on this
+# comment.
 
-    Incident 1: docs/decision-audit.md's header said 41 over a 43-record register -- a
-    transcribed count over a population its own text says to compute. The header's number must
-    equal the records on disk.
 
-    Incident 2: the vendor version pins. The fix commit (git show f5d7ab1) corrected the same
-    drifted pin in THREE headers at once -- docs/vendor-capabilities.md, docs/vendor-doc-audit.md
-    and docs/vendor-coverage.md -- after one had said 1.1.7 while the measured reality was 1.1.8.
-    All three headers must agree per vendor. (Agreement, not currency: nothing here proves the
-    pinned version is the one installed today -- re-measuring is what refreshes them.)
+def step12_generated_index():
+    """#952: the decisions index is generated from the records, so there is no hand copy to drift.
+
+    The write half is `pixi run gen-register`; this runs the check half in gates and CI. A stale
+    region -- or a record whose heading/Status line no longer parses -- fails the build with the
+    regeneration command in the message.
     """
-    rule("STEP 11 -- the register pins #797's inventory caught drifting stay consistent")
-    ok = True
-
-    d = os.path.join(ROOT, "docs", "decisions")
-    on_disk = len([f for f in os.listdir(d) if re.match(r"^\d{4}-", f)]) if os.path.isdir(d) else 0
-    m = re.search(r"currently (\d+)", read("docs/decision-audit.md")[:600])
-    claimed = int(m.group(1)) if m else -1
-    ok &= line("decision-audit.md header count vs records on disk", claimed, on_disk,
-               "the header once said 41 over a 43-record register")
-
-    ver = r"(\d+(?:\.\d+)*)"  # no trailing dot: the audit header's pin ends a sentence
-    pins = {}
-    for name, sep in [("vendor-doc-audit.md", "and"), ("vendor-capabilities.md", "/"),
-                      ("vendor-coverage.md", "and")]:
-        # Collapse whitespace first: vendor-coverage.md's pin wraps across a line break.
-        head = re.sub(r"\s+", " ", read(f"docs/{name}")[:600])
-        m = re.search(rf"`claude` {ver} {sep} `agy` {ver}", head)
-        if not m:
-            print(f"    !! {name}'s header version pin is missing or reshaped -- agreement"
-                  " cannot be judged; fix the header or this pattern together")
-            return False
-        pins[name] = m.groups()
-    reference = pins["vendor-doc-audit.md"]
-    for name in ("vendor-capabilities.md", "vendor-coverage.md"):
-        ok &= line(f"claude header pin, audit vs {name.split('-')[1].split('.')[0]}",
-                   pins[name][0], reference[0], "one file drifting alone is the caught incident")
-        ok &= line(f"agy header pin, audit vs {name.split('-')[1].split('.')[0]}",
-                   pins[name][1], reference[1], "one file drifting alone is the caught incident")
-    return ok
+    rule("STEP 12 -- the generated decisions index matches the records")
+    import genregister
+    try:
+        return genregister.main(["--check"]) == 0
+    except SystemExit as e:
+        print(f"    !! {e}")
+        return False
 
 
 def _shutil_which(name):
@@ -965,7 +959,7 @@ def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
-               step9_pinned_models_exist(), step10_gate_citations(), step11_register_pins()]
+               step9_pinned_models_exist(), step10_gate_citations(), step12_generated_index()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [

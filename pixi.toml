@@ -232,6 +232,9 @@ vendor-verify = { cmd = "python -u tools/vendor-verify/verify.py" }
 # ships -- CLAUDE.md gate `record-once`. Free except step 4 (closed-issue citation check), which
 # needs `gh` and the network and skips loudly rather than failing when neither is available.
 audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py" }
+# #952: rewrites docs/decisions/README.md's generated index from the records. The check half runs
+# inside audit-completeness (STEP 12); this is the write half a dev runs after adding a record.
+gen-register = { cmd = "python -u tools/audit-completeness/genregister.py" }
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
 

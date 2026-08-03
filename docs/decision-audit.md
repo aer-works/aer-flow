@@ -1,7 +1,9 @@
 # Decision audit — every record's disposition against measured vendor reality
 
 **Started 2026-07-25 against #527's findings; kept current since.** Population: every numbered
-record in [`decisions/`](decisions/), currently 49 (counted via `ls docs/decisions/`). Disposition vocabulary is fixed —
+record in [`decisions/`](decisions/) dated on or before the audit — a later record cannot have been
+affected by it, and its rigor is its own mandatory `Rests on` table (#952). Count records via
+`ls docs/decisions/`, never a number transcribed here. Disposition vocabulary is fixed —
 `unaffected`, `amended`, `superseded`, `rewritten` — and enforced by `pixi run audit-completeness`,
 which also requires a reason in its own column and fails if any decision on disk has no row.
 

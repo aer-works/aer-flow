@@ -1,6 +1,8 @@
 # Vendor documentation audit — every documented capability, and whether we verified it
 
-Measured against `claude` 2.1.220 and `agy` 1.1.8. Read the docs, then verify each claim against the
+Measured against the #527 audit versions, pinned once in
+[`vendor-capabilities.md`](vendor-capabilities.md)'s dated history table (#952 — one pin, pointed
+at, never restated). Read the docs, then verify each claim against the
 live CLI — `vendor-capabilities.md` was built the other way (probe binaries and help text first) and
 several rows were wrong as a result, all the same shape: **a capability was recorded as absent
 because the surface checked did not mention it.** The documentation mentions it.

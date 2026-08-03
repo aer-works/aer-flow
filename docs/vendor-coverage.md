@@ -3,8 +3,8 @@
 **Purpose: mark every gap explicitly**, so "we didn't check" is never mistaken for "it isn't there."
 
 Companion to [`vendor-doc-audit.md`](vendor-doc-audit.md) (the findings) and
-[`vendor-capabilities.md`](vendor-capabilities.md) (the reference), against `claude` 2.1.220 and
-`agy` 1.1.8.
+[`vendor-capabilities.md`](vendor-capabilities.md) (the reference), against the audit versions
+pinned once in the reference's dated history table (#952).
 
 ## How coverage is established
 
