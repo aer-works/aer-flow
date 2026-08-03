@@ -583,13 +583,11 @@ def step6_decisions():
     d = os.path.join(ROOT, "docs", "decisions")
     all_files = sorted(f for f in os.listdir(d) if re.match(r"^\d{4}-", f)) if os.path.isdir(d) else []
 
-    # #952: the disposition sweep is the #527 audit's own record, so its required population is the
-    # records that existed to be audited -- dated before RESTS_ON_CUTOFF (the audit's date). A
-    # record written after the audit cannot have been affected by it, and its rigor is the
-    # mandatory `Rests on` table checked below over exactly the complementary population; requiring
-    # a boilerplate "unaffected -- written post-audit" row per new record taught nothing. A file
-    # with no parseable date is required here too (fail loud, not silently exempt), matching
-    # decisions_requiring_rests_on's own posture.
+    # #952: the required population is the records that existed to be audited -- dated before
+    # RESTS_ON_CUTOFF (the audit's date); the why lives in docs/decision-audit.md's own header.
+    # Post-audit records are covered by the `Rests on` requirement below, over exactly the
+    # complementary population. A file with no parseable date is required here too (fail loud, not
+    # silently exempt), matching decisions_requiring_rests_on's own posture.
     def predates_audit(f):
         m = re.search(r"^Date:\s*(\d{4})-(\d{2})-(\d{2})", read(f"docs/decisions/{f}"), re.M)
         return m is None or tuple(int(x) for x in m.groups()) < RESTS_ON_CUTOFF

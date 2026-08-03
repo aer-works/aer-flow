@@ -39,8 +39,8 @@ to the sources that already keep it, each with its own gate:
 **The gate.** `tests/Aer.Plan.Tests` runs in default CI and fails the build if this file drifts from
 those sources — every decision it names must exist in `docs/decisions/`, and every journey it
 references must exist in `spec/journeys.md`. The decisions index itself is generated from the
-records (#952) and `completeness.py` STEP 12 fails the build when it is stale, so there is no
-hand-written copy left for this file to disagree with. A plan that can lie about a decision or a
+records (#952, staleness caught by `completeness.py` STEP 12), so there is no hand-written copy
+left for this file to disagree with. A plan that can lie about a decision or a
 promise is a plan that rots; this is the check that stops it, the same way #314 stops the journeys'
 statuses from rotting.
 
