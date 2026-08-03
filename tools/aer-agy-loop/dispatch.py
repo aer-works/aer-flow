@@ -695,7 +695,9 @@ def build_dialogue_workflow(worker_name: str, final_output_name: str) -> dict:
 
 
 # One name, used by the contract, the workflow, and the prompt below -- a drifted copy here would
-# make the engine demand a file the prompt never asked the worker to write.
+# make the engine demand a file the prompt never asked the worker to write. #898: this is also the
+# `review` role's output name in the catalog (src/Aer.Adapters/WorkerRoles.json), checked against it
+# below rather than trusted as an independent literal -- see _validate_catalog_output_names.
 VERDICT_OUTPUT_NAME = "verdict.json"
 
 # #789: the branch diff the janitor emits and the review reads as its ground truth. One name across
@@ -703,6 +705,16 @@ VERDICT_OUTPUT_NAME = "verdict.json"
 # janitor's Outputs, ArtifactManager.FindProducer), and the janitor prompt line that writes it. A
 # drift between any two silently breaks the wiring: the engine resolves the review's input to a file
 # the janitor never wrote, or fails the janitor's own output contract.
+#
+# #898 considered sourcing this from the catalog instead of a literal, and rejected it: the engine's
+# own ArtifactManager.FindProducer resolves a step's input to a producer purely by matching this
+# string against the producer's declared Outputs -- there is no schema or marker distinguishing "the
+# diff" from the janitor's other output (janitor.md; both carry schema "none"), in the catalog or in
+# the engine. That is lane-layer wiring knowledge, not catalog-layer data, in every lane this engine
+# runs -- inventing a catalog field to avoid stating this name here would be new architecture for a
+# concept the engine doesn't have, to save one string in a tool already on the path to retirement
+# (rung 2/3 of #665). What IS catalog-layer is "does the janitor still produce an output with this
+# name" -- checked below, so a catalog rename fails loudly here instead of drifting silently.
 LANE_DIFF_OUTPUT_NAME = "branch.diff"
 
 
@@ -814,11 +826,54 @@ def _load_worker_catalog() -> dict:
             "timeout_minutes": role["timeout_minutes"],
             "verdict_schema": role["verdict_schema"],
             "_use": role["purpose"],
+            # #898: kept so VERDICT_OUTPUT_NAME/LANE_DIFF_OUTPUT_NAME below can be checked against
+            # the real catalog data rather than trusted as independent literals -- resolve()/BUILT_IN
+            # never reads this key, so it changes nothing about how a template applies to a dispatch.
+            "_outputs": role["outputs"],
         }
     return templates
 
 
+def _validate_catalog_output_names(templates: dict) -> list[str]:
+    """#898: VERDICT_OUTPUT_NAME/LANE_DIFF_OUTPUT_NAME are literals independent of the catalog
+    (src/Aer.Adapters/WorkerRoles.json) -- this is what stops a catalog rename drifting silently out
+    from under them. Pure function of `templates` (each role's `_outputs`, stashed by
+    `_load_worker_catalog`) so `_selftest` can feed it a mutated copy to prove it discriminates.
+    Returns failure descriptions; empty means the constants still name real catalog outputs.
+
+    `VERDICT_OUTPUT_NAME` is checked by name AND schema, because the catalog gives it a real marker
+    (`schema == "review_verdict"`) matching how `WorkerRoleCatalog`/`RoleDispatch` identify it in the
+    engine. `LANE_DIFF_OUTPUT_NAME` is checked by name only -- existence, not derivation -- because
+    no such marker exists for it in the catalog (both of the janitor's outputs carry schema "none");
+    see the comment above its definition for why that isn't a gap to close here.
+    """
+    failures = []
+
+    review_outputs = {o["name"]: o for o in templates["review"]["_outputs"]}
+    if VERDICT_OUTPUT_NAME not in review_outputs:
+        failures.append(
+            f"catalog's 'review' role no longer declares an output named {VERDICT_OUTPUT_NAME!r}")
+    elif review_outputs[VERDICT_OUTPUT_NAME]["schema"] != "review_verdict":
+        failures.append(
+            f"catalog's {VERDICT_OUTPUT_NAME!r} output no longer carries schema 'review_verdict'")
+
+    janitor_output_names = {o["name"] for o in templates["janitor"]["_outputs"]}
+    if LANE_DIFF_OUTPUT_NAME not in janitor_output_names:
+        failures.append(
+            f"catalog's 'janitor' role no longer declares an output named {LANE_DIFF_OUTPUT_NAME!r}")
+
+    return failures
+
+
 TEMPLATES = _load_worker_catalog()
+
+# #898: fail loudly at load, same intolerance as the duplicate-role-id check in
+# _load_worker_catalog above -- a silent drift here would make VERDICT_OUTPUT_NAME/
+# LANE_DIFF_OUTPUT_NAME point dispatch.py at files the catalog no longer promises to produce.
+_catalog_name_drift = _validate_catalog_output_names(TEMPLATES)
+if _catalog_name_drift:
+    raise ValueError(
+        "dispatch.py's output-name constants drifted from the catalog: " + "; ".join(_catalog_name_drift))
 
 # Below the gate's own floor -- a typo, a version bump, a comment fix asserting nothing -- dispatch
 # NOTHING. There is deliberately no template for that case: running a cheap reviewer out of habit is
@@ -979,15 +1034,19 @@ def denied_tool_message(artifacts_dir: Path) -> str | None:
 
 
 def _selftest() -> int:
-    """Red/green control for denied_tool_message (#912): the real agy auto-denied line is caught
-    (including after an 8 MiB stderr rollover to `.stderr.log.1`), a clean run is not, and a run with
-    no stderr logs is not.
+    """Two independent red/green controls, run together because both guard dispatch.py's own
+    correctness rather than anything a live vendor could drift on its own:
 
-    This guards the MATCHING LOGIC against regression -- it does NOT detect a live agy rewording. The
-    fixture is a frozen copy of agy's message; if agy reworded, fixture and code would stay in sync
-    with each other (green) while both drifted from reality. Catching real drift would need a live
-    probe (a vendor-verify sentinel), not this. The pinned fixture's value is that a change to the
-    matcher that broke real-message handling fails here first."""
+    1. `denied_tool_message` (#912): the real agy auto-denied line is caught (including after an
+       8 MiB stderr rollover to `.stderr.log.1`), a clean run is not, and a run with no stderr logs
+       is not. This guards the MATCHING LOGIC against regression -- it does NOT detect a live agy
+       rewording. The fixture is a frozen copy of agy's message; if agy reworded, fixture and code
+       would stay in sync with each other (green) while both drifted from reality. Catching real
+       drift would need a live probe (a vendor-verify sentinel), not this. The pinned fixture's value
+       is that a change to the matcher that broke real-message handling fails here first.
+    2. `_validate_catalog_output_names` (#898): VERDICT_OUTPUT_NAME/LANE_DIFF_OUTPUT_NAME still name
+       real outputs in the catalog dispatch.py loaded at import time, proven by mutating a copy of
+       the real catalog and confirming each of the three ways it can drift is actually caught."""
     import tempfile
 
     # The exact line agy writes when a required tool is denied in headless mode (ground truth, captured
@@ -1022,10 +1081,41 @@ def _selftest() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         if denied_tool_message(Path(tmp)) is not None:
             failures.append("false-flagged a run with no stderr logs")
+
+    # #898: red/green control for _validate_catalog_output_names. GREEN first (the real, unmutated
+    # catalog must pass); then three independent RED arms, one per failure this function can report,
+    # each proving a real drift is actually caught rather than the check being satisfied by
+    # construction. `copy.deepcopy` because TEMPLATES holds nested dicts (_outputs is a list of
+    # dicts) that a shallow copy would let a mutation reach back into.
+    import copy
+
+    if _validate_catalog_output_names(TEMPLATES):
+        failures.append("CATALOG-NAMES GREEN arm fired: real catalog output names flagged as drifted")
+
+    missing_verdict = copy.deepcopy(TEMPLATES)
+    missing_verdict["review"]["_outputs"] = [
+        o for o in missing_verdict["review"]["_outputs"] if o["name"] != VERDICT_OUTPUT_NAME]
+    if not _validate_catalog_output_names(missing_verdict):
+        failures.append("CATALOG-NAMES RED arm (verdict removed) did not fire")
+
+    reschema_verdict = copy.deepcopy(TEMPLATES)
+    for output in reschema_verdict["review"]["_outputs"]:
+        if output["name"] == VERDICT_OUTPUT_NAME:
+            output["schema"] = "none"
+    if not _validate_catalog_output_names(reschema_verdict):
+        failures.append("CATALOG-NAMES RED arm (verdict re-schema'd) did not fire")
+
+    missing_diff = copy.deepcopy(TEMPLATES)
+    missing_diff["janitor"]["_outputs"] = [
+        o for o in missing_diff["janitor"]["_outputs"] if o["name"] != LANE_DIFF_OUTPUT_NAME]
+    if not _validate_catalog_output_names(missing_diff):
+        failures.append("CATALOG-NAMES RED arm (diff removed) did not fire")
+
     if failures:
         print("aer-dispatch selftest: FAIL -- " + "; ".join(failures), file=sys.stderr)
         return 1
-    print("aer-dispatch selftest: pass (denied-tool guard discriminates)")
+    print("aer-dispatch selftest: pass (denied-tool guard discriminates; "
+          "catalog output-name check discriminates)")
     return 0
 
 
