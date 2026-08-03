@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace Aer.Flow.Workspaces;
@@ -87,23 +88,34 @@ public static class WorktreeProvisioner
             return new WorktreeTeardownResult(WorktreeTeardownOutcome.Removed, worktreePath, null);
         }
 
-        // `git status --porcelain` prints one line per dirty path and nothing at all when clean.
-        var (statusCode, statusOut, _) = RunGit(worktreePath, "status", "--porcelain");
-        if (statusCode == 0 && !string.IsNullOrWhiteSpace(statusOut))
+        try
         {
-            return new WorktreeTeardownResult(
-                WorktreeTeardownOutcome.KeptUncommitted, worktreePath,
-                "kept: the worktree carries uncommitted changes, and discarding a worker's only output " +
-                "is worse than leaving a directory behind");
-        }
+            // `git status --porcelain` prints one line per dirty path and nothing at all when clean.
+            var (statusCode, statusOut, _) = RunGit(worktreePath, "status", "--porcelain");
+            if (statusCode == 0 && !string.IsNullOrWhiteSpace(statusOut))
+            {
+                return new WorktreeTeardownResult(
+                    WorktreeTeardownOutcome.KeptUncommitted, worktreePath,
+                    "kept: the worktree carries uncommitted changes, and discarding a worker's only output " +
+                    "is worse than leaving a directory behind");
+            }
 
-        var (removeCode, _, removeErr) = RunGit(repository, "worktree", "remove", worktreePath);
-        return removeCode == 0
-            ? new WorktreeTeardownResult(WorktreeTeardownOutcome.Removed, worktreePath, null)
-            : new WorktreeTeardownResult(
-                WorktreeTeardownOutcome.RemovalBlocked, worktreePath,
-                $"removal did not complete (typically a live build process still holds a file under it): " +
-                removeErr.Trim());
+            var (removeCode, _, removeErr) = RunGit(repository, "worktree", "remove", worktreePath);
+            return removeCode == 0
+                ? new WorktreeTeardownResult(WorktreeTeardownOutcome.Removed, worktreePath, null)
+                : new WorktreeTeardownResult(
+                    WorktreeTeardownOutcome.RemovalBlocked, worktreePath,
+                    $"removal did not complete (typically a live build process still holds a file under it): " +
+                    removeErr.Trim());
+        }
+        catch (Exception ex) when (ex is WorktreeProvisioningException or IOException)
+        {
+            // The "never throws" half of the contract: a git that could not even run (missing from PATH,
+            // or a transient IO fault reading its output) becomes a reported blocked removal, never an
+            // exception out of a run that has already reached Terminal.
+            return new WorktreeTeardownResult(
+                WorktreeTeardownOutcome.RemovalBlocked, worktreePath, "removal could not run git: " + ex.Message);
+        }
     }
 
     private static (int ExitCode, string StdOut, string StdErr) RunGit(string workingDirectory, params string[] args)
@@ -120,16 +132,31 @@ public static class WorktreeProvisioner
             startInfo.ArgumentList.Add(arg);
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new WorktreeProvisioningException("could not start 'git' — is it installed and on PATH?");
+        Process process;
+        try
+        {
+            process = Process.Start(startInfo)
+                ?? throw new WorktreeProvisioningException("could not start 'git' — is it installed and on PATH?");
+        }
+        catch (Win32Exception ex)
+        {
+            // Process.Start throws (rather than returning null) when the executable is not found. Map it
+            // to the typed exception so Provision fails loud and clean, and Teardown's catch can turn it
+            // into a reported blocked removal rather than throwing out of a completed run.
+            throw new WorktreeProvisioningException(
+                $"could not start 'git' — is it installed and on PATH? ({ex.Message})");
+        }
 
         // Drain both streams concurrently before waiting: reading one to end while the other's buffer
         // fills would deadlock on a chatty git command.
-        var stdout = process.StandardOutput.ReadToEndAsync();
-        var stderr = process.StandardError.ReadToEndAsync();
-        Task.WaitAll(stdout, stderr);
-        process.WaitForExit();
-        return (process.ExitCode, stdout.Result, stderr.Result);
+        using (process)
+        {
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            Task.WaitAll(stdout, stderr);
+            process.WaitForExit();
+            return (process.ExitCode, stdout.Result, stderr.Result);
+        }
     }
 }
 
