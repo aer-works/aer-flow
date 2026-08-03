@@ -349,6 +349,10 @@ jobs:
       # real data runs inside audit-selfcheck above, where audit-controls can reach it.
       - name: No fact is explained in more than one place
         run: pixi run audit-recordonce -- origin/${{ github.base_ref || 'main' }}
+      # #469: the mobile-build WSL guard's decision, driven by fixtures so it runs off a WSL host.
+      # No build, no vendor -- reads like the audits above, so it blocks the same aggregate gate.
+      - name: mobile-build WSL guard discriminates
+        run: pixi run test-scripts
       # The live PR-body guard moved to its own workflow, .github/workflows/pr-body-lint.yml (#862),
       # so that fixing a bad body CLEARS it (it runs on `edited`; this job does not). Its logic is
       # still tested here -- `negated_close_faults`'s polarity arms run in audit-selfcheck above,

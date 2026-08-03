@@ -238,6 +238,10 @@ audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
 # Needs full history: it diffs against origin/main. See recordonce.py (#671).
 audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }
 
+# #469: verifies scripts/lib/wsl-capture.sh discriminates. Fixture-driven, so it runs anywhere the
+# guard's real WSL trigger cannot. bash is present on all three CI hosts (Git Bash on Windows).
+test-scripts = { cmd = "bash scripts/tests/mobile-build-wsl-guard.test.sh" }
+
 # Every local gate, one exit code. Report THIS command's exit status, never a per-gate line scraped
 # out of the combined output -- see tools/gates/gates.py for the two occasions that went wrong.
 gates = { cmd = "python -u tools/gates/gates.py" }
