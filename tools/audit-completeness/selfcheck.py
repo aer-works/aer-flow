@@ -1576,7 +1576,31 @@ def _vocabulary_discriminates():
         files_scanned, violations = rec.scan_tree(tmp_path)
         assert len(violations) == 1, f"planted Dart violation not caught: {violations}"
 
-    return "AXAML, C# and Dart population scanning + vocabulary-ok allowlist suppression"
+        # Literals that span lines — the per-line pass is blind inside them (#315's second
+        # reader), so the full-text pass must catch a leak on a continuation line.
+        (mobile_dir / "screen.dart").write_text("var x = 'clean';", encoding="utf-8")
+        (core_dir / "TestViewModel.cs").write_text(
+            'var x = @"line one\nthe Session leaks here";', encoding="utf-8"
+        )
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"multiline C# verbatim leak not caught: {violations}"
+
+        # A trailing comment can't sit on the opening line (it would be inside the string),
+        # so a multiline literal is allowlisted from the line above it.
+        (core_dir / "TestViewModel.cs").write_text(
+            '// vocabulary-ok: test\nvar x = @"line one\nthe Session leaks here";', encoding="utf-8"
+        )
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 0, f"allowlist failed to suppress multiline C#: {violations}"
+
+        (core_dir / "TestViewModel.cs").write_text("var x = 1;", encoding="utf-8")
+        (mobile_dir / "screen.dart").write_text(
+            "var x = '''line one\nthe lane leaks here''';", encoding="utf-8"
+        )
+        files_scanned, violations = rec.scan_tree(tmp_path)
+        assert len(violations) == 1, f"multiline Dart triple-quoted leak not caught: {violations}"
+
+    return "AXAML, C#, Dart populations + allowlist suppression + multiline literal leaks"
 
 
 def main() -> int:

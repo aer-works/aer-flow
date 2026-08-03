@@ -35,6 +35,13 @@ BANNED_PATTERNS = {
     for term in BANNED_TERMS
 }
 
+# Only the verbatim forms can span lines in C#; Dart's triple-quoted strings likewise. The
+# per-line pass cannot see into a literal that starts on one line and leaks on the next
+# (found by #315's second reader), so these run over the whole file text.
+CS_MULTILINE_STRING_RE = re.compile(r'(?:\$@"|@\$"|@")(?:[^"]|"")*"')
+
+DART_MULTILINE_STRING_RE = re.compile(r'r?"""[\s\S]*?"""|r?\'\'\'[\s\S]*?\'\'\'')
+
 CS_STRING_RE = re.compile(
     r"(?:"
     r'\$@"(?:[^"]|"")*"'
@@ -96,6 +103,31 @@ def get_dart_literals(line: str) -> list[str]:
     return [m.group(0) for m in DART_STRING_RE.finditer(clean_line)]
 
 
+def scan_multiline_literals(
+    rel_path: str,
+    text: str,
+    lines: list[str],
+    literal_re: re.Pattern[str],
+    violations: list[tuple[str, int, str, str]],
+) -> None:
+    """Scan literals that span lines; single-line literals stay the per-line pass's job.
+
+    The allowlist comment is honoured on the literal's opening line or the line above it,
+    same contract as the per-line pass.
+    """
+    for m in literal_re.finditer(text):
+        lit = m.group(0)
+        if "\n" not in lit:
+            continue
+        start_line = text.count("\n", 0, m.start()) + 1
+        prev_line = lines[start_line - 2] if start_line >= 2 else ""
+        if "vocabulary-ok:" in lines[start_line - 1] or "vocabulary-ok:" in prev_line:
+            continue
+        for term, pat in BANNED_PATTERNS.items():
+            if pat.search(lit):
+                violations.append((rel_path, start_line, term, lines[start_line - 1].strip()))
+
+
 def scan_tree(root_dir: Path) -> tuple[int, list[tuple[str, int, str, str]]]:
     """Scan AXAML, C#, and Dart populations under root_dir.
 
@@ -150,7 +182,9 @@ def scan_tree(root_dir: Path) -> tuple[int, list[tuple[str, int, str, str]]]:
         for path in cs_dir.rglob("*.cs"):
             total_files += 1
             rel_path = path.relative_to(root_dir).as_posix()
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            lines = text.splitlines()
+            scan_multiline_literals(rel_path, text, lines, CS_MULTILINE_STRING_RE, violations)
             for idx, line in enumerate(lines, 1):
                 prev_line = lines[idx - 2] if idx >= 2 else ""
                 if "vocabulary-ok:" in line or "vocabulary-ok:" in prev_line:
@@ -167,7 +201,9 @@ def scan_tree(root_dir: Path) -> tuple[int, list[tuple[str, int, str, str]]]:
         for path in mobile_dir.rglob("*.dart"):
             total_files += 1
             rel_path = path.relative_to(root_dir).as_posix()
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            lines = text.splitlines()
+            scan_multiline_literals(rel_path, text, lines, DART_MULTILINE_STRING_RE, violations)
             for idx, line in enumerate(lines, 1):
                 prev_line = lines[idx - 2] if idx >= 2 else ""
                 if "vocabulary-ok:" in line or "vocabulary-ok:" in prev_line:

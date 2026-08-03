@@ -37,8 +37,7 @@ public partial class TemplatePickerWindow : Window
     private void PopulateVendors()
     {
         var probed = VendorCliPresence.Probe();
-        // AdapterName, not BinaryName: this value becomes StartSessionRequest.Adapter, and the
-        // daemon resolves adapters by name ("gemini"), not by CLI binary ("agy").
+        // AdapterName, not BinaryName — ChatViewModel.PopulateAvailableAdapters says why.
         var available = probed.Where(p => p.IsAvailable).Select(p => p.AdapterName).ToList();
         if (available.Count == 0)
         {
