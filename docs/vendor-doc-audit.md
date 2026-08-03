@@ -623,35 +623,42 @@ prints a valid verdict and leaves any process holding that handle fails open. Re
 `sleep 6 &` and no .NET involved, and fixed by closing the handle. It is not what broke production —
 that was the quoting above — but it is a live trap for any future handler that backgrounds anything.
 
-**Proving the gate fired is asymmetric across the two vendors, and on `agy` it is UNRESOLVED
-(2026-07-28).** [#532](https://github.com/aer-works/baton/issues/532) proposes proving the
-mandatory hook can execute by probing on claude's `SessionStart` "at zero model cost". Two things the
-documented surface above settles, and one it does not:
+**Proving the gate fired is asymmetric across the two vendors, and both halves are now measured
+(2026-08-03, #948).** [#532](https://github.com/aer-works/baton/issues/532) proposes proving the
+mandatory hook can execute by probing on claude's `SessionStart` "at zero model cost". Three things
+the documented surface above settles, and two that live measurement has now settled too:
 
 - **Settled.** None of the five events is *session-level* — every one sits inside an invocation. There
   is no `SessionStart` here to probe.
 - **Settled.** `PreInvocation` fires before the model is called, but its only documented output field
   is `injectSteps`: **nothing in its contract can stop the invocation it precedes.** (`decision` is
   `PreToolUse`'s; `terminationBehavior` is `PostInvocation`'s.)
-- **NOT settled.** An injected step may be a **`toolCall`** — *"a tool call to execute"* — so the
-  documented surface does contain a route to firing `PreToolUse` before the model call. Nothing
-  documentary closes it.
+- **Settled, live (`gate.agy-toolcall-injection-does-not-work`, FAIL).** The `toolCall` injected-step
+  kind — *"a tool call to execute"* — is documented but **not implemented** in the installed CLI
+  (measured on 1.1.9, then re-confirmed on 1.1.10 after agy auto-updated mid-session). The checked-in
+  check measures `PreInvocation` only: injecting `{"toolCall": {"name": "list_dir", "args": {...}}}`
+  there kills the run outright (`error in pre-invocation hook: ... unknown injected step type:
+  <nil>`). A one-time manual run against `PostInvocation` — which the schema documents as sharing the
+  identical `injectSteps` contract — hit the same internal log line, non-fatally; that observation is
+  disclosed in the check's own docstring but is not re-verified on every run, so treat it as a strong
+  corroborating data point rather than an equally-measured claim. Either way, no changelog entry
+  exists for `toolCall` injection ever working — this is not an unlucky invocation shape, it is the
+  vendor's own code not recognising a field its own docs list. **agy has no free way to
+  prove the gate fired.** Any proof costs at least one real, model-driven tool call.
+- **Settled, live (`gate.sessionstart-without-a-turn`, PASS-with-scope).** No claude invocation shape
+  tested produced a *successful* run reporting `num_turns: 0` — every shape that completes far enough
+  to emit valid JSON also took a turn. But `SessionStart` fired on every zero-content invocation tried
+  (empty prompt, bare `-p`, no `-p` at all), and the last of those is structurally conclusive: omitting
+  `-p` entirely means the CLI has no prompt to send a model in the first place, and it still fires
+  `SessionStart` before rejecting the invocation ("Input must be provided either through stdin or as a
+  prompt argument when using --print"). `SessionStart` reliably precedes any invocation that could
+  possibly take a turn. A resumed session remains untested.
 
 An earlier version of this section asserted that "`PreToolUse` needs a tool call, which needs a turn"
-and concluded the premise was false on agy **"whatever the claude measurement returns"**. Both are
-withdrawn: the first is contradicted by the `toolCall` step kind, and the second was an absolutism
-the first was carrying.
-
-The obvious rescue does not work either. The capability table below records `❌ PreInvocation.
-injectSteps did not inject under -p` — right configuration, since `-p` is how AER dispatches agy —
-but **it does not record which step kind it injected**, and the vendor's own worked example injects
-an `ephemeralMessage`. An unobserved ephemeral message is a weaker negative than an unexecuted
-`toolCall`, so that row narrows the question without closing it. Reading it as closure would be this
-register's recurring error: a zero from a condition that may never have arisen.
-
-**What is actually owed**: a measurement of `PreInvocation.injectSteps` carrying a `toolCall` under
-`-p`. Until then agy's half of #532 is open, not settled. The claude half is separately open and is
-`gate.sessionstart-without-a-turn`, written and awaiting a live run.
+and concluded the premise was false on agy **"whatever the claude measurement returns"**. That
+reasoning was withdrawn as an unearned absolutism — but the live measurement above lands the same
+practical place by a different, evidenced route: agy still has no free path, just not for the reason
+originally claimed.
 
 An `OnSessionStartHook` does appear once in the vendor's changelog, in a note about routing lifecycle
 hooks through their Python-side `HookRouter`. That is product internals, not a `hooks.json` event —
@@ -1029,7 +1036,7 @@ An earlier section argued agy's control surface is "on several axes stronger tha
 | uncircumventable consent | ✅ `requiresUserInteraction` | ❌ `force_ask` is defeated by `--dangerously-skip-permissions` |
 | blocks despite allow rules | ✅ hook exit-2 | ✅ hook `deny` (and it surfaces the hook's reason) |
 | grant permission from a hook | — | ❌ `permissionOverrides` did not grant under `-p` |
-| inject into the trajectory | — | ❌ `PreInvocation.injectSteps` did not inject under `-p` |
+| inject into the trajectory | — | ❌ a `toolCall` step is documented but not implemented (`gate.agy-toolcall-injection-does-not-work`, §"Proving the gate fired") |
 | refuse to let the loop end | — | ✅ **`Stop.decision:"continue"` works** |
 
 agy's distinctive, working contribution is **loop control**, not permission control.
