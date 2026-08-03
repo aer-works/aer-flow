@@ -44,6 +44,10 @@ answered it.
 - **`aer decide` is called by a human, always, for every gate kind — including `ReadyForReview`.**
   No structured verdict from any worker, however well-scoped or however independently produced,
   substitutes for that call.
+  > **Amended 2026-08-03 by [0049](0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md),
+  > term 5:** "a human, always" was over-scoped — 0049 owns the corrected wording (a delegate under
+  > an explicit recorded grant may also close a gate; whoever produced the evidence never can). The
+  > bullet's remaining content stands.
 - **The delegated implementer/reviewer loop is real, valuable, and needs zero new primitives** —
   exactly the shape this session ran by hand: one workflow (implement → review, review declaring
   `PausePoint(ReadyForReview)`), the reviewer's typed verdict presented as the evidence a human weighs
