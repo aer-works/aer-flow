@@ -38,9 +38,10 @@ error: mobile-build was invoked under WSL bash, but this is a Windows checkout (
 
   Go and Flutter live on the Windows host and are not on PATH inside WSL, so the
   toolchain checks below would fail with a misleading "Go not found". `bash` resolved
-  to WSL before Git Bash. Run this under Git Bash instead:
+  to WSL before Git Bash. A Windows-style path is not runnable from this WSL prompt
+  (no `C:\` drive resolution, `\` is not a path separator here) -- switch shells instead:
 
-      "C:\Program Files\Git\bin\bash.exe" scripts/mobile-build.sh
+      Open a Git Bash window (not WSL) and run: pixi run mobile-build
 
   or make Git Bash precede WSL on PATH for the shell that runs `pixi run mobile-build`.
 WSLMSG
