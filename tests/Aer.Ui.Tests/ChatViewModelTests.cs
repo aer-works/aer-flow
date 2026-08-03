@@ -110,7 +110,7 @@ public class ChatViewModelTests
         Assert.Null(viewModel.SessionId);
         Assert.Null(viewModel.TaskDirectoryPath);
         Assert.Empty(viewModel.Messages);
-        Assert.Equal("No session open.", viewModel.HeadlineText);
+        Assert.Equal("No room open.", viewModel.HeadlineText);
         Assert.False(viewModel.IsSending);
         Assert.Null(viewModel.CurrentMode);
         Assert.False(viewModel.HasCurrentMode);

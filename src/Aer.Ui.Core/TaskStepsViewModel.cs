@@ -130,12 +130,12 @@ public sealed partial class StepItemViewModel : ObservableObject
         {
             var target = (Adapter ?? Worker).ToLowerInvariant();
             if (target.Contains("claude")) return "claude";
-            if (target.Contains("gemini")) return "gemini";
+            if (target.Contains("gemini")) return "gemini"; // vocabulary-ok: engine key
             return null;
         }
     }
 
-    public string VendorDisplay => VendorKey ?? (Adapter != null ? $"{Worker} ({Adapter})" : Worker);
+    public string VendorDisplay => VendorKey ?? (Adapter != null ? $"{Worker} ({Adapter})" : Worker); // vocabulary-ok: technical adapter setting
 
     /// <summary>Non-null exactly while this step waits at its review gate — the inline decision actions (§17 via M15's <see cref="PausedStepViewModel"/>, unchanged semantics, plain words on the buttons).</summary>
     public PausedStepViewModel? PausedStep { get; }

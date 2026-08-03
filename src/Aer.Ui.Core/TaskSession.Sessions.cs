@@ -90,7 +90,7 @@ public sealed partial class TaskSession
     {
         if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
-            return new MutationOutcome("A session turn requires the daemon, and none is reachable.");
+            return new MutationOutcome("A room turn requires the daemon, and none is reachable.");
         }
 
         try
@@ -163,7 +163,7 @@ public sealed partial class TaskSession
     {
         if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
-            return new MutationOutcome("Setting session mode requires the daemon, and none is reachable.");
+            return new MutationOutcome("Setting room mode requires the daemon, and none is reachable.");
         }
 
         try
@@ -188,7 +188,7 @@ public sealed partial class TaskSession
     {
         if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
-            return (null, "Reading session mode requires the daemon, and none is reachable.");
+            return (null, "Reading room mode requires the daemon, and none is reachable.");
         }
 
         try
@@ -219,7 +219,7 @@ public sealed partial class TaskSession
     {
         if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
-            return new MutationOutcome("Compacting a session requires the daemon, and none is reachable.");
+            return new MutationOutcome("Compacting a room requires the daemon, and none is reachable.");
         }
 
         try
@@ -249,7 +249,7 @@ public sealed partial class TaskSession
     {
         if (!await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
-            return (null, "Clearing a session requires the daemon, and none is reachable.");
+            return (null, "Clearing a room requires the daemon, and none is reachable.");
         }
 
         try
@@ -281,7 +281,7 @@ public sealed partial class TaskSession
     /// </summary>
     public async Task<SessionMetadata?> LoadSessionMetadataAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
-        var metadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
+        var metadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
         if (!File.Exists(metadataPath))
         {
             return null;

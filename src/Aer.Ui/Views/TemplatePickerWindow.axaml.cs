@@ -37,10 +37,12 @@ public partial class TemplatePickerWindow : Window
     private void PopulateVendors()
     {
         var probed = VendorCliPresence.Probe();
+        // AdapterName, not BinaryName: this value becomes StartSessionRequest.Adapter, and the
+        // daemon resolves adapters by name ("gemini"), not by CLI binary ("agy").
         var available = probed.Where(p => p.IsAvailable).Select(p => p.AdapterName).ToList();
         if (available.Count == 0)
         {
-            available = ["claude", "gemini"];
+            available = ["claude", "gemini"]; // vocabulary-ok: adapter contract keys, not display text
         }
 
         PrimaryVendorCombo.ItemsSource = available;
@@ -70,8 +72,8 @@ public partial class TemplatePickerWindow : Window
     private async void OnStartClick(object? sender, RoutedEventArgs e)
     {
         string templateId;
-        if (ChatSessionRadio.IsChecked == true) templateId = "chat-session";
-        else if (CodebaseSessionRadio.IsChecked == true) templateId = "codebase-session";
+        if (ChatSessionRadio.IsChecked == true) templateId = "chat-session"; // vocabulary-ok: template id key
+        else if (CodebaseSessionRadio.IsChecked == true) templateId = "codebase-session"; // vocabulary-ok: template id key
         else if (TwoVendorDialogueRadio.IsChecked == true) templateId = "two-vendor-dialogue";
         else if (ReviewRunRadio.IsChecked == true) templateId = "review-run";
         else templateId = "solo-run";
@@ -94,7 +96,7 @@ public partial class TemplatePickerWindow : Window
 
         try
         {
-            if (templateId == "chat-session" || templateId == "codebase-session")
+            if (templateId == "chat-session" || templateId == "codebase-session") // vocabulary-ok: template id key
             {
                 var workDir = CodebaseSessionRadio.IsChecked == true && !string.IsNullOrWhiteSpace(ProjectDirectoryBox.Text)
                     ? ProjectDirectoryBox.Text.Trim()
@@ -111,7 +113,7 @@ public partial class TemplatePickerWindow : Window
                     var outcome = await _owner.StartInteractiveSessionAsync(request).ConfigureAwait(true);
                     if (outcome.Metadata is null)
                     {
-                        ShowError(outcome.ErrorMessage ?? "Failed to start the session.");
+                        ShowError(outcome.ErrorMessage ?? "Failed to start the room.");
                         return;
                     }
 

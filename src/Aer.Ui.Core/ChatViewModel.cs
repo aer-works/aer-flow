@@ -62,7 +62,7 @@ public sealed partial class ChatViewModel : ObservableObject
     private string liveProgressText = string.Empty;
 
     [ObservableProperty]
-    private string headlineText = "No session open.";
+    private string headlineText = "No room open.";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatusText))]
@@ -191,7 +191,7 @@ public sealed partial class ChatViewModel : ObservableObject
         SessionId = null;
         TaskDirectoryPath = null;
         CurrentAdapter = null;
-        HeadlineText = "No session open.";
+        HeadlineText = "No room open.";
         StatusText = string.Empty;
         LiveProgressText = string.Empty;
         IsSending = false;
@@ -210,10 +210,12 @@ public sealed partial class ChatViewModel : ObservableObject
     public void PopulateAvailableAdapters(IReadOnlyList<VendorCliStatus>? probeResult = null)
     {
         var probed = probeResult ?? VendorCliPresence.Probe();
+        // AdapterName, not BinaryName: this value becomes StartSessionRequest.Adapter, and the
+        // daemon resolves adapters by name ("gemini"), not by CLI binary ("agy").
         var available = probed.Where(p => p.IsAvailable).Select(p => p.AdapterName).ToList();
         if (available.Count == 0)
         {
-            available = ["claude", "gemini"];
+            available = ["claude", "gemini"]; // vocabulary-ok: adapter contract keys, not display text
         }
 
         AvailableAdapters.Clear();

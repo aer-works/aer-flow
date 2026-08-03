@@ -31,7 +31,7 @@ public static class BindingsProjectionLoader
 
         if (!File.Exists(bindingsFilePath))
         {
-            throw new WorkerBindingConfigException($"No such worker-bindings file: '{bindingsFilePath}'");
+            throw new WorkerBindingConfigException($"No such worker-bindings file: '{bindingsFilePath}'"); // vocabulary-ok: technical exception message
         }
 
         return await WorkerBindingConfigParser.LoadFromFileAsync(bindingsFilePath, cancellationToken)

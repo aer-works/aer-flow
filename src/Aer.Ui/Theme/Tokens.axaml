@@ -142,6 +142,7 @@
   <!-- Vendor identity (M22 template picker): brand marks, not a semantic status, so — like Space/Type
        above — one constant mapping outside ThemeDictionaries rather than a light/dark pair. -->
   <SolidColorBrush x:Key="Vendor.Claude">#D97757</SolidColorBrush>
+  <!-- vocabulary-ok: technical resource key -->
   <SolidColorBrush x:Key="Vendor.Gemini">#4285F4</SolidColorBrush>
 
 </ResourceDictionary>

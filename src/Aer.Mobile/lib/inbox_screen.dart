@@ -74,7 +74,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         if (mounted) setState(() => _connectionError = 'Disconnected — $error');
       },
       onDone: () {
-        if (mounted) setState(() => _connectionError ??= 'Disconnected from Aer.Daemon.');
+        if (mounted) setState(() => _connectionError ??= 'Disconnected from the Baton daemon.');
       },
     );
   }
@@ -225,9 +225,9 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       final templates = (data['templates'] as List<dynamic>?) ?? [];
       final vendors = (data['availableVendors'] as List<dynamic>?) ?? [];
 
-      String selectedTemplateId = 'chat-session';
+      String selectedTemplateId = 'chat-session'; // vocabulary-ok: template id key
       String primaryVendor = 'claude';
-      String secondaryVendor = 'gemini';
+      String secondaryVendor = 'gemini'; // vocabulary-ok: vendor key
       String? selectedProjectPath;
       List<Map<String, dynamic>> knownProjects = [];
 
@@ -257,7 +257,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Start Task or Interactive Session'),
+            title: const Text('Start Room or Task'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -281,7 +281,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                       },
                     );
                   }),
-                  if (selectedTemplateId == 'codebase-session') ...[
+                  if (selectedTemplateId == 'codebase-session') ...[ // vocabulary-ok: template id key
                     const SizedBox(height: 12),
                     const Text('Select Known Project Directory:', style: TextStyle(fontWeight: FontWeight.bold)),
                     if (knownProjects.isEmpty)
@@ -309,7 +309,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   const SizedBox(height: 12),
                   TextField(
                     controller: taskNameController,
-                    decoration: const InputDecoration(labelText: 'Task / Session Name (Optional)', hintText: 'e.g. my-chat-session'),
+                    decoration: const InputDecoration(labelText: 'Room / Task Name (Optional)', hintText: 'e.g. my-room'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -321,7 +321,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   DropdownButton<String>(
                     value: primaryVendor,
                     isExpanded: true,
-                    items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames)
+                    items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames) // vocabulary-ok: vendor key
                         .map((v) => DropdownMenuItem(
                               value: v,
                               child: Row(
@@ -343,7 +343,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                     DropdownButton<String>(
                       value: secondaryVendor,
                       isExpanded: true,
-                      items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames)
+                      items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames) // vocabulary-ok: vendor key
                           .map((v) => DropdownMenuItem(
                                 value: v,
                                 child: Row(
@@ -379,10 +379,10 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   final screenNavigator = Navigator.of(context);
                   Navigator.pop(context);
                   try {
-                    if (selectedTemplateId == 'chat-session' || selectedTemplateId == 'codebase-session') {
+                    if (selectedTemplateId == 'chat-session' || selectedTemplateId == 'codebase-session') { // vocabulary-ok: template id key
                       final meta = await client.startSession(
                         adapter: primaryVendor,
-                        workingDirectory: selectedTemplateId == 'codebase-session' ? selectedProjectPath : null,
+                        workingDirectory: selectedTemplateId == 'codebase-session' ? selectedProjectPath : null, // vocabulary-ok: template id key
                         initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
                         taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
                       );
@@ -399,7 +399,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                           builder: (_) => ChatScreen(client: client, sessionId: startedSessionId, directoryPath: startedDirectoryPath),
                         ));
                       } else {
-                        messenger.showSnackBar(SnackBar(content: Text('Started session $startedSessionId')));
+                        messenger.showSnackBar(SnackBar(content: Text('Started room $startedSessionId')));
                       }
                     } else {
                       final dirPath = await client.runTemplate(
@@ -464,7 +464,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       // Best-effort probe -- the fallback list below still lets the dialog work.
     }
     if (availableVendorNames.isEmpty) {
-      availableVendorNames = ['claude', 'gemini'];
+      availableVendorNames = ['claude', 'gemini']; // vocabulary-ok: vendor key
     }
     var selectedAdapter = availableVendorNames.first;
 
@@ -528,7 +528,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
           builder: (_) => ChatScreen(client: client, sessionId: startedSessionId, directoryPath: startedDirectoryPath),
         ));
       } else {
-        messenger.showSnackBar(SnackBar(content: Text('Started session $startedSessionId')));
+        messenger.showSnackBar(SnackBar(content: Text('Started room $startedSessionId')));
       }
     } on DaemonException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
@@ -571,7 +571,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(projection == null ? 'Baton' : '$taskTitle — ${projection.status}'),
+        title: Text(projection == null ? 'Baton' : '$taskTitle — ${projection.status}'), // vocabulary-ok: internal status string
         actions: [
           IconButton(icon: const Icon(Icons.chat_bubble_outline), tooltip: 'Start new chat', onPressed: _startNewChat),
           IconButton(icon: const Icon(Icons.add), tooltip: 'Start from template', onPressed: _showTemplatePicker),
@@ -662,7 +662,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
             children: [
               const Icon(Icons.chat_bubble_outline, size: 48),
               const SizedBox(height: 16),
-              Text('Interactive session — ${projection.status.toLowerCase()}', textAlign: TextAlign.center),
+              Text('Interactive room — ${projection.status.toLowerCase()}', textAlign: TextAlign.center), // vocabulary-ok: variable interpolation
               const SizedBox(height: 16),
               FilledButton.icon(
                 icon: const Icon(Icons.open_in_new),
@@ -683,7 +683,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Nothing is waiting on you — ${projection.status.toLowerCase()}.'),
+            Text('Nothing is waiting on you — ${projection.status.toLowerCase()}.'), // vocabulary-ok: internal status string
             const SizedBox(height: 16),
             FilledButton.icon(
               icon: const Icon(Icons.add),
@@ -710,7 +710,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
           isPending: _pendingStepIds.contains(step.stepId),
           onApprove: () => _decide(step, 'Resume'),
           onReject: () => _decide(step, 'Reject'),
-          onSendBack: (targetStepId, fileName) => _decideWithReference(step, 'Supersede', targetStepId, fileName),
+          onSendBack: (targetStepId, fileName) => _decideWithReference(step, 'Supersede', targetStepId, fileName), // vocabulary-ok: decision type label
         );
       },
     );
@@ -775,7 +775,7 @@ class _PausedStepCardState extends State<_PausedStepCard> {
 
     final workerName = widget.definition?.worker ?? widget.step.stepId;
     final adapter = widget.workerAdapters[workerName];
-    final titleText = adapter != null ? '$workerName ($adapter)' : workerName;
+    final titleText = adapter != null ? '$workerName ($adapter)' : workerName; // vocabulary-ok: technical adapter setting
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -849,7 +849,7 @@ Widget _buildVendorIcon(String? adapter, {double size = 18.0}) {
   if (name.contains('claude')) {
     return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.claude));
   }
-  if (name.contains('gemini')) {
+  if (name.contains('gemini')) { // vocabulary-ok: vendor key
     return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.gemini));
   }
   return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.generic));

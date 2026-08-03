@@ -224,7 +224,7 @@ public sealed partial class RemoteViewModel : ObservableObject
             var status = await session.GetRemoteAccessStatusAsync(cancellationToken).ConfigureAwait(true);
             if (status == null)
             {
-                StatusText = "Could not reach Aer.Daemon.";
+                StatusText = "Could not reach the Baton daemon.";
                 return;
             }
 
@@ -240,7 +240,7 @@ public sealed partial class RemoteViewModel : ObservableObject
                 { IsRemote: true, HasRunningTasks: true } => "Remote access is on. A task is running — pairing still works, but the toggle is locked until it finishes.",
                 { IsRemote: true } => "Remote access is on — anyone on this network can reach it until you turn it off.",
                 { HasRunningTasks: true } => "Remote access is off. A task is running — the toggle is locked until it finishes.",
-                _ => "Remote access is off — only this computer can reach Aer.Daemon.",
+                _ => "Remote access is off — only this computer can reach the Baton daemon.",
             };
 
             if (IsRemoteEnabled)
@@ -414,7 +414,7 @@ public sealed partial class RemoteViewModel : ObservableObject
         var code = await session.GetPairingCodeAsync(cancellationToken).ConfigureAwait(true);
         if (code == null)
         {
-            ErrorText = "Could not reach Aer.Daemon for a new pairing code — will keep retrying.";
+            ErrorText = "Could not reach the Baton daemon for a new pairing code — will keep retrying.";
             return;
         }
 

@@ -237,6 +237,7 @@ audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py
 gen-register = { cmd = "python -u tools/audit-completeness/genregister.py" }
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
+audit-vocabulary = { cmd = "python -u tools/audit-completeness/vocabulary.py" }
 
 # Needs full history: it diffs against origin/main. See recordonce.py (#671).
 audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }

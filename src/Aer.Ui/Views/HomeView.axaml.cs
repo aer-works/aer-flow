@@ -35,7 +35,7 @@ public partial class HomeView : UserControl
                 // knew about. Found by running the app: a freshly created task was reachable only
                 // through the folder picker.
                 await topLevel.RefreshRecordListsAsync();
-                if (File.Exists(Path.Combine(taskPath, ".aer", "session.json")))
+                if (File.Exists(Path.Combine(taskPath, ".aer", "session.json"))) // vocabulary-ok: technical file path
                 {
                     // A chat/codebase session's initial turn is already dispatched (or about to be)
                     // by the daemon's own fire-and-forget background task -- Open, not Run, so this
@@ -47,7 +47,7 @@ public partial class HomeView : UserControl
                 else
                 {
                     var workflowPath = System.IO.Path.Combine(taskPath, "workflow.json");
-                    var bindingsPath = System.IO.Path.Combine(taskPath, "bindings.json");
+                    var bindingsPath = System.IO.Path.Combine(taskPath, "bindings.json"); // vocabulary-ok: technical file path
                     await topLevel.RunAsync(taskPath, workflowPath, bindingsPath);
                 }
             }

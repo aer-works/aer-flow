@@ -36,7 +36,7 @@
       <Border Classes="card" BorderBrush="{DynamicResource Status.NeedsYou}"
               IsVisible="{Binding Remote.ShowLanEncryptionWarning}">
         <TextBlock Classes="secondary" TextWrapping="Wrap"
-                    Text="While remote access is on, anyone on this network can reach Aer.Daemon — traffic isn't encrypted yet (that's planned for a later phase). Turn it off when you're done pairing." />
+                    Text="While remote access is on, anyone on this network can reach the Baton daemon — traffic isn't encrypted yet (that's planned for a later phase). Turn it off when you're done pairing." />
       </Border>
 
       <!-- M21 Phase 5 (#242): the Go tsnet sidecar Aer.Daemon spawns alongside the plain-LAN bind

@@ -145,7 +145,7 @@
       <DockPanel>
         <StackPanel DockPanel.Dock="Top" Margin="12,12,12,8" Spacing="{DynamicResource Space.2}">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <TextBlock Classes="body-strong" Text="Sessions" VerticalAlignment="Center" />
+            <TextBlock Classes="body-strong" Text="Rooms" VerticalAlignment="Center" />
             <Button x:Name="SwitcherRefreshButton" Classes="quiet" ToolTip.Tip="Refresh"
                     VerticalAlignment="Center">
               <Path Data="{StaticResource Icon.Refresh}" Stroke="{DynamicResource Color.TextSecondary}"
@@ -167,7 +167,7 @@
         </Button>
 
         <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
-                   Text="No tasks or sessions yet." IsVisible="{Binding Tasks.HasNoItems}" />
+                   Text="No rooms yet." IsVisible="{Binding Tasks.HasNoItems}" />
 
         <ListBox x:Name="SwitcherList" ItemsSource="{Binding Tasks.Items}"
                  SelectedItem="{Binding Tasks.CurrentItem}"

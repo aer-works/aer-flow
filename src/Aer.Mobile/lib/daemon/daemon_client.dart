@@ -308,7 +308,7 @@ class DaemonClient {
       Uri.http(host, '/api/sessions/start'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'adapter': adapter,
+        'adapter': adapter, // vocabulary-ok: payload field key
         'model': model,
         'workingDirectory': workingDirectory,
         'initialMessage': initialMessage,
@@ -332,7 +332,7 @@ class DaemonClient {
       body: jsonEncode({
         'sessionId': sessionId,
         'message': message,
-        'adapter': adapter,
+        'adapter': adapter, // vocabulary-ok: payload field key
         'model': model,
       }),
     );

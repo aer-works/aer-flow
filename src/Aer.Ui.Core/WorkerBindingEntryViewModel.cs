@@ -232,7 +232,7 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
         DialogueParticipants.Add(new DialogueParticipantEditorViewModel(NotifyDialogueParticipantsChanged, RemoveDialogueParticipant)
         {
             Role = "responder",
-            Vendor = "gemini",
+            Vendor = "gemini", // vocabulary-ok: engine key
         });
     }
 
@@ -383,7 +383,7 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
             // They do not: neither adapter reads WorkerInvocation.PermissionGrant at all, and
             // WorkerAdapterRegistryTests (#651) holds that population to IPermissionGrantTranslator.
             PermissionGrantGapWarning =
-                $"'{Adapter}' does not enforce permission grants — anything ticked here would be "
+                $"'{Adapter}' does not enforce permission grants — anything ticked here would be " // vocabulary-ok: technical setting name
                 + "ignored at dispatch, not applied. Use Advanced to set a vendor's own flags.";
             return;
         }
@@ -409,7 +409,7 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
 
         PermissionGrantGapWarning = translator.TryTranslatePermissionGrant(grant, out _, out var gapReason)
             ? string.Empty
-            : gapReason ?? "This adapter cannot express the selected permissions.";
+            : gapReason ?? "This adapter cannot express the selected permissions."; // vocabulary-ok: technical setting name
     }
 
     private PermissionGrant BuildPermissionGrant() => new(
@@ -481,7 +481,7 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
                     if (adapter is not IPermissionGrantTranslator translator)
                     {
                         entry = null;
-                        error = $"Permission grant for '{WorkerName}' can't be saved: '{Adapter}' does not "
+                        error = $"Permission grant for '{WorkerName}' can't be saved: '{Adapter}' does not " // vocabulary-ok: technical setting name
                             + "enforce permission grants, so these values would be stored as though they "
                             + "constrained the worker while being ignored at dispatch.";
                         return false;

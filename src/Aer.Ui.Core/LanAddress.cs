@@ -23,7 +23,7 @@ public static class LanAddress
     private static readonly string[] VirtualAdapterMarkers =
     [
         "virtual", "vethernet", "hyper-v", "wsl", "vmware", "virtualbox", "docker",
-        "tap-", "tap adapter", "tun", "vpn", "tailscale", "ppp", "loopback",
+        "tap-", "tap adapter", "tun", "vpn", "tailscale", "ppp", "loopback", // vocabulary-ok: OS network adapter name
     ];
 
     /// <summary>

@@ -17,14 +17,14 @@ internal static class VendorIconMap
     public static string? GeometryKeyFor(string? vendorKey) => vendorKey?.ToLowerInvariant() switch
     {
         "claude" => "Icon.Vendor.Claude",
-        "gemini" => "Icon.Vendor.Gemini",
+        "gemini" => "Icon.Vendor.Gemini", // vocabulary-ok: vendor key
         _ => "Icon.Dot",
     };
 
     public static string? ColorKeyFor(string? vendorKey) => vendorKey?.ToLowerInvariant() switch
     {
         "claude" => "Vendor.Claude",
-        "gemini" => "Vendor.Gemini",
+        "gemini" => "Vendor.Gemini", // vocabulary-ok: vendor key
         _ => "Color.TextSecondary",
     };
 }

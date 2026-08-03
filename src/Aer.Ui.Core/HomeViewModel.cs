@@ -172,8 +172,8 @@ public sealed partial class HomeViewModel : ObservableObject
         }
 
         var replyOnly = needsInputCount == 1
-            ? "1 session is waiting for your reply."
-            : $"{needsInputCount} sessions are waiting for your reply.";
+            ? "1 room is waiting for your reply."
+            : $"{needsInputCount} rooms are waiting for your reply.";
         if (reviewCount == 0)
         {
             return replyOnly;
