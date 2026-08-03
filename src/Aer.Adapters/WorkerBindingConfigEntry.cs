@@ -30,6 +30,12 @@ namespace Aer.Adapters;
 /// explicit cwd).
 /// </param>
 /// <param name="Effort">Forwarded verbatim into the resolved <see cref="WorkerInvocation"/>.</param>
+/// <param name="Worktree">
+/// When set, the worker's workspace is a git worktree the engine provisions before dispatch and tears
+/// down on Terminal (#669), rather than a pre-existing <paramref name="WorkingDirectory"/>. The two are
+/// mutually exclusive — a worker runs in exactly one place — and setting both is refused before the
+/// pump starts. Null (the default) keeps the referential-directory behaviour above.
+/// </param>
 public sealed record WorkerBindingConfigEntry(
     string Adapter,
     WorkerContract Contract,
@@ -43,4 +49,14 @@ public sealed record WorkerBindingConfigEntry(
     bool ResumeSession = false,
     bool StreamJson = false,
     string? LogFilePath = null,
-    string? Effort = null);
+    string? Effort = null,
+    WorktreeWorkspace? Worktree = null);
+
+/// <summary>
+/// A worktree workspace spec on a <see cref="WorkerBindingConfigEntry"/> (#669): the local
+/// <paramref name="Repository"/> to make a worktree of, and the <paramref name="Ref"/> (a branch or
+/// commit) to check out. The provisioning, teardown, and the local-only / Credential-Isolation
+/// rationale all live on <c>Aer.Flow.Workspaces.WorktreeProvisioner</c>; this record is only the
+/// declared intent.
+/// </summary>
+public sealed record WorktreeWorkspace(string Repository, string Ref);

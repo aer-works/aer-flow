@@ -5,6 +5,7 @@ using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
+using Aer.Flow.Workspaces;
 
 namespace Aer.Cli;
 
@@ -89,9 +90,16 @@ public static class RunCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
+
+        // #669: a binding declaring a worktree workspace is provisioned here, before resolution, and its
+        // WorkingDirectory rewritten to the provisioned tree — so everything below (and the worker) sees
+        // an ordinary directory. Idempotent across resume; torn down after the pump reaches Terminal.
+        var (provisionedConfig, provisionedWorktrees) =
+            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
+
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
+            provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
 
@@ -112,7 +120,22 @@ public static class RunCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot, resumedFromSnapshot, options.TaskDirectoryPath);
+        // Tear down provisioned worktrees only once the run is Terminal — a Paused run must keep its
+        // tree for the resume, and this deliberately runs on the success path (not in a finally) so a
+        // crashed or cancelled run leaves the worker's tree intact too. Teardown never throws; a tree
+        // kept for uncommitted changes or a blocked removal is surfaced on the result, not swallowed.
+        IReadOnlyList<WorktreeTeardownResult> worktreeTeardowns = [];
+        if (state.Status == WorkflowStatus.Terminal && provisionedWorktrees.Count > 0)
+        {
+            worktreeTeardowns =
+            [
+                .. provisionedWorktrees
+                    .Select(w => WorktreeProvisioner.Teardown(w.Repository, w.WorktreePath))
+                    .Where(r => r.Outcome != WorktreeTeardownOutcome.Removed)
+            ];
+        }
+
+        return new CommandResult(state, snapshot, resumedFromSnapshot, options.TaskDirectoryPath, worktreeTeardowns);
     }
 
     /// <summary>

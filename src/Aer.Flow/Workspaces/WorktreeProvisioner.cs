@@ -18,9 +18,6 @@ namespace Aer.Flow.Workspaces;
 /// </summary>
 public static class WorktreeProvisioner
 {
-    /// <summary>The task-directory-relative name the worktree is created under.</summary>
-    public const string WorkspaceDirectoryName = "workspace";
-
     /// <summary>
     /// The bind-time check, separated so a caller can refuse a bad spec before the pump starts rather
     /// than discovering it at dispatch (#668's class). The repository must be an absolute, fully
@@ -48,18 +45,24 @@ public static class WorktreeProvisioner
     }
 
     /// <summary>
-    /// Creates a git worktree of <paramref name="repository"/> at <paramref name="reference"/> under
-    /// <paramref name="taskDirectoryPath"/> and returns its absolute path — the value the worker's
-    /// WorkingDirectory then points at. Validates first (<see cref="ValidateSpec"/>); a git failure
-    /// (an unknown ref, a ref already checked out elsewhere) throws
+    /// Creates a git worktree of <paramref name="repository"/> at <paramref name="reference"/> at the
+    /// absolute <paramref name="worktreePath"/> — the value the worker's WorkingDirectory then points
+    /// at. The caller owns the path so a task with several workers gives each its own tree (one
+    /// worktree per worker, never shared). Validates the spec first (<see cref="ValidateSpec"/>); a git
+    /// failure (an unknown ref, a ref already checked out elsewhere) throws
     /// <see cref="WorktreeProvisioningException"/>.
     /// </summary>
-    public static string Provision(string taskDirectoryPath, string repository, string reference)
+    public static void Provision(string worktreePath, string repository, string reference)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(worktreePath);
         ValidateSpec(repository, reference);
 
-        var worktreePath = Path.Combine(taskDirectoryPath, WorkspaceDirectoryName);
+        var parent = Path.GetDirectoryName(worktreePath);
+        if (!string.IsNullOrEmpty(parent))
+        {
+            Directory.CreateDirectory(parent); // git worktree add needs the leaf's parent to exist
+        }
+
         var (exitCode, _, stderr) = RunGit(repository, "worktree", "add", worktreePath, reference);
         if (exitCode != 0)
         {
@@ -67,8 +70,6 @@ public static class WorktreeProvisioner
                 $"Provisioning a worktree of '{reference}' from '{repository}' failed (git worktree add, " +
                 $"exit {exitCode}): {stderr.Trim()}");
         }
-
-        return worktreePath;
     }
 
     /// <summary>

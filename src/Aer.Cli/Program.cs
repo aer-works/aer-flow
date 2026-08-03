@@ -138,6 +138,15 @@ try
 
     FlowStateReporter.Report(Console.Out, result);
 
+    // #669: a provisioned worktree that was kept (uncommitted changes) or could not be removed is
+    // surfaced, not swallowed — the run still succeeded, so this is an advisory on stderr.
+    foreach (var teardown in result.WorktreeTeardowns)
+    {
+        Console.Error.WriteLine(
+            $"worktree {teardown.Outcome} at {teardown.WorktreePath}"
+            + (teardown.Detail is { } detail ? $" — {detail}" : string.Empty));
+    }
+
     return result.State.Status == WorkflowStatus.Terminal && result.State.Steps.All(step => step.Status == StepStatus.Succeeded)
         ? 0
         : 1;

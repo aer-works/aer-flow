@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Aer.Flow.Workspaces;
+using Aer.Tests.Shared;
 
 namespace Aer.Flow.Tests.Workspaces;
 
@@ -42,11 +43,10 @@ public sealed class WorktreeProvisionerTests : IDisposable
     public void Provision_checks_out_the_requested_ref_into_a_new_worktree()
     {
         var (repo, reference) = CreateRepoWithBranch("committed.txt");
-        var taskDir = NewDir("task");
+        var worktree = Path.Combine(NewDir("task"), "workspace");
 
-        var worktree = WorktreeProvisioner.Provision(taskDir, repo, reference);
+        WorktreeProvisioner.Provision(worktree, repo, reference);
 
-        Assert.Equal(Path.Combine(taskDir, WorktreeProvisioner.WorkspaceDirectoryName), worktree);
         Assert.True(Directory.Exists(worktree));
         Assert.True(File.Exists(Path.Combine(worktree, "committed.txt")),
             "the ref's committed file should be checked out into the worktree");
@@ -56,17 +56,18 @@ public sealed class WorktreeProvisionerTests : IDisposable
     public void Provision_throws_a_typed_error_when_the_ref_does_not_exist()
     {
         var (repo, _) = CreateRepoWithBranch("committed.txt");
-        var taskDir = NewDir("task");
+        var worktree = Path.Combine(NewDir("task"), "workspace");
 
         Assert.Throws<WorktreeProvisioningException>(
-            () => WorktreeProvisioner.Provision(taskDir, repo, "no-such-ref"));
+            () => WorktreeProvisioner.Provision(worktree, repo, "no-such-ref"));
     }
 
     [Fact]
     public void Teardown_removes_a_clean_worktree()
     {
         var (repo, reference) = CreateRepoWithBranch("committed.txt");
-        var worktree = WorktreeProvisioner.Provision(NewDir("task"), repo, reference);
+        var worktree = Path.Combine(NewDir("task"), "workspace");
+        WorktreeProvisioner.Provision(worktree, repo, reference);
 
         var result = WorktreeProvisioner.Teardown(repo, worktree);
 
@@ -78,7 +79,8 @@ public sealed class WorktreeProvisionerTests : IDisposable
     public void Teardown_keeps_a_worktree_that_carries_uncommitted_changes()
     {
         var (repo, reference) = CreateRepoWithBranch("committed.txt");
-        var worktree = WorktreeProvisioner.Provision(NewDir("task"), repo, reference);
+        var worktree = Path.Combine(NewDir("task"), "workspace");
+        WorktreeProvisioner.Provision(worktree, repo, reference);
 
         // A worker's not-yet-committed output. Discarding it is worse than leaving a directory behind.
         File.WriteAllText(Path.Combine(worktree, "worker-output.md"), "half-written result");
@@ -94,7 +96,8 @@ public sealed class WorktreeProvisionerTests : IDisposable
     public void Teardown_reports_rather_than_throwing_when_removal_is_blocked()
     {
         var (repo, reference) = CreateRepoWithBranch("committed.txt");
-        var worktree = WorktreeProvisioner.Provision(NewDir("task"), repo, reference);
+        var worktree = Path.Combine(NewDir("task"), "workspace");
+        WorktreeProvisioner.Provision(worktree, repo, reference);
 
         // A locked worktree stands in for the real blocker (a live build process holding an output):
         // it makes `git worktree remove` fail deterministically on every platform, where a held file
@@ -172,16 +175,6 @@ public sealed class WorktreeProvisionerTests : IDisposable
             File.SetAttributes(file, FileAttributes.Normal);
         }
 
-        try
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A best-effort test cleanup; a leftover temp directory is harmless.
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        DirectoryCleanup.DeleteRecursively(_root);
     }
 }
