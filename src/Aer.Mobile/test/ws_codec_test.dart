@@ -214,7 +214,9 @@ void main() {
 
       await pumpEventQueue();
       expect(messages, hasLength(1));
-      expect(messages[0], contains('"DirectoryPath":"C:/tasks/foo"'));
+      // The channel must deliver the framed fixture byte-for-byte — equality, not a
+      // substring, so any codec mangling (truncation, re-encoding) fails loudly.
+      expect(messages[0], wsFixture);
 
       // Push Ping frame from server
       final pingFrame = encodeWsFrame(utf8.encode('ping-data'), opcode: 0x9, fin: true, masked: false);
