@@ -11,9 +11,9 @@ their words.
 
 ## Context
 
-The engine spec's §20 fenced one capability off by name: *"Any future 'watch and react
-automatically' capability is a different system built on top of this one, not a revision to this
-contract."* The room spec re-affirmed that fence by reference — while `RoomWakeBridge`
+The engine spec's §20 fenced one capability off by name: any future "watch and react automatically"
+capability would be a *"different system built on top […], not a revision to this contract"* (§20's
+own words, elided). The room spec re-affirmed that fence by reference — while `RoomWakeBridge`
 (`src/Aer.Daemon/RoomWakeBridge.cs`) ships it: a daemon-hosted loop that watches `room.jsonl`,
 derives the room's wake set, and escalates memory proposals on its own tick. The #704 audit
 (2026-08-01, on the issue) named this the one real unrecorded decision left in the spec work.

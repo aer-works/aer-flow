@@ -106,9 +106,9 @@ What actually runs, at HEAD:
   ([0049](../docs/decisions/0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md)):
   it watches `room.jsonl`, recomputes the room's wake set fresh each tick — derived state, never
   persisted, never authority — and advances human-originated held work (projection, per the #778
-  contract; origination requires a grant). Its every mutation is a journaled event through the
-  mutation interface under the room's guard, with structural attribution. What it owes — signed
-  actions, the leash, evidence-producer ≠ decider, first-class escalation — is 0049's term 4.
+  contract; origination requires a grant). Every write it makes lands as an attributed room event
+  via the one mutation surface — 0049 term 1 owns that contract, and term 4 what the loop owes
+  (signed actions, the leash, producer ≠ decider, escalation).
 - **Named clients** (`src/Aer.Ui` desktop, `src/Aer.Mobile` phone) — the engine spec's §14/§20
   "no named client architecture" posture is retired: AER ships and privileges specific first-party
   clients, and the daemon carries infrastructure (pairing, broadcast) that exists for them. What
