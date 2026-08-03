@@ -334,8 +334,17 @@ jobs:
       # registry as text. The exit code is the verdict -- never the output.
       - name: Audit register completeness
         run: pixi run audit-completeness
-      # The checkers' own checker (#630). Same job on purpose: it reads the same registers as text,
-      # needs no vendor and no build, and a failure has to block the same aggregate `ci` gate.
+      # audit-selfcheck below is no longer .NET-free: since #887 the role catalog's one source
+      # is the engine (`aer templates --json`), and selfcheck's catalog checks consume it. This
+      # builds ONLY Aer.Cli -- no native lib, no sidecar, no cargo (see pixi.toml's build-cli).
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+      - name: Build the CLI the selfcheck reads the catalog through
+        run: pixi run build-cli
+      # The checkers' own checker (#630). Same job on purpose: it reads the same registers as
+      # text -- plus, since #887, the engine catalog via the CLI built above -- needs no vendor,
+      # and a failure has to block the same aggregate `ci` gate.
       - name: Assert the tooling's enumerable surfaces
         run: pixi run audit-selfcheck
       # Proves the step above discriminates, by breaking what each assertion checks and requiring it
