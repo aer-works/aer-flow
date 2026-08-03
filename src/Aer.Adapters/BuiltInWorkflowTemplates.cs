@@ -1,9 +1,28 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Aer.Flow.Domain;
 using Aer.Flow.Templates;
 using Aer.Workers.Dialogue;
 
 namespace Aer.Adapters;
+
+public sealed record RoleTemplateOutputExport(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("schema")] string Schema,
+    [property: JsonPropertyName("instruction")] string Instruction);
+
+public sealed record RoleTemplateExport(
+    [property: JsonPropertyName("adapter")] string Adapter,
+    [property: JsonPropertyName("model")] string? Model,
+    [property: JsonPropertyName("effort")] string? Effort,
+    [property: JsonPropertyName("read_files")] bool ReadFiles,
+    [property: JsonPropertyName("write_files")] bool WriteFiles,
+    [property: JsonPropertyName("run_shell_commands")] bool RunShellCommands,
+    [property: JsonPropertyName("network_access")] bool NetworkAccess,
+    [property: JsonPropertyName("timeout_minutes")] int TimeoutMinutes,
+    [property: JsonPropertyName("verdict_schema")] bool VerdictSchema,
+    [property: JsonPropertyName("_use")] string Use,
+    [property: JsonPropertyName("_outputs")] IReadOnlyList<RoleTemplateOutputExport> Outputs);
 
 /// <summary>
 /// Information describing a built-in workflow template (M22 Phase 1).
@@ -51,7 +70,69 @@ public static class BuiltInWorkflowTemplates
         Description: "Two-step workflow where one AI worker drafts content and another AI worker reviews it with human sign-off.",
         RequiresSecondaryVendor: true);
 
-    public static IReadOnlyList<BuiltInTemplateInfo> Catalog { get; } = [ChatSession, CodebaseSession, TwoVendorDialogue, SoloRun, ReviewRun];
+    public static readonly BuiltInTemplateInfo Advise = new(
+        Id: "advise",
+        Title: "Advise Role",
+        Description: "Open design question with real options to weigh, BEFORE building. Cross-vendor on purpose: a second opinion from the same family that wrote the code is one instrument twice.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo Implement = new(
+        Id: "implement",
+        Title: "Implement Role",
+        Description: "A bounded change with the approach already decided. Exercises the write path and agy's skip-permissions translation, which is the half of AER that review-only dispatches never touch.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo Review = new(
+        Id: "review",
+        Title: "Review Role",
+        Description: "Adversarial review of CLAIMS -- a decision record, a measured finding, anything whose rationale asserts something. The default for any PR touching src/ or making a claim in docs/.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo FactCheck = new(
+        Id: "fact-check",
+        Title: "Fact-Check Role",
+        Description: "'Confirm these specific facts against the repo.' Handed an exhaustive list, so the list determines the work and a cheap model runs it. NOT for anything where noticing something absent from the list is the point.",
+        RequiresSecondaryVendor: false);
+
+    public static readonly BuiltInTemplateInfo Janitor = new(
+        Id: "janitor",
+        Title: "Janitor Role",
+        Description: "After an implementer commits: run the named mechanical checkers and make them green without changing behavior (#729). The canonical brief is janitor-prompt.md next to dispatch.py -- pass it via --prompt-file rather than restating the contract.",
+        RequiresSecondaryVendor: false);
+
+    public static IReadOnlyList<BuiltInTemplateInfo> Catalog { get; } = [
+        ChatSession, CodebaseSession, TwoVendorDialogue, SoloRun, ReviewRun,
+        Advise, Implement, Review, FactCheck, Janitor
+    ];
+
+    public static IReadOnlyDictionary<string, RoleTemplateExport> GetRoleTemplates()
+    {
+        var roles = WorkerRoleCatalog.All;
+        var dict = new Dictionary<string, RoleTemplateExport>(StringComparer.Ordinal);
+        foreach (var role in roles)
+        {
+            dict[role.Id] = new RoleTemplateExport(
+                Adapter: role.Adapter,
+                Model: role.Model,
+                Effort: role.Effort,
+                ReadFiles: role.Grant.ReadFiles,
+                WriteFiles: role.Grant.WriteFiles,
+                RunShellCommands: role.Grant.RunShellCommands,
+                NetworkAccess: role.Grant.NetworkAccess,
+                TimeoutMinutes: (int)role.Timeout.TotalMinutes,
+                VerdictSchema: role.ProducesVerdict,
+                Use: role.Purpose,
+                Outputs: role.Outputs.Select(o => new RoleTemplateOutputExport(
+                    Name: o.Name,
+                    Schema: o.Schema switch
+                    {
+                        OutputSchema.ReviewVerdict => "review_verdict",
+                        _ => "none",
+                    },
+                    Instruction: o.Instruction)).ToList());
+        }
+        return dict;
+    }
 
     /// <summary>
     /// Materializes a built-in template's <see cref="WorkflowDefinition"/> and worker bindings.
@@ -233,6 +314,41 @@ public static class BuiltInWorkflowTemplates
                     PromptTemplate: string.IsNullOrWhiteSpace(secondaryCustomPrompt) ? "Review draft.md carefully, provide feedback and recommendations, and write to report.md." : secondaryCustomPrompt,
                     Timeout: TimeSpan.FromMinutes(10),
                     PermissionGrant: defaultGrant)
+            };
+
+            return (definition, bindings);
+        }
+
+        var role = WorkerRoleCatalog.All.FirstOrDefault(r => string.Equals(r.Id, templateId, StringComparison.OrdinalIgnoreCase));
+        if (role is not null)
+        {
+            var definition = new WorkflowDefinition(
+                WorkflowTemplateId: new WorkflowTemplateId($"{role.Id}-template"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(
+                        StepId: new StepId(role.Id),
+                        Worker: $"{role.Id}-worker",
+                        Inputs: [],
+                        Outputs: role.Outputs.Select(o => o.Name).ToList(),
+                        DependsOn: [],
+                        RetryPolicy: new RetryPolicy(3),
+                        PausePoint: null)
+                ]);
+
+            var bindings = new Dictionary<string, WorkerBindingConfigEntry>
+            {
+                [$"{role.Id}-worker"] = new WorkerBindingConfigEntry(
+                    Adapter: string.IsNullOrWhiteSpace(primaryAdapter) ? role.Adapter : primaryAdapter,
+                    Contract: new WorkerContract(
+                        WorkerName: $"{role.Id}-worker",
+                        RequiredInputs: [],
+                        ProducedOutputs: role.Outputs.Select(o => new ProducedOutput(o.Name)).ToList(),
+                        OptionalMetadata: []),
+                    PromptTemplate: string.IsNullOrWhiteSpace(customPrompt) ? role.Purpose : customPrompt,
+                    Timeout: role.Timeout,
+                    PermissionGrant: role.Grant)
             };
 
             return (definition, bindings);

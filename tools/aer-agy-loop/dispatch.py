@@ -797,41 +797,41 @@ def _worker_catalog_path(env_var: str, override_name: str, default_name: str) ->
     return Path(__file__).resolve().parents[2] / "src" / "Aer.Adapters" / default_name
 
 
-def _load_worker_catalog() -> dict:
-    """Build the TEMPLATES dict (role id -> resolved settings) from the shared roles + tiers JSON.
+def _load_worker_catalog(cli_path: Path | None = None) -> dict:
+    """#887 Stage 1: Load the template catalog directly from the engine (`aer templates --json`).
 
-    A role names a tier; the tier supplies adapter/model/effort. A role naming an undefined tier is a
-    loud KeyError, not a silent default -- the same intolerance `resolve()`/BUILT_IN gave the old
-    literal, now enforced by the join rather than by every literal spelling out every key."""
-    tiers = json.loads(_worker_catalog_path(
-        "AER_WORKER_TIERS_PATH", "worker-tiers.json", "WorkerTiers.json").read_text(encoding="utf-8"))
-    roles = json.loads(_worker_catalog_path(
-        "AER_WORKER_ROLES_PATH", "worker-roles.json", "WorkerRoles.json").read_text(encoding="utf-8"))
-    templates = {}
-    for role in roles:
-        tier = tiers[role["tier"]]
-        role_id = role["id"]
-        if role_id in templates:
-            # Loud, matching WorkerRoleCatalog's C# side (#888 finding): a plain dict would let a
-            # duplicate silently overwrite, so dispatch would serve a different role than intended.
-            raise ValueError(f"Duplicate worker role id {role_id!r} in the catalog.")
-        templates[role_id] = {
-            "adapter": tier["adapter"],
-            "model": tier.get("model"),
-            "effort": tier.get("effort"),
-            "read_files": role["read_files"],
-            "write_files": role["write_files"],
-            "run_shell_commands": role["run_shell_commands"],
-            "network_access": role["network_access"],
-            "timeout_minutes": role["timeout_minutes"],
-            "verdict_schema": role["verdict_schema"],
-            "_use": role["purpose"],
-            # #898: kept so VERDICT_OUTPUT_NAME/LANE_DIFF_OUTPUT_NAME below can be checked against
-            # the real catalog data rather than trusted as independent literals -- resolve()/BUILT_IN
-            # never reads this key, so it changes nothing about how a template applies to a dispatch.
-            "_outputs": role["outputs"],
-        }
-    return templates
+    Fails loudly if Aer.Cli.exe is not built or if the emitted JSON shape is unexpected. Never
+    falls back to a stale copy or commented-out literal (record-once discipline).
+    """
+    if cli_path is None:
+        repo_root = Path(__file__).resolve().parents[2]
+        cli_path = _default_cli_path(repo_root)
+
+    if not cli_path.exists():
+        raise RuntimeError(
+            f"error: aer engine CLI binary not found at '{cli_path}'. Build it first with: pixi run build"
+        )
+
+    try:
+        proc = subprocess.run(
+            [str(cli_path), "templates", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        data = json.loads(proc.stdout)
+    except Exception as ex:
+        raise RuntimeError(
+            f"error: failed to load template catalog via '{cli_path} templates --json': {ex}. Build the engine first with: pixi run build"
+        ) from ex
+
+    required_roles = {"advise", "implement", "review", "fact-check", "janitor"}
+    if not isinstance(data, dict) or not required_roles.issubset(data.keys()):
+        raise RuntimeError(
+            f"error: '{cli_path} templates --json' emitted invalid catalog JSON shape. Rebuild the engine with: pixi run build"
+        )
+
+    return data
 
 
 def _validate_catalog_output_names(templates: dict) -> list[str]:
@@ -1111,11 +1111,20 @@ def _selftest() -> int:
     if not _validate_catalog_output_names(missing_diff):
         failures.append("CATALOG-NAMES RED arm (diff removed) did not fire")
 
+    # #887 Stage 1: RED arm proving loader fails loudly on missing CLI binary.
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            _load_worker_catalog(cli_path=Path(tmp) / "missing_aer.exe")
+            failures.append("CATALOG-LOADER RED arm (missing binary) did not fire")
+        except RuntimeError:
+            pass  # Loud failure expected
+
     if failures:
         print("aer-dispatch selftest: FAIL -- " + "; ".join(failures), file=sys.stderr)
         return 1
     print("aer-dispatch selftest: pass (denied-tool guard discriminates; "
-          "catalog output-name check discriminates)")
+          "catalog output-name check discriminates; "
+          "catalog loader check discriminates)")
     return 0
 
 

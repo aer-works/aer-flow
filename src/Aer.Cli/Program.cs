@@ -44,7 +44,7 @@ if (args.Length >= 1 && args[0] == "agy-hook-check")
     return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools, agyOutputDir, agyWorkspaceDir);
 }
 
-var knownSubcommands = new[] { "run", "dispatch", "cancel", "decide", "supply", "status" };
+var knownSubcommands = new[] { "run", "dispatch", "cancel", "decide", "supply", "status", "templates" };
 if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
 {
     Console.Error.WriteLine(RunOptionsParser.Usage);
@@ -58,6 +58,7 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
         "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine("       aer status <task-dir> [--follow]");
+    Console.Error.WriteLine("       aer templates [--json]");
     Console.Error.WriteLine("       aer --version");
     Console.Error.WriteLine();
     Console.Error.WriteLine($"  {RunOptionsParser.ResumeNote}");
@@ -88,6 +89,11 @@ try
         var statusOptions = StatusOptionsParser.Parse(args[1..]);
         await StatusCommand.ExecuteAsync(statusOptions, Console.Out, hostStopSource.Token).ConfigureAwait(false);
         return 0;
+    }
+
+    if (args[0] == "templates")
+    {
+        return await TemplatesCommand.ExecuteAsync(args[1..], Console.Out, hostStopSource.Token).ConfigureAwait(false);
     }
 
     CommandResult result;

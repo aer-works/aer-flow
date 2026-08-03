@@ -10,12 +10,37 @@ public class BuiltInWorkflowTemplatesTests
     public void Catalog_ContainsSoloAndReviewRunTemplates()
     {
         var catalog = BuiltInWorkflowTemplates.Catalog;
-        Assert.Equal(5, catalog.Count);
+        Assert.Equal(10, catalog.Count);
         Assert.Contains(catalog, t => t.Id == "chat-session");
         Assert.Contains(catalog, t => t.Id == "codebase-session");
         Assert.Contains(catalog, t => t.Id == "two-vendor-dialogue");
         Assert.Contains(catalog, t => t.Id == "solo-run");
         Assert.Contains(catalog, t => t.Id == "review-run");
+        Assert.Contains(catalog, t => t.Id == "advise");
+        Assert.Contains(catalog, t => t.Id == "implement");
+        Assert.Contains(catalog, t => t.Id == "review");
+        Assert.Contains(catalog, t => t.Id == "fact-check");
+        Assert.Contains(catalog, t => t.Id == "janitor");
+    }
+
+    [Fact]
+    public void GetRoleTemplates_ContainsFiveRoleTemplates_WithValidFields()
+    {
+        var roles = BuiltInWorkflowTemplates.GetRoleTemplates();
+        Assert.Equal(5, roles.Count);
+        Assert.True(roles.ContainsKey("advise"));
+        Assert.True(roles.ContainsKey("implement"));
+        Assert.True(roles.ContainsKey("review"));
+        Assert.True(roles.ContainsKey("fact-check"));
+        Assert.True(roles.ContainsKey("janitor"));
+
+        foreach (var (id, role) in roles)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(role.Adapter));
+            Assert.False(string.IsNullOrWhiteSpace(role.Use));
+            Assert.InRange(role.TimeoutMinutes, 1, 120);
+            Assert.NotEmpty(role.Outputs);
+        }
     }
 
     [Fact]
