@@ -64,12 +64,18 @@ intent, irreversible actions, large spend still reach the human. The **enforceme
 at the daemon's tool boundary — the orchestrator's verbs (dispatch, decide, status, artifacts) are
 AER-exposed tools and AER checks the grant before executing, identically whichever vendor is
 speaking. Vendor-native permission machinery is per-vendor defense-in-depth, never the contract —
-the vendors are measurably asymmetric there and no uniform contract can rest on them.
+the uniform-enforcement *mechanisms* differ measurably (`--permission-prompt-tool` honoured on
+claude, rejected by agy; MCP wiring is per-invocation flags on claude, a machine-global config file
+on agy), and AER's own agy hook today inspects tool names only — an AER implementation gap, not a
+vendor limit: agy's hook payload carries full tool arguments, a framing #659 itself already
+corrected once.
 
 **4. What the loop and the orchestrator owe** (the contract terms, plain):
 
 - **Signed actions** — every autonomous mutation carries decider identity and the grant it acted
-  under; "who decided this and were they allowed to" is answerable from the ledger alone.
+  under; "who decided this and were they allowed to" is answerable from the ledger alone. **Owed,
+  not yet held at HEAD**: `HeldWorkDispatched` carries a decider identity but no grant field, and
+  the sweep passes a hardcoded constant identity — rung 5 builds the rest (see Rests on).
 - **The leash** — per-room bounds on concurrent dispatches and wake rate. Wake delivery to the
   orchestrator is event-driven and debounced, never per-poll-tick; an idle orchestrator at zero
   authority spends nothing (wakes route to humans exactly as today).
@@ -79,14 +85,16 @@ the vendors are measurably asymmetric there and no uniform contract can rest on 
 - **Escalation is a first-class outcome** — at the edge of its grant the orchestrator hands the
   pause up rather than failing or guessing.
 
-**5. Amendment to 0038.** Its core insight stands and is the third term above: the evidence
-producer's verdict never closes its own gate, and a *consulted* opinion never accumulates into a
-resolution (0019 untouched — consulting is still not deciding). What 0038 over-scoped is "a human,
-always": the corrected rule is that a gate is closed by **a human, or by a delegate acting within an
+**5. Amendment to 0038 and 0019.** Their core insight stands and is the third term above: the
+evidence producer's verdict never closes its own gate, and a *consulted* opinion never accumulates
+into a resolution — consulting is still not deciding. What both over-scoped is the same phrase:
+0038's "a human, always" and 0019's "only the operator's answer closes a gate" (0038 derived its
+rule from 0019's, so correcting one without the other would leave the contradiction one document
+deep — each now carries a dated note): the corrected rule is that a gate is closed by **a human, or by a delegate acting within an
 explicit, scoped, recorded, revocable grant — and never by the evidence producer**. A grant is not
 consultation; it is the human's answer given in advance and scoped, on the model of the operator's
 own standing mandate to the assistant (named escalation triggers, revocable). #778's 2026-07-30
-correction already recorded this; 0038's text is hereby reconciled to it.
+correction already recorded this; 0038's and 0019's texts are hereby reconciled to it.
 
 **6. Vendor readiness is a prerequisite surface.** Everything above runs on live subscriptions:
 connected / authenticated / has-quota is knowable per vendor, shown to the user in the room, and an
@@ -100,7 +108,9 @@ critical path; #802 defines behavior when quota blocks a step.
 |---|---|---|
 | Resumable sessions exist on both vendors (`claude --resume`/`--continue`; `agy --continue`/`--conversation <id>`, resume key handed at gate time) | **measured** — `docs/vendor-capabilities.md` | the resident-orchestrator session design becomes vendor-specific, breaking term 3's parity |
 | MCP tools work on both vendors, including a blocking tool holding a turn open | **measured** — `docs/vendor-capabilities.md` ("A blocking MCP tool holds a turn open — on both vendors") | the AER-owned tool boundary cannot be the uniform enforcement point |
-| Vendor-native permission machinery is asymmetric: `--permission-prompt-tool` honoured on claude, rejected by agy; agy hooks decide by tool name only | **measured** — `docs/vendor-capabilities.md`, #659, #623 | vendor-native enforcement could carry the contract and term 3's split would be unnecessary caution |
+| The uniform-enforcement mechanisms are asymmetric: `--permission-prompt-tool` honoured on claude, rejected by agy; agy's MCP config is a machine-global file, not per-invocation flags | **measured** — `docs/vendor-capabilities.md` | vendor-native enforcement could carry the contract and term 3's split would be unnecessary caution |
+| The tool-name-only scoping limit on agy is AER's own hook (`AgyHookCheckCommand` does not inspect arguments); agy's hook payload carries full tool arguments | **recorded** — #659's own corrected framing (the "vendor can't" version shipped once and was corrected there) | agy defense-in-depth is capped by the vendor after all, and #659's hook upgrade buys less than planned |
+| Term 4's signed-actions claim is an obligation, not a description of HEAD: `HeldWorkDispatched` records decider identity but no grant field, and the sweep's identity is `MemoryProposalEscalation.DefaultDeciderIdentity`, a constant | **measured** — `RoomMutationInterface.cs` (event shape), `MemoryProposalEscalation.cs` (constant), read 2026-08-03 | the ledger already answers "were they allowed to" and rung 5's signed-actions build is already done |
 | `RoomWakeBridge`'s autonomous mutation goes through the mutation interface under the room's guard, with structural attribution | **measured** — `RoomWakeBridge.cs` §#878 doc comment and `MemoryProposalEscalation`, read 2026-08-03 | term 1's "the loop is a client of the engine" claim needs code changes, not just recording |
 | The wake set is derived fresh each tick and never persisted | **measured** — `RoomWakeBridgeState` doc comment (identical set on restart) | the determinism story needs more than "derived state is never authority" |
 | An always-present orchestrator at zero authority costs nothing while idle | **design intent, unmeasured** — depends on wake delivery never spending a model turn outside the grant (term 4's leash) | "always present" carries a standing cost and the existence-vs-authority dial needs a cost story before shipping |
@@ -126,10 +136,12 @@ grant beyond the floor is honest to offer.
 
 **Does not change** the engine spec §§3–18, Architecture Rule 1 (the orchestrator's judgment lives
 in a worker; routing stays structured), the 2026-08-01 projection/origination line, the 2026-07-30
-occupant-portability constraint (role stays room-owned and occupant-independent), or 0019.
+occupant-portability constraint (role stays room-owned and occupant-independent), or 0019's
+anti-consultation content — a consulted opinion still never closes a gate.
 
 **Relates to** [0038](0038-a-reviewer-verdict-never-calls-aer-decide.md) (amended),
-[0019](0019-consulting-is-not-deciding.md) (untouched, reaffirmed),
+[0019](0019-consulting-is-not-deciding.md) (amended in the same narrowing; its anti-consultation
+core reaffirmed),
 [0046](0046-a-room-is-a-container.md) (the container this presence lives in),
 [0026](0026-running-out-of-plan-is-a-state-not-a-failure.md) (term 6's build),
 [0012](0012-what-aer-flow-is.md) (the room worldview), and the #778 register (extended).

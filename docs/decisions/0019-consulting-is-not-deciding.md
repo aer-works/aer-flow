@@ -40,6 +40,13 @@ pending decision is untouched by all of it. Their answers arrive as turns in the
 alongside the original. You can ask three and have decided nothing. **Nothing but your answer closes
 the gate** — not a consulted worker agreeing, not all of them agreeing.
 
+> **Amended 2026-08-03 by [0049](0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md),
+> term 5 — the same narrowing applied to 0038:** "only the operator's answer" was over-scoped in the
+> same way. What this record actually establishes — consultation never closes a gate, however many
+> consulted opinions agree — stands in full. Who else besides the operator may close one (a
+> delegate under an explicit recorded grant; never whoever produced the evidence) is 0049's to
+> answer, and it answers it there.
+
 **3. The second opinion is formed on the same evidence, and you can see what that is.** A consulted
 worker receives a **summary of the room, plus the raising turn and its attachments verbatim**, and it
 can query for more ([#424](https://github.com/aer-works/aer-flow/issues/424)). What it is being given
