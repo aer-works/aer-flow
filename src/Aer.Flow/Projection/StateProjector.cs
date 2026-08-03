@@ -51,6 +51,8 @@ public static class StateProjector
             else
             {
                 state = checkpoint.State.DeepCopy();
+                // Narrowing is safe here only because the guard above capped EventOffset at
+                // events.Count, an int — an offset past int.MaxValue already fell back loudly.
                 skipCount = (int)checkpoint.EventOffset;
             }
         }
