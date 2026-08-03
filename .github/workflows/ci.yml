@@ -323,6 +323,9 @@ jobs:
           # the check fails closed rather than passing on an unreadable diff -- so the depth is what
           # makes it run at all.
           fetch-depth: 0
+          # For build-cli below -- pixi.toml's build-cli comment says why the submodule (source
+          # only, no cargo) is needed while the native lib is not.
+          submodules: true
       # Same setup the test and pack jobs use, for the reason recorded there: pinning a pixi version
       # pinned one too old to read this repo's lock file (version 7), and setup-pixi's own install
       # step fails hard on an empty environment. Let `pixi run` do the implicit install.
