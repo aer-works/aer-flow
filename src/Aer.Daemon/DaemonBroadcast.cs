@@ -80,11 +80,7 @@ internal sealed class DaemonBroadcast
     // decisions against.
     public async Task SendStateAsync(WebSocket socket, TaskProjection projection, string? directoryPath)
     {
-        var options = new JsonSerializerOptions
-        {
-            Converters = { new JsonStringEnumConverter() },
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
+        var options = DaemonSerializerOptions.WebSocket;
         var node = JsonSerializer.SerializeToNode(projection, options)!.AsObject();
         node["DirectoryPath"] = directoryPath;
 

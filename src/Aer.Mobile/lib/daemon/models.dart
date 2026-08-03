@@ -38,10 +38,19 @@ class WorkflowStepState {
   final String stepId;
   final String status;
   final String? latestExecutionId;
+  final String? latestFailureReason;
+  final String? latestFailureClassification;
 
-  WorkflowStepState({required this.stepId, required this.status, required this.latestExecutionId});
+  WorkflowStepState({
+    required this.stepId,
+    required this.status,
+    required this.latestExecutionId,
+    this.latestFailureReason,
+    this.latestFailureClassification,
+  });
 
   bool get isPaused => status == 'Paused';
+  bool get isFailed => status == 'Failed';
 
   factory WorkflowStepState.fromJson(Map<String, dynamic> json) {
     final j = caseInsensitive(json);
@@ -49,6 +58,8 @@ class WorkflowStepState {
       stepId: j['stepid'].toString(),
       status: j['status'].toString(),
       latestExecutionId: j['latestexecutionid']?.toString(),
+      latestFailureReason: j['latestfailurereason']?.toString(),
+      latestFailureClassification: j['latestfailureclassification']?.toString(),
     );
   }
 }

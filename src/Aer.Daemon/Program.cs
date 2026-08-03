@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 
 [assembly: InternalsVisibleTo("Aer.Ui.Tests")]
+[assembly: InternalsVisibleTo("Aer.Daemon.Tests")]
 
 await Aer.Daemon.DaemonHost.RunDaemonAsync(args);
 
@@ -168,12 +169,9 @@ namespace Aer.Daemon
                 }
             });
 
-            // Configure JSON options
+            // Configure JSON options — the same definition the wire fixtures are generated from
             builder.Services.ConfigureHttpJsonOptions(options =>
-            {
-                options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-                options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-            });
+                DaemonSerializerOptions.Configure(options.SerializerOptions));
 
             // Register singletons
             builder.Services.AddSingleton(LocalUiConfigurationStore.CreateDefault());
