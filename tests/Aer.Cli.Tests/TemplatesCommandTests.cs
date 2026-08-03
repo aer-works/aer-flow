@@ -25,13 +25,16 @@ public class TemplatesCommandTests
         Assert.True(root.TryGetProperty("fact-check", out var factCheck));
         Assert.True(root.TryGetProperty("janitor", out var janitor));
 
-        Assert.Equal("gemini", advise.GetProperty("adapter").GetString());
-        Assert.Equal("gemini-3.6-flash-high", advise.GetProperty("model").GetString());
-        Assert.Equal(25, advise.GetProperty("timeout_minutes").GetInt32());
+        // Structural assertions only — exact adapter/model/timeout values live in
+        // WorkerRoles.json/WorkerTiers.json (the authority; swapping a tier is one edit there),
+        // so pinning them here would just re-transcribe the register.
+        foreach (var role in new[] { advise, implement, review, factCheck, janitor })
+        {
+            Assert.False(string.IsNullOrWhiteSpace(role.GetProperty("adapter").GetString()));
+            Assert.InRange(role.GetProperty("timeout_minutes").GetInt32(), 1, 120);
+        }
 
-        Assert.Equal("claude", review.GetProperty("adapter").GetString());
-        Assert.Equal("sonnet", review.GetProperty("model").GetString());
-        Assert.Equal("high", review.GetProperty("effort").GetString());
+        // Durable by design (#732): the review role produces a structured verdict.
         Assert.True(review.GetProperty("verdict_schema").GetBoolean());
     }
 

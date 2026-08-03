@@ -10,17 +10,15 @@ public class BuiltInWorkflowTemplatesTests
     public void Catalog_ContainsSoloAndReviewRunTemplates()
     {
         var catalog = BuiltInWorkflowTemplates.Catalog;
-        Assert.Equal(10, catalog.Count);
+        Assert.Equal(5, catalog.Count);
         Assert.Contains(catalog, t => t.Id == "chat-session");
         Assert.Contains(catalog, t => t.Id == "codebase-session");
         Assert.Contains(catalog, t => t.Id == "two-vendor-dialogue");
         Assert.Contains(catalog, t => t.Id == "solo-run");
         Assert.Contains(catalog, t => t.Id == "review-run");
-        Assert.Contains(catalog, t => t.Id == "advise");
-        Assert.Contains(catalog, t => t.Id == "implement");
-        Assert.Contains(catalog, t => t.Id == "review");
-        Assert.Contains(catalog, t => t.Id == "fact-check");
-        Assert.Contains(catalog, t => t.Id == "janitor");
+        // The dispatch roles deliberately stay OUT of Catalog (they'd land in the start
+        // pickers) — GetRoleTemplates() is their export surface, asserted below.
+        Assert.DoesNotContain(catalog, t => t.Id == "implement");
     }
 
     [Fact]

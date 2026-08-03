@@ -31,6 +31,15 @@ public static class TemplatesCommand
             stdout.WriteLine();
         }
 
+        stdout.WriteLine("Dispatch roles (machine consumers read these via --json):");
+        stdout.WriteLine();
+        foreach (var (id, role) in BuiltInWorkflowTemplates.GetRoleTemplates().OrderBy(r => r.Key, StringComparer.Ordinal))
+        {
+            stdout.WriteLine($"{id}");
+            stdout.WriteLine($"    {role.Use}");
+            stdout.WriteLine();
+        }
+
         return Task.FromResult(0);
     }
 }
