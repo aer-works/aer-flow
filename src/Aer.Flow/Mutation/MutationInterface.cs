@@ -67,7 +67,7 @@ public static class MutationInterface
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
         return await PumpToFixedPointAsync(
-                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
                 inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
                 timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
@@ -113,7 +113,8 @@ public static class MutationInterface
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
         var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var state = StateProjector.Project(events, snapshot);
+        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var state = StateProjector.Project(events, snapshot, checkpoint);
         var succeededExecutionIds = events
             .OfType<FlowEvent.ExecutionSucceeded>()
             .Select(e => e.ExecutionId)
@@ -133,7 +134,7 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(new FlowEvent.WorkflowResumed(decisionId), cancellationToken).ConfigureAwait(false);
 
         return await PumpToFixedPointAsync(
-                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
                 inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
                 timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
@@ -210,7 +211,8 @@ public static class MutationInterface
             .ConfigureAwait(false);
 
         var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var state = StateProjector.Project(events, snapshot);
+        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var state = StateProjector.Project(events, snapshot, checkpoint);
 
         return (state, executionId);
     }
@@ -272,7 +274,7 @@ public static class MutationInterface
             .ConfigureAwait(false);
 
         return await PumpToFixedPointAsync(
-                workflowId, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
                 inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
                 timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
@@ -299,6 +301,7 @@ public static class MutationInterface
     /// </remarks>
     private static async Task<FlowState> PumpToFixedPointAsync(
         WorkflowId workflowId,
+        string taskDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -321,6 +324,8 @@ public static class MutationInterface
         // could never converge to the consistent, fully-classified state a host stop promises.
         var ioCancellationToken = cancellationToken;
         FlowState state;
+        ProjectionCheckpoint? currentCheckpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        ProjectionCheckpoint? latestCheckpoint = null;
 
         while (true)
         {
@@ -342,7 +347,8 @@ public static class MutationInterface
                 // same file twice for no new information.
                 var log = await eventLogReader.ReadSnapshotAsync(ioCancellationToken).ConfigureAwait(false);
                 var events = log.FlowEvents;
-                state = StateProjector.Project(events, snapshot);
+                (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint);
+                currentCheckpoint = latestCheckpoint;
 
                 // Keyed once per round rather than re-scanned per obligation: every crash-recovery
                 // branch below that acts on an already-accepted execution (classification or
@@ -620,6 +626,11 @@ public static class MutationInterface
                         {
                             continue;
                         }
+                    }
+
+                    if (latestCheckpoint is not null)
+                    {
+                        ProjectionCheckpointStore.Save(taskDirectoryPath, latestCheckpoint);
                     }
 
                     return state;

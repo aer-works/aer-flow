@@ -73,7 +73,8 @@ public static class StatusCommand
             }
         }
 
-        var state = StateProjector.Project(events, snapshot);
+        var checkpoint = ProjectionCheckpointStore.Load(options.TaskDirectoryPath);
+        var state = StateProjector.Project(events, snapshot, checkpoint);
 
         PrintState(output, state, logPath, events, entries);
 
@@ -136,7 +137,8 @@ public static class StatusCommand
 
                 printedEventCount = events.Count;
 
-                var state = StateProjector.Project(events, snapshot);
+                var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+                var state = StateProjector.Project(events, snapshot, checkpoint);
                 TailStreams(output, artifactsDir, streamOffsets);
 
                 if (state.Status == WorkflowStatus.Terminal)

@@ -77,7 +77,8 @@ public static class TaskProjectionLoader
         var reader = new FlowEventLogReader(logPath);
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
-        var state = StateProjector.Project(events, snapshot);
+        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var state = StateProjector.Project(events, snapshot, checkpoint);
         var history = ExecutionHistoryProjector.Project(events, snapshot);
 
         var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
@@ -124,7 +125,8 @@ public static class TaskProjectionLoader
         var reader = new FlowEventLogReader(logPath);
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
-        var state = StateProjector.Project(events, snapshot);
+        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var state = StateProjector.Project(events, snapshot, checkpoint);
         var pausedStepCount = state.Steps.Count(s => s.Status == StepStatus.Paused);
 
         return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession);
