@@ -54,7 +54,10 @@ def parse_records() -> list[tuple[str, str, str, str]]:
 
 def generated_block() -> str:
     lines = [BEGIN, "", "| # | Title | Status |", "|---|---|---|"]
-    lines += [f"| [{n}]({f}) | {title} | {status} |" for n, f, title, status in parse_records()]
+    # A literal | in a title or status would silently split the table cell; escape it so the
+    # generated row stays one row (reviewer catch on #952 -- latent, no current record has one).
+    lines += [f"| [{n}]({f}) | {title.replace('|', '\\|')} | {status.replace('|', '\\|')} |"
+              for n, f, title, status in parse_records()]
     lines += ["", END]
     return "\n".join(lines)
 

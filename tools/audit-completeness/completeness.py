@@ -881,10 +881,22 @@ def step12_generated_index():
     rule("STEP 12 -- the generated decisions index matches the records")
     import genregister
     try:
-        return genregister.main(["--check"]) == 0
+        ok = genregister.main(["--check"]) == 0
     except SystemExit as e:
         print(f"    !! {e}")
-        return False
+        ok = False
+
+    # The one arm of retired STEP 11 whose threat survived #952: the pin's CANONICAL copy.
+    # vendor-doc-audit.md and vendor-coverage.md now point at vendor-capabilities.md's dated
+    # history table instead of restating it, so cross-file disagreement is structurally gone --
+    # but a reshaped/emptied history table would leave those pointers dangling with nothing
+    # noticing. Well-formedness only, not currency: re-measuring is what refreshes pins.
+    head = read("docs/vendor-capabilities.md")
+    pin = re.search(r"^\| \d{4}-\d{2}-\d{2}.*`(?:agy|claude)`.*\d+\.\d+", head, re.M)
+    ok &= line("vendor-capabilities.md carries a dated, versioned history row",
+               "yes" if pin else "MISSING", "yes",
+               "the canonical pin two other headers point at (#952)")
+    return ok
 
 
 def _shutil_which(name):

@@ -80,17 +80,8 @@ public static class Journeys
 
     public static IReadOnlyList<Journey> All => LazyAll.Value;
 
-    private static readonly Lazy<IReadOnlyList<Journey>> LazyAll = new(() =>
-    {
-        var spec = SpecJourneys.Parse().ToDictionary(e => e.Id);
-        return Declared.Select(j =>
-            spec.TryGetValue(j.Id, out var e)
-                ? j with { Title = e.Title, DeclaredStatus = e.Status }
-                : throw new InvalidOperationException(
-                    $"Journey {j.Id} is declared in this registry but spec/journeys.md has no such journey."))
-            .ToList();
-    });
-
+    // Declared precedes LazyAll so nullable analysis can see it is initialized before the lazy's
+    // factory could ever read it (reviewer catch on #952: the reverse order emitted CS8604).
     private static readonly IReadOnlyList<Journey> Declared =
     [
         new("J1",
@@ -241,4 +232,15 @@ public static class Journeys
                 "The phone half is a human walk: notifications reaching a physical pocket and a decision answered there advancing the room. This journey is docs/plan.md §M26's demo bar."),
         ], [799, 806, 337]),
     ];
+
+    private static readonly Lazy<IReadOnlyList<Journey>> LazyAll = new(() =>
+    {
+        var spec = SpecJourneys.Parse().ToDictionary(e => e.Id);
+        return Declared.Select(j =>
+            spec.TryGetValue(j.Id, out var e)
+                ? j with { Title = e.Title, DeclaredStatus = e.Status }
+                : throw new InvalidOperationException(
+                    $"Journey {j.Id} is declared in this registry but spec/journeys.md has no such journey."))
+            .ToList();
+    });
 }
