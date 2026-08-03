@@ -34,6 +34,7 @@ FAST = [
     "audit-recordonce",
     "aer-dispatch-selftest",
     "test-scripts",
+    "audit-staleness-ext-selftest",
 ]
 
 GATES = FAST + ["test"]
