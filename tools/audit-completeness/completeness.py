@@ -871,6 +871,58 @@ def step10_gate_citations():
 # comment.
 
 
+def step13_structural_claims():
+    """#314: the checkable slice of "the spec is the source of truth" -- structural claims.
+
+    Three asserts, each a prose claim the tree can falsify the day it drifts:
+    - CLAUDE.md's repo-structure map names exactly the src/* projects on disk, both directions.
+      First live catch, before this step even ran in CI: Aer.Mcp and Aer.Mcp.Host had shipped
+      without the map noticing.
+    - Every src/... path cited by spec/*.md or docs/plan.md resolves in the tree.
+    - Every docs/runbooks/*.md referenced from pixi.toml exists.
+
+    Deliberately absent, recorded here and on #314: the reverse runbook direction (three runbooks
+    are procedure records with no pixi task on purpose); navigation destinations (the redesign
+    deletes that shell); template ids (no live doc restates them -- the only mention is
+    milestone-history.md, which is provenance, never authority, and excluded from staleness
+    checks for exactly that reason).
+    """
+    rule("STEP 13 -- structural claims: repo map, cited src paths, runbook references")
+    ok = True
+
+    src = os.path.join(ROOT, "src")
+    on_disk = {d for d in os.listdir(src) if os.path.isdir(os.path.join(src, d))} if os.path.isdir(src) else set()
+    block = re.search(r"## Repo structure.*?```(.*?)```", read("CLAUDE.md"), re.S)
+    mapped = set(re.findall(r"(Aer\.[A-Za-z.]+)/", block.group(1))) if block else set()
+    missing = sorted(on_disk - mapped)
+    ghosts = sorted(m for m in mapped - on_disk if os.path.isdir(os.path.join(ROOT, "src")))
+    ok &= line("src/ projects missing from CLAUDE.md's repo map", len(missing), 0,
+               "Aer.Mcp shipped invisibly once already")
+    for name in missing:
+        print(f"      NOT IN MAP: src/{name}")
+    ok &= line("repo-map entries with no src/ directory behind them", len(ghosts), 0)
+    for name in ghosts:
+        print(f"      GHOST: {name}/")
+
+    bad_paths = []
+    spec_files = [f"spec/{f}" for f in os.listdir(os.path.join(ROOT, "spec")) if f.endswith(".md")]
+    for doc in spec_files + ["docs/plan.md"]:
+        for cited in sorted(set(re.findall(r"src/[A-Za-z0-9._/-]+[A-Za-z0-9]", read(doc)))):
+            if not os.path.exists(os.path.join(ROOT, cited)):
+                bad_paths.append((doc, cited))
+    ok &= line("cited src/ paths that do not resolve", len(bad_paths), 0,
+               "a renamed project must drag its citations with it")
+    for doc, cited in bad_paths:
+        print(f"      DANGLING: {doc} -> {cited}")
+
+    bad_runbooks = [rb for rb in sorted(set(re.findall(r"docs/runbooks/[a-z0-9-]+\.md", read("pixi.toml"))))
+                    if not os.path.exists(os.path.join(ROOT, rb))]
+    ok &= line("pixi.toml runbook references that do not resolve", len(bad_runbooks), 0)
+    for rb in bad_runbooks:
+        print(f"      DANGLING: pixi.toml -> {rb}")
+    return ok
+
+
 def step12_generated_index():
     """#952: the decisions index is generated from the records, so there is no hand copy to drift.
 
@@ -969,7 +1021,8 @@ def main() -> int:
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
-               step9_pinned_models_exist(), step10_gate_citations(), step12_generated_index()]
+               step9_pinned_models_exist(), step10_gate_citations(), step12_generated_index(),
+               step13_structural_claims()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [

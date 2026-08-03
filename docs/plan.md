@@ -21,6 +21,16 @@ surface-exclusive. An unexamined gap — something missing from mobile because n
 yet, with no reasoning behind the absence, and no journey requiring it eventually close — is not. The
 distinction is whether the gap was decided and has a closing condition, or merely happened.
 
+## Operating posture (operator, 2026-08-03)
+
+**The meta-track is closing.** When the enshrining sequence lands (#954 ✓, #953, #314, #315), no
+new checkers, document architecture, or process until the room ships — everything after that line
+is rung 5 (#778) and the UI arc. Standing test for any proposed apparatus: name the user-visible
+behavior it protects, and ask whether the room makes it obsolete — if yes, build the room instead.
+Checks against *reality* stay; a check against a *copy* is always answered by deleting the copy
+(#952). The same conversation authorized the backlog kill-pass (executed 2026-08-03, ten closures,
+each with its reason on the issue).
+
 ## How this plan stays honest
 
 This document owns **durable structure** — the bar, the milestones and what each one demonstrates,

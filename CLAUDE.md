@@ -13,6 +13,8 @@ aer-flow/
 │   ├── Aer.Adapters/          Vendor adapters (Claude/Gemini) + the built-in template catalog
 │   ├── Aer.Cli/               Command-line interface (aer run/decide/cancel/supply)
 │   ├── Aer.Daemon/            ASP.NET background runner: REST/WebSocket host + client pairing (M20+)
+│   ├── Aer.Mcp/               MCP server library — IMcpTool + the stdio host plumbing
+│   ├── Aer.Mcp.Host/          The MCP executable workers connect to (aer yield, memory proposals)
 │   ├── Aer.Ui.Core/           Avalonia-free UI core — MVVM ViewModels shared by the desktop app
 │   ├── Aer.Ui/                Avalonia desktop app (projection, control surface, authoring, chat)
 │   ├── Aer.Workers.Dialogue/  The dialogue worker executable (a Case 2 multi-model worker)
