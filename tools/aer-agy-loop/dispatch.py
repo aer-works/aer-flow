@@ -782,21 +782,6 @@ def verdict_preamble() -> str:
 #   - `review` emits a schema-checked verdict.json the engine validates (#732 / spec §4.2).
 
 
-def _worker_catalog_path(env_var: str, override_name: str, default_name: str) -> Path:
-    """Resolve one catalog file: the env override, then the {AER_HOME|~/.aer} runtime override, then
-    the tracked default under src/Aer.Adapters. Mirrors WorkerRoleCatalog's C# resolution so both read
-    the same file (#888)."""
-    env = os.environ.get(env_var)
-    if env and env.strip():
-        return Path(env)
-    home = os.environ.get("AER_HOME") or ""
-    root = Path(home) if home.strip() else Path.home() / ".aer"
-    override = root / override_name
-    if override.exists():
-        return override
-    return Path(__file__).resolve().parents[2] / "src" / "Aer.Adapters" / default_name
-
-
 def _load_worker_catalog(cli_path: Path | None = None) -> dict:
     """#887 Stage 1: Load the template catalog directly from the engine (`aer templates --json`).
 
@@ -1111,13 +1096,35 @@ def _selftest() -> int:
     if not _validate_catalog_output_names(missing_diff):
         failures.append("CATALOG-NAMES RED arm (diff removed) did not fire")
 
-    # #887 Stage 1: RED arm proving loader fails loudly on missing CLI binary.
+    # #887 Stage 1: RED arms proving the loader fails loudly in EVERY failure mode, not just
+    # the missing binary (second-reader finding: the other three were proven by inspection
+    # only). Each stub forces one path: non-zero exit, garbage stdout, valid JSON without the
+    # required roles.
     with tempfile.TemporaryDirectory() as tmp:
         try:
             _load_worker_catalog(cli_path=Path(tmp) / "missing_aer.exe")
             failures.append("CATALOG-LOADER RED arm (missing binary) did not fire")
         except RuntimeError:
             pass  # Loud failure expected
+
+        is_windows = os.name == "nt"
+        stub_cases = [
+            ("exits nonzero", "exit /b 1" if is_windows else "exit 1"),
+            ("emits garbage", "echo not-json" if is_windows else "echo not-json"),
+            ("emits JSON missing roles", "echo {}" if is_windows else "echo {}"),
+        ]
+        for label, body in stub_cases:
+            stub = Path(tmp) / f"stub_{label.replace(' ', '_')}{'.bat' if is_windows else ''}"
+            if is_windows:
+                stub.write_text(f"@echo off\n{body}\n", encoding="ascii")
+            else:
+                stub.write_text(f"#!/bin/sh\n{body}\n", encoding="ascii")
+                stub.chmod(0o755)
+            try:
+                _load_worker_catalog(cli_path=stub)
+                failures.append(f"CATALOG-LOADER RED arm ({label}) did not fire")
+            except RuntimeError:
+                pass  # Loud failure expected
 
     if failures:
         print("aer-dispatch selftest: FAIL -- " + "; ".join(failures), file=sys.stderr)
