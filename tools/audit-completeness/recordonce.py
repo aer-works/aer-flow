@@ -184,9 +184,9 @@ NO_EXTENSION = ("#",)
 
 # Text whose duplication `record-once` PRESCRIBES, and which therefore cannot be evidence against it.
 #
-#   * A markdown table row. The decision-index row repeats the record's own title verbatim, and
-#     `docs/plan.md` repeats it again -- so adding any decision record produced a three-file group.
-#     That is the register working: the record is canonical, the rows are the links to it.
+#   * A markdown table row. The decision-index row repeats the record's own title verbatim -- a
+#     derived copy, generated from the record since #952 (before that it was hand-written in three
+#     files and this exemption was carrying the duplication the register itself mandated).
 #   * A fenced block inside markdown. Two runbooks showing the same `pixi run` invocation are
 #     showing the same command, not restating a fact.
 #   * A generated file. Its single source is a string literal in the generator, invisible here; the
