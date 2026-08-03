@@ -242,6 +242,15 @@ audit-recordonce = { cmd = "python -u tools/audit-completeness/recordonce.py" }
 # guard's real WSL trigger cannot. bash is present on all three CI hosts (Git Bash on Windows).
 test-scripts = { cmd = "bash scripts/tests/mobile-build-wsl-guard.test.sh" }
 
+# #636: mechanized staleness checks over GitHub-hosted facts (open issue citing a closed one as
+# unresolved; a doc's "not wired into CI" claim contradicted by ci.yml). DELIBERATELY UNWIRED --
+# reads live `gh` data and reports findings for a human to triage, never fails the run. See the
+# module docstring for why this stays a report rather than a gate.
+audit-staleness-ext = { cmd = "python -u tools/audit-completeness/staleness_ext.py" }
+# The synthetic-fixture half of the same file -- proves the matching logic discriminates, with no
+# live data and so no backlog-debt exposure. This is the half safe to gate; see gates.py.
+audit-staleness-ext-selftest = { cmd = "python -u tools/audit-completeness/staleness_ext.py --selftest" }
+
 # Every local gate, one exit code. Report THIS command's exit status, never a per-gate line scraped
 # out of the combined output -- see tools/gates/gates.py for the two occasions that went wrong.
 gates = { cmd = "python -u tools/gates/gates.py" }
