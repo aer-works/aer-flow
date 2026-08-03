@@ -75,6 +75,8 @@ The hook is in the repo but git does not use it until that command has been run 
 
 **Rust toolchain** is required to build `external/aer-core`'s native library (`pixi run build-core`) — also installed separately, not pixi-managed, same convention as the .NET SDK above. GitHub Actions' standard runner images (`windows-latest`, `ubuntu-latest`) already have one; for local dev, install via [rustup](https://rustup.rs).
 
+**Go 1.26+ and, on Windows, a mingw-w64 gcc** (e.g. `winget install BrechtSanders.WinLibs.POSIX.UCRT`) are required for the mobile tasks — `mobile-build`/`mobile-test` compile the tailscale native asset via cgo, and on Windows the host build additionally needs the #958 pub-cache patch: run `pixi run mobile-patch` once after any fresh `flutter pub get`. Same separately-installed convention as above.
+
 **aer-core** (`external/aer-core`) is a git submodule, not a package — there is no NuGet feed for it yet (a single-developer project doesn't need the auth/RID-packaging overhead a real feed would add; see AER Overview §6). `pixi run build-core` builds its native library from source via `cargo build`.
 
 ---

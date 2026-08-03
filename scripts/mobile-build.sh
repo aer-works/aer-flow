@@ -48,38 +48,9 @@ WSLMSG
   exit 1
 fi
 
-REAL_GO="$(command -v go || true)"
-if [ -z "$REAL_GO" ]; then
-  echo "Go toolchain not found on PATH -- required to build the tailscale native asset."
-  exit 1
-fi
+# The shim itself lives in scripts/lib/toolchain-shim.sh so mobile-test.sh can reuse it (#958).
+source "$REPO_ROOT/scripts/lib/toolchain-shim.sh"
+setup_go_toolchain_shim "$SHIM_DIR" || exit 1
 
-mkdir -p "$SHIM_DIR"
-
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    # The hook runs Go through cmd, so the shim has to be a .bat.
-    GO_CACHE="${GOCACHE:-$LOCALAPPDATA\\go-build}"
-    cat > "$SHIM_DIR/go.bat" <<EOF
-@echo off
-set GOCACHE=$GO_CACHE
-set LOCALAPPDATA=$LOCALAPPDATA
-set APPDATA=$APPDATA
-set USERPROFILE=$USERPROFILE
-"$(cygpath -w "$REAL_GO")" %*
-EOF
-    ;;
-  *)
-    cat > "$SHIM_DIR/go" <<EOF
-#!/usr/bin/env bash
-export GOCACHE="\${GOCACHE:-$HOME/.cache/go-build}"
-export HOME="$HOME"
-exec "$REAL_GO" "\$@"
-EOF
-    chmod +x "$SHIM_DIR/go"
-    ;;
-esac
-
-export PATH="$SHIM_DIR:$PATH"
 cd "$MOBILE"
 exec flutter build apk --debug
