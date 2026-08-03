@@ -236,6 +236,14 @@ audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py
 # #952: rewrites docs/decisions/README.md's generated index from the records. The check half runs
 # inside audit-completeness (STEP 12); this is the write half a dev runs after adding a record.
 gen-register = { cmd = "python -u tools/audit-completeness/genregister.py" }
+
+# CLI-only build for the CI audit job (#887): audit-selfcheck's catalog checks read the role
+# catalog through `aer templates --json`, so the audit leg needs a built Aer.Cli. It does NOT
+# need cargo or the Go sidecar — the NATIVE lib is copy-if-exists and the templates path
+# touches no P/Invoke — but it DOES need the submodule checked out: Aer.Flow hard-references
+# the submodule's managed binding project (Aer.Core.csproj), which is source, not a build
+# product. Deliberately no build-core dependency: rust-free is what keeps the leg ~a minute.
+build-cli = { cmd = "dotnet build src/Aer.Cli" }
 audit-selfcheck = { cmd = "python -u tools/audit-completeness/selfcheck.py" }
 audit-controls = { cmd = "python -u tools/audit-completeness/controls.py" }
 audit-vocabulary = { cmd = "python -u tools/audit-completeness/vocabulary.py" }
