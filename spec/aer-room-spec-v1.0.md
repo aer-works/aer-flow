@@ -100,6 +100,15 @@ What actually runs, at HEAD:
   (`aer run`) for a headless run, the daemon for anything a client initiates. Exactly one may
   mutate a given room at a time — the engine spec's §15 kernel-held lock is the arbiter, and it is
   what makes "two pumps exist" safe rather than a race.
+- **The wake bridge** (`RoomWakeBridge`, daemon-hosted) — the "watch and react automatically"
+  system the engine spec's §20 predicted would arrive as a separate layer *built on top*, now
+  specified as exactly that
+  ([0049](../docs/decisions/0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md)):
+  it watches `room.jsonl`, recomputes the room's wake set fresh each tick — derived state, never
+  persisted, never authority — and advances human-originated held work (projection, per the #778
+  contract; origination requires a grant). Its every mutation is a journaled event through the
+  mutation interface under the room's guard, with structural attribution. What it owes — signed
+  actions, the leash, evidence-producer ≠ decider, first-class escalation — is 0049's term 4.
 - **Named clients** (`src/Aer.Ui` desktop, `src/Aer.Mobile` phone) — the engine spec's §14/§20
   "no named client architecture" posture is retired: AER ships and privileges specific first-party
   clients, and the daemon carries infrastructure (pairing, broadcast) that exists for them. What
@@ -119,9 +128,12 @@ determinism, the mutation interface, concurrency, artifacts, pause/decision, and
 composition. None of it is restated here, deliberately: one register, referenced everywhere.
 
 Its §20 exclusions remain true of the tree except the two this document explicitly retires (the
-daemon, named clients). Every other §20 exclusion stays owned and worded by §20 — re-affirmed
-here by reference alone, because a renamed copy of that list is exactly the drift this document
-exists to end.
+daemon, named clients) and the one
+[0049](../docs/decisions/0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md)
+qualifies: "watch and react automatically" remains excluded *from the engine*, and the predicted
+built-on-top system now ships and is specified in §5 (the wake bridge). Every other §20 exclusion
+stays owned and worded by §20 — re-affirmed here by reference alone, because a renamed copy of
+that list is exactly the drift this document exists to end.
 
 ## 7. The journal at HEAD
 
@@ -148,12 +160,14 @@ decision would be its own issue, not an amendment here.
 This section exists so the next arrival does not read as a redesign. Each item is decided; its
 implementation *fulfills* this spec. Nothing else belongs here — an undecided question goes to §9.
 
-- **The orchestrator enters the room (M26, #778).** Operator decision, 2026-07-30: proving the
-  room works includes an orchestrator working *in* it. The floor: a resident orchestrator holds
-  lanes of work with **every** decision escalated to a person — the delegated-authority machinery
-  in its degenerate case. The decider-identity field on `ExternalDecisionRecorded` (§3) is the
-  hook it arrives through; grants beyond "escalate everything" deepen later and are not specified
-  anywhere yet.
+- **The orchestrator enters the room (M26, #778; contract
+  [0049](../docs/decisions/0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md)).**
+  Operator decisions, 2026-07-30 and 2026-08-03: proving the room works includes an orchestrator
+  working *in* it, and **every room has one — authority is the dial, not existence**. Its authority
+  model is Claude-Code-session parity, enforced at the daemon's tool boundary, vendor-agnostic
+  (0049 terms 2–3); "every decision escalated to a person" survives only as a build-sequencing
+  milestone, never the product default. The decider-identity field on `ExternalDecisionRecorded`
+  (§3) is the hook it arrives through.
 - **Quota exhaustion becomes classifiable (0026, #594).** Decision 0026 settled the shape
   (`ExhaustedUntil`); the enum at HEAD still carries only `Permanent | Retryable`, and a quota
   failure is interim-classified `Retryable`. Decided, awaiting build — not stale, not open.
