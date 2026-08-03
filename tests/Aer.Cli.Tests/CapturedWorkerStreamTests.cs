@@ -172,13 +172,26 @@ public class CapturedWorkerStreamTests
                 ? "powershell -NoProfile -EncodedCommand VwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAoAFsAYwBoAGEAcgBdADIANwAgACsAIAAnAFsAMwAxAG0AUgBlAGQAJwAgACsAIABbAGMAaABhAHIAXQAyADcAIAArACAAJwBbADAAbQAnACkA & echo Red > %AER_OUTPUT_DIR%\\out.txt"
                 : "printf '\\033[31mRed\\033[0m\\n' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
 
+            // #945: this budget only bounds how long the test waits for a trivial echo/printf, never
+            // a behaviour this test verifies (round-trip byte capture + render escaping) -- unlike a
+            // wait this repo's v-and-v gate rightly protects, widening it trades no coverage away.
+            // Measured before widening, not guessed: the real subprocess itself completes in ~200ms
+            // unloaded and stays under ~4s even pinned to 2 cores against six competing CPU-bound
+            // processes (matching windows-latest's vCPU count); a second hypothesis -- AerTask.RunAsync's
+            // Task.Run has no TaskCreationOptions.LongRunning, so ThreadPool starvation could queue a
+            // late dispatch -- also failed to reproduce (a 40-way flood against MinThreads pinned to 2
+            // still started a new dispatch in ~0ms; modern .NET grows the pool fast enough under a large
+            // backlog). Neither measured mechanism explains the two observed 30-31s CI failures, which is
+            // itself the finding: something specific to the live runner (CPU steal, I/O contention) that
+            // is not reproducible on a dev host. 90s keeps a real hang bounded and unmistakable while
+            // absorbing CI noise this repo can measure but not locally explain.
             var bindings = new Dictionary<string, WorkerBindingConfigEntry>
             {
                 ["worker"] = new WorkerBindingConfigEntry(
                     "shell",
                     new WorkerContract("worker", [], [new ProducedOutput("out.txt")], []),
                     cmdLine,
-                    TimeSpan.FromSeconds(30))
+                    TimeSpan.FromSeconds(90))
             };
 
             var workflowFile = Path.Combine(testRoot, "workflow.json");
@@ -219,11 +232,12 @@ public class CapturedWorkerStreamTests
 
             var bindings2 = new Dictionary<string, WorkerBindingConfigEntry>
             {
+                // #945: same widened, measured-not-guessed budget as polarity 1 above.
                 ["worker"] = new WorkerBindingConfigEntry(
                     "shell",
                     new WorkerContract("worker", [], [new ProducedOutput("out.txt")], []),
                     cmdLineNormal,
-                    TimeSpan.FromSeconds(30))
+                    TimeSpan.FromSeconds(90))
             };
 
             var bindingsFile2 = Path.Combine(testRoot, "bindings2.json");
