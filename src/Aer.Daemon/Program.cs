@@ -185,8 +185,9 @@ namespace Aer.Daemon
             builder.Services.AddSingleton<RoomWakeBridgeState>();
             builder.Services.AddHostedService<RoomWakeBridge>();
 
-            // #992: resident room turn host
+            // #992 / #993: resident room turn host & occupant runner
             builder.Services.AddSingleton<RoomTurnHostState>();
+            builder.Services.AddSingleton<IOccupantTurnRunner, RoleTemplateOccupantRunner>();
             builder.Services.AddHostedService<RoomTurnHost>();
 
             // Thread-safe container for bindings path
