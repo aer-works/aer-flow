@@ -60,36 +60,47 @@ public static class StatusCommand
                 "projects a task 'aer run' has already started, and never binds one fresh.");
         }
 
-        var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
-        var reader = new FlowEventLogReader(logPath);
-        var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
-
-        var events = new List<FlowEvent>(entries.Count);
-        foreach (var entry in entries)
+        try
         {
-            if (entry is LogEntry.FlowLogEntry flowLogEntry)
+            var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
+            var reader = new FlowEventLogReader(logPath);
+            var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
+
+            var events = new List<FlowEvent>(entries.Count);
+            foreach (var entry in entries)
             {
-                events.Add(flowLogEntry.Event);
+                if (entry is LogEntry.FlowLogEntry flowLogEntry)
+                {
+                    events.Add(flowLogEntry.Event);
+                }
             }
+
+            var checkpoint = ProjectionCheckpointStore.Load(options.TaskDirectoryPath);
+            var state = StateProjector.Project(events, snapshot, checkpoint);
+
+            PrintState(output, state, logPath, events, entries);
+
+            if (options.Follow)
+            {
+                var artifactsDir = Path.Combine(options.TaskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+                TailStreams(output, artifactsDir, new Dictionary<string, long>(StringComparer.Ordinal));
+            }
+
+            if (!options.Follow || state.Status == WorkflowStatus.Terminal)
+            {
+                return;
+            }
+
+            await FollowAsync(output, reader, snapshot, events.Count, logPath, options.TaskDirectoryPath, cancellationToken).ConfigureAwait(false);
         }
-
-        var checkpoint = ProjectionCheckpointStore.Load(options.TaskDirectoryPath);
-        var state = StateProjector.Project(events, snapshot, checkpoint);
-
-        PrintState(output, state, logPath, events, entries);
-
-        if (options.Follow)
+        catch (OperationCanceledException) when (options.Follow && cancellationToken.IsCancellationRequested)
         {
-            var artifactsDir = Path.Combine(options.TaskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
-            TailStreams(output, artifactsDir, new Dictionary<string, long>(StringComparer.Ordinal));
+            // #999: cancelling a follow is the normal way to stop it, whichever await the token
+            // interrupts — FollowAsync's own delay-loop catch only covered the poll's Task.Delay,
+            // so cancellation landing inside a journal read escaped as TaskCanceledException. A
+            // cancelled NON-follow probe still throws: it produced no answer, and returning as if
+            // it had would be fail-open.
         }
-
-        if (!options.Follow || state.Status == WorkflowStatus.Terminal)
-        {
-            return;
-        }
-
-        await FollowAsync(output, reader, snapshot, events.Count, logPath, options.TaskDirectoryPath, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -472,3 +483,4 @@ public static class StatusCommand
         ? File.GetLastWriteTimeUtc(logPath).ToString("O")
         : "never (no ledger yet)";
 }
+

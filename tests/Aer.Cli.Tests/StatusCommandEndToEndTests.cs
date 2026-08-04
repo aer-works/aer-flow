@@ -390,6 +390,64 @@ public class StatusCommandEndToEndTests
     }
 
     [Fact]
+    public async Task Cancelling_a_follow_during_the_initial_read_returns_cleanly_instead_of_throwing()
+    {
+        // #999: the clean-cancel contract used to be implemented only around the poll loop's
+        // Task.Delay, so cancellation landing inside a journal read escaped as
+        // TaskCanceledException (measured in a full-gates run under load). An already-cancelled
+        // token interrupts the first awaited read, hitting that window deterministically.
+        // Red arm: with the follow-mode OperationCanceledException filter removed from
+        // StatusCommand.ExecuteAsync, this throws.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+
+            var exception = await Record.ExceptionAsync(() => StatusCommand.ExecuteAsync(
+                new StatusOptions(taskDirectory, Follow: true), TextWriter.Null, cancelled.Token));
+            Assert.Null(exception);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Cancelling_a_one_shot_status_probe_still_throws_it_produced_no_answer()
+    {
+        // #999's polarity arm: without --follow there is no "stop following" semantic — a
+        // cancelled probe returned nothing, and returning cleanly would report silence as
+        // success (fail-open).
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            using var cancelled = new CancellationTokenSource();
+            cancelled.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => StatusCommand.ExecuteAsync(
+                new StatusOptions(taskDirectory, Follow: false), TextWriter.Null, cancelled.Token));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
     public async Task Status_output_includes_per_step_timestamp_for_events_with_writer_timestamp()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
@@ -656,3 +714,4 @@ public class StatusCommandEndToEndTests
             : $"sh -c \"for i in \\$(seq 1 1200); do if [ -f \\\"{normalizedPath}\\\" ]; then break; fi; sleep 0.05; done\" && cat \"$AER_INPUT_0\" > \"$AER_OUTPUT_DIR/{outputName}\"";
     }
 }
+
