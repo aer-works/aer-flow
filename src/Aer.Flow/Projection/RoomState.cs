@@ -17,6 +17,12 @@ public sealed record RoomState(
     IReadOnlyList<RoomEvent.EscalationRaised>? OpenEscalations = null)
 {
     public IReadOnlyDictionary<GrantId, GrantState> ActiveGrants { get; init; } = ActiveGrants ?? new Dictionary<GrantId, GrantState>();
+
+    /// <summary>
+    /// Escalations raised and not yet resolved. NOTHING closes one yet — this slice is shapes
+    /// only (#778 §D), and the resolution path (a decision answering the escalation) is future
+    /// work; until it lands, "open" means "ever raised", not a live open/closed status.
+    /// </summary>
     public IReadOnlyList<RoomEvent.EscalationRaised> OpenEscalations { get; init; } = OpenEscalations ?? [];
 
     public bool Equals(RoomState? other)

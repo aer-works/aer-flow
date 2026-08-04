@@ -77,6 +77,9 @@ public class RoomEventLogJsonTests
             }
             else
             {
+                // NotSupportedException joins JsonException here for one specific removal: a
+                // polymorphic subject's "kind" discriminator -- RoomEventLogReader has the why,
+                // and RoomEventLogReaderCorruptionTests proves the reader wraps it loudly.
                 Assert.True(exception is JsonException or NotSupportedException);
             }
 

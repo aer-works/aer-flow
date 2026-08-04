@@ -183,6 +183,59 @@ public class GrantShapesTests : IDisposable
     }
 
     [Fact]
+    public void A_two_hop_amend_chain_still_revokes_by_the_original_id()
+    {
+        // The BaseGrantId propagation takes the EXISTING base when set, so every successor in a
+        // chain roots at the original grant -- revoking g1 must kill g3, two amendments later.
+        var g1 = new GrantId("grant-001");
+        var g2 = new GrantId("grant-002");
+        var g3 = new GrantId("grant-003");
+        var workerId = new WorkerId("worker-alpha");
+
+        var events = new List<RoomEvent>
+        {
+            new RoomEvent.GrantRecorded(g1, workerId, GrantLevel.L1Dispatch, new GrantScope(), new SpendBounds(), "operator", DateTimeOffset.UtcNow),
+            new RoomEvent.GrantAmended(g2, g1, workerId, GrantLevel.L2Tend, new GrantScope(), new SpendBounds(), "operator", DateTimeOffset.UtcNow),
+            new RoomEvent.GrantAmended(g3, g2, workerId, GrantLevel.L1Dispatch, new GrantScope(), new SpendBounds(), "operator", DateTimeOffset.UtcNow),
+            new RoomEvent.GrantRevoked(g1, "operator", DateTimeOffset.UtcNow, "revoked at the root")
+        };
+
+        var state = RoomProjector.Project(events);
+
+        Assert.Empty(state.ActiveGrants);
+        Assert.Empty(state.UnmatchedEntries);
+    }
+
+    [Fact]
+    public async Task Recording_a_duplicate_grant_id_and_amending_or_revoking_an_unknown_one_are_refused_loudly()
+    {
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        var g1 = new GrantId("grant-001");
+        var workerId = new WorkerId("w-1");
+
+        await RoomMutationInterface.RecordGrantAsync(
+            _tempDirectory, g1, workerId, GrantLevel.L1Dispatch, new GrantScope(), new SpendBounds(),
+            "operator", reader, writer, cancellationToken: TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(() =>
+            RoomMutationInterface.RecordGrantAsync(
+                _tempDirectory, g1, workerId, GrantLevel.L1Dispatch, new GrantScope(), new SpendBounds(),
+                "operator", reader, writer, cancellationToken: TestContext.Current.CancellationToken));
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(() =>
+            RoomMutationInterface.AmendGrantAsync(
+                _tempDirectory, new GrantId("grant-new"), new GrantId("grant-unknown"), workerId,
+                GrantLevel.L2Tend, new GrantScope(), new SpendBounds(),
+                "operator", reader, writer, cancellationToken: TestContext.Current.CancellationToken));
+
+        await Assert.ThrowsAsync<InvalidRoomMutationException>(() =>
+            RoomMutationInterface.RevokeGrantAsync(
+                _tempDirectory, new GrantId("grant-unknown"), "operator", "no such grant",
+                reader, writer, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Mutation_surface_acquires_lock_and_prevents_bypassing()
     {
         var reader = new RoomEventLogReader(_roomLogPath);
