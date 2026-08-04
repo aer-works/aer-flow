@@ -55,4 +55,23 @@ public sealed partial class TaskSession
             return false;
         }
     }
+
+    /// <summary>
+    /// #994: refreshes RoomTurnHostBanner on ViewModel from the daemon's status endpoint.
+    /// </summary>
+    public async Task RefreshRoomTurnHostBannerAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var status = await TryGetTurnHostStatusAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        if (status != null)
+        {
+            ViewModel.RoomTurnHostBanner = new RoomTurnHostBannerViewModel(
+                status,
+                () => ClearTurnHostDormancyAsync(roomDirectoryPath, CancellationToken.None),
+                () => LoadAsync(roomDirectoryPath, CancellationToken.None));
+        }
+        else
+        {
+            ViewModel.RoomTurnHostBanner = null;
+        }
+    }
 }

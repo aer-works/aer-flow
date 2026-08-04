@@ -351,6 +351,7 @@ public sealed partial class TaskSession
         // this method's caller drops. The lock is a local filesystem fact the desktop can read in
         // either mode; which process answers the load does not change who holds the directory.
         RefreshWaitingOnLockBanner(taskDirectoryPath);
+        await RefreshRoomTurnHostBannerAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
 
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {

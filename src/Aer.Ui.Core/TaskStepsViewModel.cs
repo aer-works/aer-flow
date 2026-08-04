@@ -194,6 +194,56 @@ public sealed partial class WaitingOnLockBannerViewModel : ObservableObject
 }
 
 /// <summary>
+/// Issue #994: the room turn-host status card / banner — values, live usage, and dormancy visibility.
+/// </summary>
+public sealed partial class RoomTurnHostBannerViewModel : ObservableObject
+{
+    private readonly Func<Task<bool>>? _clearDormancyAsyncFunc;
+    private readonly Func<Task>? _refreshAsyncFunc;
+
+    public string MeterText { get; }
+    public string ValuesText { get; }
+    public string? LoadErrorText { get; }
+    public bool IsDormant { get; }
+    public string DormancyText { get; }
+
+    public RoomTurnHostBannerViewModel(
+        RoomTurnHostStatus status,
+        Func<Task<bool>>? clearDormancyAsyncFunc = null,
+        Func<Task>? refreshAsyncFunc = null)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+
+        _clearDormancyAsyncFunc = clearDormancyAsyncFunc;
+        _refreshAsyncFunc = refreshAsyncFunc;
+
+        MeterText = $"machine turns {status.TurnsInTrailingHourCount}/{status.MachineTurnsPerHourCap} this hour";
+
+        var sourceText = string.Equals(status.ThrottlesSource, "file", StringComparison.OrdinalIgnoreCase)
+            ? "turn-throttles.json"
+            : "defaults";
+        ValuesText = $"{status.Throttles.MachineTurnMinimumGapSeconds}s gap · {status.Throttles.MachineTurnsPerHour}/h cap · limit {status.Throttles.ConsecutiveFailureLimit} ({sourceText})";
+
+        LoadErrorText = status.LoadError;
+        IsDormant = status.IsDormant;
+        DormancyText = $"Dormant · stopped after {status.ConsecutiveFailures} machine turns without progress";
+    }
+
+    [RelayCommand]
+    private async Task Wake()
+    {
+        if (_clearDormancyAsyncFunc != null)
+        {
+            var success = await _clearDormancyAsyncFunc().ConfigureAwait(true);
+            if (success && _refreshAsyncFunc != null)
+            {
+                await _refreshAsyncFunc().ConfigureAwait(true);
+            }
+        }
+    }
+}
+
+/// <summary>
 /// M25 Clause 4 (issue #617): the failed-step banner — errors are content.
 /// Shows the reason sentence and stderr excerpt in place, with affordances for "Try again",
 /// "Ask <worker> to fix it", and "Show full output".
