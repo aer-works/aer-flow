@@ -24,6 +24,7 @@ public static class MemoryProposalApplier
     /// hand-maintained one.
     /// </summary>
     public const string IndexFileName = "INDEX.md";
+    public const string VersionsFileName = "VERSIONS.jsonl";
 
     /// <summary>
     /// How two filesystem paths are compared for equality here. Windows paths are case-insensitive
@@ -45,8 +46,16 @@ public static class MemoryProposalApplier
     /// silently clamped or ignored. Deleting a target that does not exist is likewise a loud
     /// failure, not a silent success, per #672's explicit requirement.
     /// </summary>
+    public static Task ApplyAsync(
+        string roomDirectoryPath, string captureFilePath, CancellationToken cancellationToken)
+        => ApplyAsync(roomDirectoryPath, captureFilePath, "unknown", "operator", cancellationToken);
+
     public static async Task ApplyAsync(
-        string roomDirectoryPath, string captureFilePath, CancellationToken cancellationToken = default)
+        string roomDirectoryPath,
+        string captureFilePath,
+        string proposer = "unknown",
+        string approver = "operator",
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentException.ThrowIfNullOrEmpty(captureFilePath);
@@ -131,6 +140,7 @@ public static class MemoryProposalApplier
                     $"'{capture.Operation}'.");
         }
 
+        await RecordVersionAsync(memoryRoot, capture, proposer, approver, cancellationToken).ConfigureAwait(false);
         RegenerateIndex(memoryRoot);
     }
 
@@ -375,6 +385,7 @@ public static class MemoryProposalApplier
 
         var factFiles = Directory.GetFiles(memoryRoot, "*", enumeration)
             .Where(f => !Path.GetFileName(f).Equals(IndexFileName, StringComparison.OrdinalIgnoreCase))
+            .Where(f => !Path.GetFileName(f).Equals(VersionsFileName, StringComparison.OrdinalIgnoreCase))
             .Where(f => !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
             .Select(f => Path.GetRelativePath(memoryRoot, f).Replace(Path.DirectorySeparatorChar, '/'))
             .OrderBy(f => f, StringComparer.Ordinal)
@@ -393,6 +404,60 @@ public static class MemoryProposalApplier
         var tempIndexPath = indexPath + ".tmp";
         File.WriteAllLines(tempIndexPath, lines);
         File.Move(tempIndexPath, indexPath, overwrite: true);
+    }
+
+    private static async Task RecordVersionAsync(
+        string memoryRoot,
+        MemoryProposalCapture capture,
+        string proposer,
+        string approver,
+        CancellationToken cancellationToken)
+    {
+        var versionsPath = Path.Combine(memoryRoot, VersionsFileName);
+        var currentMaxVersion = 0;
+        var lines = new List<string>();
+
+        if (File.Exists(versionsPath))
+        {
+            var existingLines = await File.ReadAllLinesAsync(versionsPath, cancellationToken).ConfigureAwait(false);
+            foreach (var line in existingLines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                lines.Add(line);
+                try
+                {
+                    var versionRecord = JsonSerializer.Deserialize<Domain.RoomMemoryVersion>(line);
+                    if (versionRecord is not null && versionRecord.Version > currentMaxVersion)
+                    {
+                        currentMaxVersion = versionRecord.Version;
+                    }
+                }
+                catch (JsonException)
+                {
+                }
+            }
+        }
+
+        var nextVersion = currentMaxVersion + 1;
+        var record = new Domain.RoomMemoryVersion(
+            nextVersion,
+            capture.Operation,
+            capture.TargetPath,
+            capture.Content,
+            capture.Rationale,
+            proposer,
+            approver,
+            DateTimeOffset.UtcNow);
+
+        lines.Add(JsonSerializer.Serialize(record));
+
+        var tempVersionsPath = versionsPath + ".tmp";
+        await File.WriteAllLinesAsync(tempVersionsPath, lines, cancellationToken).ConfigureAwait(false);
+        File.Move(tempVersionsPath, versionsPath, overwrite: true);
     }
 }
 

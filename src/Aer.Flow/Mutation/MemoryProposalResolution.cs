@@ -101,7 +101,9 @@ public static class MemoryProposalResolution
             // Deliberately BEFORE the resolve below -- see this class's own remarks on ordering.
             // Safe to apply here specifically BECAUSE the status check above and this apply share
             // the same lock hold as the append that follows -- no other resolver can interleave.
-            await MemoryProposalApplier.ApplyAsync(roomDirectoryPath, @ref.Value, cancellationToken)
+            var proposer = ExtractProposerFromRef(@ref.Value);
+            await MemoryProposalApplier.ApplyAsync(
+                roomDirectoryPath, @ref.Value, proposer, item.DeciderIdentity, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -113,4 +115,23 @@ public static class MemoryProposalResolution
         return await RoomMutationInterface.ResolveHeldWorkLockedAsync(
             @ref, citation, existingEvents, state, writer, cancellationToken).ConfigureAwait(false);
     }
+
+    private static string ExtractProposerFromRef(string refValue)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(refValue);
+            var parent = dir is not null ? Path.GetDirectoryName(dir) : null;
+            if (parent is not null && Path.GetFileName(parent).StartsWith("execution_", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetFileName(parent);
+            }
+        }
+        catch
+        {
+        }
+        return "unknown";
+    }
 }
+
+
