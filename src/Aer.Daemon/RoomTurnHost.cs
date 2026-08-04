@@ -184,7 +184,9 @@ public sealed class RoomTurnHost : BackgroundService
                         roomDirectoryPath, _hostState.ConsecutiveFailures, reader, writer, cancellationToken: cancellationToken)
                         .ConfigureAwait(false);
 
-                    var escalationSubject = new EscalationSubject.Decision(new DecisionId($"turn-host-dormant-{now.Ticks}"));
+                    var escalationSubject = new EscalationSubject.HostCondition(
+                        "turn-host-dormancy",
+                        $"{_hostState.ConsecutiveFailures} consecutive uncommitted turns tripped the breaker");
                     await RoomMutationInterface.RaiseEscalationAsync(
                         roomDirectoryPath, new WorkerId("turn-host"), EscalationTrigger.Confidence, escalationSubject, reader, writer, cancellationToken: cancellationToken)
                         .ConfigureAwait(false);
@@ -237,7 +239,9 @@ public sealed class RoomTurnHost : BackgroundService
                 var roomLogPath = Path.Combine(roomDirectoryPath, RoomLogFileName);
                 var reader = new RoomEventLogReader(roomLogPath);
                 await using var writer = new RoomEventLogWriter(roomLogPath);
-                var escalationSubject = new EscalationSubject.Decision(new DecisionId($"turn-timeout-{DateTimeOffset.UtcNow.Ticks}"));
+                var escalationSubject = new EscalationSubject.HostCondition(
+                    "turn-watchdog-timeout",
+                    $"turn exceeded its {_turnBudget} budget and was terminated");
                 await RoomMutationInterface.RaiseEscalationAsync(
                     roomDirectoryPath, new WorkerId("turn-host"), EscalationTrigger.Confidence, escalationSubject, reader, writer, cancellationToken: stoppingToken)
                     .ConfigureAwait(false);

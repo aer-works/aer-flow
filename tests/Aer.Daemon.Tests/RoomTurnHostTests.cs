@@ -119,6 +119,8 @@ public class RoomTurnHostTests
             var escalation = Assert.Single(events.OfType<RoomEvent.EscalationRaised>());
             Assert.Equal(EscalationTrigger.Confidence, escalation.Trigger);
             Assert.Equal(new WorkerId("turn-host"), escalation.FromWorkerId);
+            var subject = Assert.IsType<EscalationSubject.HostCondition>(escalation.Subject);
+            Assert.Equal("turn-watchdog-timeout", subject.Condition);
         }
         finally
         {
