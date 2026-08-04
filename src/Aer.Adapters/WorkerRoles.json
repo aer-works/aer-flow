@@ -98,5 +98,23 @@
         "instruction": "Write the full diff of the committed change to $AER_OUTPUT_DIR/branch.diff -- this is the ground truth a following review reads, so it must be the diff of the change, not of HEAD."
       }
     ]
+  },
+  {
+    "id": "orchestrate",
+    "tier": "orchestrator",
+    "read_files": true,
+    "write_files": false,
+    "run_shell_commands": false,
+    "network_access": false,
+    "timeout_minutes": 10,
+    "verdict_schema": false,
+    "purpose": "Resident room occupant turn that reads room state and emits turn actions.",
+    "outputs": [
+      {
+        "name": "turn-actions.json",
+        "schema": "none",
+        "instruction": "Write your turn actions JSON to $AER_OUTPUT_DIR/turn-actions.json."
+      }
+    ]
   }
 ]
