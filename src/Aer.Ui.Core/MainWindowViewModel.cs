@@ -87,10 +87,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Owner feedback: the "Working right now" section rendered its heading even with nothing
     /// running underneath, reading as a blank/broken panel rather than an honest empty state.
-    /// <see cref="RunningExecutions"/> is cleared and refilled in place on the same long-lived
-    /// <c>MainWindowViewModel</c> instance (<c>TaskSession.RebuildRunningExecutions</c>), so this
-    /// needs its own change notification rather than the "new instance per rebuild" pattern
-    /// <see cref="TaskStepsViewModel.HasOutputFiles"/> and its siblings rely on.
+    /// "Is anything running?" is one of #495's three room questions, answered once (#615): the
+    /// change-notification wiring lives on <see cref="RunningExecutions"/> itself because the room
+    /// (<c>TaskSession.RebuildRunningExecutions</c>) clears and refills that collection in place on
+    /// this same long-lived instance — the collection the room fills IS the stated answer, and this
+    /// property only maps it to a bool, so no surface re-counts it (MainWindow's code-behind
+    /// previously did, a second copy of the same answer).
     /// </summary>
     public bool HasRunningExecutions => RunningExecutions.Count > 0;
 

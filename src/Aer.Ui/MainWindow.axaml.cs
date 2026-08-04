@@ -1503,8 +1503,7 @@ public partial class MainWindow : Window
             Show();
             Activate();
 
-            var hasRunningTasks = ViewModel.RunningExecutions.Count > 0;
-            var result = await ExitConfirmationWindow.ShowPromptAsync(this, hasRunningTasks);
+            var result = await ExitConfirmationWindow.ShowPromptAsync(this, ViewModel.HasRunningExecutions);
             if (result == null)
             {
                 return;
