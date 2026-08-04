@@ -10,21 +10,15 @@ namespace Aer.Daemon;
 
 public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
 {
-    private sealed class NoOpCoreEventLogWriter : ICoreEventLogWriter
-    {
-        public Task AppendAsync(CoreEvent coreEvent, CancellationToken cancellationToken = default)
-            => Task.CompletedTask;
-    }
-
     private readonly IReadOnlyDictionary<string, IWorkerAdapter> _adapters;
-    private readonly ICoreDispatcher _dispatcher;
+    private readonly ICoreDispatcher? _injectedDispatcher;
 
     public RoleTemplateOccupantRunner(
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         ICoreDispatcher? dispatcher = null)
     {
         _adapters = adapters ?? throw new ArgumentNullException(nameof(adapters));
-        _dispatcher = dispatcher ?? new CoreDispatcher(new NoOpCoreEventLogWriter());
+        _injectedDispatcher = dispatcher;
     }
 
     public async Task<OccupantTurnResult> RunTurnAsync(OrchestratorTurnInput input, TimeSpan budget, CancellationToken ct)
@@ -105,10 +99,21 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
             Environment: [new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", outputDir)],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
+        // The turn's spawn lifecycle is a record like any other (#992's occupant half must not
+        // be the one worker whose executions leave no trace): when no dispatcher was injected
+        // (tests inject one), Core events land in the turn's own output directory.
         CoreDispatchResult dispatchResult;
         try
         {
-            dispatchResult = await _dispatcher.DispatchAsync(execRequest, target, ct).ConfigureAwait(false);
+            if (_injectedDispatcher is not null)
+            {
+                dispatchResult = await _injectedDispatcher.DispatchAsync(execRequest, target, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await using var lifecycleLog = new FlowEventLogWriter(Path.Combine(outputDir, "events.jsonl"));
+                dispatchResult = await new CoreDispatcher(lifecycleLog).DispatchAsync(execRequest, target, ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
