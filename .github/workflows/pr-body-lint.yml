@@ -20,10 +20,16 @@ on:
 jobs:
   pr-body-lint:
     runs-on: ubuntu-latest
+    # Declared rather than inherited: the closures step reads issues via the job token, and an org
+    # tightening the default token scope later should not silently break it (#975 review).
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v4
-      # No submodule, no .NET, no build: this reads the PR body as text through completeness.py.
-      # Same setup the audit job uses -- let `pixi run` do the implicit install.
+      # No submodule, no .NET, no build: both steps read the PR body as text through
+      # completeness.py; the closures step additionally fetches each DECLARED target issue live via
+      # `gh`. Same setup the audit job uses -- let `pixi run` do the implicit install.
       - uses: prefix-dev/setup-pixi@v0.8.0
         with:
           run-install: false
@@ -34,3 +40,15 @@ jobs:
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: printf '%s' "$BODY" | pixi run audit-completeness -- --pr-body
+      # #975: a declared close must not strand unchecked scope boxes outside the open backlog.
+      # The issue body is fetched at RUN time, so fixing the issue needs only a re-run of this
+      # check, not a PR edit (unlike the body lint above, whose `edited` trigger exists because a
+      # rerun replays the stale body -- the asymmetry is deliberate and correct for each input).
+      # `always()` so a keyword fault in the step above does not hide a partial-close fault here —
+      # both are body defects and the author should learn of both in one run, not two round-trips.
+      - name: A declared close leaves no unchecked scope boxes behind
+        if: always()
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$BODY" | pixi run audit-completeness -- --pr-closures

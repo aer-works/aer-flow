@@ -374,6 +374,43 @@ def _step4_calls_every_failure_a_missing_repo():
         yield
 
 
+@control("a declared close is refused while its target issue still carries unchecked scope boxes",
+         "the box scan goes blind, so a declared close sails past an issue full of unbuilt scopes")
+def _partial_closure_blind():
+    with swap(selfcheck.completeness, "unchecked_scope_lines", lambda body: []):
+        yield
+
+
+@control("a declared close is refused while its target issue still carries unchecked scope boxes",
+         "the declaration parse goes blind, so no close is ever a target and the whole lint is silently inert")
+def _partial_closure_declarations_blind():
+    # The inert direction the #975 review found uncontrolled: zero targets short-circuits the mode
+    # to OK, so a regex regression here would never fire again without this arm going red.
+    with swap(selfcheck.completeness, "declared_closure_targets", lambda body: []):
+        yield
+
+
+@control("a declared close is refused while its target issue still carries unchecked scope boxes",
+         "the box scan cries wolf, so a fully-checked issue reds its own closing PR")
+def _partial_closure_box_cries_wolf():
+    with swap(selfcheck.completeness, "unchecked_scope_lines", lambda body: ["- [ ] phantom"]):
+        yield
+
+
+@control("a declared close is refused while its target issue still carries unchecked scope boxes",
+         "every reference becomes a declared target, so strict targeting is gone and any referenced issue's boxes red the PR")
+def _partial_closure_targets_everything():
+    # The direction the operator constrained explicitly (2026-08-04): an umbrella issue that is
+    # merely referenced must never trip the lint. If targeting widens to all references, every PR
+    # that cites a multi-scope issue reds, and the lint is off within a week.
+    def every_reference(body):
+        import re
+        return [int(n) for n in dict.fromkeys(re.findall(r"#(\d+)", body or ""))]
+
+    with swap(selfcheck.completeness, "declared_closure_targets", every_reference):
+        yield
+
+
 @control("--pr-body refuses a path argument instead of passing over the empty stdin it leaves",
          "the stray-argument refusal is removed, so a path argument reads empty stdin and passes")
 def _pr_body_takes_a_path_again():
