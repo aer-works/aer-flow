@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aer.Flow.Domain;
 
 namespace Aer.Flow.Mutation;
 
@@ -15,15 +16,8 @@ namespace Aer.Flow.Mutation;
 /// </summary>
 public static class MemoryProposalApplier
 {
-    public const string MemoryDirectoryName = "memory";
-
-    /// <summary>
-    /// Mechanically regenerated on every apply (never hand-edited): one line per fact file
-    /// currently under <c>memory/</c>, sorted, so the orchestrator's turn-start read (0044 point 2)
-    /// is always in sync with what is actually on disk rather than a record that can drift from a
-    /// hand-maintained one.
-    /// </summary>
-    public const string IndexFileName = "INDEX.md";
+    // The on-disk layout names live on RoomMemoryDocument (Domain owns the document's shape;
+    // Mutation imports Domain, never the reverse). Referenced from there, not restated.
 
     /// <summary>
     /// How two filesystem paths are compared for equality here. Windows paths are case-insensitive
@@ -38,15 +32,23 @@ public static class MemoryProposalApplier
 
     /// <summary>
     /// Reads <paramref name="captureFilePath"/> and applies its proposed operation to
-    /// <c>{roomDirectoryPath}/memory/</c>, then regenerates <see cref="IndexFileName"/>.
+    /// <c>{roomDirectoryPath}/memory/</c>, then regenerates <see cref="RoomMemoryDocument.IndexFileName"/>.
     /// <paramref name="captureFilePath"/> must resolve strictly inside <c>memory/</c> after joining
     /// with the memory root — a traversal attempt (a rooted path, or a <c>../</c> segment that
     /// escapes the root) is refused loudly via <see cref="InvalidRoomMutationException"/>, never
     /// silently clamped or ignored. Deleting a target that does not exist is likewise a loud
     /// failure, not a silent success, per #672's explicit requirement.
     /// </summary>
+    public static Task ApplyAsync(
+        string roomDirectoryPath, string captureFilePath, CancellationToken cancellationToken)
+        => ApplyAsync(roomDirectoryPath, captureFilePath, "unknown", "operator", cancellationToken);
+
     public static async Task ApplyAsync(
-        string roomDirectoryPath, string captureFilePath, CancellationToken cancellationToken = default)
+        string roomDirectoryPath,
+        string captureFilePath,
+        string proposer = "unknown",
+        string approver = "operator",
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentException.ThrowIfNullOrEmpty(captureFilePath);
@@ -71,7 +73,7 @@ public static class MemoryProposalApplier
                 $"Memory-proposal capture file '{captureFilePath}' is not valid JSON: {ex.Message}", ex);
         }
 
-        var memoryRoot = Path.GetFullPath(Path.Combine(roomDirectoryPath, MemoryDirectoryName));
+        var memoryRoot = Path.GetFullPath(Path.Combine(roomDirectoryPath, RoomMemoryDocument.MemoryDirectoryName));
         var resolvedTargetPath = ResolveTargetPathStrictlyInsideMemory(memoryRoot, capture.TargetPath);
 
         switch (capture.Operation)
@@ -131,6 +133,16 @@ public static class MemoryProposalApplier
                     $"'{capture.Operation}'.");
         }
 
+        // The inner crash window, named like the outer apply-vs-resolve one in
+        // MemoryProposalResolution's remarks: the fact write above and this version append are not
+        // one transaction. A crash between them leaves an applied fact with no version record --
+        // RoomMemoryDocument.LoadAsync then reports the fact file with an undercounting Version,
+        // and its remarks say why it must NOT auto-detect that (0044 permits operator hand-edits,
+        // which look identical). Recovery is the same as the outer window's: the item is still
+        // pending, a retried `add` fails loudly on the existing target, and reject resolves it
+        // with memory/ already reflecting the landed write. Proven observable by
+        // RoomMemoryDocumentTests.A_crash_between_fact_write_and_version_append_is_visible_as_fact_history_divergence.
+        await RecordVersionAsync(memoryRoot, capture, proposer, approver, cancellationToken).ConfigureAwait(false);
         RegenerateIndex(memoryRoot);
     }
 
@@ -374,7 +386,8 @@ public static class MemoryProposalApplier
         };
 
         var factFiles = Directory.GetFiles(memoryRoot, "*", enumeration)
-            .Where(f => !Path.GetFileName(f).Equals(IndexFileName, StringComparison.OrdinalIgnoreCase))
+            .Where(f => !Path.GetFileName(f).Equals(RoomMemoryDocument.IndexFileName, StringComparison.OrdinalIgnoreCase))
+            .Where(f => !Path.GetFileName(f).Equals(RoomMemoryDocument.VersionsFileName, StringComparison.OrdinalIgnoreCase))
             .Where(f => !f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
             .Select(f => Path.GetRelativePath(memoryRoot, f).Replace(Path.DirectorySeparatorChar, '/'))
             .OrderBy(f => f, StringComparer.Ordinal)
@@ -389,10 +402,68 @@ public static class MemoryProposalApplier
         };
         lines.AddRange(factFiles.Select(f => $"- {f}"));
 
-        var indexPath = Path.Combine(memoryRoot, IndexFileName);
+        var indexPath = Path.Combine(memoryRoot, RoomMemoryDocument.IndexFileName);
         var tempIndexPath = indexPath + ".tmp";
         File.WriteAllLines(tempIndexPath, lines);
         File.Move(tempIndexPath, indexPath, overwrite: true);
+    }
+
+    private static async Task RecordVersionAsync(
+        string memoryRoot,
+        MemoryProposalCapture capture,
+        string proposer,
+        string approver,
+        CancellationToken cancellationToken)
+    {
+        var versionsPath = Path.Combine(memoryRoot, RoomMemoryDocument.VersionsFileName);
+        var currentMaxVersion = 0;
+        var lines = new List<string>();
+
+        if (File.Exists(versionsPath))
+        {
+            var existingLines = await File.ReadAllLinesAsync(versionsPath, cancellationToken).ConfigureAwait(false);
+            foreach (var line in existingLines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                lines.Add(line);
+                try
+                {
+                    var versionRecord = JsonSerializer.Deserialize<Domain.RoomMemoryVersion>(line);
+                    if (versionRecord is not null && versionRecord.Version > currentMaxVersion)
+                    {
+                        currentMaxVersion = versionRecord.Version;
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    // The line is preserved verbatim above (never dropped on rewrite), but it can't
+                    // vote on the max version — loud skip, never silent (error-handling rules).
+                    Console.Error.WriteLine(
+                        $"[RoomMemory] Malformed version-history line in '{versionsPath}' ignored for version numbering: {ex.Message}");
+                }
+            }
+        }
+
+        var nextVersion = currentMaxVersion + 1;
+        var record = new Domain.RoomMemoryVersion(
+            nextVersion,
+            capture.Operation,
+            capture.TargetPath,
+            capture.Content,
+            capture.Rationale,
+            proposer,
+            approver,
+            DateTimeOffset.UtcNow);
+
+        lines.Add(JsonSerializer.Serialize(record));
+
+        var tempVersionsPath = versionsPath + ".tmp";
+        await File.WriteAllLinesAsync(tempVersionsPath, lines, cancellationToken).ConfigureAwait(false);
+        File.Move(tempVersionsPath, versionsPath, overwrite: true);
     }
 }
 

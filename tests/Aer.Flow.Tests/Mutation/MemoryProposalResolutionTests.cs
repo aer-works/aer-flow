@@ -195,7 +195,7 @@ public class MemoryProposalResolutionTests : IDisposable
 
         var afterBytes = await File.ReadAllBytesAsync(Path.Combine(_memoryRoot, "fact.md"), TestContext.Current.CancellationToken);
         Assert.Equal(beforeBytes, afterBytes);
-        Assert.False(File.Exists(Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName)));
+        Assert.False(File.Exists(Path.Combine(_memoryRoot, RoomMemoryDocument.IndexFileName)));
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 
 namespace Aer.Flow.Tests.Mutation;
@@ -221,7 +222,7 @@ public class MemoryProposalApplierTests : IDisposable
             // points at -- the fact is listed once, at its real path, because the walk reaches it
             // directly rather than through the link.
             var index = await File.ReadAllTextAsync(
-                Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+                Path.Combine(_memoryRoot, RoomMemoryDocument.IndexFileName), TestContext.Current.CancellationToken);
 
             Assert.Contains("- real/fact.md", index, StringComparison.Ordinal);
             Assert.DoesNotContain("alias/fact.md", index, StringComparison.Ordinal);
@@ -261,7 +262,7 @@ public class MemoryProposalApplierTests : IDisposable
 
             try
             {
-                var memoryRoot = Path.Combine(roomAlias, MemoryProposalApplier.MemoryDirectoryName);
+                var memoryRoot = Path.Combine(roomAlias, RoomMemoryDocument.MemoryDirectoryName);
                 Directory.CreateDirectory(memoryRoot);
                 var realDirectory = Path.Combine(memoryRoot, "real");
                 Directory.CreateDirectory(realDirectory);
@@ -491,7 +492,7 @@ public class MemoryProposalApplierTests : IDisposable
             await MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken);
 
             var index = await File.ReadAllTextAsync(
-                Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+                Path.Combine(_memoryRoot, RoomMemoryDocument.IndexFileName), TestContext.Current.CancellationToken);
 
             Assert.Contains("- fact.md", index, StringComparison.Ordinal);
             Assert.DoesNotContain("outside-fact.md", index, StringComparison.Ordinal);
@@ -530,7 +531,7 @@ public class MemoryProposalApplierTests : IDisposable
 
         try
         {
-            var memoryRoot = Path.Combine(roomDirectory, MemoryProposalApplier.MemoryDirectoryName);
+            var memoryRoot = Path.Combine(roomDirectory, RoomMemoryDocument.MemoryDirectoryName);
             Directory.CreateDirectory(memoryRoot);
             var outsideDirectory = Path.Combine(roomDirectory, "outside");
             Directory.CreateDirectory(outsideDirectory);
@@ -613,7 +614,7 @@ public class MemoryProposalApplierTests : IDisposable
             await MemoryProposalApplier.ApplyAsync(_tempDirectory, capture, TestContext.Current.CancellationToken);
 
             var index = await File.ReadAllTextAsync(
-                Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+                Path.Combine(_memoryRoot, RoomMemoryDocument.IndexFileName), TestContext.Current.CancellationToken);
 
             Assert.Contains("- fact.md", index, StringComparison.Ordinal);
             Assert.DoesNotContain("linked-fact.md", index, StringComparison.Ordinal);
@@ -757,7 +758,7 @@ public class MemoryProposalApplierTests : IDisposable
         await MemoryProposalApplier.ApplyAsync(_tempDirectory, second, TestContext.Current.CancellationToken);
 
         var index = await File.ReadAllTextAsync(
-            Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+            Path.Combine(_memoryRoot, RoomMemoryDocument.IndexFileName), TestContext.Current.CancellationToken);
 
         Assert.Contains("- a.md", index);
         Assert.Contains("- b.md", index);
@@ -775,7 +776,7 @@ public class MemoryProposalApplierTests : IDisposable
         await MemoryProposalApplier.ApplyAsync(_tempDirectory, delete, TestContext.Current.CancellationToken);
 
         var index = await File.ReadAllTextAsync(
-            Path.Combine(_memoryRoot, MemoryProposalApplier.IndexFileName), TestContext.Current.CancellationToken);
+            Path.Combine(_memoryRoot, RoomMemoryDocument.IndexFileName), TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain("- a.md", index);
     }
