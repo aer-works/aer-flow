@@ -426,6 +426,90 @@ public class GuidedAuthoringTests
         flow.RefreshStructure();
         Assert.True(flow.Steps[1].DependsOnOptions.Single(option => option.StepName == "draft").IsSelected);
     }
+
+    [Fact]
+    public void Validate_refuses_grant_shapes_that_gemini_adapter_refuses_at_bind()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        // Shell + patterns is coherent (CategoriesDefeatedByTheShell is empty) but refused by GeminiWorkerAdapter.
+        flow.GrantRunShellCommands = true;
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+        flow.ShellCommandPatternsText = "git:*";
+
+        var message = Assert.Single(flow.GuidanceMessages);
+        Assert.Contains("'draft'", message, StringComparison.Ordinal);
+        Assert.Contains("AER cannot yet scope an agy shell grant to ShellCommandPatterns", message, StringComparison.Ordinal);
+        Assert.False(flow.CanSave);
+    }
+
+    [Fact]
+    public void Gemini_step_with_shell_and_network_grant_validates()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        flow.GrantRunShellCommands = true;
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+
+        Assert.DoesNotContain(flow.GuidanceMessages, m => m.Contains("can't be granted to", StringComparison.Ordinal));
+        Assert.True(flow.CanSave);
+    }
+
+    [Fact]
+    public void Claude_step_with_shell_and_patterns_grant_validates()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Claude;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        flow.GrantRunShellCommands = true;
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+        flow.ShellCommandPatternsText = "git:*";
+
+        Assert.DoesNotContain(flow.GuidanceMessages, m => m.Contains("can't be granted to", StringComparison.Ordinal));
+        Assert.True(flow.CanSave);
+    }
+
+    [Fact]
+    public void Dialogue_step_is_unaffected_by_adapter_grant_refusal()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Dialogue;
+        flow.Steps[0].ProducesFileName = "draft.md";
+        flow.Steps[0].SeedPrompt = "Opening prompt.";
+        flow.Steps[0].InitiatorPreamble = "Preamble 1";
+        flow.Steps[0].ResponderPreamble = "Preamble 2";
+
+        flow.GrantRunShellCommands = true;
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+        flow.ShellCommandPatternsText = "git:*";
+
+        Assert.DoesNotContain(flow.GuidanceMessages, m => m.Contains("can't be granted to", StringComparison.Ordinal));
+        Assert.True(flow.CanSave);
+    }
 }
 
 /// <summary>An adapter that never implements <see cref="IPermissionGrantTranslator"/> — the "no structured permission builder support" guidance path.</summary>
