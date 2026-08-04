@@ -228,7 +228,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 .sw-toggle.on .dot-sw{background:var(--accent)}
 
 /* ---- Resident-room addition — spend controls, dormancy, waiting on a lock ---- */
-.dm{color:var(--idle)}.wt{color:var(--review)}
+.dm{color:var(--idle)}.wt{color:var(--idle)} /* both quiet states share the muted hue; the real marks/colours are tokens' call (#616) — --review would collide with "reviewing" */
 .turn.quiet{border-color:var(--rule);background:var(--sunk)}
 .turn.quiet .who{color:var(--text-3)}
 .meter{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-2)}
@@ -915,6 +915,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       <div class="p-body">
         <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you · schema change</span></span></div>
         <div class="p-row"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · turns 9/10 this hour</span></span></div>
+        <div class="p-row"><span class="mk wt">⧗</span><span><span class="nm">migration</span><span class="st">Waiting · payments-api holds its folder</span></span></div>
         <div class="p-row"><span class="mk dm">⏾</span><span><span class="nm">docs-sweep</span><span class="st">Dormant · 3 turns, no progress</span></span></div>
         <div class="p-row"><span class="mk d">✓</span><span><span class="nm">spike-cache</span><span class="st">Finished · 1d</span></span></div>
         <div class="p-tabs"><span class="on">Rooms</span><span>Needs you</span><span>Settings</span></div>
@@ -932,7 +933,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
     </div>
   </div>
-  <p class="note"><b>On the phone, state is always visible and the editor is one tap away.</b> A card carries a turns counter only while the number is worth knowing — near the cap, waiting, dormant. A healthy resident room's card is indistinguishable from any working room's (0006).</p>
+  <p class="note"><b>On the phone, state is always visible and the editor is one tap away.</b> A card's second line is the state's own key fact — the holding room while waiting, the no-progress count while dormant, and the hourly meter on a working resident room only from 80% of its cap upward. A healthy resident room's card is indistinguishable from any working room's (0006).</p>
 </section>
 
 <hr class="div">
@@ -967,7 +968,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
     </div>
   </div></div>
-  <p class="note"><b>The second turn is the load-bearing one:</b> asking after a dormant room gets you the state and the wake control, not a restarted loop — a room that stopped because three turns went nowhere must not resume spending as a side effect of "how's it going". <b>It is a wait, not a failure,</b> drawn quiet, grouped beside "needs you" in the list because it is waiting on you.</p>
+  <p class="note"><b>The second turn is the load-bearing one:</b> asking after a dormant room gets you the state and the wake control, not a restarted loop — a room that stopped because three turns went nowhere must not resume spending as a side effect of "how's it going". <b>It is a wait, not a failure,</b> drawn quiet, grouped beside "needs you" in the list because it is waiting on you. "Swap orchestrator…" is the 0032 reassignment control from the room header surfaced on the turn, not a second mechanism.</p>
 </section>
 
 <hr class="div">
@@ -975,7 +976,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 <section>
   <p class="eyebrow">Resident-room addition</p>
   <h2 id="res-wait">Waiting on another room's lock</h2>
-  <p class="sub">Two rooms on one folder already take strict turns — the engine side has been true since #393. What was missing is the wait being visible at all.</p>
+  <p class="sub">Two rooms on one folder already take strict turns — the engine side has been true since #393, path-normalised in #335. What was missing is the wait being visible at all.</p>
   <p class="plat">Desktop · blocked behind the holder, named and linked</p>
   <div class="shot scrollx"><div class="d-inner">
     <div class="d-top"><span class="dot"></span> Baton</div>
@@ -997,7 +998,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
       </div>
     </div>
   </div></div>
-  <p class="note"><b>A blocked room used to look exactly like a slow one</b> — the worst presentation, because the remedy (go close the other room) is undiscoverable. The holder is named and linked; typing still queues. Creating a second room on an already-roomed folder warns first: allowed, occasionally right, and knowingly chosen.</p>
+  <p class="note"><b>A blocked room used to look exactly like a slow one</b> — the worst presentation, because the remedy (go close the other room) is undiscoverable. The holder is named and linked; typing still queues. Creating a second room on an already-roomed folder warns first: allowed, occasionally right, and knowingly chosen. Showing the holder as a <em>room name</em> awaits the lock's room-name field (the #495 rider, riding with #480's build under #752) — today the lock records only the folder path.</p>
 </section>
 
 <hr class="div">

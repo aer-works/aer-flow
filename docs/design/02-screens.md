@@ -682,6 +682,8 @@ Rooms 1 needs you · 1 dormant
 
 ◔ aer-flow Working · turns 9/10 this hour
 
+⧗ migration Waiting · payments-api holds its folder
+
 ⏾ docs-sweep Dormant · 3 turns, no progress
 
 Rooms Needs you Settings
@@ -701,9 +703,10 @@ Turns to dormant 3 ›
 Your own messages are never throttled.
 ```
 
-On the phone, **state is always visible and editors are one tap away** — the room card carries a
-throttle counter only when the number is informative (near its cap, waiting, or dormant), and
-stays quiet otherwise, per 0006: a healthy resident room's card looks exactly like any working
+On the phone, **state is always visible and editors are one tap away** — the room card's second
+line carries the state's own key fact: the holder for a waiting room, the no-progress count for a
+dormant one, and the hourly meter for a working resident room only once it reaches **80% of its
+cap**. Below that, quiet, per 0006: a healthy resident room's card looks exactly like any working
 room's. Tapping into the room's control sheet gets the same three values the desktop panel shows,
 one field per row.
 
@@ -736,6 +739,8 @@ Reply… ⏎
 
 Dormancy renders as a turn, in the transcript, where the history that led to it sits directly
 above — the same rule gates follow. It says what stopped, why, and offers the two ways forward.
+"Swap orchestrator…" is the existing 0032 reassignment control from the room header, surfaced on
+the turn for convenience — not a second mechanism.
 The room list gives dormant rooms their own group beside "needs you", because a dormant room *is*
 waiting on you — but it is a wait, not a failure, and never drawn as one. And the second turn in
 the drawing is the load-bearing behaviour: your message did not wake the loop. The product
@@ -766,6 +771,9 @@ model of what the product is doing goes wrong, and the fix is undiscoverable. Th
 holder and links to it. It is information, not an error (0006). Typing still queues — the founding
 rule that a busy anything is never a reason you cannot act. Opening a *second* room on a folder
 that already has one warns at creation: legal, occasionally right, and a choice to make knowingly.
+Naming the holder as a *room* rather than a folder path rests on the lock growing a room-name
+field — the rider accepted with the thirteen-state ratification on #495, riding with #480's build
+(grouped under #752); until it ships, the engine knows only the path.
 
 #### Escalation is a gate
 
