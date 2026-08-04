@@ -12,8 +12,13 @@ namespace Aer.Flow.Projection;
 /// </param>
 public sealed record RoomState(
     IReadOnlyDictionary<HeldWorkRef, HeldWorkState> HeldWork,
-    IReadOnlyList<string> UnmatchedEntries)
+    IReadOnlyList<string> UnmatchedEntries,
+    IReadOnlyDictionary<GrantId, GrantState>? ActiveGrants = null,
+    IReadOnlyList<RoomEvent.EscalationRaised>? OpenEscalations = null)
 {
+    public IReadOnlyDictionary<GrantId, GrantState> ActiveGrants { get; init; } = ActiveGrants ?? new Dictionary<GrantId, GrantState>();
+    public IReadOnlyList<RoomEvent.EscalationRaised> OpenEscalations { get; init; } = OpenEscalations ?? [];
+
     public bool Equals(RoomState? other)
     {
         if (other is null)
@@ -26,7 +31,11 @@ public sealed record RoomState(
             return true;
         }
 
-        if (HeldWork.Count != other.HeldWork.Count || !UnmatchedEntries.SequenceEqual(other.UnmatchedEntries))
+        if (HeldWork.Count != other.HeldWork.Count ||
+            ActiveGrants.Count != other.ActiveGrants.Count ||
+            OpenEscalations.Count != other.OpenEscalations.Count ||
+            !UnmatchedEntries.SequenceEqual(other.UnmatchedEntries) ||
+            !OpenEscalations.SequenceEqual(other.OpenEscalations))
         {
             return false;
         }
@@ -34,6 +43,14 @@ public sealed record RoomState(
         foreach (var (key, value) in HeldWork)
         {
             if (!other.HeldWork.TryGetValue(key, out var otherValue) || !value.Equals(otherValue))
+            {
+                return false;
+            }
+        }
+
+        foreach (var (key, value) in ActiveGrants)
+        {
+            if (!other.ActiveGrants.TryGetValue(key, out var otherValue) || !value.Equals(otherValue))
             {
                 return false;
             }
@@ -51,6 +68,17 @@ public sealed record RoomState(
             hash.Add(value);
         }
 
+        foreach (var (key, value) in ActiveGrants.OrderBy(kv => kv.Key.Value))
+        {
+            hash.Add(key);
+            hash.Add(value);
+        }
+
+        foreach (var escalation in OpenEscalations)
+        {
+            hash.Add(escalation);
+        }
+
         foreach (var entry in UnmatchedEntries)
         {
             hash.Add(entry);
@@ -59,3 +87,4 @@ public sealed record RoomState(
         return hash.ToHashCode();
     }
 }
+

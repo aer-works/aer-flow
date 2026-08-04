@@ -124,3 +124,30 @@ public readonly record struct HeldWorkRef(string Value)
     }
 }
 
+/// <summary>Identifies a grant issued to a worker (§D).</summary>
+[JsonConverter(typeof(Converter))]
+public readonly record struct GrantId(string Value)
+{
+    public override string ToString() => Value;
+
+    private sealed class Converter : StringIdJsonConverter<GrantId>
+    {
+        protected override GrantId Create(string value) => new(value);
+        protected override string GetValue(GrantId id) => id.Value;
+    }
+}
+
+/// <summary>Identifies a worker instance (§D).</summary>
+[JsonConverter(typeof(Converter))]
+public readonly record struct WorkerId(string Value)
+{
+    public override string ToString() => Value;
+
+    private sealed class Converter : StringIdJsonConverter<WorkerId>
+    {
+        protected override WorkerId Create(string value) => new(value);
+        protected override string GetValue(WorkerId id) => id.Value;
+    }
+}
+
+
