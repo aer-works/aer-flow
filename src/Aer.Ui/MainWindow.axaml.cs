@@ -244,6 +244,7 @@ public partial class MainWindow : Window
         RefreshButton.Click += (_, _) => _ = RefreshAsync();
         CompareButton.Click += (_, _) => _ = CompareToTemplateAsync(TemplateComparePathBox.Text ?? string.Empty);
         RunButton.Click += (_, _) => _ = OnRunButtonClickAsync();
+        ViewModel.ReRunRequested += () => _ = OnRunButtonClickAsync();
         StopButton.Click += (_, _) => _ = StopAsync();
         NewTemplateButton.Click += (_, _) => NewTemplate();
         EditTemplateButton.Click += (_, _) => _ = OpenTemplateInEditorAsync(TemplateEditorPathBox.Text ?? string.Empty);

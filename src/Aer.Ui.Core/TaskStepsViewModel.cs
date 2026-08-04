@@ -1,5 +1,6 @@
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
+using Aer.Flow.Outcomes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -81,7 +82,8 @@ public sealed partial class StepItemViewModel : ObservableObject
         PausedStepViewModel? pausedStep,
         Action<StepItemViewModel> select,
         string? adapter = null,
-        IReadOnlyList<ArtifactFileViewModel>? promptFiles = null)
+        IReadOnlyList<ArtifactFileViewModel>? promptFiles = null,
+        FailedStepBannerViewModel? failedBanner = null)
     {
         StepId = stepId;
         Worker = worker;
@@ -94,6 +96,7 @@ public sealed partial class StepItemViewModel : ObservableObject
         _select = select;
         Adapter = adapter;
         PromptFiles = promptFiles ?? [];
+        FailedBanner = failedBanner;
     }
 
     public string StepId { get; }
@@ -105,6 +108,12 @@ public sealed partial class StepItemViewModel : ObservableObject
     public IReadOnlyList<ArtifactFileViewModel> OutputFiles { get; }
     public IReadOnlyList<ConversationRefViewModel> Conversations { get; }
     public IReadOnlyList<string> DecisionLines { get; }
+
+    /// <summary>
+    /// M25 Clause 4 (issue #617): banner rendering for failed steps. Non-null only when <see cref="Status"/> is <see cref="StepStatus.Failed"/>.
+    /// </summary>
+    public FailedStepBannerViewModel? FailedBanner { get; }
+    public bool HasFailedBanner => FailedBanner is not null;
 
     /// <summary>
     /// One entry per attempt whose execution durably captured its resolved prompt (issue #292) —
@@ -153,6 +162,78 @@ public sealed partial class StepItemViewModel : ObservableObject
 
     [RelayCommand]
     private void Select() => _select(this);
+}
+
+/// <summary>
+/// M25 Clause 4 (issue #617): the failed-step banner — errors are content.
+/// Shows the reason sentence and stderr excerpt in place, with affordances for "Try again",
+/// "Ask <worker> to fix it", and "Show full output".
+/// </summary>
+public sealed partial class FailedStepBannerViewModel : ObservableObject
+{
+    private readonly Action? _tryAgainAction;
+    private readonly Action<string, string, string>? _askWorkerToFixAction;
+    private readonly Action? _showFullOutputAction;
+
+    public string StepId { get; }
+    public string Worker { get; }
+    public string Adapter { get; }
+    public string Headline { get; }
+    public string ReasonSentence { get; }
+    public string? StderrExcerpt { get; }
+    public bool HasStderrExcerpt => !string.IsNullOrWhiteSpace(StderrExcerpt);
+
+    public string TryAgainLabel { get; }
+    public string AskWorkerLabel { get; }
+    public bool CanShowFullOutput => _showFullOutputAction != null;
+
+    public FailedStepBannerViewModel(
+        string stepId,
+        string worker,
+        string adapter,
+        string? rawReason,
+        Action? reRunAction,
+        Action<string, string, string>? askWorkerToFixAction,
+        Action? showFullOutputAction)
+    {
+        StepId = stepId;
+        Worker = worker;
+        Adapter = adapter;
+        _askWorkerToFixAction = askWorkerToFixAction;
+        _showFullOutputAction = showFullOutputAction;
+
+        // The split lives beside its writer (see OutcomeClassifier.SplitReasonAndStderr) so the
+        // separator has one home; this surface only renders the two halves.
+        var (reasonSentence, stderrExcerpt) = OutcomeClassifier.SplitReasonAndStderr(rawReason);
+        ReasonSentence = reasonSentence;
+        StderrExcerpt = stderrExcerpt;
+
+        Headline = $"Failed · {worker} · {ReasonSentence}";
+        AskWorkerLabel = $"Ask {worker} to fix it";
+
+        // A banner exists only for StepStatus.Failed, and a Failed step is never in the paused set
+        // (paused-after-exhausted-retries is Status Paused, with its own decision surface) — so the
+        // only honest retry here is the re-run clone flow, and the label says so. That flow exists
+        // only for a Terminal task: while a sibling branch is still running or paused, Run resumes
+        // the same directory in place, and for a step that is Failed with no pending obligation the
+        // pump reaches its fixed point immediately — a silent no-op wearing a "Try again" label.
+        // The projector therefore passes reRunAction only when the workflow is Terminal, and
+        // CanTryAgain hides the button in the meantime rather than offering a click that does
+        // nothing.
+        TryAgainLabel = "Try again (re-run task)";
+        _tryAgainAction = reRunAction;
+    }
+
+    public bool CanTryAgain => _tryAgainAction != null;
+
+    [RelayCommand]
+    private void TryAgain() => _tryAgainAction?.Invoke();
+
+    [RelayCommand]
+    private void AskWorkerToFix() => _askWorkerToFixAction?.Invoke(Adapter, StepId, ReasonSentence);
+
+    [RelayCommand]
+    private void ShowFullOutput() => _showFullOutputAction?.Invoke();
 }
 
 /// <summary>
@@ -213,7 +294,9 @@ public static class StepItemProjector
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
         Action<StepItemViewModel> select,
-        IReadOnlyDictionary<string, string>? workerAdapters = null)
+        IReadOnlyDictionary<string, string>? workerAdapters = null,
+        Action? reRunAction = null,
+        Action<string, string, string>? askWorkerToFixAction = null)
     {
         var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
         var pausedByStepId = pausedSteps.ToDictionary(paused => paused.StepId);
@@ -259,6 +342,16 @@ public static class StepItemProjector
                     reasonSuffix);
             }
 
+            // The banner quotes the newest attempt that recorded a reason, so its "Show full
+            // output" must open that same execution's artifacts — the collections below are
+            // chronological, and index 0 is the *first* attempt, which for a retried step is a
+            // different (possibly successful) run than the one the headline describes.
+            var reasonedAttempt = stepState.Status == StepStatus.Failed
+                ? attempts.LastOrDefault(attempt => attempt.Reason != null) ?? attempts.LastOrDefault()
+                : null;
+            Action? reasonedExecutionShowOutput = null;
+            Action? latestExecutionShowOutput = null;
+
             var outputFiles = new List<ArtifactFileViewModel>();
             var promptFiles = new List<ArtifactFileViewModel>();
             var conversations = new List<ConversationRefViewModel>();
@@ -266,6 +359,8 @@ public static class StepItemProjector
             {
                 var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, execution.ExecutionId);
                 var shortId = PlainLanguage.ShortId(execution.ExecutionId.ToString());
+                ArtifactFileViewModel? firstOutputOfExecution = null;
+                ArtifactFileViewModel? firstPromptOfExecution = null;
                 foreach (var fileName in execution.OutputFiles)
                 {
                     // #292: prompt.txt is durable capture of what the worker was asked, not
@@ -274,27 +369,56 @@ public static class StepItemProjector
                     // always-visible output chips.
                     if (string.Equals(fileName, ArtifactManager.PromptFileName, StringComparison.Ordinal))
                     {
-                        promptFiles.Add(new ArtifactFileViewModel(
+                        var promptFile = new ArtifactFileViewModel(
                             $"Prompt ({shortId})",
                             Path.Combine(outputDirectory, fileName),
                             previewFileAsync,
-                            select: file => SelectOutputFile(promptFiles, file)));
+                            select: file => SelectOutputFile(promptFiles, file));
+                        promptFiles.Add(promptFile);
+                        firstPromptOfExecution ??= promptFile;
                         continue;
                     }
 
-                    outputFiles.Add(new ArtifactFileViewModel(
+                    var outputFile = new ArtifactFileViewModel(
                         $"{fileName} ({shortId})",
                         Path.Combine(outputDirectory, fileName),
                         previewFileAsync,
-                        select: file => SelectOutputFile(outputFiles, file)));
+                        select: file => SelectOutputFile(outputFiles, file));
+                    outputFiles.Add(outputFile);
+                    firstOutputOfExecution ??= outputFile;
                 }
 
+                ConversationRefViewModel? conversationOfExecution = null;
                 if (TranscriptProjectionLoader.HasTranscript(outputDirectory))
                 {
-                    conversations.Add(new ConversationRefViewModel(
+                    conversationOfExecution = new ConversationRefViewModel(
                         $"{stepState.StepId} — {shortId} ({execution.Worker})",
                         outputDirectory,
-                        showConversation));
+                        showConversation);
+                    conversations.Add(conversationOfExecution);
+                }
+
+                Action? showThisExecution = null;
+                if (conversationOfExecution is { } conversation)
+                {
+                    showThisExecution = () => conversation.ShowCommand.Execute(null);
+                }
+                else if (firstOutputOfExecution is { } output)
+                {
+                    showThisExecution = () => _ = output.PreviewCommand.ExecuteAsync(null);
+                }
+                else if (firstPromptOfExecution is { } prompt)
+                {
+                    showThisExecution = () => _ = prompt.PreviewCommand.ExecuteAsync(null);
+                }
+
+                if (showThisExecution != null)
+                {
+                    latestExecutionShowOutput = showThisExecution;
+                    if (reasonedAttempt?.ExecutionId == execution.ExecutionId)
+                    {
+                        reasonedExecutionShowOutput = showThisExecution;
+                    }
                 }
             }
 
@@ -315,6 +439,26 @@ public static class StepItemProjector
             var stepDefinition = projection.Snapshot.Steps.First(step => step.StepId == stepState.StepId);
             var adapter = workerAdapters?.GetValueOrDefault(stepDefinition.Worker);
 
+            FailedStepBannerViewModel? failedBanner = null;
+            if (stepState.Status == StepStatus.Failed)
+            {
+                var reasonText = reasonedAttempt?.Reason ?? stepState.LatestFailureReason;
+
+                // The reasoned attempt's own artifacts first; if it recorded none (a worker that
+                // died before writing anything), the newest execution that has any is the closest
+                // honest stand-in — never the chronological first.
+                var showFullOutputAction = reasonedExecutionShowOutput ?? latestExecutionShowOutput;
+
+                failedBanner = new FailedStepBannerViewModel(
+                    stepState.StepId.Value,
+                    stepDefinition.Worker,
+                    adapter ?? stepDefinition.Worker,
+                    reasonText,
+                    reRunAction,
+                    askWorkerToFixAction,
+                    showFullOutputAction);
+            }
+
             items.Add(new StepItemViewModel(
                 stepState.StepId.Value,
                 stepDefinition.Worker,
@@ -326,7 +470,8 @@ public static class StepItemProjector
                 pausedByStepId.GetValueOrDefault(stepState.StepId),
                 select,
                 adapter,
-                promptFiles));
+                promptFiles,
+                failedBanner));
         }
 
         return items;
@@ -341,3 +486,4 @@ public static class StepItemProjector
         }
     }
 }
+

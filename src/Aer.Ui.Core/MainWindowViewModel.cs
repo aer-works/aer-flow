@@ -174,6 +174,53 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Raised when a failed step's "Try again" affordance requests a re-run (#617).</summary>
+    public event Action? ReRunRequested;
+
+    /// <summary>
+    /// Routes "Ask <worker> to fix it" (#617) to the Chat section with the input drafted — a
+    /// message naming the step and quoting the reason text. When no session is open, the new-chat
+    /// bar is pre-filled too — the failing step's adapter and the failed task's own directory — so
+    /// starting the conversation is one click into the right room with the draft already waiting;
+    /// found live, where the draft alone landed invisibly behind "No room open." while the tests
+    /// (which read the property, not the screen) stayed green. When a session is already open the
+    /// draft lands in that session's input instead, and the adapter selection below is inert
+    /// there — <see cref="ChatViewModel.NewChatAdapter"/> is consulted only by the start-new-chat
+    /// flow, never by an open session's send path, which keeps speaking to whatever vendor the
+    /// session was started with. The open session is always this task's own: the window's
+    /// navigation resyncs Chat to whichever directory populates <see cref="TaskSteps"/>
+    /// (<c>MainWindow.OpenAsync</c>), and the banner test pins that invariant.
+    /// </summary>
+    public void AskWorkerToFix(string adapter, string stepId, string reason, string taskDirectoryPath)
+    {
+        // The banner always supplies the step's own adapter; no invented fallback vendor here — if
+        // that adapter is not available on this host, the picker's first available stands in and
+        // the user sees which one they are addressing before sending.
+        var targetAdapter = adapter.ToLowerInvariant();
+        if (Chat.AvailableAdapters.Contains(targetAdapter))
+        {
+            Chat.NewChatAdapter = targetAdapter;
+        }
+        else if (Chat.AvailableAdapters.Count > 0)
+        {
+            Chat.NewChatAdapter = Chat.AvailableAdapters[0];
+        }
+
+        if (!Chat.IsSessionOpen)
+        {
+            Chat.NewChatWorkingDirectory = taskDirectoryPath;
+            Chat.RefreshNewChatAdapterSelection();
+        }
+
+        // Appended, never assigned over: the input box can already hold a half-typed message in an
+        // open session, and an affordance click must not destroy the user's own words.
+        var draft = $"Step '{stepId}' failed: {reason}";
+        Chat.InputText = string.IsNullOrWhiteSpace(Chat.InputText)
+            ? draft
+            : $"{Chat.InputText.TrimEnd()}\n{draft}";
+        CurrentSection = ShellSection.Chat;
+    }
+
     /// <summary>
     /// Rebuilds <see cref="TaskSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
     /// and conversation delegates are the skin's render targets — the same inversion
@@ -189,10 +236,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var previousSelectedStepId = SelectedStep?.StepId;
 
         TaskSteps.Clear();
+        // reRunAction only for a Terminal task: Run's re-run-as-clone flow (see IsTaskFinished)
+        // exists only then. While a sibling branch still runs or waits on a decision, the same
+        // click resumes the directory in place — for a Failed step with no pending obligation the
+        // pump returns unchanged, a silent no-op — so the banner hides Try again until the task
+        // finishes (FailedStepBannerViewModel.CanTryAgain). Gated on the projection parameter, not
+        // the IsTaskFinished property, so it cannot depend on the skin's render order.
+        var reRunAvailable = projection.State.Status == Aer.Flow.Domain.WorkflowStatus.Terminal;
         foreach (var item in StepItemProjector.Build(
             projection, taskDirectoryPath, PausedSteps, previewFileAsync, showConversation,
             select: item => SelectedStep = item,
-            workerAdapters: workerAdapters))
+            workerAdapters: workerAdapters,
+            reRunAction: reRunAvailable ? () => ReRunRequested?.Invoke() : null,
+            askWorkerToFixAction: (adapter, stepId, reason) => AskWorkerToFix(adapter, stepId, reason, taskDirectoryPath)))
         {
             TaskSteps.Add(item);
         }

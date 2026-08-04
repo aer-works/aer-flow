@@ -509,4 +509,237 @@ public class TaskDrillInTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [AvaloniaFact]
+    public async Task Failed_step_renders_failed_banner_with_reason_and_stderr_excerpt()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.Permanent,
+                    "Worker exited with non-zero code 1. stderr: migrate: connect ECONNREFUSED 127.0.0.1:5432"),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.True(architect.HasFailedBanner);
+            var banner = architect.FailedBanner;
+            Assert.NotNull(banner);
+            Assert.Equal("Worker exited with non-zero code 1.", banner.ReasonSentence);
+            Assert.Equal("migrate: connect ECONNREFUSED 127.0.0.1:5432", banner.StderrExcerpt);
+            Assert.True(banner.HasStderrExcerpt);
+            Assert.Contains("Failed · architect · Worker exited with non-zero code 1.", banner.Headline);
+            Assert.Equal("Ask architect to fix it", banner.AskWorkerLabel);
+            Assert.Equal("Try again (re-run task)", banner.TryAgainLabel);
+
+            // Architect failed permanently and critic depends on it: the workflow is Terminal, so
+            // the re-run clone flow applies and Try again is offered. The polarity — a live
+            // sibling hides it — is Try_again_is_hidden_while_a_sibling_step_is_still_live.
+            Assert.True(banner.CanTryAgain);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Show_full_output_opens_the_attempt_the_banner_quotes_not_the_first()
+    {
+        // Two attempts, both with transcripts: the banner's reason comes from the newest reasoned
+        // attempt (a-2), so its "Show full output" must open a-2's conversation. Index 0 of the
+        // chronological collections is a-1 — a different run than the headline describes.
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"), FailureClassification.Retryable, "First failure."),
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-2"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-2"), FailureClassification.Permanent, "Second failure."),
+            ],
+            TestContext.Current.CancellationToken);
+        var turn = JsonSerializer.Serialize(
+            new { Sequence = 1, Role = "initiator", Vendor = "claude", Prompt = "p", Text = "hello" });
+        foreach (var executionDirectoryName in new[] { "execution_a-1", "execution_a-2" })
+        {
+            var executionDirectory = Path.Combine(taskDirectory, "artifacts", executionDirectoryName);
+            Directory.CreateDirectory(executionDirectory);
+            await File.WriteAllTextAsync(
+                Path.Combine(executionDirectory, "transcript.jsonl"), turn + "\n", TestContext.Current.CancellationToken);
+        }
+
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.NotNull(architect.FailedBanner);
+            Assert.Equal("Second failure.", architect.FailedBanner.ReasonSentence);
+
+            architect.FailedBanner.ShowFullOutputCommand.Execute(null);
+
+            var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
+            var shownLabel = Assert.IsType<TextBlock>(conversationPanel.Children[0]).Text;
+            Assert.Equal("architect — a-2 (worker)", shownLabel);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Try_again_is_hidden_while_a_sibling_step_is_still_live()
+    {
+        // Critic is paused awaiting review, architect failed: the workflow is Paused, not
+        // Terminal, so Run would resume this directory in place — and for the failed step with no
+        // pending obligation that is a silent no-op. The banner must not offer a click that does
+        // nothing; Try again appears once the task finishes.
+        var independentSnapshot = SnapshotBinder.Bind(new WorkflowDefinition(
+            new WorkflowTemplateId("independent-pair"),
+            WorkflowTemplateVersion: 1,
+            Steps:
+            [
+                new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(1)),
+                // Self-targeting supersede: the steps are deliberately independent, and the
+                // validator only admits a transitive ancestor or the step itself as a target.
+                new WorkflowStepDefinition(
+                    Critic, "critic", ["brief"], ["review"], DependsOn: [], RetryPolicy: new RetryPolicy(1),
+                    PausePoint: new PausePoint(SupersedeTargets: [Critic])),
+            ]));
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            independentSnapshot,
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("c-1"), Critic)),
+                new FlowEvent.ExecutionSucceeded(new ExecutionId("c-1")),
+                new FlowEvent.WorkflowPaused(new ExecutionId("c-1"), Critic),
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"), FailureClassification.Permanent, "Worker exited with non-zero code 1."),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.NotNull(architect.FailedBanner);
+            Assert.False(architect.FailedBanner.CanTryAgain);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Succeeded_step_shows_no_failed_banner_polarity()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionSucceeded(new ExecutionId("a-1")),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.False(architect.HasFailedBanner);
+            Assert.Null(architect.FailedBanner);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Ask_worker_to_fix_prefills_chat_input_and_navigates_to_chat()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.Permanent,
+                    "Worker exited with non-zero code 1. stderr: connect ECONNREFUSED"),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.NotNull(architect.FailedBanner);
+
+            architect.FailedBanner.AskWorkerToFixCommand.Execute(null);
+
+            Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
+            Assert.Contains("Step 'architect' failed: Worker exited with non-zero code 1.", window.ViewModel.Chat.InputText);
+            Assert.False(window.ViewModel.Chat.IsSending);
+
+            // Found live, not by the original assertions: with no session open the draft sat in a
+            // property behind "No room open." — AskWorkerToFix's own doc comment carries the story;
+            // these two pins are what turn its no-session promise into a red test.
+            Assert.False(window.ViewModel.Chat.IsSessionOpen);
+            Assert.Equal(taskDirectory, window.ViewModel.Chat.NewChatWorkingDirectory);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Ask_worker_to_fix_appends_to_a_half_typed_message_instead_of_replacing_it()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.Permanent,
+                    "Worker exited with non-zero code 1."),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            // The input box can already hold the user's own words (most plausibly in an open
+            // session, but the box is one control either way) — the affordance must add its draft,
+            // never destroy what was typed.
+            window.ViewModel.Chat.InputText = "half-typed note";
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            architect.FailedBanner!.AskWorkerToFixCommand.Execute(null);
+
+            Assert.StartsWith("half-typed note", window.ViewModel.Chat.InputText);
+            Assert.Contains("Step 'architect' failed:", window.ViewModel.Chat.InputText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }
+

@@ -223,5 +223,18 @@ public sealed partial class ChatViewModel : ObservableObject
         {
             NewChatAdapter = AvailableAdapters[0];
         }
+        else
+        {
+            RefreshNewChatAdapterSelection();
+        }
     }
+
+    /// <summary>
+    /// Re-asserts <see cref="NewChatAdapter"/> for the ComboBox (#981): a SelectedItem applied
+    /// while ItemsSource was still empty is coerced to no-selection by the control and never
+    /// re-evaluated when the items arrive — and an assignment that does not change the value
+    /// raises nothing on its own. Callers that route a user into the new-chat bar (#617's ask
+    /// affordance) call this so the selection is visible, not merely held.
+    /// </summary>
+    public void RefreshNewChatAdapterSelection() => OnPropertyChanged(nameof(NewChatAdapter));
 }
