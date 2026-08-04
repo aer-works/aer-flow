@@ -194,9 +194,23 @@ public static class OutcomeClassifier
     /// (#617's failed-step banner shows the sentence as a headline and the stderr as an excerpt
     /// block). Lives beside the writer so the <c>" stderr: "</c> spelling has one home and a format
     /// change cannot silently strand a reader — the round-trip test is the drift guard. A reason
-    /// with no stderr half comes back whole with a null excerpt; the truncation ellipsis is the
-    /// writer's furniture, not worker output, so it is stripped from the excerpt.
+    /// with no stderr half comes back whole with a null excerpt. A leading <c>…</c> stays on the
+    /// excerpt: it is the writer's truncation mark (<see cref="MaxStderrTailInReason"/>), and
+    /// stripping it would re-create, on this one surface, exactly the invisible truncation the
+    /// writer's own contract forbids — a cut tail shown as though it were the whole capture.
     /// </summary>
+    /// <remarks>
+    /// The split takes the <i>first</i> separator occurrence, which is exact for the fixed engine
+    /// sentences (<c>Execution timed out.</c>, <c>Worker exited with non-zero code N.</c>) but a
+    /// heuristic for contract-failure reasons, whose base embeds worker-produced values
+    /// (<see cref="DescribeUnsatisfiedOutput"/>) that could themselves contain the literal
+    /// <c>" stderr: "</c> — in which case the sentence truncates early and the excerpt starts with
+    /// base-reason text. Last-occurrence was considered and rejected as the worse bet: the tail is
+    /// raw worker stderr, where a literal <c>stderr:</c> label is common wrapper output, and
+    /// mis-splitting on it would fold real stderr into the headline instead. The combined string
+    /// is the only durable record (<c>ExecutionAttempt.Reason</c>), so no parse can be exact for
+    /// both halves; this picks the failure mode that needs the rarer content.
+    /// </remarks>
     public static (string Sentence, string? StderrExcerpt) SplitReasonAndStderr(string? reason)
     {
         if (string.IsNullOrWhiteSpace(reason))
@@ -213,10 +227,6 @@ public static class OutcomeClassifier
 
         var sentence = reason[..index].Trim();
         var excerpt = reason[(index + separator.Length)..].Trim();
-        if (excerpt.StartsWith('…'))
-        {
-            excerpt = excerpt[1..].Trim();
-        }
 
         return (sentence, excerpt.Length == 0 ? null : excerpt);
     }

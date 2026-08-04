@@ -718,5 +718,69 @@ public class OutcomeClassifierTests
         Assert.Equal("Step failed.", fallback);
         Assert.Null(none);
     }
+
+    /// <summary>
+    /// A truncated tail's leading <c>…</c> must survive the split. WithStderr's whole contract is
+    /// that a cut tail is never shown unmarked (see <c>MaxStderrTailInReason</c>'s remarks); a
+    /// splitter that strips the mark re-creates invisible truncation on the one surface that
+    /// renders the excerpt as a standalone block.
+    /// </summary>
+    [Fact]
+    public void SplitReasonAndStderr_keeps_the_truncation_ellipsis_on_a_cut_tail()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            // Comfortably past MaxStderrTailInReason (350) after whitespace collapse.
+            var longStderr = string.Join(" ", Enumerable.Range(1, 100).Select(i => $"line{i:D3}"));
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, StderrTail: longStderr),
+                new WorkerContract("worker-a", [], [], []),
+                directory);
+
+            Assert.NotNull(classification.Reason);
+            var (_, excerpt) = OutcomeClassifier.SplitReasonAndStderr(classification.Reason);
+            Assert.NotNull(excerpt);
+            Assert.StartsWith("…", excerpt);
+
+            // And the polarity is the untruncated round-trip test above: a short tail carries no
+            // ellipsis, so the mark appears exactly when content was dropped.
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    /// <summary>
+    /// The contract-failure path (exit 0, outputs unsatisfied) appends stderr too — #597's
+    /// commonest case — and the banner splits it the same way. Untested before this: both prior
+    /// round-trip fixtures took the non-zero-exit path only.
+    /// </summary>
+    [Fact]
+    public void SplitReasonAndStderr_round_trips_a_contract_failure_reason()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var contract = new WorkerContract("worker-a", [], [new ProducedOutput("result.json")], []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural, StderrTail: "wrote nothing: out of quota"),
+                contract,
+                directory);
+
+            Assert.NotNull(classification.Reason);
+            var (sentence, excerpt) = OutcomeClassifier.SplitReasonAndStderr(classification.Reason);
+            Assert.StartsWith("Contract not satisfied:", sentence);
+            Assert.Contains("'result.json' is missing", sentence);
+            Assert.Equal("wrote nothing: out of quota", excerpt);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
 }
 
