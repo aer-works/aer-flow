@@ -12,7 +12,17 @@ public sealed record WorkerCapabilityItem(
     string Name,
     string Kind,
     string Description,
-    string? ParameterHint = null);
+    string? ParameterHint = null)
+{
+    /// <summary>
+    /// Whether a user can pick this item and send/insert it — <c>"command"</c>/<c>"skill"</c>/<c>"agent"</c>
+    /// are actions; a <c>"mode"</c> is a permission-scope label and a <c>"plugin"</c> is something
+    /// already imported into the vendor CLI, so both are informational only. Vendor-kind semantics,
+    /// so the classification lives here with the kinds themselves (0020 clause 1, #615) rather than
+    /// in whichever surface happens to render the picker.
+    /// </summary>
+    public bool IsInvokable => Kind is "command" or "skill" or "agent";
+}
 
 /// <summary>
 /// The full set of skills/commands/modes and selectable models a vendor CLI reports for a given

@@ -9,17 +9,12 @@ namespace Aer.Ui.Core;
 public sealed record ChatMessageViewModel(string SenderLabel, string Text, DateTimeOffset Timestamp, bool IsFromUser);
 
 /// <summary>
-/// One row in the chat capability picker (M24 Phase 2 follow-up). Only <c>"command"</c>/<c>"skill"</c>/<c>"agent"</c>
-/// kinds are <see cref="IsInvokable"/> — things a user can actually pick and send/insert. Gemini's
-/// <c>"mode"</c>/<c>"plugin"</c> kinds are informational only (a mode is a permission-scope label,
-/// not a chat message; a plugin is something already imported into the vendor CLI, not an action) —
-/// the picker renders them in a separate, non-selectable section rather than presenting all kinds as
-/// equally actionable.
+/// One row in the chat capability picker (M24 Phase 2 follow-up). <paramref name="IsInvokable"/> is
+/// carried from <see cref="Aer.Adapters.WorkerCapabilityItem.IsInvokable"/> — which kinds are
+/// actionable is vendor-kind semantics the adapter layer states (#615); the picker only routes
+/// invokable rows into the selectable section and the rest into the informational one.
 /// </summary>
-public sealed record ChatCapabilityItemViewModel(string Name, string Kind, string Description, bool IsRecentlyUsed)
-{
-    public bool IsInvokable => Kind is "command" or "skill" or "agent";
-}
+public sealed record ChatCapabilityItemViewModel(string Name, string Kind, string Description, bool IsRecentlyUsed, bool IsInvokable);
 
 /// <summary>
 /// The dedicated Chat view's state (M24 Phase 1 desktop wiring, issue #262) — a chat/codebase
@@ -177,7 +172,7 @@ public sealed partial class ChatViewModel : ObservableObject
             .ToDictionary(t => t.name, t => t.index, StringComparer.Ordinal);
 
         var ordered = result.Items
-            .Select(item => new ChatCapabilityItemViewModel(item.Name, item.Kind, item.Description, recentRank.ContainsKey(item.Name)))
+            .Select(item => new ChatCapabilityItemViewModel(item.Name, item.Kind, item.Description, recentRank.ContainsKey(item.Name), item.IsInvokable))
             .OrderBy(item => recentRank.TryGetValue(item.Name, out var rank) ? rank : int.MaxValue);
 
         foreach (var item in ordered)

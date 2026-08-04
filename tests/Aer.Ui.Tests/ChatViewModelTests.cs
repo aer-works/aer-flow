@@ -189,4 +189,27 @@ public class ChatViewModelTests
 
         Assert.Equal(["claude", "gemini"], viewModel.AvailableAdapters);
     }
+
+    [Fact]
+    public void LoadCommands_routes_rows_by_the_invokability_the_adapter_layer_stated()
+    {
+        // #615: the picker no longer holds the which-kinds-are-actionable opinion — it routes on
+        // WorkerCapabilityItem.IsInvokable (see WorkerCapabilityItemTests for the kind map). Both
+        // polarities in one result: the command must land in the selectable section, the mode in
+        // the informational one, and neither anywhere else.
+        var viewModel = new ChatViewModel();
+
+        viewModel.LoadCommands(new TaskSession.SessionCommandsResult(
+            Vendor: "claude",
+            Items:
+            [
+                new WorkerCapabilityItem("do-thing", "command", "runs the thing"),
+                new WorkerCapabilityItem("plan-mode", "mode", "a permission scope"),
+            ],
+            Models: [],
+            RecentlyUsed: []));
+
+        Assert.Equal(["do-thing"], viewModel.InvokableCommands.Select(item => item.Name));
+        Assert.Equal(["plan-mode"], viewModel.InfoCommands.Select(item => item.Name));
+    }
 }

@@ -238,7 +238,9 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
         }
     }
 
-    public bool CanSave => WorkflowName.Length > 0 && Steps.Count > 0 && !Validate().Any();
+    // A projection of Validate() alone (#615): the empty-name and no-steps refusals live there with
+    // the other validity rules, so restating them here was a second copy of the same opinion.
+    public bool CanSave => !Validate().Any();
 
     /// <summary>
     /// Writes the workspace: <c>workflow.json</c>, <c>bindings.json</c>, and one
