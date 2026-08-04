@@ -724,11 +724,17 @@ public static class MutationInterface
                 }
 
                 var completed = await Task.WhenAny(waitCandidates).ConfigureAwait(false);
-                if (completed == deferralWakeup)
+                // Same shared-token race as the idle branch's wait (see the comment there): the
+                // wakeup must not swallow a host stop it lost the WhenAny race to. Unlike there,
+                // losing this race is self-recovering (the watcher precedes the wakeup in the
+                // candidate list, and a cancelled-token append refuses before any post-stop
+                // dispatch could land) — the guard buys symmetry and one round of latency, not a
+                // hang fix.
+                if (completed == deferralWakeup && !cancellationToken.IsCancellationRequested)
                 {
                     continue;
                 }
-                if (completed == hostStopWatcher)
+                if (completed == hostStopWatcher || (completed == deferralWakeup && cancellationToken.IsCancellationRequested))
                 {
                     hostStopRequested = true;
 

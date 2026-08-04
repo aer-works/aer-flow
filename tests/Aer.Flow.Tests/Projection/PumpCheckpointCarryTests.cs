@@ -215,7 +215,8 @@ public class PumpCheckpointCarryTests
         // act on an orphan discovered in the same read — the orphan is handled a round later, when
         // its ExecutionStarted is already behind the read cursor. The fold is the only thing that
         // keeps it visible: red-proven by deleting the fold, which turns the round-2 abandon into
-        // a resubmission — a duplicate live dispatch of a process that may still be running.
+        // a resubmission — the double-spawn hazard the fold's own comment in MutationInterface
+        // names as what it exists to prevent.
         var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
         var logPath = Path.Combine(taskDirectory, "flow.jsonl");
