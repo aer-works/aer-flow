@@ -320,12 +320,38 @@ public sealed partial class TaskSession
     }
 
     /// <summary>
+    /// #618: sets or clears the waiting-on-lock banner from a local probe. Mode-independent by
+    /// design — <see cref="ConcurrencyGuard.IsHeld"/> and the holder sidecar are filesystem facts
+    /// the desktop can read whether the daemon or this process answers the load, and clearing on
+    /// the not-held arm is what stops a released lock leaving a stale banner behind.
+    /// </summary>
+    private void RefreshWaitingOnLockBanner(string taskDirectoryPath)
+    {
+        if (ConcurrencyGuard.IsHeld(taskDirectoryPath))
+        {
+            var (holderDescription, _) = ConcurrencyGuard.ReadHolderInfo(taskDirectoryPath);
+            ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(holderDescription, () => LoadAsync(taskDirectoryPath));
+        }
+        else
+        {
+            ViewModel.WaitingOnLockBanner = null;
+        }
+    }
+
+    /// <summary>
     /// Loads <paramref name="taskDirectoryPath"/> through <see cref="TaskProjectionLoader"/> and
     /// rebuilds the ViewModel's mutation surfaces (<see cref="MainWindowViewModel.PausedSteps"/>,
     /// <see cref="MainWindowViewModel.RunningExecutions"/>) from the projected facts.
     /// </summary>
     public async Task<LoadOutcome> LoadAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
+        // Before the mode branch, deliberately: the second reader found the first draft probed
+        // only in the in-process fallback, so the primary (daemon-connected) desktop never showed
+        // the waiting-on-lock state at all — and the daemon's own locked answer is a plain string
+        // this method's caller drops. The lock is a local filesystem fact the desktop can read in
+        // either mode; which process answers the load does not change who holds the directory.
+        RefreshWaitingOnLockBanner(taskDirectoryPath);
+
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
             try
@@ -355,16 +381,6 @@ public sealed partial class TaskSession
         // In-process fallback
         try
         {
-            if (ConcurrencyGuard.IsHeld(taskDirectoryPath))
-            {
-                var (holderDesc, _) = ConcurrencyGuard.ReadHolderInfo(taskDirectoryPath);
-                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(holderDesc, () => LoadAsync(taskDirectoryPath));
-            }
-            else
-            {
-                ViewModel.WaitingOnLockBanner = null;
-            }
-
             var projection = await TaskProjectionLoader.LoadAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
 
             RebuildPausedSteps(projection, taskDirectoryPath);
@@ -466,6 +482,9 @@ public sealed partial class TaskSession
                 {
                     var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
                     _mutationFailed();
+                    // The daemon's locked refusal is a plain string with no holder in it — the
+                    // local probe is what turns it into the waiting-on-lock state (#618).
+                    RefreshWaitingOnLockBanner(taskDirectoryPath);
                     ViewModel.RunStatusText = err;
                     ViewModel.IsMutationInFlight = false;
                     return new MutationOutcome(err);
@@ -613,6 +632,9 @@ public sealed partial class TaskSession
                 {
                     var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
                     _mutationFailed();
+                    // Same reason as RunAsync's daemon-refusal arm: the string carries no holder;
+                    // the local probe renders the state (#618).
+                    RefreshWaitingOnLockBanner(taskDirectoryPath);
                     ViewModel.DecisionStatusText = err;
                     ViewModel.IsMutationInFlight = false;
                     return new MutationOutcome(err);
