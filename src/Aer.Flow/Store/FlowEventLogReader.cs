@@ -97,6 +97,8 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
             using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
             var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
+            // Only lines terminated by '\n' are complete entries (§5.3); a dangling suffix with no
+            // terminator is a write still in flight (or a crash mid-append) and is not yet observable.
             var lastNewline = text.LastIndexOf('\n');
             var completeText = lastNewline >= 0 ? text[..(lastNewline + 1)] : string.Empty;
             var completeByteCount = Encoding.UTF8.GetByteCount(completeText);
@@ -139,8 +141,12 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
 
             return new EventLogSnapshot(flowEvents, coreEvents, seekByteOffset + completeByteCount);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // A cancellation is the caller's request, never a corrupt checkpoint — swallowing it
+            // into a full replay would turn "stop now" into the most expensive read in the file.
+            // Everything else (sharing violation, truncation under the seek, encoding surprise) is
+            // exactly what the loud full-replay fallback exists for.
             Console.Error.WriteLine(
                 $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Exception during seek-to-tail read: {ex.Message}");
             return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);

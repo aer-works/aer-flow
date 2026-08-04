@@ -618,7 +618,7 @@ public static class MutationInterface
                             }
 
                             var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
-                            if (completedWait == deferralHostStopWatcher || cancellationToken.IsCancellationRequested)
+                            if (completedWait == deferralHostStopWatcher)
                             {
                                 hostStopRequested = true;
                                 ioCancellationToken = CancellationToken.None;
