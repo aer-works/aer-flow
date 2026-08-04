@@ -1309,4 +1309,24 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task TryGetTurnHostStatusAsync_UnhostedRoom_ReturnsNullOn409()
+    {
+        // Red arm note: If TryGetTurnHostStatusAsync threw an exception or returned non-null status when daemon returns 409 Conflict for an unhosted room, this assertion fails.
+        var configStore = new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-test-config-{Guid.NewGuid():N}", "recent.json"));
+        var session = new TaskSession(
+            configStore,
+            new Dictionary<string, IWorkerAdapter>(),
+            new MainWindowViewModel(),
+            bindingsFilePathProvider: () => null,
+            mutationStarted: () => { },
+            mutationFailed: () => { },
+            reopenTaskAsync: (_, _) => Task.CompletedTask,
+            daemonUrl: _baseUrl);
+
+        var status = await session.TryGetTurnHostStatusAsync(_tempTaskDirectory!, TestContext.Current.CancellationToken);
+
+        Assert.Null(status);
+    }
 }
