@@ -376,6 +376,7 @@ def build_bindings(
     network_access: bool = False,
     verdict_schema: bool = False,
     steps: list[dict] | None = None,
+    vendor_log_dir: str | None = None,
 ) -> dict:
     if steps is None:
         if working_directory is None:
@@ -455,6 +456,12 @@ def build_bindings(
             entry["Model"] = s["model"]
         if s.get("effort"):
             entry["Effort"] = s["effort"]
+        # #983: the vendor CLI's own log, kept beside the run's flow.jsonl. Without it a worker
+        # death is one opaque stderr line ("Agent execution terminated due to error.") -- the
+        # adapter has carried --log-file plumbing (WorkerBindingConfigEntry.LogFilePath) all along;
+        # this is the loop finally asking for it. Adapters without log support ignore the field.
+        if vendor_log_dir:
+            entry["LogFilePath"] = f"{vendor_log_dir}/vendor-{s['step_id']}.log"
 
         bindings[s["step_id"]] = entry
 
@@ -1195,6 +1202,23 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     return parser
 
 
+def _print_vendor_logs(task_dir: Path) -> None:
+    """#983: the vendor CLI's own account of a failed run -- the tail of every vendor-*.log the
+    bindings requested (build_bindings' vendor_log_dir). Printed only on failure paths, beside
+    flow.jsonl: flow.jsonl says WHAT the engine saw (exit code, stderr tail), this says WHY the
+    vendor died, which one opaque stderr line ("Agent execution terminated due to error.") never
+    does."""
+    for vendor_log in sorted(task_dir.glob("vendor-*.log")):
+        print(f"\n--- {vendor_log.name} (last 20 lines) ---", file=sys.stderr)
+        try:
+            lines = vendor_log.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as ex:
+            print(f" (unreadable: {ex})", file=sys.stderr)
+            continue
+        for line in lines[-20:]:
+            print(f" {line}", file=sys.stderr)
+
+
 def _print_flow_log(log_path: Path, log_bytes_before: int | None, log_mtime_before: float | None, task_dir: Path) -> None:
     print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
     if not log_path.exists():
@@ -1512,7 +1536,7 @@ def main() -> int:
             dialogue_worker_name, args.final_output, _forward_slashes(dialogue_config_path), dialogue_timeout)
     else:
         workflow = build_workflow(steps=step_specs)
-        bindings = build_bindings(steps=step_specs)
+        bindings = build_bindings(steps=step_specs, vendor_log_dir=_forward_slashes(task_dir))
 
     workflow_path = scratch_root / "workflow.json"
     bindings_path = scratch_root / "bindings.json"
@@ -1658,6 +1682,7 @@ def main() -> int:
         if engine_stderr:
             print(engine_stderr, file=sys.stderr, end="")
         _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
+        _print_vendor_logs(task_dir)
         return 1
 
     result = subprocess.CompletedProcess(engine.args, engine.returncode, engine_stdout, engine_stderr)
@@ -1668,6 +1693,7 @@ def main() -> int:
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
         _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
+        _print_vendor_logs(task_dir)
         return result.returncode
 
     if not truth_ok:
