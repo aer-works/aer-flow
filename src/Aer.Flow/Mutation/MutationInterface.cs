@@ -375,6 +375,21 @@ public static class MutationInterface
                     latestCheckpoint?.State.CoreExitedByExecutionId,
                     log.CoreEvents);
 
+                // Folded back into the working checkpoint immediately, not only at the save site:
+                // each round reads the log from the previous round's offset, so a later round's
+                // merge must start from these aggregates or the earlier tail's core events vanish
+                // from its view. (Today every such execution is resolved or registered before the
+                // next round — but that is the same subtle invariant the carry exists to retire.)
+                latestCheckpoint = latestCheckpoint with
+                {
+                    State = latestCheckpoint.State with
+                    {
+                        CoreStartedExecutionIds = mergedStarted,
+                        CoreExitedByExecutionId = mergedExited,
+                    },
+                };
+                currentCheckpoint = latestCheckpoint;
+
                 var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
                     state, snapshot, workerBindings, mergedStarted, mergedExited, registeredExecutionIds);
 
