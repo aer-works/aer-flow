@@ -51,7 +51,8 @@ public sealed record CoreDispatchTarget(
     string? WorkingDirectory = null,
     Action<string>? OnStdoutLine = null,
     string? PromptText = null,
-    IReadOnlyList<(string Name, string Value)>? Environment = null);
+    IReadOnlyList<(string Name, string Value)>? Environment = null,
+    string? StdoutArtifactName = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -741,6 +742,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             ? new ExecutionStreamLogger(outputDir)
             : null;
 
+        // #887 stage 2: a deterministic command step's stdout IS its declared artifact. Resolved
+        // once here, not per chunk; appended under a lock because chunk events can fire
+        // concurrently (the same reason stdoutLines has one), with the same per-chunk
+        // open-append-flush shape ExecutionStreamLogger already uses for the stream logs.
+        var stdoutArtifactPath = target.StdoutArtifactName is not null && outputDir is not null
+            ? Path.Combine(outputDir, target.StdoutArtifactName)
+            : null;
+        var stdoutArtifactLock = new object();
+
         task.EventRaised += (_, e) =>
         {
             switch (e.Kind)
@@ -760,6 +770,16 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                     if (e.Data is { Length: > 0 })
                     {
                         streamLogger?.AppendStdout(e.Data);
+                        if (stdoutArtifactPath is not null)
+                        {
+                            lock (stdoutArtifactLock)
+                            {
+                                Directory.CreateDirectory(outputDir!);
+                                using var fs = new FileStream(stdoutArtifactPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                                fs.Write(e.Data, 0, e.Data.Length);
+                                fs.Flush();
+                            }
+                        }
                         if (target.OnStdoutLine is not null)
                         {
                             // The decode is inside the lock, unlike the stateless GetString it replaces:

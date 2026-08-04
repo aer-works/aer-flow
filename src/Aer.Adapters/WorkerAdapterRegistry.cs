@@ -20,5 +20,6 @@ public static class WorkerAdapterRegistry
         ["dialogue"] = new DialogueWorkerAdapter(),
         [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         [WorkflowTemplateComposer.CaptureAdapter] = new CaptureWorkerAdapter(),
+        [CommandWorkerAdapter.AdapterName] = new CommandWorkerAdapter(),
     };
 }
