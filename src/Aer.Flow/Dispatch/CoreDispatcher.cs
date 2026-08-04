@@ -743,13 +743,26 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             : null;
 
         // #887 stage 2: a deterministic command step's stdout IS its declared artifact. Resolved
-        // once here, not per chunk; appended under a lock because chunk events can fire
-        // concurrently (the same reason stdoutLines has one), with the same per-chunk
-        // open-append-flush shape ExecutionStreamLogger already uses for the stream logs.
+        // once here, not per chunk; per-chunk open-append-flush matches what
+        // ExecutionStreamLogger already does for the stream logs. The lock is insurance against
+        // a future second writer, NOT against concurrent chunks -- aer-core's event pump invokes
+        // the callback synchronously on one thread (its own remark below on the decode says the
+        // same), so chunk appends are already serialized and ordered.
+        //
+        // Created EAGERLY, before dispatch: a well-behaved command whose success case is empty
+        // stdout (an empty `git diff`, a no-match grep) produces zero chunks, and a lazily
+        // created file would then never exist -- ContractValidator would fail a correct run
+        // (#887 review, medium). Same create-regardless-of-content guarantee git's own
+        // `--output` gives CaptureWorkerAdapter.
         var stdoutArtifactPath = target.StdoutArtifactName is not null && outputDir is not null
             ? Path.Combine(outputDir, target.StdoutArtifactName)
             : null;
         var stdoutArtifactLock = new object();
+        if (stdoutArtifactPath is not null)
+        {
+            Directory.CreateDirectory(outputDir!);
+            using var created = new FileStream(stdoutArtifactPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+        }
 
         task.EventRaised += (_, e) =>
         {

@@ -193,6 +193,55 @@ public class CommandWorkerAdapterTests
         }
     }
 
+    [Fact]
+    public async Task Empty_stdout_success_still_creates_the_declared_artifact_and_satisfies_the_contract()
+    {
+        // #887 review (medium finding): a well-behaved command whose SUCCESS case is empty stdout
+        // (an empty `git diff`, a no-match grep) must not fail its contract just because no chunk
+        // ever arrived to lazily create the file. The artifact exists empty, the verdict is
+        // Succeeded -- the polarity CaptureWorkerAdapter gets for free from `git --output`.
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_cmd_empty_" + Guid.NewGuid().ToString("N"));
+        var repoDir = Path.Combine(tempDir, "repo");
+        var outputDir = Path.Combine(tempDir, "output");
+        var logPath = Path.Combine(outputDir, "flow.jsonl");
+        Directory.CreateDirectory(repoDir);
+        Directory.CreateDirectory(outputDir);
+
+        try
+        {
+            RunProcess("git", "init", repoDir);
+            RunProcess("git", "config user.name TestUser", repoDir);
+            RunProcess("git", "config user.email test@example.com", repoDir);
+            var file1 = Path.Combine(repoDir, "file.txt");
+            await File.WriteAllTextAsync(file1, "line 1\n", TestContext.Current.CancellationToken);
+            RunProcess("git", "add file.txt", repoDir);
+            RunProcess("git", "commit -m initial", repoDir);
+
+            // Clean tree: `git diff HEAD` exits 0 with zero bytes of stdout.
+            var contract = new WorkerContract("cmd", [], [new ProducedOutput("empty.diff")], []);
+            var target = Adapter.Resolve(
+                new WorkerInvocation("[\"git\", \"diff\", \"HEAD\"]", WorkingDirectory: repoDir), contract);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+            var request = MakeRequest("exec1", outputDir, ["empty.diff"]);
+
+            var result = await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var artifactPath = Path.Combine(outputDir, "empty.diff");
+            Assert.True(File.Exists(artifactPath), "The declared artifact must exist even when stdout was empty.");
+            Assert.Equal(0, new FileInfo(artifactPath).Length);
+
+            var classification = OutcomeClassifier.Classify(result, contract, outputDir);
+            Assert.Equal(OutcomeVerdict.Succeeded, classification.Verdict);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(tempDir);
+        }
+    }
+
     private static ExecutionRequest MakeRequest(string execId, string outputDir, IReadOnlyList<string> outputs)
     {
         return new ExecutionRequest(
