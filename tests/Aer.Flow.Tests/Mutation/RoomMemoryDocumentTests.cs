@@ -132,7 +132,7 @@ public class RoomMemoryDocumentTests : IDisposable
         await MemoryProposalResolution.ResolveAsync(
             _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken);
 
-        File.Delete(Path.Combine(_memoryRoot, RoomMemoryDocument.VersionsFileName));
+        Aer.Tests.Shared.FileCleanup.EnsureDeleted(Path.Combine(_memoryRoot, RoomMemoryDocument.VersionsFileName));
 
         var doc = await RoomMemoryDocument.LoadAsync(_tempDirectory, TestContext.Current.CancellationToken);
         Assert.Equal("landed fact", doc.FactFiles["fact.md"]);
