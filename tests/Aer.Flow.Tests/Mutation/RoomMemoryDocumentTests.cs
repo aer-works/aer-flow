@@ -66,7 +66,9 @@ public class RoomMemoryDocumentTests : IDisposable
         Assert.Equal("first rule", versionRecord.Content);
         Assert.Equal("learned it", versionRecord.Rationale);
         Assert.Equal("operator", versionRecord.Approver);
-        Assert.False(string.IsNullOrWhiteSpace(versionRecord.Proposer));
+        // Pinned exactly (#672 review): the helper's capture dir is artifacts/execution_1/..., so
+        // anything else here -- including the "unknown" fallback -- is a proposer-extraction defect.
+        Assert.Equal("execution_1", versionRecord.Proposer);
     }
 
     [Fact]
@@ -88,7 +90,7 @@ public class RoomMemoryDocumentTests : IDisposable
     [Fact]
     public async Task No_path_writes_document_except_through_resolution()
     {
-        // Unapproved capture file sitting in execution directory
+        // Arm 1: a stray capture file nothing ever dispatched does not leak into the document.
         var captureDir = Path.Combine(_tempDirectory, "artifacts", "execution_2", "memory-proposals");
         Directory.CreateDirectory(captureDir);
         var captureFile = Path.Combine(captureDir, "proposal-2.json");
@@ -97,11 +99,45 @@ public class RoomMemoryDocumentTests : IDisposable
             """{"Operation":"add","TargetPath":"secret.md","Content":"secret","Rationale":"unapproved"}""",
             TestContext.Current.CancellationToken);
 
-        // Load document - must be untouched (0, empty)
         var doc = await RoomMemoryDocument.LoadAsync(_tempDirectory, TestContext.Current.CancellationToken);
         Assert.Equal(0, doc.Version);
         Assert.False(doc.FactFiles.ContainsKey("secret.md"));
         Assert.Empty(doc.History);
+
+        // Arm 2 (#672 review: this is what the test's name actually promises): DISPATCHING a
+        // proposal -- the real pre-resolution step, not just a stray file -- must not write either.
+        // Only resolution applies; a regression where dispatch itself applied would fail here.
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        await DispatchMemoryProposalAsync(reader, writer, operation: "add", targetPath: "secret2.md", content: "still unapproved");
+
+        var docAfterDispatch = await RoomMemoryDocument.LoadAsync(_tempDirectory, TestContext.Current.CancellationToken);
+        Assert.Equal(0, docAfterDispatch.Version);
+        Assert.False(docAfterDispatch.FactFiles.ContainsKey("secret2.md"));
+        Assert.Empty(docAfterDispatch.History);
+    }
+
+    [Fact]
+    public async Task A_crash_between_fact_write_and_version_append_is_visible_as_fact_history_divergence()
+    {
+        // The inner crash window MemoryProposalApplier.ApplyAsync documents: fact file landed,
+        // version record not. Reconstructed here by applying normally and then removing the
+        // version log -- byte-identical to dying after the fact write. The claim under test is
+        // OBSERVABILITY, not detection: LoadAsync must faithfully report both halves (the fact
+        // file present, the history empty) so a caller CAN see the divergence -- and must not
+        // guess, because 0044's operator hand-edits produce the same shape legitimately.
+        var reader = new RoomEventLogReader(_roomLogPath);
+        await using var writer = new RoomEventLogWriter(_roomLogPath);
+        var @ref = await DispatchMemoryProposalAsync(reader, writer, operation: "add", targetPath: "fact.md", content: "landed fact");
+        await MemoryProposalResolution.ResolveAsync(
+            _tempDirectory, @ref, approve: true, reader, writer, TestContext.Current.CancellationToken);
+
+        File.Delete(Path.Combine(_memoryRoot, RoomMemoryDocument.VersionsFileName));
+
+        var doc = await RoomMemoryDocument.LoadAsync(_tempDirectory, TestContext.Current.CancellationToken);
+        Assert.Equal("landed fact", doc.FactFiles["fact.md"]);
+        Assert.Empty(doc.History);
+        Assert.Equal(0, doc.Version);
     }
 
     [Fact]

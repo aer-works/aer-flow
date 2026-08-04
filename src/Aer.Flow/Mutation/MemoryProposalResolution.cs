@@ -132,4 +132,3 @@ public static class MemoryProposalResolution
     }
 }
 
-
