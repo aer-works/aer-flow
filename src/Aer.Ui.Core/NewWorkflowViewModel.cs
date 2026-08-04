@@ -33,7 +33,7 @@ public enum GuidedStepKind
 /// </summary>
 public sealed partial class NewWorkflowViewModel : ObservableObject
 {
-    private IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry = new Dictionary<string, IWorkerAdapter>();
+    private IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry = WorkerAdapterRegistry.Default;
 
     public ObservableCollection<GuidedStepViewModel> Steps { get; } = [];
     public ObservableCollection<string> GuidanceMessages { get; } = [];
@@ -198,12 +198,9 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
                     + PermissionGrantWording.ShellDefeats(defeated);
             }
 
-            var adapterNamesInUse = Steps
-                .Where(step => !step.IsDialogue)
-                .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini") // vocabulary-ok: technical adapter key
-                .Distinct();
-            foreach (var adapterName in adapterNamesInUse)
+            foreach (var step in Steps.Where(s => !s.IsDialogue))
             {
+                var adapterName = step.Kind == GuidedStepKind.Claude ? "claude" : "gemini"; // vocabulary-ok: technical adapter key
                 if (!_adapterRegistry.TryGetValue(adapterName, out var adapter))
                 {
                     continue;
@@ -211,14 +208,16 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
 
                 if (adapter is not IPermissionGrantTranslator translator)
                 {
+                    var label = step.Name.Length > 0 ? $"'{step.Name}'" : "an unnamed step";
                     yield return $"'{adapterName}' does not enforce permission grants — the permissions "
-                        + "above would be ignored at dispatch for its steps, not applied.";
+                        + $"above would be ignored at dispatch for {label}, not applied.";
                     continue;
                 }
 
                 if (!translator.TryTranslatePermissionGrant(grant, out _, out var gapReason))
                 {
-                    yield return $"The permissions above can't be granted to '{adapterName}' steps: {gapReason}";
+                    var label = step.Name.Length > 0 ? $"'{step.Name}'" : "an unnamed step";
+                    yield return $"The permissions above can't be granted to {label} ({adapterName}): {gapReason}";
                 }
             }
         }
