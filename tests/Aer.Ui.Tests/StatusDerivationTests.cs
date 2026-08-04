@@ -9,9 +9,10 @@ namespace Aer.Ui.Tests;
 /// cancelled run rendering as "Finished" because cancellation has no <see cref="WorkflowStatus"/>
 /// of its own and a derivation's discard arm absorbed it. #461 fixed that on Home's cards;
 /// #976 found the same defect alive in the task headline's separate copy. These pin every
-/// derivation's full mapping; the structural half of the check is that the derivations carry no
-/// discard arm, so a new enum member fails the build (CS8509 under -warnaserror) before it can
-/// fail a user.
+/// derivation's full mapping; the structural half of the check is that every derivation's
+/// discard arm now throws instead of answering (the generated AerStatusPresentation posture),
+/// so a new enum member turns the golden-map iteration below red instead of shipping a wrong
+/// word. (CS8524 under -warnaserror rules out arm-free switches: unnamed enum values exist.)
 /// </summary>
 public class StatusDerivationTests
 {

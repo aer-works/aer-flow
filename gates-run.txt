@@ -4,43 +4,56 @@
 Γ£¿ Pixi task (fmt-check): dotnet format --verify-no-changes
   pass  fmt-check  (exit 0)
 Γ£¿ Pixi task (build-core): python ../../tools/check-core-submodule.py && cargo build
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.43s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.99s
 
 Γ£¿ Pixi task (lint-sidecar): go vet ./...
 
 Γ£¿ Pixi task (lint): dotnet build -warnaserror --no-incremental
   Determining projects to restore...
   All projects are up-to-date for restore.
-  Aer.Mcp -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Mcp\bin\Debug\net10.0\Aer.Mcp.dll
   Aer.DesignTokens -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.DesignTokens\bin\Debug\net10.0\Aer.DesignTokens.dll
-  Aer.VendorProbe -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.VendorProbe\bin\Debug\net10.0\Aer.VendorProbe.dll
+  Aer.Mcp -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Mcp\bin\Debug\net10.0\Aer.Mcp.dll
+  Aer.Plan.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Plan.Tests\bin\Debug\net10.0\Aer.Plan.Tests.dll
   Aer.Core -> C:\Users\pbree\source\repos\aer\aer-flow\external\aer-core\bindings\dotnet\Aer.Core\bin\Debug\net10.0\Aer.Core.dll
   Aer.Mcp.Host -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Mcp.Host\bin\Debug\net10.0\Aer.Mcp.Host.dll
-  Aer.Workers.Dialogue -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Workers.Dialogue\bin\Debug\net10.0\Aer.Workers.Dialogue.dll
   Aer.Flow -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\bin\Debug\net10.0\Aer.Flow.dll
-  Aer.Plan.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Plan.Tests\bin\Debug\net10.0\Aer.Plan.Tests.dll
-  Aer.Architecture.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Architecture.Tests\bin\Debug\net10.0\Aer.Architecture.Tests.dll
-  Aer.Mcp.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Mcp.Tests\bin\Debug\net10.0\Aer.Mcp.Tests.dll
   Aer.Flow.CrashTestHost -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.CrashTestHost\bin\Debug\net10.0\Aer.Flow.CrashTestHost.dll
+  Aer.Mcp.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Mcp.Tests\bin\Debug\net10.0\Aer.Mcp.Tests.dll
+  Aer.VendorProbe -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.VendorProbe\bin\Debug\net10.0\Aer.VendorProbe.dll
+  Aer.Workers.Dialogue -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Workers.Dialogue\bin\Debug\net10.0\Aer.Workers.Dialogue.dll
   Aer.Adapters -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Adapters\bin\Debug\net10.0\Aer.Adapters.dll
-  Aer.Workers.Dialogue.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Workers.Dialogue.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.Tests.dll
   Aer.Cli -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Cli\bin\Debug\net10.0\Aer.Cli.dll
   Aer.GateProbe -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.GateProbe\bin\Debug\net10.0\Aer.GateProbe.dll
-  Aer.Flow.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Aer.Flow.Tests.dll
-  Aer.Cli.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Cli.Tests.dll
-  Aer.Adapters.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Adapters.Tests\bin\Debug\net10.0\Aer.Adapters.Tests.dll
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(16,63): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(31,81): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.DecisionType)4' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
   Aer.Ui.Core -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\bin\Debug\net10.0\Aer.Ui.Core.dll
+  Aer.Adapters.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Adapters.Tests\bin\Debug\net10.0\Aer.Adapters.Tests.dll
+  Aer.Architecture.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Architecture.Tests\bin\Debug\net10.0\Aer.Architecture.Tests.dll
+  Aer.Workers.Dialogue.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Workers.Dialogue.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.Tests.dll
   Aer.Daemon -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Daemon\bin\Debug\net10.0\Aer.Daemon.dll
+  Aer.Flow.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Aer.Flow.Tests.dll
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(32,70): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(55,67): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(66,74): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(80,71): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
   Aer.Daemon.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Daemon.Tests\bin\Debug\net10.0\Aer.Daemon.Tests.dll
+  Aer.Cli.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Cli.Tests.dll
   Aer.Ui -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\bin\Debug\net10.0\Aer.Ui.dll
   Aer.Ui.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Ui.Tests\bin\Debug\net10.0\Aer.Ui.Tests.dll
 
-Build succeeded.
-    0 Warning(s)
-    0 Error(s)
+Build FAILED.
 
-Time Elapsed 00:00:25.85
-  pass  lint  (exit 0)
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(16,63): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(31,81): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.DecisionType)4' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(32,70): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(55,67): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(66,74): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(80,71): error CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+    0 Warning(s)
+    6 Error(s)
+
+Time Elapsed 00:00:40.98
+  FAIL  lint  (exit 1)
 Γ£¿ Pixi task (audit-completeness): python -u tools/audit-completeness/completeness.py
 Recompute the audit's completeness register, so "we did all of it" is checkable rather than claimed.
 
@@ -137,7 +150,7 @@ STEP 9 -- every pinned agy model name is one `agy models` lists
 STEP 10 -- every gate citation survives the list being renumbered
 ==============================================================================
     gate slugs defined by CLAUDE.md                7
-    files scanned for gate citations               636
+    files scanned for gate citations               640
  OK citations that cannot survive a renumbering    0  (expected 0)  -- a number is positional; the slug is what survives the next restructure
 
 ==============================================================================
@@ -157,10 +170,14 @@ STEP 13 -- structural claims: repo map, cited src paths, runbook references
  OK pixi.toml runbook references that do not resolve 0  (expected 0)
 
 ==============================================================================
+STEP 14 -- the generated interaction-state table matches the register
+==============================================================================
+
+==============================================================================
 REPO STATE
 ==============================================================================
-    branch                                         970-docsdesign-refresh-02-screens-and-03-interaction-depth-for-the-twelve-state-inventory-throttles-dormancy-grant-ladder-escalations
-    commits ahead of main                          1
+    branch                                         616-docstest-give-the-ten-interaction-states-an-authoritative-home-and-make-a-silent-fall-through-fail
+    commits ahead of main                          2
     uncommitted files                              1
 
 ==============================================================================
@@ -233,7 +250,7 @@ Assert the tooling's own enumerable surfaces, because the checkers had no checke
  OK step 9 fails CLOSED when either of its two file sources goes unreadable
       2 of step 9's 4 sources controlled
  OK no tooling file transcribes a count its own code computes
-      9 files scanned, 4 quoted citation(s) skipped; NOTHING transcribes a count, so nothing was compared
+      10 files scanned, 4 quoted citation(s) skipped; NOTHING transcribes a count, so nothing was compared
  OK the two reusable instruments work on themselves
       5 code_tokens polarities (2 must discriminate) + control_arm's red baseline
  OK the record-once checker fires on restated prose, not on text the register prescribes
@@ -350,9 +367,9 @@ Traceback (most recent call last):
                   ^^^^^^^^^
   File "C:\Python312\Lib\encodings\cp1252.py", line 23, in decode
     return codecs.charmap_decode(input,self.errors,decoding_table)[0]
-   OK  red under: git output is decoded with a codec that cannot represent it
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 20031: character maps to <undefined>
+   OK  red under: git output is decoded with a codec that cannot represent it
    OK  red under: an index row counts as prose, so adding a decision record fails CI
 
 the record-once checker still finds the passages it found in a real merge
@@ -366,12 +383,23 @@ the vocabulary checker flags engine terms in user-facing string literals
 All 51 control arms discriminate, across 24 checks.
   pass  audit-controls  (exit 0)
 Γ£¿ Pixi task (audit-vocabulary): python -u tools/audit-completeness/vocabulary.py
-OK: No banned engine vocabulary found across 92 files examined.
+OK: No banned engine vocabulary found across 93 files examined.
   pass  audit-vocabulary  (exit 0)
 Γ£¿ Pixi task (audit-recordonce): python -u tools/audit-completeness/recordonce.py
-record-once: 4 changed file(s) against origin/main
- OK no wording was added to more than one file
-  pass  audit-recordonce  (exit 0)
+record-once: 16 changed file(s) against origin/main
+ !! 1 problem(s): shared added wording, or a marker that exempts nothing
+
+  the same wording was added to 2 files:
+      docs/decisions/0020-one-state-machine.md
+      docs/design/03-interaction-depth.md
+      e.g. "an explicit pointer to the work that will render"
+      Keep it in one; link from the rest. A deliberate second copy needs
+      `record-once-ok: #<issue> <canonical path>` in a comment beside that copy
+      (in markdown: `<!-- record-once-ok: ... -->` alone on its own line -- not
+      inside a list item, nothing after the closer -- and no blank line between
+      it and the passage) -- which exempts that passage only, holds for later
+      changes too, and is reported.
+  FAIL  audit-recordonce  (exit 1)
 Γ£¿ Pixi task (aer-dispatch-selftest): python tools/aer-agy-loop/dispatch.py --selftest
 aer-dispatch selftest: pass (denied-tool guard discriminates; catalog output-name check discriminates; catalog loader check discriminates)
   pass  aer-dispatch-selftest  (exit 0)
@@ -386,7 +414,7 @@ OK  mobile-build WSL guard discriminates (1 fires, 3 silent)
 staleness-ext selftest: pass (both checks discriminate)
   pass  audit-staleness-ext-selftest  (exit 0)
 Γ£¿ Pixi task (build-core): python ../../tools/check-core-submodule.py && cargo build
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.02s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.96s
 
 Γ£¿ Pixi task (test-sidecar): go test ./...
 ok  	aer-works/baton/sidecar	(cached)
@@ -397,41 +425,54 @@ ok  	aer-works/baton/sidecar	(cached)
   Aer.Mcp -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Mcp\bin\Debug\net10.0\Aer.Mcp.dll
   Aer.Core -> C:\Users\pbree\source\repos\aer\aer-flow\external\aer-core\bindings\dotnet\Aer.Core\bin\Debug\net10.0\Aer.Core.dll
   Aer.DesignTokens -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.DesignTokens\bin\Debug\net10.0\Aer.DesignTokens.dll
-  Aer.Plan.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Plan.Tests\bin\Debug\net10.0\Aer.Plan.Tests.dll
   Aer.VendorProbe -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.VendorProbe\bin\Debug\net10.0\Aer.VendorProbe.dll
   Aer.Flow -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\bin\Debug\net10.0\Aer.Flow.dll
   Aer.Mcp.Host -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Mcp.Host\bin\Debug\net10.0\Aer.Mcp.Host.dll
   Aer.Flow.CrashTestHost -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.CrashTestHost\bin\Debug\net10.0\Aer.Flow.CrashTestHost.dll
-  Aer.Workers.Dialogue -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Workers.Dialogue\bin\Debug\net10.0\Aer.Workers.Dialogue.dll
+  Aer.Plan.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Plan.Tests\bin\Debug\net10.0\Aer.Plan.Tests.dll
   Aer.Mcp.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Mcp.Tests\bin\Debug\net10.0\Aer.Mcp.Tests.dll
   Aer.Architecture.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Architecture.Tests\bin\Debug\net10.0\Aer.Architecture.Tests.dll
+  Aer.Flow.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Aer.Flow.Tests.dll
+  Aer.Workers.Dialogue -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Workers.Dialogue\bin\Debug\net10.0\Aer.Workers.Dialogue.dll
   Aer.Adapters -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Adapters\bin\Debug\net10.0\Aer.Adapters.dll
   Aer.Workers.Dialogue.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Workers.Dialogue.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.Tests.dll
-  Aer.Flow.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Aer.Flow.Tests.dll
   Aer.Cli -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Cli\bin\Debug\net10.0\Aer.Cli.dll
   Aer.GateProbe -> C:\Users\pbree\source\repos\aer\aer-flow\tools\Aer.GateProbe\bin\Debug\net10.0\Aer.GateProbe.dll
-  Aer.Cli.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Cli.Tests.dll
-  Aer.Ui.Core -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\bin\Debug\net10.0\Aer.Ui.Core.dll
   Aer.Adapters.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Adapters.Tests\bin\Debug\net10.0\Aer.Adapters.Tests.dll
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(16,63): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(31,81): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.DecisionType)4' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+  Aer.Ui.Core -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\bin\Debug\net10.0\Aer.Ui.Core.dll
+  Aer.Cli.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Cli.Tests.dll
   Aer.Daemon -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Daemon\bin\Debug\net10.0\Aer.Daemon.dll
   Aer.Daemon.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Daemon.Tests\bin\Debug\net10.0\Aer.Daemon.Tests.dll
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(32,70): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(55,67): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(66,74): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(80,71): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
   Aer.Ui -> C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\bin\Debug\net10.0\Aer.Ui.dll
   Aer.Ui.Tests -> C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Ui.Tests\bin\Debug\net10.0\Aer.Ui.Tests.dll
 
 Build succeeded.
-    0 Warning(s)
+
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(16,63): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\TaskStepsViewModel.cs(31,81): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.DecisionType)4' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui.Core\Aer.Ui.Core.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(32,70): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(55,67): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Flow.Domain.StepStatus)7' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(66,74): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Converters\StatusIconConverters.cs(80,71): warning CS8524: The switch expression does not handle some values of its input type (it is not exhaustive) involving an unnamed enum value. For example, the pattern '(Aer.Ui.Core.TaskCardStatus)6' is not covered. [C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Ui\Aer.Ui.csproj]
+    6 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:00:19.57
-Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Cli.Tests.dll (.NETCoreApp,Version=v10.0)
-Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Architecture.Tests\bin\Debug\net10.0\Aer.Architecture.Tests.dll (.NETCoreApp,Version=v10.0)
+Time Elapsed 00:01:02.82
 Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Mcp.Tests\bin\Debug\net10.0\Aer.Mcp.Tests.dll (.NETCoreApp,Version=v10.0)
-Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Workers.Dialogue.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Daemon.Tests\bin\Debug\net10.0\Aer.Daemon.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Architecture.Tests\bin\Debug\net10.0\Aer.Architecture.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Plan.Tests\bin\Debug\net10.0\Aer.Plan.Tests.dll (.NETCoreApp,Version=v10.0)
 Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Adapters.Tests\bin\Debug\net10.0\Aer.Adapters.Tests.dll (.NETCoreApp,Version=v10.0)
 Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Aer.Flow.Tests.dll (.NETCoreApp,Version=v10.0)
-Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Daemon.Tests\bin\Debug\net10.0\Aer.Daemon.Tests.dll (.NETCoreApp,Version=v10.0)
-Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Plan.Tests\bin\Debug\net10.0\Aer.Plan.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Workers.Dialogue.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.Tests.dll (.NETCoreApp,Version=v10.0)
 Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Ui.Tests\bin\Debug\net10.0\Aer.Ui.Tests.dll (.NETCoreApp,Version=v10.0)
+Test run for C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Cli.Tests.dll (.NETCoreApp,Version=v10.0)
 A total of 1 test files matched the specified pattern.
 A total of 1 test files matched the specified pattern.
 A total of 1 test files matched the specified pattern.
@@ -442,36 +483,175 @@ A total of 1 test files matched the specified pattern.
 A total of 1 test files matched the specified pattern.
 A total of 1 test files matched the specified pattern.
 
-Passed!  - Failed:     0, Passed:    32, Skipped:     0, Total:    32, Duration: 339 ms - Aer.Mcp.Tests.dll (net10.0)
+Passed!  - Failed:     0, Passed:    32, Skipped:     0, Total:    32, Duration: 552 ms - Aer.Mcp.Tests.dll (net10.0)
 
-Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 679 ms - Aer.Plan.Tests.dll (net10.0)
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 5 s - Aer.Plan.Tests.dll (net10.0)
 
-Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - Aer.Daemon.Tests.dll (net10.0)
-[xUnit.net 00:00:05.29]     Aer.Cli.Tests.DecideCommandEndToEndTests.On_unix_a_held_open_journal_does_not_block_decide_the_open_succeeds_and_validation_answers [SKIP]
-  Skipped Aer.Cli.Tests.DecideCommandEndToEndTests.On_unix_a_held_open_journal_does_not_block_decide_the_open_succeeds_and_validation_answers [1 ms]
-[xUnit.net 00:00:05.04]     Aer.Flow.Tests.Dispatch.CoreDispatcherTests.DispatchAsync_dispatches_an_argument_just_under_max_arg_strlen_on_linux [SKIP]
-[xUnit.net 00:00:05.05]     Aer.Flow.Tests.Dispatch.CoreDispatcherTests.DispatchAsync_refuses_an_over_long_argument_on_linux [SKIP]
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 16 s - Aer.Daemon.Tests.dll (net10.0)
+
+Passed!  - Failed:     0, Passed:    28, Skipped:     0, Total:    28, Duration: 4 s - Aer.Architecture.Tests.dll (net10.0)
+[xUnit.net 00:00:37.40]     Aer.Flow.Tests.Dispatch.CoreDispatcherTests.DispatchAsync_dispatches_an_argument_just_under_max_arg_strlen_on_linux [SKIP]
+[xUnit.net 00:00:37.41]     Aer.Flow.Tests.Dispatch.CoreDispatcherTests.DispatchAsync_refuses_an_over_long_argument_on_linux [SKIP]
   Skipped Aer.Flow.Tests.Dispatch.CoreDispatcherTests.DispatchAsync_dispatches_an_argument_just_under_max_arg_strlen_on_linux [1 ms]
   Skipped Aer.Flow.Tests.Dispatch.CoreDispatcherTests.DispatchAsync_refuses_an_over_long_argument_on_linux [1 ms]
-
-Passed!  - Failed:     0, Passed:    26, Skipped:     0, Total:    26, Duration: 3 s - Aer.Architecture.Tests.dll (net10.0)
-
-Passed!  - Failed:     0, Passed:    67, Skipped:     0, Total:    67, Duration: 7 s - Aer.Workers.Dialogue.Tests.dll (net10.0)
-[xUnit.net 00:00:11.54]     Aer.Adapters.Tests.AtomicLaunchConfigWriterTests.A_destination_the_probe_cannot_read_falls_through_to_the_write_on_unix [SKIP]
+[xUnit.net 00:00:43.98]     Aer.Cli.Tests.DecideCommandEndToEndTests.On_unix_a_held_open_journal_does_not_block_decide_the_open_succeeds_and_validation_answers [SKIP]
+  Skipped Aer.Cli.Tests.DecideCommandEndToEndTests.On_unix_a_held_open_journal_does_not_block_decide_the_open_succeeds_and_validation_answers [1 ms]
+[xUnit.net 00:00:43.14]     Aer.Adapters.Tests.AtomicLaunchConfigWriterTests.A_destination_the_probe_cannot_read_falls_through_to_the_write_on_unix [SKIP]
   Skipped Aer.Adapters.Tests.AtomicLaunchConfigWriterTests.A_destination_the_probe_cannot_read_falls_through_to_the_write_on_unix [1 ms]
-[xUnit.net 00:00:13.28]     Aer.Flow.Tests.Dispatch.CoreDispatcherTests.ArgMaxBytes_returns_a_plausible_limit_on_posix [SKIP]
-  Skipped Aer.Flow.Tests.Dispatch.CoreDispatcherTests.ArgMaxBytes_returns_a_plausible_limit_on_posix [1 ms]
-
-Passed!  - Failed:     0, Passed:   660, Skipped:     3, Total:   663, Duration: 12 s - Aer.Flow.Tests.dll (net10.0)
-[xUnit.net 00:00:18.04]     Aer.Adapters.Tests.GeminiWorkerAdapterTests.The_hook_token_is_single_quoted_on_unix [SKIP]
+[xUnit.net 00:00:50.41]     Aer.Adapters.Tests.GeminiWorkerAdapterTests.The_hook_token_is_single_quoted_on_unix [SKIP]
   Skipped Aer.Adapters.Tests.GeminiWorkerAdapterTests.The_hook_token_is_single_quoted_on_unix [1 ms]
 
-Passed!  - Failed:     0, Passed:   387, Skipped:     2, Total:   389, Duration: 14 s - Aer.Adapters.Tests.dll (net10.0)
+Passed!  - Failed:     0, Passed:   387, Skipped:     2, Total:   389, Duration: 21 s - Aer.Adapters.Tests.dll (net10.0)
+No test is available in C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Ui.Tests\bin\Debug\net10.0\Aer.Ui.Tests.dll. Make sure that test discoverer & executors are registered and platform & framework version settings are appropriate and try again.
 
-Passed!  - Failed:     0, Passed:   229, Skipped:     1, Total:   230, Duration: 15 s - Aer.Cli.Tests.dll (net10.0)
+[xUnit.net 00:01:13.25]     Aer.Cli.Tests.DialogueDispatchEndToEndTests.A_dialogue_step_runs_to_terminal_and_writes_the_transcript_and_final_output [FAIL]
+[xUnit.net 00:01:08.52]     Aer.Flow.Tests.Dispatch.CoreDispatcherTests.ArgMaxBytes_returns_a_plausible_limit_on_posix [SKIP]
+  Failed Aer.Cli.Tests.DialogueDispatchEndToEndTests.A_dialogue_step_runs_to_terminal_and_writes_the_transcript_and_final_output [731 ms]
+  Error Message:
+   Expected the step to have Succeeded but it was Failed. Classification: (none recorded). Reason: Worker exited with non-zero code -2147450749. stderr: ΓÇªsers\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.runtimeconfig.json' was not found. - If this should be a framework-dependent app, add the 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.runtimeconfig.json' file and specify the appropriate framework..
+  Stack Trace:
+     at Aer.Cli.Tests.DialogueDispatchEndToEndTests.AssertStepSucceeded(FlowState state)
+   at Aer.Cli.Tests.DialogueDispatchEndToEndTests.A_dialogue_step_runs_to_terminal_and_writes_the_transcript_and_final_output()
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:08.86]     Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_worker_using_bounded_self_iteration_retries_until_its_output_condition_is_satisfied [FAIL]
+[xUnit.net 00:01:08.87]     Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_three_step_linear_workflow_loaded_from_a_fixture_file_runs_to_completion [FAIL]
+[xUnit.net 00:01:08.87]     Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_worker_reporting_a_permanent_failure_classification_is_not_retried_despite_remaining_budget [FAIL]
+[xUnit.net 00:01:13.97]     Aer.Cli.Tests.DialogueDispatchEndToEndTests.A_bindings_file_and_dialogue_sidecar_copied_to_a_new_directory_still_resolves_and_runs [FAIL]
+  Skipped Aer.Flow.Tests.Dispatch.CoreDispatcherTests.ArgMaxBytes_returns_a_plausible_limit_on_posix [1 ms]
+  Failed Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_worker_using_bounded_self_iteration_retries_until_its_output_condition_is_satisfied [2 ms]
+  Error Message:
+   Aer.Flow.Templates.WorkflowDefinitionValidationException : WorkflowDefinition is invalid:
+Template file 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Fixtures\self-iteration-workflow.json' does not exist.
+---- System.IO.FileNotFoundException : Could not find file 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Fixtures\self-iteration-workflow.json'.
+  Stack Trace:
+     at Aer.Flow.Templates.WorkflowDefinitionParser.LoadFromFileAsync(String path, CancellationToken cancellationToken) in C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\Templates\WorkflowDefinitionParser.cs:line 71
+   at Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_worker_using_bounded_self_iteration_retries_until_its_output_condition_is_satisfied() in C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\EndToEnd\WorkflowEndToEndTests.cs:line 251
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.File.InternalReadAllTextAsync(String path, Encoding encoding, CancellationToken cancellationToken)
+   at Aer.Flow.Templates.WorkflowDefinitionParser.LoadFromFileAsync(String path, CancellationToken cancellationToken) in C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\Templates\WorkflowDefinitionParser.cs:line 67
+  Failed Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_three_step_linear_workflow_loaded_from_a_fixture_file_runs_to_completion [3 ms]
+  Error Message:
+   Aer.Flow.Templates.WorkflowDefinitionValidationException : WorkflowDefinition is invalid:
+Template file 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Fixtures\three-step-linear-workflow.json' does not exist.
+---- System.IO.FileNotFoundException : Could not find file 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Fixtures\three-step-linear-workflow.json'.
+  Stack Trace:
+     at Aer.Flow.Templates.WorkflowDefinitionParser.LoadFromFileAsync(String path, CancellationToken cancellationToken) in C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\Templates\WorkflowDefinitionParser.cs:line 71
+   at Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_three_step_linear_workflow_loaded_from_a_fixture_file_runs_to_completion() in C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\EndToEnd\WorkflowEndToEndTests.cs:line 45
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.File.InternalReadAllTextAsync(String path, Encoding encoding, CancellationToken cancellationToken)
+   at Aer.Flow.Templates.WorkflowDefinitionParser.LoadFromFileAsync(String path, CancellationToken cancellationToken) in C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\Templates\WorkflowDefinitionParser.cs:line 67
+  Failed Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_worker_reporting_a_permanent_failure_classification_is_not_retried_despite_remaining_budget [2 ms]
+  Error Message:
+   Aer.Flow.Templates.WorkflowDefinitionValidationException : WorkflowDefinition is invalid:
+Template file 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Fixtures\permanent-failure-workflow.json' does not exist.
+---- System.IO.FileNotFoundException : Could not find file 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\bin\Debug\net10.0\Fixtures\permanent-failure-workflow.json'.
+  Stack Trace:
+     at Aer.Flow.Templates.WorkflowDefinitionParser.LoadFromFileAsync(String path, CancellationToken cancellationToken) in C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\Templates\WorkflowDefinitionParser.cs:line 71
+   at Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests.A_worker_reporting_a_permanent_failure_classification_is_not_retried_despite_remaining_budget() in C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Flow.Tests\EndToEnd\WorkflowEndToEndTests.cs:line 306
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.File.InternalReadAllTextAsync(String path, Encoding encoding, CancellationToken cancellationToken)
+   at Aer.Flow.Templates.WorkflowDefinitionParser.LoadFromFileAsync(String path, CancellationToken cancellationToken) in C:\Users\pbree\source\repos\aer\aer-flow\src\Aer.Flow\Templates\WorkflowDefinitionParser.cs:line 67
 
-Passed!  - Failed:     0, Passed:   399, Skipped:     0, Total:   399, Duration: 1 m 3 s - Aer.Ui.Tests.dll (net10.0)
-  pass  test  (exit 0)
+Passed!  - Failed:     0, Passed:    67, Skipped:     0, Total:    67, Duration: 24 s - Aer.Workers.Dialogue.Tests.dll (net10.0)
+  Failed Aer.Cli.Tests.DialogueDispatchEndToEndTests.A_bindings_file_and_dialogue_sidecar_copied_to_a_new_directory_still_resolves_and_runs [723 ms]
+  Error Message:
+   Expected the step to have Succeeded but it was Failed. Classification: (none recorded). Reason: Worker exited with non-zero code -2147450749. stderr: ΓÇªsers\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.runtimeconfig.json' was not found. - If this should be a framework-dependent app, add the 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\Aer.Workers.Dialogue.runtimeconfig.json' file and specify the appropriate framework..
+  Stack Trace:
+     at Aer.Cli.Tests.DialogueDispatchEndToEndTests.AssertStepSucceeded(FlowState state)
+   at Aer.Cli.Tests.DialogueDispatchEndToEndTests.A_bindings_file_and_dialogue_sidecar_copied_to_a_new_directory_still_resolves_and_runs()
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:16.71]     Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_a_role_whose_worker_writes_its_declared_output_succeeds [FAIL]
+[xUnit.net 00:01:16.71]     Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_an_unknown_role_is_a_typed_argument_error [FAIL]
+[xUnit.net 00:01:16.72]     Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_a_role_whose_worker_writes_nothing_fails_the_contract [FAIL]
+[xUnit.net 00:01:16.81]     Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_name_that_is_both_a_role_and_a_template_is_refused [FAIL]
 
-GATES: PASS 11 of 11
-GATES_EXIT=0
+Failed!  - Failed:     3, Passed:   657, Skipped:     3, Total:   663, Duration: 35 s - Aer.Flow.Tests.dll (net10.0)
+  Failed Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_a_role_whose_worker_writes_its_declared_output_succeeds [3 ms]
+  Error Message:
+   Aer.Cli.CliArgumentException : The workflow-template catalog's template list was not found at 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\WorkflowTemplates.json'. The default ships next to the engine; an override lives under AER_HOME or the AER_WORKFLOW_TEMPLATES_PATH env var.
+  Stack Trace:
+     at Aer.Cli.DispatchCommand.MaterializeAsync(DispatchOptions options, String workspaceDirectory, CancellationToken cancellationToken)
+   at Aer.Cli.DispatchCommand.ExecuteAsync(DispatchOptions options, IReadOnlyDictionary`2 adapters, CancellationToken cancellationToken, String workspaceDirectory)
+   at Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_a_role_whose_worker_writes_its_declared_output_succeeds()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_an_unknown_role_is_a_typed_argument_error [7 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "The workflow-template catalog's template list was "┬╖┬╖┬╖
+Not found: "no-such-role"
+  Stack Trace:
+     at Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_an_unknown_role_is_a_typed_argument_error()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_a_role_whose_worker_writes_nothing_fails_the_contract [3 ms]
+  Error Message:
+   Aer.Cli.CliArgumentException : The workflow-template catalog's template list was not found at 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\WorkflowTemplates.json'. The default ships next to the engine; an override lives under AER_HOME or the AER_WORKFLOW_TEMPLATES_PATH env var.
+  Stack Trace:
+     at Aer.Cli.DispatchCommand.MaterializeAsync(DispatchOptions options, String workspaceDirectory, CancellationToken cancellationToken)
+   at Aer.Cli.DispatchCommand.ExecuteAsync(DispatchOptions options, IReadOnlyDictionary`2 adapters, CancellationToken cancellationToken, String workspaceDirectory)
+   at Aer.Cli.Tests.DispatchCommandEndToEndTests.Dispatching_a_role_whose_worker_writes_nothing_fails_the_contract()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_name_that_is_both_a_role_and_a_template_is_refused [85 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "The worker-role catalog's tier map was not found a"┬╖┬╖┬╖
+Not found: "namespace"
+  Stack Trace:
+     at Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_name_that_is_both_a_role_and_a_template_is_refused()
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:19.29]     Aer.Cli.Tests.DispatchTemplateEndToEndTests.Dispatching_the_shipped_template_composes_runs_and_injects_the_capture_base_ref [FAIL]
+[xUnit.net 00:01:19.29]     Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_role_requires_a_spec [FAIL]
+[xUnit.net 00:01:19.34]     Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_whose_composition_faults_is_a_typed_argument_error_not_a_crash [FAIL]
+[xUnit.net 00:01:19.35]     Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_with_a_capture_step_in_a_non_git_workspace_fails_loudly_before_running [FAIL]
+[xUnit.net 00:01:19.35]     Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_rejects_a_spec_because_its_phases_carry_their_own_instructions [FAIL]
+  Failed Aer.Cli.Tests.DispatchTemplateEndToEndTests.Dispatching_the_shipped_template_composes_runs_and_injects_the_capture_base_ref [2 s]
+  Error Message:
+   Aer.Cli.CliArgumentException : The workflow-template catalog's template list was not found at 'C:\Users\pbree\source\repos\aer\aer-flow\tests\Aer.Cli.Tests\bin\Debug\net10.0\WorkflowTemplates.json'. The default ships next to the engine; an override lives under AER_HOME or the AER_WORKFLOW_TEMPLATES_PATH env var.
+  Stack Trace:
+     at Aer.Cli.DispatchCommand.MaterializeAsync(DispatchOptions options, String workspaceDirectory, CancellationToken cancellationToken)
+   at Aer.Cli.DispatchCommand.ExecuteAsync(DispatchOptions options, IReadOnlyDictionary`2 adapters, CancellationToken cancellationToken, String workspaceDirectory)
+   at Aer.Cli.Tests.DispatchTemplateEndToEndTests.Dispatching_the_shipped_template_composes_runs_and_injects_the_capture_base_ref()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_role_requires_a_spec [2 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "The workflow-template catalog's template list was "┬╖┬╖┬╖
+Not found: "Pass --spec <spec-file>"
+  Stack Trace:
+     at Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_role_requires_a_spec()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_whose_composition_faults_is_a_typed_argument_error_not_a_crash [48 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "The worker-role catalog's tier map was not found a"┬╖┬╖┬╖
+Not found: "collides with a phase named"
+  Stack Trace:
+     at Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_whose_composition_faults_is_a_typed_argument_error_not_a_crash()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_with_a_capture_step_in_a_non_git_workspace_fails_loudly_before_running [2 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "The workflow-template catalog's template list was "┬╖┬╖┬╖
+Not found: "base ref"
+  Stack Trace:
+     at Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_with_a_capture_step_in_a_non_git_workspace_fails_loudly_before_running()
+--- End of stack trace from previous location ---
+  Failed Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_rejects_a_spec_because_its_phases_carry_their_own_instructions [2 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "The workflow-template catalog's template list was "┬╖┬╖┬╖
+Not found: "--spec"
+  Stack Trace:
+     at Aer.Cli.Tests.DispatchTemplateEndToEndTests.A_template_rejects_a_spec_because_its_phases_carry_their_own_instructions()
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:    11, Passed:   218, Skipped:     1, Total:   230, Duration: 35 s - Aer.Cli.Tests.dll (net10.0)
+  FAIL  test  (exit 1)
+
+GATES: FAIL 3 of 11 -- lint, audit-recordonce, test
+GATES_EXIT=1

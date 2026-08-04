@@ -24,8 +24,10 @@ public static class PlainLanguage
         StepStatus.Cancelled => "Cancelled",
         StepStatus.Paused => "Waiting for your review",
         StepStatus.Rejected => "Rejected",
-        // #616: no discard arm. A new StepStatus member fails this build (CS8509 under
-        // -warnaserror) instead of leaking its enum name into a primary label.
+        // #616: the discard throws instead of answering — same posture as the generated
+        // AerStatusPresentation. A new member reaches no silent word: StatusDerivationTests'
+        // golden map iterates every member, so the gap is a red test, never a shipped label.
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped step status."),
     };
 
     public static string ForDecision(DecisionType decisionType) => decisionType switch
@@ -34,7 +36,8 @@ public static class PlainLanguage
         DecisionType.Reject => "Rejected",
         DecisionType.RetryWithRevision => "Retry requested",
         DecisionType.Supersede => "Sent back",
-        // #616: no discard arm — a new DecisionType member fails the build, never a raw enum name.
+        // #616: throws, never a raw enum name — the golden map in StatusDerivationTests reddens on a new member.
+        _ => throw new ArgumentOutOfRangeException(nameof(decisionType), decisionType, "Unmapped decision type."),
     };
 
     /// <summary>
