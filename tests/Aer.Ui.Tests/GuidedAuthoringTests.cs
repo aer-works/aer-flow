@@ -451,6 +451,33 @@ public class GuidedAuthoringTests
     }
 
     [Fact]
+    public void Steps_sharing_one_grant_problem_get_one_message_naming_them_all()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[1].Name = "revise";
+        foreach (var step in flow.Steps)
+        {
+            step.Kind = GuidedStepKind.Gemini;
+            step.Prompt = "Write it.";
+        }
+        flow.Steps[0].ProducesFileName = "draft.md";
+        flow.Steps[1].ProducesFileName = "revise.md";
+
+        flow.GrantRunShellCommands = true;
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+        flow.ShellCommandPatternsText = "git:*";
+
+        var message = Assert.Single(flow.GuidanceMessages);
+        Assert.Contains("'draft', 'revise'", message, StringComparison.Ordinal);
+        Assert.False(flow.CanSave);
+    }
+
+    [Fact]
     public void Gemini_step_with_shell_and_network_grant_validates()
     {
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
