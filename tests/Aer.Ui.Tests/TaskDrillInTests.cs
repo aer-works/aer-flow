@@ -509,4 +509,98 @@ public class TaskDrillInTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [AvaloniaFact]
+    public async Task Failed_step_renders_failed_banner_with_reason_and_stderr_excerpt()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.Permanent,
+                    "Worker exited with non-zero code 1. stderr: migrate: connect ECONNREFUSED 127.0.0.1:5432"),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.True(architect.HasFailedBanner);
+            var banner = architect.FailedBanner;
+            Assert.NotNull(banner);
+            Assert.Equal("Worker exited with non-zero code 1.", banner.ReasonSentence);
+            Assert.Equal("migrate: connect ECONNREFUSED 127.0.0.1:5432", banner.StderrExcerpt);
+            Assert.True(banner.HasStderrExcerpt);
+            Assert.Contains("Failed · architect · Worker exited with non-zero code 1.", banner.Headline);
+            Assert.Equal("Ask architect to fix it", banner.AskWorkerLabel);
+            Assert.Equal("Try again (re-run task)", banner.TryAgainLabel);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Succeeded_step_shows_no_failed_banner_polarity()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionSucceeded(new ExecutionId("a-1")),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.False(architect.HasFailedBanner);
+            Assert.Null(architect.FailedBanner);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Ask_worker_to_fix_prefills_chat_input_and_navigates_to_chat()
+    {
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.Permanent,
+                    "Worker exited with non-zero code 1. stderr: connect ECONNREFUSED"),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.NotNull(architect.FailedBanner);
+
+            architect.FailedBanner.AskWorkerToFixCommand.Execute(null);
+
+            Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
+            Assert.Contains("Step 'architect' failed: Worker exited with non-zero code 1.", window.ViewModel.Chat.InputText);
+            Assert.False(window.ViewModel.Chat.IsSending);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }
+

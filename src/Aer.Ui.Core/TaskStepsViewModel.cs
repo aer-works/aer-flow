@@ -81,7 +81,8 @@ public sealed partial class StepItemViewModel : ObservableObject
         PausedStepViewModel? pausedStep,
         Action<StepItemViewModel> select,
         string? adapter = null,
-        IReadOnlyList<ArtifactFileViewModel>? promptFiles = null)
+        IReadOnlyList<ArtifactFileViewModel>? promptFiles = null,
+        FailedStepBannerViewModel? failedBanner = null)
     {
         StepId = stepId;
         Worker = worker;
@@ -94,6 +95,7 @@ public sealed partial class StepItemViewModel : ObservableObject
         _select = select;
         Adapter = adapter;
         PromptFiles = promptFiles ?? [];
+        FailedBanner = failedBanner;
     }
 
     public string StepId { get; }
@@ -105,6 +107,12 @@ public sealed partial class StepItemViewModel : ObservableObject
     public IReadOnlyList<ArtifactFileViewModel> OutputFiles { get; }
     public IReadOnlyList<ConversationRefViewModel> Conversations { get; }
     public IReadOnlyList<string> DecisionLines { get; }
+
+    /// <summary>
+    /// M25 Clause 4 (issue #617): banner rendering for failed steps. Non-null only when <see cref="Status"/> is <see cref="StepStatus.Failed"/>.
+    /// </summary>
+    public FailedStepBannerViewModel? FailedBanner { get; }
+    public bool HasFailedBanner => FailedBanner is not null;
 
     /// <summary>
     /// One entry per attempt whose execution durably captured its resolved prompt (issue #292) —
@@ -153,6 +161,98 @@ public sealed partial class StepItemViewModel : ObservableObject
 
     [RelayCommand]
     private void Select() => _select(this);
+}
+
+/// <summary>
+/// M25 Clause 4 (issue #617): the failed-step banner — errors are content.
+/// Shows the reason sentence and stderr excerpt in place, with affordances for "Try again",
+/// "Ask <worker> to fix it", and "Show full output".
+/// </summary>
+public sealed partial class FailedStepBannerViewModel : ObservableObject
+{
+    private readonly Action? _tryAgainAction;
+    private readonly Action<string, string, string>? _askWorkerToFixAction;
+    private readonly Action? _showFullOutputAction;
+
+    public string StepId { get; }
+    public string Worker { get; }
+    public string Adapter { get; }
+    public string Headline { get; }
+    public string ReasonSentence { get; }
+    public string? StderrExcerpt { get; }
+    public bool HasStderrExcerpt => !string.IsNullOrWhiteSpace(StderrExcerpt);
+
+    public string TryAgainLabel { get; }
+    public string AskWorkerLabel { get; }
+    public bool CanShowFullOutput => _showFullOutputAction != null;
+
+    public FailedStepBannerViewModel(
+        string stepId,
+        string worker,
+        string adapter,
+        string? rawReason,
+        bool isPaused,
+        PausedStepViewModel? pausedStep,
+        Action? reRunAction,
+        Action<string, string, string>? askWorkerToFixAction,
+        Action? showFullOutputAction)
+    {
+        StepId = stepId;
+        Worker = worker;
+        Adapter = adapter;
+        _askWorkerToFixAction = askWorkerToFixAction;
+        _showFullOutputAction = showFullOutputAction;
+
+        var (reasonSentence, stderrExcerpt) = ExtractReasonAndStderr(rawReason);
+        ReasonSentence = reasonSentence;
+        StderrExcerpt = stderrExcerpt;
+
+        Headline = $"Failed · {worker} · {ReasonSentence}";
+        AskWorkerLabel = $"Ask {worker} to fix it";
+
+        if (isPaused && pausedStep != null)
+        {
+            TryAgainLabel = "Try again";
+            _tryAgainAction = () => pausedStep.RetryCommand.Execute(null);
+        }
+        else
+        {
+            TryAgainLabel = "Try again (re-run task)";
+            _tryAgainAction = reRunAction;
+        }
+    }
+
+    public static (string Sentence, string? Stderr) ExtractReasonAndStderr(string? rawReason)
+    {
+        if (string.IsNullOrWhiteSpace(rawReason))
+        {
+            return ("Step failed.", null);
+        }
+
+        const string separator = " stderr: ";
+        var index = rawReason.IndexOf(separator, StringComparison.Ordinal);
+        if (index >= 0)
+        {
+            var sentence = rawReason[..index].Trim();
+            var stderr = rawReason[(index + separator.Length)..].Trim();
+            if (stderr.StartsWith('…'))
+            {
+                stderr = stderr[1..].Trim();
+            }
+            return (sentence, stderr);
+        }
+
+        return (rawReason.Trim(), null);
+    }
+
+    [RelayCommand]
+    private void TryAgain() => _tryAgainAction?.Invoke();
+
+    [RelayCommand]
+    private void AskWorkerToFix() => _askWorkerToFixAction?.Invoke(Adapter, StepId, ReasonSentence);
+
+    [RelayCommand]
+    private void ShowFullOutput() => _showFullOutputAction?.Invoke();
 }
 
 /// <summary>
@@ -213,7 +313,9 @@ public static class StepItemProjector
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
         Action<StepItemViewModel> select,
-        IReadOnlyDictionary<string, string>? workerAdapters = null)
+        IReadOnlyDictionary<string, string>? workerAdapters = null,
+        Action? reRunAction = null,
+        Action<string, string, string>? askWorkerToFixAction = null)
     {
         var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
         var pausedByStepId = pausedSteps.ToDictionary(paused => paused.StepId);
@@ -315,6 +417,39 @@ public static class StepItemProjector
             var stepDefinition = projection.Snapshot.Steps.First(step => step.StepId == stepState.StepId);
             var adapter = workerAdapters?.GetValueOrDefault(stepDefinition.Worker);
 
+            FailedStepBannerViewModel? failedBanner = null;
+            if (stepState.Status == StepStatus.Failed)
+            {
+                var lastAttemptWithReason = attempts.LastOrDefault(a => a.Reason != null) ?? attempts.LastOrDefault();
+                var reasonText = lastAttemptWithReason?.Reason ?? stepState.LatestFailureReason;
+
+                Action? showFullOutputAction = null;
+                if (conversations.Count > 0)
+                {
+                    showFullOutputAction = () => conversations[0].ShowCommand.Execute(null);
+                }
+                else if (outputFiles.Count > 0)
+                {
+                    showFullOutputAction = () => _ = outputFiles[0].PreviewCommand.ExecuteAsync(null);
+                }
+                else if (promptFiles.Count > 0)
+                {
+                    showFullOutputAction = () => _ = promptFiles[0].PreviewCommand.ExecuteAsync(null);
+                }
+
+                var pausedStep = pausedByStepId.GetValueOrDefault(stepState.StepId);
+                failedBanner = new FailedStepBannerViewModel(
+                    stepState.StepId.Value,
+                    stepDefinition.Worker,
+                    adapter ?? stepDefinition.Worker,
+                    reasonText,
+                    pausedByStepId.ContainsKey(stepState.StepId),
+                    pausedStep,
+                    reRunAction,
+                    askWorkerToFixAction,
+                    showFullOutputAction);
+            }
+
             items.Add(new StepItemViewModel(
                 stepState.StepId.Value,
                 stepDefinition.Worker,
@@ -326,7 +461,8 @@ public static class StepItemProjector
                 pausedByStepId.GetValueOrDefault(stepState.StepId),
                 select,
                 adapter,
-                promptFiles));
+                promptFiles,
+                failedBanner));
         }
 
         return items;
@@ -341,3 +477,4 @@ public static class StepItemProjector
         }
     }
 }
+

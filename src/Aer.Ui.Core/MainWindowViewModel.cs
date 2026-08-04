@@ -174,6 +174,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>Raised when a failed step's "Try again" affordance requests a re-run (#617).</summary>
+    public event Action? ReRunRequested;
+
+    /// <summary>
+    /// Routes "Ask <worker> to fix it" (#617) to the Chat section with the failing step's adapter selected
+    /// and the input pre-filled with a draft naming the step and quoting the reason text.
+    /// </summary>
+    public void AskWorkerToFix(string adapter, string stepId, string reason)
+    {
+        var targetAdapter = (adapter ?? "claude").ToLowerInvariant();
+        if (Chat.AvailableAdapters.Contains(targetAdapter))
+        {
+            Chat.NewChatAdapter = targetAdapter;
+        }
+        else if (Chat.AvailableAdapters.Count > 0)
+        {
+            Chat.NewChatAdapter = Chat.AvailableAdapters[0];
+        }
+        Chat.InputText = $"Step '{stepId}' failed: {reason}";
+        CurrentSection = ShellSection.Chat;
+    }
+
     /// <summary>
     /// Rebuilds <see cref="TaskSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
     /// and conversation delegates are the skin's render targets — the same inversion
@@ -192,7 +214,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         foreach (var item in StepItemProjector.Build(
             projection, taskDirectoryPath, PausedSteps, previewFileAsync, showConversation,
             select: item => SelectedStep = item,
-            workerAdapters: workerAdapters))
+            workerAdapters: workerAdapters,
+            reRunAction: () => ReRunRequested?.Invoke(),
+            askWorkerToFixAction: AskWorkerToFix))
         {
             TaskSteps.Add(item);
         }
