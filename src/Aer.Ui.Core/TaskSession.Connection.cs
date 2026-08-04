@@ -96,6 +96,15 @@ public sealed partial class TaskSession
             // Connect failed
         }
 
+        // #998: gated because a TaskSession constructed in a test reaches this fallback the
+        // moment its probe fails — and the spawned daemon re-registers itself in the REAL
+        // ~/.aer, clobbering the operator's registration and leaking a process that holds DLL
+        // locks against every later build. The desktop app keeps the default (true).
+        if (!_spawnDaemonOnDemand)
+        {
+            return false;
+        }
+
         return await SpawnDaemonProcessAsync("", cancellationToken).ConfigureAwait(true);
     }
 

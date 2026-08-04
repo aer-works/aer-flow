@@ -36,7 +36,7 @@ public class RoomTurnThrottlesTests
               "consecutiveFailureLimit": 2
             }
             """;
-            File.WriteAllText(Path.Combine(tempDir, "throttles.json"), json);
+            File.WriteAllText(Path.Combine(tempDir, "turn-throttles.json"), json);
 
             var (values, error) = RoomTurnThrottles.Load(tempDir);
             Assert.Equal(TimeSpan.FromSeconds(30), values.MachineTurnMinimumGap);
@@ -58,7 +58,7 @@ public class RoomTurnThrottlesTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            File.WriteAllText(Path.Combine(tempDir, "throttles.json"), "{ invalid json }}}");
+            File.WriteAllText(Path.Combine(tempDir, "turn-throttles.json"), "{ invalid json }}}");
 
             var (values, error) = RoomTurnThrottles.Load(tempDir);
             Assert.Equal(RoomTurnThrottles.Defaults, values);

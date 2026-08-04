@@ -128,6 +128,13 @@ public sealed class RoomTurnHostState
 public sealed class RoomTurnHost : BackgroundService
 {
     private const string RoomLogFileName = "room.jsonl";
+
+    /// <summary>
+    /// The <see cref="EscalationSubject.HostCondition"/> condition name the dormancy breaker
+    /// raises. The status endpoint (#994) matches on it to surface the tripping escalation.
+    /// </summary>
+    public const string DormancyConditionName = "turn-host-dormancy";
+
     public static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
@@ -199,7 +206,7 @@ public sealed class RoomTurnHost : BackgroundService
                         .ConfigureAwait(false);
 
                     var escalationSubject = new EscalationSubject.HostCondition(
-                        "turn-host-dormancy",
+                        DormancyConditionName,
                         $"{_hostState.ConsecutiveFailures} consecutive uncommitted turns tripped the breaker");
                     await RoomMutationInterface.RaiseEscalationAsync(
                         roomDirectoryPath, new WorkerId("turn-host"), EscalationTrigger.Confidence, escalationSubject, reader, writer, cancellationToken: cancellationToken)

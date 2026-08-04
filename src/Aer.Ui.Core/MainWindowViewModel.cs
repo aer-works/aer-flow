@@ -159,6 +159,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasWaitingOnLockBanner => WaitingOnLockBanner is not null;
 
+    /// <summary>Issue #994: non-null while turn-host status applies for the open room.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRoomTurnHostBanner))]
+    private RoomTurnHostBannerViewModel? roomTurnHostBanner;
+
+    public bool HasRoomTurnHostBanner => RoomTurnHostBanner is not null;
+
     /// <summary>The open task's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildTaskSteps"/>.</summary>
     public ObservableCollection<StepItemViewModel> TaskSteps { get; } = [];
 

@@ -97,6 +97,11 @@ public sealed partial class TaskSession
     private readonly Action<TaskProjection, string>? _onProjectionUpdated;
     private readonly string? _daemonUrl;
 
+    /// <summary>#998: whether a failed daemon probe may launch a fresh Aer.Daemon child. The
+    /// desktop app wants true; a test constructing a real <see cref="TaskSession"/> must pass
+    /// false or a probe failure spawns a daemon that rewrites the REAL ~/.aer registration.</summary>
+    private readonly bool _spawnDaemonOnDemand;
+
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
     private readonly SynchronizationContext? _syncContext = SynchronizationContext.Current;
 
@@ -268,7 +273,8 @@ public sealed partial class TaskSession
         Action mutationFailed,
         Func<string, CancellationToken, Task> reopenTaskAsync,
         Action<TaskProjection, string>? onProjectionUpdated = null,
-        string? daemonUrl = null)
+        string? daemonUrl = null,
+        bool spawnDaemonOnDemand = true)
     {
         _configurationStore = configurationStore;
         _adapters = adapters;
@@ -279,6 +285,7 @@ public sealed partial class TaskSession
         _reopenTaskAsync = reopenTaskAsync;
         _onProjectionUpdated = onProjectionUpdated;
         _daemonUrl = daemonUrl;
+        _spawnDaemonOnDemand = spawnDaemonOnDemand;
     }
 
     /// <summary>Points the session at <paramref name="taskDirectoryPath"/> without loading — <c>OpenAsync</c>'s bookkeeping half; the load itself goes through <see cref="LoadAsync"/>.</summary>
@@ -351,6 +358,7 @@ public sealed partial class TaskSession
         // this method's caller drops. The lock is a local filesystem fact the desktop can read in
         // either mode; which process answers the load does not change who holds the directory.
         RefreshWaitingOnLockBanner(taskDirectoryPath);
+        await RefreshRoomTurnHostBannerAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
 
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
