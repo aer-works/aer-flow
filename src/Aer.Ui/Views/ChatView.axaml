@@ -85,9 +85,14 @@
            as the template picker's own "chat session" option with no project directory set. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
                   IsVisible="{Binding !Chat.IsSessionOpen}">
+        <!-- #981: OneWay, deliberately. Two-way SelectedItem let the control write its own
+             cleared selection (from every ItemsSource Clear/refill) back into NewChatAdapter,
+             after which each re-assert pushed null and the combo rendered blank while the
+             ViewModel looked healthy under headless assertions. Upward travel happens only
+             through a real pick — ChatView's SelectionChanged handler. -->
         <ComboBox x:Name="ChatNewAdapterCombo" Width="140"
                   ItemsSource="{Binding Chat.AvailableAdapters}"
-                  SelectedItem="{Binding Chat.NewChatAdapter}"
+                  SelectedItem="{Binding Chat.NewChatAdapter, Mode=OneWay}"
                   IsEnabled="{Binding !Chat.IsStartingNewChat}" />
         <TextBox x:Name="ChatNewWorkingDirectoryBox" Width="360"
                  Text="{Binding Chat.NewChatWorkingDirectory}"
