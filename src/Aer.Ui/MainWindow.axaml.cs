@@ -1074,9 +1074,17 @@ public partial class MainWindow : Window
         {
             try { WorkflowTemplatePathBox.Text = File.ReadAllText(workflowPathFile).Trim(); } catch { }
         }
-        else if (projection.Snapshot.WorkflowTemplateId.Value is { } id && !string.IsNullOrEmpty(id))
+        else
         {
-            WorkflowTemplatePathBox.Text = id;
+            var fallbackWorkflowJson = System.IO.Path.Combine(taskDirectoryPath, "workflow.json");
+            if (File.Exists(fallbackWorkflowJson))
+            {
+                WorkflowTemplatePathBox.Text = fallbackWorkflowJson;
+            }
+            else
+            {
+                WorkflowTemplatePathBox.Text = string.Empty;
+            }
         }
 
         var bindingsPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path

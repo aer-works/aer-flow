@@ -156,17 +156,13 @@ public static class RunCommand
     private static async Task RefuseIfTheNamedTemplateIsNotTheBoundOneAsync(
         RunOptions options, WorkflowDefinitionSnapshot snapshot, CancellationToken cancellationToken)
     {
-        // Nothing readable named, nothing to disagree with. Two separate cases, one condition:
         // WorkflowFilePath is nullable so an in-process caller resuming a known task directory need
-        // not produce one, AND callers that do produce one are not all producing a path — the
-        // desktop falls back to writing the bound template's *id* into its workflow-path box
-        // (MainWindow.axaml.cs, when .aer/workflow-path is absent). Both were harmless while this
-        // value was never read on a resume. Attempting to read them is not: File.ReadAllTextAsync
-        // throws FileNotFoundException, which is not an AerFlowException and so escapes every typed
-        // boundary in the product — on the desktop into an unobserved async void click handler that
-        // leaves "Running…" on screen permanently. Comparing only what can actually be read keeps
-        // this a refusal of disagreement rather than a new way to fail.
-        if (options.WorkflowFilePath is not { } workflowFilePath || !File.Exists(workflowFilePath))
+        // not produce one. If a path IS supplied, we check it against the bound snapshot (#653).
+        // WorkflowDefinitionParser.LoadFromFileAsync translates missing files into a typed
+        // WorkflowDefinitionValidationException (an AerFlowException) — but an EMPTY path would
+        // throw an untyped ArgumentException from the BCL, so whitespace means "not supplied" here
+        // rather than trusting every caller to normalize before RunOptions is built.
+        if (options.WorkflowFilePath is not { } workflowFilePath || string.IsNullOrWhiteSpace(workflowFilePath))
         {
             return;
         }

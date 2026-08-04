@@ -10,11 +10,11 @@ namespace Aer.Cli;
 /// positionally (a terminal invocation names a workflow file whether fresh or resumed), but an
 /// in-process caller resuming a known task directory has no reason to ask the user for one.
 /// <para>
-/// Resuming does still <b>read</b> it, to refuse a directory bound to a different template (#628) —
-/// but only when it names a file that exists, because not every caller supplying this supplies a
-/// path. The desktop writes the bound template's bare <em>id</em> here when a task directory has no
-/// recorded <c>.aer/workflow-path</c>. This was previously the canonical statement that a resume
-/// never reads this value at all, which is what made that safe and what made #628 invisible.
+/// Resuming does still <b>read</b> it, to refuse a directory bound to a different template (#628).
+/// A supplied path that does not resolve now refuses loudly with a typed
+/// <c>WorkflowDefinitionValidationException</c> rather than being silently skipped (#653) — the
+/// desktop no longer writes a bare template <em>id</em> here, only a real path or nothing, and
+/// empty/whitespace is treated as "not supplied" at both the CLI parser and the resume check.
 /// </para>
 /// </param>
 /// <param name="BindingsFilePath">The worker-binding config file (M11 Phase 1's sidecar shape).</param>
