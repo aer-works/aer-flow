@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Aer.Flow.Tests.Projection;
 
+[Collection(ConsoleErrorCaptureCollection.Name)]
 public class RoomTurnThrottleTests
 {
     private static string CreateTempRoomDir()

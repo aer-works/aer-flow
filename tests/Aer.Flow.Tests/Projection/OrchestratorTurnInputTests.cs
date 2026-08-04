@@ -5,6 +5,7 @@ using Aer.Tests.Shared;
 
 namespace Aer.Flow.Tests.Projection;
 
+[Collection(ConsoleErrorCaptureCollection.Name)]
 public class OrchestratorTurnInputTests
 {
     private static async Task<string> CreateTestRoomAsync()
