@@ -250,4 +250,183 @@ public class RoomTurnThrottleTests
             DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
+
+    [Fact]
+    public void Boundaries_sit_exactly_where_the_addendum_numbers_say()
+    {
+        // The addendum's exact numbers (60s / 10 / 3) invite off-by-one bugs at precisely these
+        // three edges (#778 review) -- each pinned on its boundary, both sides where they differ.
+        var now = DateTimeOffset.UtcNow;
+        var throttles = RoomTurnThrottles.Default;
+
+        // Exactly at the min interval: allowed ("60s min" means >= 60s is fine).
+        var atInterval = RoomTurnUsage.Empty with { LastMachineTurnAt = now - TimeSpan.FromSeconds(60) };
+        Assert.True(RoomTurnDecider.Decide(throttles, atInterval, TurnWakeSource.Machine, now).IsAllowed);
+
+        // One tick under: refused.
+        var underInterval = RoomTurnUsage.Empty with { LastMachineTurnAt = now - TimeSpan.FromSeconds(59) };
+        Assert.Equal(
+            TurnRefusalReason.MinInterval,
+            RoomTurnDecider.Decide(throttles, underInterval, TurnWakeSource.Machine, now).RefusalReason);
+
+        // A turn exactly one hour old has left the rolling window; 9 in-window turns + it = still
+        // under the cap of 10, so the 10th fresh turn is allowed.
+        var oneHourOld = now - TimeSpan.FromHours(1);
+        var nineRecentPlusExpired = RoomTurnUsage.Empty with
+        {
+            RecentMachineTurnTimestamps =
+                Enumerable.Range(1, 9).Select(i => now - TimeSpan.FromMinutes(i)).Append(oneHourOld).ToList().AsReadOnly(),
+            LastMachineTurnAt = now - TimeSpan.FromMinutes(1) + TimeSpan.FromSeconds(-1),
+        };
+        Assert.Equal(9, nineRecentPlusExpired.GetMachineTurnsThisHour(now));
+
+        // The 10th in-window turn fills the cap: an 11th is refused.
+        var tenRecent = RoomTurnUsage.Empty with
+        {
+            RecentMachineTurnTimestamps =
+                Enumerable.Range(1, 10).Select(i => now - TimeSpan.FromMinutes(i + 10)).ToList().AsReadOnly(),
+            LastMachineTurnAt = now - TimeSpan.FromMinutes(11),
+        };
+        Assert.Equal(
+            TurnRefusalReason.HourlyCap,
+            RoomTurnDecider.Decide(throttles, tenRecent, TurnWakeSource.Machine, now).RefusalReason);
+
+        // Two failures: not yet dormant. Three: dormant.
+        Assert.True(RoomTurnDecider.Decide(
+            throttles, RoomTurnUsage.Empty with { ConsecutiveFailedTurns = 2 }, TurnWakeSource.Machine, now).IsAllowed);
+        Assert.Equal(
+            TurnRefusalReason.Dormant,
+            RoomTurnDecider.Decide(
+                throttles, RoomTurnUsage.Empty with { ConsecutiveFailedTurns = 3 }, TurnWakeSource.Machine, now).RefusalReason);
+    }
+
+    [Fact]
+    public void A_partial_throttle_file_overrides_only_the_field_it_names()
+    {
+        var roomDir = CreateTempRoomDir();
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(roomDir, RoomTurnThrottleStore.ThrottleFileName),
+                """{ "maxMachineTurnsPerHour": 5 }""");
+
+            using var sw = new StringWriter();
+            var originalErr = Console.Error;
+            Console.SetError(sw);
+            RoomTurnThrottles throttles;
+            try
+            {
+                throttles = RoomTurnThrottleStore.Load(roomDir);
+            }
+            finally
+            {
+                Console.SetError(originalErr);
+            }
+
+            Assert.Equal(5, throttles.MaxMachineTurnsPerHour);
+            Assert.Equal(TimeSpan.FromSeconds(60), throttles.MinMachineTurnInterval);
+            Assert.Equal(3, throttles.FailedTurnsBeforeDormancy);
+            // Deliberately partial = deliberately silent: overriding one knob is the operator's
+            // normal move, not a fault.
+            Assert.Equal(string.Empty, sw.ToString());
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public void A_misspelled_throttle_key_is_loudly_named_not_silently_ignored()
+    {
+        var roomDir = CreateTempRoomDir();
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(roomDir, RoomTurnThrottleStore.ThrottleFileName),
+                """{ "minMachineTurnInterval": 120 }""");
+
+            using var sw = new StringWriter();
+            var originalErr = Console.Error;
+            Console.SetError(sw);
+            RoomTurnThrottles throttles;
+            try
+            {
+                throttles = RoomTurnThrottleStore.Load(roomDir);
+            }
+            finally
+            {
+                Console.SetError(originalErr);
+            }
+
+            // The typo'd key changed nothing -- and said so.
+            Assert.Equal(TimeSpan.FromSeconds(60), throttles.MinMachineTurnInterval);
+            Assert.Contains("minMachineTurnInterval", sw.ToString());
+            Assert.Contains("IGNORED", sw.ToString());
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public void An_inconsistent_usage_file_is_reconciled_loudly_toward_the_newest_turn()
+    {
+        var roomDir = CreateTempRoomDir();
+        try
+        {
+            var newest = DateTimeOffset.UtcNow;
+            Directory.CreateDirectory(Path.Combine(roomDir, ".aer"));
+            File.WriteAllText(
+                Path.Combine(roomDir, ".aer", "turn-usage.json"),
+                $$"""{ "recentMachineTurnTimestamps": ["{{newest:O}}"], "lastMachineTurnAt": null, "consecutiveFailedTurns": 0 }""");
+
+            using var sw = new StringWriter();
+            var originalErr = Console.Error;
+            Console.SetError(sw);
+            RoomTurnUsage usage;
+            try
+            {
+                usage = RoomTurnUsageStore.Load(roomDir);
+            }
+            finally
+            {
+                Console.SetError(originalErr);
+            }
+
+            Assert.NotNull(usage.LastMachineTurnAt);
+            Assert.Equal(newest.ToUnixTimeSeconds(), usage.LastMachineTurnAt!.Value.ToUnixTimeSeconds());
+            Assert.Contains("RECONCILED", sw.ToString());
+
+            // The reconciled state decides conservatively: a machine turn right now is refused
+            // on the interval, exactly as if the two fields had agreed all along.
+            Assert.Equal(
+                TurnRefusalReason.MinInterval,
+                RoomTurnDecider.Decide(
+                    RoomTurnThrottles.Default, usage, TurnWakeSource.Machine, newest.AddSeconds(5)).RefusalReason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public void Throttle_settings_round_trip_through_save_and_load()
+    {
+        var roomDir = CreateTempRoomDir();
+        try
+        {
+            var custom = new RoomTurnThrottles(TimeSpan.FromSeconds(90), 4, 2);
+            RoomTurnThrottleStore.Save(roomDir, custom);
+
+            var loaded = RoomTurnThrottleStore.Load(roomDir);
+            Assert.Equal(custom, loaded);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
 }

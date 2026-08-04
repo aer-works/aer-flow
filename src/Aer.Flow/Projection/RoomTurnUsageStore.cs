@@ -15,10 +15,13 @@ public static class RoomTurnUsageStore
     public static string GetUsageFilePath(string roomDirectoryPath)
         => Path.Combine(roomDirectoryPath, AerDirectoryName, UsageFileName);
 
+    // Defaults for the same reason ThrottleDto's parameters carry them: under
+    // RespectRequiredConstructorParameters a default-less positional parameter is required, and
+    // an older or partial file must per-field-default, not throw.
     private sealed record UsageDto(
-        [property: JsonPropertyName("recentMachineTurnTimestamps")] List<DateTimeOffset>? RecentMachineTurnTimestamps,
-        [property: JsonPropertyName("lastMachineTurnAt")] DateTimeOffset? LastMachineTurnAt,
-        [property: JsonPropertyName("consecutiveFailedTurns")] int? ConsecutiveFailedTurns);
+        [property: JsonPropertyName("recentMachineTurnTimestamps")] List<DateTimeOffset>? RecentMachineTurnTimestamps = null,
+        [property: JsonPropertyName("lastMachineTurnAt")] DateTimeOffset? LastMachineTurnAt = null,
+        [property: JsonPropertyName("consecutiveFailedTurns")] int? ConsecutiveFailedTurns = null);
 
     private static readonly JsonSerializerOptions ReadOptions = new(FlowEventLogJson.Options)
     {
@@ -61,9 +64,28 @@ public static class RoomTurnUsageStore
             }
 
             var timestamps = dto.RecentMachineTurnTimestamps ?? [];
+
+            // The two fields are one fact stored twice (the newest list entry IS the last turn),
+            // and nothing else prevents a hand edit or partial write making them disagree --
+            // decisions computed from inconsistent state would refuse or allow wrongly (#778
+            // review). Reconciled here to the LATER of the two, loudly, so the conservative
+            // reading wins: LastMachineTurnAt can only move forward. It is stored at all (not
+            // derived) because the hourly window prunes entries older than one hour, while an
+            // operator may set a min interval LONGER than an hour -- deriving from the pruned
+            // list would forget a last turn the longer interval still needs to see.
+            var newestListed = timestamps.Count > 0 ? timestamps.Max() : (DateTimeOffset?)null;
+            var lastTurn = dto.LastMachineTurnAt;
+            if (newestListed is { } newest && (lastTurn is null || lastTurn < newest))
+            {
+                Console.Error.WriteLine(
+                    $"[RoomTurnUsage] Inconsistent usage file '{filePath}' RECONCILED loudly: lastMachineTurnAt "
+                    + $"({(lastTurn is null ? "absent" : lastTurn.ToString())}) is older than the newest recorded turn ({newest}); using the newest.");
+                lastTurn = newest;
+            }
+
             return new RoomTurnUsage(
                 timestamps.AsReadOnly(),
-                dto.LastMachineTurnAt,
+                lastTurn,
                 consecutiveFailed);
         }
         catch (Exception ex)

@@ -19,10 +19,21 @@ public static class RoomTurnThrottleStore
     public static string GetThrottleFilePath(string roomDirectoryPath)
         => Path.Combine(roomDirectoryPath, ThrottleFileName);
 
+    // Every parameter defaults to null: FlowEventLogJson.Options sets
+    // RespectRequiredConstructorParameters, under which a default-less positional parameter is
+    // REQUIRED -- a deliberately partial operator file (one knob overridden) would throw instead
+    // of per-field defaulting. Caught by A_partial_throttle_file_overrides_only_the_field_it_names.
     private sealed record ThrottleDto(
-        [property: JsonPropertyName("minMachineTurnIntervalSeconds")] double? MinMachineTurnIntervalSeconds,
-        [property: JsonPropertyName("maxMachineTurnsPerHour")] int? MaxMachineTurnsPerHour,
-        [property: JsonPropertyName("failedTurnsBeforeDormancy")] int? FailedTurnsBeforeDormancy);
+        [property: JsonPropertyName("minMachineTurnIntervalSeconds")] double? MinMachineTurnIntervalSeconds = null,
+        [property: JsonPropertyName("maxMachineTurnsPerHour")] int? MaxMachineTurnsPerHour = null,
+        [property: JsonPropertyName("failedTurnsBeforeDormancy")] int? FailedTurnsBeforeDormancy = null)
+    {
+        // Captures every key the operator wrote that is NOT one of the three above. A typo'd
+        // setting silently ignored is indistinguishable from "not set" (#778 review) -- this is
+        // the operator's own hand-edited file, so a misspelling must be loud, not swallowed.
+        [JsonExtensionData]
+        public Dictionary<string, System.Text.Json.JsonElement>? UnrecognizedKeys { get; init; }
+    }
 
     private static readonly JsonSerializerOptions ReadOptions = new(FlowEventLogJson.Options)
     {
@@ -60,6 +71,14 @@ public static class RoomTurnThrottleStore
             {
                 Console.Error.WriteLine($"[RoomTurnThrottles] Loud fallback to defaults: Throttle file '{filePath}' deserialized to null.");
                 return RoomTurnThrottles.Default;
+            }
+
+            if (dto.UnrecognizedKeys is { Count: > 0 } unknown)
+            {
+                Console.Error.WriteLine(
+                    $"[RoomTurnThrottles] Unrecognized key(s) in '{filePath}' IGNORED: {string.Join(", ", unknown.Keys)}. "
+                    + "Valid keys: minMachineTurnIntervalSeconds, maxMachineTurnsPerHour, failedTurnsBeforeDormancy. "
+                    + "A misspelled key falls back to its default.");
             }
 
             var intervalSeconds = dto.MinMachineTurnIntervalSeconds ?? RoomTurnThrottles.DefaultMinMachineTurnInterval.TotalSeconds;
