@@ -296,6 +296,8 @@ Long output | Truncated with an explicit "showing first N lines" and a way to se
 
 Reduced motion | Every animated state degrades to a correct still frame — the working mark is a spinner's static frame by design, not an absence. |
 Gate unverified (added 2026-07-25, per 0029) | A worker whose permission mechanism could not be confirmed working at start says so before any tool runs, rather than silently rendering a gate that might never fire — a broken hook or a disabled callback both look exactly like a working one otherwise. |
+Waiting on another room's lock (added 2026-08-04, #480) | Reads as a wait, never as an error and never as generic working: names the room that holds this folder, linked, so the choice — wait, or go there — is discoverable. Opening a second room on a folder that already has one warns first; legal, but a choice made knowingly. |
+Dormant (added 2026-08-04, #778) | The room stopped machine turns after repeated turns that committed nothing, and says so in the transcript with the reason and the wake control. A message to a dormant room is answered with this state — waking is your explicit action, never a side effect of asking how it's going. |
 
 Two of these are the defects from the last manual run , promoted from bugs to rules: cancelled reading as finished, and a room that existed but appeared nowhere. Writing them here is what stops them being rediscovered.
 
@@ -305,6 +307,15 @@ Two of these are the defects from the last manual run , promoted from bugs to ru
 > silently when broken. AER verifies its own gate at every worker's start rather than assuming
 > configuration took effect — the row above is that verification surfacing as a state, not a new
 > mechanism of its own.
+
+> **Added 2026-08-04.** Two more states from the resident-room design, ratified on
+> [#495](https://github.com/aer-works/baton/issues/495): a room serialised behind another room's
+> turn lock (#480 — the engine behaviour already exists and is verified; the state makes the wait
+> visible instead of indistinguishable from slow), and the turn-throttle circuit breaker's visible
+> face (#778 — the throttle numbers themselves live in the room's `turn-throttles.json`, never
+> restated here). That makes the recorded inventory **thirteen**. This table is currently the
+> list's home; #616 will give the inventory an authoritative register with enforcement, at which
+> point this table becomes a rendering of that register rather than its home.
 
 ### The inventory
 
@@ -340,6 +351,8 @@ Archive | bulk, from the list | per room | Bulk management stays a desktop affor
 
 Notifications | later | inform only | Desktop notifications are worth having but are not in this pass. |
 
+Spend controls | inline in the control surface | counter when informative, sheet to edit | Machine-turn throttles: values and live usage visible where the room is. The numbers are the room file's own, edited in place — never a second copy. |
+
 Search | not yet | not yet | Deliberately unscoped. Revisit once there is enough history to need it. |
 
 ### The calls made here
@@ -361,5 +374,9 @@ Success collapses A command that passed shows one line; one that failed opens it
 Blocks are doors on a phone Diffs and output get their own screens , and each still offers the next action rather than only "back".
 
 Stale, not blank Refreshing never empties a list. Previous content stays and is marked stale — blanking reads as data loss.
+
+A wait names its holder (added 2026-08-04) Waiting on another room's turn lock is its own state, never generic working: the holder is named and linked, so "go close the other room" is discoverable rather than folklore.
+
+Dormancy answers, it never resumes (added 2026-08-04) A message to a dormant room is answered by the product with the dormancy state and the wake control. Waking the room is your explicit action — a stuck loop can never resume spending because you asked how it's going.
 
 Depth pass complete. With the definition and the screen set, this is intended to be enough that implementation invents nothing — anything genuinely missing should be added here first rather than decided at the keyboard.

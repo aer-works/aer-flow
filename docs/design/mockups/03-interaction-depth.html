@@ -419,11 +419,14 @@ resolve_to_the_same_row
         <tr><td><b>Long output</b></td><td>Truncated with an explicit "showing first N lines" and a way to see all of it. Never silently cut.</td></tr>
         <tr><td><b>Reduced motion</b></td><td>Every animated state degrades to a correct still frame — the working mark is a spinner's static frame by design, not an absence.</td></tr>
         <tr><td><b>Gate unverified</b></td><td>A worker whose permission mechanism could not be confirmed working at start says so before any tool runs, rather than silently rendering a gate that might never fire — a broken hook or a disabled callback both look exactly like a working one otherwise. <span style="color:var(--text-3);font-size:12px">(added 2026-07-25, per 0029)</span></td></tr>
+        <tr><td><b>Waiting on another room's lock</b></td><td>Reads as a wait, never as an error and never as generic working: names the room that holds this folder, linked, so the choice — wait, or go there — is discoverable. Opening a second room on a folder that already has one warns first; legal, but a choice made knowingly. <span style="color:var(--text-3);font-size:12px">(added 2026-08-04, #480)</span></td></tr>
+        <tr><td><b>Dormant</b></td><td>The room stopped machine turns after repeated turns that committed nothing, and says so in the transcript with the reason and the wake control. A message to a dormant room is answered with this state — waking is your explicit action, never a side effect of asking how it's going. <span style="color:var(--text-3);font-size:12px">(added 2026-08-04, #778)</span></td></tr>
       </tbody>
     </table>
   </div>
   <p class="note" style="margin-top:16px"><b>Two of these are the defects from the last manual run</b>, promoted from bugs to rules: cancelled reading as finished, and a room that existed but appeared nowhere. Writing them here is what stops them being rediscovered.</p>
   <p class="note" style="margin-top:10px"><b>Added 2026-07-25.</b> A third promoted rule, from <a href="../../decisions/0029-the-gate-is-three-mechanisms.md">0029</a>: a permission gate is enforced by different mechanisms depending on which tool population is at risk, at least one of which fails silently when broken. AER verifies its own gate at every worker's start rather than assuming configuration took effect — the row above is that verification surfacing as a state, not a new mechanism of its own.</p>
+  <p class="note" style="margin-top:10px"><b>Added 2026-08-04.</b> The two resident-room states, making the recorded inventory thirteen — ratified on <a href="https://github.com/aer-works/baton/issues/495">#495</a>. The waiting state's engine half already exists and is verified (the turn lock, #393); Dormant is the #778 turn breaker made visible, and the throttle numbers behind it live in the room's own <code>turn-throttles.json</code>, not here. This table is the list's home until #616 gives the inventory an enforced register; the table then becomes a rendering of that register. Screens for both are drawn in <a href="02-screens.html#res-dormant">02-screens.html</a>.</p>
 </section>
 
 <hr class="div">
@@ -450,6 +453,7 @@ resolve_to_the_same_row
         <tr><td><b>Archive</b></td><td class="y">bulk, from the list</td><td class="y">per room</td><td>Bulk management stays a desktop affordance.</td></tr>
         <tr><td><b>Notifications</b></td><td class="n">later</td><td class="y">inform only</td><td>Desktop notifications are worth having but are not in this pass.</td></tr>
         <tr><td><b>Search</b></td><td class="n">not yet</td><td class="n">not yet</td><td>Deliberately unscoped. Revisit once there is enough history to need it.</td></tr>
+        <tr><td><b>Spend controls</b></td><td class="y">inline in the control surface</td><td class="y">counter when informative, sheet to edit</td><td>Machine-turn throttles: values and live usage visible where the room is. The numbers are the room file's own, edited in place — never a second copy. <span style="color:var(--text-3);font-size:12px">(added 2026-08-04)</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -468,6 +472,8 @@ resolve_to_the_same_row
     <div class="call"><dt>Artifacts are files</dt><dd><b>Vendor-neutral, versioned, attributed, explicitly attached.</b> What one worker made, any other can be handed.</dd></div>
     <div class="call"><dt>Success collapses</dt><dd><b>A command that passed shows one line; one that failed opens itself.</b> Status and duration stay visible either way.</dd></div>
     <div class="call"><dt>Blocks are doors on a phone</dt><dd><b>Diffs and output get their own screens</b>, and each still offers the next action rather than only "back".</dd></div>
+    <div class="call"><dt>A wait names its holder (added 2026-08-04)</dt><dd><b>Waiting on another room's turn lock is its own state, never generic working</b> — the holder is named and linked, so "go close the other room" is discoverable rather than folklore.</dd></div>
+    <div class="call"><dt>Dormancy answers, it never resumes (added 2026-08-04)</dt><dd><b>A message to a dormant room is answered by the product with the dormancy state and the wake control.</b> Waking the room is your explicit action — a stuck loop can never resume spending because you asked how it's going.</dd></div>
     <div class="call"><dt>Stale, not blank</dt><dd><b>Refreshing never empties a list.</b> Previous content stays and is marked stale — blanking reads as data loss.</dd></div>
   </dl>
 </section>

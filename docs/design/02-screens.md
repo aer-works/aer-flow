@@ -23,6 +23,8 @@ Settings Phone The calls
 
 M27 addition — Skill attachment Skill creation Room-header controls Workflow toggle
 
+Resident-room addition — Spend controls Dormant Waiting on a lock Escalation
+
 ### First run
 
 One screen, one action, and the answer to the question that actually breaks first installs: are my CLIs even being found? Onboarding and diagnosis are the same screen because they are the same worry.
@@ -627,9 +629,161 @@ disconnect, or enter an artificial "idle" state. They stay in the room as ordina
 workers — because a room without an active workflow is already free-form by 0001's own model.
 Turning off a workflow strips away the graph overlay; it does not touch who's present.
 
-### The calls made here
+### Resident-room addition (2026-08-04) — spend controls, dormancy, waiting on a lock
 
-Each of these is a deliberate divergence between the two views, or a place these screens stop doing something the current app does.
+Everything below this line is new: the screens for a room whose orchestrator is *resident* —
+taking machine-triggered turns on its own cadence (#778). The design constraint they all serve:
+the room spends the operator's subscription while nobody is watching, so **what it may spend, and
+what it has spent, are visible where the room is** — never in a settings screen you would have to
+remember exists. The glyphs drawn here are stand-ins; marks are shapes from the token set — #458's rule, recorded
+in `design/tokens.json`'s own status notes: a mark is a shape, never a codepoint.
+
+#### The spend controls
+
+Desktop · a resident room's control surface
+
+```
+Baton · aer-flow                        Resident [● ON ] · machine turns 3/10 this hour
+▤ ◱ ⚙
+
+aer-flow  [👑 claude · 2 skills]  [agy · 1 skill]  [+ Add]
+                      ┌────────────────────────────────────────────────┐
+                      │ Spend controls · this room                     │
+                      │                                                │
+                      │ Gap between machine turns      [  60 s ]       │
+                      │ Machine turns per hour         [  10   ]       │
+                      │ Turns without progress, then   [   3   ]       │
+                      │ the room goes dormant                          │
+                      │                                                │
+                      │ Used this hour  ▮▮▮○○○○○○○  3 of 10            │
+                      │                                                │
+                      │ Your own messages are never throttled.         │
+                      │ These are the room's own numbers               │
+                      │ (turn-throttles.json) — edit them here or in   │
+                      │ the file; both are the same thing.             │
+                      └────────────────────────────────────────────────┘
+```
+
+The values and the live count sit on the room, one click deep, editable in place. There is no
+second store: the panel edits the room's own `turn-throttles.json`, the same file an operator can
+open in an editor, and a hand edit shows up here on the next read. Deleting the file is safe and
+means "the defaults" — the panel keeps working and says so. The header shows the one number that
+predicts spend (turns used this hour) whenever the room is resident, so the panel is confirmation,
+not discovery.
+
+Phone · the counter, and the sheet behind it
+
+```
+9:41 ▮▮▮
+
+Rooms 1 needs you · 1 dormant
+
+◗ payments-api Needs you · schema change
+
+◔ aer-flow Working · turns 9/10 this hour
+
+⏾ docs-sweep Dormant · 3 turns, no progress
+
+Rooms Needs you Settings
+```
+
+```
+9:41 ▮▮▮
+
+‹ aer-flow · Spend controls
+
+Used this hour  ▮▮▮▮▮▮▮▮▮○  9 of 10
+
+Gap between machine turns 60 s ›
+Machine turns per hour 10 ›
+Turns to dormant 3 ›
+
+Your own messages are never throttled.
+```
+
+On the phone, **state is always visible and editors are one tap away** — the room card carries a
+throttle counter only when the number is informative (near its cap, waiting, or dormant), and
+stays quiet otherwise, per 0006: a healthy resident room's card looks exactly like any working
+room's. Tapping into the room's control sheet gets the same three values the desktop panel shows,
+one field per row.
+
+#### Dormant
+
+Desktop · the room stopped itself
+
+```
+Rooms + New
+
+◗ payments-api Needs you
+
+⏾ aer-flow Dormant · 3 turns, no progress
+
+✓ docs-sweep Finished · 1h
+
+aer-flow  [👑 claude · 2 skills]  [agy]                       ⏾ Dormant
+
+⏾ Dormant · stopped after 3 machine turns without progress
+The last three turns tried to fix the failing build and committed nothing.
+[ Wake claude ]  [ Swap orchestrator… ]
+
+you how's it going?
+
+⏾ Still dormant — waking is yours to choose.
+[ Wake claude ]  [ Swap orchestrator… ]
+
+Reply… ⏎
+```
+
+Dormancy renders as a turn, in the transcript, where the history that led to it sits directly
+above — the same rule gates follow. It says what stopped, why, and offers the two ways forward.
+The room list gives dormant rooms their own group beside "needs you", because a dormant room *is*
+waiting on you — but it is a wait, not a failure, and never drawn as one. And the second turn in
+the drawing is the load-bearing behaviour: your message did not wake the loop. The product
+answered with the state. A room that stopped because its last three turns went nowhere would
+otherwise resume burning turns the moment you asked after it.
+
+#### Waiting on another room's lock
+
+Desktop · two rooms, one folder
+
+```
+Rooms + New
+
+◔ payments-api Working · claude
+
+⧗ aer-flow Waiting · payments-api holds this folder
+
+aer-flow  [👑 claude]                                          ⧗ Waiting
+
+⧗ Waiting on payments-api — both rooms point at this folder, and
+turns take strict turns. [ Go to payments-api ]
+
+Reply… ⏎   (queues, sends when the folder frees)
+```
+
+A blocked room previously looked identical to a slow one, which is the worst presentation: your
+model of what the product is doing goes wrong, and the fix is undiscoverable. The wait names its
+holder and links to it. It is information, not an error (0006). Typing still queues — the founding
+rule that a busy anything is never a reason you cannot act. Opening a *second* room on a folder
+that already has one warns at creation: legal, occasionally right, and a choice to make knowingly.
+
+#### Escalation is a gate
+
+Desktop · a resident turn reaches past the room's floor
+
+```
+claude · machine turn Ran the failing test, found the fix, wants to push.
+
+Needs you Push to origin/main is beyond this room's grant.
+[ Allow once ]  [ Deny ]  [ Ask someone… ]
+```
+
+A resident orchestrator runs at the room's grant floor; anything beyond it renders as the gate
+this corpus already has — inline in the transcript, in the "needs you" filter, on the phone, one
+object with several entry points. No new escalation surface exists, because the gate already *is*
+the product's way of asking past a boundary, and a machine turn asking is no different from a
+worker asking mid-conversation. The turn label says it was a machine turn, so "why is this room
+asking at 3am" answers itself.
 
 One noun Adding a worker never creates a new object. The header chip changes; the room is the same room. "Session" retreats to its technical meaning — the vendor CLI's resumable session — and stops appearing in the interface at all.
 
@@ -676,6 +830,20 @@ In-flight cancellation on removal Removing an active worker halts execution via 
 DAG removal refused in v1 Removing a worker required by an active workflow step is refused with an explicit reason; silent DAG repair is deferred, not built.
 
 Workflow toggle is a non-event Turning off a room's workflow hides the shape panel while every worker, whatever skills it carries, stays in the room exactly as before.
+
+Resident-room addition (2026-08-04) — the calls added with the screens above.
+
+Spend lives where the room is Throttle values and the used-this-hour count sit on the room, editable in place, one register with the room's own `turn-throttles.json`. Not a settings page, not a second copy.
+
+Phone shows state, not editors The room card carries a throttle counter only when the number is informative — near cap, waiting, dormant — and stays quiet otherwise. Editing is one tap behind, in the control sheet.
+
+Your messages are never throttled Machine turns have a gap, a cap and a breaker; a person talking to their own room does not.
+
+Dormancy is a turn The stop, its reason and the wake control render in the transcript where the history sits — and the loop never resumes as a side effect of asking after it. What a dormant room says when spoken to is the state's own row in [03-interaction-depth.md](03-interaction-depth.md#states-everything-must-handle).
+
+A wait names its holder Waiting on another room's lock is a distinct state that links to the holding room. Information, not an error; typing queues as always.
+
+Escalation is a gate A resident turn reaching past the room's grant floor renders as the existing gate object — inline, in "needs you", on the phone. The turn label says it was a machine turn. No new escalation surface.
 
 Complete set, draft 3 — the shapes and the calls, not the pixels. Mark it up and I'll take another pass before any of it becomes a decision record or touches the backlog.
 
