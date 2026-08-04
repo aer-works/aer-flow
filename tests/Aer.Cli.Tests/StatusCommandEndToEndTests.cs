@@ -392,10 +392,9 @@ public class StatusCommandEndToEndTests
     [Fact]
     public async Task Cancelling_a_follow_during_the_initial_read_returns_cleanly_instead_of_throwing()
     {
-        // #999: the clean-cancel contract used to be implemented only around the poll loop's
-        // Task.Delay, so cancellation landing inside a journal read escaped as
-        // TaskCanceledException (measured in a full-gates run under load). An already-cancelled
-        // token interrupts the first awaited read, hitting that window deterministically.
+        // #999 (mechanism recorded there and at StatusCommand.ExecuteAsync's catch): an
+        // already-cancelled token interrupts the first awaited read, hitting the previously
+        // unguarded window deterministically instead of needing a loaded machine.
         // Red arm: with the follow-mode OperationCanceledException filter removed from
         // StatusCommand.ExecuteAsync, this throws.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
