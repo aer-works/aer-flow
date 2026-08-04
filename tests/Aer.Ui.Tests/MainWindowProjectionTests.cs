@@ -365,4 +365,28 @@ public class MainWindowProjectionTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [AvaloniaFact]
+    public async Task OpenAsync_when_workflow_path_is_missing_falls_back_to_the_task_directorys_own_workflow_json()
+    {
+        var snapshot = TwoStepSnapshot();
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            snapshot,
+            [],
+            TestContext.Current.CancellationToken);
+        var workflowJsonPath = Path.Combine(taskDirectory, "workflow.json");
+        try
+        {
+            await File.WriteAllTextAsync(workflowJsonPath, "{}", TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            Assert.Equal(workflowJsonPath, window.WorkflowTemplatePathBox.Text);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }

@@ -64,7 +64,7 @@ public static class RunOptionsParser
             }
         }
 
-        if (workflowFilePath is null)
+        if (string.IsNullOrWhiteSpace(workflowFilePath))
         {
             throw new CliArgumentException($"Missing required <workflow-file> argument. {Usage} {ResumeNote}");
         }

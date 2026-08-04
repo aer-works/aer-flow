@@ -159,8 +159,10 @@ public static class RunCommand
         // WorkflowFilePath is nullable so an in-process caller resuming a known task directory need
         // not produce one. If a path IS supplied, we check it against the bound snapshot (#653).
         // WorkflowDefinitionParser.LoadFromFileAsync translates missing files into a typed
-        // WorkflowDefinitionValidationException (an AerFlowException).
-        if (options.WorkflowFilePath is not { } workflowFilePath)
+        // WorkflowDefinitionValidationException (an AerFlowException) — but an EMPTY path would
+        // throw an untyped ArgumentException from the BCL, so whitespace means "not supplied" here
+        // rather than trusting every caller to normalize before RunOptions is built.
+        if (options.WorkflowFilePath is not { } workflowFilePath || string.IsNullOrWhiteSpace(workflowFilePath))
         {
             return;
         }

@@ -42,6 +42,16 @@ public class RunOptionsParserTests
     }
 
     [Fact]
+    public void An_empty_workflow_file_argument_is_refused_like_a_missing_one()
+    {
+        // "" would reach File.ReadAllTextAsync and throw an untyped ArgumentException from the
+        // BCL instead of the typed refusal every other bad path gets (#653 review finding).
+        var exception = Assert.Throws<CliArgumentException>(
+            () => RunOptionsParser.Parse(["", "--bindings", "bindings.json"]));
+        Assert.Contains("Missing required <workflow-file>", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_missing_bindings_option_throws()
     {
         Assert.Throws<CliArgumentException>(() => RunOptionsParser.Parse(["workflow.json"]));
