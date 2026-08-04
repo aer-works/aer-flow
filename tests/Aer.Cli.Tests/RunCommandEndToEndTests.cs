@@ -240,15 +240,11 @@ public class RunCommandEndToEndTests
     }
 
     [Fact]
-    public async Task A_resume_naming_something_that_is_not_a_file_resumes_rather_than_throwing()
+    public async Task A_resume_naming_a_nonexistent_workflow_file_throws_validation_exception()
     {
-        // The desktop writes the bound template's bare *id* into its workflow-path box when a task
-        // directory has no recorded .aer/workflow-path (MainWindow.axaml.cs), and that value reaches
-        // RunOptions.WorkflowFilePath. It was harmless while a resume never read the value. Reading
-        // it without this guard calls File.ReadAllTextAsync on "three-step-linear" and throws
-        // FileNotFoundException — not an AerFlowException, so it escapes every typed boundary in the
-        // product and, on the desktop, an unobserved click handler leaves "Running…" on screen with
-        // nothing running and no message. Silent failure is the defect #628 is about.
+        // Issue #653: The desktop no longer populates WorkflowTemplatePathBox with bare template IDs.
+        // A resume supplying a WorkflowFilePath to a file that does not exist throws WorkflowDefinitionValidationException
+        // (an AerFlowException) rather than silently skipping the template mismatch check.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var taskDirectory = Path.Combine(testRoot, "task");
         try
@@ -260,13 +256,11 @@ public class RunCommandEndToEndTests
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
-            var result = await RunCommand.ExecuteAsync(
-                new RunOptions("three-step-linear", bindingsFilePath, taskDirectory),
-                Adapters,
-                cancellationToken: TestContext.Current.CancellationToken);
-
-            Assert.Equal(WorkflowStatus.Terminal, result.State.Status);
-            Assert.True(result.ResumedFromSnapshot);
+            await Assert.ThrowsAsync<WorkflowDefinitionValidationException>(
+                () => RunCommand.ExecuteAsync(
+                    new RunOptions("three-step-linear", bindingsFilePath, taskDirectory),
+                    Adapters,
+                    cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {

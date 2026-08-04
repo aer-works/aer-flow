@@ -343,4 +343,26 @@ public class MainWindowProjectionTests
 
         Assert.Equal("No task directory loaded.", window.FindViewControl<TextBlock>("StatusText")!.Text);
     }
+
+    [AvaloniaFact]
+    public async Task OpenAsync_when_task_directory_lacks_workflow_path_does_not_populate_box_with_bare_template_id()
+    {
+        var snapshot = TwoStepSnapshot();
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            snapshot,
+            [],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(snapshot.WorkflowTemplateId.Value, window.WorkflowTemplatePathBox.Text);
+            Assert.Equal(string.Empty, window.WorkflowTemplatePathBox.Text);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }
