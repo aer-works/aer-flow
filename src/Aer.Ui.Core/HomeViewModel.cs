@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Aer.Adapters;
 using Aer.Flow;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
@@ -118,6 +119,31 @@ public sealed partial class HomeViewModel : ObservableObject
         };
     }
 
+    /// <summary>
+    /// #618 (0020 clause 3): answering a gate once retires it everywhere. Removes the matching inbox
+    /// item immediately by gate identity (taskDirectoryPath, StepId, ExecutionId) without a full Home refresh.
+    /// </summary>
+    public void RetireInboxItem(string taskDirectoryPath, StepId stepId, ExecutionId executionId)
+    {
+        var key = AerPaths.RecordKey(taskDirectoryPath);
+        var matching = InboxItems.FirstOrDefault(item =>
+            AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(item.TaskDirectoryPath), key) &&
+            item.StepName == stepId.Value &&
+            item.ExecutionId == executionId.Value);
+
+        if (matching != null)
+        {
+            InboxItems.Remove(matching);
+            var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
+            InboxSummaryText = InboxItems.Count switch
+            {
+                0 when TaskCards.Count == 0 => "Nothing is waiting on you.",
+                0 => $"Nothing is waiting on you — {TaskCards.Count(c => c.Status == TaskCardStatus.Running)} working, {TaskCards.Count(c => c.Status == TaskCardStatus.Finished)} finished.",
+                _ => SummaryForPending(needsInputCount, InboxItems.Count - needsInputCount),
+            };
+        }
+    }
+
     private static InboxItemViewModel BuildInboxItem(
         string taskDirectoryPath, TaskProjection projection, StepState stepState, Func<string, Task> openTaskAsync)
     {
@@ -165,7 +191,8 @@ public sealed partial class HomeViewModel : ObservableObject
             statusText,
             previewText,
             kind,
-            openTaskAsync);
+            openTaskAsync,
+            stepState.LatestExecutionId?.Value ?? string.Empty);
     }
 
     // #334: needs-input and ready-for-review are different human acts (#319 filters them apart), so
@@ -301,11 +328,12 @@ public enum TaskCardStatus
 /// </summary>
 public sealed partial class InboxItemViewModel(
     string taskDirectoryPath, string taskTitle, string stepName, string statusText, string previewText,
-    PausePointKind kind, Func<string, Task> openTaskAsync)
+    PausePointKind kind, Func<string, Task> openTaskAsync, string executionId = "")
 {
     public string TaskDirectoryPath { get; } = taskDirectoryPath;
     public string TaskTitle { get; } = taskTitle;
     public string StepName { get; } = stepName;
+    public string ExecutionId { get; } = executionId;
     public string StatusText { get; } = statusText;
     public string PreviewText { get; } = previewText;
     public bool HasPreview => PreviewText.Length > 0;

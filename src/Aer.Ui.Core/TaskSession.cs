@@ -10,6 +10,7 @@ using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
 using Aer.Flow;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 
@@ -354,6 +355,16 @@ public sealed partial class TaskSession
         // In-process fallback
         try
         {
+            if (ConcurrencyGuard.IsHeld(taskDirectoryPath))
+            {
+                var (holderDesc, _) = ConcurrencyGuard.ReadHolderInfo(taskDirectoryPath);
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(holderDesc, () => LoadAsync(taskDirectoryPath));
+            }
+            else
+            {
+                ViewModel.WaitingOnLockBanner = null;
+            }
+
             var projection = await TaskProjectionLoader.LoadAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
 
             RebuildPausedSteps(projection, taskDirectoryPath);
@@ -370,6 +381,11 @@ public sealed partial class TaskSession
             ViewModel.DecisionStatusText = string.Empty;
             ViewModel.RunningExecutions.Clear();
             ViewModel.CancelStatusText = string.Empty;
+
+            if (ex is WorkflowLockedException wle)
+            {
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+            }
 
             LastLoadSucceeded = false;
             LastWorkflowStatus = null;
@@ -498,7 +514,15 @@ public sealed partial class TaskSession
         catch (AerFlowException ex)
         {
             _mutationFailed();
-            ViewModel.RunStatusText = ex.Message;
+            if (ex is WorkflowLockedException wle)
+            {
+                ViewModel.RunStatusText = string.Empty;
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+            }
+            else
+            {
+                ViewModel.RunStatusText = ex.Message;
+            }
 
             // #330: a failed pump used to return here without ever calling _reopenTaskAsync, so
             // Aer.Daemon's own wiring of that hook (reopenTaskAsync -> BroadcastStateAsync,
@@ -581,6 +605,7 @@ public sealed partial class TaskSession
                 {
                     ViewModel.DecisionStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
+                    ViewModel.Home.RetireInboxItem(taskDirectoryPath, stepId, executionId);
                     await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
@@ -648,7 +673,15 @@ public sealed partial class TaskSession
         catch (Exception ex) when (ex is AerFlowException or FileNotFoundException)
         {
             _mutationFailed();
-            ViewModel.DecisionStatusText = ex.Message;
+            if (ex is WorkflowLockedException wle)
+            {
+                ViewModel.DecisionStatusText = string.Empty;
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+            }
+            else
+            {
+                ViewModel.DecisionStatusText = ex.Message;
+            }
             return new MutationOutcome(ex.Message);
         }
         finally
@@ -658,6 +691,7 @@ public sealed partial class TaskSession
             hostStopSource.Dispose();
         }
 
+        ViewModel.Home.RetireInboxItem(taskDirectoryPath, stepId, executionId);
         await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
