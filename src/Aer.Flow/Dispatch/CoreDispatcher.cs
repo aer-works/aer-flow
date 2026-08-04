@@ -51,7 +51,8 @@ public sealed record CoreDispatchTarget(
     string? WorkingDirectory = null,
     Action<string>? OnStdoutLine = null,
     string? PromptText = null,
-    IReadOnlyList<(string Name, string Value)>? Environment = null);
+    IReadOnlyList<(string Name, string Value)>? Environment = null,
+    string? StdoutArtifactName = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -741,6 +742,28 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             ? new ExecutionStreamLogger(outputDir)
             : null;
 
+        // #887 stage 2: a deterministic command step's stdout IS its declared artifact. Resolved
+        // once here, not per chunk; per-chunk open-append-flush matches what
+        // ExecutionStreamLogger already does for the stream logs. The lock is insurance against
+        // a future second writer, NOT against concurrent chunks -- aer-core's event pump invokes
+        // the callback synchronously on one thread (its own remark below on the decode says the
+        // same), so chunk appends are already serialized and ordered.
+        //
+        // Created EAGERLY, before dispatch: a well-behaved command whose success case is empty
+        // stdout (an empty `git diff`, a no-match grep) produces zero chunks, and a lazily
+        // created file would then never exist -- ContractValidator would fail a correct run
+        // (#887 review, medium). Same create-regardless-of-content guarantee git's own
+        // `--output` gives CaptureWorkerAdapter.
+        var stdoutArtifactPath = target.StdoutArtifactName is not null && outputDir is not null
+            ? Path.Combine(outputDir, target.StdoutArtifactName)
+            : null;
+        var stdoutArtifactLock = new object();
+        if (stdoutArtifactPath is not null)
+        {
+            Directory.CreateDirectory(outputDir!);
+            using var created = new FileStream(stdoutArtifactPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+        }
+
         task.EventRaised += (_, e) =>
         {
             switch (e.Kind)
@@ -760,6 +783,16 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                     if (e.Data is { Length: > 0 })
                     {
                         streamLogger?.AppendStdout(e.Data);
+                        if (stdoutArtifactPath is not null)
+                        {
+                            lock (stdoutArtifactLock)
+                            {
+                                Directory.CreateDirectory(outputDir!);
+                                using var fs = new FileStream(stdoutArtifactPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                                fs.Write(e.Data, 0, e.Data.Length);
+                                fs.Flush();
+                            }
+                        }
                         if (target.OnStdoutLine is not null)
                         {
                             // The decode is inside the lock, unlike the stateless GetString it replaces:
