@@ -67,8 +67,14 @@ public sealed record OccupantTurnActions(
                         return (null, "Escalation item missing 'trigger' string.");
                     }
 
+                    // Enum.TryParse is fail-open for this contract: it accepts numeric strings,
+                    // including values the enum does not define ("99" parses). Names only.
                     var triggerName = triggerProp.GetString();
-                    if (triggerName is null || !Enum.TryParse<EscalationTrigger>(triggerName, ignoreCase: false, out var trigger))
+                    if (triggerName is null
+                        || triggerName.Length == 0
+                        || char.IsAsciiDigit(triggerName[0])
+                        || !Enum.TryParse<EscalationTrigger>(triggerName, ignoreCase: false, out var trigger)
+                        || !Enum.IsDefined(trigger))
                     {
                         return (null, $"Unknown trigger name '{triggerName}'.");
                     }

@@ -39,6 +39,27 @@ public class OccupantTurnActionsTests
         Assert.Equal("artifacts/brief.md", origSub.BriefRef);
     }
 
+    [Theory]
+    [InlineData("3")]
+    [InlineData("99")]
+    public void Parse_NumericTriggerString_ReturnsError(string numericTrigger)
+    {
+        // Red arm: Enum.TryParse alone accepts numeric strings — "3" maps to a defined trigger
+        // and "99" parses to an UNDEFINED value — so before the guard, both parsed as triggers.
+        var json = $$"""
+        {
+          "contractVersion": 1,
+          "report": "r",
+          "escalations": [ { "trigger": "{{numericTrigger}}", "subject": { "kind": "decision", "decisionId": "d-1" } } ]
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(actions);
+        Assert.Contains("Unknown trigger", error);
+    }
+
     [Fact]
     public void Parse_UnknownTrigger_ReturnsError()
     {
