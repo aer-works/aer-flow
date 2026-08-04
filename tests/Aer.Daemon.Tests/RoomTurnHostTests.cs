@@ -135,7 +135,7 @@ public class RoomTurnHostTests
         var roomDir = CreateTestRoomDir();
         try
         {
-            File.WriteAllText(Path.Combine(roomDir, "throttles.json"), """{"machineTurnMinimumGapSeconds": 0}""");
+            File.WriteAllText(Path.Combine(roomDir, "turn-throttles.json"), """{"machineTurnMinimumGapSeconds": 0}""");
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
             await using (var writer = new RoomEventLogWriter(roomLogPath))
             {
@@ -210,7 +210,7 @@ public class RoomTurnHostTests
                     ++failThenSucceed == 1 ? new OccupantTurnResult.Failed("first") : new OccupantTurnResult.Completed())
             };
 
-            File.WriteAllText(Path.Combine(roomDir, "throttles.json"), """{"machineTurnMinimumGapSeconds": 0}""");
+            File.WriteAllText(Path.Combine(roomDir, "turn-throttles.json"), """{"machineTurnMinimumGapSeconds": 0}""");
             var host = new RoomTurnHost(wakeBridgeState, hostState, stubRunner);
 
             await host.ExecuteSingleTickAsync(TestContext.Current.CancellationToken);
@@ -232,7 +232,7 @@ public class RoomTurnHostTests
     [Fact]
     public async Task LiveReload_UpdatingThrottlesFile_AppliesNewValuesOnNextTick()
     {
-        // Red arm note: If throttles were cached statically instead of reloaded per tick, writing throttles.json wouldn't change hostState.Throttles.
+        // Red arm note: If throttles were cached statically instead of reloaded per tick, writing turn-throttles.json wouldn't change hostState.Throttles.
         var roomDir = CreateTestRoomDir();
         try
         {
@@ -248,7 +248,7 @@ public class RoomTurnHostTests
             Assert.Equal(RoomTurnThrottles.Defaults, hostState.Throttles);
 
             // Write new throttles
-            File.WriteAllText(Path.Combine(roomDir, "throttles.json"), """{"machineTurnMinimumGapSeconds": 15}""");
+            File.WriteAllText(Path.Combine(roomDir, "turn-throttles.json"), """{"machineTurnMinimumGapSeconds": 15}""");
 
             // Second tick
             await host.ExecuteSingleTickAsync(TestContext.Current.CancellationToken);

@@ -5,7 +5,7 @@ namespace Aer.Daemon;
 
 /// <summary>
 /// Throttles and breaker policy configuration for room turns (#992).
-/// Reads `{room}/throttles.json` fresh on every call (operator-visible, hand-editable).
+/// Reads `{room}/turn-throttles.json` fresh on every call (operator-visible, hand-editable).
 /// </summary>
 public sealed record RoomTurnThrottles(
     TimeSpan MachineTurnMinimumGap,
@@ -35,7 +35,7 @@ public sealed record RoomTurnThrottles(
             return (Defaults, null);
         }
 
-        var filePath = Path.Combine(roomDirectoryPath, "throttles.json");
+        var filePath = Path.Combine(roomDirectoryPath, "turn-throttles.json");
         if (!File.Exists(filePath))
         {
             return (Defaults, null);

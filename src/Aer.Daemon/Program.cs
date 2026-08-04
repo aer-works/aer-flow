@@ -679,7 +679,7 @@ namespace Aer.Daemon
                 }
 
                 var (throttles, loadError) = RoomTurnThrottles.Load(targetDir);
-                var hasCustomFile = File.Exists(Path.Combine(targetDir, "throttles.json"));
+                var hasCustomFile = File.Exists(Path.Combine(targetDir, "turn-throttles.json"));
 
                 var roomLogPath = Path.Combine(targetDir, "room.jsonl");
                 var isDormant = false;
