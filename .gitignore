@@ -62,3 +62,7 @@ bld/
 # Python bytecode. Four .pyc files were tracked, so every tool run dirtied the tree.
 __pycache__/
 *.pyc
+# Session-local gates captures — never evidence, never committed (a stale one shipped as a false gates record once)
+gates-run.txt
+gates-output.txt
+gates-exit.txt

@@ -7,9 +7,11 @@ namespace Aer.Flow.Outcomes;
 /// M10 Phase 3 (spec §7 full robustness): reconciles a <see cref="WorkerBinding.Process"/> step
 /// whose latest attempt is still projected <see cref="StepStatus.Running"/> — genuinely still
 /// executing, or a prior pump crashed before recording its outcome, the two indistinguishable from
-/// <see cref="FlowEvent"/>s alone (§6) — by reading back the Core half of the log
-/// (<see cref="CoreEvent.ExecutionStarted"/>/<see cref="CoreEvent.ExecutionExited"/>) that
-/// <see cref="Store.FlowEventLogReader.ReadAllCoreEventsAsync"/> now surfaces. Consulted at the top
+/// <see cref="FlowEvent"/>s alone (§6) — from the Core half of the log
+/// (<see cref="CoreEvent.ExecutionStarted"/>/<see cref="CoreEvent.ExecutionExited"/>), which since
+/// #971 arrives pre-aggregated: the caller merges the checkpoint's carried aggregates with the tail
+/// read's <see cref="CoreEvent"/>s (<see cref="CoreEventAggregation.Merge"/>) and passes the merged
+/// sets, so this detector sees the whole Core history however little of the log was re-read. Consulted at the top
 /// of every scheduling round, the same derived-obligation pattern <see cref="NonProcessCompletionDetector"/>
 /// and <see cref="NonProcessCancellationDetector"/> already follow, so a crash at any point below
 /// simply re-evaluates the identical projected fact on the next mutation call (§13). Non-process

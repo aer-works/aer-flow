@@ -496,6 +496,56 @@ public class ProjectionCheckpointTests
     }
 
     [Fact]
+    public async Task Scope1b_Polarity_CaughtUpOffsetOffARecordBoundary_FallsBackLoudly()
+    {
+        // The caught-up shape of the boundary check (#971's second reader): offset == file length
+        // is the single most common call — nothing appended since the checkpoint — and it used to
+        // return an empty snapshot trusting the offset before validating it. A checkpoint pointing
+        // at the end of a file whose last record never got its terminator (crash mid-append after
+        // an fsynced offset was recorded elsewhere) must replay, not silently confirm.
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_scope1b_caughtup_misaligned_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var logPath = Path.Combine(tempDir, "flow.jsonl");
+            var exec1 = new ExecutionId("exec-1");
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec1, Step1), 100, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(exec1), TestContext.Current.CancellationToken);
+            }
+
+            // A write cut off mid-record: the file now ends without '\n', and the offset under
+            // test is exactly its length — the caught-up early-return shape.
+            await File.AppendAllTextAsync(logPath, "{\"cut\":", TestContext.Current.CancellationToken);
+            var misalignedLength = new FileInfo(logPath).Length;
+
+            using var sw = new StringWriter();
+            var originalErr = Console.Error;
+            Console.SetError(sw);
+
+            EventLogSnapshot seekSnapshot;
+            try
+            {
+                seekSnapshot = await new FlowEventLogReader(logPath)
+                    .ReadSnapshotFromOffsetAsync(misalignedLength, TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetError(originalErr);
+            }
+
+            Assert.Contains("Fallback to full replay LOUDLY", sw.ToString());
+            Assert.True(seekSnapshot.IsFallbackToFull);
+            Assert.Equal(2, seekSnapshot.FlowEvents.Count);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(tempDir);
+        }
+    }
+
+    [Fact]
     public async Task Scope1b_Polarity_StaleCheckpoint_ReplaysTail()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "aer_scope1b_stale_checkpoint_" + Guid.NewGuid().ToString("n"));

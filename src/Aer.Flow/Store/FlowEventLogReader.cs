@@ -77,12 +77,10 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
                 return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            if (seekByteOffset == fileLength)
-            {
-                return new EventLogSnapshot([], [], fileLength);
-            }
-
-            // Boundary validation: check that byte at seekByteOffset - 1 is '\n'
+            // Boundary validation: the byte at seekByteOffset - 1 must be '\n'. This runs BEFORE
+            // the caught-up early return below, not only on the read-a-tail path: "checkpoint equals
+            // log length, nothing appended since" is the most common call shape of all, and it was
+            // the one branch that trusted an unvalidated offset outright (#971's second reader).
             stream.Seek(seekByteOffset - 1, SeekOrigin.Begin);
             int prevByte = stream.ReadByte();
             if (prevByte != '\n')
@@ -90,6 +88,11 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
                 Console.Error.WriteLine(
                     $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Checkpoint ByteOffset ({seekByteOffset}) does not land on a record boundary (previous byte 0x{prevByte:X2} != '\\n').");
                 return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            if (seekByteOffset == fileLength)
+            {
+                return new EventLogSnapshot([], [], fileLength);
             }
 
             // Seek to tail start
