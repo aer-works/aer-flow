@@ -58,7 +58,7 @@ public class OrchestratorTurnInputTests
             Assert.True(turn1.IsColdStart);
             Assert.Single(turn1.EventDelta);
 
-            OrchestratorTurnInput.CommitTurn(roomDir, turn1.TotalEventCount);
+            OrchestratorTurnInput.CommitTurn(roomDir, turn1);
 
             // Append a second event to room journal
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
@@ -120,7 +120,7 @@ public class OrchestratorTurnInputTests
             var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turn1.EventDelta);
 
-            OrchestratorTurnInput.CommitTurn(roomDir, turn1.TotalEventCount);
+            OrchestratorTurnInput.CommitTurn(roomDir, turn1);
 
             var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.False(turn2.IsColdStart);
@@ -175,7 +175,7 @@ public class OrchestratorTurnInputTests
     }
 
     [Fact]
-    public async Task Coalescing_multiple_pending_wakes_yields_one_turn_input_with_all_wakes_present()
+    public async Task Wakes_pass_through_unchanged_so_one_input_carries_the_whole_pending_set()
     {
         var roomDir = await CreateTestRoomAsync();
         try
@@ -196,7 +196,7 @@ public class OrchestratorTurnInputTests
     }
 
     [Fact]
-    public async Task Red_first_proof_uncommitted_turn_does_not_advance_cursor()
+    public async Task Assembling_without_committing_leaves_no_cursor_on_disk()
     {
         var roomDir = await CreateTestRoomAsync();
         try

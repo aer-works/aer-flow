@@ -12,8 +12,18 @@ namespace Aer.Flow.Projection;
 ///   <item><description>The <see cref="RoomMemoryDocument"/>.</description></item>
 /// </list>
 /// <para>
-/// <b>Re-schedulable Turns (§E):</b> Advancing the cursor is a separate explicit call (<see cref="CommitTurn"/> / <see cref="CommitTurnAsync"/>).
+/// <b>Re-schedulable Turns (§E):</b> Advancing the cursor is a separate explicit call
+/// (<see cref="CommitTurn"/>), and it takes THIS input — never a caller-computed count — so the
+/// only committable value is what the turn actually read (#778 review: a bare int invited
+/// committing events no turn ever saw, silently dropping them from every future delta).
 /// A crashed turn must NOT advance the cursor so that the next wake replays the same event delta.
+/// </para>
+/// <para>
+/// The journal read and the memory-document read are two reads with no shared lock: a guarded
+/// mutation can land between them, so the memory document may be one step ahead of (or behind)
+/// <see cref="EventDelta"/>. Benign by design: a turn input is a best-effort snapshot, every
+/// action a turn takes goes through the guarded mutation surfaces that re-project under the room
+/// lock, and the next wake re-assembles fresh.
 /// </para>
 /// </summary>
 public sealed record OrchestratorTurnInput(
@@ -80,21 +90,20 @@ public sealed record OrchestratorTurnInput(
     }
 
     /// <summary>
-    /// Explicitly advances the session cursor to <paramref name="totalEventCount"/> after a completed turn (§B).
+    /// Explicitly advances the session cursor past everything <paramref name="input"/> read (§B).
+    /// Takes the assembled input rather than a count so a caller cannot commit a value divorced
+    /// from what the turn actually saw — see the class remarks for the bug that shape invites.
     /// </summary>
     public static void CommitTurn(
         string roomDirectoryPath,
-        int totalEventCount,
+        OrchestratorTurnInput input,
         DateTimeOffset? turnTimestamp = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
-        if (totalEventCount < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(totalEventCount), "Total event count cannot be negative.");
-        }
+        ArgumentNullException.ThrowIfNull(input);
 
         var newCursor = new OrchestratorSessionCursor(
-            ProcessedEventCount: totalEventCount,
+            ProcessedEventCount: input.TotalEventCount,
             LastCompletedTurnAt: turnTimestamp ?? DateTimeOffset.UtcNow);
 
         OrchestratorSessionStore.Save(roomDirectoryPath, newCursor);

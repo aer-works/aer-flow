@@ -10,6 +10,14 @@ namespace Aer.Flow.Projection;
 /// Cold start (missing or corrupt cursor file) reconstructs state from the room record alone.
 /// Conversational nuance since the last recorded state may be lost — that is the DESIGN (§A).
 /// </para>
+/// <para>
+/// <b>Landmine for #903's retention path:</b> the count carries no content identity (no hash, no
+/// last-event id). A cursor LARGER than the journal fails loudly to cold start — but a journal
+/// compaction/rewrite that changes which events the counts refer to WITHOUT shrinking below the
+/// cursor would yield a silently wrong delta. Nothing rewrites room.jsonl today; whoever builds
+/// #903 must either give this cursor content identity or reset it on compaction. Recorded on
+/// #903 as well.
+/// </para>
 /// </summary>
 public sealed record OrchestratorSessionCursor(
     [property: JsonPropertyName("processedEventCount")] int ProcessedEventCount,
