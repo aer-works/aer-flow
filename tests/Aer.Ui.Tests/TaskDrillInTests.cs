@@ -596,6 +596,12 @@ public class TaskDrillInTests
             Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
             Assert.Contains("Step 'architect' failed: Worker exited with non-zero code 1.", window.ViewModel.Chat.InputText);
             Assert.False(window.ViewModel.Chat.IsSending);
+
+            // Found live, not by the original assertions: with no session open the draft sat in a
+            // property behind "No room open." — AskWorkerToFix's own doc comment carries the story;
+            // these two pins are what turn its no-session promise into a red test.
+            Assert.False(window.ViewModel.Chat.IsSessionOpen);
+            Assert.Equal(taskDirectory, window.ViewModel.Chat.NewChatWorkingDirectory);
         }
         finally
         {

@@ -675,5 +675,48 @@ public class OutcomeClassifierTests
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
+
+    /// <summary>
+    /// The round-trip drift guard for #617's failed-step banner: SplitReasonAndStderr must undo
+    /// exactly what the classifier's own stderr-appending write produced, through the real classify
+    /// path rather than a hand-built string — so a change to the separator's spelling reds here
+    /// instead of silently stranding every banner at "no excerpt".
+    /// </summary>
+    [Fact]
+    public void SplitReasonAndStderr_round_trips_the_classifiers_own_writing()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(1, CoreExitReason.Natural, StderrTail: "connect ECONNREFUSED 127.0.0.1:5432"),
+                new WorkerContract("worker-a", [], [], []),
+                directory);
+
+            Assert.NotNull(classification.Reason);
+            var (sentence, excerpt) = OutcomeClassifier.SplitReasonAndStderr(classification.Reason);
+            Assert.Equal("connect ECONNREFUSED 127.0.0.1:5432", excerpt);
+            Assert.DoesNotContain("stderr:", sentence);
+            Assert.False(string.IsNullOrWhiteSpace(sentence));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
+    [Fact]
+    public void SplitReasonAndStderr_returns_the_whole_reason_when_no_stderr_half_exists()
+    {
+        // Polarity: a silent worker's reason has no separator and must come back intact — a split
+        // that manufactures an excerpt out of nothing would show phantom worker speech.
+        var (sentence, excerpt) = OutcomeClassifier.SplitReasonAndStderr("Worker exited with code 1.");
+        Assert.Equal("Worker exited with code 1.", sentence);
+        Assert.Null(excerpt);
+
+        var (fallback, none) = OutcomeClassifier.SplitReasonAndStderr(null);
+        Assert.Equal("Step failed.", fallback);
+        Assert.Null(none);
+    }
 }
 

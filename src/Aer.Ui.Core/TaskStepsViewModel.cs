@@ -1,5 +1,6 @@
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
+using Aer.Flow.Outcomes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -191,8 +192,6 @@ public sealed partial class FailedStepBannerViewModel : ObservableObject
         string worker,
         string adapter,
         string? rawReason,
-        bool isPaused,
-        PausedStepViewModel? pausedStep,
         Action? reRunAction,
         Action<string, string, string>? askWorkerToFixAction,
         Action? showFullOutputAction)
@@ -203,46 +202,20 @@ public sealed partial class FailedStepBannerViewModel : ObservableObject
         _askWorkerToFixAction = askWorkerToFixAction;
         _showFullOutputAction = showFullOutputAction;
 
-        var (reasonSentence, stderrExcerpt) = ExtractReasonAndStderr(rawReason);
+        // The split lives beside its writer (see OutcomeClassifier.SplitReasonAndStderr) so the
+        // separator has one home; this surface only renders the two halves.
+        var (reasonSentence, stderrExcerpt) = OutcomeClassifier.SplitReasonAndStderr(rawReason);
         ReasonSentence = reasonSentence;
         StderrExcerpt = stderrExcerpt;
 
         Headline = $"Failed · {worker} · {ReasonSentence}";
         AskWorkerLabel = $"Ask {worker} to fix it";
 
-        if (isPaused && pausedStep != null)
-        {
-            TryAgainLabel = "Try again";
-            _tryAgainAction = () => pausedStep.RetryCommand.Execute(null);
-        }
-        else
-        {
-            TryAgainLabel = "Try again (re-run task)";
-            _tryAgainAction = reRunAction;
-        }
-    }
-
-    public static (string Sentence, string? Stderr) ExtractReasonAndStderr(string? rawReason)
-    {
-        if (string.IsNullOrWhiteSpace(rawReason))
-        {
-            return ("Step failed.", null);
-        }
-
-        const string separator = " stderr: ";
-        var index = rawReason.IndexOf(separator, StringComparison.Ordinal);
-        if (index >= 0)
-        {
-            var sentence = rawReason[..index].Trim();
-            var stderr = rawReason[(index + separator.Length)..].Trim();
-            if (stderr.StartsWith('…'))
-            {
-                stderr = stderr[1..].Trim();
-            }
-            return (sentence, stderr);
-        }
-
-        return (rawReason.Trim(), null);
+        // A banner exists only for StepStatus.Failed, and a Failed step is never in the paused set
+        // (paused-after-exhausted-retries is Status Paused, with its own decision surface) — so the
+        // only honest retry here is the re-run clone flow, and the label says so.
+        TryAgainLabel = "Try again (re-run task)";
+        _tryAgainAction = reRunAction;
     }
 
     [RelayCommand]
@@ -437,14 +410,11 @@ public static class StepItemProjector
                     showFullOutputAction = () => _ = promptFiles[0].PreviewCommand.ExecuteAsync(null);
                 }
 
-                var pausedStep = pausedByStepId.GetValueOrDefault(stepState.StepId);
                 failedBanner = new FailedStepBannerViewModel(
                     stepState.StepId.Value,
                     stepDefinition.Worker,
                     adapter ?? stepDefinition.Worker,
                     reasonText,
-                    pausedByStepId.ContainsKey(stepState.StepId),
-                    pausedStep,
                     reRunAction,
                     askWorkerToFixAction,
                     showFullOutputAction);

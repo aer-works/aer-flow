@@ -190,6 +190,38 @@ public static class OutcomeClassifier
     }
 
     /// <summary>
+    /// The inverse of <see cref="WithStderr"/>, for surfaces that render the two halves separately
+    /// (#617's failed-step banner shows the sentence as a headline and the stderr as an excerpt
+    /// block). Lives beside the writer so the <c>" stderr: "</c> spelling has one home and a format
+    /// change cannot silently strand a reader — the round-trip test is the drift guard. A reason
+    /// with no stderr half comes back whole with a null excerpt; the truncation ellipsis is the
+    /// writer's furniture, not worker output, so it is stripped from the excerpt.
+    /// </summary>
+    public static (string Sentence, string? StderrExcerpt) SplitReasonAndStderr(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return ("Step failed.", null);
+        }
+
+        const string separator = " stderr: ";
+        var index = reason.IndexOf(separator, StringComparison.Ordinal);
+        if (index < 0)
+        {
+            return (reason.Trim(), null);
+        }
+
+        var sentence = reason[..index].Trim();
+        var excerpt = reason[(index + separator.Length)..].Trim();
+        if (excerpt.StartsWith('…'))
+        {
+            excerpt = excerpt[1..].Trim();
+        }
+
+        return (sentence, excerpt.Length == 0 ? null : excerpt);
+    }
+
+    /// <summary>
     /// Flattens stderr to a single line. Every consumer of <c>Reason</c> is line-oriented — the CLI's
     /// <c>FlowStateReporter</c> writes one <c>"  {StepId}: {Status} — {Reason}"</c> line per step —
     /// so an embedded newline would not merely look untidy, it would break that format into rows

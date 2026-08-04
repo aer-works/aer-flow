@@ -178,12 +178,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public event Action? ReRunRequested;
 
     /// <summary>
-    /// Routes "Ask <worker> to fix it" (#617) to the Chat section with the failing step's adapter selected
-    /// and the input pre-filled with a draft naming the step and quoting the reason text.
+    /// Routes "Ask <worker> to fix it" (#617) to the Chat section with the failing step's adapter
+    /// selected and the input pre-filled with a draft naming the step and quoting the reason text.
+    /// When no session is open, the new-chat bar is pre-filled too — adapter and the failed task's
+    /// own directory — so starting the conversation is one click into the right room with the
+    /// draft already waiting; found live, where the draft alone landed invisibly behind
+    /// "No room open." while the tests (which read the property, not the screen) stayed green.
     /// </summary>
-    public void AskWorkerToFix(string adapter, string stepId, string reason)
+    public void AskWorkerToFix(string adapter, string stepId, string reason, string taskDirectoryPath)
     {
-        var targetAdapter = (adapter ?? "claude").ToLowerInvariant();
+        // The banner always supplies the step's own adapter; no invented fallback vendor here — if
+        // that adapter is not available on this host, the picker's first available stands in and
+        // the user sees which one they are addressing before sending.
+        var targetAdapter = adapter.ToLowerInvariant();
         if (Chat.AvailableAdapters.Contains(targetAdapter))
         {
             Chat.NewChatAdapter = targetAdapter;
@@ -192,6 +199,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             Chat.NewChatAdapter = Chat.AvailableAdapters[0];
         }
+
+        if (!Chat.IsSessionOpen)
+        {
+            Chat.NewChatWorkingDirectory = taskDirectoryPath;
+            Chat.RefreshNewChatAdapterSelection();
+        }
+
         Chat.InputText = $"Step '{stepId}' failed: {reason}";
         CurrentSection = ShellSection.Chat;
     }
@@ -216,7 +230,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             select: item => SelectedStep = item,
             workerAdapters: workerAdapters,
             reRunAction: () => ReRunRequested?.Invoke(),
-            askWorkerToFixAction: AskWorkerToFix))
+            askWorkerToFixAction: (adapter, stepId, reason) => AskWorkerToFix(adapter, stepId, reason, taskDirectoryPath)))
         {
             TaskSteps.Add(item);
         }

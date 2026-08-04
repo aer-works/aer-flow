@@ -58,7 +58,7 @@
       "name": "Failed",
       "behaviour": "Reads as failed, shows the error text in place, and offers the failing worker as the first way to fix it.",
       "provenance": "M25 design pass, 2026-07-24; #617 deepens it",
-      "coverage": { "renderedBy": ["src/Aer.Ui.Core/HomeViewModel.cs", "src/Aer.Ui/Converters/StatusIconConverters.cs"] }
+      "coverage": { "renderedBy": ["src/Aer.Ui.Core/HomeViewModel.cs", "src/Aer.Ui/Converters/StatusIconConverters.cs", "src/Aer.Ui.Core/TaskStepsViewModel.cs", "src/Aer.Ui/Views/TaskView.axaml"] }
     },
     "archived": {
       "name": "Archived",
