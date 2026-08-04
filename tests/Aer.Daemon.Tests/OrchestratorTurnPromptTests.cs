@@ -22,7 +22,7 @@ public class OrchestratorTurnPromptTests
         // Red arm note: If renderer ignores IsColdStart or always includes the banner, one of these assertions will fail.
         var roomState = new RoomState(new Dictionary<HeldWorkRef, HeldWorkState>(), []);
         var memoryDoc = new RoomMemoryDocument(0, "", new Dictionary<string, string>(), []);
-        
+
         var coldInput = new OrchestratorTurnInput(roomState, [], [], memoryDoc, null, IsColdStart: true, TotalEventCount: 0);
         var coldPrompt = OrchestratorTurnPrompt.Render(coldInput);
         Assert.Contains("COLD-START", coldPrompt);
