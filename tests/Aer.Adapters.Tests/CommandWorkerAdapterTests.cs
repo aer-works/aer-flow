@@ -133,7 +133,10 @@ public class CommandWorkerAdapterTests
 
             var ex = await Assert.ThrowsAsync<AerException>(
                 async () => await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken));
-            Assert.Contains("program not found", ex.Message);
+            // aer-core's own SpawnFailed wrapper text -- stable across platforms, unlike the OS
+            // message it wraps ("program not found" on Windows, "No such file or directory" on
+            // Linux; pinning the Windows one broke ubuntu CI on PR #963).
+            Assert.Contains("process spawn failed", ex.Message);
         }
         finally
         {
