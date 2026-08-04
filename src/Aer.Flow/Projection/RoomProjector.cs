@@ -17,6 +17,7 @@ public static class RoomProjector
         var activeGrants = new Dictionary<GrantId, GrantState>();
         var openEscalations = new List<RoomEvent.EscalationRaised>();
         var unmatchedEntries = new List<string>();
+        var isDormant = false;
 
         foreach (var roomEvent in events)
         {
@@ -120,10 +121,18 @@ public static class RoomProjector
                 case RoomEvent.EscalationRaised escalation:
                     openEscalations.Add(escalation);
                     break;
+
+                case RoomEvent.TurnHostDormancyEntered:
+                    isDormant = true;
+                    break;
+
+                case RoomEvent.TurnHostDormancyCleared:
+                    isDormant = false;
+                    break;
             }
         }
 
-        return new RoomState(heldWork, unmatchedEntries, activeGrants, openEscalations);
+        return new RoomState(heldWork, unmatchedEntries, activeGrants, openEscalations, isDormant);
 
     }
 }

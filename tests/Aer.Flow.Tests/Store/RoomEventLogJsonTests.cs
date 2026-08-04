@@ -26,6 +26,9 @@ public class RoomEventLogJsonTests
         new RoomEvent.GrantAmended(new GrantId("g-2"), new GrantId("g-1"), new WorkerId("w-1"), GrantLevel.L2Tend, new GrantScope(), new SpendBounds(), "operator", DateTimeOffset.UtcNow),
         new RoomEvent.GrantRevoked(new GrantId("g-1"), "operator", DateTimeOffset.UtcNow, "reason"),
         new RoomEvent.EscalationRaised(new WorkerId("w-1"), EscalationTrigger.Spend, new EscalationSubject.Decision(new DecisionId("d-1")), DateTimeOffset.UtcNow),
+        new RoomEvent.EscalationRaised(new WorkerId("turn-host"), EscalationTrigger.Confidence, new EscalationSubject.HostCondition("turn-watchdog-timeout", "turn exceeded its budget"), DateTimeOffset.UtcNow),
+        new RoomEvent.TurnHostDormancyEntered(3, DateTimeOffset.UtcNow),
+        new RoomEvent.TurnHostDormancyCleared("operator", DateTimeOffset.UtcNow),
     ];
 
 

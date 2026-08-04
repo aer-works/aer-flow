@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
+using Aer.Flow.Projection;
 using Aer.Flow.Store;
 
 namespace Aer.Flow.Tests.Domain;
@@ -14,6 +15,8 @@ public class RoomEventSerializationTests
         new RoomEvent.HeldWorkDispatched(LaneRef, "shape-flow", TimeSpan.FromMinutes(10), "operator-alice"),
         new RoomEvent.HeldWorkEscalated(LaneRef, "operator-bob"),
         new RoomEvent.HeldWorkResolved(LaneRef, new HeldWorkCitation(CitedSubject, "executionSucceeded", 1)),
+        new RoomEvent.TurnHostDormancyEntered(3, DateTimeOffset.UtcNow),
+        new RoomEvent.TurnHostDormancyCleared("operator", DateTimeOffset.UtcNow),
     ];
 
     [Theory]
@@ -28,6 +31,26 @@ public class RoomEventSerializationTests
 
         Assert.Equal(json, reserialized);
         Assert.Equal(original.GetType(), deserialized.GetType());
+    }
+
+    [Fact]
+    public void TurnHostDormancy_Projects_IsDormant_State()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var events = new RoomEvent[]
+        {
+            new RoomEvent.TurnHostDormancyEntered(3, now),
+        };
+        var state1 = RoomProjector.Project(events);
+        Assert.True(state1.IsDormant);
+
+        var events2 = new RoomEvent[]
+        {
+            new RoomEvent.TurnHostDormancyEntered(3, now),
+            new RoomEvent.TurnHostDormancyCleared("operator", now.AddMinutes(1)),
+        };
+        var state2 = RoomProjector.Project(events2);
+        Assert.False(state2.IsDormant);
     }
 
     [Fact]

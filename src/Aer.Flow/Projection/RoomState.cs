@@ -14,7 +14,8 @@ public sealed record RoomState(
     IReadOnlyDictionary<HeldWorkRef, HeldWorkState> HeldWork,
     IReadOnlyList<string> UnmatchedEntries,
     IReadOnlyDictionary<GrantId, GrantState>? ActiveGrants = null,
-    IReadOnlyList<RoomEvent.EscalationRaised>? OpenEscalations = null)
+    IReadOnlyList<RoomEvent.EscalationRaised>? OpenEscalations = null,
+    bool IsDormant = false)
 {
     public IReadOnlyDictionary<GrantId, GrantState> ActiveGrants { get; init; } = ActiveGrants ?? new Dictionary<GrantId, GrantState>();
 
@@ -40,6 +41,7 @@ public sealed record RoomState(
         if (HeldWork.Count != other.HeldWork.Count ||
             ActiveGrants.Count != other.ActiveGrants.Count ||
             OpenEscalations.Count != other.OpenEscalations.Count ||
+            IsDormant != other.IsDormant ||
             !UnmatchedEntries.SequenceEqual(other.UnmatchedEntries) ||
             !OpenEscalations.SequenceEqual(other.OpenEscalations))
         {
@@ -68,6 +70,8 @@ public sealed record RoomState(
     public override int GetHashCode()
     {
         var hash = new HashCode();
+        hash.Add(IsDormant);
+
         foreach (var (key, value) in HeldWork.OrderBy(kv => kv.Key.Value))
         {
             hash.Add(key);

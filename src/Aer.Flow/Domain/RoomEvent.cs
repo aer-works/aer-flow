@@ -14,6 +14,8 @@ namespace Aer.Flow.Domain;
 [JsonDerivedType(typeof(GrantAmended), "grantAmended")]
 [JsonDerivedType(typeof(GrantRevoked), "grantRevoked")]
 [JsonDerivedType(typeof(EscalationRaised), "escalationRaised")]
+[JsonDerivedType(typeof(TurnHostDormancyEntered), "turnHostDormancyEntered")]
+[JsonDerivedType(typeof(TurnHostDormancyCleared), "turnHostDormancyCleared")]
 public abstract record RoomEvent
 {
     private RoomEvent()
@@ -70,6 +72,16 @@ public abstract record RoomEvent
         WorkerId FromWorkerId,
         EscalationTrigger Trigger,
         EscalationSubject Subject,
+        DateTimeOffset Timestamp) : RoomEvent;
+
+    /// <summary>Records that the turn host entered dormancy due to consecutive failures.</summary>
+    public sealed record TurnHostDormancyEntered(
+        int ConsecutiveFailures,
+        DateTimeOffset Timestamp) : RoomEvent;
+
+    /// <summary>Records that turn host dormancy was cleared.</summary>
+    public sealed record TurnHostDormancyCleared(
+        string ClearedBy,
         DateTimeOffset Timestamp) : RoomEvent;
 }
 
