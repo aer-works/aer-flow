@@ -33,7 +33,8 @@ public sealed record OrchestratorTurnInput(
     RoomMemoryDocument MemoryDocument,
     OrchestratorSessionCursor? InitialCursor,
     bool IsColdStart,
-    int TotalEventCount)
+    int TotalEventCount,
+    string? RoomDirectoryPath = null)
 {
     private const string RoomLogFileName = "room.jsonl";
 
@@ -86,7 +87,8 @@ public sealed record OrchestratorTurnInput(
             MemoryDocument: memoryDoc,
             InitialCursor: cursor,
             IsColdStart: isColdStart,
-            TotalEventCount: allEvents.Count);
+            TotalEventCount: allEvents.Count,
+            RoomDirectoryPath: roomDirectoryPath);
     }
 
     /// <summary>
