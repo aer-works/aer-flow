@@ -248,7 +248,7 @@ public class MainWindowDecisionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
 

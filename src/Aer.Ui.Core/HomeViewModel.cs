@@ -51,9 +51,6 @@ public sealed partial class HomeViewModel : ObservableObject
         TaskCards.Clear();
         InboxItems.Clear();
 
-        var runningCount = 0;
-        var finishedCount = 0;
-
         foreach (var taskDirectoryPath in recents)
         {
             TaskProjection projection;
@@ -78,38 +75,35 @@ public sealed partial class HomeViewModel : ObservableObject
             var card = TaskCardViewModel.FromProjection(taskDirectoryPath, projection, openTaskAsync);
             TaskCards.Add(card);
 
-            // #616: counted from the card's one derivation, not re-derived from the raw
-            // WorkflowStatus — the raw switch counted every Terminal run as "finished", so a
-            // failed or cancelled task inflated the summary's finished count (the counting form
-            // of the Finished-for-Cancelled defect). Every member is named; Failed, Cancelled and
-            // Unavailable are deliberately in neither count because the summary sentence doesn't
-            // speak of them.
-            switch (card.Status)
+            if (card.Status == TaskCardStatus.NeedsYou)
             {
-                case TaskCardStatus.Running:
-                    runningCount++;
-                    break;
-                case TaskCardStatus.Finished:
-                    finishedCount++;
-                    break;
-                case TaskCardStatus.NeedsYou:
-                    foreach (var stepState in projection.State.Steps)
+                foreach (var stepState in projection.State.Steps)
+                {
+                    if (stepState.Status == StepStatus.Paused)
                     {
-                        if (stepState.Status == StepStatus.Paused)
-                        {
-                            InboxItems.Add(BuildInboxItem(taskDirectoryPath, projection, stepState, openTaskAsync));
-                        }
+                        InboxItems.Add(BuildInboxItem(taskDirectoryPath, projection, stepState, openTaskAsync));
                     }
-
-                    break;
-                case TaskCardStatus.Failed:
-                case TaskCardStatus.Cancelled:
-                case TaskCardStatus.Unavailable:
-                    break;
+                }
             }
         }
 
         HasNoTasks = TaskCards.Count == 0;
+        UpdateInboxSummary();
+    }
+
+    /// <summary>
+    /// The inbox summary's one derivation, shared by <see cref="RefreshAsync"/> and
+    /// <see cref="RetireInboxItem"/> — #618's retire path first restated this switch inline, which
+    /// is exactly the two-copies drift the same issue exists to end on the gate surfaces.
+    /// Counts come from the card's one status derivation, not re-derived from the raw
+    /// WorkflowStatus (#616: the raw switch counted every Terminal run as "finished", so a failed
+    /// or cancelled task inflated the finished count). Failed, Cancelled and Unavailable are
+    /// deliberately in neither count because the summary sentence doesn't speak of them.
+    /// </summary>
+    private void UpdateInboxSummary()
+    {
+        var runningCount = TaskCards.Count(card => card.Status == TaskCardStatus.Running);
+        var finishedCount = TaskCards.Count(card => card.Status == TaskCardStatus.Finished);
         var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
         InboxSummaryText = InboxItems.Count switch
         {
@@ -134,13 +128,7 @@ public sealed partial class HomeViewModel : ObservableObject
         if (matching != null)
         {
             InboxItems.Remove(matching);
-            var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
-            InboxSummaryText = InboxItems.Count switch
-            {
-                0 when TaskCards.Count == 0 => "Nothing is waiting on you.",
-                0 => $"Nothing is waiting on you — {TaskCards.Count(c => c.Status == TaskCardStatus.Running)} working, {TaskCards.Count(c => c.Status == TaskCardStatus.Finished)} finished.",
-                _ => SummaryForPending(needsInputCount, InboxItems.Count - needsInputCount),
-            };
+            UpdateInboxSummary();
         }
     }
 

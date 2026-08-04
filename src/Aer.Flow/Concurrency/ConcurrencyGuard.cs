@@ -61,6 +61,20 @@ public sealed class ConcurrencyGuard : IDisposable
     /// <summary>
     /// Acquires the lock like <see cref="Acquire"/>, but retries a lost race until
     /// <paramref name="within"/> elapses instead of failing on the first attempt.
+    /// <para>
+    /// This is opt-in, and <see cref="Acquire"/> deliberately stays fail-fast: for an
+    /// <c>aer run</c> pump, losing the lock means another pump owns this task and waiting for it is
+    /// exactly the wrong behaviour. What this exists for is the opposite case — a holder known to
+    /// let go in milliseconds, where failing fast turns a routine overlap into a user-visible
+    /// error. #857: the room sweep takes this same lock while escalating a newly-appeared memory
+    /// proposal, so an operator's approve/reject could lose a coin-flip to a background tick and be
+    /// refused, with nothing wrong and nothing to retry but the click.
+    /// </para>
+    /// <para>
+    /// Bounded rather than indefinite on purpose. A genuinely stuck holder must still surface as a
+    /// failure; the budget is sized to cover a routine overlap, not to hide one that is not
+    /// routine.
+    /// </para>
     /// </summary>
     /// <exception cref="WorkflowLockedException">
     /// The lock was still held when <paramref name="within"/> ran out.
@@ -72,6 +86,9 @@ public sealed class ConcurrencyGuard : IDisposable
         Directory.CreateDirectory(taskDirectoryPath);
         var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
 
+        // Stopwatch, not DateTime.UtcNow: a wall clock can step backwards (an NTP correction, a
+        // manual change) and silently stretch this wait well past its budget. Monotonic is what a
+        // deadline actually wants.
         var elapsed = Stopwatch.StartNew();
 
         while (true)
@@ -83,6 +100,8 @@ public sealed class ConcurrencyGuard : IDisposable
             }
             catch (IOException) when (elapsed.Elapsed < within)
             {
+                // Thread.Sleep rather than Task.Delay: the caller may be on a starved pool, and a
+                // retry that cannot be scheduled is a retry that does not happen.
                 Thread.Sleep(TimeSpan.FromMilliseconds(25));
             }
             catch (IOException ex)
@@ -105,27 +124,30 @@ public sealed class ConcurrencyGuard : IDisposable
             var json = JsonSerializer.Serialize(info);
             File.WriteAllText(sidecarPath, json);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Best-effort: an IOException writing the sidecar must not fail the acquire
-            // (the lock is real even when the label write loses a race).
+            // Best-effort: a failed sidecar write must not fail the acquire — the lock is real
+            // even when the label write loses a race (Windows throws UnauthorizedAccessException,
+            // not IOException, for several of the transient-handle cases here).
         }
 
         return new ConcurrencyGuard(lockStream, sidecarPath);
     }
 
-    private static string DefaultHolderDescription()
-    {
-        try
-        {
-            return $"{Process.GetCurrentProcess().ProcessName} (pid {Environment.ProcessId})";
-        }
-        catch
-        {
-            return $"process (pid {Environment.ProcessId})";
-        }
-    }
+    private static string DefaultHolderDescription() =>
+        // A value the current process can always supply — the callers that know a better name
+        // (the aer run pump) pass one explicitly.
+        $"{Path.GetFileNameWithoutExtension(Environment.ProcessPath) ?? "process"} (pid {Environment.ProcessId})";
 
+    /// <summary>
+    /// #857: the base message does not assert a single cause. It used to name "a live 'aer run'
+    /// pump" as the likely holder, which predates rooms and is wrong in a case an operator can
+    /// hit; it also does not name the room sweep specifically, because most callers lock a
+    /// per-execution task directory no sweep ever touches. The lock file itself still cannot say
+    /// who won it — what changed with #618 is the sidecar beside it: when a holder wrote one, its
+    /// self-description is appended here, and the two-shapes wording stays as the fallback for a
+    /// holder that did not (or whose write lost a race).
+    /// </summary>
     private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder)
     {
         var baseMsg = $"Directory '{taskDirectoryPath}' is already locked by another Flow instance — either a live " +
@@ -164,10 +186,14 @@ public sealed class ConcurrencyGuard : IDisposable
                 return JsonSerializer.Deserialize<LockHolderInfo>(text);
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            // Tolerating absence/unreadability -> nulls
+            // The three ways a sidecar can be unreadable mid-race: held/vanished (IO), ACL-denied
+            // (Windows reports it as UnauthorizedAccess), or half-written (Json). All collapse to
+            // "the holder did not say", which the caller renders honestly; anything else is a real
+            // bug and propagates.
         }
+
         return null;
     }
 
@@ -203,7 +229,12 @@ public sealed class ConcurrencyGuard : IDisposable
     }
 
     /// <summary>
-    /// Releases the lock and removes the sidecar file best-effort before disposing the stream.
+    /// Releases the lock. The lock file itself is deliberately left on disk — under §15's
+    /// guarantee, only the OS-held lock carries meaning, not the file's existence — so a
+    /// subsequent <see cref="Acquire"/> call for the same task directory succeeds immediately.
+    /// The holder sidecar is removed best-effort first, while the lock is still held, so no reader
+    /// ever sees this holder's label on a lock it has already released; a delete that loses a race
+    /// leaves only the stale-beside-free-lock case the class doc calls harmless by construction.
     /// </summary>
     public void Dispose()
     {
@@ -216,9 +247,9 @@ public sealed class ConcurrencyGuard : IDisposable
                     File.Delete(_sidecarPath);
                 }
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Best-effort cleanup of sidecar file.
+                // Best-effort for the same reason the write is: the release must not fail over a label.
             }
         }
 
