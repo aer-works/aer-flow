@@ -82,19 +82,6 @@ public sealed record OrchestratorTurnInput(
     /// <summary>
     /// Explicitly advances the session cursor to <paramref name="totalEventCount"/> after a completed turn (§B).
     /// </summary>
-    public static Task CommitTurnAsync(
-        string roomDirectoryPath,
-        int totalEventCount,
-        DateTimeOffset? turnTimestamp = null,
-        CancellationToken cancellationToken = default)
-    {
-        CommitTurn(roomDirectoryPath, totalEventCount, turnTimestamp);
-        return Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Explicitly advances the session cursor to <paramref name="totalEventCount"/> after a completed turn (§B).
-    /// </summary>
     public static void CommitTurn(
         string roomDirectoryPath,
         int totalEventCount,

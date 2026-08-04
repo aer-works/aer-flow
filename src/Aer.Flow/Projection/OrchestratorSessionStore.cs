@@ -30,7 +30,9 @@ public static class OrchestratorSessionStore
         var filePath = GetCursorFilePath(roomDirectoryPath);
         if (!File.Exists(filePath))
         {
-            Console.Error.WriteLine($"[OrchestratorSession] Cold start LOUDLY: Cursor file '{filePath}' does not exist; starting cold from zero.");
+            // Silent by design, matching ProjectionCheckpointStore: a missing cursor is the
+            // NORMAL state of every room that has never hosted a turn, not a fault. Only a file
+            // that exists and cannot be honored is loud.
             return null;
         }
 
@@ -72,20 +74,4 @@ public static class OrchestratorSessionStore
         File.Move(tempFilePath, filePath, overwrite: true);
     }
 
-    /// <summary>
-    /// Deletes the session cursor file if present.
-    /// </summary>
-    public static void Delete(string roomDirectoryPath)
-    {
-        if (string.IsNullOrEmpty(roomDirectoryPath))
-        {
-            return;
-        }
-
-        var filePath = GetCursorFilePath(roomDirectoryPath);
-        if (File.Exists(filePath))
-        {
-            File.Delete(filePath);
-        }
-    }
 }

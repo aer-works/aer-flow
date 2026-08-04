@@ -58,8 +58,7 @@ public class OrchestratorTurnInputTests
             Assert.True(turn1.IsColdStart);
             Assert.Single(turn1.EventDelta);
 
-            // Commit turn 1
-            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: TestContext.Current.CancellationToken);
+            OrchestratorTurnInput.CommitTurn(roomDir, turn1.TotalEventCount);
 
             // Append a second event to room journal
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
@@ -97,7 +96,7 @@ public class OrchestratorTurnInputTests
             var turnAttempt1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turnAttempt1.EventDelta);
 
-            // "Crash" -- no call to CommitTurnAsync!
+            // "Crash" -- no CommitTurn call.
 
             // Next wake / turn assembly replays identical delta
             var turnAttempt2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
@@ -121,7 +120,7 @@ public class OrchestratorTurnInputTests
             var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turn1.EventDelta);
 
-            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: TestContext.Current.CancellationToken);
+            OrchestratorTurnInput.CommitTurn(roomDir, turn1.TotalEventCount);
 
             var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.False(turn2.IsColdStart);
@@ -205,9 +204,8 @@ public class OrchestratorTurnInputTests
             var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
             var turn = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
 
-            // RED FIRST PROOF: Intentionally asserting a wrong condition so we can run red, capture failure, and prove harness discriminates.
-            // After turn assembly without commit, cursor file should NOT exist, so Load returns null.
-            // We temporarily assert it IS not null to prove RED!
+            // Assembly alone must leave NO cursor on disk -- only an explicit CommitTurn does,
+            // which is what makes a crashed turn re-schedulable (§E).
             var cursorAfterAssembleNoCommit = OrchestratorSessionStore.Load(roomDir);
             Assert.Null(cursorAfterAssembleNoCommit);
         }
