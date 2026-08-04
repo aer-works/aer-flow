@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Text.Json;
@@ -1311,22 +1312,19 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TryGetTurnHostStatusAsync_UnhostedRoom_ReturnsNullOn409()
+    public async Task TurnHostStatus_UnhostedRoom_Returns409()
     {
-        // Red arm note: If TryGetTurnHostStatusAsync threw an exception or returned non-null status when daemon returns 409 Conflict for an unhosted room, this assertion fails.
-        var configStore = new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-test-config-{Guid.NewGuid():N}", "recent.json"));
-        var session = new TaskSession(
-            configStore,
-            new Dictionary<string, IWorkerAdapter>(),
-            new MainWindowViewModel(),
-            bindingsFilePathProvider: () => null,
-            mutationStarted: () => { },
-            mutationFailed: () => { },
-            reopenTaskAsync: (_, _) => Task.CompletedTask,
-            daemonUrl: _baseUrl);
+        // #994's absence contract, daemon side: a room the turn host is not hosting answers 409,
+        // which TaskSession.TryGetTurnHostStatusAsync maps to null (absence, not error). Raw
+        // client against THIS class's daemon deliberately — the first draft constructed a real
+        // TaskSession, whose connection path reads the REAL ~/.aer registration and can spawn a
+        // real daemon on probe failure (#998); its green never touched this daemon at all.
+        // Red arm: with the hosted-room scope guard removed from the endpoint, this returns 200.
+        var encodedPath = Uri.EscapeDataString(_tempTaskDirectory!);
+        var response = await _client.GetAsync(
+            $"{_baseUrl}/api/rooms/turn-host/status?roomDirectoryPath={encodedPath}",
+            TestContext.Current.CancellationToken);
 
-        var status = await session.TryGetTurnHostStatusAsync(_tempTaskDirectory!, TestContext.Current.CancellationToken);
-
-        Assert.Null(status);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 }
