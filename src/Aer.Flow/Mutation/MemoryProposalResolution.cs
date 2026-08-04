@@ -116,20 +116,18 @@ public static class MemoryProposalResolution
             @ref, citation, existingEvents, state, writer, cancellationToken).ConfigureAwait(false);
     }
 
+    // Path-derived attribution is an honest stopgap: proposals do not yet carry a producerId
+    // (#778's design closure §C records that they must, for producer≠decider to be evaluable) —
+    // until then the execution directory in the proposal's ref is the best available identity.
     private static string ExtractProposerFromRef(string refValue)
     {
-        try
+        var dir = Path.GetDirectoryName(refValue);
+        var parent = dir is not null ? Path.GetDirectoryName(dir) : null;
+        if (parent is not null && Path.GetFileName(parent).StartsWith("execution_", StringComparison.OrdinalIgnoreCase))
         {
-            var dir = Path.GetDirectoryName(refValue);
-            var parent = dir is not null ? Path.GetDirectoryName(dir) : null;
-            if (parent is not null && Path.GetFileName(parent).StartsWith("execution_", StringComparison.OrdinalIgnoreCase))
-            {
-                return Path.GetFileName(parent);
-            }
+            return Path.GetFileName(parent);
         }
-        catch
-        {
-        }
+
         return "unknown";
     }
 }

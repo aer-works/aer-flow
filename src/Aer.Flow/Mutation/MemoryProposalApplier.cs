@@ -436,8 +436,12 @@ public static class MemoryProposalApplier
                         currentMaxVersion = versionRecord.Version;
                     }
                 }
-                catch (JsonException)
+                catch (JsonException ex)
                 {
+                    // The line is preserved verbatim above (never dropped on rewrite), but it can't
+                    // vote on the max version — loud skip, never silent (error-handling rules).
+                    Console.Error.WriteLine(
+                        $"[RoomMemory] Malformed version-history line in '{versionsPath}' ignored for version numbering: {ex.Message}");
                 }
             }
         }

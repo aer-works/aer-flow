@@ -65,9 +65,12 @@ public sealed record RoomMemoryDocument(
                         history.Add(versionRecord);
                     }
                 }
-                catch (JsonException)
+                catch (JsonException ex)
                 {
-                    // Ignore malformed lines if any
+                    // Loud skip, never silent (error-handling rules): a corrupt history line loses
+                    // one attribution record, not the document — but somebody has to hear about it.
+                    Console.Error.WriteLine(
+                        $"[RoomMemory] Skipping malformed version-history line in '{versionsPath}': {ex.Message}");
                 }
             }
         }
