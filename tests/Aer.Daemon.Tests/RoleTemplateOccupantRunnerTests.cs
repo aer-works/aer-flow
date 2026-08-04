@@ -95,12 +95,13 @@ public class RoleTemplateOccupantRunnerTests
 
             // Verify captured request & grant parameters
             Assert.NotNull(fakeAdapter.LastInvocation);
-            Assert.True(fakeAdapter.LastInvocation!.PermissionGrant.ReadFiles);
-            Assert.False(fakeAdapter.LastInvocation!.PermissionGrant.WriteFiles);
-            Assert.False(fakeAdapter.LastInvocation!.PermissionGrant.RunShellCommands);
-            Assert.False(fakeAdapter.LastInvocation!.PermissionGrant.NetworkAccess);
-            Assert.Equal(roomDir, fakeAdapter.LastInvocation!.WorkingDirectory);
-            Assert.Equal(budget, fakeAdapter.LastInvocation!.Timeout);
+            Assert.NotNull(fakeAdapter.LastInvocation.PermissionGrant);
+            Assert.True(fakeAdapter.LastInvocation.PermissionGrant!.ReadFiles);
+            Assert.False(fakeAdapter.LastInvocation.PermissionGrant!.WriteFiles);
+            Assert.False(fakeAdapter.LastInvocation.PermissionGrant!.RunShellCommands);
+            Assert.False(fakeAdapter.LastInvocation.PermissionGrant!.NetworkAccess);
+            Assert.Equal(roomDir, fakeAdapter.LastInvocation.WorkingDirectory);
+            Assert.Equal(budget, fakeAdapter.LastInvocation.Timeout);
 
             // Verify escalations raised in room log
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
