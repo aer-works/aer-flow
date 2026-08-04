@@ -33,7 +33,7 @@ public enum GuidedStepKind
 /// </summary>
 public sealed partial class NewWorkflowViewModel : ObservableObject
 {
-    private IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry = new Dictionary<string, IWorkerAdapter>();
+    private IReadOnlyDictionary<string, IWorkerAdapter> _adapterRegistry = WorkerAdapterRegistry.Default;
 
     public ObservableCollection<GuidedStepViewModel> Steps { get; } = [];
     public ObservableCollection<string> GuidanceMessages { get; } = [];
@@ -198,28 +198,42 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
                     + PermissionGrantWording.ShellDefeats(defeated);
             }
 
-            var adapterNamesInUse = Steps
-                .Where(step => !step.IsDialogue)
-                .Select(step => step.Kind == GuidedStepKind.Claude ? "claude" : "gemini") // vocabulary-ok: technical adapter key
-                .Distinct();
-            foreach (var adapterName in adapterNamesInUse)
+            var ignoredSteps = new List<(string AdapterName, string Label)>();
+            var refusedSteps = new List<(string AdapterName, string? Reason, string Label)>();
+            foreach (var step in Steps.Where(s => !s.IsDialogue))
             {
+                var adapterName = step.Kind == GuidedStepKind.Claude ? "claude" : "gemini"; // vocabulary-ok: technical adapter key
                 if (!_adapterRegistry.TryGetValue(adapterName, out var adapter))
                 {
                     continue;
                 }
 
+                var label = step.Name.Length > 0 ? $"'{step.Name}'" : "an unnamed step";
                 if (adapter is not IPermissionGrantTranslator translator)
                 {
-                    yield return $"'{adapterName}' does not enforce permission grants — the permissions "
-                        + "above would be ignored at dispatch for its steps, not applied.";
+                    ignoredSteps.Add((adapterName, label));
                     continue;
                 }
 
                 if (!translator.TryTranslatePermissionGrant(grant, out _, out var gapReason))
                 {
-                    yield return $"The permissions above can't be granted to '{adapterName}' steps: {gapReason}";
+                    refusedSteps.Add((adapterName, gapReason, label));
                 }
+            }
+
+            // One message per adapter+reason, naming every affected step — five gemini steps
+            // sharing one grant problem are one problem, not five.
+            foreach (var group in ignoredSteps.GroupBy(s => s.AdapterName))
+            {
+                var labels = string.Join(", ", group.Select(s => s.Label));
+                yield return $"'{group.Key}' does not enforce permission grants — the permissions "
+                    + $"above would be ignored at dispatch for {labels}, not applied.";
+            }
+
+            foreach (var group in refusedSteps.GroupBy(s => (s.AdapterName, s.Reason)))
+            {
+                var labels = string.Join(", ", group.Select(s => s.Label));
+                yield return $"The permissions above can't be granted to {labels} ({group.Key.AdapterName}): {group.Key.Reason}";
             }
         }
     }

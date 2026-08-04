@@ -4,6 +4,7 @@ using Aer.Tests.Shared;
 
 namespace Aer.Flow.Tests.Projection;
 
+[Collection(ConsoleErrorCaptureCollection.Name)]
 public class ProjectionCheckpointTests
 {
     private static readonly StepId Step1 = new("step1");
