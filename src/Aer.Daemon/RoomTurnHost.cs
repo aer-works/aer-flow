@@ -28,7 +28,7 @@ public sealed class RoomTurnHostState
     private volatile string? _roomDirectoryPath;
     private volatile bool _userMessagePending;
     private volatile bool _inFlight;
-    private volatile int _consecutiveFailures;
+    private int _consecutiveFailures;
     private volatile string? _lastDecisionReason;
     private volatile string? _throttleLoadError;
     private RoomTurnThrottles _throttles = RoomTurnThrottles.Defaults;
@@ -58,10 +58,24 @@ public sealed class RoomTurnHostState
         internal set => _inFlight = value;
     }
 
+    /// <summary>Read-only view; mutation goes through <see cref="RecordTurnFailure"/> /
+    /// <see cref="ResetConsecutiveFailures"/> so the tick loop's read-modify-write and the
+    /// clear-dormancy endpoint's reset cannot interleave into a lost update (second-reader
+    /// finding on #992: an operator's clear could be silently undone by an in-flight turn
+    /// failing, re-tripping the breaker they had just cleared).</summary>
     public int ConsecutiveFailures
     {
-        get => _consecutiveFailures;
-        set => _consecutiveFailures = value;
+        get { lock (_lock) return _consecutiveFailures; }
+    }
+
+    public int RecordTurnFailure()
+    {
+        lock (_lock) return ++_consecutiveFailures;
+    }
+
+    public void ResetConsecutiveFailures()
+    {
+        lock (_lock) _consecutiveFailures = 0;
     }
 
     public string? LastDecisionReason
@@ -225,17 +239,17 @@ public sealed class RoomTurnHost : BackgroundService
                 if (result is OccupantTurnResult.Completed)
                 {
                     OrchestratorTurnInput.CommitTurn(roomDirectoryPath, input);
-                    _hostState.ConsecutiveFailures = 0;
+                    _hostState.ResetConsecutiveFailures();
                 }
                 else
                 {
-                    _hostState.ConsecutiveFailures++;
+                    _hostState.RecordTurnFailure();
                 }
             }
             catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested && cts.IsCancellationRequested)
             {
                 // Watchdog timeout
-                _hostState.ConsecutiveFailures++;
+                _hostState.RecordTurnFailure();
                 var roomLogPath = Path.Combine(roomDirectoryPath, RoomLogFileName);
                 var reader = new RoomEventLogReader(roomLogPath);
                 await using var writer = new RoomEventLogWriter(roomLogPath);
@@ -249,7 +263,7 @@ public sealed class RoomTurnHost : BackgroundService
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"RoomTurnHost: Turn execution threw exception: {ex}");
-                _hostState.ConsecutiveFailures++;
+                _hostState.RecordTurnFailure();
             }
         }
         finally

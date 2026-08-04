@@ -183,6 +183,53 @@ public class RoomTurnHostTests
     }
 
     [Fact]
+    public async Task SuccessPolarity_CompletedTurn_CommitsCursorAndResetsFailureCount()
+    {
+        // The positive arm the failure tests discriminate against: with this deleted, a host that
+        // never committed anything would still pass Replay/Watchdog/Breaker. Red arm: against a
+        // host whose Completed branch is emptied, the cursor stays null and failures stay at 1.
+        var roomDir = CreateTestRoomDir();
+        try
+        {
+            var roomLogPath = Path.Combine(roomDir, "room.jsonl");
+            await using (var writer = new RoomEventLogWriter(roomLogPath))
+            {
+                await writer.AppendAsync(new RoomEvent.TurnHostDormancyCleared("operator", DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            }
+
+            var wakeBridgeState = new RoomWakeBridgeState
+            {
+                RoomDirectoryPath = roomDir,
+                CurrentWakes = [new RoomWake(new HeldWorkRef("lanes/l1"), RoomWakeKind.DispatchOrphaned)]
+            };
+            var hostState = new RoomTurnHostState();
+            var failThenSucceed = 0;
+            var stubRunner = new StubRunner
+            {
+                Handler = (_, _, _) => Task.FromResult<OccupantTurnResult>(
+                    ++failThenSucceed == 1 ? new OccupantTurnResult.Failed("first") : new OccupantTurnResult.Completed())
+            };
+
+            File.WriteAllText(Path.Combine(roomDir, "throttles.json"), """{"machineTurnMinimumGapSeconds": 0}""");
+            var host = new RoomTurnHost(wakeBridgeState, hostState, stubRunner);
+
+            await host.ExecuteSingleTickAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(1, hostState.ConsecutiveFailures);
+            Assert.Null(OrchestratorSessionStore.Load(roomDir));
+
+            await host.ExecuteSingleTickAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(0, hostState.ConsecutiveFailures);
+            var cursor = OrchestratorSessionStore.Load(roomDir);
+            Assert.NotNull(cursor);
+            Assert.Equal(1, cursor.ProcessedEventCount);
+        }
+        finally
+        {
+            Directory.Delete(roomDir, true);
+        }
+    }
+
+    [Fact]
     public async Task LiveReload_UpdatingThrottlesFile_AppliesNewValuesOnNextTick()
     {
         // Red arm note: If throttles were cached statically instead of reloaded per tick, writing throttles.json wouldn't change hostState.Throttles.

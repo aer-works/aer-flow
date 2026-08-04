@@ -655,7 +655,10 @@ namespace Aer.Daemon
                 ProbeFailures = wakeState.CurrentProbeFailures.Select(f => new { Ref = f.Ref.Value, f.Error }).ToList(),
             }));
 
-            // #992: turn host status & clear-dormancy endpoints
+            // #992: turn host status & clear-dormancy endpoints. Both serve THE one hosted room:
+            // RoomTurnHostState's counters (failures, in-flight, the machine-turn ledger) are only
+            // meaningful for the room the daemon is ticking, so a request naming any other room is
+            // refused rather than answered with silently-blended state (second-reader finding).
             app.MapGet("/api/rooms/turn-host/status", async (string? roomDirectoryPath, RoomTurnHostState hostState) =>
             {
                 var targetDir = !string.IsNullOrWhiteSpace(roomDirectoryPath)
@@ -665,6 +668,13 @@ namespace Aer.Daemon
                 if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
                 {
                     return Results.BadRequest("roomDirectoryPath is required and must exist.");
+                }
+
+                var hostedRoom = hostState.RoomDirectoryPath;
+                if (hostedRoom is null || !PathsReferToSameDirectory(targetDir, hostedRoom))
+                {
+                    return Results.Conflict(
+                        $"The turn host is not hosting '{targetDir}' (hosted: '{hostedRoom ?? "none"}'); its counters describe only the hosted room.");
                 }
 
                 var (throttles, loadError) = RoomTurnThrottles.Load(targetDir);
@@ -717,6 +727,13 @@ namespace Aer.Daemon
                     return Results.BadRequest($"RoomDirectoryPath '{request.RoomDirectoryPath}' does not exist.");
                 }
 
+                var hostedRoomDir = hostState.RoomDirectoryPath;
+                if (hostedRoomDir is null || !PathsReferToSameDirectory(request.RoomDirectoryPath, hostedRoomDir))
+                {
+                    return Results.Conflict(
+                        $"The turn host is not hosting '{request.RoomDirectoryPath}' (hosted: '{hostedRoomDir ?? "none"}'); clearing another room's dormancy here would reset the hosted room's breaker.");
+                }
+
                 var roomLogPath = Path.Combine(request.RoomDirectoryPath, "room.jsonl");
                 var reader = new RoomEventLogReader(roomLogPath);
                 await using var writer = new RoomEventLogWriter(roomLogPath);
@@ -733,7 +750,7 @@ namespace Aer.Daemon
                     request.RoomDirectoryPath, clearedBy: "operator", reader, writer)
                     .ConfigureAwait(false);
 
-                hostState.ConsecutiveFailures = 0;
+                hostState.ResetConsecutiveFailures();
 
                 return Results.Ok();
             });
@@ -1649,6 +1666,18 @@ namespace Aer.Daemon
             var baseSessionsDir = Path.GetFullPath(AerPaths.Sessions);
 
             return resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        }
+
+        /// <summary>#992: the turn-host endpoints serve only the hosted room, and "same room" has
+        /// to survive separator/casing/trailing-slash differences between how the operator typed
+        /// the path and how the host recorded it. OrdinalIgnoreCase matches the Windows-first
+        /// reality of the desktop host; a false negative here only yields a 409 the caller can
+        /// correct, never a mutation of the wrong room.</summary>
+        private static bool PathsReferToSameDirectory(string a, string b)
+        {
+            var fullA = Path.TrimEndingDirectorySeparator(Path.GetFullPath(a));
+            var fullB = Path.TrimEndingDirectorySeparator(Path.GetFullPath(b));
+            return string.Equals(fullA, fullB, StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
