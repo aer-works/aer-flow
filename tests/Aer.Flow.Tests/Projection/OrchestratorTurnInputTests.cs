@@ -21,7 +21,7 @@ public class OrchestratorTurnInputTests
             Budget: TimeSpan.FromMinutes(5),
             DeciderIdentity: "human");
 
-        await writer.AppendAsync(dispatch, CancellationToken.None);
+        await writer.AppendAsync(dispatch, TestContext.Current.CancellationToken);
 
         return tempDir;
     }
@@ -33,7 +33,7 @@ public class OrchestratorTurnInputTests
         try
         {
             var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
-            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
 
             Assert.True(input.IsColdStart);
             Assert.Null(input.InitialCursor);
@@ -54,12 +54,12 @@ public class OrchestratorTurnInputTests
         try
         {
             var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
-            var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1], CancellationToken.None);
+            var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1], TestContext.Current.CancellationToken);
             Assert.True(turn1.IsColdStart);
             Assert.Single(turn1.EventDelta);
 
             // Commit turn 1
-            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: CancellationToken.None);
+            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: TestContext.Current.CancellationToken);
 
             // Append a second event to room journal
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
@@ -68,11 +68,11 @@ public class OrchestratorTurnInputTests
                 var escalated = new RoomEvent.HeldWorkEscalated(
                     Ref: new HeldWorkRef("lane-1"),
                     ToWhom: "operator");
-                await writer.AppendAsync(escalated, CancellationToken.None);
+                await writer.AppendAsync(escalated, TestContext.Current.CancellationToken);
             }
 
             var wake2 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.EscalatedLaneTerminated);
-            var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake2], CancellationToken.None);
+            var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake2], TestContext.Current.CancellationToken);
 
             Assert.False(turn2.IsColdStart);
             Assert.NotNull(turn2.InitialCursor);
@@ -94,13 +94,13 @@ public class OrchestratorTurnInputTests
         try
         {
             var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
-            var turnAttempt1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            var turnAttempt1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turnAttempt1.EventDelta);
 
             // "Crash" -- no call to CommitTurnAsync!
 
             // Next wake / turn assembly replays identical delta
-            var turnAttempt2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            var turnAttempt2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.True(turnAttempt2.IsColdStart);
             Assert.Single(turnAttempt2.EventDelta);
             Assert.Equal(turnAttempt1.EventDelta[0], turnAttempt2.EventDelta[0]);
@@ -118,12 +118,12 @@ public class OrchestratorTurnInputTests
         try
         {
             var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
-            var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turn1.EventDelta);
 
-            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: CancellationToken.None);
+            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: TestContext.Current.CancellationToken);
 
-            var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.False(turn2.IsColdStart);
             Assert.Empty(turn2.EventDelta);
             Assert.Equal(1, turn2.TotalEventCount);
@@ -152,7 +152,7 @@ public class OrchestratorTurnInputTests
             OrchestratorTurnInput input;
             try
             {
-                input = await OrchestratorTurnInput.AssembleAsync(roomDir, [], CancellationToken.None);
+                input = await OrchestratorTurnInput.AssembleAsync(roomDir, [], TestContext.Current.CancellationToken);
             }
             finally
             {
@@ -184,7 +184,7 @@ public class OrchestratorTurnInputTests
             var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
             var wake2 = new RoomWake(new HeldWorkRef("lane-2"), RoomWakeKind.DispatchOrphaned);
 
-            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1, wake2], CancellationToken.None);
+            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1, wake2], TestContext.Current.CancellationToken);
 
             Assert.Equal(2, input.Wakes.Count);
             Assert.Contains(wake1, input.Wakes);
@@ -203,7 +203,7 @@ public class OrchestratorTurnInputTests
         try
         {
             var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
-            var turn = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            var turn = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
 
             // RED FIRST PROOF: Intentionally asserting a wrong condition so we can run red, capture failure, and prove harness discriminates.
             // After turn assembly without commit, cursor file should NOT exist, so Load returns null.
