@@ -280,5 +280,52 @@ public static class RoomMutationInterface
 
         return RoomProjector.Project([.. existingEvents, roomEvent]);
     }
+
+    public static async Task<RoomState> EnterTurnHostDormancyAsync(
+        string roomDirectoryPath,
+        int consecutiveFailures,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        DateTimeOffset? timestamp = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+
+        var ts = timestamp ?? DateTimeOffset.UtcNow;
+        var roomEvent = new RoomEvent.TurnHostDormancyEntered(consecutiveFailures, ts);
+        await writer.AppendAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+
+        return RoomProjector.Project([.. existingEvents, roomEvent]);
+    }
+
+    public static async Task<RoomState> ClearTurnHostDormancyAsync(
+        string roomDirectoryPath,
+        string clearedBy,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        DateTimeOffset? timestamp = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(clearedBy);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+
+        var ts = timestamp ?? DateTimeOffset.UtcNow;
+        var roomEvent = new RoomEvent.TurnHostDormancyCleared(clearedBy, ts);
+        await writer.AppendAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+
+        return RoomProjector.Project([.. existingEvents, roomEvent]);
+    }
 }
 
