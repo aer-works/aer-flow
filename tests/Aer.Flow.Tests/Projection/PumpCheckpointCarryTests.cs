@@ -19,15 +19,15 @@ namespace Aer.Flow.Tests.Projection;
 /// together wrongly (#971's second reader). Both tests here call only
 /// <see cref="MutationInterface.StartWorkflowAsync"/> and assert on what it durably leaves behind.
 ///
-/// What stays out of reach even here: the round fold itself. Every reachable save happens with no
-/// unfinalized process attempt (in-flight is drained and recorded before the save, a crashed prior
-/// pump's orphan is abandoned in its first round, and non-process steps never have core events), so
-/// Prune's Running-only whitelist empties the persisted aggregates at every save today — deleting
-/// the fold changes no observable behaviour until save timing changes. That is the invariant the
-/// fold's own comment in <c>MutationInterface</c> records; the fold's behavioural claims live in
-/// the Scope1b fixtures' hand-built checkpoints, which today's pump cannot be driven to write.
-/// These two tests pin the pump-side halves that ARE reachable: prune-at-save, and tail-mode crash
-/// classification through the pump.
+/// The persisted half of the carry stays out of black-box reach: every reachable save happens with
+/// no unfinalized process attempt (in-flight is drained and recorded before the save, orphans are
+/// resolved before any save, and non-process steps never have core events), so Prune's
+/// Running-only whitelist empties the aggregates in every checkpoint the pump can be driven to
+/// write — the divergence fixtures' non-empty checkpoints are hand-built for that reason. The fold
+/// itself, though, IS reachable, which this class's first draft got wrong and the second reader's
+/// counterexample corrected: the crash-recovery buckets are priority-ordered with an early
+/// `continue`, so a multi-bucket round defers the lower bucket to the next round, past the read
+/// cursor — the two-bucket test below is that trace.
 /// </summary>
 public class PumpCheckpointCarryTests
 {
@@ -199,6 +199,89 @@ public class PumpCheckpointCarryTests
             var abandoned = events.OfType<FlowEvent.ExecutionFailed>().Single(e => e.ExecutionId == attempt2);
             Assert.Contains("crash recovery", abandoned.Reason, StringComparison.OrdinalIgnoreCase);
             Assert.False(stub.DispatchStarted.TryRead(out _), "recovery re-dispatched the crashed attempt");
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task An_orphan_discovered_alongside_a_classifiable_exit_is_still_abandoned_one_round_later()
+    {
+        // THE direct fold test, from the second reader's counterexample to this class's own first
+        // draft (which claimed none could exist): the crash-recovery buckets are priority-ordered
+        // and each `continue`s after acting, so a round that classifies a recorded exit does NOT
+        // act on an orphan discovered in the same read — the orphan is handled a round later, when
+        // its ExecutionStarted is already behind the read cursor. The fold is the only thing that
+        // keeps it visible: red-proven by deleting the fold, which turns the round-2 abandon into
+        // a resubmission — a duplicate live dispatch of a process that may still be running.
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        try
+        {
+            var stepY = new StepId("step-y");
+            var stepZ = new StepId("step-z");
+            var snapshot = new WorkflowDefinitionSnapshot(
+                new WorkflowDefinitionSnapshotId("snapshot-two-buckets"),
+                new WorkflowTemplateId("template-two-buckets"),
+                WorkflowTemplateVersion: 1,
+                Steps:
+                [
+                    new WorkflowStepDefinition(stepY, "worker-a", Inputs: [], Outputs: ["out.txt"], DependsOn: [],
+                        RetryPolicy: new RetryPolicy(MaxAttempts: 1, Backoff: BackoffPolicy.Steady)),
+                    new WorkflowStepDefinition(stepZ, "worker-a", Inputs: [], Outputs: ["out.txt"], DependsOn: [],
+                        RetryPolicy: new RetryPolicy(MaxAttempts: 1, Backoff: BackoffPolicy.Steady)),
+                ]);
+
+            // The crashed prior pump's log, hand-written: Y ran and exited before the crash
+            // (ToClassify, the highest-priority bucket), Z spawned and never exited (the orphan,
+            // the lowest). Both surface in the same first read; only Y is acted on that round.
+            var execY = new ExecutionId(Guid.NewGuid().ToString("n"));
+            var execZ = new ExecutionId(Guid.NewGuid().ToString("n"));
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                foreach (var (execId, stepId) in new[] { (execY, stepY), (execZ, stepZ) })
+                {
+                    var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
+                    var request = new ExecutionRequest(
+                        execId, new WorkflowId("wf-two-buckets"), stepId, "worker-a", Inputs: [], Outputs: ["out.txt"],
+                        TimeSpan.FromSeconds(30),
+                        ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot),
+                        UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+                    await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
+                }
+
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(execY, Pid: 4242), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new CoreEvent.ExecutionExited(execY, ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
+                await writer.AppendAsync(new CoreEvent.ExecutionStarted(execZ, Pid: 4243), TestContext.Current.CancellationToken);
+            }
+
+            FlowState finalState;
+            var stub = new StubCoreDispatcher();
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                var reader = new FlowEventLogReader(logPath);
+                finalState = await MutationInterface.StartWorkflowAsync(
+                        new WorkflowId("wf-two-buckets"), taskDirectory, snapshot, FailingBindings(),
+                        artifactsRoot, reader, writer, stub,
+                        timeProvider: new FakeTimeProvider(new DateTimeOffset(2026, 8, 4, 12, 0, 0, TimeSpan.Zero)),
+                        jitterSource: () => 0.0,
+                        cancellationToken: TestContext.Current.CancellationToken)
+                    .WaitAsync(PumpCompletionTimeout, TestContext.Current.CancellationToken);
+            }
+
+            // Y classified from its recorded exit (failed: exit 0 but the declared output is
+            // missing); Z abandoned a round later off the fold-carried started set. Neither ever
+            // reached the dispatcher, and no third attempt exists.
+            Assert.Equal(StepStatus.Failed, finalState.Steps.Single(s => s.StepId == stepY).Status);
+            Assert.Equal(StepStatus.Failed, finalState.Steps.Single(s => s.StepId == stepZ).Status);
+            var events = await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(2, events.OfType<FlowEvent.ExecutionRequestAccepted>().Count());
+            var abandoned = events.OfType<FlowEvent.ExecutionFailed>().Single(e => e.ExecutionId == execZ);
+            Assert.Contains("crash recovery", abandoned.Reason, StringComparison.OrdinalIgnoreCase);
+            Assert.False(stub.DispatchStarted.TryRead(out _), "the orphan was re-dispatched instead of abandoned");
         }
         finally
         {

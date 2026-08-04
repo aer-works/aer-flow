@@ -380,8 +380,12 @@ public static class MutationInterface
                 // Folded back into the working checkpoint immediately, not only at the save site:
                 // each round reads the log from the previous round's offset, so a later round's
                 // merge must start from these aggregates or the earlier tail's core events vanish
-                // from its view. (Today every such execution is resolved or registered before the
-                // next round — but that is the same subtle invariant the carry exists to retire.)
+                // from its view. Load-bearing whenever one read surfaces obligations in two
+                // priority buckets — the bucket blocks below each `continue` after acting, so the
+                // lower bucket's execution is handled a round AFTER the read that observed it, and
+                // without this carry it would re-derive as ToResubmit: a duplicate live dispatch
+                // of a process that may still be running (PumpCheckpointCarryTests' two-bucket
+                // fixture is exactly that trace).
                 latestCheckpoint = latestCheckpoint with
                 {
                     State = latestCheckpoint.State with
