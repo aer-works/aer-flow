@@ -42,10 +42,14 @@ public class OccupantTurnActionsTests
     [Theory]
     [InlineData("3")]
     [InlineData("99")]
+    [InlineData(" 3")]
+    [InlineData("+3")]
     public void Parse_NumericTriggerString_ReturnsError(string numericTrigger)
     {
         // Red arm: Enum.TryParse alone accepts numeric strings — "3" maps to a defined trigger
         // and "99" parses to an UNDEFINED value — so before the guard, both parsed as triggers.
+        // " 3" and "+3" are the second red arm: TryParse trims whitespace and accepts a sign,
+        // so a leading-digit-only guard let both through (second-reader finding).
         var json = $$"""
         {
           "contractVersion": 1,

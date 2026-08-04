@@ -49,6 +49,79 @@ public class RoleTemplateOccupantRunnerTests
         return dir;
     }
 
+    /// <summary>An adapter whose target is a real spawnable process that copies a prepared
+    /// actions fixture into the turn's output directory — what exercises the runner's DEFAULT
+    /// dispatcher path (real <see cref="CoreDispatcher"/> + per-turn events.jsonl lifecycle
+    /// log), which the injected-dispatcher tests never touch (second-reader finding).</summary>
+    private sealed class CopyFixtureAdapter(string fixturePath) : IWorkerAdapter
+    {
+        // No embedded quotes — the CrashTestHost precedent: quote layers between the native
+        // spawn and cmd mangle them, and these temp paths carry no spaces. %AER_OUTPUT_DIR% is
+        // expanded AER-side by CoreDispatcher's ExpandVariables before cmd ever sees the arg.
+        public CoreDispatchTarget Resolve(WorkerInvocation invocation, WorkerContract contract)
+            => OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", $"copy /y {fixturePath} %AER_OUTPUT_DIR%\\turn-actions.json >nul"])
+                : new CoreDispatchTarget("sh", ["-c", $"cp {fixturePath} $AER_OUTPUT_DIR/turn-actions.json"]);
+    }
+
+    [Fact]
+    public async Task DefaultDispatcherPath_RealSpawn_RecordsLifecycleLogAndCompletes()
+    {
+        // Red arm: with the lifecycle-log branch deleted (or the writer never disposed), either
+        // no events.jsonl exists in the turn's output directory or this test's read of it finds
+        // an empty file. Covers the one path the injected-dispatcher tests cannot: a real
+        // CoreDispatcher spawn writing Core events through a FlowEventLogWriter that must
+        // flush and dispose before the turn returns.
+        var roomDir = CreateTestRoomDir();
+        try
+        {
+            var fixturePath = Path.Combine(roomDir, "fixture-actions.json");
+            File.WriteAllText(fixturePath, """{ "contractVersion": 1, "report": "spawned for real", "escalations": [] }""");
+
+            var adapters = new Dictionary<string, IWorkerAdapter> { ["claude"] = new CopyFixtureAdapter(fixturePath) };
+            var runner = new RoleTemplateOccupantRunner(adapters); // no injected dispatcher — the default path
+
+            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [], TestContext.Current.CancellationToken);
+            var result = await runner.RunTurnAsync(input, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+            if (result is OccupantTurnResult.Failed f)
+            {
+                Assert.Fail($"turn failed: {f.Reason}");
+            }
+
+            var turnDirs = Directory.GetDirectories(Path.Combine(roomDir, ".aer", "occupant-turns"));
+            var turnDir = Assert.Single(turnDirs);
+            var lifecycleLog = Path.Combine(turnDir, "events.jsonl");
+            Assert.True(File.Exists(lifecycleLog), "the spawn left no lifecycle record");
+            Assert.NotEqual(0, new FileInfo(lifecycleLog).Length);
+        }
+        finally
+        {
+            Directory.Delete(roomDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task MissingAdapterInRegistry_FailsWithAdapterName()
+    {
+        // Red arm: an empty registry must produce Failed naming the adapter, not a throw.
+        var roomDir = CreateTestRoomDir();
+        try
+        {
+            var runner = new RoleTemplateOccupantRunner(new Dictionary<string, IWorkerAdapter>());
+            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [], TestContext.Current.CancellationToken);
+
+            var result = await runner.RunTurnAsync(input, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+            var failed = Assert.IsType<OccupantTurnResult.Failed>(result);
+            Assert.Contains("claude", failed.Reason);
+        }
+        finally
+        {
+            Directory.Delete(roomDir, true);
+        }
+    }
+
     [Fact]
     public async Task RunTurnAsync_EverythingEscalates_RaisesTwoEscalations_NoHeldWorkDispatched()
     {

@@ -63,6 +63,10 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
             ProducedOutputs: role.Outputs.Select(o => new ProducedOutput(o.Name, Schema: o.Schema)).ToList(),
             OptionalMetadata: []);
 
+        // The turn host's budget deliberately wins over the catalog role's timeout_minutes on
+        // this path: the budget IS the turn SLA (#992's watchdog terminates on it), while the
+        // catalog value serves other dispatch paths for the same role. If they diverge here,
+        // the host is authoritative.
         var invocation = new WorkerInvocation(
             PromptTemplate: promptText,
             Model: role.Model,

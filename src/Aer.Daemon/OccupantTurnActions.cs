@@ -12,6 +12,13 @@ public sealed record OccupantTurnActions(
     string Report,
     IReadOnlyList<OccupantEscalation> Escalations)
 {
+    // Names only, by set membership. Enum.TryParse is the wrong instrument for an untrusted
+    // contract: it trims whitespace, accepts +/- signs, and parses numeric strings — including
+    // values the enum does not define — so " 3", "+3", and "99" all get past it (second-reader
+    // finding on #993, twice: the first guard only rejected a leading digit).
+    private static readonly IReadOnlySet<string> TriggerNames =
+        Enum.GetNames<EscalationTrigger>().ToHashSet(StringComparer.Ordinal);
+
     public static (OccupantTurnActions? Actions, string? Error) Parse(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -67,17 +74,13 @@ public sealed record OccupantTurnActions(
                         return (null, "Escalation item missing 'trigger' string.");
                     }
 
-                    // Enum.TryParse is fail-open for this contract: it accepts numeric strings,
-                    // including values the enum does not define ("99" parses). Names only.
                     var triggerName = triggerProp.GetString();
-                    if (triggerName is null
-                        || triggerName.Length == 0
-                        || char.IsAsciiDigit(triggerName[0])
-                        || !Enum.TryParse<EscalationTrigger>(triggerName, ignoreCase: false, out var trigger)
-                        || !Enum.IsDefined(trigger))
+                    if (triggerName is null || !TriggerNames.Contains(triggerName))
                     {
                         return (null, $"Unknown trigger name '{triggerName}'.");
                     }
+
+                    var trigger = Enum.Parse<EscalationTrigger>(triggerName);
 
                     if (!item.TryGetProperty("subject", out var subjectProp) || subjectProp.ValueKind != JsonValueKind.Object)
                     {
