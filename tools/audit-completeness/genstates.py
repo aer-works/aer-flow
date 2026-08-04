@@ -43,10 +43,15 @@ def generated_block() -> str:
 
 
 def split_doc(text: str) -> tuple[str, str]:
+    # Exactly one marker pair, or refuse: a duplicated pair (bad merge, double paste) would
+    # regenerate only the first block and leave a stale second one that --check then blesses —
+    # the silent-drift shape this generator exists to end (found by #616's second reader).
+    if text.count(BEGIN) != 1 or text.count(END) != 1:
+        raise SystemExit(f"{DOC}: expected exactly one sentinel pair, found {text.count(BEGIN)} BEGIN / {text.count(END)} END")
     begin = text.find(BEGIN)
     end = text.find(END)
-    if begin < 0 or end < 0 or end < begin:
-        raise SystemExit(f"{DOC}: sentinel markers missing or misordered — cannot regenerate the table")
+    if end < begin:
+        raise SystemExit(f"{DOC}: sentinel markers misordered — cannot regenerate the table")
     return text[:begin], text[end + len(END):]
 
 
