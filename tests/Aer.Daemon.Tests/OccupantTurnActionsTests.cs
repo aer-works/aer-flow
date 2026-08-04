@@ -1,0 +1,123 @@
+using Aer.Daemon;
+using Aer.Flow.Domain;
+using Xunit;
+
+namespace Aer.Daemon.Tests;
+
+public class OccupantTurnActionsTests
+{
+    [Fact]
+    public void Parse_ValidTwoEscalationFixture_ParsesTyped()
+    {
+        // Red arm note: If parser fails to deserialize valid JSON or misinterprets trigger/subject kind, Actions will be null or fields will be mismatched.
+        var json = """
+        {
+          "contractVersion": 1,
+          "report": "I analyzed the room state and found two issues.",
+          "escalations": [
+            { "trigger": "Ambiguity", "subject": { "kind": "decision", "decisionId": "d-1" } },
+            { "trigger": "Direction", "subject": { "kind": "origination", "templateId": "review-run", "briefRef": "artifacts/brief.md" } }
+          ]
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(error);
+        Assert.NotNull(actions);
+        Assert.Equal(1, actions.ContractVersion);
+        Assert.Equal("I analyzed the room state and found two issues.", actions.Report);
+        Assert.Equal(2, actions.Escalations.Count);
+
+        Assert.Equal(EscalationTrigger.Ambiguity, actions.Escalations[0].Trigger);
+        var decisionSub = Assert.IsType<EscalationSubject.Decision>(actions.Escalations[0].Subject);
+        Assert.Equal(new DecisionId("d-1"), decisionSub.DecisionId);
+
+        Assert.Equal(EscalationTrigger.Direction, actions.Escalations[1].Trigger);
+        var origSub = Assert.IsType<EscalationSubject.ProposedOrigination>(actions.Escalations[1].Subject);
+        Assert.Equal(new WorkflowTemplateId("review-run"), origSub.TemplateId);
+        Assert.Equal("artifacts/brief.md", origSub.BriefRef);
+    }
+
+    [Fact]
+    public void Parse_UnknownTrigger_ReturnsError()
+    {
+        // Red arm note: If parser ignores unknown triggers, error will be null and actions will parse successfully.
+        var json = """
+        {
+          "contractVersion": 1,
+          "report": "test",
+          "escalations": [
+            { "trigger": "InvalidTrigger", "subject": { "kind": "decision", "decisionId": "d-1" } }
+          ]
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(actions);
+        Assert.NotNull(error);
+        Assert.Contains("Unknown trigger name", error);
+    }
+
+    [Fact]
+    public void Parse_UnknownSubjectKind_ReturnsError()
+    {
+        // Red arm note: If parser ignores unknown subject kinds, error will be null and actions will parse successfully.
+        var json = """
+        {
+          "contractVersion": 1,
+          "report": "test",
+          "escalations": [
+            { "trigger": "Ambiguity", "subject": { "kind": "unknown_kind" } }
+          ]
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(actions);
+        Assert.NotNull(error);
+        Assert.Contains("Unknown subject kind", error);
+    }
+
+    [Fact]
+    public void Parse_WrongContractVersion_ReturnsError()
+    {
+        // Red arm note: If parser accepts version 2, error will be null and actions will parse successfully.
+        var json = """
+        {
+          "contractVersion": 2,
+          "report": "test",
+          "escalations": []
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(actions);
+        Assert.NotNull(error);
+        Assert.Contains("Unknown contractVersion", error);
+    }
+
+    [Fact]
+    public void Parse_EmptyEscalationsWithReport_IsValid()
+    {
+        // Red arm note: If parser requires non-empty escalations array, error will be non-null.
+        var json = """
+        {
+          "contractVersion": 1,
+          "report": "Nothing to escalate.",
+          "escalations": []
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(error);
+        Assert.NotNull(actions);
+        Assert.Equal(1, actions.ContractVersion);
+        Assert.Equal("Nothing to escalate.", actions.Report);
+        Assert.Empty(actions.Escalations);
+    }
+}
