@@ -24,7 +24,8 @@ public static class PlainLanguage
         StepStatus.Cancelled => "Cancelled",
         StepStatus.Paused => "Waiting for your review",
         StepStatus.Rejected => "Rejected",
-        _ => status.ToString(),
+        // #616: no discard arm. A new StepStatus member fails this build (CS8509 under
+        // -warnaserror) instead of leaking its enum name into a primary label.
     };
 
     public static string ForDecision(DecisionType decisionType) => decisionType switch
@@ -33,19 +34,18 @@ public static class PlainLanguage
         DecisionType.Reject => "Rejected",
         DecisionType.RetryWithRevision => "Retry requested",
         DecisionType.Supersede => "Sent back",
-        _ => decisionType.ToString(),
+        // #616: no discard arm — a new DecisionType member fails the build, never a raw enum name.
     };
 
-    /// <summary>The task-level headline — the same mapping Home's cards use, shared so the two surfaces can never drift.</summary>
-    public static string ForWorkflow(TaskProjection projection) => projection.State.Status switch
-    {
-        WorkflowStatus.Paused => "Waiting for your review",
-        WorkflowStatus.Running when projection.State.Steps.FirstOrDefault(s => s.Status == StepStatus.Running) is { } running
-            => $"Working — {running.StepId.Value}",
-        WorkflowStatus.Running => "Working",
-        _ when projection.State.Steps.Any(s => s.Status is StepStatus.Failed or StepStatus.Rejected) => "Failed",
-        _ => "Finished",
-    };
+    /// <summary>
+    /// The task-level headline — Home's card derivation, by delegation rather than by copy. This
+    /// method used to restate the mapping and claim it was shared; the copy drifted (#976: no
+    /// Cancelled arm, so a cancelled run's headline said "Finished" — the 0020 worked example,
+    /// alive on a second surface) and hard-coded the review wording for every pause, missing
+    /// #334's reply/review split. Delegating is what makes "can never drift" true.
+    /// </summary>
+    public static string ForWorkflow(TaskProjection projection)
+        => TaskCardViewModel.DeriveStatus(projection).StatusText;
 
     /// <summary>
     /// #215: real execution/decision ids are 32-char generated Guids — pure visual noise to a

@@ -38,7 +38,9 @@ internal static class StatusIconMap
         // #461: cancelled is no longer "idle". Stopping something on purpose is an outcome, and
         // rendering it as the pending dot said nothing happened.
         StepStatus.Cancelled => "Icon.Dash",
-        _ => "Icon.Dot", // Pending: genuinely not started
+        // #616: Pending named, no discard arm — a new StepStatus member must choose its mark at
+        // compile time, never inherit the not-started dot silently.
+        StepStatus.Pending => "Icon.Dot",
     };
 
     /// <summary>
@@ -57,7 +59,7 @@ internal static class StatusIconMap
         StepStatus.Failed or StepStatus.Rejected => "Status.Failed",
         StepStatus.Paused => "Status.NeedsYou",
         StepStatus.Cancelled => "Status.Idle",
-        _ => "Status.Idle", // Pending
+        StepStatus.Pending => "Status.Idle", // #616: named, no discard arm
     };
 
     /// <summary>Same #458 correction as the <see cref="StepStatus"/> overload above: NeedsYou was a dot.</summary>
@@ -70,7 +72,9 @@ internal static class StatusIconMap
         TaskCardStatus.Cancelled => "Icon.Dash",
         // #461: the stale-list state gets its own mark. It previously borrowed Icon.Refresh, the
         // Retry *action*'s glyph — a state wearing an action's icon invites clicking it.
-        _ => "Icon.Slashed", // Unavailable: §3's stale-list state
+        // #616: named, no discard arm — a new TaskCardStatus member must not silently render as
+        // the stale-list state.
+        TaskCardStatus.Unavailable => "Icon.Slashed",
     };
 
     public static string ColorKeyFor(TaskCardStatus status) => status switch
@@ -82,7 +86,7 @@ internal static class StatusIconMap
         // Cancelled shares the muted brush rather than earning a hue: it is a quiet outcome, and
         // colouring it like a failure is exactly the alarm #461 exists to remove.
         TaskCardStatus.Cancelled => "Status.Idle",
-        _ => "Status.Idle", // Unavailable
+        TaskCardStatus.Unavailable => "Status.Idle", // #616: named, no discard arm
     };
 }
 
