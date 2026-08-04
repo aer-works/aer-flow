@@ -955,6 +955,20 @@ def step12_generated_index():
     return ok
 
 
+def step14_generated_states():
+    """#616: the interaction-state table in 03-interaction-depth.md is generated from the
+    register (design/interaction-states.json), so there is no hand copy to drift — the same
+    shape as STEP 12. The write half is `pixi run gen-states`."""
+    rule("STEP 14 -- the generated interaction-state table matches the register")
+    import genstates
+    try:
+        ok = genstates.main(["--check"]) == 0
+    except SystemExit as e:
+        print(f"    !! {e}")
+        ok = False
+    return ok
+
+
 def _shutil_which(name):
     import shutil
     return shutil.which(name)
@@ -1026,7 +1040,7 @@ def main() -> int:
     results = [step1_sources(), step2_corpus(), step3_gaps(), step4_stale_citations(),
                step5_impact(), step6_decisions(), step7_milestones(), step8_cited_checks_exist(),
                step9_pinned_models_exist(), step10_gate_citations(), step12_generated_index(),
-               step13_structural_claims()]
+               step13_structural_claims(), step14_generated_states()]
     git_state()
     rule("WHAT THIS SCRIPT CANNOT CHECK")
     for x in [

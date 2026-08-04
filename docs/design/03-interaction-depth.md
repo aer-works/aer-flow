@@ -274,30 +274,37 @@ Preview is a screen you ask for, not a permanent panel. On desktop the graph sit
 
 The last rebuild drifted because these were decided per screen, late, by whoever was implementing. Deciding them once, here, is the actual drift protection.
 
+<!-- generated: interaction-states (pixi run gen-states; edits here are overwritten) -->
+
 State | What the surface does |
 
-Empty | Says what would be here and offers the one action that creates it. Never a bare "no items". |
+Empty | Says what would be here and offers the one action that creates it. Never a bare "no items". *(M25 design pass, 2026-07-24)* |
 
-Loading | Keeps the previous content and marks it stale rather than blanking. A list that empties itself while refreshing reads as data loss. |
+Loading | Keeps the previous content and marks it stale rather than blanking. A list that empties itself while refreshing reads as data loss. *(M25 design pass, 2026-07-24; staleness rule 0018)* |
 
-Disconnected | The phone says so at the top, keeps showing the last known rooms marked stale, and queues what you type. Work continues on the computer regardless — that is the point of the daemon owning the run. |
+Disconnected | The phone says so at the top, keeps showing the last known rooms marked stale, and queues what you type. Work continues on the computer regardless — that is the point of the daemon owning the run. *(M25 design pass, 2026-07-24)* |
 
-Worker missing | A room whose vendor CLI is gone says which one and how to fix it. It is not a failure of the room. |
+Worker missing | A room whose vendor CLI is gone says which one and how to fix it. It is not a failure of the room. *(M25 design pass, 2026-07-24)* |
 
-Folder gone | The room is greyed and marked unavailable, never an error dialog, and never silently dropped from the list. |
+Folder gone | The room is greyed and marked unavailable, never an error dialog, and never silently dropped from the list. *(M25 design pass, 2026-07-24)* |
 
-Cancelled | Reads as cancelled — a distinct state with its own mark, never collapsed into finished. |
+Cancelled | Reads as cancelled — a distinct state with its own mark, never collapsed into finished. *(Promoted from the #461 defect; second live copy fixed as #976)* |
 
-Failed | Reads as failed, shows the error text in place, and offers the failing worker as the first way to fix it. |
+Failed | Reads as failed, shows the error text in place, and offers the failing worker as the first way to fix it. *(M25 design pass, 2026-07-24; #617 deepens it)* |
 
-Archived | Out of the default list, still searchable, restorable in one action. |
+Archived | Out of the default list, still searchable, restorable in one action. *(M25 design pass, 2026-07-24)* |
 
-Long output | Truncated with an explicit "showing first N lines" and a way to see all of it. Never silently cut. |
+Long output | Truncated with an explicit "showing first N lines" and a way to see all of it. Never silently cut. *(M25 design pass, 2026-07-24)* |
 
-Reduced motion | Every animated state degrades to a correct still frame — the working mark is a spinner's static frame by design, not an absence. |
-Gate unverified (added 2026-07-25, per 0029) | A worker whose permission mechanism could not be confirmed working at start says so before any tool runs, rather than silently rendering a gate that might never fire — a broken hook or a disabled callback both look exactly like a working one otherwise. |
-Waiting on another room's lock (added 2026-08-04, #480) | Reads as a wait, never as an error and never as generic working: names the room that holds this folder, linked, so the choice — wait, or go there — is discoverable. Opening a second room on a folder that already has one warns first; legal, but a choice made knowingly. |
-Dormant (added 2026-08-04, #778) | The room stopped machine turns after repeated turns that committed nothing, and says so in the transcript with the reason and the wake control. A message to a dormant room is answered with this state — waking is your explicit action, never a side effect of asking how it's going. |
+Reduced motion | Every animated state degrades to a correct still frame — the working mark is a spinner's static frame by design, not an absence. *(M25 design pass, 2026-07-24)* |
+
+Gate unverified | A worker whose permission mechanism could not be confirmed working at start says so before any tool runs, rather than silently rendering a gate that might never fire — a broken hook or a disabled callback both look exactly like a working one otherwise. *(0029, added 2026-07-25)* |
+
+Waiting on another room's lock | Reads as a wait, never as an error and never as generic working: names the room that holds this folder, linked, so the choice — wait, or go there — is discoverable. Opening a second room on a folder that already has one warns first; legal, but a choice made knowingly. *(#480 (grouped under #752), ratified 2026-08-04 on #495)* |
+
+Dormant | The room stopped machine turns after repeated turns that committed nothing, and says so in the transcript with the reason and the wake control. A message to a dormant room is answered with this state — waking is your explicit action, never a side effect of asking how it's going. *(#778 turn-throttle addendum, ratified 2026-08-04 on #495)* |
+
+<!-- /generated: interaction-states -->
 
 Two of these are the defects from the last manual run , promoted from bugs to rules: cancelled reading as finished, and a room that existed but appeared nowhere. Writing them here is what stops them being rediscovered.
 
@@ -313,9 +320,14 @@ Two of these are the defects from the last manual run , promoted from bugs to ru
 > turn lock (#480 — the engine behaviour already exists and is verified; the state makes the wait
 > visible instead of indistinguishable from slow), and the turn-throttle circuit breaker's visible
 > face (#778 — the throttle numbers themselves live in the room's `turn-throttles.json`, never
-> restated here). That makes the recorded inventory **thirteen**. This table is currently the
-> list's home; #616 will give the inventory an authoritative register with enforcement, at which
-> point this table becomes a rendering of that register rather than its home.
+> restated here). That makes the recorded inventory **thirteen**.
+
+> **#616, same day.** The table above is now a *rendering* of the authoritative register,
+> [`design/interaction-states.json`](../../design/interaction-states.json), regenerated by
+> `pixi run gen-states` and checked by `audit-completeness` — edit the register, not the table.
+> The register also generates the `InteractionState` enum surfaces consume, carries each state's
+> coverage (rendered today, or an explicit pointer to the work that will render it — enforced by
+> `Aer.Architecture.Tests`), and replaces 0020's own prose copy of the list, which had drifted.
 
 ### The inventory
 

@@ -28,8 +28,9 @@ public class DesignTokenDriftTests
     {
         var repositoryRoot = FindRepositoryRoot();
         var tokensJson = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.TokensPath));
+        var interactionStatesJson = File.ReadAllText(Path.Combine(repositoryRoot, TokenGenerator.InteractionStatesPath));
 
-        foreach (var (relativePath, expected) in TokenGenerator.Generate(tokensJson))
+        foreach (var (relativePath, expected) in TokenGenerator.Generate(tokensJson, interactionStatesJson))
         {
             var path = Path.Combine(repositoryRoot, relativePath);
             Assert.True(File.Exists(path), $"{relativePath} is missing. Run `{TokenGenerator.RegenerateCommand}`.");

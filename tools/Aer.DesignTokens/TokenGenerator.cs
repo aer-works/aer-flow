@@ -27,10 +27,14 @@ namespace Aer.DesignTokens;
 /// </remarks>
 public static class TokenGenerator
 {
-    /// <summary>Both generated artifacts, keyed by repo-relative path.</summary>
-    public static IReadOnlyDictionary<string, string> Generate(string tokensJson)
+    /// <summary>Every generated artifact, keyed by repo-relative path.</summary>
+    public static IReadOnlyDictionary<string, string> Generate(string tokensJson, string interactionStatesJson)
     {
         using var document = JsonDocument.Parse(tokensJson, new JsonDocumentOptions
+        {
+            CommentHandling = JsonCommentHandling.Skip,
+        });
+        using var statesDocument = JsonDocument.Parse(interactionStatesJson, new JsonDocumentOptions
         {
             CommentHandling = JsonCommentHandling.Skip,
         });
@@ -41,10 +45,27 @@ public static class TokenGenerator
             [AvaloniaOutputPath] = GenerateAvalonia(root),
             [FlutterOutputPath] = GenerateFlutter(root),
             [UiCoreOutputPath] = GenerateUiCore(root),
+            [InteractionStatesOutputPath] = GenerateInteractionStates(statesDocument.RootElement),
         };
     }
 
     public const string TokensPath = "design/tokens.json";
+
+    /// <summary>
+    /// The interaction-state register (#616) — a second population from the same design directory,
+    /// deliberately a separate file from <see cref="TokensPath"/>: /status is the task-lifecycle
+    /// vocabulary, this is the screen-situation inventory, and merging them would let checks
+    /// quantify over meaningless combinations.
+    /// </summary>
+    public const string InteractionStatesPath = "design/interaction-states.json";
+
+    /// <summary>
+    /// The thirteen interaction states as a C# type (#616), same pattern and same reasoning as
+    /// <see cref="UiCoreOutputPath"/>: a surface can only be forced to handle every state when
+    /// "every state" is a closed type the compiler can quantify over, and generating that type
+    /// means the register and the code cannot disagree about what the states even are.
+    /// </summary>
+    public const string InteractionStatesOutputPath = "src/Aer.Ui.Core/GeneratedInteractionStates.cs";
     public const string AvaloniaOutputPath = "src/Aer.Ui/Theme/GeneratedTokens.axaml";
     public const string FlutterOutputPath = "src/Aer.Mobile/lib/theme/tokens.dart";
 
@@ -117,11 +138,31 @@ public static class TokenGenerator
     /// emitting a block form into Dart would produce a file that does not parse.
     /// </summary>
     private static string Banner(string commentOpen, string? commentClose)
+        => BannerFor(BannerBody, commentOpen, commentClose);
+
+    /// <summary>
+    /// The banner for artifacts generated from <see cref="InteractionStatesPath"/> (#616 added a
+    /// second source file, so "change the token file" would misdirect).
+    /// </summary>
+    private static string InteractionStatesBanner(string commentOpen, string? commentClose)
+        => BannerFor(
+            [
+                BannerLine1,
+                $"Source: {InteractionStatesPath}",
+                $"Regenerate: {RegenerateCommand}",
+                "",
+                "Hand edits are reverted by the next regeneration and fail CI in the meantime",
+                "(Aer.Architecture.Tests). Change the register file instead.",
+            ],
+            commentOpen,
+            commentClose);
+
+    private static string BannerFor(string[] bannerBody, string commentOpen, string? commentClose)
     {
         var banner = new StringBuilder();
         if (commentClose is null)
         {
-            foreach (var line in BannerBody)
+            foreach (var line in bannerBody)
             {
                 banner.AppendLine(line.Length == 0 ? commentOpen : $"{commentOpen} {line}");
             }
@@ -130,7 +171,7 @@ public static class TokenGenerator
         }
 
         banner.AppendLine(commentOpen);
-        foreach (var line in BannerBody)
+        foreach (var line in bannerBody)
         {
             banner.AppendLine(line.Length == 0 ? string.Empty : $"    {line}");
         }
@@ -579,6 +620,60 @@ public static class TokenGenerator
 
         """.ReplaceLineEndings(Lf);
     }
+
+    private static string GenerateInteractionStates(JsonElement root)
+    {
+        var members = new StringBuilder();
+        var names = new StringBuilder();
+        var behaviours = new StringBuilder();
+
+        foreach (var (key, state) in Entries(root.GetProperty("states")))
+        {
+            var member = Pascal(key);
+            members.AppendLine($"    {member},");
+            names.AppendLine($"""        InteractionState.{member} => "{state.GetProperty("name").GetString()}",""");
+            behaviours.AppendLine($"""        InteractionState.{member} => "{Escape(state.GetProperty("behaviour").GetString()!)}",""");
+        }
+
+        return $$"""
+        {{InteractionStatesBanner("//", null)}}
+
+        namespace Aer.Ui.Core;
+
+        /// <summary>
+        /// The interaction states — the situations every surface must handle (#616; ratified
+        /// thirteen on #495). A different population from <see cref="AerStatus"/>: that is the
+        /// task-lifecycle vocabulary, this is the screen-situation inventory; they overlap at
+        /// Cancelled/Failed only. 0020's rules govern consumption: rendering is a projection,
+        /// absence is not a state — which is why the presentation methods below throw on an
+        /// unmapped member instead of answering with a default.
+        /// </summary>
+        public enum InteractionState
+        {
+        {{members.ToString().TrimEnd()}}
+        }
+
+        public static class InteractionStatePresentation
+        {
+            /// <summary>The state's display name, as the register records it.</summary>
+            public static string DisplayName(this InteractionState state) => state switch
+            {
+        {{names.ToString().TrimEnd()}}
+                _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped interaction state."),
+            };
+
+            /// <summary>What a surface holding this state does — the register's behaviour sentence.</summary>
+            public static string Behaviour(this InteractionState state) => state switch
+            {
+        {{behaviours.ToString().TrimEnd()}}
+                _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped interaction state."),
+            };
+        }
+
+        """.ReplaceLineEndings(Lf);
+    }
+
+    private static string Escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     /// <summary>
     /// Generated artifacts are always LF, on every platform. Otherwise the CI gate would compare a
