@@ -199,7 +199,7 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
             }
 
             var ignoredSteps = new List<(string AdapterName, string Label)>();
-            var refusedSteps = new List<(string AdapterName, string Reason, string Label)>();
+            var refusedSteps = new List<(string AdapterName, string? Reason, string Label)>();
             foreach (var step in Steps.Where(s => !s.IsDialogue))
             {
                 var adapterName = step.Kind == GuidedStepKind.Claude ? "claude" : "gemini"; // vocabulary-ok: technical adapter key
