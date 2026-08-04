@@ -207,6 +207,14 @@ public sealed partial class RoomTurnHostBannerViewModel : ObservableObject
     public bool IsDormant { get; }
     public string DormancyText { get; }
 
+    /// <summary>
+    /// The breaker escalation that tripped dormancy (#994 acceptance: never a silent stall).
+    /// Null when the room record carries no matching hostCondition escalation.
+    /// </summary>
+    public string? DormancyEscalationText { get; }
+
+    public bool HasDormancyEscalationText => !string.IsNullOrWhiteSpace(DormancyEscalationText);
+
     public RoomTurnHostBannerViewModel(
         RoomTurnHostStatus status,
         Func<Task<bool>>? clearDormancyAsyncFunc = null,
@@ -227,6 +235,8 @@ public sealed partial class RoomTurnHostBannerViewModel : ObservableObject
         LoadErrorText = status.LoadError;
         IsDormant = status.IsDormant;
         DormancyText = $"Dormant · stopped after {status.ConsecutiveFailures} machine turns without progress";
+        DormancyEscalationText = status.DormancyEscalationDetail;
+
     }
 
     [RelayCommand]

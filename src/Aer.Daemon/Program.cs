@@ -683,12 +683,22 @@ namespace Aer.Daemon
 
                 var roomLogPath = Path.Combine(targetDir, "room.jsonl");
                 var isDormant = false;
+                string? dormancyEscalationDetail = null;
                 if (File.Exists(roomLogPath))
                 {
                     var reader = new RoomEventLogReader(roomLogPath);
                     var events = await reader.ReadAllRoomEventsAsync().ConfigureAwait(false);
                     var roomState = RoomProjector.Project(events);
                     isDormant = roomState.IsDormant;
+                    if (isDormant)
+                    {
+                        // #994 acceptance: dormancy is shown WITH the escalation that tripped it.
+                        dormancyEscalationDetail = roomState.OpenEscalations
+                            .Select(e => e.Subject)
+                            .OfType<EscalationSubject.HostCondition>()
+                            .LastOrDefault(s => s.Condition == RoomTurnHost.DormancyConditionName)
+                            ?.Detail;
+                    }
                 }
 
                 var now = DateTimeOffset.UtcNow;
@@ -712,6 +722,7 @@ namespace Aer.Daemon
                     ConsecutiveFailures = hostState.ConsecutiveFailures,
                     InFlight = hostState.InFlight,
                     IsDormant = isDormant,
+                    DormancyEscalationDetail = dormancyEscalationDetail,
                     LastDecisionReason = hostState.LastDecisionReason,
                 });
             });

@@ -21,7 +21,8 @@ public class RoomTurnHostBannerTests
         bool isDormant = false,
         int failures = 3,
         string source = "defaults",
-        string? loadError = null)
+        string? loadError = null,
+        string? dormancyEscalationDetail = null)
     {
         return new RoomTurnHostStatus(
             RoomDirectoryPath: "/test/room",
@@ -34,6 +35,7 @@ public class RoomTurnHostBannerTests
             ConsecutiveFailures: failures,
             InFlight: false,
             IsDormant: isDormant,
+            DormancyEscalationDetail: dormancyEscalationDetail,
             LastDecisionReason: isDormant ? "Dormant" : null);
     }
 
@@ -59,6 +61,28 @@ public class RoomTurnHostBannerTests
         Assert.True(banner.IsDormant);
         Assert.Contains("3", banner.DormancyText);
         Assert.Contains("Dormant", banner.DormancyText);
+    }
+
+    [Fact]
+    public void VM_DormancyEscalationDetail_PopulatesEscalationText()
+    {
+        // Red arm note: If DormancyEscalationText stays null (or HasDormancyEscalationText false) when the status carries the breaker escalation's detail, these assertions fail.
+        var status = CreateStatus(isDormant: true, dormancyEscalationDetail: "3 consecutive uncommitted turns tripped the breaker");
+        var banner = new RoomTurnHostBannerViewModel(status);
+
+        Assert.True(banner.HasDormancyEscalationText);
+        Assert.Equal("3 consecutive uncommitted turns tripped the breaker", banner.DormancyEscalationText);
+    }
+
+    [Fact]
+    public void VM_NoDormancyEscalationDetail_EscalationTextAbsent()
+    {
+        // Red arm note: If HasDormancyEscalationText returns true when the status carries no escalation detail (absence polarity), this assertion fails.
+        var status = CreateStatus(isDormant: true, dormancyEscalationDetail: null);
+        var banner = new RoomTurnHostBannerViewModel(status);
+
+        Assert.False(banner.HasDormancyEscalationText);
+        Assert.Null(banner.DormancyEscalationText);
     }
 
     [Fact]

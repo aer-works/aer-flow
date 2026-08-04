@@ -18,4 +18,5 @@ public sealed record RoomTurnHostStatus(
     [property: JsonPropertyName("consecutiveFailures")] int ConsecutiveFailures,
     [property: JsonPropertyName("inFlight")] bool InFlight,
     [property: JsonPropertyName("isDormant")] bool IsDormant,
+    [property: JsonPropertyName("dormancyEscalationDetail")] string? DormancyEscalationDetail,
     [property: JsonPropertyName("lastDecisionReason")] string? LastDecisionReason);

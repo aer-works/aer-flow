@@ -68,6 +68,7 @@
               <TextBlock Text="⏾" FontSize="14" VerticalAlignment="Center" />
               <TextBlock Classes="body-strong" Text="{Binding DormancyText}" VerticalAlignment="Center" />
             </StackPanel>
+            <TextBlock Classes="secondary" Text="{Binding DormancyEscalationText}" IsVisible="{Binding HasDormancyEscalationText}" TextWrapping="Wrap" />
             <TextBlock Classes="secondary" Text="{Binding ValuesText}" />
             <TextBlock Classes="secondary" Text="{Binding LoadErrorText}" IsVisible="{Binding LoadErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <Button Command="{Binding WakeCommand}" Width="80">
