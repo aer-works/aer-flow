@@ -15,7 +15,10 @@ if (repositoryRoot is null)
 }
 
 var tokensPath = Path.Combine(repositoryRoot, TokenGenerator.TokensPath);
-var generated = TokenGenerator.Generate(await File.ReadAllTextAsync(tokensPath));
+var interactionStatesPath = Path.Combine(repositoryRoot, TokenGenerator.InteractionStatesPath);
+var generated = TokenGenerator.Generate(
+    await File.ReadAllTextAsync(tokensPath),
+    await File.ReadAllTextAsync(interactionStatesPath));
 
 foreach (var (relativePath, content) in generated)
 {

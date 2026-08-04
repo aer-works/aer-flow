@@ -236,6 +236,9 @@ audit-completeness = { cmd = "python -u tools/audit-completeness/completeness.py
 # #952: rewrites docs/decisions/README.md's generated index from the records. The check half runs
 # inside audit-completeness (STEP 12); this is the write half a dev runs after adding a record.
 gen-register = { cmd = "python -u tools/audit-completeness/genregister.py" }
+# #616: rewrites 03-interaction-depth.md's state table from design/interaction-states.json. The
+# check half runs inside audit-completeness (STEP 13); this is the write half after a register edit.
+gen-states = { cmd = "python -u tools/audit-completeness/genstates.py" }
 
 # CLI-only build for the CI audit job (#887): audit-selfcheck's catalog checks read the role
 # catalog through `aer templates --json`, so the audit leg needs a built Aer.Cli. It does NOT

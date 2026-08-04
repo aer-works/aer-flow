@@ -77,15 +77,21 @@ public sealed partial class HomeViewModel : ObservableObject
             var card = TaskCardViewModel.FromProjection(taskDirectoryPath, projection, openTaskAsync);
             TaskCards.Add(card);
 
-            switch (projection.State.Status)
+            // #616: counted from the card's one derivation, not re-derived from the raw
+            // WorkflowStatus — the raw switch counted every Terminal run as "finished", so a
+            // failed or cancelled task inflated the summary's finished count (the counting form
+            // of the Finished-for-Cancelled defect). Every member is named; Failed, Cancelled and
+            // Unavailable are deliberately in neither count because the summary sentence doesn't
+            // speak of them.
+            switch (card.Status)
             {
-                case WorkflowStatus.Running:
+                case TaskCardStatus.Running:
                     runningCount++;
                     break;
-                case WorkflowStatus.Terminal:
+                case TaskCardStatus.Finished:
                     finishedCount++;
                     break;
-                case WorkflowStatus.Paused:
+                case TaskCardStatus.NeedsYou:
                     foreach (var stepState in projection.State.Steps)
                     {
                         if (stepState.Status == StepStatus.Paused)
@@ -94,6 +100,10 @@ public sealed partial class HomeViewModel : ObservableObject
                         }
                     }
 
+                    break;
+                case TaskCardStatus.Failed:
+                case TaskCardStatus.Cancelled:
+                case TaskCardStatus.Unavailable:
                     break;
             }
         }
