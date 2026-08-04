@@ -10,6 +10,10 @@ namespace Aer.Flow.Domain;
 [JsonDerivedType(typeof(HeldWorkDispatched), "heldWorkDispatched")]
 [JsonDerivedType(typeof(HeldWorkEscalated), "heldWorkEscalated")]
 [JsonDerivedType(typeof(HeldWorkResolved), "heldWorkResolved")]
+[JsonDerivedType(typeof(GrantRecorded), "grantRecorded")]
+[JsonDerivedType(typeof(GrantAmended), "grantAmended")]
+[JsonDerivedType(typeof(GrantRevoked), "grantRevoked")]
+[JsonDerivedType(typeof(EscalationRaised), "escalationRaised")]
 public abstract record RoomEvent
 {
     private RoomEvent()
@@ -32,4 +36,40 @@ public abstract record RoomEvent
     public sealed record HeldWorkResolved(
         HeldWorkRef Ref,
         HeldWorkCitation Citation) : RoomEvent;
+
+    /// <summary>Records a grant given to a worker (§D).</summary>
+    public sealed record GrantRecorded(
+        GrantId GrantId,
+        WorkerId WorkerId,
+        GrantLevel Level,
+        GrantScope Scope,
+        SpendBounds SpendBounds,
+        string Grantor,
+        DateTimeOffset Timestamp) : RoomEvent;
+
+    /// <summary>Records an amendment to a grant (§D).</summary>
+    public sealed record GrantAmended(
+        GrantId GrantId,
+        GrantId AmendsGrantId,
+        WorkerId WorkerId,
+        GrantLevel Level,
+        GrantScope Scope,
+        SpendBounds SpendBounds,
+        string Grantor,
+        DateTimeOffset Timestamp) : RoomEvent;
+
+    /// <summary>Records revocation of a grant (§D).</summary>
+    public sealed record GrantRevoked(
+        GrantId GrantId,
+        string Revoker,
+        DateTimeOffset Timestamp,
+        string Reason) : RoomEvent;
+
+    /// <summary>Records an escalation raised by a worker (§D).</summary>
+    public sealed record EscalationRaised(
+        WorkerId FromWorkerId,
+        EscalationTrigger Trigger,
+        EscalationSubject Subject,
+        DateTimeOffset Timestamp) : RoomEvent;
 }
+

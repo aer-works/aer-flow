@@ -79,12 +79,20 @@ public abstract record FlowEvent
     /// <param name="ReferencedExecutionId">Which execution's outcome this decision responds to.</param>
     /// <param name="TargetStepId">Required only for <see cref="DecisionType.Supersede"/>.</param>
     /// <param name="SupplementaryExecutionId">Optional for <see cref="DecisionType.RetryWithRevision"/>; required for <see cref="DecisionType.Supersede"/>.</param>
+    /// <param name="Decider">Attribution info for the decider (§D). Defaults to human.</param>
     public sealed record ExternalDecisionRecorded(
         DecisionId DecisionId,
         ExecutionId ReferencedExecutionId,
         DecisionType DecisionType,
         StepId? TargetStepId,
-        ExecutionId? SupplementaryExecutionId) : FlowEvent;
+        ExecutionId? SupplementaryExecutionId,
+        DeciderInfo? Decider = null) : FlowEvent
+    {
+        [JsonIgnore]
+        public DeciderInfo EffectiveDecider => Decider ?? DeciderInfo.DefaultHuman;
+    }
+
+
 
     /// <summary>The workflow is no longer paused following the referenced decision (spec §17).</summary>
     public sealed record WorkflowResumed(DecisionId DecisionId) : FlowEvent;

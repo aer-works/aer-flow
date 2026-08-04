@@ -14,6 +14,8 @@ public static class RoomProjector
         ArgumentNullException.ThrowIfNull(events);
 
         var heldWork = new Dictionary<HeldWorkRef, HeldWorkState>();
+        var activeGrants = new Dictionary<GrantId, GrantState>();
+        var openEscalations = new List<RoomEvent.EscalationRaised>();
         var unmatchedEntries = new List<string>();
 
         foreach (var roomEvent in events)
@@ -60,9 +62,68 @@ public static class RoomProjector
                     }
 
                     break;
+
+                case RoomEvent.GrantRecorded recorded:
+                    activeGrants[recorded.GrantId] = new GrantState(
+                        recorded.GrantId,
+                        null,
+                        recorded.WorkerId,
+                        recorded.Level,
+                        recorded.Scope,
+                        recorded.SpendBounds,
+                        recorded.Grantor,
+                        recorded.Timestamp);
+                    break;
+
+                case RoomEvent.GrantAmended amended:
+                    if (activeGrants.TryGetValue(amended.AmendsGrantId, out var targetGrant))
+                    {
+                        var baseId = targetGrant.BaseGrantId ?? amended.AmendsGrantId;
+                        activeGrants.Remove(amended.AmendsGrantId);
+                        activeGrants[amended.GrantId] = new GrantState(
+                            amended.GrantId,
+                            baseId,
+                            amended.WorkerId,
+                            amended.Level,
+                            amended.Scope,
+                            amended.SpendBounds,
+                            amended.Grantor,
+                            amended.Timestamp);
+                    }
+                    else
+                    {
+                        unmatchedEntries.Add($"grantAmended for unknown amendsGrantId '{amended.AmendsGrantId}'");
+                    }
+
+                    break;
+
+                case RoomEvent.GrantRevoked revoked:
+                    if (activeGrants.Remove(revoked.GrantId))
+                    {
+                        // Removed directly by active GrantId.
+                    }
+                    else
+                    {
+                        var keyToRemove = activeGrants.FirstOrDefault(kv => kv.Value.BaseGrantId == revoked.GrantId).Key;
+                        if (keyToRemove != default && activeGrants.Remove(keyToRemove))
+                        {
+                            // Removed by base GrantId.
+                        }
+                        else
+                        {
+                            unmatchedEntries.Add($"grantRevoked for unknown grantId '{revoked.GrantId}'");
+                        }
+                    }
+
+                    break;
+
+                case RoomEvent.EscalationRaised escalation:
+                    openEscalations.Add(escalation);
+                    break;
             }
         }
 
-        return new RoomState(heldWork, unmatchedEntries);
+        return new RoomState(heldWork, unmatchedEntries, activeGrants, openEscalations);
+
     }
 }

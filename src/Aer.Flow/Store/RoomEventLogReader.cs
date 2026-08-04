@@ -51,8 +51,14 @@ public sealed class RoomEventLogReader(string logFilePath) : IRoomEventLogReader
             {
                 entry = JsonSerializer.Deserialize<LogEntry>(line, FlowEventLogJson.Options);
             }
-            catch (JsonException ex)
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
             {
+                // NotSupportedException is System.Text.Json's wart, not ours: a polymorphic
+                // abstract payload (e.g. EscalationSubject) missing its type discriminator throws
+                // NSE where every other parse failure throws JsonException. Both are the same
+                // fact -- this line cannot be replayed -- so both wrap into the one loud contract.
+                // Proven by RoomEventLogReaderCorruptionTests: the raw NSE escaped before this
+                // clause existed.
                 throw new FlowEventLogReadException($"Malformed room.jsonl line: {line}", ex);
             }
 

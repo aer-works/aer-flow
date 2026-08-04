@@ -22,7 +22,12 @@ public class RoomEventLogJsonTests
         new RoomEvent.HeldWorkDispatched(LaneRef, "shape-flow", TimeSpan.FromMinutes(15), "operator-decider"),
         new RoomEvent.HeldWorkEscalated(LaneRef, "escalation-target"),
         new RoomEvent.HeldWorkResolved(LaneRef, new HeldWorkCitation(CitedSubject, "executionSucceeded", 0)),
+        new RoomEvent.GrantRecorded(new GrantId("g-1"), new WorkerId("w-1"), GrantLevel.L1Dispatch, new GrantScope(), new SpendBounds(), "operator", DateTimeOffset.UtcNow),
+        new RoomEvent.GrantAmended(new GrantId("g-2"), new GrantId("g-1"), new WorkerId("w-1"), GrantLevel.L2Tend, new GrantScope(), new SpendBounds(), "operator", DateTimeOffset.UtcNow),
+        new RoomEvent.GrantRevoked(new GrantId("g-1"), "operator", DateTimeOffset.UtcNow, "reason"),
+        new RoomEvent.EscalationRaised(new WorkerId("w-1"), EscalationTrigger.Spend, new EscalationSubject.Decision(new DecisionId("d-1")), DateTimeOffset.UtcNow),
     ];
+
 
     [Fact]
     public void Every_RoomEvent_variant_is_covered_by_these_tests()
@@ -72,8 +77,13 @@ public class RoomEventLogJsonTests
             }
             else
             {
-                Assert.IsType<JsonException>(exception);
+                // NotSupportedException joins JsonException here for one specific removal: a
+                // polymorphic subject's "kind" discriminator -- RoomEventLogReader has the why,
+                // and RoomEventLogReaderCorruptionTests proves the reader wraps it loudly.
+                Assert.True(exception is JsonException or NotSupportedException);
             }
+
+
         }
     }
 

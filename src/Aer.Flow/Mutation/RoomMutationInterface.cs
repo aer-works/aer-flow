@@ -143,4 +143,142 @@ public static class RoomMutationInterface
 
         return RoomProjector.Project([.. existingEvents, roomEvent]);
     }
+
+    public static async Task<RoomState> RecordGrantAsync(
+        string roomDirectoryPath,
+        GrantId grantId,
+        WorkerId workerId,
+        GrantLevel level,
+        GrantScope scope,
+        SpendBounds spendBounds,
+        string grantor,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        DateTimeOffset? timestamp = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(grantor);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(spendBounds);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+        var currentState = RoomProjector.Project(existingEvents);
+
+        if (currentState.ActiveGrants.ContainsKey(grantId))
+        {
+            throw new InvalidRoomMutationException($"GrantId '{grantId}' already exists in active grants.");
+        }
+
+        var ts = timestamp ?? DateTimeOffset.UtcNow;
+        var roomEvent = new RoomEvent.GrantRecorded(grantId, workerId, level, scope, spendBounds, grantor, ts);
+        await writer.AppendAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+
+        return RoomProjector.Project([.. existingEvents, roomEvent]);
+    }
+
+    public static async Task<RoomState> AmendGrantAsync(
+        string roomDirectoryPath,
+        GrantId grantId,
+        GrantId amendsGrantId,
+        WorkerId workerId,
+        GrantLevel level,
+        GrantScope scope,
+        SpendBounds spendBounds,
+        string grantor,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        DateTimeOffset? timestamp = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(grantor);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(spendBounds);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+        var currentState = RoomProjector.Project(existingEvents);
+
+        if (!currentState.ActiveGrants.ContainsKey(amendsGrantId))
+        {
+            throw new InvalidRoomMutationException($"GrantId '{amendsGrantId}' to amend was not found in active grants.");
+        }
+
+        var ts = timestamp ?? DateTimeOffset.UtcNow;
+        var roomEvent = new RoomEvent.GrantAmended(grantId, amendsGrantId, workerId, level, scope, spendBounds, grantor, ts);
+        await writer.AppendAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+
+        return RoomProjector.Project([.. existingEvents, roomEvent]);
+    }
+
+    public static async Task<RoomState> RevokeGrantAsync(
+        string roomDirectoryPath,
+        GrantId grantId,
+        string revoker,
+        string reason,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        DateTimeOffset? timestamp = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(revoker);
+        ArgumentException.ThrowIfNullOrEmpty(reason);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+        var currentState = RoomProjector.Project(existingEvents);
+
+        var isDirectActive = currentState.ActiveGrants.ContainsKey(grantId);
+        var isBaseActive = currentState.ActiveGrants.Any(kv => kv.Value.BaseGrantId == grantId);
+
+        if (!isDirectActive && !isBaseActive)
+        {
+            throw new InvalidRoomMutationException($"GrantId '{grantId}' to revoke was not found in active grants.");
+        }
+
+        var ts = timestamp ?? DateTimeOffset.UtcNow;
+        var roomEvent = new RoomEvent.GrantRevoked(grantId, revoker, ts, reason);
+        await writer.AppendAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+
+        return RoomProjector.Project([.. existingEvents, roomEvent]);
+    }
+
+    public static async Task<RoomState> RaiseEscalationAsync(
+        string roomDirectoryPath,
+        WorkerId fromWorkerId,
+        EscalationTrigger trigger,
+        EscalationSubject subject,
+        IRoomEventLogReader reader,
+        IRoomEventLogWriter writer,
+        DateTimeOffset? timestamp = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
+        ArgumentNullException.ThrowIfNull(subject);
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);
+
+        var existingEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
+
+        var ts = timestamp ?? DateTimeOffset.UtcNow;
+        var roomEvent = new RoomEvent.EscalationRaised(fromWorkerId, trigger, subject, ts);
+        await writer.AppendAsync(roomEvent, cancellationToken).ConfigureAwait(false);
+
+        return RoomProjector.Project([.. existingEvents, roomEvent]);
+    }
 }
+

@@ -279,7 +279,8 @@ public class FlowEventLogJsonTests
     [Fact]
     public void Every_enum_reachable_from_a_journal_line_is_pinned_by_these_tests()
     {
-        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType) };
+        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType), typeof(DeciderKind) };
+
 
         var reachable = new HashSet<Type>();
         var seen = new HashSet<Type>();
