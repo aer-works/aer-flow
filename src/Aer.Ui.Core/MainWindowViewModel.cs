@@ -152,6 +152,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string cancelStatusText = string.Empty;
 
+    /// <summary>Issue #618: non-null while the waiting-on-lock state applies — see <see cref="WaitingOnLockBannerViewModel"/> for what it says and when.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWaitingOnLockBanner))]
+    private WaitingOnLockBannerViewModel? waitingOnLockBanner;
+
+    public bool HasWaitingOnLockBanner => WaitingOnLockBanner is not null;
+
     /// <summary>The open task's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildTaskSteps"/>.</summary>
     public ObservableCollection<StepItemViewModel> TaskSteps { get; } = [];
 

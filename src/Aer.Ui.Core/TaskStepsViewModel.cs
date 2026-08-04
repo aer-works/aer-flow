@@ -165,6 +165,35 @@ public sealed partial class StepItemViewModel : ObservableObject
 }
 
 /// <summary>
+/// M25 / issue #618 (#480 rider): the waiting-on-lock banner.
+/// Surfaces when a task directory is held by another process. Reads as a WAIT, never an error.
+/// </summary>
+public sealed partial class WaitingOnLockBannerViewModel : ObservableObject
+{
+    private readonly Func<Task>? _tryAgainAsyncAction;
+
+    public string Title => "Waiting on another room's lock";
+    public string HolderText { get; }
+
+    public WaitingOnLockBannerViewModel(string? holderDescription, Func<Task>? tryAgainAsyncAction = null)
+    {
+        HolderText = string.IsNullOrWhiteSpace(holderDescription)
+            ? "another process — it did not say which"
+            : holderDescription;
+        _tryAgainAsyncAction = tryAgainAsyncAction;
+    }
+
+    [RelayCommand]
+    private async Task TryAgain()
+    {
+        if (_tryAgainAsyncAction != null)
+        {
+            await _tryAgainAsyncAction();
+        }
+    }
+}
+
+/// <summary>
 /// M25 Clause 4 (issue #617): the failed-step banner — errors are content.
 /// Shows the reason sentence and stderr excerpt in place, with affordances for "Try again",
 /// "Ask <worker> to fix it", and "Show full output".

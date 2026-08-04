@@ -131,6 +131,127 @@ public class MainWindowDecisionTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task Answering_gate_retires_inbox_item_without_home_refresh()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"ui-decide-retire-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
+            var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
+            await configStore.RecordOpenedAsync(taskDirectory);
+
+            var window = new MainWindow(configStore, Adapters);
+
+            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+
+            // Seed the inbox item in Home
+            await window.ViewModel.Home.RefreshAsync(
+                window.Session,
+                path => window.OpenAsync(path));
+
+            var inboxItem = Assert.Single(window.ViewModel.Home.InboxItems);
+            Assert.Equal("a", inboxItem.StepName);
+
+            var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
+
+            // Decide inline without calling Home's refresh
+            await pausedStep.ApproveCommand.ExecuteAsync(null);
+
+            // Assert inbox item is gone immediately
+            Assert.Empty(window.ViewModel.Home.InboxItems);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public void Decision_polarity_does_not_retire_unmatched_inbox_items()
+    {
+        var home = new Aer.Ui.Core.HomeViewModel();
+        var taskPath1 = Path.Combine(Path.GetTempPath(), "task1");
+        var taskPath2 = Path.Combine(Path.GetTempPath(), "task2");
+
+        var item1 = new Aer.Ui.Core.InboxItemViewModel(
+            taskPath1, "Task 1", "step-a", "Status", "Preview",
+            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
+
+        var item2 = new Aer.Ui.Core.InboxItemViewModel(
+            taskPath1, "Task 1", "step-b", "Status", "Preview",
+            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
+
+        var item3 = new Aer.Ui.Core.InboxItemViewModel(
+            taskPath2, "Task 2", "step-a", "Status", "Preview",
+            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
+
+        home.InboxItems.Add(item1);
+        home.InboxItems.Add(item2);
+        home.InboxItems.Add(item3);
+
+        // Retire step-a of task 1
+        home.RetireInboxItem(taskPath1, new StepId("step-a"), new ExecutionId("exec-1"));
+
+        Assert.Equal(2, home.InboxItems.Count);
+        Assert.DoesNotContain(item1, home.InboxItems);
+        Assert.Contains(item2, home.InboxItems);
+        Assert.Contains(item3, home.InboxItems);
+    }
+
+    [AvaloniaFact]
+    public async Task Loading_a_locked_task_renders_waiting_on_lock_banner_with_holder_text()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"ui-lock-banner-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
+            var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
+
+            // Acquire lock in fixture before opening/loading
+            using var lockGuard = Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(taskDirectory, "Other Room (pid 777)");
+
+            var window = new MainWindow(configStore, Adapters);
+            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            Assert.True(window.ViewModel.HasWaitingOnLockBanner);
+            Assert.NotNull(window.ViewModel.WaitingOnLockBanner);
+            Assert.Equal("Waiting on another room's lock", window.ViewModel.WaitingOnLockBanner.Title);
+            Assert.Equal("Other Room (pid 777)", window.ViewModel.WaitingOnLockBanner.HolderText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Loading_an_unlocked_task_does_not_render_waiting_on_lock_banner()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"ui-lock-banner-polarity-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
+            var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
+
+            var window = new MainWindow(configStore, Adapters);
+            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+
+            Assert.False(window.ViewModel.HasWaitingOnLockBanner);
+            Assert.Null(window.ViewModel.WaitingOnLockBanner);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
     private static async Task<string> WriteApprovalGateWorkflowAsync(string directory)
     {
         Directory.CreateDirectory(directory);

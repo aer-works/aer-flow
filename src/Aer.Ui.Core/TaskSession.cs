@@ -10,6 +10,7 @@ using System.IO;
 using Aer.Adapters;
 using Aer.Cli;
 using Aer.Flow;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 
@@ -319,12 +320,38 @@ public sealed partial class TaskSession
     }
 
     /// <summary>
+    /// #618: sets or clears the waiting-on-lock banner from a local probe. Mode-independent by
+    /// design — <see cref="ConcurrencyGuard.IsHeld"/> and the holder sidecar are filesystem facts
+    /// the desktop can read whether the daemon or this process answers the load, and clearing on
+    /// the not-held arm is what stops a released lock leaving a stale banner behind.
+    /// </summary>
+    private void RefreshWaitingOnLockBanner(string taskDirectoryPath)
+    {
+        if (ConcurrencyGuard.IsHeld(taskDirectoryPath))
+        {
+            var (holderDescription, _) = ConcurrencyGuard.ReadHolderInfo(taskDirectoryPath);
+            ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(holderDescription, () => LoadAsync(taskDirectoryPath));
+        }
+        else
+        {
+            ViewModel.WaitingOnLockBanner = null;
+        }
+    }
+
+    /// <summary>
     /// Loads <paramref name="taskDirectoryPath"/> through <see cref="TaskProjectionLoader"/> and
     /// rebuilds the ViewModel's mutation surfaces (<see cref="MainWindowViewModel.PausedSteps"/>,
     /// <see cref="MainWindowViewModel.RunningExecutions"/>) from the projected facts.
     /// </summary>
     public async Task<LoadOutcome> LoadAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
     {
+        // Before the mode branch, deliberately: the second reader found the first draft probed
+        // only in the in-process fallback, so the primary (daemon-connected) desktop never showed
+        // the waiting-on-lock state at all — and the daemon's own locked answer is a plain string
+        // this method's caller drops. The lock is a local filesystem fact the desktop can read in
+        // either mode; which process answers the load does not change who holds the directory.
+        RefreshWaitingOnLockBanner(taskDirectoryPath);
+
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
             try
@@ -370,6 +397,11 @@ public sealed partial class TaskSession
             ViewModel.DecisionStatusText = string.Empty;
             ViewModel.RunningExecutions.Clear();
             ViewModel.CancelStatusText = string.Empty;
+
+            if (ex is WorkflowLockedException wle)
+            {
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+            }
 
             LastLoadSucceeded = false;
             LastWorkflowStatus = null;
@@ -450,6 +482,9 @@ public sealed partial class TaskSession
                 {
                     var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
                     _mutationFailed();
+                    // The daemon's locked refusal is a plain string with no holder in it — the
+                    // local probe is what turns it into the waiting-on-lock state (#618).
+                    RefreshWaitingOnLockBanner(taskDirectoryPath);
                     ViewModel.RunStatusText = err;
                     ViewModel.IsMutationInFlight = false;
                     return new MutationOutcome(err);
@@ -498,7 +533,15 @@ public sealed partial class TaskSession
         catch (AerFlowException ex)
         {
             _mutationFailed();
-            ViewModel.RunStatusText = ex.Message;
+            if (ex is WorkflowLockedException wle)
+            {
+                ViewModel.RunStatusText = string.Empty;
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+            }
+            else
+            {
+                ViewModel.RunStatusText = ex.Message;
+            }
 
             // #330: a failed pump used to return here without ever calling _reopenTaskAsync, so
             // Aer.Daemon's own wiring of that hook (reopenTaskAsync -> BroadcastStateAsync,
@@ -581,6 +624,7 @@ public sealed partial class TaskSession
                 {
                     ViewModel.DecisionStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
+                    ViewModel.Home.RetireInboxItem(taskDirectoryPath, stepId, executionId);
                     await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
@@ -588,6 +632,9 @@ public sealed partial class TaskSession
                 {
                     var err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(true);
                     _mutationFailed();
+                    // Same reason as RunAsync's daemon-refusal arm: the string carries no holder;
+                    // the local probe renders the state (#618).
+                    RefreshWaitingOnLockBanner(taskDirectoryPath);
                     ViewModel.DecisionStatusText = err;
                     ViewModel.IsMutationInFlight = false;
                     return new MutationOutcome(err);
@@ -648,7 +695,15 @@ public sealed partial class TaskSession
         catch (Exception ex) when (ex is AerFlowException or FileNotFoundException)
         {
             _mutationFailed();
-            ViewModel.DecisionStatusText = ex.Message;
+            if (ex is WorkflowLockedException wle)
+            {
+                ViewModel.DecisionStatusText = string.Empty;
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+            }
+            else
+            {
+                ViewModel.DecisionStatusText = ex.Message;
+            }
             return new MutationOutcome(ex.Message);
         }
         finally
@@ -658,6 +713,7 @@ public sealed partial class TaskSession
             hostStopSource.Dispose();
         }
 
+        ViewModel.Home.RetireInboxItem(taskDirectoryPath, stepId, executionId);
         await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }

@@ -117,7 +117,8 @@ public static class RunCommand
                 writer,
                 dispatcher,
                 inFlightExecutions,
-                cancellationToken)
+                cancellationToken,
+                holderDescription: $"aer run pump (pid {Environment.ProcessId})")
             .ConfigureAwait(false);
 
         // Tear down provisioned worktrees only once the run is Terminal — a Paused run must keep its

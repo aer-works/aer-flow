@@ -54,7 +54,8 @@ public static class MutationInterface
         InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default,
         TimeProvider? timeProvider = null,
-        Func<double>? jitterSource = null)
+        Func<double>? jitterSource = null,
+        string? holderDescription = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -64,7 +65,7 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
 
         return await PumpToFixedPointAsync(
                 workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
@@ -100,7 +101,8 @@ public static class MutationInterface
         InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default,
         TimeProvider? timeProvider = null,
-        Func<double>? jitterSource = null)
+        Func<double>? jitterSource = null,
+        string? holderDescription = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -110,7 +112,7 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
 
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
         var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
@@ -172,7 +174,8 @@ public static class MutationInterface
         IReadOnlyList<string> inputs,
         IEventLogReader eventLogReader,
         IEventLogWriter eventLogWriter,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? holderDescription = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -183,7 +186,7 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogReader);
         ArgumentNullException.ThrowIfNull(eventLogWriter);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
 
         if (!workerBindings.TryGetValue(worker, out var binding) || binding is not WorkerBinding.NonProcess nonProcess)
         {
@@ -252,7 +255,8 @@ public static class MutationInterface
         InFlightExecutionRegistry? inFlightExecutions = null,
         CancellationToken cancellationToken = default,
         TimeProvider? timeProvider = null,
-        Func<double>? jitterSource = null)
+        Func<double>? jitterSource = null,
+        string? holderDescription = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -262,7 +266,7 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
 
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
         var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);

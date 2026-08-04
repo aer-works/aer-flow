@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Aer.Adapters;
 using Aer.Flow;
 using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
@@ -50,9 +51,6 @@ public sealed partial class HomeViewModel : ObservableObject
         TaskCards.Clear();
         InboxItems.Clear();
 
-        var runningCount = 0;
-        var finishedCount = 0;
-
         foreach (var taskDirectoryPath in recents)
         {
             TaskProjection projection;
@@ -77,38 +75,35 @@ public sealed partial class HomeViewModel : ObservableObject
             var card = TaskCardViewModel.FromProjection(taskDirectoryPath, projection, openTaskAsync);
             TaskCards.Add(card);
 
-            // #616: counted from the card's one derivation, not re-derived from the raw
-            // WorkflowStatus — the raw switch counted every Terminal run as "finished", so a
-            // failed or cancelled task inflated the summary's finished count (the counting form
-            // of the Finished-for-Cancelled defect). Every member is named; Failed, Cancelled and
-            // Unavailable are deliberately in neither count because the summary sentence doesn't
-            // speak of them.
-            switch (card.Status)
+            if (card.Status == TaskCardStatus.NeedsYou)
             {
-                case TaskCardStatus.Running:
-                    runningCount++;
-                    break;
-                case TaskCardStatus.Finished:
-                    finishedCount++;
-                    break;
-                case TaskCardStatus.NeedsYou:
-                    foreach (var stepState in projection.State.Steps)
+                foreach (var stepState in projection.State.Steps)
+                {
+                    if (stepState.Status == StepStatus.Paused)
                     {
-                        if (stepState.Status == StepStatus.Paused)
-                        {
-                            InboxItems.Add(BuildInboxItem(taskDirectoryPath, projection, stepState, openTaskAsync));
-                        }
+                        InboxItems.Add(BuildInboxItem(taskDirectoryPath, projection, stepState, openTaskAsync));
                     }
-
-                    break;
-                case TaskCardStatus.Failed:
-                case TaskCardStatus.Cancelled:
-                case TaskCardStatus.Unavailable:
-                    break;
+                }
             }
         }
 
         HasNoTasks = TaskCards.Count == 0;
+        UpdateInboxSummary();
+    }
+
+    /// <summary>
+    /// The inbox summary's one derivation, shared by <see cref="RefreshAsync"/> and
+    /// <see cref="RetireInboxItem"/> — #618's retire path first restated this switch inline, which
+    /// is exactly the two-copies drift the same issue exists to end on the gate surfaces.
+    /// Counts come from the card's one status derivation, not re-derived from the raw
+    /// WorkflowStatus (#616: the raw switch counted every Terminal run as "finished", so a failed
+    /// or cancelled task inflated the finished count). Failed, Cancelled and Unavailable are
+    /// deliberately in neither count because the summary sentence doesn't speak of them.
+    /// </summary>
+    private void UpdateInboxSummary()
+    {
+        var runningCount = TaskCards.Count(card => card.Status == TaskCardStatus.Running);
+        var finishedCount = TaskCards.Count(card => card.Status == TaskCardStatus.Finished);
         var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
         InboxSummaryText = InboxItems.Count switch
         {
@@ -116,6 +111,25 @@ public sealed partial class HomeViewModel : ObservableObject
             0 => $"Nothing is waiting on you — {runningCount} working, {finishedCount} finished.",
             _ => SummaryForPending(needsInputCount, InboxItems.Count - needsInputCount),
         };
+    }
+
+    /// <summary>
+    /// #618 (0020 clause 3): answering a gate once retires it everywhere. Removes the matching inbox
+    /// item immediately by gate identity (taskDirectoryPath, StepId, ExecutionId) without a full Home refresh.
+    /// </summary>
+    public void RetireInboxItem(string taskDirectoryPath, StepId stepId, ExecutionId executionId)
+    {
+        var key = AerPaths.RecordKey(taskDirectoryPath);
+        var matching = InboxItems.FirstOrDefault(item =>
+            AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(item.TaskDirectoryPath), key) &&
+            item.StepName == stepId.Value &&
+            item.ExecutionId == executionId.Value);
+
+        if (matching != null)
+        {
+            InboxItems.Remove(matching);
+            UpdateInboxSummary();
+        }
     }
 
     private static InboxItemViewModel BuildInboxItem(
@@ -165,7 +179,8 @@ public sealed partial class HomeViewModel : ObservableObject
             statusText,
             previewText,
             kind,
-            openTaskAsync);
+            openTaskAsync,
+            stepState.LatestExecutionId?.Value ?? string.Empty);
     }
 
     // #334: needs-input and ready-for-review are different human acts (#319 filters them apart), so
@@ -301,11 +316,12 @@ public enum TaskCardStatus
 /// </summary>
 public sealed partial class InboxItemViewModel(
     string taskDirectoryPath, string taskTitle, string stepName, string statusText, string previewText,
-    PausePointKind kind, Func<string, Task> openTaskAsync)
+    PausePointKind kind, Func<string, Task> openTaskAsync, string executionId = "")
 {
     public string TaskDirectoryPath { get; } = taskDirectoryPath;
     public string TaskTitle { get; } = taskTitle;
     public string StepName { get; } = stepName;
+    public string ExecutionId { get; } = executionId;
     public string StatusText { get; } = statusText;
     public string PreviewText { get; } = previewText;
     public bool HasPreview => PreviewText.Length > 0;

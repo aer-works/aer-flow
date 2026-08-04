@@ -72,6 +72,7 @@ public partial class MainWindow : Window
     /// <see cref="OpenAsync"/> as the settle-time re-open.
     /// </summary>
     private readonly TaskSession _session;
+    internal TaskSession Session => _session;
 
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
