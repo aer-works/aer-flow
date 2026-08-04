@@ -154,9 +154,9 @@ public class NavigationShellTests
     }
 
     /// <summary>
-    /// #616: the summary line's finished count comes from the card's one derivation, not the raw
-    /// WorkflowStatus — the raw switch counted every Terminal run as finished, so a cancelled task
-    /// inflated "N finished" (the counting form of the Finished-for-Cancelled defect).
+    /// #616: pins the summary sentence — why cancelled and failed runs sit in neither count is
+    /// documented once, at <see cref="HomeViewModel"/>'s counting switch. This fixture read
+    /// "2 finished" before that switch keyed on the card's derivation.
     /// </summary>
     [AvaloniaFact]
     public async Task InitializeAsync_does_not_count_a_cancelled_task_as_finished_in_the_summary()
