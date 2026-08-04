@@ -359,7 +359,9 @@ public static class MutationInterface
                     currentCheckpoint = null;
                 }
                 var events = log.FlowEvents;
-                (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint, log.ByteOffset);
+                var projection = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint, log.ByteOffset);
+                state = projection.State;
+                latestCheckpoint = projection.Checkpoint;
                 currentCheckpoint = latestCheckpoint;
 
                 var acceptedRequestByExecutionId = latestCheckpoint.State.AcceptedRequestByExecutionId;
@@ -371,8 +373,8 @@ public static class MutationInterface
                 // own comment). A dispatch this very call still has registered is excluded — that pump is
                 // this pump, not a crashed one.
                 var (mergedStarted, mergedExited) = CoreEventAggregation.Merge(
-                    latestCheckpoint?.State.CoreStartedExecutionIds,
-                    latestCheckpoint?.State.CoreExitedByExecutionId,
+                    latestCheckpoint.State.CoreStartedExecutionIds,
+                    latestCheckpoint.State.CoreExitedByExecutionId,
                     log.CoreEvents);
 
                 // Folded back into the working checkpoint immediately, not only at the save site:
@@ -638,7 +640,14 @@ public static class MutationInterface
                             }
 
                             var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
-                            if (completedWait == deferralHostStopWatcher)
+                            // The delay task and the watcher cancel off the same host token, so a host
+                            // stop can complete the *delay* task first and WhenAny returns it instead of
+                            // the watcher. Reaching the token directly closes that race: without it, the
+                            // next round's tail read returns synchronously when the log has no new bytes
+                            // (no awaited token observation anywhere in the round), both tasks arrive
+                            // here already cancelled, WhenAny picks the delay task again, and the loop
+                            // spins without ever noticing the stop (Test12's 30s timeout under load).
+                            if (completedWait == deferralHostStopWatcher || cancellationToken.IsCancellationRequested)
                             {
                                 hostStopRequested = true;
                                 ioCancellationToken = CancellationToken.None;
