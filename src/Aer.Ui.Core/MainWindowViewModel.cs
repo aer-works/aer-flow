@@ -152,7 +152,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string cancelStatusText = string.Empty;
 
-    /// <summary>Issue #618: the waiting-on-lock banner when a task directory is held by another process.</summary>
+    /// <summary>Issue #618: non-null while the waiting-on-lock state applies — see <see cref="WaitingOnLockBannerViewModel"/> for what it says and when.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWaitingOnLockBanner))]
     private WaitingOnLockBannerViewModel? waitingOnLockBanner;

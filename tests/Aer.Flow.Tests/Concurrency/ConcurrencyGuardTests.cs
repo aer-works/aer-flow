@@ -254,10 +254,7 @@ public class ConcurrencyGuardTests
         {
             using var holder = ConcurrencyGuard.Acquire(taskDirectory);
             var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
-            if (File.Exists(sidecarPath))
-            {
-                File.Delete(sidecarPath);
-            }
+            FileCleanup.EnsureDeleted(sidecarPath);
 
             var exception = Assert.Throws<WorkflowLockedException>(
                 () => ConcurrencyGuard.Acquire(taskDirectory));
