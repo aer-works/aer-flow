@@ -7,14 +7,11 @@ using Avalonia.Threading;
 namespace Aer.Ui.Tests;
 
 /// <summary>
-/// #981: the new-chat adapter ComboBox rendered blank while the ViewModel held a valid value. The
-/// mechanism was the two-way SelectedItem binding: PopulateAvailableAdapters Clear()s ItemsSource
-/// mid-refresh, the control nulls its selection, and two-way wrote that null back into
-/// <see cref="ChatViewModel.NewChatAdapter"/> — after which every re-assert pushed null. Down is
-/// now one-way and up travels only through a real pick (ChatView's SelectionChanged handler), so a
-/// repopulate can never erase the choice. These tests pin the write-back channel shut; the visual
-/// half was verified live (#981's measurements are explicit that headless property assertions
-/// alone stayed green while the screen was blank).
+/// #981: the new-chat adapter ComboBox rendered blank while the ViewModel held a valid value.
+/// The mechanism and the shape of the fix are documented once, beside the binding they describe —
+/// the ChatNewAdapterCombo comment in ChatView.axaml. These tests pin the write-back channel
+/// shut; the visual half was verified live (#981's measurements are explicit that headless
+/// property assertions alone stayed green while the screen was blank).
 /// </summary>
 public class ChatAdapterComboTests
 {
