@@ -984,6 +984,11 @@ def _negated_close_lint():
         # The mirror case, a `Closes #n` buried mid-line, is in must_fire: under the position rule it
         # is flagged, and correctly, since a close that is meant belongs on a line of its own.
         ("bold declaration", "**Closes #12.** The rest of the body follows."),
+        # The PR-template shape #975's reviewer found matched neither register: a bulleted close is
+        # deliberate, GitHub closes on it, and flagging it here would fight the commonest template.
+        ("bulleted declaration", "This PR:\n- Closes #12\n- Adds feature X"),
+        ("starred bulleted declaration", "* Closes #13"),
+        ("numbered declaration", "1. Fixes #14"),
         ("no keyword at all", "Not the same as #345, which is a different concern."),
         # GitHub links a keyword only when it sits immediately before the reference, so this closes
         # nothing and the lint must agree. Firing here would teach authors to reword around a
@@ -1004,6 +1009,57 @@ def _negated_close_lint():
 
     return (f"{len(must_fire)} must fire ({sum(1 for l, _ in must_fire if 'verbatim' in l)} real "
             f"incident bodies) + {len(must_not_fire)} must NOT fire")
+
+
+@check("a declared close is refused while its target issue still carries unchecked scope boxes")
+def _partial_closure_lint():
+    """#975's two pure halves. The incident is #961 closing #903 with three of four scopes unbuilt;
+    the strict-targeting arms pin the operator's constraint — declarations only — whose rationale
+    lives on `declared_closure_targets` itself.
+
+    The honest-scope arm is deliberate: #903's own scopes were prose headings, which this lint
+    cannot see — `completeness.py`'s register comment above UNCHECKED_BOX records the companion
+    convention (boxes, not headings) that makes partial closure machine-visible at all.
+    """
+    targets = completeness.declared_closure_targets
+    assert targets("Closes #971\n\nProse about #903 and its boxes.") == [971], (
+        "partial-closure lint: a bare reference was treated as a declared close, or the "
+        "declaration itself was missed — strict targeting is broken in one direction or the other")
+    assert targets("Closes #675. Closes #676.") == [675, 676], (
+        "partial-closure lint: a two-close declaration line no longer yields both targets")
+    assert targets("This PR:\n- Closes #12\n- Adds feature X") == [12], (
+        "partial-closure lint: the bulleted PR-template declaration is invisible again — the exact "
+        "false pass the #975 review found, where the closed issue is never inspected at all")
+    assert targets("It changes nothing. Closes #12.") == [], (
+        "partial-closure lint: a mid-line keyword became a declared target — that is the negated-"
+        "close lint's fault to flag, and inspecting it here would widen targeting past declarations")
+
+    boxes = completeness.unchecked_scope_lines
+    open_box = "## Scopes\n- [ ] build the thing\n- [x] already done\n* [ ] starred too\n+ [ ] plussed too\n1. [ ] numbered too"
+    assert boxes(open_box) == ["- [ ] build the thing", "* [ ] starred too", "+ [ ] plussed too", "1. [ ] numbered too"], (
+        "partial-closure lint: unchecked boxes were missed or a checked box was counted")
+    fenced = "```\n- [ ] just an example\n```\n~~~\n- [ ] tilde-fenced example\n~~~\n- [ ] real"
+    assert boxes(fenced) == ["- [ ] real"], (
+        "partial-closure lint: a box quoted inside a fence was counted, or the one after it missed")
+    nested = "````\n```\n- [ ] quoted example\n```\nstill fenced\n````\n- [ ] real"
+    assert boxes(nested) == ["- [ ] real"], (
+        "partial-closure lint: a shorter same-char run closed a longer fence early, un-hiding a "
+        "quoted example box")
+    sticky = "```python\ncode\n```js\nstill the same block per CommonMark\n```\n- [ ] real box after"
+    assert boxes(sticky) == ["- [ ] real box after"], (
+        "partial-closure lint: an info-string line was taken as a closer, desyncing the tracker so "
+        "the real box after the block was silently swallowed — the sticky false pass from the #975 "
+        "review")
+    assert boxes("## Scope one\nprose only\n## Scope two\nmore prose") == [], (
+        "partial-closure lint: fired on prose headings — the documented limitation stopped holding, "
+        "which means the convention comment is now wrong, not that this got better")
+
+    faults = completeness.partial_closure_faults(
+        {971: "- [x] all built\n- [x] shipped", 903: "- [ ] compaction\n- [ ] archival"})
+    assert list(faults) == [903] and len(faults[903]) == 2, (
+        "partial-closure lint: the join reported the wrong issue, missed one, or flagged a "
+        "fully-checked target")
+    return "4 targeting arms + 5 box arms + 1 join arm"
 
 
 @check("a wrong repo name fails STEP 4 loudly; every other gh failure still skips")

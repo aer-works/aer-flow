@@ -785,8 +785,12 @@ def gate_slugs(claude_md: str) -> set[str]:
 # parser does not would train authors to reword around a phantom.
 CLOSING_KEYWORD = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\W{0,3}#(\d+)", re.IGNORECASE)
+# A list marker before the keyword is still a declaration: "This PR:\n- Closes #12" is the most
+# common PR-template shape there is, GitHub closes on it, and #975's second reader found it matched
+# NEITHER register — the accident lint flagged a deliberate close while the partial-closure lint
+# never inspected its target.
 DECLARATION_LINE = re.compile(
-    r"^\s*(?:[*_]{1,2})?(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b", re.IGNORECASE)
+    r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?:[*_]{1,2})?(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b", re.IGNORECASE)
 
 
 def negated_close_faults(body: str) -> list:
@@ -804,6 +808,81 @@ def negated_close_faults(body: str) -> list:
         if DECLARATION_LINE.match(line):
             continue
         faults.extend(int(n) for n in CLOSING_KEYWORD.findall(line))
+    return faults
+
+
+# The partial-closure lint (#975). Named failure: PR #961's body declared `Closes #903` while three
+# of that issue's four scopes were unbuilt -- the remainder survived only as a closure comment,
+# invisible to the open backlog for a day until rediscovered by accident and re-homed (#971-#973).
+# A closure comment is not a backlog; the moment the issue closed, the unbuilt work had no open home.
+#
+# Honest scope: #903's remaining scopes were prose headings, not boxes, and this lint would not have
+# seen them. It enforces the CHECKABLE form; the companion convention -- stated here once, repeated
+# only by the failure message -- is that multi-scope issue bodies carry their scopes as task-list
+# boxes (`- [ ]`) precisely so a partial closure becomes machine-visible.
+# Deliberately wider than what GitHub certainly renders as a checkbox: the numbered form may draw
+# as literal text, but an author who wrote "1. [ ] scope" meant an unbuilt scope either way, and a
+# false fire on coincidental prose of that exact shape is far less likely than a numbered scope
+# list. Wide is the safe direction for a lint whose miss strands work outside the backlog.
+UNCHECKED_BOX = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]")
+FENCE_LINE = re.compile(r"^\s*(`{3,}|~{3,})")
+
+
+def declared_closure_targets(body: str) -> list[int]:
+    """Issue numbers a PR body DELIBERATELY closes: keyword references on declaration lines.
+
+    The exact complement of `negated_close_faults`, built from the same two regexes so the two
+    lints can never disagree about which close is meant. Targeting is strict (operator constraint,
+    2026-08-04): only issues the body declares closed are inspected by the partial-closure lint --
+    an umbrella issue that is merely referenced never trips it, however many open boxes it carries,
+    because closing a DIFFERENT issue than the one left partially built is often exactly right.
+    """
+    targets = []
+    for line in (body or "").splitlines():
+        if DECLARATION_LINE.match(line):
+            targets.extend(int(n) for n in CLOSING_KEYWORD.findall(line))
+    return list(dict.fromkeys(targets))
+
+
+def unchecked_scope_lines(issue_body: str) -> list[str]:
+    """The unchecked task-list boxes in an issue body, fenced code blocks excluded.
+
+    Pure, same reason as `negated_close_faults`: a lint that can only run against a live issue
+    cannot be shown to discriminate. Fence tracking follows CommonMark's closing rule, which the
+    first draft did not (#975's second reader): a closer must use the opener's marker character,
+    run at least as long, and carry nothing but whitespace after it. Getting that wrong in either
+    direction is costly — a shorter nested run closing a longer fence un-hides quoted example
+    boxes, and treating ```js as a closer desyncs the tracker so every REAL box after it is
+    silently swallowed for the rest of the document.
+    """
+    boxes = []
+    fence = None  # (marker char, run length) of the open fence
+    for line in (issue_body or "").splitlines():
+        m = FENCE_LINE.match(line)
+        if m:
+            run = m.group(1)
+            rest = line[m.end():]
+            if fence is None:
+                fence = (run[0], len(run))
+            elif run[0] == fence[0] and len(run) >= fence[1] and not rest.strip():
+                fence = None
+            continue
+        if fence is None and UNCHECKED_BOX.match(line):
+            boxes.append(line.strip())
+    return boxes
+
+
+def partial_closure_faults(declared: dict) -> dict:
+    """{issue number: its unchecked box lines} for every declared target that still has any.
+
+    `declared` maps each declared closure target to its issue body -- the caller owns fetching,
+    so this stays pure and the selfcheck arms can drive it with planted bodies.
+    """
+    faults = {}
+    for number, body in declared.items():
+        boxes = unchecked_scope_lines(body)
+        if boxes:
+            faults[number] = boxes
     return faults
 
 
@@ -1028,12 +1107,89 @@ def pr_body_mode() -> int:
     return 1
 
 
+def fetch_issue(number: int) -> dict:
+    """{'body': ..., 'state': ...} for one issue via `gh`, or raises SystemExit loudly.
+
+    Loud on EVERY failure, unlike STEP 4's offline-skip: this mode guards a merge that is about to
+    close the issue, CI always has a token, and a skip here would bless exactly the partial close
+    the lint exists to stop. A local caller without `gh` auth gets the same loud refusal — honest
+    over convenient.
+    """
+    import json
+    try:
+        out = subprocess.run(
+            ["gh", "issue", "view", str(number), "--repo", "aer-works/baton", "--json", "body,state"],
+            capture_output=True, text=True, cwd=ROOT, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise SystemExit(f"!! could not fetch issue #{number}: {e}. Nothing was checked.")
+    if out.returncode != 0:
+        raise SystemExit(f"!! `gh issue view {number}` failed: {out.stderr.strip()[:200]}. Nothing was checked.")
+    try:
+        return json.loads(out.stdout)
+    except ValueError:
+        raise SystemExit(f"!! could not parse `gh issue view {number}` output. Nothing was checked.")
+
+
+def pr_closures_mode() -> int:
+    """`--pr-closures`: read a PR body on stdin and refuse a declared close whose target issue
+    still carries unchecked scope boxes (#975).
+
+    Same stdin-only contract as `--pr-body`, same #860 refusal of a stray argument. Only OPEN
+    declared targets are inspected: re-declaring a close against an already-closed issue cannot
+    lose work this PR is responsible for, and flagging legacy boxes there would teach authors to
+    distrust the lint (the direction that gets one turned off).
+
+    Fixing the flagged ISSUE does not re-trigger CI the way editing the PR body does — the issue
+    body is fetched live at run time, so a plain re-run of the failed check picks the fix up.
+    """
+    stray = [a for a in sys.argv[1:] if a != "--pr-closures"]
+    if stray:
+        print(f"!! --pr-closures reads the body on STDIN and takes no argument; got: {' '.join(stray)}")
+        print("   Nothing was checked. Pipe the body in instead:")
+        print("     gh pr view <n> --json body -q .body | python completeness.py --pr-closures")
+        return 1
+
+    body = sys.stdin.read()
+    targets = declared_closure_targets(body)
+    if not targets:
+        print("OK the body declares no closes; there is nothing to inspect.")
+        return 0
+
+    declared = {}
+    for number in targets:
+        issue = fetch_issue(number)
+        if str(issue.get("state", "")).upper() == "OPEN":
+            declared[number] = issue.get("body") or ""
+
+    faults = partial_closure_faults(declared)
+    if not faults:
+        print(f"OK every declared close ({', '.join('#' + str(n) for n in targets)}) targets an "
+              "issue with no unchecked scope boxes.")
+        return 0
+    print("!! this PR body declares a close on issue(s) whose scope boxes are not all checked —")
+    print("   the close would strand that work outside the open backlog (#961/#903 is the incident):")
+    for n, boxes in faults.items():
+        print(f"   #{n}:")
+        for box in boxes[:10]:
+            print(f"      {box}")
+        if len(boxes) > 10:
+            print(f"      ... and {len(boxes) - 10} more")
+    print("   Either finish the scope and check its box, re-home an unbuilt scope as its own issue")
+    print("   (then check the box with a pointer), split the issue, or drop the closing keyword")
+    print("   (`#N remains open — see ...`). The convention this enforces: multi-scope issues carry")
+    print("   their scopes as task-list boxes so a partial close is machine-visible. After editing")
+    print("   the ISSUE, re-run this check — the issue body is fetched live, so no PR edit is needed.")
+    return 1
+
+
 def main() -> int:
     # A snippet quoted from a UTF-8 doc must survive a cp1252 console: STEP 4 once found its
     # stale citation and then died PRINTING it, reporting the count but never the culprit.
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
+    if "--pr-closures" in sys.argv:
+        return pr_closures_mode()
     if "--pr-body" in sys.argv:
         return pr_body_mode()
     print(__doc__.split("USAGE")[0].strip().splitlines()[0])
