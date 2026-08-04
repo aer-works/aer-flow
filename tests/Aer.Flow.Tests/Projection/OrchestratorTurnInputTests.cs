@@ -1,0 +1,219 @@
+using Aer.Flow.Domain;
+using Aer.Flow.Projection;
+using Aer.Flow.Store;
+using Aer.Tests.Shared;
+
+namespace Aer.Flow.Tests.Projection;
+
+public class OrchestratorTurnInputTests
+{
+    private static async Task<string> CreateTestRoomAsync()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_turn_input_test_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempDir);
+
+        var roomLogPath = Path.Combine(tempDir, "room.jsonl");
+        await using var writer = new RoomEventLogWriter(roomLogPath);
+
+        var dispatch = new RoomEvent.HeldWorkDispatched(
+            Ref: new HeldWorkRef("lane-1"),
+            Shape: "test-shape",
+            Budget: TimeSpan.FromMinutes(5),
+            DeciderIdentity: "human");
+
+        await writer.AppendAsync(dispatch, CancellationToken.None);
+
+        return tempDir;
+    }
+
+    [Fact]
+    public async Task First_turn_no_cursor_file_gets_full_history_as_delta_and_is_cold_start()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+
+            Assert.True(input.IsColdStart);
+            Assert.Null(input.InitialCursor);
+            Assert.Single(input.EventDelta);
+            Assert.Single(input.Wakes);
+            Assert.Equal(1, input.TotalEventCount);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public async Task Second_turn_after_commit_gets_only_delta()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1], CancellationToken.None);
+            Assert.True(turn1.IsColdStart);
+            Assert.Single(turn1.EventDelta);
+
+            // Commit turn 1
+            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: CancellationToken.None);
+
+            // Append a second event to room journal
+            var roomLogPath = Path.Combine(roomDir, "room.jsonl");
+            await using (var writer = new RoomEventLogWriter(roomLogPath))
+            {
+                var escalated = new RoomEvent.HeldWorkEscalated(
+                    Ref: new HeldWorkRef("lane-1"),
+                    ToWhom: "operator");
+                await writer.AppendAsync(escalated, CancellationToken.None);
+            }
+
+            var wake2 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.EscalatedLaneTerminated);
+            var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake2], CancellationToken.None);
+
+            Assert.False(turn2.IsColdStart);
+            Assert.NotNull(turn2.InitialCursor);
+            Assert.Equal(1, turn2.InitialCursor!.ProcessedEventCount);
+            Assert.Single(turn2.EventDelta);
+            Assert.IsType<RoomEvent.HeldWorkEscalated>(turn2.EventDelta[0]);
+            Assert.Equal(2, turn2.TotalEventCount);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public async Task Crash_between_assemble_and_commit_replays_same_delta()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var turnAttempt1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            Assert.Single(turnAttempt1.EventDelta);
+
+            // "Crash" -- no call to CommitTurnAsync!
+
+            // Next wake / turn assembly replays identical delta
+            var turnAttempt2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            Assert.True(turnAttempt2.IsColdStart);
+            Assert.Single(turnAttempt2.EventDelta);
+            Assert.Equal(turnAttempt1.EventDelta[0], turnAttempt2.EventDelta[0]);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public async Task Commit_advances_so_next_delta_is_empty_when_no_new_events()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            Assert.Single(turn1.EventDelta);
+
+            await OrchestratorTurnInput.CommitTurnAsync(roomDir, turn1.TotalEventCount, cancellationToken: CancellationToken.None);
+
+            var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+            Assert.False(turn2.IsColdStart);
+            Assert.Empty(turn2.EventDelta);
+            Assert.Equal(1, turn2.TotalEventCount);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public async Task Polarity_corrupt_cursor_file_falls_back_to_cold_start_loudly()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var aerDir = Path.Combine(roomDir, ".aer");
+            Directory.CreateDirectory(aerDir);
+            var cursorFile = Path.Combine(aerDir, "orchestrator-session.json");
+            File.WriteAllText(cursorFile, "{ corrupt json ... }}}");
+
+            using var sw = new StringWriter();
+            var originalErr = Console.Error;
+            Console.SetError(sw);
+
+            OrchestratorTurnInput input;
+            try
+            {
+                input = await OrchestratorTurnInput.AssembleAsync(roomDir, [], CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetError(originalErr);
+            }
+
+            Assert.True(input.IsColdStart);
+            Assert.Null(input.InitialCursor);
+            Assert.Single(input.EventDelta);
+
+            var errOutput = sw.ToString();
+            Assert.Contains("Cold start LOUDLY", errOutput);
+
+            // Clean up single cursor file via FileCleanup
+            FileCleanup.Delete(cursorFile);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public async Task Coalescing_multiple_pending_wakes_yields_one_turn_input_with_all_wakes_present()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake2 = new RoomWake(new HeldWorkRef("lane-2"), RoomWakeKind.DispatchOrphaned);
+
+            var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1, wake2], CancellationToken.None);
+
+            Assert.Equal(2, input.Wakes.Count);
+            Assert.Contains(wake1, input.Wakes);
+            Assert.Contains(wake2, input.Wakes);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+
+    [Fact]
+    public async Task Red_first_proof_uncommitted_turn_does_not_advance_cursor()
+    {
+        var roomDir = await CreateTestRoomAsync();
+        try
+        {
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var turn = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], CancellationToken.None);
+
+            // RED FIRST PROOF: Intentionally asserting a wrong condition so we can run red, capture failure, and prove harness discriminates.
+            // After turn assembly without commit, cursor file should NOT exist, so Load returns null.
+            // We temporarily assert it IS not null to prove RED!
+            var cursorAfterAssembleNoCommit = OrchestratorSessionStore.Load(roomDir);
+            Assert.Null(cursorAfterAssembleNoCommit);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
+    }
+}
