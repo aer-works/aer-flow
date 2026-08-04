@@ -7,9 +7,11 @@ namespace Aer.Flow.Outcomes;
 /// M10 Phase 3 (spec §7 full robustness): reconciles a <see cref="WorkerBinding.Process"/> step
 /// whose latest attempt is still projected <see cref="StepStatus.Running"/> — genuinely still
 /// executing, or a prior pump crashed before recording its outcome, the two indistinguishable from
-/// <see cref="FlowEvent"/>s alone (§6) — by reading back the Core half of the log
-/// (<see cref="CoreEvent.ExecutionStarted"/>/<see cref="CoreEvent.ExecutionExited"/>) that
-/// <see cref="Store.FlowEventLogReader.ReadAllCoreEventsAsync"/> now surfaces. Consulted at the top
+/// <see cref="FlowEvent"/>s alone (§6) — from the Core half of the log
+/// (<see cref="CoreEvent.ExecutionStarted"/>/<see cref="CoreEvent.ExecutionExited"/>), which since
+/// #971 arrives pre-aggregated: the caller merges the checkpoint's carried aggregates with the tail
+/// read's <see cref="CoreEvent"/>s (<see cref="CoreEventAggregation.Merge"/>) and passes the merged
+/// sets, so this detector sees the whole Core history however little of the log was re-read. Consulted at the top
 /// of every scheduling round, the same derived-obligation pattern <see cref="NonProcessCompletionDetector"/>
 /// and <see cref="NonProcessCancellationDetector"/> already follow, so a crash at any point below
 /// simply re-evaluates the identical projected fact on the next mutation call (§13). Non-process
@@ -45,29 +47,16 @@ public static class ProcessCrashRecoveryDetector
         FlowState state,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
-        IReadOnlyList<CoreEvent> coreEvents,
+        IReadOnlySet<ExecutionId> startedExecutionIds,
+        IReadOnlyDictionary<ExecutionId, CoreEvent.ExecutionExited> exitedByExecutionId,
         IReadOnlySet<ExecutionId> inFlightExecutionIds)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
-        ArgumentNullException.ThrowIfNull(coreEvents);
+        ArgumentNullException.ThrowIfNull(startedExecutionIds);
+        ArgumentNullException.ThrowIfNull(exitedByExecutionId);
         ArgumentNullException.ThrowIfNull(inFlightExecutionIds);
-
-        var startedExecutionIds = new HashSet<ExecutionId>();
-        var exitedByExecutionId = new Dictionary<ExecutionId, CoreEvent.ExecutionExited>();
-        foreach (var coreEvent in coreEvents)
-        {
-            switch (coreEvent)
-            {
-                case CoreEvent.ExecutionStarted started:
-                    startedExecutionIds.Add(started.ExecutionId);
-                    break;
-                case CoreEvent.ExecutionExited exited:
-                    exitedByExecutionId[exited.ExecutionId] = exited;
-                    break;
-            }
-        }
 
         var stepStateByStepId = state.Steps.ToDictionary(step => step.StepId);
         var toResubmit = new List<ExecutionId>();

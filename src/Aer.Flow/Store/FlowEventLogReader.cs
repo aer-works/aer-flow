@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Aer.Flow.Domain;
 
@@ -49,24 +50,110 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
 
     public async Task<EventLogSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        var entries = await ReadAllEntriesAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadSnapshotFromOffsetAsync(0, cancellationToken).ConfigureAwait(false);
+    }
 
-        var flowEvents = new List<FlowEvent>(entries.Count);
-        var coreEvents = new List<CoreEvent>(entries.Count);
-        foreach (var entry in entries)
+    public async Task<EventLogSnapshot> ReadSnapshotFromOffsetAsync(long seekByteOffset, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(logFilePath))
         {
-            switch (entry)
-            {
-                case LogEntry.FlowLogEntry flowLogEntry:
-                    flowEvents.Add(flowLogEntry.Event);
-                    break;
-                case LogEntry.CoreLogEntry coreLogEntry:
-                    coreEvents.Add(coreLogEntry.Event);
-                    break;
-            }
+            return new EventLogSnapshot([], [], 0);
         }
 
-        return new EventLogSnapshot(flowEvents, coreEvents);
+        if (seekByteOffset <= 0)
+        {
+            return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
+            await using var stream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var fileLength = stream.Length;
+
+            if (seekByteOffset > fileLength)
+            {
+                Console.Error.WriteLine(
+                    $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Checkpoint ByteOffset ({seekByteOffset}) exceeds log length ({fileLength}).");
+                return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // Boundary validation: the byte at seekByteOffset - 1 must be '\n'. This runs BEFORE
+            // the caught-up early return below, not only on the read-a-tail path: "checkpoint equals
+            // log length, nothing appended since" is the most common call shape of all, and it was
+            // the one branch that trusted an unvalidated offset outright (#971's second reader).
+            stream.Seek(seekByteOffset - 1, SeekOrigin.Begin);
+            int prevByte = stream.ReadByte();
+            if (prevByte != '\n')
+            {
+                Console.Error.WriteLine(
+                    $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Checkpoint ByteOffset ({seekByteOffset}) does not land on a record boundary (previous byte 0x{prevByte:X2} != '\\n').");
+                return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            if (seekByteOffset == fileLength)
+            {
+                return new EventLogSnapshot([], [], fileLength);
+            }
+
+            // Seek to tail start
+            stream.Seek(seekByteOffset, SeekOrigin.Begin);
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+            var text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+
+            // Only lines terminated by '\n' are complete entries (§5.3); a dangling suffix with no
+            // terminator is a write still in flight (or a crash mid-append) and is not yet observable.
+            var lastNewline = text.LastIndexOf('\n');
+            var completeText = lastNewline >= 0 ? text[..(lastNewline + 1)] : string.Empty;
+            var completeByteCount = Encoding.UTF8.GetByteCount(completeText);
+            var lines = completeText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+            var flowEvents = new List<FlowEvent>(lines.Length);
+            var coreEvents = new List<CoreEvent>(lines.Length);
+
+            foreach (var line in lines)
+            {
+                LogEntry? entry;
+                try
+                {
+                    entry = JsonSerializer.Deserialize<LogEntry>(line, FlowEventLogJson.Options);
+                }
+                catch (JsonException ex)
+                {
+                    Console.Error.WriteLine(
+                        $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Mid-line corruption or unparseable line at seek target: {ex.Message}");
+                    return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                if (entry is null)
+                {
+                    Console.Error.WriteLine(
+                        "[ProjectionCheckpoint] Fallback to full replay LOUDLY: Line at seek target deserialized to null.");
+                    return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                switch (entry)
+                {
+                    case LogEntry.FlowLogEntry flowLogEntry:
+                        flowEvents.Add(flowLogEntry.Event);
+                        break;
+                    case LogEntry.CoreLogEntry coreLogEntry:
+                        coreEvents.Add(coreLogEntry.Event);
+                        break;
+                }
+            }
+
+            return new EventLogSnapshot(flowEvents, coreEvents, seekByteOffset + completeByteCount);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A cancellation is the caller's request, never a corrupt checkpoint — swallowing it
+            // into a full replay would turn "stop now" into the most expensive read in the file.
+            // Everything else (sharing violation, truncation under the seek, encoding surprise) is
+            // exactly what the loud full-replay fallback exists for.
+            Console.Error.WriteLine(
+                $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Exception during seek-to-tail read: {ex.Message}");
+            return await ReadFullSnapshotInternalAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -92,13 +179,11 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
             text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        // Only lines terminated by '\n' are complete entries (§5.3); a dangling suffix with no
-        // terminator is a write still in flight (or a crash mid-append) and is not yet observable.
         var lastNewline = text.LastIndexOf('\n');
         var completeText = lastNewline >= 0 ? text[..(lastNewline + 1)] : string.Empty;
         var lines = completeText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        var entries = new List<LogEntry>(lines.Length);
+        var result = new List<LogEntry>(lines.Length);
         foreach (var line in lines)
         {
             LogEntry? entry;
@@ -116,9 +201,62 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
                 throw new FlowEventLogReadException($"Line in the ledger deserialized to null: {line}");
             }
 
-            entries.Add(entry);
+            result.Add(entry);
         }
 
-        return entries;
+        return result;
+    }
+
+    private async Task<EventLogSnapshot> ReadFullSnapshotInternalAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(logFilePath))
+        {
+            return new EventLogSnapshot([], [], 0, IsFallbackToFull: true);
+        }
+
+        string text;
+        await using (var stream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true))
+        {
+            text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        var lastNewline = text.LastIndexOf('\n');
+        var completeText = lastNewline >= 0 ? text[..(lastNewline + 1)] : string.Empty;
+        var completeByteCount = Encoding.UTF8.GetByteCount(completeText);
+        var lines = completeText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        var flowEvents = new List<FlowEvent>(lines.Length);
+        var coreEvents = new List<CoreEvent>(lines.Length);
+
+        foreach (var line in lines)
+        {
+            LogEntry? entry;
+            try
+            {
+                entry = JsonSerializer.Deserialize<LogEntry>(line, FlowEventLogJson.Options);
+            }
+            catch (JsonException ex)
+            {
+                throw new FlowEventLogReadException($"Malformed line in the ledger: {line}", ex);
+            }
+
+            if (entry is null)
+            {
+                throw new FlowEventLogReadException($"Line in the ledger deserialized to null: {line}");
+            }
+
+            switch (entry)
+            {
+                case LogEntry.FlowLogEntry flowLogEntry:
+                    flowEvents.Add(flowLogEntry.Event);
+                    break;
+                case LogEntry.CoreLogEntry coreLogEntry:
+                    coreEvents.Add(coreLogEntry.Event);
+                    break;
+            }
+        }
+
+        return new EventLogSnapshot(flowEvents, coreEvents, completeByteCount, IsFallbackToFull: true);
     }
 }

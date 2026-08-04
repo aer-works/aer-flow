@@ -112,13 +112,14 @@ public static class MutationInterface
 
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
-        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
-        var state = StateProjector.Project(events, snapshot, checkpoint);
-        var succeededExecutionIds = events
-            .OfType<FlowEvent.ExecutionSucceeded>()
-            .Select(e => e.ExecutionId)
-            .ToHashSet();
+        var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
+        if (log.IsFallbackToFull)
+        {
+            checkpoint = null;
+        }
+        var (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(log.FlowEvents, snapshot, checkpoint, log.ByteOffset);
+        var succeededExecutionIds = latestCheckpoint.State.SucceededExecutionIds;
 
         ExternalDecisionValidator.Validate(
             state, snapshot, succeededExecutionIds, referencedExecutionId, decisionType, targetStepId, supplementaryExecutionId);
@@ -210,9 +211,13 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(CreateExecutionRequestAccepted(request), cancellationToken)
             .ConfigureAwait(false);
 
-        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
-        var state = StateProjector.Project(events, snapshot, checkpoint);
+        var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
+        if (log.IsFallbackToFull)
+        {
+            checkpoint = null;
+        }
+        var (state, _) = StateProjector.ProjectAndCheckpoint(log.FlowEvents, snapshot, checkpoint, log.ByteOffset);
 
         return (state, executionId);
     }
@@ -259,11 +264,14 @@ public static class MutationInterface
 
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
-        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var knownExecutionIds = events
-            .OfType<FlowEvent.ExecutionRequestAccepted>()
-            .Select(e => e.Request.ExecutionId)
-            .ToHashSet();
+        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
+        if (log.IsFallbackToFull)
+        {
+            checkpoint = null;
+        }
+        var (_, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(log.FlowEvents, snapshot, checkpoint, log.ByteOffset);
+        var knownExecutionIds = latestCheckpoint.State.AcceptedRequestByExecutionId.Keys.ToHashSet();
 
         CancellationValidator.Validate(knownExecutionIds, targetExecutionId);
 
@@ -345,19 +353,18 @@ public static class MutationInterface
                 // A single read of the combined log per round — feeding both Flow's own projection and
                 // M10 Phase 3's crash reconciliation from one pass, rather than reading and parsing the
                 // same file twice for no new information.
-                var log = await eventLogReader.ReadSnapshotAsync(ioCancellationToken).ConfigureAwait(false);
+                var log = await eventLogReader.ReadSnapshotFromOffsetAsync(currentCheckpoint?.ByteOffset ?? 0, ioCancellationToken).ConfigureAwait(false);
+                if (log.IsFallbackToFull)
+                {
+                    currentCheckpoint = null;
+                }
                 var events = log.FlowEvents;
-                (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint);
+                var projection = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint, log.ByteOffset);
+                state = projection.State;
+                latestCheckpoint = projection.Checkpoint;
                 currentCheckpoint = latestCheckpoint;
 
-                // Keyed once per round rather than re-scanned per obligation: every crash-recovery
-                // branch below that acts on an already-accepted execution (classification or
-                // re-submission) looks up its durably recorded ExecutionRequest here instead of
-                // reconstructing one, so no new ExecutionRequestAccepted is ever needed for the same
-                // attempt.
-                var acceptedRequestByExecutionId = events
-                    .OfType<FlowEvent.ExecutionRequestAccepted>()
-                    .ToDictionary(e => e.Request.ExecutionId, e => e.Request);
+                var acceptedRequestByExecutionId = latestCheckpoint.State.AcceptedRequestByExecutionId;
 
                 // M10 Phase 3 (§7 full robustness): joins Core's half of the log — read back here for
                 // the first time since M7 Phase 6 wrote it — to Flow's own intents by ExecutionId (§6),
@@ -365,8 +372,32 @@ public static class MutationInterface
                 // crashed before recording its outcome" (until now indistinguishable, per StateProjector's
                 // own comment). A dispatch this very call still has registered is excluded — that pump is
                 // this pump, not a crashed one.
+                var (mergedStarted, mergedExited) = CoreEventAggregation.Merge(
+                    latestCheckpoint.State.CoreStartedExecutionIds,
+                    latestCheckpoint.State.CoreExitedByExecutionId,
+                    log.CoreEvents);
+
+                // Folded back into the working checkpoint immediately, not only at the save site:
+                // each round reads the log from the previous round's offset, so a later round's
+                // merge must start from these aggregates or the earlier tail's core events vanish
+                // from its view. Load-bearing whenever one read surfaces obligations in two
+                // priority buckets — the bucket blocks below each `continue` after acting, so the
+                // lower bucket's execution is handled a round AFTER the read that observed it, and
+                // without this carry it would re-derive as ToResubmit: a duplicate live dispatch
+                // of a process that may still be running (PumpCheckpointCarryTests' two-bucket
+                // fixture is exactly that trace).
+                latestCheckpoint = latestCheckpoint with
+                {
+                    State = latestCheckpoint.State with
+                    {
+                        CoreStartedExecutionIds = mergedStarted,
+                        CoreExitedByExecutionId = mergedExited,
+                    },
+                };
+                currentCheckpoint = latestCheckpoint;
+
                 var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
-                    state, snapshot, workerBindings, log.CoreEvents, registeredExecutionIds);
+                    state, snapshot, workerBindings, mergedStarted, mergedExited, registeredExecutionIds);
 
                 // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
                 // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
@@ -613,7 +644,14 @@ public static class MutationInterface
                             }
 
                             var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
-                            if (completedWait == deferralHostStopWatcher)
+                            // The delay task and the watcher cancel off the same host token, so a host
+                            // stop can complete the *delay* task first and WhenAny returns it instead of
+                            // the watcher. Reaching the token directly closes that race: without it, the
+                            // next round's tail read returns synchronously when the log has no new bytes
+                            // (no awaited token observation anywhere in the round), both tasks arrive
+                            // here already cancelled, WhenAny picks the delay task again, and the loop
+                            // spins without ever noticing the stop (Test12's 30s timeout under load).
+                            if (completedWait == deferralHostStopWatcher || cancellationToken.IsCancellationRequested)
                             {
                                 hostStopRequested = true;
                                 ioCancellationToken = CancellationToken.None;
@@ -630,6 +668,19 @@ public static class MutationInterface
 
                     if (latestCheckpoint is not null)
                     {
+                        // Write pruned merged core aggregates into the checkpoint before saving.
+                        // Invariant note: Carrying core aggregates in the checkpoint removes the reliance on saving
+                        // checkpoints only at clean pump return (after in-flight stops record exits) for correctness.
+                        // However, saving at clean return remains a performance assumption to avoid unneeded disk writes.
+                        var (prunedStarted, prunedExited) = CoreEventAggregation.Prune(mergedStarted, mergedExited, state);
+                        latestCheckpoint = latestCheckpoint with
+                        {
+                            State = latestCheckpoint.State with
+                            {
+                                CoreStartedExecutionIds = prunedStarted,
+                                CoreExitedByExecutionId = prunedExited
+                            }
+                        };
                         ProjectionCheckpointStore.Save(taskDirectoryPath, latestCheckpoint);
                     }
 
@@ -673,11 +724,17 @@ public static class MutationInterface
                 }
 
                 var completed = await Task.WhenAny(waitCandidates).ConfigureAwait(false);
-                if (completed == deferralWakeup)
+                // Same shared-token race as the idle branch's wait (see the comment there): the
+                // wakeup must not swallow a host stop it lost the WhenAny race to. Unlike there,
+                // losing this race is self-recovering (the watcher precedes the wakeup in the
+                // candidate list, and a cancelled-token append refuses before any post-stop
+                // dispatch could land) — the guard buys symmetry and one round of latency, not a
+                // hang fix.
+                if (completed == deferralWakeup && !cancellationToken.IsCancellationRequested)
                 {
                     continue;
                 }
-                if (completed == hostStopWatcher)
+                if (completed == hostStopWatcher || (completed == deferralWakeup && cancellationToken.IsCancellationRequested))
                 {
                     hostStopRequested = true;
 

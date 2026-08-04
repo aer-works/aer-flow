@@ -10,7 +10,9 @@ namespace Aer.Flow.Projection;
 /// </summary>
 public sealed record ProjectionCheckpoint(
     long EventOffset,
-    ProjectionCheckpointState State);
+    ProjectionCheckpointState State,
+    long ByteOffset = 0,
+    int Version = 2);
 
 /// <summary>
 /// Serializable snapshot of <see cref="StateProjector"/>'s internal working dictionaries and sets.
@@ -36,7 +38,11 @@ public sealed record ProjectionCheckpointState(
     HashSet<StepId> PendingSupersedeTargetStepIds,
     Dictionary<StepId, DateTimeOffset> RetryNotBeforeByStepId,
     Dictionary<StepId, int> RetryDelayMsByStepId,
-    Dictionary<StepId, ExecutionId> RetryScheduledForExecutionIdByStepId)
+    Dictionary<StepId, ExecutionId> RetryScheduledForExecutionIdByStepId,
+    HashSet<ExecutionId> SucceededExecutionIds,
+    Dictionary<ExecutionId, ExecutionRequest> AcceptedRequestByExecutionId,
+    HashSet<ExecutionId> CoreStartedExecutionIds,
+    Dictionary<ExecutionId, CoreEvent.ExecutionExited> CoreExitedByExecutionId)
 {
     public static ProjectionCheckpointState CreateEmpty() => new(
         new Dictionary<StepId, ExecutionId>(),
@@ -59,7 +65,11 @@ public sealed record ProjectionCheckpointState(
         new HashSet<StepId>(),
         new Dictionary<StepId, DateTimeOffset>(),
         new Dictionary<StepId, int>(),
-        new Dictionary<StepId, ExecutionId>());
+        new Dictionary<StepId, ExecutionId>(),
+        new HashSet<ExecutionId>(),
+        new Dictionary<ExecutionId, ExecutionRequest>(),
+        new HashSet<ExecutionId>(),
+        new Dictionary<ExecutionId, CoreEvent.ExecutionExited>());
 
     public ProjectionCheckpointState DeepCopy() => new(
         new Dictionary<StepId, ExecutionId>(LatestExecutionIdByStepId),
@@ -82,5 +92,9 @@ public sealed record ProjectionCheckpointState(
         new HashSet<StepId>(PendingSupersedeTargetStepIds),
         new Dictionary<StepId, DateTimeOffset>(RetryNotBeforeByStepId),
         new Dictionary<StepId, int>(RetryDelayMsByStepId),
-        new Dictionary<StepId, ExecutionId>(RetryScheduledForExecutionIdByStepId));
+        new Dictionary<StepId, ExecutionId>(RetryScheduledForExecutionIdByStepId),
+        new HashSet<ExecutionId>(SucceededExecutionIds),
+        new Dictionary<ExecutionId, ExecutionRequest>(AcceptedRequestByExecutionId),
+        new HashSet<ExecutionId>(CoreStartedExecutionIds),
+        new Dictionary<ExecutionId, CoreEvent.ExecutionExited>(CoreExitedByExecutionId));
 }
