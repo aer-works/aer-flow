@@ -226,6 +226,19 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 .sw-toggle.on{border-color:var(--accent);color:var(--accent)}
 .sw-toggle .dot-sw{width:7px;height:7px;border-radius:50%;background:var(--text-3)}
 .sw-toggle.on .dot-sw{background:var(--accent)}
+
+/* ---- Resident-room addition — spend controls, dormancy, waiting on a lock ---- */
+.dm{color:var(--idle)}.wt{color:var(--idle)} /* both quiet states share the muted hue; the real marks/colours are tokens' call (#616) — --review would collide with "reviewing" */
+.turn.quiet{border-color:var(--rule);background:var(--sunk)}
+.turn.quiet .who{color:var(--text-3)}
+.meter{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-2)}
+.meter .bar{display:flex;gap:2px}
+.meter .bar i{width:7px;height:12px;border-radius:2px;background:var(--rule);font-style:normal}
+.meter .bar i.on{background:var(--accent)}
+.meter .val{color:var(--text)}
+.res-badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--rule);border-radius:20px;padding:2px 10px;font-size:11px;background:var(--sunk);color:var(--text-2)}
+.res-badge b{color:var(--accent);font-weight:600}
+.fineprint{font-size:11px;color:var(--text-3);line-height:1.5}
 </style>
 
 <div class="wrap">
@@ -239,6 +252,7 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
     <a href="#fail">When it fails</a><a href="#start">Starting from a template</a><a href="#shape">Drawing a shape</a>
     <a href="#settings">Settings</a><a href="#phone">Phone</a><a href="#calls">The calls</a>
     <a href="#m27-picker">Skill attachment</a><a href="#m27-create">Skill creation</a><a href="#m27-header">Room-header controls</a><a href="#m27-toggle">Workflow toggle</a>
+    <a href="#res-spend">Spend controls</a><a href="#res-dormant">Dormant</a><a href="#res-wait">Waiting on a lock</a><a href="#res-esc">Escalation</a>
   </nav>
 </header>
 
@@ -861,6 +875,161 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
 <hr class="div">
 
 <section>
+  <p class="eyebrow">Resident-room addition — spend controls &amp; the two quiet states</p>
+  <h2 id="res-spend">The spend controls</h2>
+  <p class="sub">A resident room takes machine turns while nobody watches, on the operator's subscription — so the numbers governing that spend, and the count so far, sit on the room itself. Glyphs drawn here stand in for token-set shapes (#458).</p>
+  <p class="plat">Desktop · resident room · spend panel open</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> Baton</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row sel"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · resident</span></span></div>
+        <div class="row"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you</span></span></div>
+        <div class="row"><span class="mk d">✓</span><span><span class="nm">docs-sweep</span><span class="st">Finished · 1h</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">👑 claude · 2 skills</span><span class="chip">agy</span><span class="res-badge"><b>Resident</b> machine turns 3/10</span></span></div>
+        <div class="skill-pop" style="max-width:430px">
+          <div class="pop-sect">Spend controls · this room</div>
+          <div class="f-group">
+            <div class="f-row"><span class="lbl" style="width:220px">Gap between machine turns</span><span class="f-val" style="flex:none;width:70px">60 s</span></div>
+            <div class="f-row"><span class="lbl" style="width:220px">Machine turns per hour</span><span class="f-val" style="flex:none;width:70px">10</span></div>
+            <div class="f-row"><span class="lbl" style="width:220px">Turns without progress, then dormant</span><span class="f-val" style="flex:none;width:70px">3</span></div>
+          </div>
+          <div class="meter"><span>Used this hour</span><span class="bar"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="val">3 of 10</span></div>
+          <div class="fineprint">Your own messages are never throttled.<br>This panel and <code>turn-throttles.json</code> in the room folder are one register — a hand edit shows up here on the next read, and deleting the file means the defaults.</div>
+        </div>
+        <div class="comp"><span>Reply…</span><span>⏎</span></div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>The header carries the one number that predicts spend</b> — turns used this hour — whenever the room is resident, so opening the panel is confirmation rather than discovery. <b>There is no second store:</b> the panel is a view of the room's own file.</p>
+
+  <p class="plat">Phone · counter on the card · sheet to edit</p>
+  <div class="phones">
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span><span class="t">Rooms</span><span class="sub2">1 needs you · 1 dormant</span></span></div>
+      <div class="p-body">
+        <div class="p-row hi"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you · schema change</span></span></div>
+        <div class="p-row"><span class="mk w">◔</span><span><span class="nm">aer-flow</span><span class="st">Working · turns 9/10 this hour</span></span></div>
+        <div class="p-row"><span class="mk wt">⧗</span><span><span class="nm">migration</span><span class="st">Waiting · payments-api holds its folder</span></span></div>
+        <div class="p-row"><span class="mk dm">⏾</span><span><span class="nm">docs-sweep</span><span class="st">Dormant · 3 turns, no progress</span></span></div>
+        <div class="p-row"><span class="mk d">✓</span><span><span class="nm">spike-cache</span><span class="st">Finished · 1d</span></span></div>
+        <div class="p-tabs"><span class="on">Rooms</span><span>Needs you</span><span>Settings</span></div>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="p-status"><span>9:41</span><span>▮▮▮</span></div>
+      <div class="p-head"><span class="back">‹</span><span><span class="t">aer-flow</span><span class="sub2">Spend controls</span></span></div>
+      <div class="p-body">
+        <div class="meter" style="padding:4px 2px"><span class="bar"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span><span class="val">9 of 10</span></div>
+        <div class="sline"><span class="k">Gap between machine turns</span><span>60 s ›</span></div>
+        <div class="sline"><span class="k">Machine turns per hour</span><span>10 ›</span></div>
+        <div class="sline"><span class="k">Turns to dormant</span><span>3 ›</span></div>
+        <div class="fineprint" style="margin-top:8px">Your own messages are never throttled.</div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><b>On the phone, state is always visible and the editor is one tap away.</b> A card's second line is the state's own key fact — the holding room while waiting, the no-progress count while dormant, and the hourly meter on a working resident room only from 80% of its cap upward. A healthy resident room's card is indistinguishable from any working room's (0006).</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">Resident-room addition</p>
+  <h2 id="res-dormant">Dormant</h2>
+  <p class="sub">The turn breaker's visible face: repeated machine turns that committed nothing stop the loop, and the room says so where its history lives.</p>
+  <p class="plat">Desktop · a room that stopped itself</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> Baton</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row"><span class="mk n">◗</span><span><span class="nm">payments-api</span><span class="st">Needs you</span></span></div>
+        <div class="row sel"><span class="mk dm">⏾</span><span><span class="nm">aer-flow</span><span class="st">Dormant · 3 turns, no progress</span></span></div>
+        <div class="row"><span class="mk d">✓</span><span><span class="nm">docs-sweep</span><span class="st">Finished · 1h</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">👑 claude · 2 skills</span><span class="chip">agy</span><span class="res-badge">⏾ <b>Dormant</b></span></span></div>
+        <div class="conv">
+        <div class="turn quiet"><span class="who">⏾ Dormant</span>Machine turns stopped: the last 3 committed nothing. Each tried to fix the failing build and made no commit.
+          <div class="btns"><span class="btn">Wake claude</span><span class="btn">Swap orchestrator…</span></div>
+        </div>
+        <div class="turn you"><span class="who">you</span>how's it going?</div>
+        <div class="turn quiet"><span class="who">⏾ Still dormant</span>Waking is yours to choose.
+          <div class="btns"><span class="btn">Wake claude</span><span class="btn">Swap orchestrator…</span></div>
+        </div>
+        <div class="comp"><span>Reply…</span><span>⏎</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>The second turn is the load-bearing one:</b> asking after a dormant room gets you the state and the wake control, not a restarted loop — a room that stopped because three turns went nowhere must not resume spending as a side effect of "how's it going". <b>It is a wait, not a failure,</b> drawn quiet, grouped beside "needs you" in the list because it is waiting on you. "Swap orchestrator…" is the 0032 reassignment control from the room header surfaced on the turn, not a second mechanism.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">Resident-room addition</p>
+  <h2 id="res-wait">Waiting on another room's lock</h2>
+  <p class="sub">Two rooms on one folder already take strict turns — the engine side has been true since #393, path-normalised in #335. What was missing is the wait being visible at all.</p>
+  <p class="plat">Desktop · blocked behind the holder, named and linked</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> Baton</div>
+    <div class="d-body">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="list">
+        <div class="lhead"><span>Rooms</span><b>+ New</b></div>
+        <div class="row"><span class="mk w">◔</span><span><span class="nm">payments-api</span><span class="st">Working · claude</span></span></div>
+        <div class="row sel"><span class="mk wt">⧗</span><span><span class="nm">aer-flow</span><span class="st">Waiting · payments-api holds this folder</span></span></div>
+      </div>
+      <div class="main">
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">👑 claude</span><span class="res-badge">⧗ <b>Waiting</b></span></span></div>
+        <div class="conv">
+        <div class="turn quiet"><span class="who">⧗ Waiting</span>payments-api holds this folder's turn — both rooms point at the same place, and turns run one at a time.
+          <div class="btns"><span class="btn">Go to payments-api</span></div>
+        </div>
+        <div class="comp"><span>Reply… queues until the folder frees</span><span>⏎</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>A blocked room used to look exactly like a slow one</b> — the worst presentation, because the remedy (go close the other room) is undiscoverable. The holder is named and linked; typing still queues. Creating a second room on an already-roomed folder warns first: allowed, occasionally right, and knowingly chosen. Showing the holder as a <em>room name</em> awaits the lock's room-name field (the #495 rider, riding with #480's build under #752) — today the lock records only the folder path.</p>
+</section>
+
+<hr class="div">
+
+<section>
+  <p class="eyebrow">Resident-room addition</p>
+  <h2 id="res-esc">Escalation is a gate</h2>
+  <p class="sub">A resident orchestrator runs at the room's grant floor. Reaching past it is the gate this corpus already has — no new surface, no new noun.</p>
+  <p class="plat">Desktop · a machine turn asks past the floor</p>
+  <div class="shot scrollx"><div class="d-inner">
+    <div class="d-top"><span class="dot"></span> Baton</div>
+    <div class="d-body solo">
+      <div class="rail"><i class="on">▤</i><i>◱</i><i>⚙</i></div>
+      <div class="main">
+        <div class="mhead"><span class="t">aer-flow</span><span class="who-chips"><span class="chip">👑 claude · 2 skills</span><span class="res-badge"><b>Resident</b> machine turns 4/10</span></span></div>
+        <div class="conv">
+        <div class="turn gem"><span class="who">claude · machine turn</span>Ran the failing test, found the fix, wants to push.</div>
+        <div class="turn gate"><span class="who">Needs you</span>Push to origin/main is beyond this room's grant.
+          <div class="btns"><span class="btn">Allow once</span><span class="btn">Deny</span><span class="btn">Ask someone…</span></div>
+        </div>
+        <div class="comp"><span>Reply…</span><span>⏎</span></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="note"><b>The turn label says it was a machine turn,</b> so "why is this room asking at 3am" answers itself. The gate appears inline, in "needs you", and on the phone — one object, several entry points, exactly as gates already behave.</p>
+</section>
+
+<hr class="div">
+
+<section>
   <h2 id="calls">The calls made here</h2>
   <p class="sub">Each of these is a deliberate divergence between the two views, or a place these screens stop doing something the current app does.</p>
   <dl class="calls">
@@ -887,10 +1056,17 @@ code{font-family:var(--mono);font-size:.87em;background:var(--codebg);padding:.1
     <div class="call"><dt>DAG removal refused in v1 <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Removing a worker required by an active workflow step is refused</b> with an explicit reason; silent DAG repair is deferred.</dd></div>
     <div class="call"><dt>Workflow toggle non-event <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Turning off a room's workflow hides the shape panel</b> while every worker, whatever it carries, stays exactly as before.</dd></div>
     <div class="call"><dt>0028 strictly applied <span style="color:var(--text-3);font-weight:400">· M27</span></dt><dd><b>Destructive and permissive pairs carry equal visual weight</b> (neither is <code>.btn.pri</code>); standard create/discard pairs remain calm.</dd></div>
+    <div class="call"><dt>Spend lives on the room <span style="color:var(--text-3);font-weight:400">· Resident</span></dt><dd><b>Throttle values and the used-this-hour count are on the room, editable in place</b> — one register with <code>turn-throttles.json</code>, never a settings page holding a second copy.</dd></div>
+    <div class="call"><dt>Phone: state, not editors <span style="color:var(--text-3);font-weight:400">· Resident</span></dt><dd><b>A card shows a turns counter only while it is worth knowing</b> — near cap, waiting, dormant — and the editing sheet is one tap behind. Quiet otherwise.</dd></div>
+    <div class="call"><dt>People are never throttled <span style="color:var(--text-3);font-weight:400">· Resident</span></dt><dd><b>The gap, the cap and the breaker govern machine turns.</b> A person talking to their own room always gets through.</dd></div>
+    <div class="call"><dt>Dormancy is a turn <span style="color:var(--text-3);font-weight:400">· Resident</span></dt><dd><b>The stop, its reason and the wake control render in the transcript,</b> and a message to a dormant room is answered with that state — the loop never resumes because you asked after it.</dd></div>
+    <div class="call"><dt>A wait names its holder <span style="color:var(--text-3);font-weight:400">· Resident</span></dt><dd><b>Blocked-behind-another-room is its own state, linked to the holder</b> — never generic working, never an error. Typing queues as everywhere else.</dd></div>
+    <div class="call"><dt>Escalation reuses the gate <span style="color:var(--text-3);font-weight:400">· Resident</span></dt><dd><b>A machine turn asking past the room's floor renders as the existing gate object,</b> labelled as a machine turn. No new escalation surface.</dd></div>
   </dl>
 </section>
 
 <p class="foot">Complete set, draft 3 — the shapes and the calls, not the pixels. Mark it up and I'll take another pass before any of it becomes a decision record or touches the backlog.</p>
 <p class="foot">M27 addendum — four more screens added for skill attachment and room orchestration; draft 3 above is otherwise unchanged. Grounded in decision records 0001, 0003, 0004, 0010, 0017, 0021, 0023, 0028, 0031, 0032, and 0033.</p>
+<p class="foot">Resident-room addendum (2026-08-04) — spend controls, Dormant, Waiting-on-a-lock, and machine-turn escalation, from the #778 throttle design and the thirteen-state inventory ratified on #495. Prose lives in <code>02-screens.md</code>; this file carries the drawings.</p>
 
 </div>
