@@ -152,6 +152,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string cancelStatusText = string.Empty;
 
+    /// <summary>Issue #618: the waiting-on-lock banner when a task directory is held by another process.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWaitingOnLockBanner))]
+    private WaitingOnLockBannerViewModel? waitingOnLockBanner;
+
+    public bool HasWaitingOnLockBanner => WaitingOnLockBanner is not null;
+
     /// <summary>The open task's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildTaskSteps"/>.</summary>
     public ObservableCollection<StepItemViewModel> TaskSteps { get; } = [];
 

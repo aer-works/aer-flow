@@ -205,4 +205,91 @@ public class ConcurrencyGuardTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [Fact]
+    public void Acquire_writes_holder_sidecar_file_with_caller_description()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            using var holder = ConcurrencyGuard.Acquire(taskDirectory, "Test Runner (pid 999)");
+            var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
+
+            Assert.True(File.Exists(sidecarPath));
+            var content = File.ReadAllText(sidecarPath);
+            Assert.Contains("Test Runner (pid 999)", content);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public void Second_Acquire_exception_carries_first_holder_description_and_acquired_at()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            using var holder = ConcurrencyGuard.Acquire(taskDirectory, "Custom Holder (pid 123)");
+
+            var exception = Assert.Throws<WorkflowLockedException>(
+                () => ConcurrencyGuard.Acquire(taskDirectory, "Second Holder"));
+
+            Assert.Equal("Custom Holder (pid 123)", exception.HolderDescription);
+            Assert.NotNull(exception.AcquiredAtUtc);
+            Assert.Contains("Currently held by: Custom Holder (pid 123) since", exception.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public void Missing_sidecar_polarity_leaves_HolderDescription_null_and_retains_two_shapes_message()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+            var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
+            if (File.Exists(sidecarPath))
+            {
+                File.Delete(sidecarPath);
+            }
+
+            var exception = Assert.Throws<WorkflowLockedException>(
+                () => ConcurrencyGuard.Acquire(taskDirectory));
+
+            Assert.Null(exception.HolderDescription);
+            Assert.Null(exception.AcquiredAtUtc);
+            Assert.DoesNotContain("Currently held by:", exception.Message);
+            Assert.Contains("background component", exception.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public void Dispose_removes_holder_sidecar_file()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            var holder = ConcurrencyGuard.Acquire(taskDirectory, "Temp Holder");
+            var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
+            Assert.True(File.Exists(sidecarPath));
+
+            holder.Dispose();
+
+            Assert.False(File.Exists(sidecarPath));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
 }

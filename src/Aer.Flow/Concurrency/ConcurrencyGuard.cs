@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Text.Json;
+
 namespace Aer.Flow.Concurrency;
 
 /// <summary>
@@ -7,16 +10,24 @@ namespace Aer.Flow.Concurrency;
 /// file, whose mere existence would signal "locked" and would survive a crash requiring manual
 /// clearing. The OS releases a <see cref="FileStream"/>'s lock the instant its owning process
 /// exits, crashed or not, so a crashed holder never leaves a stale lock behind.
+/// <para>
+/// #618: Writes a sibling sidecar file <c>flow.lock.holder</c> on successful acquire so readers can name
+/// the lock holder. A stale sidecar beside a FREE lock is harmless by construction: readers only
+/// consult it when an acquire has just failed against a live holder, and every new holder rewrites it.
+/// </para>
 /// </summary>
 public sealed class ConcurrencyGuard : IDisposable
 {
     private const string LockFileName = "flow.lock";
+    private const string HolderFileName = "flow.lock.holder";
 
     private readonly FileStream _lockStream;
+    private readonly string? _sidecarPath;
 
-    private ConcurrencyGuard(FileStream lockStream)
+    private ConcurrencyGuard(FileStream lockStream, string? sidecarPath = null)
     {
         _lockStream = lockStream;
+        _sidecarPath = sidecarPath;
     }
 
     /// <summary>
@@ -26,7 +37,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// <exception cref="WorkflowLockedException">
     /// Another Flow instance already holds the lock for this task.
     /// </exception>
-    public static ConcurrencyGuard Acquire(string taskDirectoryPath)
+    public static ConcurrencyGuard Acquire(string taskDirectoryPath, string? holderDescription = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
 
@@ -40,85 +51,125 @@ public sealed class ConcurrencyGuard : IDisposable
         }
         catch (IOException ex)
         {
-            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath), ex);
+            var holder = TryReadHolderInfo(taskDirectoryPath);
+            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath, holder), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
         }
 
-        return new ConcurrencyGuard(lockStream);
+        return CreateWithSidecar(lockStream, taskDirectoryPath, holderDescription);
     }
 
     /// <summary>
     /// Acquires the lock like <see cref="Acquire"/>, but retries a lost race until
     /// <paramref name="within"/> elapses instead of failing on the first attempt.
-    /// <para>
-    /// This is opt-in, and <see cref="Acquire"/> deliberately stays fail-fast: for an
-    /// <c>aer run</c> pump, losing the lock means another pump owns this task and waiting for it is
-    /// exactly the wrong behaviour. What this exists for is the opposite case — a holder known to
-    /// let go in milliseconds, where failing fast turns a routine overlap into a user-visible
-    /// error. #857: the room sweep takes this same lock while escalating a newly-appeared memory
-    /// proposal, so an operator's approve/reject could lose a coin-flip to a background tick and be
-    /// refused, with nothing wrong and nothing to retry but the click.
-    /// </para>
-    /// <para>
-    /// Bounded rather than indefinite on purpose. A genuinely stuck holder must still surface as a
-    /// failure; the budget is sized to cover a routine overlap, not to hide one that is not
-    /// routine.
-    /// </para>
     /// </summary>
     /// <exception cref="WorkflowLockedException">
     /// The lock was still held when <paramref name="within"/> ran out.
     /// </exception>
-    public static ConcurrencyGuard AcquireWithin(string taskDirectoryPath, TimeSpan within)
+    public static ConcurrencyGuard AcquireWithin(string taskDirectoryPath, TimeSpan within, string? holderDescription = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
 
         Directory.CreateDirectory(taskDirectoryPath);
         var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
 
-        // Stopwatch, not DateTime.UtcNow: a wall clock can step backwards (an NTP correction, a
-        // manual change) and silently stretch this wait well past its budget. Monotonic is what a
-        // deadline actually wants.
-        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var elapsed = Stopwatch.StartNew();
 
         while (true)
         {
             try
             {
-                return new ConcurrencyGuard(
-                    new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+                var lockStream = new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return CreateWithSidecar(lockStream, taskDirectoryPath, holderDescription);
             }
             catch (IOException) when (elapsed.Elapsed < within)
             {
-                // Thread.Sleep rather than Task.Delay: the caller may be on a starved pool, and a
-                // retry that cannot be scheduled is a retry that does not happen.
                 Thread.Sleep(TimeSpan.FromMilliseconds(25));
             }
             catch (IOException ex)
             {
-                throw new WorkflowLockedException(
-                    $"{BuildLockedMessage(taskDirectoryPath)} Still held after waiting " +
-                    $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.", ex);
+                var holder = TryReadHolderInfo(taskDirectoryPath);
+                var message = $"{BuildLockedMessage(taskDirectoryPath, holder)} Still held after waiting " +
+                    $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.";
+                throw new WorkflowLockedException(message, ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
             }
         }
     }
 
+    private static ConcurrencyGuard CreateWithSidecar(FileStream lockStream, string taskDirectoryPath, string? holderDescription)
+    {
+        var sidecarPath = Path.Combine(taskDirectoryPath, HolderFileName);
+        var description = holderDescription ?? DefaultHolderDescription();
+        try
+        {
+            var info = new LockHolderInfo(description, Environment.ProcessId, DateTime.UtcNow);
+            var json = JsonSerializer.Serialize(info);
+            File.WriteAllText(sidecarPath, json);
+        }
+        catch (IOException)
+        {
+            // Best-effort: an IOException writing the sidecar must not fail the acquire
+            // (the lock is real even when the label write loses a race).
+        }
+
+        return new ConcurrencyGuard(lockStream, sidecarPath);
+    }
+
+    private static string DefaultHolderDescription()
+    {
+        try
+        {
+            return $"{Process.GetCurrentProcess().ProcessName} (pid {Environment.ProcessId})";
+        }
+        catch
+        {
+            return $"process (pid {Environment.ProcessId})";
+        }
+    }
+
+    private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder)
+    {
+        var baseMsg = $"Directory '{taskDirectoryPath}' is already locked by another Flow instance — either a live " +
+            "'aer run' pump, or a background component that takes this directory's lock briefly (a room's " +
+            "memory-proposal sweep does this while escalating a new proposal). A live in-flight execution " +
+            "can only be reached from the pump process itself (Ctrl+C); 'aer cancel' from a second " +
+            "terminal reaches only idle tasks — a crashed pump's orphaned executions, or pending " +
+            "non-process work.";
+
+        if (holder != null && !string.IsNullOrWhiteSpace(holder.HolderDescription))
+        {
+            return $"{baseMsg} Currently held by: {holder.HolderDescription} since {holder.AcquiredAtUtc:O}.";
+        }
+
+        return baseMsg;
+    }
+
     /// <summary>
-    /// #857: the message no longer asserts a single cause. It used to name "a live 'aer run' pump"
-    /// as the likely holder, which predates rooms and is wrong in a case an operator can hit.
-    /// <para>
-    /// It also does not name the room sweep specifically, deliberately. This message is shared by
-    /// every caller, and most of them lock a per-execution task directory that no sweep ever
-    /// touches — naming rooms there would swap one misdirection for another. A lock file cannot say
-    /// who won it, so the honest wording gives the two shapes a holder can take and lets the reader
-    /// match whichever applies, rather than picking one for them.
-    /// </para>
+    /// Reads the holder sidecar file <c>flow.lock.holder</c> for <paramref name="taskDirectoryPath"/> if present and readable.
+    /// Tolerates absence/unreadability by returning null for both fields.
     /// </summary>
-    private static string BuildLockedMessage(string taskDirectoryPath) =>
-        $"Directory '{taskDirectoryPath}' is already locked by another Flow instance — either a live " +
-        "'aer run' pump, or a background component that takes this directory's lock briefly (a room's " +
-        "memory-proposal sweep does this while escalating a new proposal). A live in-flight execution " +
-        "can only be reached from the pump process itself (Ctrl+C); 'aer cancel' from a second " +
-        "terminal reaches only idle tasks — a crashed pump's orphaned executions, or pending " +
-        "non-process work.";
+    public static (string? HolderDescription, DateTime? AcquiredAtUtc) ReadHolderInfo(string taskDirectoryPath)
+    {
+        var info = TryReadHolderInfo(taskDirectoryPath);
+        return (info?.HolderDescription, info?.AcquiredAtUtc);
+    }
+
+    private static LockHolderInfo? TryReadHolderInfo(string taskDirectoryPath)
+    {
+        try
+        {
+            var sidecarPath = Path.Combine(taskDirectoryPath, HolderFileName);
+            if (File.Exists(sidecarPath))
+            {
+                var text = File.ReadAllText(sidecarPath);
+                return JsonSerializer.Deserialize<LockHolderInfo>(text);
+            }
+        }
+        catch
+        {
+            // Tolerating absence/unreadability -> nulls
+        }
+        return null;
+    }
 
     /// <summary>
     /// Reports whether another live holder currently owns the lock for
@@ -152,9 +203,27 @@ public sealed class ConcurrencyGuard : IDisposable
     }
 
     /// <summary>
-    /// Releases the lock. The lock file itself is deliberately left on disk — under §15's
-    /// guarantee, only the OS-held lock carries meaning, not the file's existence — so a
-    /// subsequent <see cref="Acquire"/> call for the same task directory succeeds immediately.
+    /// Releases the lock and removes the sidecar file best-effort before disposing the stream.
     /// </summary>
-    public void Dispose() => _lockStream.Dispose();
+    public void Dispose()
+    {
+        if (_sidecarPath != null)
+        {
+            try
+            {
+                if (File.Exists(_sidecarPath))
+                {
+                    File.Delete(_sidecarPath);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of sidecar file.
+            }
+        }
+
+        _lockStream.Dispose();
+    }
+
+    private sealed record LockHolderInfo(string HolderDescription, int Pid, DateTime AcquiredAtUtc);
 }

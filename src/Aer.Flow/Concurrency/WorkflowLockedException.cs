@@ -7,13 +7,20 @@ namespace Aer.Flow.Concurrency;
 /// </summary>
 public sealed class WorkflowLockedException : AerFlowException
 {
-    public WorkflowLockedException(string message)
+    public string? HolderDescription { get; }
+    public DateTime? AcquiredAtUtc { get; }
+
+    public WorkflowLockedException(string message, string? holderDescription = null, DateTime? acquiredAtUtc = null)
         : base(message)
     {
+        HolderDescription = holderDescription;
+        AcquiredAtUtc = acquiredAtUtc;
     }
 
-    public WorkflowLockedException(string message, Exception innerException)
+    public WorkflowLockedException(string message, Exception innerException, string? holderDescription = null, DateTime? acquiredAtUtc = null)
         : base(message, innerException)
     {
+        HolderDescription = holderDescription;
+        AcquiredAtUtc = acquiredAtUtc;
     }
 }
