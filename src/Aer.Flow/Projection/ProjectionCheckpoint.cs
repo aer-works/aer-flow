@@ -40,7 +40,9 @@ public sealed record ProjectionCheckpointState(
     Dictionary<StepId, int> RetryDelayMsByStepId,
     Dictionary<StepId, ExecutionId> RetryScheduledForExecutionIdByStepId,
     HashSet<ExecutionId> SucceededExecutionIds,
-    Dictionary<ExecutionId, ExecutionRequest> AcceptedRequestByExecutionId)
+    Dictionary<ExecutionId, ExecutionRequest> AcceptedRequestByExecutionId,
+    HashSet<ExecutionId> CoreStartedExecutionIds,
+    Dictionary<ExecutionId, CoreEvent.ExecutionExited> CoreExitedByExecutionId)
 {
     public static ProjectionCheckpointState CreateEmpty() => new(
         new Dictionary<StepId, ExecutionId>(),
@@ -65,7 +67,9 @@ public sealed record ProjectionCheckpointState(
         new Dictionary<StepId, int>(),
         new Dictionary<StepId, ExecutionId>(),
         new HashSet<ExecutionId>(),
-        new Dictionary<ExecutionId, ExecutionRequest>());
+        new Dictionary<ExecutionId, ExecutionRequest>(),
+        new HashSet<ExecutionId>(),
+        new Dictionary<ExecutionId, CoreEvent.ExecutionExited>());
 
     public ProjectionCheckpointState DeepCopy() => new(
         new Dictionary<StepId, ExecutionId>(LatestExecutionIdByStepId),
@@ -90,5 +94,7 @@ public sealed record ProjectionCheckpointState(
         new Dictionary<StepId, int>(RetryDelayMsByStepId),
         new Dictionary<StepId, ExecutionId>(RetryScheduledForExecutionIdByStepId),
         new HashSet<ExecutionId>(SucceededExecutionIds),
-        new Dictionary<ExecutionId, ExecutionRequest>(AcceptedRequestByExecutionId));
+        new Dictionary<ExecutionId, ExecutionRequest>(AcceptedRequestByExecutionId),
+        new HashSet<ExecutionId>(CoreStartedExecutionIds),
+        new Dictionary<ExecutionId, CoreEvent.ExecutionExited>(CoreExitedByExecutionId));
 }

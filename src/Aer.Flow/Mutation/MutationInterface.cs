@@ -370,8 +370,13 @@ public static class MutationInterface
                 // crashed before recording its outcome" (until now indistinguishable, per StateProjector's
                 // own comment). A dispatch this very call still has registered is excluded — that pump is
                 // this pump, not a crashed one.
+                var (mergedStarted, mergedExited) = CoreEventAggregation.Merge(
+                    latestCheckpoint?.State.CoreStartedExecutionIds,
+                    latestCheckpoint?.State.CoreExitedByExecutionId,
+                    log.CoreEvents);
+
                 var crashRecovery = ProcessCrashRecoveryDetector.GetObligations(
-                    state, snapshot, workerBindings, log.CoreEvents, registeredExecutionIds);
+                    state, snapshot, workerBindings, mergedStarted, mergedExited, registeredExecutionIds);
 
                 // Ran while Flow was down (§6): classify now from the recorded exit and the contract on
                 // disk, exactly as if the completion had just arrived — regardless of any unfulfilled
@@ -635,6 +640,19 @@ public static class MutationInterface
 
                     if (latestCheckpoint is not null)
                     {
+                        // Write pruned merged core aggregates into the checkpoint before saving.
+                        // Invariant note: Carrying core aggregates in the checkpoint removes the reliance on saving
+                        // checkpoints only at clean pump return (after in-flight stops record exits) for correctness.
+                        // However, saving at clean return remains a performance assumption to avoid unneeded disk writes.
+                        var (prunedStarted, prunedExited) = CoreEventAggregation.Prune(mergedStarted, mergedExited, state);
+                        latestCheckpoint = latestCheckpoint with
+                        {
+                            State = latestCheckpoint.State with
+                            {
+                                CoreStartedExecutionIds = prunedStarted,
+                                CoreExitedByExecutionId = prunedExited
+                            }
+                        };
                         ProjectionCheckpointStore.Save(taskDirectoryPath, latestCheckpoint);
                     }
 

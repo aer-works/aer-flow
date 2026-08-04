@@ -45,29 +45,16 @@ public static class ProcessCrashRecoveryDetector
         FlowState state,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
-        IReadOnlyList<CoreEvent> coreEvents,
+        IReadOnlySet<ExecutionId> startedExecutionIds,
+        IReadOnlyDictionary<ExecutionId, CoreEvent.ExecutionExited> exitedByExecutionId,
         IReadOnlySet<ExecutionId> inFlightExecutionIds)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
-        ArgumentNullException.ThrowIfNull(coreEvents);
+        ArgumentNullException.ThrowIfNull(startedExecutionIds);
+        ArgumentNullException.ThrowIfNull(exitedByExecutionId);
         ArgumentNullException.ThrowIfNull(inFlightExecutionIds);
-
-        var startedExecutionIds = new HashSet<ExecutionId>();
-        var exitedByExecutionId = new Dictionary<ExecutionId, CoreEvent.ExecutionExited>();
-        foreach (var coreEvent in coreEvents)
-        {
-            switch (coreEvent)
-            {
-                case CoreEvent.ExecutionStarted started:
-                    startedExecutionIds.Add(started.ExecutionId);
-                    break;
-                case CoreEvent.ExecutionExited exited:
-                    exitedByExecutionId[exited.ExecutionId] = exited;
-                    break;
-            }
-        }
 
         var stepStateByStepId = state.Steps.ToDictionary(step => step.StepId);
         var toResubmit = new List<ExecutionId>();
