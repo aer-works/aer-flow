@@ -153,6 +153,54 @@ public class NavigationShellTests
         return taskDirectory;
     }
 
+    /// <summary>
+    /// #616: the summary line's finished count comes from the card's one derivation, not the raw
+    /// WorkflowStatus — the raw switch counted every Terminal run as finished, so a cancelled task
+    /// inflated "N finished" (the counting form of the Finished-for-Cancelled defect).
+    /// </summary>
+    [AvaloniaFact]
+    public async Task InitializeAsync_does_not_count_a_cancelled_task_as_finished_in_the_summary()
+    {
+        var configFilePath = NewConfigFilePath();
+        var finishedId = new ExecutionId("f-1");
+        var finishedCriticId = new ExecutionId("f-2");
+        var cancelledId = new ExecutionId("c-1");
+        var finishedDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(finishedId, Architect)),
+                new FlowEvent.ExecutionSucceeded(finishedId),
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(finishedCriticId, Critic)),
+                new FlowEvent.ExecutionSucceeded(finishedCriticId),
+            ],
+            TestContext.Current.CancellationToken);
+        var cancelledDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(cancelledId, Architect)),
+                new FlowEvent.ExecutionCancelled(cancelledId),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var store = new LocalUiConfigurationStore(configFilePath);
+            await store.RecordOpenedAsync(finishedDirectory, TestContext.Current.CancellationToken);
+            await store.RecordOpenedAsync(cancelledDirectory, TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
+            await window.InitializeAsync(TestContext.Current.CancellationToken);
+
+            Assert.Equal(
+                "Nothing is waiting on you — 0 working, 1 finished.",
+                window.ViewModel.Home.InboxSummaryText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(finishedDirectory);
+            DirectoryCleanup.DeleteRecursively(cancelledDirectory);
+        }
+    }
+
     [AvaloniaFact]
     public async Task InitializeAsync_starts_on_the_home_section()
     {
