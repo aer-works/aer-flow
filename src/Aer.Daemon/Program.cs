@@ -2481,3 +2481,4 @@ namespace Aer.Daemon
     /// <summary>#992: clears dormancy on a room.</summary>
     public record ClearDormancyRequest(string RoomDirectoryPath);
 }
+

@@ -1327,4 +1327,59 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
+
+    [Fact]
+    public async Task TurnHostStatus_HostedDormantRoom_RoundTripsThroughTheDtoContract()
+    {
+        // #994's presence contract, wire level (second-reader finding): the endpoint emits an
+        // anonymous object under ASP.NET web defaults (camelCase); RoomTurnHostStatus pins each
+        // field with a camelCase JsonPropertyName. Nothing else deserializes the real payload
+        // into the real DTO, so a casing drift on either side would silently null every field.
+        // Red arm: rename one side's property and the matching assertion below fails.
+        var room = _tempTaskDirectory!;
+        await File.WriteAllTextAsync(
+            Path.Combine(room, "turn-throttles.json"),
+            """{ "machineTurnMinimumGapSeconds": 45, "machineTurnsPerHour": 8, "consecutiveFailureLimit": 3 }""",
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            Path.Combine(room, "room.jsonl"),
+            """{"owner":"room","Event":{"eventType":"turnHostDormancyEntered","ConsecutiveFailures":3,"Timestamp":"2026-08-04T17:00:00+00:00"}}""" + "\n" +
+            """{"owner":"room","Event":{"eventType":"escalationRaised","FromWorkerId":"turn-host","Trigger":"Confidence","Subject":{"kind":"hostCondition","Condition":"turn-host-dormancy","Detail":"3 consecutive uncommitted turns tripped the breaker"},"Timestamp":"2026-08-04T17:00:01+00:00"}}""" + "\n",
+            TestContext.Current.CancellationToken);
+
+        var watchResponse = await _client.PostAsJsonAsync(
+            $"{_baseUrl}/api/rooms/watch", new { RoomDirectoryPath = room }, TestContext.Current.CancellationToken);
+        Assert.True(watchResponse.IsSuccessStatusCode);
+
+        // The turn host adopts the watched room on its next tick (500ms loop); poll until the
+        // status endpoint stops refusing the room as non-hosted.
+        HttpResponseMessage response = null!;
+        for (int i = 0; i < 100; i++)
+        {
+            response = await _client.GetAsync(
+                $"{_baseUrl}/api/rooms/turn-host/status?roomDirectoryPath={Uri.EscapeDataString(room)}",
+                TestContext.Current.CancellationToken);
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                break;
+            }
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<RoomTurnHostStatus>(
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(status);
+        Assert.Equal(45, status.Throttles.MachineTurnMinimumGapSeconds);
+        Assert.Equal(8, status.Throttles.MachineTurnsPerHour);
+        Assert.Equal(3, status.Throttles.ConsecutiveFailureLimit);
+        Assert.Equal("file", status.ThrottlesSource);
+        Assert.Null(status.LoadError);
+        Assert.Equal(0, status.TurnsInTrailingHourCount);
+        Assert.Equal(8, status.MachineTurnsPerHourCap);
+        Assert.True(status.IsDormant);
+        Assert.Equal("3 consecutive uncommitted turns tripped the breaker", status.DormancyEscalationDetail);
+    }
 }

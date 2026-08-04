@@ -59,7 +59,7 @@
           <StackPanel IsVisible="{Binding !IsDormant}" Spacing="4">
             <TextBlock Classes="body-strong" Text="{Binding MeterText}" />
             <TextBlock Classes="secondary" Text="{Binding ValuesText}" />
-            <TextBlock Classes="secondary" Text="{Binding LoadErrorText}" IsVisible="{Binding LoadErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock x:Name="TurnHostMeterLoadError" Classes="secondary" Text="{Binding LoadErrorText}" IsVisible="{Binding LoadErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
 
           <!-- Dormant presentation -->
@@ -70,7 +70,7 @@
             </StackPanel>
             <TextBlock Classes="secondary" Text="{Binding DormancyEscalationText}" IsVisible="{Binding HasDormancyEscalationText}" TextWrapping="Wrap" />
             <TextBlock Classes="secondary" Text="{Binding ValuesText}" />
-            <TextBlock Classes="secondary" Text="{Binding LoadErrorText}" IsVisible="{Binding LoadErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock x:Name="TurnHostDormantLoadError" Classes="secondary" Text="{Binding LoadErrorText}" IsVisible="{Binding LoadErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <Button Command="{Binding WakeCommand}" Width="80">
               <TextBlock Text="Wake" HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Button>
@@ -400,3 +400,4 @@
     </StackPanel>
   </ScrollViewer>
 </UserControl>
+

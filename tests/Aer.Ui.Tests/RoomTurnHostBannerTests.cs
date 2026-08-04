@@ -175,6 +175,26 @@ public class RoomTurnHostBannerTests
     }
 
     [AvaloniaFact]
+    public void View_LoadError_TextBlockVisibility_FollowsLoadErrorText()
+    {
+        // Red arm note (second-reader finding): if the LoadErrorText IsVisible binding in
+        // TaskView.axaml is broken (wrong path/converter), the error TextBlock either never
+        // shows for a malformed turn-throttles.json or always shows an empty line — one of the
+        // two polarity assertions below fails.
+        var window = NewWindow();
+        window.Show();
+
+        window.ViewModel.RoomTurnHostBanner = new RoomTurnHostBannerViewModel(
+            CreateStatus(loadError: "Malformed turn-throttles.json"));
+        var errorBlock = window.FindViewControl<Avalonia.Controls.TextBlock>("TurnHostMeterLoadError")!;
+        Assert.True(errorBlock.IsVisible);
+        Assert.Equal("Malformed turn-throttles.json", errorBlock.Text);
+
+        window.ViewModel.RoomTurnHostBanner = new RoomTurnHostBannerViewModel(CreateStatus(loadError: null));
+        Assert.False(errorBlock.IsVisible);
+    }
+
+    [AvaloniaFact]
     public void View_NonDormantStatus_ShowsMeter_HidesWake()
     {
         // Red arm note: If TaskView's non-dormant status card sets IsDormant to true or hides MeterText when ViewModel carries a non-dormant status, this assertion fails.
