@@ -41,6 +41,11 @@ public static class StatusCommand
     /// that was never started via <c>aer run</c> fail identically here (both are just "no
     /// <c>snapshot.json</c> at this path"), or the persisted snapshot is malformed.
     /// </exception>
+    /// <remarks>
+    /// Cancellation is two contracts (#999): under <see cref="StatusOptions.Follow"/> it is how a
+    /// follow ends, so this method returns cleanly; a cancelled one-shot probe throws
+    /// <see cref="OperationCanceledException"/> instead — see the catch below for why.
+    /// </remarks>
     public static async Task ExecuteAsync(
         StatusOptions options, TextWriter output, CancellationToken cancellationToken = default)
     {

@@ -390,11 +390,13 @@ public class StatusCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Cancelling_a_follow_during_the_initial_read_returns_cleanly_instead_of_throwing()
+    public async Task Cancelling_a_follow_at_its_first_await_returns_cleanly_instead_of_throwing()
     {
         // #999 (mechanism recorded there and at StatusCommand.ExecuteAsync's catch): an
-        // already-cancelled token interrupts the first awaited read, hitting the previously
-        // unguarded window deterministically instead of needing a loaded machine.
+        // already-cancelled token interrupts the guarded region's FIRST awaited call — the
+        // snapshot load, per the #999 reviewer, not the journal read the gates run caught —
+        // deterministically instead of needing a loaded machine. The journal-read window is
+        // covered by the same enclosing filter, not independently exercised here.
         // Red arm: with the follow-mode OperationCanceledException filter removed from
         // StatusCommand.ExecuteAsync, this throws.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
