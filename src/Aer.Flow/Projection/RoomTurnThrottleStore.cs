@@ -29,6 +29,11 @@ public static class RoomTurnThrottleStore
         PropertyNameCaseInsensitive = true
     };
 
+    private static readonly JsonSerializerOptions WriteOptions = new(FlowEventLogJson.Options)
+    {
+        WriteIndented = true
+    };
+
     /// <summary>
     /// Reads settings fresh on each call from <c>{room}/turn-throttles.json</c>.
     /// Missing file → returns defaults silently.
@@ -94,7 +99,7 @@ public static class RoomTurnThrottleStore
             throttles.MaxMachineTurnsPerHour,
             throttles.FailedTurnsBeforeDormancy);
 
-        var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions(FlowEventLogJson.Options) { WriteIndented = true });
+        var json = JsonSerializer.Serialize(dto, WriteOptions);
         var tempFilePath = filePath + ".tmp." + Guid.NewGuid().ToString("n");
         File.WriteAllText(tempFilePath, json);
         File.Move(tempFilePath, filePath, overwrite: true);
