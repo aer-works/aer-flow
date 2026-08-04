@@ -185,6 +185,10 @@ namespace Aer.Daemon
             builder.Services.AddSingleton<RoomWakeBridgeState>();
             builder.Services.AddHostedService<RoomWakeBridge>();
 
+            // #992: resident room turn host
+            builder.Services.AddSingleton<RoomTurnHostState>();
+            builder.Services.AddHostedService<RoomTurnHost>();
+
             // Thread-safe container for bindings path
             var bindingsPathHolder = new BindingsPathHolder();
             builder.Services.AddSingleton(bindingsPathHolder);
@@ -650,6 +654,89 @@ namespace Aer.Daemon
                 Wakes = wakeState.CurrentWakes.Select(w => new { Ref = w.Ref.Value, Kind = w.Kind.ToString() }).ToList(),
                 ProbeFailures = wakeState.CurrentProbeFailures.Select(f => new { Ref = f.Ref.Value, f.Error }).ToList(),
             }));
+
+            // #992: turn host status & clear-dormancy endpoints
+            app.MapGet("/api/rooms/turn-host/status", async (string? roomDirectoryPath, RoomTurnHostState hostState) =>
+            {
+                var targetDir = !string.IsNullOrWhiteSpace(roomDirectoryPath)
+                    ? roomDirectoryPath
+                    : hostState.RoomDirectoryPath;
+
+                if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
+                {
+                    return Results.BadRequest("roomDirectoryPath is required and must exist.");
+                }
+
+                var (throttles, loadError) = RoomTurnThrottles.Load(targetDir);
+                var hasCustomFile = File.Exists(Path.Combine(targetDir, "throttles.json"));
+
+                var roomLogPath = Path.Combine(targetDir, "room.jsonl");
+                var isDormant = false;
+                if (File.Exists(roomLogPath))
+                {
+                    var reader = new RoomEventLogReader(roomLogPath);
+                    var events = await reader.ReadAllRoomEventsAsync().ConfigureAwait(false);
+                    var roomState = RoomProjector.Project(events);
+                    isDormant = roomState.IsDormant;
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                var hourlyWindowStart = now.AddHours(-1);
+                int turnsInLastHour = hostState.MachineTurnStarts.Count(t => t >= hourlyWindowStart);
+
+                return Results.Ok(new
+                {
+                    RoomDirectoryPath = targetDir,
+                    Throttles = new
+                    {
+                        MachineTurnMinimumGapSeconds = throttles.MachineTurnMinimumGap.TotalSeconds,
+                        MachineTurnsPerHour = throttles.MachineTurnsPerHour,
+                        ConsecutiveFailureLimit = throttles.ConsecutiveFailureLimit,
+                    },
+                    ThrottlesSource = hasCustomFile ? "file" : "defaults",
+                    LoadError = loadError,
+                    MachineTurnsInTrailingHour = $"{turnsInLastHour}/{throttles.MachineTurnsPerHour}",
+                    TurnsInTrailingHourCount = turnsInLastHour,
+                    MachineTurnsPerHourCap = throttles.MachineTurnsPerHour,
+                    ConsecutiveFailures = hostState.ConsecutiveFailures,
+                    InFlight = hostState.InFlight,
+                    IsDormant = isDormant,
+                    LastDecisionReason = hostState.LastDecisionReason,
+                });
+            });
+
+            app.MapPost("/api/rooms/turn-host/clear-dormancy", async ([FromBody] ClearDormancyRequest request, RoomTurnHostState hostState) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.RoomDirectoryPath))
+                {
+                    return Results.BadRequest("RoomDirectoryPath is required.");
+                }
+
+                if (!Directory.Exists(request.RoomDirectoryPath))
+                {
+                    return Results.BadRequest($"RoomDirectoryPath '{request.RoomDirectoryPath}' does not exist.");
+                }
+
+                var roomLogPath = Path.Combine(request.RoomDirectoryPath, "room.jsonl");
+                var reader = new RoomEventLogReader(roomLogPath);
+                await using var writer = new RoomEventLogWriter(roomLogPath);
+
+                var roomEvents = await reader.ReadAllRoomEventsAsync().ConfigureAwait(false);
+                var roomState = RoomProjector.Project(roomEvents);
+
+                if (!roomState.IsDormant)
+                {
+                    return Results.Conflict("Room is not dormant.");
+                }
+
+                await RoomMutationInterface.ClearTurnHostDormancyAsync(
+                    request.RoomDirectoryPath, clearedBy: "operator", reader, writer)
+                    .ConfigureAwait(false);
+
+                hostState.ConsecutiveFailures = 0;
+
+                return Results.Ok();
+            });
 
             // #672: the operator's decision surface for held work escalated into a room, and the
             // seam where approving a memory-proposal-shaped item actually applies it (decision
@@ -2349,4 +2436,7 @@ namespace Aer.Daemon
 
     /// <summary>#672: <paramref name="Outcome"/> is "approve" or "reject" (case-insensitive); <paramref name="Ref"/> is the <see cref="HeldWorkRef"/>'s own string value.</summary>
     public record ResolveHeldWorkRequest(string RoomDirectoryPath, string Ref, string Outcome);
+
+    /// <summary>#992: clears dormancy on a room.</summary>
+    public record ClearDormancyRequest(string RoomDirectoryPath);
 }
