@@ -3,6 +3,7 @@ using Aer.Adapters;
 using Aer.Flow.Dispatch;
 using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
+using Aer.Flow.Projection;
 using Aer.Flow.Store;
 
 namespace Aer.Daemon;
