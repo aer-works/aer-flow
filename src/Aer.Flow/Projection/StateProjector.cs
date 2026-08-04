@@ -31,35 +31,46 @@ public static class StateProjector
     public static (FlowState State, ProjectionCheckpoint Checkpoint) ProjectAndCheckpoint(
         IReadOnlyList<FlowEvent> events,
         WorkflowDefinitionSnapshot snapshot,
-        ProjectionCheckpoint? checkpoint = null)
+        ProjectionCheckpoint? checkpoint = null,
+        long logByteOffset = 0)
     {
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(snapshot);
 
         int skipCount = 0;
+        long totalEventOffset = 0;
         ProjectionCheckpointState state;
 
         if (checkpoint is not null)
         {
-            if (checkpoint.EventOffset < 0 || checkpoint.EventOffset > events.Count)
+            if (checkpoint.EventOffset < 0 || (logByteOffset == 0 && checkpoint.EventOffset > events.Count))
             {
                 Console.Error.WriteLine(
                     $"[ProjectionCheckpoint] Fallback to full replay LOUDLY: Checkpoint EventOffset ({checkpoint.EventOffset}) exceeds log event count ({events.Count}) or is invalid.");
                 state = ProjectionCheckpointState.CreateEmpty();
                 skipCount = 0;
+                totalEventOffset = events.Count;
+            }
+            else if (logByteOffset == 0)
+            {
+                // Full event list supplied
+                state = checkpoint.State.DeepCopy();
+                skipCount = (int)checkpoint.EventOffset;
+                totalEventOffset = events.Count;
             }
             else
             {
+                // Tail-only event list supplied
                 state = checkpoint.State.DeepCopy();
-                // Narrowing is safe here only because the guard above capped EventOffset at
-                // events.Count, an int — an offset past int.MaxValue already fell back loudly.
-                skipCount = (int)checkpoint.EventOffset;
+                skipCount = 0;
+                totalEventOffset = checkpoint.EventOffset + events.Count;
             }
         }
         else
         {
             state = ProjectionCheckpointState.CreateEmpty();
             skipCount = 0;
+            totalEventOffset = events.Count;
         }
 
         for (int i = skipCount; i < events.Count; i++)
@@ -68,7 +79,8 @@ public static class StateProjector
         }
 
         var flowState = DeriveFlowState(state, snapshot);
-        var newCheckpoint = new ProjectionCheckpoint(events.Count, state.DeepCopy());
+        var finalByteOffset = logByteOffset > 0 ? logByteOffset : (checkpoint?.ByteOffset ?? 0);
+        var newCheckpoint = new ProjectionCheckpoint(totalEventOffset, state.DeepCopy(), finalByteOffset, Version: 2);
         return (flowState, newCheckpoint);
     }
 
@@ -77,6 +89,7 @@ public static class StateProjector
         switch (flowEvent)
         {
             case FlowEvent.ExecutionRequestAccepted accepted:
+                state.AcceptedRequestByExecutionId[accepted.Request.ExecutionId] = accepted.Request;
                 if (accepted.Request.StepId is { } acceptedStepId)
                 {
                     state.LatestExecutionIdByStepId[acceptedStepId] = accepted.Request.ExecutionId;
@@ -98,6 +111,7 @@ public static class StateProjector
                 break;
 
             case FlowEvent.ExecutionSucceeded succeeded:
+                state.SucceededExecutionIds.Add(succeeded.ExecutionId);
                 state.TerminalStatusByExecutionId[succeeded.ExecutionId] = StepStatus.Succeeded;
                 if (state.StepIdByExecutionId.TryGetValue(succeeded.ExecutionId, out var succeededStepId))
                 {

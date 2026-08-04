@@ -112,13 +112,14 @@ public static class MutationInterface
 
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
-        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
-        var state = StateProjector.Project(events, snapshot, checkpoint);
-        var succeededExecutionIds = events
-            .OfType<FlowEvent.ExecutionSucceeded>()
-            .Select(e => e.ExecutionId)
-            .ToHashSet();
+        var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
+        if (log.IsFallbackToFull)
+        {
+            checkpoint = null;
+        }
+        var (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(log.FlowEvents, snapshot, checkpoint, log.ByteOffset);
+        var succeededExecutionIds = latestCheckpoint.State.SucceededExecutionIds;
 
         ExternalDecisionValidator.Validate(
             state, snapshot, succeededExecutionIds, referencedExecutionId, decisionType, targetStepId, supplementaryExecutionId);
@@ -210,9 +211,13 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(CreateExecutionRequestAccepted(request), cancellationToken)
             .ConfigureAwait(false);
 
-        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
-        var state = StateProjector.Project(events, snapshot, checkpoint);
+        var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
+        if (log.IsFallbackToFull)
+        {
+            checkpoint = null;
+        }
+        var (state, _) = StateProjector.ProjectAndCheckpoint(log.FlowEvents, snapshot, checkpoint, log.ByteOffset);
 
         return (state, executionId);
     }
@@ -259,11 +264,14 @@ public static class MutationInterface
 
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath);
 
-        var events = await eventLogReader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
-        var knownExecutionIds = events
-            .OfType<FlowEvent.ExecutionRequestAccepted>()
-            .Select(e => e.Request.ExecutionId)
-            .ToHashSet();
+        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
+        if (log.IsFallbackToFull)
+        {
+            checkpoint = null;
+        }
+        var (_, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(log.FlowEvents, snapshot, checkpoint, log.ByteOffset);
+        var knownExecutionIds = latestCheckpoint.State.AcceptedRequestByExecutionId.Keys.ToHashSet();
 
         CancellationValidator.Validate(knownExecutionIds, targetExecutionId);
 
@@ -345,19 +353,16 @@ public static class MutationInterface
                 // A single read of the combined log per round — feeding both Flow's own projection and
                 // M10 Phase 3's crash reconciliation from one pass, rather than reading and parsing the
                 // same file twice for no new information.
-                var log = await eventLogReader.ReadSnapshotAsync(ioCancellationToken).ConfigureAwait(false);
+                var log = await eventLogReader.ReadSnapshotFromOffsetAsync(currentCheckpoint?.ByteOffset ?? 0, ioCancellationToken).ConfigureAwait(false);
+                if (log.IsFallbackToFull)
+                {
+                    currentCheckpoint = null;
+                }
                 var events = log.FlowEvents;
-                (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint);
+                (state, latestCheckpoint) = StateProjector.ProjectAndCheckpoint(events, snapshot, currentCheckpoint, log.ByteOffset);
                 currentCheckpoint = latestCheckpoint;
 
-                // Keyed once per round rather than re-scanned per obligation: every crash-recovery
-                // branch below that acts on an already-accepted execution (classification or
-                // re-submission) looks up its durably recorded ExecutionRequest here instead of
-                // reconstructing one, so no new ExecutionRequestAccepted is ever needed for the same
-                // attempt.
-                var acceptedRequestByExecutionId = events
-                    .OfType<FlowEvent.ExecutionRequestAccepted>()
-                    .ToDictionary(e => e.Request.ExecutionId, e => e.Request);
+                var acceptedRequestByExecutionId = latestCheckpoint.State.AcceptedRequestByExecutionId;
 
                 // M10 Phase 3 (§7 full robustness): joins Core's half of the log — read back here for
                 // the first time since M7 Phase 6 wrote it — to Flow's own intents by ExecutionId (§6),
@@ -613,7 +618,7 @@ public static class MutationInterface
                             }
 
                             var completedWait = await Task.WhenAny(deferralCandidates).ConfigureAwait(false);
-                            if (completedWait == deferralHostStopWatcher)
+                            if (completedWait == deferralHostStopWatcher || cancellationToken.IsCancellationRequested)
                             {
                                 hostStopRequested = true;
                                 ioCancellationToken = CancellationToken.None;

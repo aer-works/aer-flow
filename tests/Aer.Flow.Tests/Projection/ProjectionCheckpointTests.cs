@@ -1,5 +1,6 @@
 using Aer.Flow.Domain;
 using Aer.Flow.Projection;
+using Aer.Flow.Store;
 using Aer.Tests.Shared;
 
 namespace Aer.Flow.Tests.Projection;
@@ -379,5 +380,151 @@ public class ProjectionCheckpointTests
         Assert.NotEqual(fullReplayState.Status, brokenStateFromCheckpointOnly.Status);
         Assert.Equal(StepStatus.Pending, Assert.Single(brokenStateFromCheckpointOnly.Steps, s => s.StepId == Step2).Status);
         Assert.Equal(StepStatus.Succeeded, Assert.Single(fullReplayState.Steps, s => s.StepId == Step2).Status);
+    }
+
+    [Fact]
+    public async Task Scope1b_AggregatesFromCheckpointAndTail_StructurallyEqualFullScan()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_scope1b_aggregates_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var snapshot = TestSnapshot();
+            var logPath = Path.Combine(tempDir, "flow.jsonl");
+            var writer = new FlowEventLogWriter(logPath);
+
+            var exec1 = new ExecutionId("exec-1");
+            var exec2 = new ExecutionId("exec-2");
+
+            // Step 1 events
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec1, Step1), 100, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(exec1), TestContext.Current.CancellationToken);
+
+            var reader = new FlowEventLogReader(logPath);
+            var snapshot1 = await reader.ReadSnapshotAsync(TestContext.Current.CancellationToken);
+            var (_, checkpoint1) = StateProjector.ProjectAndCheckpoint(snapshot1.FlowEvents, snapshot, logByteOffset: snapshot1.ByteOffset);
+            ProjectionCheckpointStore.Save(tempDir, checkpoint1);
+
+            // Step 2 events appended after checkpoint
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec2, Step2), 101, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(exec2), TestContext.Current.CancellationToken);
+
+            // 1. Seek-to-tail read + checkpoint projection
+            var loadedCheckpoint = ProjectionCheckpointStore.Load(tempDir)!;
+            var tailSnapshot = await reader.ReadSnapshotFromOffsetAsync(loadedCheckpoint.ByteOffset, TestContext.Current.CancellationToken);
+            Assert.False(tailSnapshot.IsFallbackToFull);
+
+            var (tailState, newCheckpoint) = StateProjector.ProjectAndCheckpoint(
+                tailSnapshot.FlowEvents, snapshot, loadedCheckpoint, tailSnapshot.ByteOffset);
+
+            // 2. Full scan from byte 0
+            var fullSnapshot = await reader.ReadSnapshotFromOffsetAsync(0, TestContext.Current.CancellationToken);
+            var (fullState, _) = StateProjector.ProjectAndCheckpoint(fullSnapshot.FlowEvents, snapshot, checkpoint: null);
+
+            // Equivalence check: Projected FlowState structurally equal
+            AssertFlowStateEqual(fullState, tailState);
+
+            // Equivalence check: Checkpointed aggregates structurally equal
+            var fullSucceeded = fullSnapshot.FlowEvents.OfType<FlowEvent.ExecutionSucceeded>().Select(e => e.ExecutionId).ToHashSet();
+            var fullAccepted = fullSnapshot.FlowEvents.OfType<FlowEvent.ExecutionRequestAccepted>().ToDictionary(e => e.Request.ExecutionId, e => e.Request);
+
+            Assert.Equal(fullSucceeded, newCheckpoint.State.SucceededExecutionIds);
+            Assert.Equal(fullAccepted.Keys, newCheckpoint.State.AcceptedRequestByExecutionId.Keys);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task Scope1b_Polarity_CorruptBytePosition_FallsBackLoudly()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_scope1b_corrupt_seek_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var snapshot = TestSnapshot();
+            var logPath = Path.Combine(tempDir, "flow.jsonl");
+            var writer = new FlowEventLogWriter(logPath);
+
+            var exec1 = new ExecutionId("exec-1");
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec1, Step1), 100, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(exec1), TestContext.Current.CancellationToken);
+
+            var reader = new FlowEventLogReader(logPath);
+            var snapshot1 = await reader.ReadSnapshotAsync(TestContext.Current.CancellationToken);
+            var (_, checkpoint1) = StateProjector.ProjectAndCheckpoint(snapshot1.FlowEvents, snapshot, logByteOffset: snapshot1.ByteOffset);
+
+            // Corrupt byte position: point 3 bytes past actual line boundary
+            long corruptByteOffset = checkpoint1.ByteOffset + 3;
+
+            using var sw = new StringWriter();
+            var originalErr = Console.Error;
+            Console.SetError(sw);
+
+            EventLogSnapshot seekSnapshot;
+            try
+            {
+                seekSnapshot = await reader.ReadSnapshotFromOffsetAsync(corruptByteOffset, TestContext.Current.CancellationToken);
+            }
+            finally
+            {
+                Console.SetError(originalErr);
+            }
+
+            var errOutput = sw.ToString();
+            Assert.Contains("Fallback to full replay LOUDLY", errOutput);
+            Assert.True(seekSnapshot.IsFallbackToFull);
+            Assert.Equal(2, seekSnapshot.FlowEvents.Count);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(tempDir);
+        }
+    }
+
+    [Fact]
+    public async Task Scope1b_Polarity_StaleCheckpoint_ReplaysTail()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "aer_scope1b_stale_checkpoint_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var snapshot = TestSnapshot();
+            var logPath = Path.Combine(tempDir, "flow.jsonl");
+            var writer = new FlowEventLogWriter(logPath);
+
+            var exec1 = new ExecutionId("exec-1");
+            var exec2 = new ExecutionId("exec-2");
+
+            // Checkpoint at step 1
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec1, Step1), 100, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(exec1), TestContext.Current.CancellationToken);
+
+            var reader = new FlowEventLogReader(logPath);
+            var snapshot1 = await reader.ReadSnapshotAsync(TestContext.Current.CancellationToken);
+            var (_, checkpoint1) = StateProjector.ProjectAndCheckpoint(snapshot1.FlowEvents, snapshot, logByteOffset: snapshot1.ByteOffset);
+
+            // Events appended after checkpoint
+            await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(MakeRequest(exec2, Step2), 101, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(exec2), TestContext.Current.CancellationToken);
+
+            // Stale checkpoint read from saved ByteOffset
+            var tailSnapshot = await reader.ReadSnapshotFromOffsetAsync(checkpoint1.ByteOffset, TestContext.Current.CancellationToken);
+            Assert.False(tailSnapshot.IsFallbackToFull);
+            Assert.Equal(2, tailSnapshot.FlowEvents.Count);
+
+            var (tailState, newCheckpoint) = StateProjector.ProjectAndCheckpoint(
+                tailSnapshot.FlowEvents, snapshot, checkpoint1, tailSnapshot.ByteOffset);
+
+            Assert.Equal(StepStatus.Succeeded, Assert.Single(tailState.Steps, s => s.StepId == Step2).Status);
+            Assert.Contains(exec2, newCheckpoint.State.SucceededExecutionIds);
+            Assert.True(newCheckpoint.State.AcceptedRequestByExecutionId.ContainsKey(exec2));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(tempDir);
+        }
     }
 }

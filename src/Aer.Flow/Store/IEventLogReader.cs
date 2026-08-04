@@ -37,7 +37,18 @@ public interface IEventLogReader
     /// would read and parse the same file twice for no new information.
     /// </summary>
     Task<EventLogSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns both halves of the log from a seek position (<paramref name="seekByteOffset"/>).
+    /// Validates record boundary alignment (preceding '\n') and line deserialization.
+    /// Falls back LOUDLY to full replay if validation fails.
+    /// </summary>
+    Task<EventLogSnapshot> ReadSnapshotFromOffsetAsync(long seekByteOffset, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The joined contents of a single log read (spec §5.1's two logical halves), from <see cref="IEventLogReader.ReadSnapshotAsync"/>.</summary>
-public sealed record EventLogSnapshot(IReadOnlyList<FlowEvent> FlowEvents, IReadOnlyList<CoreEvent> CoreEvents);
+/// <summary>The joined contents of a single log read (spec §5.1's two logical halves), from <see cref="IEventLogReader.ReadSnapshotAsync"/> or <see cref="IEventLogReader.ReadSnapshotFromOffsetAsync"/>.</summary>
+public sealed record EventLogSnapshot(
+    IReadOnlyList<FlowEvent> FlowEvents,
+    IReadOnlyList<CoreEvent> CoreEvents,
+    long ByteOffset = 0,
+    bool IsFallbackToFull = false);
