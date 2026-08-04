@@ -196,10 +196,8 @@ public class CommandWorkerAdapterTests
     [Fact]
     public async Task Empty_stdout_success_still_creates_the_declared_artifact_and_satisfies_the_contract()
     {
-        // #887 review (medium finding): a well-behaved command whose SUCCESS case is empty stdout
-        // (an empty `git diff`, a no-match grep) must not fail its contract just because no chunk
-        // ever arrived to lazily create the file. The artifact exists empty, the verdict is
-        // Succeeded -- the polarity CaptureWorkerAdapter gets for free from `git --output`.
+        // #887 review (medium finding): zero stdout chunks must still leave the declared artifact
+        // on disk, verdict Succeeded. CoreDispatcher's eager-create comment carries the full why.
         var tempDir = Path.Combine(Path.GetTempPath(), "aer_cmd_empty_" + Guid.NewGuid().ToString("N"));
         var repoDir = Path.Combine(tempDir, "repo");
         var outputDir = Path.Combine(tempDir, "output");
