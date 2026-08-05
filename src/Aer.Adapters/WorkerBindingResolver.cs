@@ -110,7 +110,11 @@ public static class WorkerBindingResolver
             throw new UnknownWorkerAdapterException(entry.Adapter);
         }
 
-        if (entry.GrantAuditMode == GrantAuditMode.AuditedNotEnforced && entry.Worktree is null && !entry.IsWorktree)
+        // Only an ACTUALLY-provisioned worktree counts as isolation. A declared-but-unprovisioned
+        // Worktree spec is not: the callers that skip WorktreeWorkspaces.Provision (#1012 records
+        // which) would otherwise dispatch an audited worker into a null working directory — the
+        // exact unisolated run the audit exists to make impossible.
+        if (entry.GrantAuditMode == GrantAuditMode.AuditedNotEnforced && !entry.IsWorktree)
         {
             throw new UnisolatedGrantAuditException(workerName);
         }
