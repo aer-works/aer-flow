@@ -509,7 +509,7 @@ public class ContractValidatorTests
             var result = ContractValidator.Validate(diffContract, directory);
             var unsatisfied = Assert.Single(result.UnsatisfiedOutputs);
             Assert.Equal(UnsatisfiedOutputReason.SchemaViolation, unsatisfied.Reason);
-            Assert.Contains("No valid hunk header", unsatisfied.Detail);
+            Assert.Contains("No hunk header", unsatisfied.Detail);
 
             // Control: same garbage file passes under OutputSchema.None
             Assert.True(ContractValidator.IsSatisfied(noneContract, directory));

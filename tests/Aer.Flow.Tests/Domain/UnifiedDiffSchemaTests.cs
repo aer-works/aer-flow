@@ -59,8 +59,41 @@ public class UnifiedDiffSchemaTests
     }
 
     /// <summary>
-    /// A worker on Windows can write its artifact with a BOM (#466's family). Without stripping it,
-    /// U+FEFF stays glued to the first file header and every prefix test below fails.
+    /// The shapes real <c>git diff</c> output carries that the floor must NOT refuse. Each was
+    /// verified by reading once; pinned here because they are what a future edit to the loop would
+    /// break first, and reading is not a regression test.
+    /// </summary>
+    [Theory]
+    [InlineData("diff --git a/x b/x\nindex 111..222 100644\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n", "git preamble lines")]
+    [InlineData("--- /dev/null\n+++ b/new.cs\n@@ -0,0 +1,1 @@\n+first line\n", "added file against /dev/null")]
+    [InlineData("--- a/x\r\n+++ b/x\r\n@@ -1,1 +1,1 @@\r\n-a\r\n+b\r\n", "CRLF line endings")]
+    [InlineData("--- a/x\n+++ b/x\n@@ -1,3 +1,3 @@ SomeMethod()\n-a\n+b\n context\n", "hunk header with a section heading")]
+    [InlineData("--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n\\ No newline at end of file\n", "no-newline marker")]
+    public void Real_git_output_shapes_are_accepted(string diffText, string shape)
+    {
+        Assert.True(
+            UnifiedDiffSchema.TryParse(Encoding.UTF8.GetBytes(diffText), out _, out var error),
+            $"The floor refused {shape}: {error}");
+    }
+
+    /// <summary>
+    /// The deliberate refusal, with its reason: a hunk-less diff (a pure rename or mode change) is
+    /// out of the floor by design — <see cref="UnifiedDiffSchema"/>'s comment says why — and the
+    /// sentence has to tell the worker what to do instead, since the worker is who reads it.
+    /// </summary>
+    [Fact]
+    public void A_rename_only_diff_is_refused_and_the_sentence_names_the_way_out()
+    {
+        var bytes = Encoding.UTF8.GetBytes(
+            "diff --git a/old.cs b/new.cs\nsimilarity index 100%\nrename from old.cs\nrename to new.cs\n");
+
+        Assert.False(UnifiedDiffSchema.TryParse(bytes, out _, out var error));
+        Assert.NotNull(error);
+        Assert.Contains("empty file", error, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The BOM case <see cref="UnifiedDiffSchema"/> records — its comment says why the strip exists.
     /// </summary>
     [Fact]
     public void A_diff_written_with_a_utf8_bom_still_parses()
@@ -107,7 +140,7 @@ public class UnifiedDiffSchemaTests
         Assert.False(UnifiedDiffSchema.TryParse(bytes, out var diff, out var error));
         Assert.Null(diff);
         Assert.NotNull(error);
-        Assert.Contains("No valid hunk header", error);
+        Assert.Contains("No hunk header", error);
     }
 
     [Fact]
@@ -129,7 +162,7 @@ public class UnifiedDiffSchemaTests
         Assert.False(UnifiedDiffSchema.TryParse(bytes, out var diff, out var error));
         Assert.Null(diff);
         Assert.NotNull(error);
-        Assert.Contains("No valid hunk header", error);
+        Assert.Contains("No hunk header", error);
     }
 
     [Fact]

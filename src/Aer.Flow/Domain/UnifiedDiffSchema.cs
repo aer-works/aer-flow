@@ -17,7 +17,11 @@ namespace Aer.Flow.Domain;
 /// least one hunk header <c>@@ -n[,n] +n[,n] @@</c>). It does NOT prove that the patch applies
 /// against any given tree; only <c>git apply --check</c> proves that, which is deliberately out of
 /// scope here. Combined (merge) diffs, whose headers are <c>@@@</c>, are not accepted — no worker
-/// produces one, and accepting a shape nothing writes would widen the floor for nothing.
+/// produces one, and accepting a shape nothing writes would widen the floor for nothing. Neither is
+/// a hunk-less diff, which is what <c>git diff -M</c> emits for a pure rename or a mode change: a
+/// file whose only content is headers is also what a worker writing prose about a patch produces,
+/// and this floor keeps the discrimination. A worker proposing a rename includes a hunk; a worker
+/// proposing nothing writes the empty file above.
 /// </para>
 /// <para>
 /// <b>A file header is an ADJACENT <c>--- </c>/<c>+++ </c> pair, not either line alone</b>, because a
@@ -100,7 +104,8 @@ public static class UnifiedDiffSchema
 
         if (hunkCount == 0)
         {
-            error = "No valid hunk header (@@ -n,n +n,n @@) found in diff.";
+            error = "No hunk header (@@ -n,n +n,n @@) found. A rename- or mode-only diff is not "
+                + "accepted; include at least one hunk, or write an empty file to propose no change.";
             return false;
         }
 
