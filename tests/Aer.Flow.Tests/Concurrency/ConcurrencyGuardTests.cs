@@ -291,10 +291,9 @@ public class ConcurrencyGuardTests
     }
 
     /// <summary>
-    /// The OS holder probe costs hundreds of milliseconds, so it belongs only to
-    /// <see cref="ConcurrencyGuard.AcquireWithin"/>'s exhausted-budget path — the case its own
-    /// message calls "not a routine overlap". Both polarities are pinned here: the fail-fast
-    /// refusal never carries probe text (that would break
+    /// Why the probe is confined to <see cref="ConcurrencyGuard.AcquireWithin"/>'s
+    /// exhausted-budget path lives on that catch's own comment. What is pinned here is the
+    /// polarity pair: the fail-fast refusal never carries probe text (that would break
     /// <see cref="Acquire_remains_fail_fast_and_does_not_wait"/>'s budget), the waited one does.
     /// </summary>
     [Fact]
