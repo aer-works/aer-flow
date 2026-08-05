@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Aer.Flow\Aer.Flow.csproj" />
     <ProjectReference Include="..\Aer.Mcp\Aer.Mcp.csproj" />
   </ItemGroup>
 
 </Project>
+

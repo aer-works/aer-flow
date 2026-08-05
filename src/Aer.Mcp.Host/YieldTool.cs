@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Aer.Flow.Store;
 using Aer.Mcp;
 
 namespace Aer.Mcp.Host;
@@ -74,7 +73,7 @@ public sealed class YieldTool(string captureFilePath) : IMcpTool
         // file after the turn's process exits) never observes a partially written file.
         var tempPath = $"{captureFilePath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(tempPath, json);
-        RetryingFileMove.Move(tempPath, captureFilePath, overwrite: true);
+        File.Move(tempPath, captureFilePath, overwrite: true);
 
         return new McpToolCallResult($"Recorded yield with outcome '{outcome}'.");
     }

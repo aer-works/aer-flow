@@ -32,7 +32,7 @@ public sealed class RetryingFileMoveTests : IDisposable
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Assert.Skip("FileShare.None only blocks a move's delete-share requirement on Windows.");
         }
 
         var src = Path_("source.txt");
@@ -66,7 +66,7 @@ public sealed class RetryingFileMoveTests : IDisposable
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Assert.Skip("FileShare.None only blocks a move's delete-share requirement on Windows.");
         }
 
         var src = Path_("source.txt");
@@ -85,3 +85,4 @@ public sealed class RetryingFileMoveTests : IDisposable
         }
     }
 }
+

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Aer.Flow.Store;
 using Aer.Mcp;
 
 namespace Aer.Mcp.Host;
@@ -123,7 +122,7 @@ public sealed class MemoryProposalTool(string captureDirectoryPath) : IMcpTool
         // reader (MemoryProposalEscalation) polling the directory never observes a partial write.
         var tempPath = $"{captureFilePath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(tempPath, json);
-        RetryingFileMove.Move(tempPath, captureFilePath, overwrite: true);
+        File.Move(tempPath, captureFilePath, overwrite: true);
 
         return new McpToolCallResult($"Recorded a '{operation}' proposal for '{targetPath}'; escalated for operator decision.");
     }
