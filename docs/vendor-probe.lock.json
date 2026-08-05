@@ -1,15 +1,15 @@
 {
-  "WrittenAt": "2026-08-03T20:28:36.2627566-04:00",
+  "WrittenAt": "2026-08-05T11:38:58.3403217-04:00",
   "Vendors": [
     {
       "Vendor": "agy",
       "RecordedVersion": "1.1.10",
-      "RecordedAt": "2026-08-03T20:28:36.2515701-04:00"
+      "RecordedAt": "2026-08-05T11:38:58.3372444-04:00"
     },
     {
       "Vendor": "claude",
-      "RecordedVersion": "2.1.221 (Claude Code)",
-      "RecordedAt": "2026-08-03T20:28:36.2514849-04:00"
+      "RecordedVersion": "2.1.222 (Claude Code)",
+      "RecordedAt": "2026-08-05T11:38:58.3371522-04:00"
     }
   ]
 }
