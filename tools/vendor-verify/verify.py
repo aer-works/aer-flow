@@ -1920,9 +1920,13 @@ def _one_writer():
 
 @check("durability.config-dir-redirect-breaks-auth", "durability",
        "CLAUDE_CONFIG_DIR redirects session storage but not the subscription login "
-       "(the measured basis for Architecture Rule 4's 'no redirecting config directories')")
+       "(the measured cost of a fresh config root: a one-time interactive operator login, #527)")
 def _config_dir():
-    """Rule 4 forbids redirecting a vendor CLI's config directory. This measures why.
+    """A fresh CLAUDE_CONFIG_DIR is usable but starts logged out. This measures that cost.
+
+    Architecture Rule 4 (as corrected 2026-07-25, #527) permits redirecting the config root; what
+    it forbids is AER copying a credential into one. This check is why the correction carries an
+    obligation: the operator signs in once per fresh root.
 
     The control arm is the same prompt with the variable unset. If the redirected arm cannot run
     while the control can, an isolated config dir costs the subscription login -- which is the
@@ -1960,6 +1964,71 @@ def _config_dir():
     except Exception:                                                  # noqa: BLE001
         said = blob.strip()[:160]
     return PASS, f"{note}; CLI said: {said!r}"
+
+
+@check("durability.agy-home-redirect-isolates-state", "durability",
+       "agy launched with redirected HOME/USERPROFILE creates its state tree under the redirect "
+       "and completes a model call without touching the real ~/.gemini")
+def _agy_home_redirect():
+    """Measures that redirecting HOME and USERPROFILE isolates agy's global state store without breaking auth.
+
+    Surfaces if agy's credentials move inside the profile or if agy ignores HOME/USERPROFILE.
+    Writes state only into disposable temp directory.
+    """
+    def tree_snapshot(root):
+        """Every (relative path, mtime) under root. A directory's own mtime only moves when a DIRECT
+        child is added or removed, so the agy store's nested writes (brain/, conversations/) are
+        invisible to a top-level mtime probe -- this walks instead."""
+        if not os.path.isdir(root):
+            return None
+        snap = {}
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for f in filenames:
+                p = os.path.join(dirpath, f)
+                try:
+                    snap[os.path.relpath(p, root)] = os.path.getmtime(p)
+                except OSError:
+                    pass  # a file deleted mid-walk counts via its absence from the other snapshot
+        return snap
+
+    real_gemini = os.path.expanduser("~/.gemini")
+
+    # Control arm: a quiet-host precondition, measured rather than assumed. Anything else writing
+    # to the real store during the run would be indistinguishable from a leak, so a store that is
+    # already moving during an idle pre-window makes the run INCONCLUSIVE, not FAIL.
+    real_idle = tree_snapshot(real_gemini)
+    time.sleep(5)
+    real_before = tree_snapshot(real_gemini)
+    if real_idle != real_before:
+        return INCONCLUSIVE, ("real ~/.gemini changed during the idle pre-window; concurrent agy "
+                              "activity on this host, cannot attribute writes -- rerun when quiet")
+
+    fake_home = tempfile.mkdtemp(prefix="v-agyhome-")
+    wd = tempfile.mkdtemp(prefix="v-agywd-")
+    try:
+        env_override = {"HOME": fake_home, "USERPROFILE": fake_home}
+        rc, out, err = run(["agy", "-p", "Reply with exactly the word PONG.",
+                            "--mode", "default", "--add-dir", wd],
+                           timeout=180, cwd=wd, extra_env=env_override)
+        blob = out + err
+        answered = "PONG" in blob
+        fake_gemini = os.path.join(fake_home, ".gemini")
+        fake_populated = os.path.isdir(fake_gemini) and bool(os.listdir(fake_gemini))
+
+        real_after = tree_snapshot(real_gemini)
+        real_untouched = (real_after == real_before)
+
+        note = f"answered={answered} (rc={rc}), fake_gemini populated={fake_populated}, real_untouched={real_untouched}"
+        if rc != 0 or not answered:
+            return FAIL if not answered else INCONCLUSIVE, f"agy call failed under redirected home; {note}"
+        if not fake_populated:
+            return FAIL, f"redirected home did not populate state tree under fake home; {note}"
+        if not real_untouched:
+            return FAIL, f"real ~/.gemini was modified during redirected run; {note}"
+        return PASS, note
+    finally:
+        shutil.rmtree(fake_home, ignore_errors=True)
+        shutil.rmtree(wd, ignore_errors=True)
 
 
 # ====================================================================== lifecycle

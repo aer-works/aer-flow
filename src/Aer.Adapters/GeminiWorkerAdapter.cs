@@ -390,6 +390,34 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
         };
 
+        // agy home redirect (#442): non-shell bindings get HOME and USERPROFILE redirected to an
+        // AER-owned state directory. Shell-granted workers (grant.RunShellCommands == true) are
+        // deliberately NOT redirected so worker git commit can see the user's .gitconfig. Dispatch
+        // path ONLY, deliberately absent from BuildGate -- ADR 0050 records why the gate's one
+        // consumer (the dialogue worker) cannot carry it; that remainder lives on #1019.
+        if (invocation.PermissionGrant is { RunShellCommands: false })
+        {
+            var isDaemonSession = invocation.SessionId is not null || invocation.ResumeSession ||
+                (invocation.BindingsFileDirectory is not null && File.Exists(Path.Combine(invocation.BindingsFileDirectory, ".aer", "session.json")));
+
+            if (isDaemonSession)
+            {
+                var sessionDir = invocation.BindingsFileDirectory ?? invocation.WorkingDirectory;
+                if (sessionDir is not null)
+                {
+                    var sessionHome = Path.Combine(sessionDir, ".gemini_home");
+                    environment.Add(("HOME", sessionHome));
+                    environment.Add(("USERPROFILE", sessionHome));
+                }
+            }
+            else
+            {
+                var batchHome = EnvironmentReference("AER_OUTPUT_DIR", isWindows) + (isWindows ? @"\.gemini_home" : "/.gemini_home");
+                environment.Add(("HOME", batchHome));
+                environment.Add(("USERPROFILE", batchHome));
+            }
+        }
+
         // #679; see WorkerEnvironment.WorkspaceVariable. Load-bearing on this vendor rather than
         // merely useful, for the reason AgyHookCheckCommand's own bound gives.
         if (invocation.WorkingDirectory is { } workspace)

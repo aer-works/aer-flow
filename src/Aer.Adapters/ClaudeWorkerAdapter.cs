@@ -85,6 +85,16 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
         return true;
     }
 
+    /// <summary>
+    /// The environment variable name AER inspects for an operator-configured shared Claude config root (#442).
+    /// </summary>
+    public const string AerClaudeConfigRootVariable = "AER_CLAUDE_CONFIG_ROOT";
+
+    /// <summary>
+    /// The environment variable name Claude Code reads for its configuration root directory.
+    /// </summary>
+    public const string ClaudeConfigDirVariable = "CLAUDE_CONFIG_DIR";
+
     /// <summary>The claude <see cref="VendorGate"/>.</summary>
     /// <remarks>
     /// <c>--settings</c> is the load-bearing pair here: it is the only route by which <c>claude</c>
@@ -109,6 +119,11 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(grant)}",
             [SimpleModeVariable] = "0",
         };
+
+        if (Environment.GetEnvironmentVariable(AerClaudeConfigRootVariable) is { Length: > 0 } configRoot)
+        {
+            environment[ClaudeConfigDirVariable] = configRoot;
+        }
 
         // Must mirror Resolve's own workspace clause below. Omitting it here does not fail closed in
         // a harmless direction -- it silently narrows a granted write to the outbox. See VendorGate.For.
@@ -250,6 +265,11 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildHookDeniedTools(invocation.PermissionGrant)}"),
             (SimpleModeVariable, "0"),
         };
+
+        if (Environment.GetEnvironmentVariable(AerClaudeConfigRootVariable) is { Length: > 0 } configRoot)
+        {
+            environment.Add((ClaudeConfigDirVariable, configRoot));
+        }
 
         // #679; see WorkerEnvironment.WorkspaceVariable for why this is told rather than inferred,
         // and for what its absence means.

@@ -642,4 +642,45 @@ public class ClaudeWorkerAdapterTests
         Assert.Contains("--memory-proposal-tool", serverArgs);
         Assert.DoesNotContain(serverArgs, a => a!.Contains("memory-proposals", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Claude_config_root_unset_injects_no_CLAUDE_CONFIG_DIR()
+    {
+        var original = Environment.GetEnvironmentVariable(ClaudeWorkerAdapter.AerClaudeConfigRootVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(ClaudeWorkerAdapter.AerClaudeConfigRootVariable, null);
+            var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+            var gate = ClaudeWorkerAdapter.BuildGate(null);
+
+            Assert.DoesNotContain(target.Environment!, e => e.Name == ClaudeWorkerAdapter.ClaudeConfigDirVariable);
+            Assert.False(gate.Environment.ContainsKey(ClaudeWorkerAdapter.ClaudeConfigDirVariable));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ClaudeWorkerAdapter.AerClaudeConfigRootVariable, original);
+        }
+    }
+
+    [Fact]
+    public void Claude_config_root_set_injects_CLAUDE_CONFIG_DIR_for_batch_and_gate()
+    {
+        var original = Environment.GetEnvironmentVariable(ClaudeWorkerAdapter.AerClaudeConfigRootVariable);
+        var testPath = OperatingSystem.IsWindows() ? @"C:\aer\claude-root" : "/aer/claude-root";
+        try
+        {
+            Environment.SetEnvironmentVariable(ClaudeWorkerAdapter.AerClaudeConfigRootVariable, testPath);
+
+            var target = new ClaudeWorkerAdapter().Resolve(
+                new WorkerInvocation("Draft a plan.", SessionId: "session-123", ResumeSession: true), ArchitectContract);
+            var gate = ClaudeWorkerAdapter.BuildGate(null);
+
+            Assert.Contains(target.Environment!, e => e.Name == ClaudeWorkerAdapter.ClaudeConfigDirVariable && e.Value == testPath);
+            Assert.Equal(testPath, gate.Environment[ClaudeWorkerAdapter.ClaudeConfigDirVariable]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ClaudeWorkerAdapter.AerClaudeConfigRootVariable, original);
+        }
+    }
 }

@@ -1165,4 +1165,82 @@ public class GeminiWorkerAdapterTests
         Assert.Contains("--memory-proposal-tool", serverArgs);
         Assert.DoesNotContain(serverArgs, a => a!.Contains("memory-proposals", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Non_shell_grant_injects_HOME_and_USERPROFILE_redirects()
+    {
+        var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: nonShellGrant), ArchitectContract);
+
+        var home = target.Environment!.SingleOrDefault(e => e.Name == "HOME").Value;
+        var userProfile = target.Environment!.SingleOrDefault(e => e.Name == "USERPROFILE").Value;
+
+        Assert.NotNull(home);
+        Assert.NotNull(userProfile);
+        Assert.Equal(home, userProfile);
+        Assert.Contains("gemini_home", home);
+    }
+
+    [Fact]
+    public void Shell_granted_worker_does_not_inject_HOME_or_USERPROFILE_redirects()
+    {
+        var shellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true);
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Build.", PermissionGrant: shellGrant), ArchitectContract);
+
+        Assert.DoesNotContain(target.Environment!, e => e.Name == "HOME");
+        Assert.DoesNotContain(target.Environment!, e => e.Name == "USERPROFILE");
+    }
+
+    [Fact]
+    public void Batch_dispatch_points_home_redirect_under_execution_output_dir()
+    {
+        var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: nonShellGrant), ArchitectContract);
+
+        var home = target.Environment!.Single(e => e.Name == "HOME").Value;
+        var expectedRef = OperatingSystem.IsWindows() ? "%AER_OUTPUT_DIR%" : "$AER_OUTPUT_DIR";
+        Assert.StartsWith(expectedRef, home);
+    }
+
+    /// <summary>
+    /// No SessionId on purpose: the daemon mints a vendor session id only for claude, so a real agy
+    /// session turn is classified entirely by the <c>.aer/session.json</c> sniff on the bindings
+    /// directory -- this pins that clause alone, not the claude-only shortcut in front of it.
+    /// </summary>
+    [Fact]
+    public void Session_dispatch_points_home_redirect_under_session_root()
+    {
+        var tempSessionDir = Path.Combine(Path.GetTempPath(), "test-session-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(tempSessionDir, ".aer"));
+        File.WriteAllText(Path.Combine(tempSessionDir, ".aer", "session.json"), "{}");
+
+        try
+        {
+            var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
+            var target = new GeminiWorkerAdapter().Resolve(
+                new WorkerInvocation("Chat turn.", PermissionGrant: nonShellGrant, BindingsFileDirectory: tempSessionDir), ArchitectContract);
+
+            var home = target.Environment!.Single(e => e.Name == "HOME").Value;
+            var expectedHome = Path.Combine(tempSessionDir, ".gemini_home");
+            Assert.Equal(expectedHome, home);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(tempSessionDir);
+        }
+    }
+
+    /// <summary>
+    /// The redirect rides the dispatch path only -- the reason lives at Resolve's own redirect
+    /// clause, and <see cref="VendorGateMatchesResolveTests"/> carries the matching mirror carve-out.
+    /// </summary>
+    [Fact]
+    public void Gate_does_not_carry_the_home_redirect()
+    {
+        var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
+        var gate = GeminiWorkerAdapter.BuildGate(nonShellGrant);
+
+        Assert.False(gate.Environment.ContainsKey("HOME"));
+        Assert.False(gate.Environment.ContainsKey("USERPROFILE"));
+    }
 }

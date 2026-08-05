@@ -607,6 +607,10 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         var environment = new List<(string Name, string Value)>();
         environment.AddRange(InheritedEnvironment.Resolve());
 
+        var pathVariables = request.Environment
+            .OfType<EnvironmentVariable.AerComputed>()
+            .ToDictionary(v => v.Name, v => v.Value);
+
         foreach (var environmentVariable in request.Environment)
         {
             // PassThrough variable *values* are resolved by whatever wires a concrete worker adapter
@@ -618,9 +622,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             }
         }
 
+        // Target environment VALUES take the same placeholder grammar as target arguments (#442: the
+        // agy per-execution home references AER_OUTPUT_DIR, which only exists here). Expansion is
+        // keyed on the computed-variable names, so a value carrying no such token is untouched.
         if (target.Environment is { } targetEnvironment)
         {
-            environment.AddRange(targetEnvironment);
+            foreach (var (name, value) in targetEnvironment)
+            {
+                environment.Add((name, ExpandVariables(value, pathVariables)));
+            }
         }
 
         return environment;
