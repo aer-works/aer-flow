@@ -11,4 +11,5 @@ public enum FailureClassification
     Retryable,
     Permanent,
     ExhaustedUntil,
+    ToolDenied,
 }

@@ -949,8 +949,15 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         string? stderrTail,
         TimeProvider timeProvider,
         out FailureClassification? classification,
-        out DateTimeOffset? retryNotBefore) =>
-        TryClassifyQuotaExhaustion(stderrTail, timeProvider, out classification, out retryNotBefore);
+        out DateTimeOffset? retryNotBefore)
+    {
+        if (TryClassifyQuotaExhaustion(stderrTail, timeProvider, out classification, out retryNotBefore))
+        {
+            return true;
+        }
+
+        return TryClassifyAutoDeniedTool(stderrTail, out classification, out retryNotBefore);
+    }
 
     [GeneratedRegex(@"Resets in\s+(?:(?<hours>\d+)h)?(?:(?<minutes>\d+)m)?(?:(?<seconds>\d+)s)?", RegexOptions.IgnoreCase)]
     private static partial Regex QuotaResetDurationRegex();
@@ -1013,6 +1020,33 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
 
         classification = FailureClassification.ExhaustedUntil;
         retryNotBefore = timeProvider.GetUtcNow().Add(duration);
+        return true;
+    }
+
+    /// <summary>
+    /// Recognizes agy auto-denied-tool errors from stderr prose (issue #914) mirroring dispatch.py's
+    /// canonical twin markers: "auto-denied" AND "permission".
+    /// </summary>
+    public static bool TryClassifyAutoDeniedTool(
+        string? stderrOrReason,
+        out FailureClassification? classification,
+        out DateTimeOffset? retryNotBefore)
+    {
+        classification = null;
+        retryNotBefore = null;
+
+        if (string.IsNullOrWhiteSpace(stderrOrReason))
+        {
+            return false;
+        }
+
+        if (!stderrOrReason.Contains("auto-denied", StringComparison.OrdinalIgnoreCase) ||
+            !stderrOrReason.Contains("permission", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        classification = FailureClassification.ToolDenied;
         return true;
     }
 

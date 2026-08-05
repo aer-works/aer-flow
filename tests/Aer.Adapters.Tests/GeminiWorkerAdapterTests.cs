@@ -1119,6 +1119,35 @@ public class GeminiWorkerAdapterTests
         Assert.Equal(now.AddHours(hours).AddMinutes(minutes).AddSeconds(seconds), retryNotBefore);
     }
 
+    [Fact]
+    public void Classifies_verbatim_auto_denied_tool_stderr_as_ToolDenied_with_null_retryNotBefore()
+    {
+        var specimen = "jetski: no output produced — a tool required the \"command\" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json (e.g. command(<target>)).";
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(specimen, testTime, out var classification, out var retryNotBefore);
+
+        Assert.True(classified);
+        Assert.Equal(FailureClassification.ToolDenied, classification);
+        Assert.Null(retryNotBefore);
+    }
+
+    [Theory]
+    [InlineData("a tool required the command permission that headless mode cannot prompt for")]
+    [InlineData("a required tool was auto-denied without user input")]
+    public void Single_marker_stderr_does_not_classify_as_auto_denied_tool(string stderr)
+    {
+        var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
+
+        var adapter = new GeminiWorkerAdapter();
+        var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
+
+        Assert.False(classified);
+        Assert.Null(classification);
+        Assert.Null(retryNotBefore);
+    }
+
     private sealed class TestTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;

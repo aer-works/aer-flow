@@ -409,6 +409,7 @@ public static class StepItemProjector
                 {
                     FailureClassification.Retryable => " — can be retried",
                     FailureClassification.Permanent => " — not retryable",
+                    FailureClassification.ToolDenied => " — not retryable (a required tool was denied)",
                     _ => string.Empty,
                 };
 

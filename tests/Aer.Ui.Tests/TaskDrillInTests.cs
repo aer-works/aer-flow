@@ -551,6 +551,39 @@ public class TaskDrillInTests
     }
 
     [AvaloniaFact]
+    public async Task Tool_denied_failure_renders_a_not_retryable_suffix()
+    {
+        // #914: a ToolDenied attempt must carry an explanatory "not retryable" suffix, not fall through
+        // the switch to the empty default — a denied-tool failure reading as a bare "Failed" is exactly
+        // the #597 defect the suffix exists to prevent. Reds against the pre-fix switch, which had no
+        // ToolDenied arm.
+        var taskDirectory = await CreateTaskDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
+                new FlowEvent.ExecutionFailed(
+                    new ExecutionId("a-1"),
+                    FailureClassification.ToolDenied,
+                    "Execution failed: a required tool was auto-denied."),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+
+            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            Assert.Contains(
+                architect.AttemptLines,
+                line => line.Contains("Failed — not retryable (a required tool was denied)"));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Show_full_output_opens_the_attempt_the_banner_quotes_not_the_first()
     {
         // Two attempts, both with transcripts: the banner's reason comes from the newest reasoned

@@ -30,6 +30,7 @@ public static class RetryEngine
 
         return stepState.Status == StepStatus.Failed
             && stepState.LatestFailureClassification != FailureClassification.Permanent
+            && stepState.LatestFailureClassification != FailureClassification.ToolDenied
             && (stepState.LatestFailureClassification == FailureClassification.ExhaustedUntil
                 || stepState.ConsecutiveFailureCount < retryPolicy.MaxAttempts);
     }
