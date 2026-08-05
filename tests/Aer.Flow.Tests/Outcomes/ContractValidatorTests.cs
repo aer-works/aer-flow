@@ -472,5 +472,52 @@ public class ContractValidatorTests
             DirectoryCleanup.DeleteRecursively(directory);
         }
     }
+
+    /// <summary>
+    /// Spec §4.2: a declared <see cref="OutputSchema.Diff"/> output is satisfied by a valid diff
+    /// and unsatisfied by garbage with <see cref="UnsatisfiedOutputReason.SchemaViolation"/> carrying
+    /// the parser's error sentence. Control: the same garbage file under <see cref="OutputSchema.None"/>
+    /// passes either way.
+    /// </summary>
+    [Fact]
+    public void A_diff_schema_declared_output_is_satisfied_by_valid_diff_and_unsatisfied_by_garbage_with_control()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var diffContract = new WorkerContract(
+                "patcher",
+                [],
+                [new ProducedOutput("patch.diff", Schema: OutputSchema.Diff)],
+                []);
+
+            var noneContract = new WorkerContract(
+                "patcher",
+                [],
+                [new ProducedOutput("patch.diff", Schema: OutputSchema.None)],
+                []);
+
+            const string validDiff = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+b";
+            const string garbageText = "Not a valid diff at all";
+
+            // Valid diff passes under OutputSchema.Diff
+            File.WriteAllText(Path.Combine(directory, "patch.diff"), validDiff);
+            Assert.True(ContractValidator.IsSatisfied(diffContract, directory));
+
+            // Garbage fails under OutputSchema.Diff carrying parser error sentence
+            File.WriteAllText(Path.Combine(directory, "patch.diff"), garbageText);
+            var result = ContractValidator.Validate(diffContract, directory);
+            var unsatisfied = Assert.Single(result.UnsatisfiedOutputs);
+            Assert.Equal(UnsatisfiedOutputReason.SchemaViolation, unsatisfied.Reason);
+            Assert.Contains("No valid hunk header", unsatisfied.Detail);
+
+            // Control: same garbage file passes under OutputSchema.None
+            Assert.True(ContractValidator.IsSatisfied(noneContract, directory));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
 }
 

@@ -313,4 +313,32 @@ public class WorkerRoleCatalogTests
         var ex = Assert.Throws<InvalidOperationException>(() => _ = WorkerRoleCatalog.All);
         Assert.Contains(".notes.md", ex.Message, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void The_shipped_patch_role_declares_a_patch_diff_output_with_diff_schema()
+    {
+        using var env = ShippedDefault();
+
+        var patchRole = WorkerRoleCatalog.For("patch");
+        Assert.False(patchRole.Grant.WriteFiles);
+        Assert.False(patchRole.ProducesVerdict);
+
+        var output = Assert.Single(patchRole.Outputs);
+        Assert.Equal("patch.diff", output.Name);
+        Assert.Equal(OutputSchema.Diff, output.Schema);
+        Assert.Contains("patch.diff", output.Instruction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_output_maps_diff_schema_from_the_catalog_string()
+    {
+        using var cat = new TempCatalog();
+        using var env = PointAt(
+            cat,
+            """{"t":{"adapter":"gemini","model":"m","effort":null}}""",
+            $"[{Role("p", "t", outputs: """[{"name":"patch.diff","schema":"diff","instruction":"i"}]""")}]");
+
+        var output = Assert.Single(WorkerRoleCatalog.For("p").Outputs);
+        Assert.Equal(OutputSchema.Diff, output.Schema);
+    }
 }
