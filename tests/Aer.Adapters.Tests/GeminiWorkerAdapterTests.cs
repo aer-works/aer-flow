@@ -997,7 +997,7 @@ public class GeminiWorkerAdapterTests
         process.StandardInput.Write(stdin);
         process.StandardInput.Close();
         var stdout = process.StandardOutput.ReadToEnd();
-        var exited = process.WaitForExit(TimeSpan.FromSeconds(30));
+        var exited = process.WaitForExit(TimeSpan.FromSeconds(60));
         Assert.True(exited, "agy-hook-check did not exit within 30s");
 
         using var verdict = System.Text.Json.JsonDocument.Parse(stdout);

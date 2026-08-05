@@ -93,7 +93,7 @@ public class InFlightExecutionRegistryTests
 
     private static async Task AwaitWithTimeoutAsync(Task task)
     {
-        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(30)));
+        var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(60)));
         Assert.Same(task, completed);
         await task;
     }

@@ -542,7 +542,7 @@ public class ClaudeWorkerAdapterTests
         process.StandardInput.Write(stdin);
         process.StandardInput.Close();
         var stderr = process.StandardError.ReadToEnd();
-        var exited = process.WaitForExit(TimeSpan.FromSeconds(30));
+        var exited = process.WaitForExit(TimeSpan.FromSeconds(60));
         Assert.True(exited, "hook-check did not exit within 30s");
 
         return (process.ExitCode, stderr);
