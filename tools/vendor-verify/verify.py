@@ -1962,6 +1962,46 @@ def _config_dir():
     return PASS, f"{note}; CLI said: {said!r}"
 
 
+@check("durability.agy-home-redirect-isolates-state", "durability",
+       "agy launched with redirected HOME/USERPROFILE creates its state tree under the redirect "
+       "and completes a model call without touching the real ~/.gemini")
+def _agy_home_redirect():
+    """Measures that redirecting HOME and USERPROFILE isolates agy's global state store without breaking auth.
+
+    Surfaces if agy's credentials move inside the profile or if agy ignores HOME/USERPROFILE.
+    Writes state only into disposable temp directory.
+    """
+    real_gemini = os.path.expanduser("~/.gemini")
+    real_mtime = os.path.getmtime(real_gemini) if os.path.exists(real_gemini) else None
+
+    fake_home = tempfile.mkdtemp(prefix="v-agyhome-")
+    wd = tempfile.mkdtemp(prefix="v-agywd-")
+    try:
+        env_override = {"HOME": fake_home, "USERPROFILE": fake_home}
+        rc, out, err = run(["agy", "-p", "Reply with exactly the word PONG.",
+                            "--mode", "default", "--add-dir", wd],
+                           timeout=180, cwd=wd, extra_env=env_override)
+        blob = out + err
+        answered = "PONG" in blob
+        fake_gemini = os.path.join(fake_home, ".gemini")
+        fake_populated = os.path.isdir(fake_gemini) and bool(os.listdir(fake_gemini))
+
+        current_real_mtime = os.path.getmtime(real_gemini) if os.path.exists(real_gemini) else None
+        real_untouched = (current_real_mtime == real_mtime)
+
+        note = f"answered={answered} (rc={rc}), fake_gemini populated={fake_populated}, real_untouched={real_untouched}"
+        if rc != 0 or not answered:
+            return FAIL if not answered else INCONCLUSIVE, f"agy call failed under redirected home; {note}"
+        if not fake_populated:
+            return FAIL, f"redirected home did not populate state tree under fake home; {note}"
+        if not real_untouched:
+            return FAIL, f"real ~/.gemini was modified during redirected run; {note}"
+        return PASS, note
+    finally:
+        shutil.rmtree(fake_home, ignore_errors=True)
+        shutil.rmtree(wd, ignore_errors=True)
+
+
 # ====================================================================== lifecycle
 @check("lifecycle.daemon-status", "lifecycle",
        "claude daemon status reports a machine-readable readiness signal (#478)")

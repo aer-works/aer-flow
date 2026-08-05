@@ -149,5 +149,6 @@ copy of every record, retired by #952: the record is the only place a decision i
 | [0047](0047-workflow-templates-are-data-over-roles.md) | Workflow templates are data composed over the role catalog | accepted |
 | [0048](0048-oversized-worker-input-travels-in-a-file.md) | Oversized worker input travels in a file the worker reads, not a bigger command line | accepted |
 | [0049](0049-the-wake-loop-is-in-contract-and-the-orchestrator-decides.md) | The wake loop is in-contract, and the orchestrator is a resident presence that decides | accepted |
+| [0050](0050-vendor-memory-is-isolated-scratch.md) | Vendor memory is isolated scratch; room memory is the only durable layer | accepted |
 
 <!-- /generated: decisions-index -->
