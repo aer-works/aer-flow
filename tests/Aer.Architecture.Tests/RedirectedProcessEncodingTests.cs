@@ -3,14 +3,13 @@ using System.Text.RegularExpressions;
 namespace Aer.Architecture.Tests;
 
 /// <summary>
-/// #466 / #1016: a redirected child-process stream with no explicit encoding is decoded with the
-/// CONSOLE's code page on Windows — OEM cp437 under a default console — which turned the vendors'
-/// UTF-8 <c>—</c> into the Conversation tab's <c>ΓÇö</c>. Every spawn site in <c>src/</c> that
-/// redirects a stream must therefore pin its decode to UTF-8. This is the deterministic regression
-/// net: the behavioral round-trip test (<c>ProcessVendorTurnClientEncodingTests</c>) can only go
-/// red where the ambient console code page is not already UTF-8, and the test host runs windowless
-/// where the decode falls back to UTF-8 regardless — so a source-level check is the instrument
-/// that fails everywhere, every time.
+/// #466 / #1016: every spawn site in <c>src/</c> that redirects a child stream must pin its decode
+/// to UTF-8. The mechanism and its cp437 derivation are recorded once, at the spawn site that was
+/// actually measured — <c>ProcessVendorTurnClient</c>'s comment and the #466 diagnosis. This
+/// source-level check is the deterministic regression net: the behavioral round-trip test
+/// (<c>ProcessVendorTurnClientEncodingTests</c>) can only go red where the ambient console code
+/// page is not already UTF-8, and the test host runs windowless where the decode falls back to
+/// UTF-8 regardless — so a source scan is the instrument that fails everywhere, every time.
 /// </summary>
 public class RedirectedProcessEncodingTests
 {

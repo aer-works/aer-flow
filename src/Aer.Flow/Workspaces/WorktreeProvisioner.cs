@@ -180,8 +180,6 @@ public static class WorktreeProvisioner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            // #1016: git emits UTF-8 (non-ASCII paths included); the null-encoding default decodes
-            // with the console code page instead.
             StandardOutputEncoding = System.Text.Encoding.UTF8,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
         };
