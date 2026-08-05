@@ -157,6 +157,23 @@ public class ConcurrencyGuardTests
     /// The third polarity, and the one that guards the blast radius: <see cref="ConcurrencyGuard.Acquire"/>
     /// stays FAIL-FAST. #857 adds waiting for the operator-facing path only; an <c>aer run</c> pump
     /// that loses this lock means another pump owns the task, and waiting for it is exactly wrong.
+    /// <para>
+    /// Relative form (#1008): the refusal is measured against a deliberate <see cref="ConcurrencyGuard.AcquireWithin"/>
+    /// wait run in the same test on the same loaded machine, not against a fixed wall-clock budget —
+    /// the old 500ms budget produced two recorded false reds (531ms, 665ms) that were pure
+    /// suite-load scheduling delay. The control arm asserts the waited acquire actually waited its
+    /// full budget, so a clock or harness fault cannot fake the comparison; the margin assertion is
+    /// what a regressed <c>Acquire</c> that adopted the wait cannot satisfy, because both arms would
+    /// then take roughly the budget and the gap between them collapses toward zero (red-proven by
+    /// exactly that substitution before this landed).
+    /// </para>
+    /// <para>
+    /// Deliberate trade-off (named by this change's reviewer): an <c>Acquire</c> that regressed to
+    /// blocking for under ~half the budget passes — the margin only catches adoption of the wait,
+    /// which is the #857 claim under guard, not a sub-second latency contract. The old fixed 500ms
+    /// budget nominally caught smaller slowdowns but false-redded on 31–165ms of ordinary suite
+    /// load; this form trades that phantom sensitivity for a real one.
+    /// </para>
     /// </summary>
     [Fact]
     public void Acquire_remains_fail_fast_and_does_not_wait()
@@ -166,13 +183,23 @@ public class ConcurrencyGuardTests
         {
             using var holder = ConcurrencyGuard.Acquire(taskDirectory);
 
-            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            // wait-ok: the measured-against clock, not a condition-wait ceiling (#1008, doc comment)
+            var waitBudget = TimeSpan.FromSeconds(2);
+
+            var fast = System.Diagnostics.Stopwatch.StartNew();
             Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
-            elapsed.Stop();
+            fast.Stop();
+
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.AcquireWithin(taskDirectory, waitBudget));
+            waited.Stop();
 
             Assert.True(
-                elapsed.Elapsed < TimeSpan.FromMilliseconds(500),
-                $"Acquire took {elapsed.ElapsedMilliseconds}ms -- it is meant to refuse immediately, not wait.");
+                waited.Elapsed >= waitBudget,
+                $"AcquireWithin returned in {waited.ElapsedMilliseconds}ms, under its {waitBudget.TotalMilliseconds}ms budget -- the control arm did not discriminate, so the comparison below proves nothing.");
+            Assert.True(
+                fast.Elapsed <= waited.Elapsed - (waitBudget / 2),
+                $"Acquire took {fast.ElapsedMilliseconds}ms against AcquireWithin's deliberate {waited.ElapsedMilliseconds}ms -- refusing is meant to be immediate, not to adopt the wait.");
         }
         finally
         {
@@ -293,8 +320,8 @@ public class ConcurrencyGuardTests
     /// <summary>
     /// Why the probe is confined to <see cref="ConcurrencyGuard.AcquireWithin"/>'s
     /// exhausted-budget path lives on that catch's own comment. What is pinned here is the
-    /// polarity pair: the fail-fast refusal never carries probe text (that would break
-    /// <see cref="Acquire_remains_fail_fast_and_does_not_wait"/>'s budget), the waited one does.
+    /// polarity pair: the fail-fast refusal never carries probe text (that would erode
+    /// <see cref="Acquire_remains_fail_fast_and_does_not_wait"/>'s margin), the waited one does.
     /// </summary>
     [Fact]
     public void Only_the_exhausted_wait_enriches_the_locked_message_with_the_probed_holder()

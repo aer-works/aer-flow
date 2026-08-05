@@ -255,7 +255,9 @@ public class CrashRecoveryEndToEndTests
         // the race by killing and recovering within milliseconds, not in the product, where a real
         // recovery never races a still-terminating host. StartWorkflowAsync acquires the lock before it
         // writes anything, so a failed attempt mutated nothing and retrying the whole pump is safe.
-        var lockRetryDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        // 60s per the #1004 standard for condition-wait ceilings the green path never spends: a
+        // flapping-holder occurrence outlasted the old 5s window under full-suite load (#1008).
+        var lockRetryDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
         while (true)
         {
             var completed = await Task.WhenAny(
@@ -289,7 +291,10 @@ public class CrashRecoveryEndToEndTests
     /// </summary>
     private static async Task<FlowEventLogWriter> OpenWriterWithRetryAsync(string logPath)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        // 60s, matching the lock-retry deadline above and #1004's ceiling standard: the recorded
+        // #1008 occurrence was a handle-teardown flap that outlasted the old short window while the
+        // holder probe confirmed nothing was stuck (the handle released before the probe ran).
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
         while (true)
         {
             try
