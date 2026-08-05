@@ -59,6 +59,24 @@
     ]
   },
   {
+    "id": "patch",
+    "tier": "frontier",
+    "read_files": true,
+    "write_files": false,
+    "run_shell_commands": false,
+    "network_access": false,
+    "timeout_minutes": 25,
+    "verdict_schema": false,
+    "purpose": "Proposes code modifications as an applyable unified diff without mutating its workspace directly (withheld writes run enforced on claude, and audited-not-enforced on agy per #659).",
+    "outputs": [
+      {
+        "name": "patch.diff",
+        "schema": "diff",
+        "instruction": "Write your proposed changes as a unified diff against your workspace to $AER_OUTPUT_DIR/patch.diff. If you propose no changes, write an empty file."
+      }
+    ]
+  },
+  {
     "id": "fact-check",
     "tier": "minimal",
     "read_files": true,

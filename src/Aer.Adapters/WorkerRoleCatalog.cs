@@ -173,9 +173,10 @@ public static class WorkerRoleCatalog
         {
             "none" => OutputSchema.None,
             "review_verdict" => OutputSchema.ReviewVerdict,
+            "diff" => OutputSchema.Diff,
             _ => throw new InvalidOperationException(
                 $"Worker role '{roleId}' output '{raw.Name}' declares unknown schema '{raw.Schema}'. " +
-                "Known schemas: none, review_verdict."),
+                "Known schemas: none, review_verdict, diff."),
         };
 
         return new WorkerRoleOutput(raw.Name, schema, raw.Instruction);
