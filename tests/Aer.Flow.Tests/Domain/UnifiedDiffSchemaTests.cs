@@ -32,6 +32,53 @@ public class UnifiedDiffSchemaTests
         Assert.Contains("--- a/src/File.cs", diff);
     }
 
+    /// <summary>
+    /// A deleted line is written with a leading <c>-</c>, so removing a comment that itself starts
+    /// <c>-- </c> produces the body line <c>--- note</c> — indistinguishable from a file header on
+    /// its own. Matching single lines rejected this valid diff at its SECOND hunk; the pair rule
+    /// (see <see cref="UnifiedDiffSchema"/>) is what discriminates.
+    /// </summary>
+    [Fact]
+    public void A_deleted_comment_line_that_looks_like_a_file_header_does_not_break_a_later_hunk()
+    {
+        var bytes = Encoding.UTF8.GetBytes(
+            """
+            --- a/schema.sql
+            +++ b/schema.sql
+            @@ -1,2 +1,2 @@
+            --- the old note
+            +-- the new note
+             select 1;
+            @@ -10,2 +10,2 @@
+            -select 2;
+            +select 3;
+            """);
+
+        Assert.True(UnifiedDiffSchema.TryParse(bytes, out _, out var error), error);
+        Assert.Null(error);
+    }
+
+    /// <summary>
+    /// A worker on Windows can write its artifact with a BOM (#466's family). Without stripping it,
+    /// U+FEFF stays glued to the first file header and every prefix test below fails.
+    /// </summary>
+    [Fact]
+    public void A_diff_written_with_a_utf8_bom_still_parses()
+    {
+        var diffText =
+            """
+            --- a/src/File.cs
+            +++ b/src/File.cs
+            @@ -1,1 +1,1 @@
+            -old
+            +new
+            """;
+        var bytes = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes(diffText)).ToArray();
+
+        Assert.True(UnifiedDiffSchema.TryParse(bytes, out _, out var error), error);
+        Assert.Null(error);
+    }
+
     [Fact]
     public void An_empty_file_parses_as_valid_meaning_no_change_proposed()
     {

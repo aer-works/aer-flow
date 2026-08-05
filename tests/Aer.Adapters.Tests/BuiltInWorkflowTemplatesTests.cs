@@ -22,7 +22,7 @@ public class BuiltInWorkflowTemplatesTests
     }
 
     [Fact]
-    public void GetRoleTemplates_ContainsFiveRoleTemplates_WithValidFields()
+    public void GetRoleTemplates_ContainsEveryCatalogRole_WithValidFields()
     {
         var roles = BuiltInWorkflowTemplates.GetRoleTemplates();
         Assert.Equal(7, roles.Count);

@@ -16,7 +16,17 @@ namespace Aer.Flow.Domain;
 /// content matches the unified diff format (file-header pair <c>--- </c>/<c>+++ </c> followed by at
 /// least one hunk header <c>@@ -n[,n] +n[,n] @@</c>). It does NOT prove that the patch applies
 /// against any given tree; only <c>git apply --check</c> proves that, which is deliberately out of
-/// scope here.
+/// scope here. Combined (merge) diffs, whose headers are <c>@@@</c>, are not accepted — no worker
+/// produces one, and accepting a shape nothing writes would widen the floor for nothing.
+/// </para>
+/// <para>
+/// <b>A file header is an ADJACENT <c>--- </c>/<c>+++ </c> pair, not either line alone</b>, because a
+/// deleted line is written with a leading <c>-</c>: removing the SQL/Lua/Haskell comment
+/// <c>-- note</c> produces the body line <c>--- note</c>, which is indistinguishable from a header
+/// on its own. Matching single lines rejected valid diffs whose later hunks followed such a
+/// deletion. The residual gap is a deletion of <c>-- x</c> immediately followed by an addition of
+/// <c>++ y</c>, which reads as a header pair; that is a false ACCEPT of something already shaped
+/// like a diff, and this floor is not the thing that proves a patch applies.
 /// </para>
 /// </summary>
 public static class UnifiedDiffSchema
@@ -42,11 +52,15 @@ public static class UnifiedDiffSchema
             text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
                 .GetString(bytes);
         }
-        catch (Exception)
+        catch (DecoderFallbackException)
         {
             error = "The diff document is not valid UTF-8 text.";
             return false;
         }
+
+        // A worker on Windows can write its artifact with a BOM (#466's family), which would leave
+        // U+FEFF glued to the first file header and fail every prefix test below.
+        text = text.TrimStart('﻿');
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -56,22 +70,23 @@ public static class UnifiedDiffSchema
         }
 
         var lines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-        var seenMinusHeader = false;
         var hasFileHeaderPair = false;
         var hunkCount = 0;
 
-        foreach (var line in lines)
+        for (var i = 0; i < lines.Length; i++)
         {
-            if (line.StartsWith("--- ", StringComparison.Ordinal))
-            {
-                seenMinusHeader = true;
-                hasFileHeaderPair = false;
-            }
-            else if (seenMinusHeader && line.StartsWith("+++ ", StringComparison.Ordinal))
+            var line = lines[i];
+
+            if (line.StartsWith("--- ", StringComparison.Ordinal)
+                && i + 1 < lines.Length
+                && lines[i + 1].StartsWith("+++ ", StringComparison.Ordinal))
             {
                 hasFileHeaderPair = true;
+                i++;
+                continue;
             }
-            else if (HunkHeaderRegex.IsMatch(line))
+
+            if (HunkHeaderRegex.IsMatch(line))
             {
                 if (!hasFileHeaderPair)
                 {
