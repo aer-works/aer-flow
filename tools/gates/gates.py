@@ -35,6 +35,8 @@ OVERLAP = [
     "aer-dispatch-selftest",
     "test-scripts",
     "audit-staleness-ext-selftest",
+    "audit-waitceiling",
+    "audit-waitceiling-selftest",
 ]
 
 # The MSBuild owners, strictly sequential: one MSBuild at a time.

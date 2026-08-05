@@ -273,6 +273,10 @@ audit-staleness-ext = { cmd = "python -u tools/audit-completeness/staleness_ext.
 # live data and so no backlog-debt exposure. This is the half safe to gate; see gates.py.
 audit-staleness-ext-selftest = { cmd = "python -u tools/audit-completeness/staleness_ext.py --selftest" }
 
+# #910: wait-ceiling checker for fixed sub-60s wait ceilings in tests.
+audit-waitceiling = { cmd = "python -u tools/audit-completeness/waitceiling.py" }
+audit-waitceiling-selftest = { cmd = "python -u tools/audit-completeness/waitceiling.py --selftest" }
+
 # Every local gate, one exit code. Report THIS command's exit status, never a per-gate line scraped
 # out of the combined output -- see tools/gates/gates.py for the two occasions that went wrong.
 gates = { cmd = "python -u tools/gates/gates.py" }
