@@ -32,6 +32,12 @@ public static class ArtifactManager
     public const string ArtifactsDirectoryName = "artifacts";
 
     /// <summary>
+    /// The directory under <c>artifactsRootPath</c> where pruned execution output directories are moved (§973, ADR 0009).
+    /// </summary>
+    public const string PrunedDirectoryName = "pruned";
+
+
+    /// <summary>
     /// Creates (if needed) and returns <c>{artifactsRootPath}/execution_{executionId}</c> — the
     /// immutable directory this execution's outputs will be written into (§16). Addressing the
     /// directory by <see cref="ExecutionId"/> rather than a separately tracked sequence number is
@@ -70,6 +76,18 @@ public static class ArtifactManager
 
         return OutputDirectoryPath(artifactsRootPath, executionId);
     }
+
+    /// <summary>
+    /// Resolves the recoverable, pruned output directory path for <paramref name="executionId"/>:
+    /// <c>{artifactsRootPath}/pruned/execution_{executionId}</c> (§973, ADR 0009).
+    /// </summary>
+    public static string ResolvePrunedOutputDirectory(string artifactsRootPath, ExecutionId executionId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
+
+        return Path.Combine(artifactsRootPath, PrunedDirectoryName, $"execution_{executionId}");
+    }
+
 
     /// <summary>
     /// Refuses a path the worker process would resolve differently from AER (#668).

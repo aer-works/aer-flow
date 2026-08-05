@@ -64,6 +64,51 @@ public static class RetryingFileMove
             }
         }
     }
+
+    /// <summary>
+    /// Moves a directory from <paramref name="source"/> to <paramref name="destination"/>, retrying on transient
+    /// sharing violations (<see cref="IOException"/> and <see cref="UnauthorizedAccessException"/>)
+    /// until <paramref name="budget"/> expires.
+    /// Creates destination's parent directory if it does not already exist.
+    /// </summary>
+    public static void MoveDirectory(
+        string source,
+        string destination,
+        TimeSpan? budget = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+        ArgumentException.ThrowIfNullOrEmpty(destination);
+
+        var actualBudget = budget ?? DefaultBudget;
+        var deadlineTicks = Environment.TickCount64 + (long)actualBudget.TotalMilliseconds;
+        var backoffMs = 10.0;
+
+        while (true)
+        {
+            try
+            {
+                var parentDir = Path.GetDirectoryName(destination);
+                if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
+                {
+                    Directory.CreateDirectory(parentDir);
+                }
+
+                Directory.Move(source, destination);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (Environment.TickCount64 >= deadlineTicks)
+                {
+                    throw;
+                }
+
+                Thread.Sleep(TimeSpan.FromMilliseconds(backoffMs));
+                backoffMs = Math.Min(backoffMs * 2, MaxBackoffMs);
+            }
+        }
+    }
 }
+
 
 
