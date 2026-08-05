@@ -800,4 +800,38 @@ public class WorkerBindingResolverTests
         Assert.Throws<IncoherentPermissionGrantException>(
             () => WorkerBindingResolver.Resolve(ConfigWith(ArchitectContract, grant), EchoAdapter()));
     }
+
+    [Fact]
+    public void An_audited_binding_with_write_files_true_and_AuditedNotEnforced_resolves_on_gemini()
+    {
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["review"] = new WorkerBindingConfigEntry(
+                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                PermissionGrant: grant, GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
+        };
+
+        var bindings = WorkerBindingResolver.Resolve(config, adapters);
+
+        var binding = Assert.IsType<WorkerBinding.Process>(bindings["review"]);
+        Assert.Equal(GrantAuditMode.AuditedNotEnforced, binding.GrantAuditMode);
+    }
+
+    [Fact]
+    public void A_hand_authored_non_audited_write_files_false_with_outputs_on_gemini_still_throws_unsatisfiable_output_contract()
+    {
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["review"] = new WorkerBindingConfigEntry(
+                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                PermissionGrant: grant, GrantAuditMode: GrantAuditMode.Enforced),
+        };
+
+        Assert.Throws<UnsatisfiableOutputContractException>(() => WorkerBindingResolver.Resolve(config, adapters));
+    }
 }
+
