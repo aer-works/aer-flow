@@ -256,7 +256,7 @@ public class RoleTemplateOccupantRunnerTests
     [Fact]
     public async Task RunTurnAsync_OneBadSubjectAmongGood_AppendsNothing()
     {
-        // All-or-nothing: a turn that fabricated one reference is not trusted for the rest.
+        // All-or-nothing (rationale at the runner's validation call, step 8).
         // Red arm: with per-escalation validation (append the good, skip the bad), the valid
         // heldWork escalation would land and this DoesNotContain fails.
         var roomDir = CreateTestRoomDir();
