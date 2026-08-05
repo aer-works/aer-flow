@@ -1,4 +1,5 @@
 using System.IO;
+using Aer.Flow.Store;
 
 namespace Aer.Flow.Dispatch;
 
@@ -87,7 +88,7 @@ public sealed class ExecutionStreamLogger
             {
                 if (File.Exists(logPath))
                 {
-                    File.Move(logPath, rolloverPath, overwrite: true);
+                    RetryingFileMove.Move(logPath, rolloverPath, overwrite: true);
                 }
 
                 currentSize = 0;

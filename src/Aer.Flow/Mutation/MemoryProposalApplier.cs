@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Aer.Flow.Domain;
+using Aer.Flow.Store;
 
 namespace Aer.Flow.Mutation;
 
@@ -110,10 +111,10 @@ public static class MemoryProposalApplier
 
                 // Temp-then-move, matching MemoryProposalTool's own convention: a reader of memory/
                 // never observes a partial write.
-                var tempTargetPath = resolvedTargetPath + ".tmp";
+                var tempTargetPath = $"{resolvedTargetPath}.{Guid.NewGuid():N}.tmp";
                 await File.WriteAllTextAsync(tempTargetPath, capture.Content, cancellationToken)
                     .ConfigureAwait(false);
-                File.Move(tempTargetPath, resolvedTargetPath, overwrite: true);
+                RetryingFileMove.Move(tempTargetPath, resolvedTargetPath, overwrite: true);
                 break;
 
             case "delete":
@@ -403,9 +404,9 @@ public static class MemoryProposalApplier
         lines.AddRange(factFiles.Select(f => $"- {f}"));
 
         var indexPath = Path.Combine(memoryRoot, RoomMemoryDocument.IndexFileName);
-        var tempIndexPath = indexPath + ".tmp";
+        var tempIndexPath = $"{indexPath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllLines(tempIndexPath, lines);
-        File.Move(tempIndexPath, indexPath, overwrite: true);
+        RetryingFileMove.Move(tempIndexPath, indexPath, overwrite: true);
     }
 
     private static async Task RecordVersionAsync(
@@ -461,9 +462,9 @@ public static class MemoryProposalApplier
 
         lines.Add(JsonSerializer.Serialize(record));
 
-        var tempVersionsPath = versionsPath + ".tmp";
+        var tempVersionsPath = $"{versionsPath}.{Guid.NewGuid():N}.tmp";
         await File.WriteAllLinesAsync(tempVersionsPath, lines, cancellationToken).ConfigureAwait(false);
-        File.Move(tempVersionsPath, versionsPath, overwrite: true);
+        RetryingFileMove.Move(tempVersionsPath, versionsPath, overwrite: true);
     }
 }
 

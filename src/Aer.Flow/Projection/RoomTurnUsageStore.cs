@@ -115,6 +115,6 @@ public static class RoomTurnUsageStore
         var json = JsonSerializer.Serialize(dto, FlowEventLogJson.Options);
         var tempFilePath = filePath + ".tmp." + Guid.NewGuid().ToString("n");
         File.WriteAllText(tempFilePath, json);
-        File.Move(tempFilePath, filePath, overwrite: true);
+        RetryingFileMove.Move(tempFilePath, filePath, overwrite: true);
     }
 }
