@@ -128,20 +128,7 @@ public static class RunCommand
                 holderDescription: $"aer run pump (pid {Environment.ProcessId})")
             .ConfigureAwait(false);
 
-        // Tear down provisioned worktrees only once the run is Terminal — a Paused run must keep its
-        // tree for the resume, and this deliberately runs on the success path (not in a finally) so a
-        // crashed or cancelled run leaves the worker's tree intact too. Teardown never throws; a tree
-        // kept for uncommitted changes or a blocked removal is surfaced on the result, not swallowed.
-        IReadOnlyList<WorktreeTeardownResult> worktreeTeardowns = [];
-        if (state.Status == WorkflowStatus.Terminal && provisionedWorktrees.Count > 0)
-        {
-            worktreeTeardowns =
-            [
-                .. provisionedWorktrees
-                    .Select(w => WorktreeProvisioner.Teardown(w.Repository, w.WorktreePath))
-                    .Where(r => r.Outcome != WorktreeTeardownOutcome.Removed)
-            ];
-        }
+        var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
 
         return new CommandResult(state, snapshot, resumedFromSnapshot, options.TaskDirectoryPath, worktreeTeardowns);
     }

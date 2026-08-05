@@ -110,16 +110,7 @@ public static class SupplyCommand
                 reader, writer, dispatcher, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        IReadOnlyList<WorktreeTeardownResult> worktreeTeardowns = [];
-        if (settledState.Status == WorkflowStatus.Terminal && provisionedWorktrees.Count > 0)
-        {
-            worktreeTeardowns =
-            [
-                .. provisionedWorktrees
-                    .Select(w => WorktreeProvisioner.Teardown(w.Repository, w.WorktreePath))
-                    .Where(r => r.Outcome != WorktreeTeardownOutcome.Removed)
-            ];
-        }
+        var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(settledState.Status, provisionedWorktrees);
 
         return new SupplyResult(executionId, new CommandResult(settledState, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns));
     }

@@ -132,12 +132,6 @@ public static class WorktreeWorkspaces
 }
 
 /// <summary>
-/// A worktree provisioned for a run, held so <c>WorktreeProvisioner.Teardown</c> can be called on it
-/// once the run reaches Terminal.
-/// </summary>
-public sealed record ProvisionedWorktree(string Repository, string WorktreePath);
-
-/// <summary>
 /// An entry whose worktree could not be provisioned during <see cref="WorktreeWorkspaces.ProvisionLazily"/>.
 /// </summary>
 public sealed record SkippedWorktreeProvisioning(string WorkerName, Exception Exception);

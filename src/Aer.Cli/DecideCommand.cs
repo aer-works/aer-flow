@@ -106,16 +106,7 @@ public static class DecideCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        IReadOnlyList<WorktreeTeardownResult> worktreeTeardowns = [];
-        if (state.Status == WorkflowStatus.Terminal && provisionedWorktrees.Count > 0)
-        {
-            worktreeTeardowns =
-            [
-                .. provisionedWorktrees
-                    .Select(w => WorktreeProvisioner.Teardown(w.Repository, w.WorktreePath))
-                    .Where(r => r.Outcome != WorktreeTeardownOutcome.Removed)
-            ];
-        }
+        var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
 
         return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
