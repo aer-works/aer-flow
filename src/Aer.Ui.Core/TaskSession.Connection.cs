@@ -163,6 +163,9 @@ public sealed partial class TaskSession
                     WindowStyle = ProcessWindowStyle.Hidden,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+                    // #1016: the null-encoding default decodes with the console code page, not UTF-8.
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                 };
                 var process = Process.Start(startInfo);
                 if (process != null)

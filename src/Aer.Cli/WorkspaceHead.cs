@@ -25,6 +25,9 @@ internal static class WorkspaceHead
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            // #1016: the null-encoding default decodes with the console code page, not UTF-8.
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
         };
         startInfo.ArgumentList.Add("rev-parse");
         startInfo.ArgumentList.Add("HEAD");

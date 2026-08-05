@@ -108,6 +108,13 @@ public sealed class ProcessVendorTurnClient : IVendorTurnClient
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
                 UseShellExecute = false,
+                // #466: with no encoding set, .NET decodes a redirected pipe with the CONSOLE's
+                // code page — OEM cp437 wherever this worker inherits/creates a default Windows
+                // console, which turned the vendors' UTF-8 "—" into the Conversation tab's "ΓÇö"
+                // (byte-derivation on the issue). Both vendor CLIs emit UTF-8; decode must not
+                // depend on what console the worker happened to get.
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
             };
 
             // Applied before the args are built purely for readability; ProcessStartInfo.Environment
