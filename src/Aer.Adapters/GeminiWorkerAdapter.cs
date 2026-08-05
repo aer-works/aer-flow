@@ -390,9 +390,13 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
         };
 
-        // agy home redirect (#442): non-shell bindings get HOME and USERPROFILE redirected to an
-        // AER-owned state directory. Shell-granted workers (grant.RunShellCommands == true) are
-        // deliberately NOT redirected so worker git commit can see the user's .gitconfig.
+        // agy home redirect (#442, ADR 0050): non-shell bindings get HOME and USERPROFILE redirected
+        // to an AER-owned state directory. Shell-granted workers (grant.RunShellCommands == true) are
+        // deliberately NOT redirected so worker git commit can see the user's .gitconfig. Dispatch
+        // path ONLY, deliberately absent from BuildGate: the batch value below is a placeholder
+        // CoreDispatcher expands at dispatch time, and the gate's one consumer (the dialogue worker's
+        // gated participant config) spawns vendor CLIs itself with neither AER_OUTPUT_DIR nor any
+        // expansion step -- it would receive the token literally. That remainder is recorded on #442.
         if (invocation.PermissionGrant is { RunShellCommands: false })
         {
             var isDaemonSession = invocation.SessionId is not null || invocation.ResumeSession ||
@@ -441,24 +445,6 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         {
             [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildDeniedTools(grant)}",
         };
-
-        if (grant is { RunShellCommands: false })
-        {
-            var isDaemonSession = workspace is not null && File.Exists(Path.Combine(workspace, ".aer", "session.json"));
-            if (isDaemonSession)
-            {
-                var sessionHome = Path.Combine(workspace!, ".gemini_home");
-                environment["HOME"] = sessionHome;
-                environment["USERPROFILE"] = sessionHome;
-            }
-            else
-            {
-                var isWindows = OperatingSystem.IsWindows();
-                var batchHome = WorkerEnvironmentReference.For("AER_OUTPUT_DIR", isWindows) + (isWindows ? @"\.gemini_home" : "/.gemini_home");
-                environment["HOME"] = batchHome;
-                environment["USERPROFILE"] = batchHome;
-            }
-        }
 
         // Must mirror Resolve's own workspace clause. Load-bearing on this vendor rather than merely
         // useful, for the reason AgyHookCheckCommand's own bound gives -- and omitting it narrows a

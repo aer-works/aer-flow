@@ -1971,8 +1971,24 @@ def _agy_home_redirect():
     Surfaces if agy's credentials move inside the profile or if agy ignores HOME/USERPROFILE.
     Writes state only into disposable temp directory.
     """
+    def tree_snapshot(root):
+        """Every (relative path, mtime) under root. A directory's own mtime only moves when a DIRECT
+        child is added or removed, so the agy store's nested writes (brain/, conversations/) are
+        invisible to a top-level mtime probe -- this walks instead."""
+        if not os.path.isdir(root):
+            return None
+        snap = {}
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for f in filenames:
+                p = os.path.join(dirpath, f)
+                try:
+                    snap[os.path.relpath(p, root)] = os.path.getmtime(p)
+                except OSError:
+                    pass  # a file deleted mid-walk counts via its absence from the other snapshot
+        return snap
+
     real_gemini = os.path.expanduser("~/.gemini")
-    real_mtime = os.path.getmtime(real_gemini) if os.path.exists(real_gemini) else None
+    real_before = tree_snapshot(real_gemini)
 
     fake_home = tempfile.mkdtemp(prefix="v-agyhome-")
     wd = tempfile.mkdtemp(prefix="v-agywd-")
@@ -1986,8 +2002,8 @@ def _agy_home_redirect():
         fake_gemini = os.path.join(fake_home, ".gemini")
         fake_populated = os.path.isdir(fake_gemini) and bool(os.listdir(fake_gemini))
 
-        current_real_mtime = os.path.getmtime(real_gemini) if os.path.exists(real_gemini) else None
-        real_untouched = (current_real_mtime == real_mtime)
+        real_after = tree_snapshot(real_gemini)
+        real_untouched = (real_after == real_before)
 
         note = f"answered={answered} (rc={rc}), fake_gemini populated={fake_populated}, real_untouched={real_untouched}"
         if rc != 0 or not answered:

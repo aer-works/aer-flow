@@ -28,6 +28,7 @@ These unconsented persistence channels violate 0016 and 0044, which establish th
    - **Batch dispatch lifetime**: State directory is created per-execution under `AER_OUTPUT_DIR` (`%AER_OUTPUT_DIR%\.gemini_home`), ensuring a fresh isolated brain per execution cleaned up automatically with execution artifacts.
    - **Daemon session lifetime**: State directory is per-session (`<session_dir>\.gemini_home`), keeping conversation state stable across turns of the same interactive session.
    - **Shell-granted scoping exception**: Shell-granted workers (`RunShellCommands == true`) are deliberately **NOT** redirected in this decision, because a redirected profile hides the operator's `.gitconfig` from worker `git commit`. This open remainder stays recorded on #442.
+   - **Dialogue participant scoping exception**: agy participants spawned by the dialogue worker are also **NOT** redirected. The redirect travels the dispatch path only — the batch value is a placeholder `CoreDispatcher` expands at dispatch time, and the dialogue worker spawns vendor CLIs from a gated config with neither `AER_OUTPUT_DIR` nor an expansion step, so it would receive the token literally. This remainder also stays recorded on #442.
 
 3. **Continuity successor**:
    - Cross-vendor worker continuity and durable context remain governed by 0009, 0011, and 0044 via AER's room memory, index files, and structured MCP proposal tools — never by vendor-native auto-memory.

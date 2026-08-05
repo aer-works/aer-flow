@@ -18,8 +18,10 @@ namespace Aer.Adapters.Tests;
 /// <b>For the ENVIRONMENT the check runs in both directions, and the first version did not.</b>
 /// Checking only <c>gate ⊆ Resolve</c> cannot see an omission, and one was there — see
 /// <see cref="VendorGate.For"/>, which records what was missing and what it cost. A reviewer found
-/// it by reading; nothing here could have. Set equality rather than containment, because the two
-/// environments ARE identical today and anything weaker leaves room for the same shape to recur.
+/// it by reading; nothing here could have. Set equality rather than containment, because anything
+/// weaker leaves room for the same shape to recur — with one pinned exception: the #442 home
+/// redirect is dispatch-path state isolation, not a gate mechanism, and cannot ride the gate (the
+/// reason lives at <c>GeminiWorkerAdapter.Resolve</c>'s own redirect clause).
 /// </para>
 /// </remarks>
 [Collection(LaunchConfigCollection.Name)]
@@ -52,9 +54,15 @@ public class VendorGateMatchesResolveTests
         }
 
         // The reverse. Anything Resolve sets that the gate does not is a mechanism a non-Flow caller
-        // silently does without -- which is how the workspace bound went missing.
+        // silently does without -- which is how the workspace bound went missing. HOME/USERPROFILE
+        // are the pinned exception (state isolation, not a gate mechanism -- see the class remark).
         foreach (var (name, value) in resolved)
         {
+            if (name is "HOME" or "USERPROFILE")
+            {
+                continue;
+            }
+
             Assert.True(
                 gate.Environment.TryGetValue(name, out var fromGate) && fromGate == value,
                 $"Resolve sets '{name}' but the gate does not, so a caller installing only the gate "

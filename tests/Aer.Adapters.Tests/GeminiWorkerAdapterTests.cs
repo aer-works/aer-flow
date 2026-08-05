@@ -1224,4 +1224,18 @@ public class GeminiWorkerAdapterTests
             Directory.Delete(tempSessionDir, recursive: true);
         }
     }
+
+    /// <summary>
+    /// The redirect rides the dispatch path only -- the reason lives at Resolve's own redirect
+    /// clause, and <see cref="VendorGateMatchesResolveTests"/> carries the matching mirror carve-out.
+    /// </summary>
+    [Fact]
+    public void Gate_does_not_carry_the_home_redirect()
+    {
+        var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
+        var gate = GeminiWorkerAdapter.BuildGate(nonShellGrant);
+
+        Assert.False(gate.Environment.ContainsKey("HOME"));
+        Assert.False(gate.Environment.ContainsKey("USERPROFILE"));
+    }
 }

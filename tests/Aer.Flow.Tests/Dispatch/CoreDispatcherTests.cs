@@ -1561,6 +1561,30 @@ public class CoreDispatcherTests
     }
 
     /// <summary>
+    /// Target environment VALUES go through the same placeholder expansion as target arguments
+    /// (#442's per-execution agy home is the first consumer). Polarity: a token naming a computed
+    /// variable expands; a token naming anything else survives byte-for-byte, so a value that
+    /// legitimately contains such text is not silently rewritten.
+    /// </summary>
+    [Fact]
+    public void AssembleChildEnvironment_expands_computed_placeholders_in_target_values_and_leaves_unknown_tokens_alone()
+    {
+        var request = MakeRequest([new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", "/task/out")]);
+        var target = new CoreDispatchTarget("sh", ["-c", "true"], Environment:
+        [
+            ("EXPANDED", "$AER_OUTPUT_DIR/.gemini_home"),
+            ("EXPANDED_WIN", "%AER_OUTPUT_DIR%\\.gemini_home"),
+            ("UNTOUCHED", "$NOT_A_COMPUTED_VAR/%ALSO_NOT%"),
+        ]);
+
+        var environment = CoreDispatcher.AssembleChildEnvironment(request, target);
+
+        Assert.Contains(("EXPANDED", "/task/out/.gemini_home"), environment);
+        Assert.Contains(("EXPANDED_WIN", "/task/out\\.gemini_home"), environment);
+        Assert.Contains(("UNTOUCHED", "$NOT_A_COMPUTED_VAR/%ALSO_NOT%"), environment);
+    }
+
+    /// <summary>
     /// The runtime ARG_MAX query returns a plausible limit on POSIX -- the only test that exercises the
     /// real <c>sysconf</c>. On Linux this runs on CI's ubuntu leg; on macOS it first runs on the
     /// post-merge macOS leg (PRs do not build macOS), which is what confirms the <c>_SC_ARG_MAX</c>

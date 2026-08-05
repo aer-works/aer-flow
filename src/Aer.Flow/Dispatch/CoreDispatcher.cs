@@ -622,6 +622,9 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             }
         }
 
+        // Target environment VALUES take the same placeholder grammar as target arguments (#442: the
+        // agy per-execution home references AER_OUTPUT_DIR, which only exists here). Expansion is
+        // keyed on the computed-variable names, so a value carrying no such token is untouched.
         if (target.Environment is { } targetEnvironment)
         {
             foreach (var (name, value) in targetEnvironment)
