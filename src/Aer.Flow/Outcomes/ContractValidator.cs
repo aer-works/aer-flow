@@ -122,6 +122,8 @@ public static class ContractValidator
         {
             OutputSchema.ReviewVerdict =>
                 ReviewVerdictSchema.TryParse(File.ReadAllBytes(path), out _, out var parseError) ? null : parseError,
+            OutputSchema.Diff =>
+                UnifiedDiffSchema.TryParse(File.ReadAllBytes(path), out _, out var parseError) ? null : parseError,
             _ => throw new ArgumentOutOfRangeException(nameof(schema), schema, "Unknown OutputSchema case."),
         };
 

@@ -99,6 +99,7 @@ public static class BuiltInWorkflowTemplates
                     Schema: o.Schema switch
                     {
                         OutputSchema.ReviewVerdict => "review_verdict",
+                        OutputSchema.Diff => "diff",
                         _ => "none",
                     },
                     Instruction: o.Instruction)).ToList());

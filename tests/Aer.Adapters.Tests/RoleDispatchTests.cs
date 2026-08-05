@@ -97,5 +97,23 @@ public class RoleDispatchTests
         Assert.False(binding.PermissionGrant?.WriteFiles);
         Assert.Equal(GrantAuditMode.Enforced, binding.GrantAuditMode);
     }
+
+    [Fact]
+    public void Patch_role_resolves_with_expected_contract_and_grant_polarity_per_adapter()
+    {
+        var patchRole = WorkerRoleCatalog.For("patch");
+        Assert.Equal("patch", patchRole.Id);
+
+        var claudeBinding = RoleDispatch.ToBinding(patchRole, "Propose a patch.", "claude");
+        Assert.Single(claudeBinding.Contract.ProducedOutputs);
+        Assert.Equal("patch.diff", claudeBinding.Contract.ProducedOutputs[0].Name);
+        Assert.Equal(OutputSchema.Diff, claudeBinding.Contract.ProducedOutputs[0].Schema);
+        Assert.False(claudeBinding.PermissionGrant?.WriteFiles);
+        Assert.Equal(GrantAuditMode.Enforced, claudeBinding.GrantAuditMode);
+
+        var agyBinding = RoleDispatch.ToBinding(patchRole, "Propose a patch.", "gemini");
+        Assert.True(agyBinding.PermissionGrant?.WriteFiles);
+        Assert.Equal(GrantAuditMode.AuditedNotEnforced, agyBinding.GrantAuditMode);
+    }
 }
 
