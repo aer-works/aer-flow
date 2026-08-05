@@ -802,7 +802,7 @@ public class WorkerBindingResolverTests
     }
 
     [Fact]
-    public void An_audited_binding_with_write_files_true_and_AuditedNotEnforced_resolves_on_gemini()
+    public void An_audited_binding_with_AuditedNotEnforced_without_a_worktree_throws_UnisolatedGrantAuditException()
     {
         var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
@@ -813,10 +813,45 @@ public class WorkerBindingResolverTests
                 PermissionGrant: grant, GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
         };
 
-        var bindings = WorkerBindingResolver.Resolve(config, adapters);
+        var ex = Assert.Throws<UnisolatedGrantAuditException>(() => WorkerBindingResolver.Resolve(config, adapters));
+        Assert.Equal("review", ex.WorkerName);
+        Assert.Contains("workspace isolation", ex.Message, StringComparison.Ordinal);
+    }
 
-        var binding = Assert.IsType<WorkerBinding.Process>(bindings["review"]);
+    /// <summary>
+    /// Only a PROVISIONED worktree (the <see cref="WorktreeWorkspaces.Provision"/> stamp) counts
+    /// as isolation. The second arm is the hole the second reader found on the first draft: a
+    /// declared-but-unprovisioned Worktree spec reaches resolve intact on the callers that skip
+    /// Provision (#1012), and treating the spec itself as isolation dispatched an audited worker
+    /// into a null working directory.
+    /// </summary>
+    [Fact]
+    public void An_audited_binding_resolves_only_once_its_worktree_is_actually_provisioned()
+    {
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
+
+        var provisioned = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["review"] = new WorkerBindingConfigEntry(
+                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                PermissionGrant: grant, WorkingDirectory: Path.GetFullPath("."),
+                GrantAuditMode: GrantAuditMode.AuditedNotEnforced, IsWorktree: true),
+        };
+        var binding = Assert.IsType<WorkerBinding.Process>(
+            WorkerBindingResolver.Resolve(provisioned, adapters)["review"]);
         Assert.Equal(GrantAuditMode.AuditedNotEnforced, binding.GrantAuditMode);
+
+        var declaredButUnprovisioned = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["review"] = new WorkerBindingConfigEntry(
+                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                PermissionGrant: grant, Worktree: new WorktreeWorkspace(Path.GetFullPath("."), "main"),
+                GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
+        };
+        var ex = Assert.Throws<UnisolatedGrantAuditException>(
+            () => WorkerBindingResolver.Resolve(declaredButUnprovisioned, adapters));
+        Assert.Equal("review", ex.WorkerName);
     }
 
     [Fact]

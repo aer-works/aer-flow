@@ -118,6 +118,60 @@ public static class WorktreeProvisioner
         }
     }
 
+    /// <summary>
+    /// Audits a provisioned worktree after an execution exit-0 natural completion (#901).
+    /// Runs <c>git status --porcelain</c> inside <paramref name="worktreePath"/>.
+    /// Returns clean if no uncommitted/stray paths exist; otherwise returns dirty with a diagnostic
+    /// reason naming up to 10 stray paths and total count. A git error fails closed.
+    /// </summary>
+    public static WorktreeAuditResult Audit(string? worktreePath)
+    {
+        if (string.IsNullOrWhiteSpace(worktreePath) || !Directory.Exists(worktreePath))
+        {
+            return new WorktreeAuditResult(
+                IsClean: false,
+                FailureReason: $"Grant audit failed: worktree directory '{worktreePath}' does not exist or is missing.");
+        }
+
+        try
+        {
+            var (exitCode, stdout, stderr) = RunGit(worktreePath, "status", "--porcelain");
+            if (exitCode != 0)
+            {
+                return new WorktreeAuditResult(
+                    IsClean: false,
+                    FailureReason: $"Grant audit failed: git status --porcelain failed (exit code {exitCode}): {stderr.Trim()}");
+            }
+
+            var lines = stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (lines.Length == 0)
+            {
+                return new WorktreeAuditResult(IsClean: true, FailureReason: null);
+            }
+
+            const int maxListed = 10;
+            var totalCount = lines.Length;
+            var strayPaths = lines
+                .Select(l => l.Length > 3 ? l[3..].Trim() : l)
+                .Take(maxListed)
+                .ToList();
+
+            var overflow = totalCount - strayPaths.Count;
+            var pathsFormatted = string.Join(", ", strayPaths);
+            var reason = overflow > 0
+                ? $"Grant audit failed: worktree carries {totalCount} uncommitted/stray path(s) outside declared outputs: {pathsFormatted} (+{overflow} more)."
+                : $"Grant audit failed: worktree carries {totalCount} uncommitted/stray path(s) outside declared outputs: {pathsFormatted}.";
+
+            return new WorktreeAuditResult(IsClean: false, FailureReason: reason);
+        }
+        catch (Exception ex)
+        {
+            return new WorktreeAuditResult(
+                IsClean: false,
+                FailureReason: $"Grant audit failed: exception running git status --porcelain ({ex.Message})");
+        }
+    }
+
     private static (int ExitCode, string StdOut, string StdErr) RunGit(string workingDirectory, params string[] args)
     {
         var startInfo = new ProcessStartInfo("git")
@@ -179,3 +233,6 @@ public enum WorktreeTeardownOutcome
 /// clean removal and carries the reason otherwise.
 /// </summary>
 public sealed record WorktreeTeardownResult(WorktreeTeardownOutcome Outcome, string WorktreePath, string? Detail);
+
+/// <summary>The result of a post-run grant audit on a provisioned worktree.</summary>
+public sealed record WorktreeAuditResult(bool IsClean, string? FailureReason);

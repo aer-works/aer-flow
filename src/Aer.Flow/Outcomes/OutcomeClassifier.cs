@@ -89,7 +89,9 @@ public static class OutcomeClassifier
         WorkerContract contract,
         string outputDirectory,
         IFailureClassifier? failureClassifier = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        GrantAuditMode grantAuditMode = GrantAuditMode.Enforced,
+        string? worktreePath = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(contract);
@@ -125,6 +127,20 @@ public static class OutcomeClassifier
         var validation = ContractValidator.Validate(contract, outputDirectory);
         if (validation.IsSatisfied)
         {
+            if (grantAuditMode == GrantAuditMode.AuditedNotEnforced)
+            {
+                // Premise verification: AER_OUTPUT_DIR (the outbox, under artifacts/) lives OUTSIDE the provisioned worktree
+                // (workspaces/<worker>), so legitimate output writes never dirty the worktree.
+                var audit = Workspaces.WorktreeProvisioner.Audit(worktreePath);
+                if (!audit.IsClean)
+                {
+                    return new OutcomeClassification(
+                        OutcomeVerdict.Failed,
+                        FailureClassification.Permanent, // Permanent: a worker mutating files outside declared outputs violates its role contract; retrying will produce identical stray mutations.
+                        WithStderr(audit.FailureReason ?? "Grant audit failed: worktree is dirty.", result.StderrTail));
+                }
+            }
+
             return new OutcomeClassification(OutcomeVerdict.Succeeded);
         }
 

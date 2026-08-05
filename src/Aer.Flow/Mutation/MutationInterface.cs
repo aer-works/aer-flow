@@ -416,8 +416,32 @@ public static class MutationInterface
                         var request = acceptedRequestByExecutionId[executionId];
                         var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
+                        // The recorded request is the durable truth: a pre-#901 line carries no
+                        // GrantAuditMode, which means no audit was promised for that execution —
+                        // falling back to the binding's CURRENT mode would reinterpret history
+                        // (and fail-closed against a worktree that may be long gone).
+                        var grantAuditMode = request.GrantAuditMode ?? GrantAuditMode.Enforced;
+                        string? worktreePath = null;
+                        try
+                        {
+                            if (workerBindings.TryGetValue(request.Worker, out var b) && b is WorkerBinding.Process p)
+                            {
+                                worktreePath = p.Target.WorkingDirectory;
+                            }
+                        }
+                        catch (AerFlowException)
+                        {
+                            // A recovery candidate's binding may legitimately refuse to resolve —
+                            // the crash clause classifies from recorded facts alone (the test
+                            // pinning this: StartWorkflowAsync_classifies_crash_recovery_candidate_
+                            // when_its_worker_binding_refuses_to_resolve). The consequence is not a
+                            // skip: if the journal promised an audit, Classify fails closed on the
+                            // null worktree path.
+                        }
+
                         var classification = OutcomeClassifier.Classify(
-                            new CoreDispatchResult(exit.ExitCode, exit.Reason, exit.StderrTail), contract, outputDirectory);
+                            new CoreDispatchResult(exit.ExitCode, exit.Reason, exit.StderrTail), contract, outputDirectory,
+                            grantAuditMode: grantAuditMode, worktreePath: worktreePath);
 
                         await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
                             .ConfigureAwait(false);
@@ -855,8 +879,12 @@ public static class MutationInterface
             // that would convert a contract violation into a fabricated outcome.
             var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, dispatchCancellationToken)
                 .ConfigureAwait(false);
+            // The request's mode was set from this binding at preparation; null can only mean a
+            // request shape that predates the mode, and those were never promised an audit.
+            var grantAuditMode = prepared.Request.GrantAuditMode ?? GrantAuditMode.Enforced;
+            var worktreePath = binding.Target.WorkingDirectory;
             var classification = OutcomeClassifier.Classify(
-                dispatchResult, binding.Contract, prepared.OutputDirectory, binding.FailureClassifier, timeProvider);
+                dispatchResult, binding.Contract, prepared.OutputDirectory, binding.FailureClassifier, timeProvider, grantAuditMode, worktreePath);
 
             // Never gated on dispatchCancellationToken: that token having fired is exactly what
             // produced this outcome (Cancelled) in the first place, so recording it must not itself

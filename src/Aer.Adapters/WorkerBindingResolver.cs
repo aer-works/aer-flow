@@ -110,6 +110,15 @@ public static class WorkerBindingResolver
             throw new UnknownWorkerAdapterException(entry.Adapter);
         }
 
+        // Only an ACTUALLY-provisioned worktree counts as isolation. A declared-but-unprovisioned
+        // Worktree spec is not: the callers that skip WorktreeWorkspaces.Provision (#1012 records
+        // which) would otherwise dispatch an audited worker into a null working directory — the
+        // exact unisolated run the audit exists to make impossible.
+        if (entry.GrantAuditMode == GrantAuditMode.AuditedNotEnforced && !entry.IsWorktree)
+        {
+            throw new UnisolatedGrantAuditException(workerName);
+        }
+
         // Both refusals read a grant as deciding what the worker can do, which is only true for an
         // adapter that consumes it. IPermissionGrantTranslator marks that population, and
         // WorkerAdapterRegistryTests (#651) holds the marker to it by dispatching every registered

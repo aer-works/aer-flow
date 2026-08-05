@@ -36,6 +36,12 @@ namespace Aer.Adapters;
 /// mutually exclusive — a worker runs in exactly one place — and setting both is refused before the
 /// pump starts. Null (the default) keeps the referential-directory behaviour above.
 /// </param>
+/// <param name="IsWorktree">
+/// <see cref="WorktreeWorkspaces.Provision"/>'s stamp that <paramref name="WorkingDirectory"/> now
+/// points at a worktree it provisioned (#901) — NOT an author-facing setting; a hand-authored true
+/// claims isolation that does not exist, and the post-run audit then fails closed against the
+/// shared directory's unrelated dirt (loud, not silent — but still a lie the run pays for).
+/// </param>
 public sealed record WorkerBindingConfigEntry(
     string Adapter,
     WorkerContract Contract,
@@ -51,7 +57,8 @@ public sealed record WorkerBindingConfigEntry(
     string? LogFilePath = null,
     string? Effort = null,
     WorktreeWorkspace? Worktree = null,
-    GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced);
+    GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced,
+    bool IsWorktree = false);
 
 
 /// <summary>
