@@ -122,6 +122,36 @@ public class RoleTemplateOccupantRunnerTests
         }
     }
 
+    private static FakeCoreDispatcher DispatcherWriting(string actionsJson) => new()
+    {
+        Handler = (req, target) =>
+        {
+            var outputDirVar = req.Environment.OfType<EnvironmentVariable.AerComputed>().FirstOrDefault(e => e.Name == "AER_OUTPUT_DIR");
+            Assert.NotNull(outputDirVar);
+            Directory.CreateDirectory(outputDirVar.Value);
+            File.WriteAllText(Path.Combine(outputDirVar.Value, "turn-actions.json"), actionsJson);
+            return new CoreDispatchResult(0, CoreExitReason.Natural);
+        }
+    };
+
+    private static async Task<HeldWorkRef> PlantHeldWorkAsync(string roomDir)
+    {
+        var @ref = new HeldWorkRef(Path.Combine(roomDir, "lanes", "planted-lane"));
+        var roomLogPath = Path.Combine(roomDir, "room.jsonl");
+        await using var writer = new RoomEventLogWriter(roomLogPath);
+        await writer.AppendAsync(
+            new RoomEvent.HeldWorkDispatched(@ref, "review", TimeSpan.FromMinutes(10), "operator"),
+            TestContext.Current.CancellationToken);
+        return @ref;
+    }
+
+    private static OrchestratorTurnInput EmptyInput(string roomDir)
+    {
+        var roomState = new RoomState(new Dictionary<HeldWorkRef, HeldWorkState>(), []);
+        var memoryDoc = new RoomMemoryDocument(0, "", new Dictionary<string, string>(), []);
+        return new OrchestratorTurnInput(roomState, [], [], memoryDoc, null, IsColdStart: true, TotalEventCount: 0, RoomDirectoryPath: roomDir);
+    }
+
     [Fact]
     public async Task RunTurnAsync_EverythingEscalates_RaisesTwoEscalations_NoHeldWorkDispatched()
     {
@@ -129,40 +159,24 @@ public class RoleTemplateOccupantRunnerTests
         var roomDir = CreateTestRoomDir();
         try
         {
+            var plantedRef = await PlantHeldWorkAsync(roomDir);
             var fakeAdapter = new FakeWorkerAdapter();
-            var fakeDispatcher = new FakeCoreDispatcher
-            {
-                Handler = (req, target) =>
+            var fakeDispatcher = DispatcherWriting($$"""
                 {
-                    var outputDirVar = req.Environment.OfType<EnvironmentVariable.AerComputed>().FirstOrDefault(e => e.Name == "AER_OUTPUT_DIR");
-                    Assert.NotNull(outputDirVar);
-                    Directory.CreateDirectory(outputDirVar.Value);
-
-                    var actionsJson = """
-                    {
-                      "contractVersion": 1,
-                      "report": "Analysis finished",
-                      "escalations": [
-                        { "trigger": "Ambiguity", "subject": { "kind": "decision", "decisionId": "d-1" } },
-                        { "trigger": "Direction", "subject": { "kind": "origination", "templateId": "review-run", "briefRef": "artifacts/brief.md" } }
-                      ]
-                    }
-                    """;
-                    File.WriteAllText(Path.Combine(outputDirVar.Value, "turn-actions.json"), actionsJson);
-
-                    return new CoreDispatchResult(0, CoreExitReason.Natural);
+                  "contractVersion": 1,
+                  "report": "Analysis finished",
+                  "escalations": [
+                    { "trigger": "Ambiguity", "subject": { "kind": "heldWork", "ref": {{System.Text.Json.JsonSerializer.Serialize(plantedRef.Value)}} } },
+                    { "trigger": "Direction", "subject": { "kind": "origination", "templateId": "implement-review", "briefRef": "artifacts/brief.md" } }
+                  ]
                 }
-            };
+                """);
 
             var adapters = new Dictionary<string, IWorkerAdapter> { ["claude"] = fakeAdapter };
             var runner = new RoleTemplateOccupantRunner(adapters, fakeDispatcher);
 
-            var roomState = new RoomState(new Dictionary<HeldWorkRef, HeldWorkState>(), []);
-            var memoryDoc = new RoomMemoryDocument(0, "", new Dictionary<string, string>(), []);
-            var input = new OrchestratorTurnInput(roomState, [], [], memoryDoc, null, IsColdStart: true, TotalEventCount: 0, RoomDirectoryPath: roomDir);
-
             var budget = TimeSpan.FromMinutes(5);
-            var result = await runner.RunTurnAsync(input, budget, TestContext.Current.CancellationToken);
+            var result = await runner.RunTurnAsync(EmptyInput(roomDir), budget, TestContext.Current.CancellationToken);
 
             Assert.IsType<OccupantTurnResult.Completed>(result);
 
@@ -176,24 +190,100 @@ public class RoleTemplateOccupantRunnerTests
             Assert.Equal(roomDir, fakeAdapter.LastInvocation.WorkingDirectory);
             Assert.Equal(budget, fakeAdapter.LastInvocation.Timeout);
 
-            // Verify escalations raised in room log
+            // Verify escalations raised in room log; the ONE HeldWorkDispatched is the planted
+            // fixture, not something the runner appended (everything-escalates floor).
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
             var reader = new RoomEventLogReader(roomLogPath);
             var events = await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
 
-            Assert.DoesNotContain(events, e => e is RoomEvent.HeldWorkDispatched);
+            Assert.Single(events.OfType<RoomEvent.HeldWorkDispatched>());
 
             var escalations = events.OfType<RoomEvent.EscalationRaised>().ToList();
             Assert.Equal(2, escalations.Count);
 
             Assert.Equal(EscalationTrigger.Ambiguity, escalations[0].Trigger);
-            var decSub = Assert.IsType<EscalationSubject.Decision>(escalations[0].Subject);
-            Assert.Equal(new DecisionId("d-1"), decSub.DecisionId);
+            var heldSub = Assert.IsType<EscalationSubject.HeldWork>(escalations[0].Subject);
+            Assert.Equal(plantedRef, heldSub.Ref);
 
             Assert.Equal(EscalationTrigger.Direction, escalations[1].Trigger);
             var origSub = Assert.IsType<EscalationSubject.ProposedOrigination>(escalations[1].Subject);
-            Assert.Equal(new WorkflowTemplateId("review-run"), origSub.TemplateId);
+            Assert.Equal(new WorkflowTemplateId("implement-review"), origSub.TemplateId);
             Assert.Equal("artifacts/brief.md", origSub.BriefRef);
+        }
+        finally
+        {
+            Directory.Delete(roomDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task RunTurnAsync_FabricatedDecisionId_FailsTurn_AppendsNothing()
+    {
+        // #1001's live-measured defect, replayed: the first real occupant turn escalated with
+        // kind "decision" and an invented id. Red arm: with the validation call removed from the
+        // runner, this turn Completes and the fabricated subject lands in room.jsonl.
+        var roomDir = CreateTestRoomDir();
+        try
+        {
+            await PlantHeldWorkAsync(roomDir);
+            var fakeDispatcher = DispatcherWriting("""
+                {
+                  "contractVersion": 1,
+                  "report": "diagnosed an orphaned dispatch",
+                  "escalations": [
+                    { "trigger": "Ambiguity", "subject": { "kind": "decision", "decisionId": "demo-review-lane-dispatch-orphaned" } }
+                  ]
+                }
+                """);
+            var runner = new RoleTemplateOccupantRunner(
+                new Dictionary<string, IWorkerAdapter> { ["claude"] = new FakeWorkerAdapter() }, fakeDispatcher);
+
+            var result = await runner.RunTurnAsync(EmptyInput(roomDir), TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+
+            var failed = Assert.IsType<OccupantTurnResult.Failed>(result);
+            Assert.Contains("does not contain", failed.Reason);
+
+            var events = await new RoomEventLogReader(Path.Combine(roomDir, "room.jsonl"))
+                .ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
+            Assert.DoesNotContain(events, e => e is RoomEvent.EscalationRaised);
+        }
+        finally
+        {
+            Directory.Delete(roomDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task RunTurnAsync_OneBadSubjectAmongGood_AppendsNothing()
+    {
+        // All-or-nothing (rationale at the runner's validation call, step 8).
+        // Red arm: with per-escalation validation (append the good, skip the bad), the valid
+        // heldWork escalation would land and this DoesNotContain fails.
+        var roomDir = CreateTestRoomDir();
+        try
+        {
+            var plantedRef = await PlantHeldWorkAsync(roomDir);
+            var fakeDispatcher = DispatcherWriting($$"""
+                {
+                  "contractVersion": 1,
+                  "report": "mixed batch",
+                  "escalations": [
+                    { "trigger": "Ambiguity", "subject": { "kind": "heldWork", "ref": {{System.Text.Json.JsonSerializer.Serialize(plantedRef.Value)}} } },
+                    { "trigger": "Confidence", "subject": { "kind": "heldWork", "ref": "C:/nowhere/not-in-record" } }
+                  ]
+                }
+                """);
+            var runner = new RoleTemplateOccupantRunner(
+                new Dictionary<string, IWorkerAdapter> { ["claude"] = new FakeWorkerAdapter() }, fakeDispatcher);
+
+            var result = await runner.RunTurnAsync(EmptyInput(roomDir), TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+
+            var failed = Assert.IsType<OccupantTurnResult.Failed>(result);
+            Assert.Contains("not-in-record", failed.Reason);
+
+            var events = await new RoomEventLogReader(Path.Combine(roomDir, "room.jsonl"))
+                .ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
+            Assert.DoesNotContain(events, e => e is RoomEvent.EscalationRaised);
         }
         finally
         {

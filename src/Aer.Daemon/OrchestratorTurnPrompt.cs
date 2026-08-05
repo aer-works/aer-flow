@@ -106,11 +106,16 @@ public static class OrchestratorTurnPrompt
           "contractVersion": 1,
           "report": "what I did / saw this turn, for humans",
           "escalations": [
-            { "trigger": "Ambiguity", "subject": { "kind": "decision", "decisionId": "d-1" } },
-            { "trigger": "Direction", "subject": { "kind": "origination", "templateId": "review-run", "briefRef": "artifacts/brief.md" } }
+            { "trigger": "Ambiguity", "subject": { "kind": "heldWork", "ref": "<a held-work ref copied from the Held Work section above>" } },
+            { "trigger": "Direction", "subject": { "kind": "origination", "templateId": "<a templateId from the known-template list below>", "briefRef": "artifacts/brief.md" } }
           ]
         }
         """);
+        sb.AppendLine();
+        sb.AppendLine($"Known origination template ids: {string.Join(", ", Aer.Adapters.WorkflowTemplateCatalog.All.Select(t => t.Id))}.");
+        sb.AppendLine("Every escalation subject MUST cite something that exists: a `heldWork` ref copied verbatim from the Held Work section, or an `origination` templateId from the known-template list above.");
+        sb.AppendLine("Do NOT use `decision` subjects: the room record does not currently carry citable decision ids, so ANY decisionId you write is invented and fails the turn. Use `heldWork` or `origination`.");
+        sb.AppendLine("A turn citing a reference the record does not contain is a FAILED turn.");
 
         return sb.ToString();
     }
@@ -120,6 +125,7 @@ public static class OrchestratorTurnPrompt
         EscalationSubject.Decision d => $"[Decision] decisionId={d.DecisionId.Value}",
         EscalationSubject.ProposedOrigination o => $"[ProposedOrigination] templateId={o.TemplateId.Value}, briefRef={o.BriefRef ?? "none"}",
         EscalationSubject.HostCondition h => $"[HostCondition] condition={h.Condition}, detail={h.Detail}",
+        EscalationSubject.HeldWork w => $"[HeldWork] ref={w.Ref.Value}",
         _ => subject.ToString()
     };
 

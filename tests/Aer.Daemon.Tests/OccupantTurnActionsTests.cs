@@ -39,6 +39,49 @@ public class OccupantTurnActionsTests
         Assert.Equal("artifacts/brief.md", origSub.BriefRef);
     }
 
+    [Fact]
+    public void Parse_HeldWorkSubject_ParsesTyped()
+    {
+        // Red arm note: with no heldWork parser arm (#1001), this kind falls into the
+        // unknown-kind rejection and actions is null.
+        var json = """
+        {
+          "contractVersion": 1,
+          "report": "citing held work",
+          "escalations": [
+            { "trigger": "Ambiguity", "subject": { "kind": "heldWork", "ref": "C:/room/lanes/demo" } }
+          ]
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(error);
+        Assert.NotNull(actions);
+        var heldSub = Assert.IsType<EscalationSubject.HeldWork>(Assert.Single(actions.Escalations).Subject);
+        Assert.Equal(new HeldWorkRef("C:/room/lanes/demo"), heldSub.Ref);
+    }
+
+    [Fact]
+    public void Parse_HeldWorkSubjectMissingRef_FailsClosed()
+    {
+        // Red arm note: polarity of the arm above — a heldWork subject without a ref must be a
+        // parse error, not a subject with an empty ref.
+        var json = """
+        {
+          "contractVersion": 1,
+          "report": "r",
+          "escalations": [ { "trigger": "Ambiguity", "subject": { "kind": "heldWork" } } ]
+        }
+        """;
+
+        var (actions, error) = OccupantTurnActions.Parse(json);
+
+        Assert.Null(actions);
+        Assert.NotNull(error);
+        Assert.Contains("ref", error);
+    }
+
     [Theory]
     [InlineData("3")]
     [InlineData("99")]

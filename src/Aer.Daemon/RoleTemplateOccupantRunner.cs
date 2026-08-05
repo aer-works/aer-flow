@@ -48,8 +48,19 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
             return new OccupantTurnResult.Failed($"Worker adapter '{role.Adapter}' not found in registry.");
         }
 
-        // 3. Render prompt
-        var promptText = OrchestratorTurnPrompt.Render(input);
+        // 3. Render prompt. Render reads the live template catalog (#1001), whose loader
+        // deliberately throws on an empty/misconfigured catalog — that must surface as a
+        // Failed turn feeding the breaker, like every other rejection on this path, not as an
+        // unhandled exception in the host loop (second-reader finding).
+        string promptText;
+        try
+        {
+            promptText = OrchestratorTurnPrompt.Render(input);
+        }
+        catch (Exception ex)
+        {
+            return new OccupantTurnResult.Failed($"Failed to render the orchestrator turn prompt: {ex.Message}");
+        }
 
         // 4. Output directory
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
@@ -156,9 +167,23 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
             return new OccupantTurnResult.Failed($"Failed to parse turn-actions.json: {parseError}");
         }
 
-        // 8. Process escalations
+        // 8. Validate escalation subjects against the room record before ANY append (#1001):
+        // parse checked shape; this checks that every cited reference resolves. All-or-nothing —
+        // a turn that fabricated one reference is not trusted for the rest either.
         var roomLogPath = Path.Combine(roomDir, "room.jsonl");
         var reader = new RoomEventLogReader(roomLogPath);
+
+        var roomEventsForValidation = await reader.ReadAllRoomEventsAsync(ct).ConfigureAwait(false);
+        var projectedRoomState = RoomProjector.Project(roomEventsForValidation);
+        var knownTemplateIds = WorkflowTemplateCatalog.All.Select(t => t.Id).ToHashSet(StringComparer.Ordinal);
+        var validationError = OccupantEscalationValidation.Validate(actions.Escalations, projectedRoomState, knownTemplateIds);
+        if (validationError is not null)
+        {
+            // Counts toward the breaker upstream, like every other rejected turn — that is the design.
+            return new OccupantTurnResult.Failed($"Escalation subject validation failed: {validationError}");
+        }
+
+        // 9. Process escalations
         await using var writer = new RoomEventLogWriter(roomLogPath);
         var workerId = new WorkerId("orchestrator");
 
@@ -177,3 +202,4 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
         return new OccupantTurnResult.Completed();
     }
 }
+

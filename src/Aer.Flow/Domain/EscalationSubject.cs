@@ -14,6 +14,7 @@ namespace Aer.Flow.Domain;
 [JsonDerivedType(typeof(Decision), "decision")]
 [JsonDerivedType(typeof(ProposedOrigination), "proposedOrigination")]
 [JsonDerivedType(typeof(HostCondition), "hostCondition")]
+[JsonDerivedType(typeof(HeldWork), "heldWork")]
 public abstract record EscalationSubject
 {
     private EscalationSubject()
@@ -25,6 +26,12 @@ public abstract record EscalationSubject
     public sealed record ProposedOrigination(
         WorkflowTemplateId TemplateId,
         string? BriefRef = null) : EscalationSubject;
+
+    /// <summary>#1001: an escalation about held work, citing the <see cref="HeldWorkRef"/> the
+    /// room record already carries. The first live occupant turn proved the gap this fills:
+    /// most wakes are about held work, and with no way to cite it the occupant fabricated a
+    /// DecisionId instead.</summary>
+    public sealed record HeldWork(HeldWorkRef Ref) : EscalationSubject;
 
     /// <summary>#992: a mechanical condition the room's host observed, self-describing rather
     /// than citing another record. <paramref name="Condition"/> is a stable machine-readable
