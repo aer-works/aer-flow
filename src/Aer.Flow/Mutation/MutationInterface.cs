@@ -416,21 +416,15 @@ public static class MutationInterface
                         var request = acceptedRequestByExecutionId[executionId];
                         var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
+                        // The recorded request is the durable truth: a pre-#901 line carries no
+                        // GrantAuditMode, which means no audit was promised for that execution —
+                        // falling back to the binding's CURRENT mode would reinterpret history
+                        // (and fail-closed against a worktree that may be long gone).
                         var grantAuditMode = request.GrantAuditMode ?? GrantAuditMode.Enforced;
                         string? worktreePath = null;
-                        try
+                        if (workerBindings.TryGetValue(request.Worker, out var b) && b is WorkerBinding.Process p)
                         {
-                            if (workerBindings.TryGetValue(request.Worker, out var b))
-                            {
-                                grantAuditMode = request.GrantAuditMode ?? b.GrantAuditMode;
-                                if (b is WorkerBinding.Process p)
-                                {
-                                    worktreePath = p.Target.WorkingDirectory;
-                                }
-                            }
-                        }
-                        catch (AerFlowException)
-                        {
+                            worktreePath = p.Target.WorkingDirectory;
                         }
 
                         var classification = OutcomeClassifier.Classify(
@@ -873,7 +867,9 @@ public static class MutationInterface
             // that would convert a contract violation into a fabricated outcome.
             var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, dispatchCancellationToken)
                 .ConfigureAwait(false);
-            var grantAuditMode = prepared.Request.GrantAuditMode ?? binding.GrantAuditMode;
+            // The request's mode was set from this binding at preparation; null can only mean a
+            // request shape that predates the mode, and those were never promised an audit.
+            var grantAuditMode = prepared.Request.GrantAuditMode ?? GrantAuditMode.Enforced;
             var worktreePath = binding.Target.WorkingDirectory;
             var classification = OutcomeClassifier.Classify(
                 dispatchResult, binding.Contract, prepared.OutputDirectory, binding.FailureClassifier, timeProvider, grantAuditMode, worktreePath);
