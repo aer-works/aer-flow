@@ -1,6 +1,15 @@
 """Audit checker for fixed sub-60s wait ceilings added in test code (#910).
 
 See issue #910 for the wait-ceiling taxonomy and rationale.
+
+Known limits (line-oriented by design; each is an accepted narrowing, not an oversight):
+- A named constant (`static readonly TimeSpan ShortWait = FromSeconds(5)`) used in a wait on a
+  different line fires on neither line — cross-line data flow is out of scope.
+- A call wrapped across lines (idiom on one physical line, literal on another) fires on neither.
+- Idiom matching is substring-based, not word-anchored: over-inclusive only (worst case an
+  unneeded marker), never under.
+- git's core.quotepath octal escaping is not decoded; a non-ASCII test filename degrades the
+  line-above marker lookup for that file only (same-line checks still work off the diff text).
 """
 from __future__ import annotations
 
@@ -32,25 +41,27 @@ WAIT_IDIOMS = (
 GIT_TEXT = {"encoding": "utf-8", "errors": "replace"}
 
 
+# Anchored to a comment opener on purpose: a bare substring search would let prose that merely
+# MENTIONS the marker ("// this documents the wait-ok: convention") silently exempt a real wait
+# on the next line — and tests about this checker are the likeliest place to write that prose.
+_MARKER_RE = re.compile(r"(?://|/\*|<!--)\s*wait-ok\b:?\s*(.*)")
+
+
 def find_wait_ok_marker(text: str) -> dict[str, str] | None:
-    """Check if text contains a wait-ok: marker and extract reason if present."""
+    """Extract a wait-ok marker and its reason, or None. The marker must open its comment."""
     if not text or "wait-ok" not in text:
         return None
 
-    m = re.search(r"wait-ok:(.*)", text)
-    if m:
-        raw_reason = m.group(1)
-        if "*/" in raw_reason:
-            raw_reason = raw_reason.split("*/")[0]
-        if "-->" in raw_reason:
-            raw_reason = raw_reason.split("-->")[0]
-        reason = raw_reason.strip()
-        return {"reason": reason}
+    m = _MARKER_RE.search(text)
+    if m is None:
+        return None
 
-    if re.search(r"\bwait-ok\b", text):
-        return {"reason": ""}
-
-    return None
+    raw_reason = m.group(1)
+    if "*/" in raw_reason:
+        raw_reason = raw_reason.split("*/")[0]
+    if "-->" in raw_reason:
+        raw_reason = raw_reason.split("-->")[0]
+    return {"reason": raw_reason.strip()}
 
 
 def get_sub_60s_literal(line_text: str, has_context: bool) -> str | None:
@@ -158,27 +169,65 @@ def _selftest() -> int:
     if faults_f:
         failures.append("Arm (f) FAIL: wait with wait-ok marker on line above fired")
 
+    # (g) a comment that merely MENTIONS the marker mid-prose must NOT exempt the next line
+    file_map_g = {"tests/FooTests.cs": [
+        "class Foo {",
+        "    // This test documents the wait-ok: convention for reviewers.",
+        "    await Task.Delay(TimeSpan.FromSeconds(5));",
+        "}"]}
+    added_g = [("tests/FooTests.cs", 3, "    await Task.Delay(TimeSpan.FromSeconds(5));")]
+    faults_g = inspect_lines(added_g, file_map_g)
+    if not faults_g or "TimeSpan.FromSeconds(5)" not in faults_g[0]:
+        failures.append("Arm (g) FAIL: prose mention of the marker exempted a bad wait")
+
+    # (h) the diff parser itself: two files, multiple hunks, deletions, a non-tests path filtered
+    diff_h = "\n".join([
+        "diff --git a/tests/A.cs b/tests/A.cs",
+        "--- a/tests/A.cs",
+        "+++ b/tests/A.cs",
+        "@@ -3,0 +4,2 @@",
+        "+line four",
+        "+line five",
+        "@@ -10,1 +12,1 @@",
+        "-old twelve",
+        "+line twelve",
+        "diff --git a/src/B.cs b/src/B.cs",
+        "--- a/src/B.cs",
+        "+++ b/src/B.cs",
+        "@@ -1,0 +2,1 @@",
+        "+ignored: not under tests/",
+        "diff --git a/tests/C.cs b/tests/C.cs",
+        "--- /dev/null",
+        "+++ b/tests/C.cs",
+        "@@ -0,0 +1,1 @@",
+        "+only line",
+        ""])
+    expect_h = [
+        ("tests/A.cs", 4, "line four"),
+        ("tests/A.cs", 5, "line five"),
+        ("tests/A.cs", 12, "line twelve"),
+        ("tests/C.cs", 1, "only line"),
+    ]
+    got_h = parse_added_lines(diff_h)
+    if got_h != expect_h:
+        failures.append(f"Arm (h) FAIL: diff parser returned {got_h!r}, expected {expect_h!r}")
+
     if failures:
         print("waitceiling selftest: FAIL -- " + "; ".join(failures), file=sys.stderr)
         return 1
-    print("waitceiling selftest: pass (all 6 arms discriminate)")
+    print("waitceiling selftest: pass (all 8 arms discriminate)")
     return 0
 
 
-def added_test_lines(base: str) -> tuple[list[tuple[str, int, str]], dict[str, list[str]]]:
-    """Get added lines in tests/**/*.cs relative to base, and current file contents."""
-    out = subprocess.run(
-        ["git", "diff", "--unified=0", base],
-        capture_output=True, text=True, check=True, cwd=ROOT, **GIT_TEXT
-    ).stdout
-
+def parse_added_lines(diff_text: str) -> list[tuple[str, int, str]]:
+    """Walk unified-0 diff text and return (path, new-side lineno, text) for added test lines."""
     added_items: list[tuple[str, int, str]] = []
     current_file = None
     current_line_no = 0
 
     hunk_re = re.compile(r"^@@\s+-[0-9,]+\s+\+([0-9]+)(?:,[0-9]+)?\s+@@")
 
-    for line in out.splitlines():
+    for line in diff_text.splitlines():
         if line.startswith("+++"):
             path = line[4:].strip()
             if path == "/dev/null":
@@ -196,6 +245,18 @@ def added_test_lines(base: str) -> tuple[list[tuple[str, int, str]], dict[str, l
         elif current_file and line.startswith("+") and not line.startswith("+++"):
             added_items.append((current_file, current_line_no, line[1:]))
             current_line_no += 1
+
+    return added_items
+
+
+def added_test_lines(base: str) -> tuple[list[tuple[str, int, str]], dict[str, list[str]]]:
+    """Get added lines in tests/**/*.cs relative to base, and current file contents."""
+    out = subprocess.run(
+        ["git", "diff", "--unified=0", base],
+        capture_output=True, text=True, check=True, cwd=ROOT, **GIT_TEXT
+    ).stdout
+
+    added_items = parse_added_lines(out)
 
     file_lines_map: dict[str, list[str]] = {}
     needed_files = {path for path, _, _ in added_items}
