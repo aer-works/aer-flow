@@ -1258,6 +1258,138 @@ public class CoreDispatcherTests
         }
     }
 
+    [Fact]
+    public async Task DispatchAsync_when_prompt_below_threshold_does_not_swap_wrapper_and_no_AER_PROMPT_FILE_in_child_env()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var prompt = new string('a', CoreDispatcher.OversizePromptThreshold - 100);
+            var wrapper = "Read prompt at %AER_PROMPT_FILE%";
+
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", "echo %AER_PROMPT_FILE% > %AER_OUTPUT_DIR%\\hello.txt", prompt], PromptText: prompt, OversizePromptWrapper: wrapper)
+                : new CoreDispatchTarget("sh", ["-c", "echo $AER_PROMPT_FILE > \"$AER_OUTPUT_DIR/hello.txt\"", prompt], PromptText: prompt, OversizePromptWrapper: wrapper);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+            var result = await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            var written = (await File.ReadAllTextAsync(Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken)).Trim();
+            Assert.DoesNotContain("prompt.txt", written);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            FileCleanup.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_when_prompt_above_threshold_with_wrapper_swaps_wrapper_and_sets_AER_PROMPT_FILE()
+    {
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+
+            var baseCmd = OperatingSystem.IsWindows()
+                ? "echo %AER_PROMPT_FILE% > %AER_OUTPUT_DIR%\\hello.txt"
+                : "echo $AER_PROMPT_FILE > \"$AER_OUTPUT_DIR/hello.txt\"";
+            var oversizedPrompt = baseCmd + new string(' ', CoreDispatcher.WindowsCommandLineCeiling + 1_000);
+            var wrapper = baseCmd;
+            var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
+
+            var target = OperatingSystem.IsWindows()
+                ? new CoreDispatchTarget("cmd", ["/c", oversizedPrompt], PromptText: oversizedPrompt, OversizePromptWrapper: wrapper)
+                : new CoreDispatchTarget("sh", ["-c", oversizedPrompt], PromptText: oversizedPrompt, OversizePromptWrapper: wrapper);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+            var result = await dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.True(File.Exists(promptFilePath));
+            var writtenPrompt = await File.ReadAllTextAsync(promptFilePath, TestContext.Current.CancellationToken);
+            Assert.True(writtenPrompt.Length >= CoreDispatcher.OversizePromptThreshold);
+            Assert.Contains(outputDirectory, writtenPrompt);
+
+            var written = (await File.ReadAllTextAsync(Path.Combine(outputDirectory, "hello.txt"), TestContext.Current.CancellationToken)).Trim();
+            Assert.Equal(promptFilePath, written);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            FileCleanup.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_when_prompt_above_threshold_with_null_wrapper_throws_CommandLineTooLongException()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows-only: this single ~33k-char argument sits far under Linux's MAX_ARG_STRLEN, so no POSIX guard trips at this size.");
+        }
+
+        var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var outputDirectory = ArtifactManager.AllocateOutputDirectory(artifactsRoot, ExecutionId);
+            var request = MakeRequest(ArtifactManager.BuildEnvironment([], outputDirectory, artifactsRoot));
+            var oversizedPrompt = new string('x', CoreDispatcher.WindowsCommandLineCeiling + 1_000);
+
+            var target = new CoreDispatchTarget("cmd", ["/c", "exit 0", oversizedPrompt], PromptText: oversizedPrompt, OversizePromptWrapper: null);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            await Assert.ThrowsAsync<CommandLineTooLongException>(
+                () => dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(artifactsRoot);
+            FileCleanup.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task DispatchAsync_when_prompt_above_threshold_and_AER_OUTPUT_DIR_unresolved_does_not_swap()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows-only: this single ~33k-char argument sits far under Linux's MAX_ARG_STRLEN, so no POSIX guard trips at this size.");
+        }
+
+        var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var request = MakeRequest([]);
+            var oversizedPrompt = new string('x', CoreDispatcher.WindowsCommandLineCeiling + 1_000);
+            var wrapper = "Read prompt at %AER_PROMPT_FILE%";
+
+            var target = new CoreDispatchTarget("cmd", ["/c", "exit 0", oversizedPrompt], PromptText: oversizedPrompt, OversizePromptWrapper: wrapper);
+
+            await using var writer = new FlowEventLogWriter(logPath);
+            var dispatcher = new CoreDispatcher(writer);
+
+            await Assert.ThrowsAsync<CommandLineTooLongException>(
+                () => dispatcher.DispatchAsync(request, target, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            FileCleanup.Delete(logPath);
+        }
+    }
+
     // Issue #612: POSIX has no single UTF-16 ceiling like Windows. Two byte-based caps are guarded
     // instead -- a per-argument MAX_ARG_STRLEN (Linux) and a total ARG_MAX that also counts the
     // environment -- so the over-long spawn is refused up-front as CommandLineTooLongException (Permanent) rather than reaching

@@ -2,7 +2,8 @@ namespace Aer.Tests.Shared;
 
 /// <summary>
 /// Shared retry core behind the test-cleanup helpers (<see cref="FileCleanup"/> and
-/// <see cref="DirectoryCleanup"/>). On Windows, Defender (or the search indexer) intermittently holds
+/// <see cref="DirectoryCleanup"/>) — and for any other test-side filesystem operation racing the
+/// same scanner hold, e.g. a mid-test <c>Directory.Move</c> (#1014). On Windows, Defender (or the search indexer) intermittently holds
 /// a brief exclusive handle on a just-written file/directory while scanning it, so a delete that runs
 /// immediately after a test writes its fixtures surfaces as <see cref="IOException"/> ("being used by
 /// another process") or <see cref="UnauthorizedAccessException"/> (issue #295). A short bounded

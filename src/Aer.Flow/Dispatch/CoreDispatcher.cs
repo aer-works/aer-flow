@@ -52,7 +52,8 @@ public sealed record CoreDispatchTarget(
     Action<string>? OnStdoutLine = null,
     string? PromptText = null,
     IReadOnlyList<(string Name, string Value)>? Environment = null,
-    string? StdoutArtifactName = null);
+    string? StdoutArtifactName = null,
+    string? OversizePromptWrapper = null);
 
 /// <summary>
 /// The raw, unclassified facts of a completed dispatch (spec §8's <c>NaturalExit</c> |
@@ -372,6 +373,15 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     public const int MaxRetainedStderrLength = 2000;
 
     /// <summary>
+    /// Expanded-prompt length at which <see cref="DispatchAsync"/> stops passing the prompt inline
+    /// and swaps in the adapter's <see cref="CoreDispatchTarget.OversizePromptWrapper"/> pointing at
+    /// the already-captured <c>prompt.txt</c> (#748). Deliberately far below every platform
+    /// command-line cap this class guards, and fixed rather than derived from them, so the same
+    /// workflow delivers its prompt the same way on every OS.
+    /// </summary>
+    public const int OversizePromptThreshold = 4000;
+
+    /// <summary>
     /// The assembled-command-line ceiling <see cref="DispatchAsync"/> guards against on Windows
     /// (#598), held below <c>CreateProcessW</c>'s documented 32,767-character <c>lpCommandLine</c>
     /// maximum. <see cref="MeasureCommandLineLength"/> is an upper bound, so this margin is not load
@@ -654,8 +664,27 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
         if (target.PromptText is { } promptText && pathVariables.TryGetValue("AER_OUTPUT_DIR", out var outputDirectory))
         {
             var promptFilePath = Path.Combine(outputDirectory, ArtifactManager.PromptFileName);
-            await File.WriteAllTextAsync(promptFilePath, ExpandVariables(promptText, pathVariables), CancellationToken.None)
+            var expandedPromptText = ExpandVariables(promptText, pathVariables);
+            await File.WriteAllTextAsync(promptFilePath, expandedPromptText, CancellationToken.None)
                 .ConfigureAwait(false);
+
+            // #748: when the adapter provides an OversizePromptWrapper and the expanded prompt length
+            // reaches or exceeds OversizePromptThreshold, swap the inline prompt argument for the
+            // expanded wrapper and pass AER_PROMPT_FILE in the child environment so command-line
+            // guards measure the shortened argument list.
+            if (target.OversizePromptWrapper is { } wrapper && expandedPromptText.Length >= OversizePromptThreshold)
+            {
+                var promptArgIndex = target.Args.ToList().IndexOf(promptText);
+                if (promptArgIndex >= 0)
+                {
+                    pathVariables["AER_PROMPT_FILE"] = promptFilePath;
+                    expandedArgs[promptArgIndex] = ExpandVariables(wrapper, pathVariables);
+
+                    var updatedChildEnvironment = childEnvironment.ToList();
+                    updatedChildEnvironment.Add(("AER_PROMPT_FILE", promptFilePath));
+                    childEnvironment = updatedChildEnvironment;
+                }
+            }
         }
 
         // #598: measured here, on the expanded arguments, because this is the only place the real

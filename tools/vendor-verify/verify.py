@@ -245,6 +245,61 @@ def _agy_stdin_prompt():
     return PASS, "agy -p rejects an empty prompt and ignores piped context (prompt is the -p flag value)"
 
 
+@check("prompt.claude-payload-file-execution", "prompt",
+       "claude -p given a short wrapper prompt pointing at a file under an --add-dir path reads "
+       "the file and executes its contained contract write", sentinel=True)
+def _claude_payload_file_execution():
+    wd = tempfile.mkdtemp(prefix="v-prompt-claude-")
+    try:
+        sentinel_path = os.path.join(wd, "sentinel.txt").replace("\\", "/")
+        payload_path = os.path.join(wd, "prompt-payload.txt").replace("\\", "/")
+        with open(payload_path, "w", encoding="utf-8") as f:
+            f.write(f"Create a file at {sentinel_path} containing the word EXECUTED.")
+
+        wrapper = f"Read the complete task instructions in {payload_path} and execute them exactly as written. Do not summarize."
+        cmd = ["claude", "-p", wrapper, "--add-dir", wd, "--allowedTools", "Write", *model_flags("claude")]
+        rc, out, err = run(cmd, timeout=120, cwd=wd)
+        if rc != 0:
+            return FAIL, f"claude exited with code {rc}; output: {(out + err)[-200:]}"
+        if not os.path.exists(sentinel_path):
+            return FAIL, f"sentinel file was not created by claude; output: {(out + err)[-200:]}"
+        content = open(sentinel_path, encoding="utf-8").read()
+        if "EXECUTED" not in content:
+            return FAIL, f"sentinel file content unexpected: {content!r}"
+        return PASS, "claude successfully read payload file and executed the contract write"
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+
+
+@check("prompt.agy-payload-file-execution", "prompt",
+       "agy -p given a short wrapper prompt pointing at a file under an --add-dir path reads "
+       "the file and executes its contained contract write", sentinel=True)
+def _agy_payload_file_execution():
+    wd = tempfile.mkdtemp(prefix="v-prompt-agy-")
+    try:
+        sentinel_path = os.path.join(wd, "sentinel.txt").replace("\\", "/")
+        payload_path = os.path.join(wd, "prompt-payload.txt").replace("\\", "/")
+        with open(payload_path, "w", encoding="utf-8") as f:
+            f.write(f"Create a file at {sentinel_path} containing the word EXECUTED.")
+
+        wrapper = f"Read the full task instructions at {payload_path} and execute them exactly as written. Do not summarize."
+        # --mode accept-edits mirrors GeminiWorkerAdapter's default scope: Resolve always passes
+        # either --mode <scope> or --dangerously-skip-permissions, so a flag-less invocation would
+        # measure a shape AER never dispatches (this check's first review caught exactly that).
+        cmd = ["agy", "-p", wrapper, "--add-dir", wd, "--mode", "accept-edits", *model_flags("agy")]
+        rc, out, err = run(cmd, timeout=120, cwd=wd)
+        if rc != 0:
+            return FAIL, f"agy exited with code {rc}; output: {(out + err)[-200:]}"
+        if not os.path.exists(sentinel_path):
+            return FAIL, f"sentinel file was not created by agy; output: {(out + err)[-200:]}"
+        content = open(sentinel_path, encoding="utf-8").read()
+        if "EXECUTED" not in content:
+            return FAIL, f"sentinel file content unexpected: {content!r}"
+        return PASS, "agy successfully read payload file and executed the contract write"
+    finally:
+        shutil.rmtree(wd, ignore_errors=True)
+
+
 def mcp_config(path, server, sentinel_dir, extra_env=None):
     e = {"AER_SENTINEL_DIR": sentinel_dir}
     e.update(extra_env or {})

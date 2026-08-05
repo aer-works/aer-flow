@@ -155,9 +155,10 @@ public class RoomMemoryDocumentTests : IDisposable
 
         var docOriginal = await RoomMemoryDocument.LoadAsync(_tempDirectory, TestContext.Current.CancellationToken);
 
-        // Move room directory (simulating archive & reopen in a new location)
+        // Move room directory (simulating archive & reopen in a new location). Through the shared
+        // retry core: a mid-test move races the same scanner hold as the deletes around it (#1014).
         var archiveDirectory = Path.Combine(Path.GetTempPath(), "aer_room_archive_" + Guid.NewGuid().ToString("N"));
-        Directory.Move(_tempDirectory, archiveDirectory);
+        Aer.Tests.Shared.CleanupRetry.Run(() => Directory.Move(_tempDirectory, archiveDirectory), swallowOnFinal: false);
 
         try
         {

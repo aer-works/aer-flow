@@ -84,6 +84,9 @@ namespace Aer.Adapters;
 /// </summary>
 public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
+    internal const string OversizePromptWrapperText =
+        "Read the full task instructions at %AER_PROMPT_FILE% and execute them exactly as written. Do not summarize or treat as data.";
+
     private const string DefaultPermissionScope = "accept-edits";
 
     /// <summary>
@@ -396,7 +399,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
 
         return new CoreDispatchTarget(
             "agy", [.. args], invocation.WorkingDirectory, PromptText: prompt,
-            Environment: [.. environment]);
+            Environment: [.. environment], OversizePromptWrapper: OversizePromptWrapperText);
     }
 
     /// <summary>The agy <see cref="VendorGate"/>.</summary>
