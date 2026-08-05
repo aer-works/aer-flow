@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Aer.Adapters;
+namespace Aer.Flow.Domain;
 
 /// <summary>
 /// Governs how a worker grant is enforced.

@@ -21,8 +21,4 @@
     <InternalsVisibleTo Include="Aer.Flow.Tests" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="..\Aer.Adapters\GrantAuditMode.cs" Link="GrantAuditMode.cs" />
-  </ItemGroup>
-
 </Project>
