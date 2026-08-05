@@ -396,7 +396,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         // path ONLY, deliberately absent from BuildGate: the batch value below is a placeholder
         // CoreDispatcher expands at dispatch time, and the gate's one consumer (the dialogue worker's
         // gated participant config) spawns vendor CLIs itself with neither AER_OUTPUT_DIR nor any
-        // expansion step -- it would receive the token literally. That remainder is recorded on #442.
+        // expansion step -- it would receive the token literally. That remainder is recorded on #1019.
         if (invocation.PermissionGrant is { RunShellCommands: false })
         {
             var isDaemonSession = invocation.SessionId is not null || invocation.ResumeSession ||
