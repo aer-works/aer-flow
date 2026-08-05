@@ -114,7 +114,7 @@ public static class OrchestratorTurnPrompt
         sb.AppendLine();
         sb.AppendLine($"Known origination template ids: {string.Join(", ", Aer.Adapters.WorkflowTemplateCatalog.All.Select(t => t.Id))}.");
         sb.AppendLine("Every escalation subject MUST cite something that exists: a `heldWork` ref copied verbatim from the Held Work section, or an `origination` templateId from the known-template list above.");
-        sb.AppendLine("A `decision` subject ({ \"kind\": \"decision\", \"decisionId\": \"...\" }) may ONLY cite a decision id the room record actually shows — NEVER invent one. If no recorded id fits, use `heldWork` instead.");
+        sb.AppendLine("Do NOT use `decision` subjects: the room record does not currently carry citable decision ids, so ANY decisionId you write is invented and fails the turn. Use `heldWork` or `origination`.");
         sb.AppendLine("A turn citing a reference the record does not contain is a FAILED turn.");
 
         return sb.ToString();

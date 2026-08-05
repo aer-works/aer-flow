@@ -48,8 +48,19 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
             return new OccupantTurnResult.Failed($"Worker adapter '{role.Adapter}' not found in registry.");
         }
 
-        // 3. Render prompt
-        var promptText = OrchestratorTurnPrompt.Render(input);
+        // 3. Render prompt. Render reads the live template catalog (#1001), whose loader
+        // deliberately throws on an empty/misconfigured catalog — that must surface as a
+        // Failed turn feeding the breaker, like every other rejection on this path, not as an
+        // unhandled exception in the host loop (second-reader finding).
+        string promptText;
+        try
+        {
+            promptText = OrchestratorTurnPrompt.Render(input);
+        }
+        catch (Exception ex)
+        {
+            return new OccupantTurnResult.Failed($"Failed to render the orchestrator turn prompt: {ex.Message}");
+        }
 
         // 4. Output directory
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);

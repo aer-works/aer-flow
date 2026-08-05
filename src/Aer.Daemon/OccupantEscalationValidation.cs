@@ -37,11 +37,13 @@ public static class OccupantEscalationValidation
                     break;
 
                 case EscalationSubject.Decision decision:
-                    // The room record carries no decisions today (HeldWorkCitation deliberately
-                    // cites by free string, and decision events live in lane journals), so no
-                    // occupant-cited DecisionId can currently resolve. The check is written
-                    // against the record all the same: when decisions become room-record
-                    // citable, valid citations start passing here without a code change.
+                    // Unconditional today: the room record carries no decisions
+                    // (HeldWorkCitation deliberately cites by free string, and decision events
+                    // live in lane journals), so there is no collection to look up and every
+                    // occupant-cited DecisionId is fabricated. When decisions become
+                    // room-record citable, the extension point is ADDING a lookup here,
+                    // mirroring the HeldWork arm — this return does not become conditional on
+                    // its own (second-reader finding on the first wording, which claimed it would).
                     return $"Decision escalation cites decisionId '{decision.DecisionId.Value}', which the room record does not contain.";
 
                 case EscalationSubject.ProposedOrigination origination:
