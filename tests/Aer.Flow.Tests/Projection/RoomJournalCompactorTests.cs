@@ -137,4 +137,30 @@ public class RoomJournalCompactorTests
             DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
+    /// <summary>
+    /// The compaction lock is load-bearing, not decorative — <see cref="RoomJournalCompactor"/>'s
+    /// own comment says what it protects. Held lock in, refusal out.
+    /// </summary>
+    [Fact]
+    public async Task CompactAsync_refuses_while_the_room_lock_is_held_by_someone_else()
+    {
+        var refCompleted = new HeldWorkRef("lane-locked");
+        var roomDir = await CreateTestRoomAsync(
+            new RoomEvent.HeldWorkDispatched(refCompleted, "shape", TimeSpan.FromMinutes(1), "decider"),
+            new RoomEvent.HeldWorkResolved(refCompleted, new HeldWorkCitation("Resolved", "ok")));
+
+        var before = await File.ReadAllTextAsync(Path.Combine(roomDir, "room.jsonl"), TestContext.Current.CancellationToken);
+
+        using (Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(roomDir, "test holder"))
+        {
+            await Assert.ThrowsAsync<Aer.Flow.Concurrency.WorkflowLockedException>(
+                () => RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
+        }
+
+        // The control: the same call succeeds once the lock is free, so the refusal above is about
+        // the lock and not about the journal being uncompactable.
+        Assert.True(await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
+        var after = await File.ReadAllTextAsync(Path.Combine(roomDir, "room.jsonl"), TestContext.Current.CancellationToken);
+        Assert.NotEqual(before, after);
+    }
 }

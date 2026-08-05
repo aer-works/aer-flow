@@ -1,3 +1,4 @@
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 
@@ -11,6 +12,14 @@ namespace Aer.Flow.Projection;
 /// <b>Idempotent:</b> Running compaction twice in a row produces no changes on the second run.
 /// <b>Scope:</b> Touches completed runs only (held work with <see cref="HeldWorkStatus.Resolved"/>).
 /// Live and paused runs are untouched.
+/// </para>
+/// <para>
+/// <b>Serialised against appenders by the room's own <see cref="ConcurrencyGuard"/></b>, held across
+/// the whole read-rewrite-move — the same lock <c>RoomMutationInterface</c> takes to append. Not an
+/// optimisation: this is the only rewriter of a file every other writer only appends to, so an
+/// append landing between the read and the move would be dropped by the move with nothing left to
+/// detect it. <see cref="RoomEventLogWriter"/>'s single-writer file sharing does not cover this,
+/// because a compaction replaces the file rather than opening it for append.
 /// </para>
 /// </summary>
 public static class RoomJournalCompactor
@@ -32,6 +41,8 @@ public static class RoomJournalCompactor
         {
             return false;
         }
+
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, "room journal compaction");
 
         var reader = new RoomEventLogReader(roomLogPath);
         var events = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
@@ -96,3 +107,4 @@ public static class RoomJournalCompactor
         };
     }
 }
+
