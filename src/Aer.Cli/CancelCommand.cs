@@ -5,6 +5,7 @@ using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
+using Aer.Flow.Workspaces;
 
 namespace Aer.Cli;
 
@@ -66,12 +67,14 @@ public static class CancelCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
+        var (provisionedConfig, provisionedWorktrees) =
+            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         // Lazy (#662): cancel targets a task 'aer run' already started — it does not need to know how
         // to dispatch a worker it will never dispatch, so a bindings file naming an unresolvable one
         // must not block cancelling a different, already-dispatched execution.
         var workerBindings = WorkerBindingResolver.ResolveLazily(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
+            provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
         var targetExecutionId = new ExecutionId(options.ExecutionId);
@@ -93,6 +96,17 @@ public static class CancelCommand
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath);
+        IReadOnlyList<WorktreeTeardownResult> worktreeTeardowns = [];
+        if (state.Status == WorkflowStatus.Terminal && provisionedWorktrees.Count > 0)
+        {
+            worktreeTeardowns =
+            [
+                .. provisionedWorktrees
+                    .Select(w => WorktreeProvisioner.Teardown(w.Repository, w.WorktreePath))
+                    .Where(r => r.Outcome != WorktreeTeardownOutcome.Removed)
+            ];
+        }
+
+        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
 }
