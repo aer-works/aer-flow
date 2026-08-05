@@ -20,7 +20,14 @@ public class RedirectedProcessEncodingTests
         var offenders = new List<string>();
 
         // Counted, not merely present-per-file: a file with two spawn sites where only one pins the
-        // encoding would pass a contains() check while still carrying the defect.
+        // encoding would pass a contains() check while still carrying the defect. Known limits of
+        // the raw-text approach, stated so nobody mistakes them for guarantees (this change's
+        // reviewer enumerated all three): a redirect assigned a non-literal (`= someFlag`) is not
+        // counted at all; counts are per-file, so a second spawn site could in principle balance a
+        // missing pin against a redundant one elsewhere in the same file; and a match inside a
+        // string or comment inflates only the REQUIRED count — the false direction is a noisy
+        // failure, never a silently missed defect. Every current site assigns literal `true`, one
+        // site per file.
         var redirectOut = new Regex(@"RedirectStandardOutput\s*=\s*true");
         var redirectErr = new Regex(@"RedirectStandardError\s*=\s*true");
         var encodingOut = new Regex(@"StandardOutputEncoding\s*=");
