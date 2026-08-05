@@ -104,9 +104,20 @@ public sealed record OrchestratorTurnInput(
         ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentNullException.ThrowIfNull(input);
 
+        string? lastEventLineHash = null;
+        if (input.TotalEventCount > 0)
+        {
+            var lines = OrchestratorSessionStore.ReadRoomLogLines(roomDirectoryPath);
+            if (lines.Length >= input.TotalEventCount)
+            {
+                lastEventLineHash = OrchestratorSessionStore.ComputeLineHash(lines[input.TotalEventCount - 1]);
+            }
+        }
+
         var newCursor = new OrchestratorSessionCursor(
             ProcessedEventCount: input.TotalEventCount,
-            LastCompletedTurnAt: turnTimestamp ?? DateTimeOffset.UtcNow);
+            LastCompletedTurnAt: turnTimestamp ?? DateTimeOffset.UtcNow,
+            LastEventLineHash: lastEventLineHash);
 
         OrchestratorSessionStore.Save(roomDirectoryPath, newCursor);
     }
