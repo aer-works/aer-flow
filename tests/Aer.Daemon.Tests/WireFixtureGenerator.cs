@@ -42,7 +42,8 @@ public static class WireFixtureGenerator
             false,
             new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero),
-            false);
+            false,
+            new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero));
         fixtures[Path.Combine(RelativeFixturesPath, "fleet_item.rest.json")] = JsonSerializer.Serialize(fleetItem, IndentedOptions(DaemonSerializerOptions.Rest));
 
         // 4. TaskFleetItem WS (PascalCase)

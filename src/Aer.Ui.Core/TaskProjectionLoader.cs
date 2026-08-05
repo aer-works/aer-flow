@@ -24,6 +24,9 @@ namespace Aer.Ui.Core;
 /// ("interactive session", or a workflow's template id), so routing on it would mean string-matching
 /// a rendered label; this is the same fact the loader already computes to build that label.
 /// </param>
+/// <param name="LastActivityAt">
+/// Timestamp of the newest event in the task's journal (#640) — used for sorting fleet items by recency of actual activity.
+/// </param>
 public sealed record TaskFleetItem(
     string TaskDirectoryPath,
     string FriendlyName,
@@ -33,7 +36,8 @@ public sealed record TaskFleetItem(
     bool IsArchived,
     DateTimeOffset Created,
     DateTimeOffset Updated,
-    bool IsSession = false);
+    bool IsSession = false,
+    DateTimeOffset? LastActivityAt = null);
 
 /// <summary>
 /// The seam this phase exists to prove (issue #118): opens a real task directory using exactly
@@ -112,10 +116,12 @@ public static class TaskProjectionLoader
             // known quirk, not an error -- see DaemonIntegrationTests' WebSocketSnapshot_* remarks).
             // A DAG task directory with no snapshot yet shouldn't exist by construction, but is
             // represented the same defensive way rather than thrown on.
+            // For a room with no journal/snapshot yet, LastActivityAt falls back to created timestamp
+            // (scoped strictly to the pre-first-event window).
             return new TaskFleetItem(
                 taskDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow", // vocabulary-ok: internal type label
                 isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived, created, updated,
-                isSession);
+                isSession, LastActivityAt: created);
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -123,13 +129,45 @@ public static class TaskProjectionLoader
 
         var logPath = Path.Combine(taskDirectoryPath, LogFileName);
         var reader = new FlowEventLogReader(logPath);
-        var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
+        var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
+
+        var events = new List<FlowEvent>(entries.Count);
+        DateTimeOffset? newestEventTimestamp = null;
+
+        foreach (var entry in entries)
+        {
+            if (entry is LogEntry.FlowLogEntry flowLogEntry)
+            {
+                events.Add(flowLogEntry.Event);
+            }
+
+            var ts = entry switch
+            {
+                LogEntry.FlowLogEntry f => f.WriterUtcTimestamp,
+                LogEntry.CoreLogEntry c => c.WriterUtcTimestamp,
+                LogEntry.RoomLogEntry r => r.WriterUtcTimestamp,
+                _ => null
+            };
+
+            if (ts.HasValue)
+            {
+                var dto = new DateTimeOffset(DateTime.SpecifyKind(ts.Value, DateTimeKind.Utc));
+                if (!newestEventTimestamp.HasValue || dto > newestEventTimestamp.Value)
+                {
+                    newestEventTimestamp = dto;
+                }
+            }
+        }
 
         var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
         var state = StateProjector.Project(events, snapshot, checkpoint);
         var pausedStepCount = state.Steps.Count(s => s.Status == StepStatus.Paused);
 
-        return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession);
+        // Fallback for a room with no journal events/timestamps yet: prefer created timestamp
+        // (scoped strictly to the pre-first-event window).
+        var lastActivityAt = newestEventTimestamp ?? created;
+
+        return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession, lastActivityAt);
     }
 
     /// <summary>

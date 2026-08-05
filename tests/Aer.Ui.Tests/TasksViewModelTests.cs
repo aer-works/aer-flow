@@ -268,30 +268,36 @@ public class TasksViewModelTests
     // ---- #336: ordering ----
 
     [Fact]
-    public void The_list_orders_by_most_recently_updated_not_by_name()
+    public void The_list_orders_by_most_recent_last_activity_not_by_name()
     {
-        // Regression guard: this used to order by FriendlyName descending, which silently discarded
-        // the recency order the daemon had already applied and contradicted TaskFleetItem.Updated's
-        // own contract. The phone showed recency; the desktop showed reverse-alphabetical.
+        // #640: recency means LAST ACTIVITY — when the room last did something (derived from journal events).
         var viewModel = new TasksViewModel();
-        var older = NewItem("/tasks/zulu") with { Updated = DateTimeOffset.UnixEpoch.AddHours(1) };
-        var newer = NewItem("/tasks/alpha") with { Updated = DateTimeOffset.UnixEpoch.AddHours(9) };
+        var olderActivity = NewItem("/tasks/zulu") with
+        {
+            Updated = DateTimeOffset.UnixEpoch.AddHours(10),
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(1)
+        };
+        var newerActivity = NewItem("/tasks/alpha") with
+        {
+            Updated = DateTimeOffset.UnixEpoch.AddHours(2),
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(9)
+        };
 
-        var ordered = TasksViewModel.InFleetOrderForTests([older, newer]).ToList();
+        var ordered = TasksViewModel.InFleetOrderForTests([olderActivity, newerActivity]).ToList();
 
         Assert.Equal("/tasks/alpha", ordered[0].TaskDirectoryPath);
         Assert.Equal("/tasks/zulu", ordered[1].TaskDirectoryPath);
     }
 
     [Fact]
-    public void Rows_updated_at_the_same_instant_order_by_name_so_the_list_is_stable()
+    public void Rows_with_same_last_activity_instant_order_by_name_so_the_list_is_stable()
     {
         // Ties must not resolve arbitrarily: on a permanently-visible switcher, a row that swaps
         // places on an unrelated refresh moves out from under the pointer.
         var viewModel = new TasksViewModel();
         var sameInstant = DateTimeOffset.UnixEpoch.AddHours(3);
-        var b = NewItem("/tasks/bravo") with { Updated = sameInstant, FriendlyName = "bravo" };
-        var a = NewItem("/tasks/alpha") with { Updated = sameInstant, FriendlyName = "alpha" };
+        var b = NewItem("/tasks/bravo") with { LastActivityAt = sameInstant, FriendlyName = "bravo" };
+        var a = NewItem("/tasks/alpha") with { LastActivityAt = sameInstant, FriendlyName = "alpha" };
 
         var ordered = TasksViewModel.InFleetOrderForTests([b, a]).ToList();
 
