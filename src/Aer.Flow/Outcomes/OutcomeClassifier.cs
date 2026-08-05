@@ -141,6 +141,16 @@ public static class OutcomeClassifier
                 }
             }
 
+            if (failureClassifier is not null && failureClassifier.TryClassifyFailure(
+                    result.StderrTail, timeProvider ?? TimeProvider.System, out var classifiedFailure, out var retryNotBefore))
+            {
+                return new OutcomeClassification(
+                    OutcomeVerdict.Failed,
+                    classifiedFailure,
+                    WithStderr("Execution failed: a required tool was auto-denied.", result.StderrTail),
+                    retryNotBefore);
+            }
+
             return new OutcomeClassification(OutcomeVerdict.Succeeded);
         }
 
