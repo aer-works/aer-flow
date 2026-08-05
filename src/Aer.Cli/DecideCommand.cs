@@ -5,6 +5,7 @@ using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
+using Aer.Flow.Workspaces;
 
 namespace Aer.Cli;
 
@@ -74,9 +75,11 @@ public static class DecideCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
+        var (provisionedConfig, provisionedWorktrees) =
+            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
+            provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
         var referencedExecutionId = new ExecutionId(options.ExecutionId);
@@ -103,6 +106,8 @@ public static class DecideCommand
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath);
+        var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
+
+        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
 }

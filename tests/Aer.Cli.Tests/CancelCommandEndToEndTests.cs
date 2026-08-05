@@ -87,6 +87,37 @@ public class CancelCommandEndToEndTests
     }
 
     [Fact]
+    public async Task Cancelling_a_task_directory_whose_bindings_file_also_names_an_unprovisionable_worktree_worker_still_succeeds()
+    {
+        // #1012: lazy worktree provisioning in aer cancel ensures an unprovisionable worktree spec
+        // on an unrelated worker does not block cancelling an execution.
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+
+            var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+
+            var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
+            Assert.NotNull(architectExecutionId);
+
+            var unprovisionableBindingsFilePath = await WriteThreeStepBindingsWithAnUnprovisionableWorktreeEntryAsync(testRoot);
+            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, unprovisionableBindingsFilePath);
+            var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken)).State;
+
+            Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
     public async Task Cancelling_an_already_succeeded_execution_is_a_too_late_no_op_reported_as_success()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
@@ -263,6 +294,41 @@ public class CancelCommandEndToEndTests
         };
 
         var path = Path.Combine(directory, "bindings-with-unresolvable-entry.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
+        return path;
+    }
+
+    private static async Task<string> WriteThreeStepBindingsWithAnUnprovisionableWorktreeEntryAsync(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                WriteFileCommand("plan", "the-plan"),
+                TimeSpan.FromSeconds(30)), // wait-ok: test config timeout
+            ["critic"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
+                CopyFirstInputCommand("review"),
+                TimeSpan.FromSeconds(30)), // wait-ok: test config timeout
+            ["publisher"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
+                CopyFirstInputCommand("summary"),
+                TimeSpan.FromSeconds(30)), // wait-ok: test config timeout
+            ["unprovisionable"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("unprovisionable", [], [new ProducedOutput("other")], []),
+                "irrelevant — never dispatched",
+                TimeSpan.FromSeconds(30), // wait-ok: test config timeout
+                Worktree: new WorktreeWorkspace(
+                    OperatingSystem.IsWindows() ? "C:\\nonexistent\\repo" : "/nonexistent/repo",
+                    "nonexistent-ref")),
+        };
+
+        var path = Path.Combine(directory, "bindings-with-unprovisionable-entry.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
         return path;
     }

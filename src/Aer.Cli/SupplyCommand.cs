@@ -5,6 +5,7 @@ using Aer.Flow.Domain;
 using Aer.Flow.Mutation;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
+using Aer.Flow.Workspaces;
 
 namespace Aer.Cli;
 
@@ -77,13 +78,15 @@ public static class SupplyCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
+        var (provisionedConfig, provisionedWorktrees) =
+            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         // Lazy (#662, same reasoning as CancelCommand): materializing this into a plain Dictionary to
         // add the NonProcess override below would enumerate — and so eagerly resolve and refuse —
         // every other entry in the file, reintroducing the defect for a bindings file naming a worker
         // 'aer supply' never touches.
         var workerBindings = WorkerBindingResolver.ResolveLazily(
-            bindingConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
+            provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath));
 
         var contract = new WorkerContract(options.Worker, RequiredInputs: [], [new ProducedOutput(options.OutputName)], OptionalMetadata: []);
         workerBindings = new WorkerBindingOverride(workerBindings, options.Worker, new WorkerBinding.NonProcess(contract));
@@ -107,7 +110,9 @@ public static class SupplyCommand
                 reader, writer, dispatcher, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return new SupplyResult(executionId, new CommandResult(settledState, snapshot, TaskDirectoryPath: options.TaskDirectoryPath));
+        var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(settledState.Status, provisionedWorktrees);
+
+        return new SupplyResult(executionId, new CommandResult(settledState, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns));
     }
 }
 

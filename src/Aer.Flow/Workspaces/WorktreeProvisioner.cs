@@ -172,6 +172,28 @@ public static class WorktreeProvisioner
         }
     }
 
+    /// <summary>
+    /// Tear down provisioned worktrees only once the run is Terminal — a Paused run must keep its
+    /// tree for the resume, and this deliberately runs on the success path (not in a finally) so a
+    /// crashed or cancelled run leaves the worker's tree intact too. Teardown never throws; a tree
+    /// kept for uncommitted changes or a blocked removal is surfaced on the result, not swallowed.
+    /// </summary>
+    public static IReadOnlyList<WorktreeTeardownResult> TeardownIfTerminal(
+        Domain.WorkflowStatus status, IReadOnlyList<ProvisionedWorktree> provisionedWorktrees)
+    {
+        if (status == Domain.WorkflowStatus.Terminal && provisionedWorktrees.Count > 0)
+        {
+            return
+            [
+                .. provisionedWorktrees
+                    .Select(w => Teardown(w.Repository, w.WorktreePath))
+                    .Where(r => r.Outcome != WorktreeTeardownOutcome.Removed)
+            ];
+        }
+
+        return [];
+    }
+
     private static (int ExitCode, string StdOut, string StdErr) RunGit(string workingDirectory, params string[] args)
     {
         var startInfo = new ProcessStartInfo("git")
@@ -238,3 +260,9 @@ public sealed record WorktreeTeardownResult(WorktreeTeardownOutcome Outcome, str
 
 /// <summary>The result of a post-run grant audit on a provisioned worktree.</summary>
 public sealed record WorktreeAuditResult(bool IsClean, string? FailureReason);
+
+/// <summary>
+/// A worktree provisioned for a run, held so <c>WorktreeProvisioner.Teardown</c> can be called on it
+/// once the run reaches Terminal.
+/// </summary>
+public sealed record ProvisionedWorktree(string Repository, string WorktreePath);

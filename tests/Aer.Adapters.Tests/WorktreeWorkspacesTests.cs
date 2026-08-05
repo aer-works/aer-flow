@@ -64,6 +64,22 @@ public sealed class WorktreeWorkspacesTests : IDisposable
         Assert.Equal(_root, Assert.Single(provisioned).Repository);
     }
 
+    [Fact]
+    public void ProvisionLazily_skips_unprovisionable_entry_leaving_binding_untouched()
+    {
+        var bindings = Bindings(("bad", Entry(worktree: new WorktreeWorkspace("relative/repo", "main"))));
+
+        var (result, provisioned, skipped) = WorktreeWorkspaces.ProvisionLazily(bindings, _root);
+
+        Assert.Equal("relative/repo", result["bad"].Worktree?.Repository);
+        Assert.Null(result["bad"].WorkingDirectory);
+        Assert.False(result["bad"].IsWorktree);
+        Assert.Empty(provisioned);
+        var item = Assert.Single(skipped);
+        Assert.Equal("bad", item.WorkerName);
+        Assert.IsType<InvalidWorkspaceSpecException>(item.Exception);
+    }
+
     private static Dictionary<string, WorkerBindingConfigEntry> Bindings(
         params (string Name, WorkerBindingConfigEntry Entry)[] entries)
     {
