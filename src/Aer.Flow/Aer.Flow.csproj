@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,6 +19,10 @@
          Register/Unregister/RequestStopAsync) directly where a test needs to force an exact
          internal race deterministically, not just through the public mutation surface. -->
     <InternalsVisibleTo Include="Aer.Flow.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Aer.Adapters\GrantAuditMode.cs" Link="GrantAuditMode.cs" />
   </ItemGroup>
 
 </Project>

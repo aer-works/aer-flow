@@ -142,8 +142,9 @@ public static class WorkerBindingResolver
             target = target with { OnStdoutLine = line => onWorkerStdoutLine(capturedWorkerName, line) };
         }
 
-        return new WorkerBinding.Process(entry.Contract, target, entry.Timeout, adapter);
+        return new WorkerBinding.Process(entry.Contract, target, entry.Timeout, adapter, entry.GrantAuditMode);
     }
+
 
     /// <summary>
     /// #529, refused at the execution choke point. The rule itself lives on

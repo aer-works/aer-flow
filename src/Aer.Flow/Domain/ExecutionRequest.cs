@@ -28,4 +28,6 @@ public sealed record ExecutionRequest(
     IReadOnlyList<string> Outputs,
     TimeSpan? Timeout,
     IReadOnlyList<EnvironmentVariable> Environment,
-    IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds);
+    IReadOnlyDictionary<StepId, ExecutionId> UpstreamExecutionIds,
+    Aer.Adapters.GrantAuditMode? GrantAuditMode = null);
+
