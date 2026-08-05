@@ -110,24 +110,35 @@ public class WorktreeProvisioningCommandTests
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "from-supply-repo", "review-target");
 
-            var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
-            var bindingsFilePath = await WriteWorktreeBindingsAsyncForSingleStep(testRoot, repository, "review-target");
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var plainBindingsFilePath = await WritePlainBindingsAsync(Path.Combine(testRoot, "plain"));
+            var worktreeBindingsFilePath = await WriteWorktreeBindingsAsync(Path.Combine(testRoot, "wt"), repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
-            var runResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
-            Assert.Equal(WorkflowStatus.Terminal, runResult.State.Status);
+            var runOptions = new RunOptions(workflowFilePath, plainBindingsFilePath, taskDirectory);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
 
             var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
-            Assert.False(Directory.Exists(worktreePath), "Worktree was torn down by terminal runCommand");
+            Assert.False(Directory.Exists(worktreePath), "Worktree should not exist yet with plain bindings");
 
             var sourceFilePath = Path.Combine(testRoot, "supp.txt");
-            await File.WriteAllTextAsync(sourceFilePath, "supp-content", TestContext.Current.CancellationToken);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "output_b", sourceFilePath, bindingsFilePath);
+            await File.WriteAllTextAsync(sourceFilePath, "from-supply-repo", TestContext.Current.CancellationToken);
+            var supplyOptions = new SupplyOptions(taskDirectory, "human", "output_a", sourceFilePath, worktreeBindingsFilePath);
 
             var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
-            Assert.Equal(WorkflowStatus.Terminal, supplyResult.Command.State.Status);
+            Assert.Equal(WorkflowStatus.Paused, supplyResult.Command.State.Status);
 
-            Assert.False(Directory.Exists(worktreePath), "Worktree should be torn down on supply Terminal status");
+            // SupplyCommand with worktreeBindingsFilePath provisioned worktreePath for worker 'b'
+            Assert.True(Directory.Exists(worktreePath), "SupplyCommand must provision worktree when given worktree bindings");
+
+            var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
+            var decideOptions = new DecideOptions(
+                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                SupplementaryExecutionId: supplyResult.ExecutionId.Value, worktreeBindingsFilePath);
+            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
+            Assert.False(Directory.Exists(worktreePath), "Worktree should be torn down on Terminal status");
         }
         finally
         {
@@ -145,21 +156,33 @@ public class WorktreeProvisioningCommandTests
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "from-cancel-repo", "review-target");
 
-            var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
-            var bindingsFilePath = await WriteWorktreeBindingsAsyncForSingleStep(testRoot, repository, "review-target");
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var plainBindingsFilePath = await WritePlainBindingsAsync(Path.Combine(testRoot, "plain"));
+            var worktreeBindingsFilePath = await WriteWorktreeBindingsAsync(Path.Combine(testRoot, "wt"), repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
-            var runResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
-            Assert.Equal(WorkflowStatus.Terminal, runResult.State.Status);
+            var runOptions = new RunOptions(workflowFilePath, plainBindingsFilePath, taskDirectory);
+            var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
 
-            var executionId = runResult.State.Steps.Single(s => s.StepId.Value == "b").LatestExecutionId!.Value;
-            var cancelOptions = new CancelOptions(taskDirectory, executionId.Value, bindingsFilePath);
+            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            Assert.False(Directory.Exists(worktreePath), "Worktree should not exist yet with plain bindings");
+
+            var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
+            var cancelOptions = new CancelOptions(taskDirectory, pausedExecutionId.Value, worktreeBindingsFilePath);
 
             var cancelResult = await CancelCommand.ExecuteAsync(cancelOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(WorkflowStatus.Paused, cancelResult.State.Status);
 
-            Assert.Equal(WorkflowStatus.Terminal, cancelResult.State.Status);
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
-            Assert.False(Directory.Exists(worktreePath), "Worktree should be torn down on cancel Terminal status");
+            // CancelCommand with worktreeBindingsFilePath provisioned worktreePath for worker 'b'
+            Assert.True(Directory.Exists(worktreePath), "CancelCommand must provision worktree when given worktree bindings");
+
+            var decideOptions = new DecideOptions(
+                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                SupplementaryExecutionId: null, worktreeBindingsFilePath);
+            var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
+            Assert.False(Directory.Exists(worktreePath), "Worktree should be torn down on Terminal status");
         }
         finally
         {
@@ -391,6 +414,48 @@ public class WorktreeProvisioningCommandTests
         };
 
         var path = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
+        return path;
+    }
+
+    private static async Task<string> WriteFailingFirstStepWorkflowAsync(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        var definition = new WorkflowDefinition(
+            new WorkflowTemplateId("failing-first-step"),
+            1,
+            [
+                new WorkflowStepDefinition(
+                    new StepId("a"), "a", [], ["output_a"], [], new RetryPolicy(2)),
+                new WorkflowStepDefinition(
+                    new StepId("b"), "b", ["output_a"], ["output_b"], [new StepId("a")], new RetryPolicy(2)),
+            ]);
+
+        var path = Path.Combine(directory, "workflow_failing.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(definition));
+        return path;
+    }
+
+    private static async Task<string> WriteFailingWorktreeBindingsAsync(string directory, string repository, string reference)
+    {
+        Directory.CreateDirectory(directory);
+        var commandA = OperatingSystem.IsWindows() ? "cmd /c exit 1" : "exit 1";
+        var commandB = OperatingSystem.IsWindows()
+            ? "type notes.txt>%AER_OUTPUT_DIR%\\output_b"
+            : "cat notes.txt > \"$AER_OUTPUT_DIR/output_b\"";
+
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["a"] = new WorkerBindingConfigEntry(
+                "shell", new WorkerContract("a", [], [new ProducedOutput("output_a")], []),
+                commandA, TimeSpan.FromSeconds(30)), // wait-ok: test config timeout
+            ["b"] = new WorkerBindingConfigEntry(
+                "shell", new WorkerContract("b", ["output_a"], [new ProducedOutput("output_b")], []),
+                commandB, TimeSpan.FromSeconds(30), // wait-ok: test config timeout
+                Worktree: new WorktreeWorkspace(repository, reference)),
+        };
+
+        var path = Path.Combine(directory, "bindings_failing.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
         return path;
     }
