@@ -70,6 +70,22 @@ public class RunOptionsParserTests
     }
 
     [Fact]
+    public void Echo_worker_flag_defaults_to_false()
+    {
+        var options = RunOptionsParser.Parse(["workflow.json", "--bindings", "bindings.json"]);
+
+        Assert.False(options.EchoWorker);
+    }
+
+    [Fact]
+    public void Echo_worker_flag_parses_when_specified()
+    {
+        var options = RunOptionsParser.Parse(["workflow.json", "--bindings", "bindings.json", "--echo-worker"]);
+
+        Assert.True(options.EchoWorker);
+    }
+
+    [Fact]
     public void A_second_positional_argument_throws()
     {
         Assert.Throws<CliArgumentException>(() => RunOptionsParser.Parse(["workflow.json", "extra.json", "--bindings", "b.json"]));

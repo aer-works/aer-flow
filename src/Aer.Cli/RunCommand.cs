@@ -57,8 +57,11 @@ public static class RunCommand
     /// </param>
     /// <param name="onWorkerStdoutLine">
     /// M24 Phase 1's live in-turn streaming — forwarded verbatim to <see cref="WorkerBindingResolver.Resolve"/>.
-    /// Null for the real <c>aer run</c> CLI entry point; only <c>Aer.Daemon</c>'s in-process session-turn
-    /// path supplies one (see <c>Program.ExecuteSessionTurnAsync</c>).
+    /// Null for <c>aer run</c> by default unless <c>--echo-worker</c> is set (#882). <c>Aer.Daemon</c>'s
+    /// in-process session-turn path supplies one only for <c>StreamJson</c> turns (see
+    /// <c>Program.ExecuteSessionTurnAsync</c>) — the invariant that keeps the flag from ever
+    /// double-echoing there is narrower: no daemon/UI path constructs <see cref="RunOptions"/> with
+    /// <c>EchoWorker</c> set, and an explicit callback always wins over the flag below.
     /// </param>
     public static async Task<CommandResult> ExecuteAsync(
         RunOptions options,
@@ -97,9 +100,13 @@ public static class RunCommand
         var (provisionedConfig, provisionedWorktrees) =
             WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
 
+        // #882: CoreDispatcher only dispatches AerTaskEventKind.StdoutChunk to OnStdoutLine.
+        // Stderr chunks write to artifacts/stderrTail but are NOT passed to this callback.
+        Action<string, string>? effectiveOnWorkerStdoutLine = onWorkerStdoutLine ?? (options.EchoWorker ? (_, line) => Console.Out.WriteLine(line) : null);
+
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
-            provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
+            provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), effectiveOnWorkerStdoutLine);
 
         var workflowId = new WorkflowId(options.WorkflowId ?? snapshot.WorkflowTemplateId.Value);
 

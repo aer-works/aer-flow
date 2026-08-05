@@ -29,8 +29,12 @@ namespace Aer.Cli;
 /// (<c>ExecutionRequest.WorkflowId</c>, spec §3), not an identity a task's own directory doesn't
 /// already carry.
 /// </param>
+/// <param name="EchoWorker">
+/// When true, streams worker stdout lines live to <c>Console.Out</c> as they arrive (#882).
+/// </param>
 public sealed record RunOptions(
     string? WorkflowFilePath,
     string BindingsFilePath,
     string TaskDirectoryPath,
-    string? WorkflowId = null);
+    string? WorkflowId = null,
+    bool EchoWorker = false);
