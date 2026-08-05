@@ -117,10 +117,10 @@ A condition that cannot be *evaluated* at all — a `Path` that is not a well-fo
 
 A `ProducedOutputs` entry may optionally declare one `Schema`, naming a member of a closed set of
 document shapes the engine knows how to parse. Declaring one extends the contract from "this file
-must exist" to "this file must exist and *be* this shape." The set currently has one member,
-`ReviewVerdict` — a review worker's structured findings; the canonical field-level definition is the
-typed record in code (`Aer.Flow.Domain.ReviewVerdict` and its `ReviewVerdictSchema.TryParse`), not
-restated here.
+must exist" to "this file must exist and *be* this shape." The set has two members:
+`ReviewVerdict` (a review worker's structured findings; `Aer.Flow.Domain.ReviewVerdictSchema.TryParse`)
+and `Diff` (a patch worker's unified diff; `Aer.Flow.Domain.UnifiedDiffSchema.TryParse`). The canonical
+field-level definitions live in code, not restated here.
 
 **Satisfaction.** A schema'd output satisfies the contract exactly when the file exists and parses
 per the named schema's `TryParse`. Failure is classified exactly like a missing required output
