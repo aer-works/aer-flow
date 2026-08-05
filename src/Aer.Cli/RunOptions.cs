@@ -38,4 +38,3 @@ public sealed record RunOptions(
     string TaskDirectoryPath,
     string? WorkflowId = null,
     bool EchoWorker = false);
-

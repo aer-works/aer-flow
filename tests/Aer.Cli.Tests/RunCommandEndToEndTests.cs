@@ -16,6 +16,12 @@ namespace Aer.Cli.Tests;
 /// adapter (<see cref="ShellCommandWorkerAdapter"/>) keeps every dispatch CI-safe while still
 /// going through the real aer-core M5 binding, same as <c>WorkflowEndToEndTests</c> itself.
 /// </summary>
+/// <remarks>
+/// In <see cref="WorkingDirectoryCollection"/> because the #882 echo tests swap the process-global
+/// <c>Console.Out</c> — the same category of hazard the collection already serializes for
+/// <c>Directory.SetCurrentDirectory</c>.
+/// </remarks>
+[Collection(WorkingDirectoryCollection.Name)]
 public class RunCommandEndToEndTests
 {
     private static readonly IReadOnlyDictionary<string, IWorkerAdapter> Adapters =

@@ -57,8 +57,11 @@ public static class RunCommand
     /// </param>
     /// <param name="onWorkerStdoutLine">
     /// M24 Phase 1's live in-turn streaming — forwarded verbatim to <see cref="WorkerBindingResolver.Resolve"/>.
-    /// Null for <c>aer run</c> by default unless <c>--echo-worker</c> is set (#882); <c>Aer.Daemon</c>'s
-    /// in-process session-turn path also supplies one (see <c>Program.ExecuteSessionTurnAsync</c>).
+    /// Null for <c>aer run</c> by default unless <c>--echo-worker</c> is set (#882). <c>Aer.Daemon</c>'s
+    /// in-process session-turn path supplies one only for <c>StreamJson</c> turns (see
+    /// <c>Program.ExecuteSessionTurnAsync</c>) — the invariant that keeps the flag from ever
+    /// double-echoing there is narrower: no daemon/UI path constructs <see cref="RunOptions"/> with
+    /// <c>EchoWorker</c> set, and an explicit callback always wins over the flag below.
     /// </param>
     public static async Task<CommandResult> ExecuteAsync(
         RunOptions options,
