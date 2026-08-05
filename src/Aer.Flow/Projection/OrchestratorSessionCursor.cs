@@ -4,21 +4,29 @@ namespace Aer.Flow.Projection;
 
 /// <summary>
 /// Small engine session metadata record (§A) stored at <c>{room}/.aer/orchestrator-session.json</c>.
-/// Holds the count of room events already processed by the last completed turn and the wall-clock of that turn.
+/// Holds the count of room events already processed by the last completed turn, the wall-clock of that turn,
+/// and a content-identity SHA-256 hex hash of the serialized line of the last event counted (#972).
 /// Never recorded as a room event (0016 boundary).
 /// <para>
 /// Cold start (missing or corrupt cursor file) reconstructs state from the room record alone.
 /// Conversational nuance since the last recorded state may be lost — that is the DESIGN (§A).
 /// </para>
 /// <para>
-/// <b>Landmine for #903's retention path:</b> the count carries no content identity (no hash, no
-/// last-event id). A cursor LARGER than the journal fails loudly to cold start — but a journal
-/// compaction/rewrite that changes which events the counts refer to WITHOUT shrinking below the
-/// cursor would yield a silently wrong delta. Nothing rewrites room.jsonl today; whoever builds
-/// #903 must either give this cursor content identity or reset it on compaction. Recorded on
-/// #903 as well.
+/// <b>Landmine fix (#972):</b> The cursor carries content identity via <see cref="LastEventLineHash"/>, a
+/// 64-character lowercase SHA-256 hex string of the serialized line of the event at index
+/// <c>ProcessedEventCount - 1</c>. A cursor with <c>ProcessedEventCount == 0</c> carries no hash (<c>null</c>).
+/// </para>
+/// <para>
+/// <b>Why identity rather than reset-on-compaction:</b> A self-validating cursor is fail-loud against EVERY
+/// rewriter, including the archival path (#973) and anything later. Reset-on-compaction only works for the
+/// rewriter that remembers to call it, which is a rule in prose rather than a structural guarantee.
+/// </para>
+/// <para>
+/// <b>Persisted-shape change rule:</b> An absent or null hash on a cursor with <c>ProcessedEventCount > 0</c>
+/// (e.g. legacy cursor file written before #972) is treated as unverifiable and triggers a cold start (fail-closed).
 /// </para>
 /// </summary>
 public sealed record OrchestratorSessionCursor(
     [property: JsonPropertyName("processedEventCount")] int ProcessedEventCount,
-    [property: JsonPropertyName("lastCompletedTurnAt")] DateTimeOffset LastCompletedTurnAt);
+    [property: JsonPropertyName("lastCompletedTurnAt")] DateTimeOffset LastCompletedTurnAt,
+    [property: JsonPropertyName("lastEventLineHash")] string? LastEventLineHash = null);

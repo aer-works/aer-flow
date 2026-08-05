@@ -34,7 +34,8 @@ public sealed record OrchestratorTurnInput(
     OrchestratorSessionCursor? InitialCursor,
     bool IsColdStart,
     int TotalEventCount,
-    string? RoomDirectoryPath = null)
+    string? RoomDirectoryPath = null,
+    string? LastEventLineHash = null)
 {
     private const string RoomLogFileName = "room.jsonl";
 
@@ -80,6 +81,21 @@ public sealed record OrchestratorTurnInput(
             eventDelta = allEvents.Skip(cursor.ProcessedEventCount).ToList().AsReadOnly();
         }
 
+        // Hashed HERE, not at commit: the same rule the class remarks give for the count applies to
+        // its identity, and a turn can run for minutes between the two. Commit-time re-reading would
+        // hash whatever now sits at that index, which a rewriter (compaction, #1025) can make a
+        // different event -- and a cursor that then validates against the file it was just written
+        // from validates tautologically, which is the landmine wearing the fix's clothes.
+        string? lastEventLineHash = null;
+        if (allEvents.Count > 0)
+        {
+            var lines = OrchestratorSessionStore.ReadRoomLogLines(roomDirectoryPath);
+            if (lines.Length >= allEvents.Count)
+            {
+                lastEventLineHash = OrchestratorSessionStore.ComputeLineHash(lines[allEvents.Count - 1]);
+            }
+        }
+
         return new OrchestratorTurnInput(
             RoomState: roomState,
             EventDelta: eventDelta,
@@ -88,7 +104,8 @@ public sealed record OrchestratorTurnInput(
             InitialCursor: cursor,
             IsColdStart: isColdStart,
             TotalEventCount: allEvents.Count,
-            RoomDirectoryPath: roomDirectoryPath);
+            RoomDirectoryPath: roomDirectoryPath,
+            LastEventLineHash: lastEventLineHash);
     }
 
     /// <summary>
@@ -106,7 +123,8 @@ public sealed record OrchestratorTurnInput(
 
         var newCursor = new OrchestratorSessionCursor(
             ProcessedEventCount: input.TotalEventCount,
-            LastCompletedTurnAt: turnTimestamp ?? DateTimeOffset.UtcNow);
+            LastCompletedTurnAt: turnTimestamp ?? DateTimeOffset.UtcNow,
+            LastEventLineHash: input.LastEventLineHash);
 
         OrchestratorSessionStore.Save(roomDirectoryPath, newCursor);
     }
