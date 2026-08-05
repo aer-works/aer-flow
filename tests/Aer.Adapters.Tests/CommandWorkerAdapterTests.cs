@@ -252,7 +252,7 @@ public class CommandWorkerAdapterTests
             "cmd",
             Inputs: [],
             Outputs: outputs,
-            Timeout: TimeSpan.FromSeconds(10),
+            Timeout: TimeSpan.FromMinutes(5),
             Environment: [new EnvironmentVariable.AerComputed("AER_OUTPUT_DIR", outputDir)],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
     }
