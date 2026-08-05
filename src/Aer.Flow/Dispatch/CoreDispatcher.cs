@@ -370,15 +370,16 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
     /// an operator actually reads is the classifier's job, and pre-truncating here to the display
     /// size would take that choice away from it.
     /// </remarks>
+    public const int MaxRetainedStderrLength = 2000;
+
     /// <summary>
-    /// Character length threshold at which an adapter-provided oversize prompt wrapper replaces the inline prompt on argv (#748).
-    /// Prompts whose fully expanded length equals or exceeds this fixed ceiling are captured to <c>prompt.txt</c>
-    /// (<c>%AER_PROMPT_FILE%</c>) and delivered out-of-band via a vendor-specific wrapper prompt.
-    /// Set to a platform-independent value (4,000 characters) well below any platform's command-line cap.
+    /// Expanded-prompt length at which <see cref="DispatchAsync"/> stops passing the prompt inline
+    /// and swaps in the adapter's <see cref="CoreDispatchTarget.OversizePromptWrapper"/> pointing at
+    /// the already-captured <c>prompt.txt</c> (#748). Deliberately far below every platform
+    /// command-line cap this class guards, and fixed rather than derived from them, so the same
+    /// workflow delivers its prompt the same way on every OS.
     /// </summary>
     public const int OversizePromptThreshold = 4000;
-
-    public const int MaxRetainedStderrLength = 2000;
 
     /// <summary>
     /// The assembled-command-line ceiling <see cref="DispatchAsync"/> guards against on Windows
