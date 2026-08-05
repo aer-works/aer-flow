@@ -331,7 +331,10 @@ public class ConcurrencyGuardTests
             File.WriteAllBytes(rootFile, []);
             var invalidTaskDirectory = Path.Combine(rootFile, "subfolder");
 
-            var ex = Assert.Throws<IOException>(() => ConcurrencyGuard.Acquire(invalidTaskDirectory));
+            // ThrowsAny: the exact subtype is the OS's choice (Windows throws plain IOException
+            // here, Linux DirectoryNotFoundException); the claim is only that a non-sharing
+            // failure stays a raw IOException-family throw with no probe text.
+            var ex = Assert.ThrowsAny<IOException>(() => ConcurrencyGuard.Acquire(invalidTaskDirectory));
 
             Assert.DoesNotContain("Current holder:", ex.Message);
         }
