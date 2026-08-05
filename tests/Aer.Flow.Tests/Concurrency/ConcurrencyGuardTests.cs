@@ -289,4 +289,45 @@ public class ConcurrencyGuardTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    [Fact]
+    public void Acquire_over_flow_lock_held_with_conflicting_share_enriches_WorkflowLockedException_message_with_holder()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(taskDirectory);
+            var lockPath = Path.Combine(taskDirectory, "flow.lock");
+            using var lockHolder = new FileStream(lockPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+
+            var ex = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+
+            Assert.Contains("Current holder:", ex.Message);
+            Assert.Contains($"(pid {Environment.ProcessId})", ex.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public void Non_sharing_failure_on_guard_acquire_does_not_carry_holder_text()
+    {
+        var rootFile = Path.Combine(Path.GetTempPath(), $"task-guard-control-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(rootFile, []);
+            var invalidTaskDirectory = Path.Combine(rootFile, "subfolder");
+
+            var ex = Assert.Throws<IOException>(() => ConcurrencyGuard.Acquire(invalidTaskDirectory));
+
+            Assert.DoesNotContain("Current holder:", ex.Message);
+        }
+        finally
+        {
+            FileCleanup.Delete(rootFile);
+        }
+    }
 }
