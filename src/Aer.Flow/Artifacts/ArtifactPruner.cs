@@ -22,6 +22,13 @@ public static class ArtifactPruner
     /// <summary>
     /// Prunes artifacts for the run/task at <paramref name="taskDirectoryPath"/> if it is terminal and not marked keep.
     /// Returns <c>true</c> if any artifact directory was pruned (moved), or <c>false</c> otherwise.
+    /// <para>
+    /// <b>Caller constraint:</b> acquires the task's <see cref="ConcurrencyGuard"/> non-reentrantly
+    /// (an OS <c>FileShare.None</c> hold), so a caller that <i>already</i> holds the task lock will get a
+    /// <see cref="Aer.Flow.Concurrency.WorkflowLockedException"/>, not reentrancy. Whatever policy eventually
+    /// wires this (#1027) must invoke it from a context that does not hold the lock — a periodic sweep, not
+    /// the in-line terminal-transition path if that path is already inside the guard.
+    /// </para>
     /// </summary>
     public static async Task<bool> PruneAsync(
         string taskDirectoryPath,
