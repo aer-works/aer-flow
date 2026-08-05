@@ -1,3 +1,4 @@
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 
@@ -54,6 +55,12 @@ public static class ArtifactPruner
             return false;
         }
 
+        // Held across probe AND move (#973 second reader, Finding 3; the pattern #972's compactor set):
+        // the probe reads a run terminal, then this MOVES the directory a resumed run would write back
+        // into. Without the lock, an `aer decide`/`supply` resume can repopulate execution_{id} between
+        // the two steps, and the move then pulls the active directory out from under the resumed write.
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, "artifact pruning");
+
         var probeResult = await LaneTerminalProbe.ProbeAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(false);
         if (!probeResult.IsTerminal)
         {
@@ -72,31 +79,40 @@ public static class ArtifactPruner
             var dirName = Path.GetFileName(execDir);
             var targetDir = Path.Combine(artifactsRootPath, ArtifactManager.PrunedDirectoryName, dirName);
 
-            PruneDirectory(execDir, targetDir);
-            prunedAny = true;
+            prunedAny |= PruneDirectory(execDir, targetDir);
         }
 
         return prunedAny;
     }
 
     /// <summary>
-    /// Atomically moves an active execution directory <paramref name="sourceDir"/> to <paramref name="targetDir"/>.
-    /// Idempotent: if source does not exist and target exists, treats as already pruned.
+    /// Moves an active execution directory <paramref name="sourceDir"/> to <paramref name="targetDir"/>,
+    /// returning <c>true</c> only when a move actually happened.
+    /// <para>
+    /// A pre-existing <paramref name="targetDir"/> is a recoverable copy from an earlier prune, and this
+    /// leaves it untouched rather than deleting it — pruning never deletes (0009), and a delete-then-move
+    /// would destroy that copy the moment a resumed run repopulated <paramref name="sourceDir"/> at the
+    /// same execution path (the race behind #973's second reader Findings 1 and 3). The same-volume
+    /// <see cref="RetryingFileMove.MoveDirectory"/> is a single rename, so the move itself is atomic; the
+    /// only unsafe step was the removed delete.
+    /// </para>
     /// </summary>
-    public static void PruneDirectory(string sourceDir, string targetDir)
+    public static bool PruneDirectory(string sourceDir, string targetDir)
     {
         if (!Directory.Exists(sourceDir))
         {
-            // Already pruned or missing - no-op
-            return;
+            // Already pruned or missing - no-op.
+            return false;
         }
 
         if (Directory.Exists(targetDir))
         {
-            // Target already exists (e.g. partial previous attempt) - clean target before move
-            Directory.Delete(targetDir, true);
+            // A recoverable copy is already here. Leave BOTH it and the source in place: destroying
+            // the copy to re-move over it is the one thing this feature must never do.
+            return false;
         }
 
         RetryingFileMove.MoveDirectory(sourceDir, targetDir);
+        return true;
     }
 }
