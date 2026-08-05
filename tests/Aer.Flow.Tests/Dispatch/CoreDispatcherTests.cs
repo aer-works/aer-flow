@@ -1335,7 +1335,7 @@ public class CoreDispatcherTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            Assert.Skip("CommandLineTooLongException is Windows/Linux ceiling gated.");
+            Assert.Skip("Windows-only: this single ~33k-char argument sits far under Linux's MAX_ARG_STRLEN, so no POSIX guard trips at this size.");
         }
 
         var artifactsRoot = Path.Combine(Path.GetTempPath(), $"artifacts-{Guid.NewGuid():N}");
@@ -1366,7 +1366,7 @@ public class CoreDispatcherTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            Assert.Skip("CommandLineTooLongException is Windows/Linux ceiling gated.");
+            Assert.Skip("Windows-only: this single ~33k-char argument sits far under Linux's MAX_ARG_STRLEN, so no POSIX guard trips at this size.");
         }
 
         var logPath = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");

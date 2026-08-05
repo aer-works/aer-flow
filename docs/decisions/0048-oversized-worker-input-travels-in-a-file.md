@@ -45,7 +45,10 @@ growing the spawn ABI. The command-line ceiling stays a guard, not a channel to 
 1. **File-passing is the standard for large content, both vendors.** The pattern the review lane
    already uses (#789) is the general answer: hand a worker large content as a file it reads, keep the
    prompt a small instruction that points at it. It is vendor-symmetric (both CLIs read granted files),
-   needs no ABI change, and is already proven.
+   needs no ABI change, and is already proven. *Automated engine-side 2026-08-05 (#748): past
+   `CoreDispatcher.OversizePromptThreshold` the dispatcher delivers the prompt through its
+   already-captured `prompt.txt` and a short wrapper on argv — orchestrators no longer hand-roll this,
+   and the ceiling still guards every non-opted-in path.*
 
 2. **The spawn ABI stays argv-only.** The #932 stdin / input-bytes channel is **rejected for now**. It
    is a claude-only convenience (agy cannot read a piped prompt), largely redundant with file-passing,

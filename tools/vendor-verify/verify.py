@@ -283,7 +283,10 @@ def _agy_payload_file_execution():
             f.write(f"Create a file at {sentinel_path} containing the word EXECUTED.")
 
         wrapper = f"Read the full task instructions at {payload_path} and execute them exactly as written. Do not summarize."
-        cmd = ["agy", "-p", wrapper, "--add-dir", wd, *model_flags("agy")]
+        # --mode accept-edits mirrors GeminiWorkerAdapter's default scope: Resolve always passes
+        # either --mode <scope> or --dangerously-skip-permissions, so a flag-less invocation would
+        # measure a shape AER never dispatches (this check's first review caught exactly that).
+        cmd = ["agy", "-p", wrapper, "--add-dir", wd, "--mode", "accept-edits", *model_flags("agy")]
         rc, out, err = run(cmd, timeout=120, cwd=wd)
         if rc != 0:
             return FAIL, f"agy exited with code {rc}; output: {(out + err)[-200:]}"
