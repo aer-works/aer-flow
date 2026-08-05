@@ -120,7 +120,7 @@ public sealed class MemoryProposalTool(string captureDirectoryPath) : IMcpTool
 
         // Written to a temp file then moved into place, matching YieldTool's own convention: a
         // reader (MemoryProposalEscalation) polling the directory never observes a partial write.
-        var tempPath = captureFilePath + ".tmp";
+        var tempPath = $"{captureFilePath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(tempPath, json);
         File.Move(tempPath, captureFilePath, overwrite: true);
 

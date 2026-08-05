@@ -71,7 +71,7 @@ public sealed class YieldTool(string captureFilePath) : IMcpTool
 
         // Written to a temp file then moved into place so a reader (DialogueRunner, polling for this
         // file after the turn's process exits) never observes a partially written file.
-        var tempPath = captureFilePath + ".tmp";
+        var tempPath = $"{captureFilePath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(tempPath, json);
         File.Move(tempPath, captureFilePath, overwrite: true);
 
