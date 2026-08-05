@@ -390,6 +390,32 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
         };
 
+        // agy home redirect (#442): non-shell bindings get HOME and USERPROFILE redirected to an
+        // AER-owned state directory. Shell-granted workers (grant.RunShellCommands == true) are
+        // deliberately NOT redirected so worker git commit can see the user's .gitconfig.
+        if (invocation.PermissionGrant is { RunShellCommands: false })
+        {
+            var isDaemonSession = invocation.SessionId is not null || invocation.ResumeSession ||
+                (invocation.BindingsFileDirectory is not null && File.Exists(Path.Combine(invocation.BindingsFileDirectory, ".aer", "session.json")));
+
+            if (isDaemonSession)
+            {
+                var sessionDir = invocation.BindingsFileDirectory ?? invocation.WorkingDirectory;
+                if (sessionDir is not null)
+                {
+                    var sessionHome = Path.Combine(sessionDir, ".gemini_home");
+                    environment.Add(("HOME", sessionHome));
+                    environment.Add(("USERPROFILE", sessionHome));
+                }
+            }
+            else
+            {
+                var batchHome = EnvironmentReference("AER_OUTPUT_DIR", isWindows) + (isWindows ? @"\.gemini_home" : "/.gemini_home");
+                environment.Add(("HOME", batchHome));
+                environment.Add(("USERPROFILE", batchHome));
+            }
+        }
+
         // #679; see WorkerEnvironment.WorkspaceVariable. Load-bearing on this vendor rather than
         // merely useful, for the reason AgyHookCheckCommand's own bound gives.
         if (invocation.WorkingDirectory is { } workspace)
@@ -415,6 +441,24 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         {
             [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildDeniedTools(grant)}",
         };
+
+        if (grant is { RunShellCommands: false })
+        {
+            var isDaemonSession = workspace is not null && File.Exists(Path.Combine(workspace, ".aer", "session.json"));
+            if (isDaemonSession)
+            {
+                var sessionHome = Path.Combine(workspace!, ".gemini_home");
+                environment["HOME"] = sessionHome;
+                environment["USERPROFILE"] = sessionHome;
+            }
+            else
+            {
+                var isWindows = OperatingSystem.IsWindows();
+                var batchHome = WorkerEnvironmentReference.For("AER_OUTPUT_DIR", isWindows) + (isWindows ? @"\.gemini_home" : "/.gemini_home");
+                environment["HOME"] = batchHome;
+                environment["USERPROFILE"] = batchHome;
+            }
+        }
 
         // Must mirror Resolve's own workspace clause. Load-bearing on this vendor rather than merely
         // useful, for the reason AgyHookCheckCommand's own bound gives -- and omitting it narrows a
