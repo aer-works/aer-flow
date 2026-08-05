@@ -167,6 +167,13 @@ public class ConcurrencyGuardTests
     /// then take roughly the budget and the gap between them collapses toward zero (red-proven by
     /// exactly that substitution before this landed).
     /// </para>
+    /// <para>
+    /// Deliberate trade-off (named by this change's reviewer): an <c>Acquire</c> that regressed to
+    /// blocking for under ~half the budget passes — the margin only catches adoption of the wait,
+    /// which is the #857 claim under guard, not a sub-second latency contract. The old fixed 500ms
+    /// budget nominally caught smaller slowdowns but false-redded on 31–165ms of ordinary suite
+    /// load; this form trades that phantom sensitivity for a real one.
+    /// </para>
     /// </summary>
     [Fact]
     public void Acquire_remains_fail_fast_and_does_not_wait()
@@ -176,8 +183,7 @@ public class ConcurrencyGuardTests
         {
             using var holder = ConcurrencyGuard.Acquire(taskDirectory);
 
-            // wait-ok: not a condition-wait ceiling — the deliberately-waited AcquireWithin budget
-            // the refusal is measured AGAINST; the relative form's clock (#1008), see doc comment.
+            // wait-ok: the measured-against clock, not a condition-wait ceiling (#1008, doc comment)
             var waitBudget = TimeSpan.FromSeconds(2);
 
             var fast = System.Diagnostics.Stopwatch.StartNew();
