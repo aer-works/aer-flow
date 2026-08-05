@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using Aer.Adapters;
+using Aer.Flow.Domain;
 using Aer.Ui.Tests.TestSupport;
 using Xunit;
 
@@ -140,6 +141,18 @@ public class MultiSessionHostTests : IAsyncLifetime
             new CancelTaskRequest(alpha, null),
             TestContext.Current.CancellationToken);
         Assert.True(stop.IsSuccessStatusCode);
+
+        // Synchronize on the kill before writing alpha.release (#826): the 200 response from
+        // /api/tasks/cancel is an intent acknowledgment, not a kill receipt. CancellationRequested
+        // is flushed to disk BEFORE TryCancel is invoked on the dispatch token. Wait for
+        // FlowEvent.ExecutionCancelled in alpha's task journal (flow.jsonl), which is written by
+        // MutationInterface.DispatchAndRecordOutcomeAsync AFTER CoreDispatcher completes process
+        // teardown following TryCancel.
+        var alphaLogPath = Path.Combine(alpha, "flow.jsonl");
+        await FlowLogWaiter.WaitForConditionAsync(
+            alphaLogPath,
+            snapshot => snapshot.FlowEvents.OfType<FlowEvent.ExecutionCancelled>().Any(),
+            TimeSpan.FromSeconds(60));
 
         // Beta must still be alive to be released. If the stop went to the wrong session its worker
         // is already dead and this marker never appears.
