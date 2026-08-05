@@ -290,8 +290,15 @@ public class ConcurrencyGuardTests
         }
     }
 
+    /// <summary>
+    /// The OS holder probe costs hundreds of milliseconds, so it belongs only to
+    /// <see cref="ConcurrencyGuard.AcquireWithin"/>'s exhausted-budget path — the case its own
+    /// message calls "not a routine overlap". Both polarities are pinned here: the fail-fast
+    /// refusal never carries probe text (that would break
+    /// <see cref="Acquire_remains_fail_fast_and_does_not_wait"/>'s budget), the waited one does.
+    /// </summary>
     [Fact]
-    public void Acquire_over_flow_lock_held_with_conflicting_share_enriches_WorkflowLockedException_message_with_holder()
+    public void Only_the_exhausted_wait_enriches_the_locked_message_with_the_probed_holder()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows");
         var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
@@ -301,10 +308,14 @@ public class ConcurrencyGuardTests
             var lockPath = Path.Combine(taskDirectory, "flow.lock");
             using var lockHolder = new FileStream(lockPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
 
-            var ex = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            var fastEx = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            Assert.DoesNotContain("Current holder:", fastEx.Message);
 
-            Assert.Contains("Current holder:", ex.Message);
-            Assert.Contains($"(pid {Environment.ProcessId})", ex.Message);
+            var waitedEx = Assert.Throws<WorkflowLockedException>(
+                () => ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromMilliseconds(50)));
+
+            Assert.Contains("Current holder:", waitedEx.Message);
+            Assert.Contains($"(pid {Environment.ProcessId})", waitedEx.Message);
         }
         finally
         {

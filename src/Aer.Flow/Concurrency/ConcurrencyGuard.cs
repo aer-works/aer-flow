@@ -52,7 +52,7 @@ public sealed class ConcurrencyGuard : IDisposable
         catch (IOException ex)
         {
             var holder = TryReadHolderInfo(taskDirectoryPath);
-            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath, holder, lockFilePath, ex), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
+            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath, holder), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
         }
 
         return CreateWithSidecar(lockStream, taskDirectoryPath, holderDescription);
@@ -107,8 +107,19 @@ public sealed class ConcurrencyGuard : IDisposable
             catch (IOException ex)
             {
                 var holder = TryReadHolderInfo(taskDirectoryPath);
-                var message = $"{BuildLockedMessage(taskDirectoryPath, holder, lockFilePath, ex)} Still held after waiting " +
+                var message = $"{BuildLockedMessage(taskDirectoryPath, holder)} Still held after waiting " +
                     $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.";
+
+                // The OS holder probe costs hundreds of milliseconds, so it runs only here — the
+                // budget is already spent and the holder is by definition anomalous. Acquire's
+                // fail-fast refusal never pays for it: a routine sweep-vs-pump overlap must be
+                // refused immediately (#857), and the sidecar above already names a cooperative
+                // holder there.
+                if (Store.FileHolderProbe.IsSharingViolation(ex))
+                {
+                    message += $" Current holder: {Store.FileHolderProbe.DescribeHolders(lockFilePath)}";
+                }
+
                 throw new WorkflowLockedException(message, ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
             }
         }
@@ -148,7 +159,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// self-description is appended here, and the two-shapes wording stays as the fallback for a
     /// holder that did not (or whose write lost a race).
     /// </summary>
-    private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder, string lockFilePath, IOException ex)
+    private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder)
     {
         var baseMsg = $"Directory '{taskDirectoryPath}' is already locked by another Flow instance — either a live " +
             "'aer run' pump, or a background component that takes this directory's lock briefly (a room's " +
@@ -157,16 +168,12 @@ public sealed class ConcurrencyGuard : IDisposable
             "terminal reaches only idle tasks — a crashed pump's orphaned executions, or pending " +
             "non-process work.";
 
-        var msg = holder != null && !string.IsNullOrWhiteSpace(holder.HolderDescription)
-            ? $"{baseMsg} Currently held by: {holder.HolderDescription} since {holder.AcquiredAtUtc:O}."
-            : baseMsg;
-
-        if (Store.FileHolderProbe.IsSharingViolation(ex))
+        if (holder != null && !string.IsNullOrWhiteSpace(holder.HolderDescription))
         {
-            msg += $" Current holder: {Store.FileHolderProbe.DescribeHolders(lockFilePath)}";
+            return $"{baseMsg} Currently held by: {holder.HolderDescription} since {holder.AcquiredAtUtc:O}.";
         }
 
-        return msg;
+        return baseMsg;
     }
 
     /// <summary>
