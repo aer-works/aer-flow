@@ -422,9 +422,21 @@ public static class MutationInterface
                         // (and fail-closed against a worktree that may be long gone).
                         var grantAuditMode = request.GrantAuditMode ?? GrantAuditMode.Enforced;
                         string? worktreePath = null;
-                        if (workerBindings.TryGetValue(request.Worker, out var b) && b is WorkerBinding.Process p)
+                        try
                         {
-                            worktreePath = p.Target.WorkingDirectory;
+                            if (workerBindings.TryGetValue(request.Worker, out var b) && b is WorkerBinding.Process p)
+                            {
+                                worktreePath = p.Target.WorkingDirectory;
+                            }
+                        }
+                        catch (AerFlowException)
+                        {
+                            // A recovery candidate's binding may legitimately refuse to resolve —
+                            // the crash clause classifies from recorded facts alone (the test
+                            // pinning this: StartWorkflowAsync_classifies_crash_recovery_candidate_
+                            // when_its_worker_binding_refuses_to_resolve). The consequence is not a
+                            // skip: if the journal promised an audit, Classify fails closed on the
+                            // null worktree path.
                         }
 
                         var classification = OutcomeClassifier.Classify(
