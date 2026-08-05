@@ -115,6 +115,14 @@ public sealed record OccupantTurnActions(
                         }
                         subject = new EscalationSubject.ProposedOrigination(new WorkflowTemplateId(templateIdProp.GetString()!), briefRef);
                     }
+                    else if (string.Equals(kind, "heldWork", StringComparison.Ordinal))
+                    {
+                        if (!subjectProp.TryGetProperty("ref", out var refProp) || refProp.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(refProp.GetString()))
+                        {
+                            return (null, "HeldWork escalation subject missing 'ref'.");
+                        }
+                        subject = new EscalationSubject.HeldWork(new HeldWorkRef(refProp.GetString()!));
+                    }
                     else
                     {
                         return (null, $"Unknown subject kind '{kind}'.");

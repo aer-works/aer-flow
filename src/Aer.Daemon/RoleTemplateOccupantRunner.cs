@@ -156,9 +156,23 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
             return new OccupantTurnResult.Failed($"Failed to parse turn-actions.json: {parseError}");
         }
 
-        // 8. Process escalations
+        // 8. Validate escalation subjects against the room record before ANY append (#1001):
+        // parse checked shape; this checks that every cited reference resolves. All-or-nothing —
+        // a turn that fabricated one reference is not trusted for the rest either.
         var roomLogPath = Path.Combine(roomDir, "room.jsonl");
         var reader = new RoomEventLogReader(roomLogPath);
+
+        var roomEventsForValidation = await reader.ReadAllRoomEventsAsync(ct).ConfigureAwait(false);
+        var projectedRoomState = RoomProjector.Project(roomEventsForValidation);
+        var knownTemplateIds = WorkflowTemplateCatalog.All.Select(t => t.Id).ToHashSet(StringComparer.Ordinal);
+        var validationError = OccupantEscalationValidation.Validate(actions.Escalations, projectedRoomState, knownTemplateIds);
+        if (validationError is not null)
+        {
+            // Counts toward the breaker upstream, like every other rejected turn — that is the design.
+            return new OccupantTurnResult.Failed($"Escalation subject validation failed: {validationError}");
+        }
+
+        // 9. Process escalations
         await using var writer = new RoomEventLogWriter(roomLogPath);
         var workerId = new WorkerId("orchestrator");
 
@@ -177,3 +191,4 @@ public sealed class RoleTemplateOccupantRunner : IOccupantTurnRunner
         return new OccupantTurnResult.Completed();
     }
 }
+
