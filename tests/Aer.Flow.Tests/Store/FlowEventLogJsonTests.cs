@@ -268,8 +268,8 @@ public class FlowEventLogJsonTests
         Assert.Equal(2, (int)DecisionType.RetryWithRevision);
         Assert.Equal(3, (int)DecisionType.Supersede);
 
-        Assert.Equal(0, (int)Aer.Adapters.GrantAuditMode.Enforced);
-        Assert.Equal(1, (int)Aer.Adapters.GrantAuditMode.AuditedNotEnforced);
+        Assert.Equal(0, (int)GrantAuditMode.Enforced);
+        Assert.Equal(1, (int)GrantAuditMode.AuditedNotEnforced);
     }
 
 
@@ -283,7 +283,7 @@ public class FlowEventLogJsonTests
     [Fact]
     public void Every_enum_reachable_from_a_journal_line_is_pinned_by_these_tests()
     {
-        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType), typeof(DeciderKind), typeof(Aer.Adapters.GrantAuditMode) };
+        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType), typeof(DeciderKind), typeof(GrantAuditMode) };
 
 
 

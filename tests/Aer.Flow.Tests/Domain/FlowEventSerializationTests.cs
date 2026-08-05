@@ -49,7 +49,7 @@ public class FlowEventSerializationTests
             Timeout: TimeSpan.FromMinutes(5),
             Environment: [],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
-            GrantAuditMode: Aer.Adapters.GrantAuditMode.AuditedNotEnforced);
+            GrantAuditMode: GrantAuditMode.AuditedNotEnforced);
 
 
         yield return [new FlowEvent.ExecutionRequestAccepted(request)];
@@ -185,7 +185,7 @@ public class FlowEventSerializationTests
             Timeout: TimeSpan.FromMinutes(10),
             Environment: [],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
-            GrantAuditMode: Aer.Adapters.GrantAuditMode.AuditedNotEnforced);
+            GrantAuditMode: GrantAuditMode.AuditedNotEnforced);
 
         var current = JsonSerializer.Serialize(
             (FlowEvent)new FlowEvent.ExecutionRequestAccepted(request),
@@ -224,7 +224,7 @@ public class FlowEventSerializationTests
             Timeout: TimeSpan.FromMinutes(10),
             Environment: [],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
-            GrantAuditMode: Aer.Adapters.GrantAuditMode.AuditedNotEnforced);
+            GrantAuditMode: GrantAuditMode.AuditedNotEnforced);
 
         var currentJson = JsonSerializer.Serialize(
             (FlowEvent)new FlowEvent.ExecutionRequestAccepted(request),
@@ -234,7 +234,7 @@ public class FlowEventSerializationTests
         var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson, FlowEventLogJson.Options);
 
         var accepted = Assert.IsType<FlowEvent.ExecutionRequestAccepted>(deserialized);
-        Assert.Equal(Aer.Adapters.GrantAuditMode.AuditedNotEnforced, accepted.Request.GrantAuditMode);
+        Assert.Equal(GrantAuditMode.AuditedNotEnforced, accepted.Request.GrantAuditMode);
     }
 }
 
