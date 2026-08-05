@@ -89,10 +89,43 @@ public static class RoomJournalCompactor
 
         var tempFilePath = roomLogPath + ".tmp." + Guid.NewGuid().ToString("n");
         var textContent = retainedLines.Count > 0 ? string.Join('\n', retainedLines) + "\n" : string.Empty;
-        await File.WriteAllTextAsync(tempFilePath, textContent, cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await File.WriteAllTextAsync(tempFilePath, textContent, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // RetryingFileMove's own deleteSourceOnFinalFailure only covers a failing MOVE. A write
+            // that fails or is cancelled partway leaves its uniquely-named temp beside the journal
+            // with nothing that would ever collect it.
+            TryDeleteTemp(tempFilePath);
+            throw;
+        }
 
         RetryingFileMove.Move(tempFilePath, roomLogPath, overwrite: true, deleteSourceOnFinalFailure: true);
         return true;
+    }
+
+    /// <summary>
+    /// Best-effort, and deliberately so: the journal itself is already safe at this point (untouched),
+    /// so a temp file that resists deletion must not turn a survivable write failure into a second one.
+    /// </summary>
+    private static void TryDeleteTemp(string tempFilePath)
+    {
+        try
+        {
+            if (File.Exists(tempFilePath))
+            {
+                File.Delete(tempFilePath);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static bool IsEventOfCompletedRun(RoomEvent @event, HashSet<HeldWorkRef> completedRefs)

@@ -108,8 +108,15 @@ public class RoomJournalCompactorTests
         }
     }
 
+    /// <summary>
+    /// A cancelled compaction leaves the journal intact AND leaves no temp file behind. The first
+    /// half is what "crash-safe" means; the second is what the write-failure path costs if nothing
+    /// collects it. Cancellation is the one interruption a test can actually inject — a kill between
+    /// write and rename is NOT simulated here, and that half of the claim rests on the temp-then-
+    /// rename mechanism rather than on this test.
+    /// </summary>
     [Fact]
-    public async Task Interrupted_compaction_leaves_readable_journal()
+    public async Task A_cancelled_compaction_leaves_the_journal_intact_and_no_temp_behind()
     {
         var refCompleted = new HeldWorkRef("lane-completed");
         var dispatchCompleted = new RoomEvent.HeldWorkDispatched(refCompleted, "shape", TimeSpan.FromMinutes(5), "human");
@@ -119,18 +126,21 @@ public class RoomJournalCompactorTests
         try
         {
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
+            var before = await File.ReadAllTextAsync(roomLogPath, TestContext.Current.CancellationToken);
 
-            // Simulate partial/interrupted write by placing an abandoned .tmp file beside room.jsonl
-            var tempOrphanPath = roomLogPath + ".tmp." + Guid.NewGuid().ToString("n");
-            File.WriteAllText(tempOrphanPath, "partial json text line...");
+            using var cancelled = new CancellationTokenSource();
+            await cancelled.CancelAsync();
 
-            // Original room.jsonl is still completely intact and readable
-            var reader = new RoomEventLogReader(roomLogPath);
-            var events = await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(2, events.Count);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => RoomJournalCompactor.CompactAsync(roomDir, cancelled.Token));
 
-            // Clean up test orphan file via FileCleanup
-            FileCleanup.Delete(tempOrphanPath);
+            Assert.Equal(before, await File.ReadAllTextAsync(roomLogPath, TestContext.Current.CancellationToken));
+            Assert.Empty(Directory.GetFiles(roomDir, "room.jsonl.tmp.*"));
+
+            // The control: uncancelled, the same call really does rewrite this journal, so the
+            // assertions above are about the cancellation and not about a no-op input.
+            Assert.True(await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
+            Assert.NotEqual(before, await File.ReadAllTextAsync(roomLogPath, TestContext.Current.CancellationToken));
         }
         finally
         {
