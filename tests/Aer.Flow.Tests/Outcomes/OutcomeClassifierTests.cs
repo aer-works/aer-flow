@@ -782,5 +782,146 @@ public class OutcomeClassifierTests
             DirectoryCleanup.DeleteRecursively(directory);
         }
     }
+
+    [Fact]
+    public void Audited_execution_with_clean_worktree_yields_Succeeded()
+    {
+        var outboxDir = CreateTempDirectory();
+        var worktreeDir = CreateTempDirectory();
+        try
+        {
+            InitGitRepository(worktreeDir);
+            File.WriteAllText(Path.Combine(outboxDir, "plan"), "content");
+            var contract = new WorkerContract("worker", [], [new ProducedOutput("plan")], []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural),
+                contract,
+                outboxDir,
+                grantAuditMode: GrantAuditMode.AuditedNotEnforced,
+                worktreePath: worktreeDir);
+
+            Assert.Equal(OutcomeVerdict.Succeeded, classification.Verdict);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outboxDir);
+            DirectoryCleanup.DeleteRecursively(worktreeDir);
+        }
+    }
+
+    [Fact]
+    public void Audited_execution_with_dirty_worktree_yields_Failed_naming_stray_file()
+    {
+        var outboxDir = CreateTempDirectory();
+        var worktreeDir = CreateTempDirectory();
+        try
+        {
+            InitGitRepository(worktreeDir);
+            File.WriteAllText(Path.Combine(outboxDir, "plan"), "content");
+            File.WriteAllText(Path.Combine(worktreeDir, "stray_file.txt"), "dirt");
+            var contract = new WorkerContract("worker", [], [new ProducedOutput("plan")], []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural),
+                contract,
+                outboxDir,
+                grantAuditMode: GrantAuditMode.AuditedNotEnforced,
+                worktreePath: worktreeDir);
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.Equal(FailureClassification.Permanent, classification.FailureClassification);
+            Assert.NotNull(classification.Reason);
+            Assert.Contains("Grant audit failed", classification.Reason);
+            Assert.Contains("stray_file.txt", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outboxDir);
+            DirectoryCleanup.DeleteRecursively(worktreeDir);
+        }
+    }
+
+    [Fact]
+    public void Enforced_execution_with_dirty_worktree_yields_Succeeded_without_auditing()
+    {
+        var outboxDir = CreateTempDirectory();
+        var worktreeDir = CreateTempDirectory();
+        try
+        {
+            InitGitRepository(worktreeDir);
+            File.WriteAllText(Path.Combine(outboxDir, "plan"), "content");
+            File.WriteAllText(Path.Combine(worktreeDir, "stray_file.txt"), "dirt");
+            var contract = new WorkerContract("worker", [], [new ProducedOutput("plan")], []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural),
+                contract,
+                outboxDir,
+                grantAuditMode: GrantAuditMode.Enforced,
+                worktreePath: worktreeDir);
+
+            Assert.Equal(OutcomeVerdict.Succeeded, classification.Verdict);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outboxDir);
+            DirectoryCleanup.DeleteRecursively(worktreeDir);
+        }
+    }
+
+    [Fact]
+    public void Audited_execution_fails_closed_when_worktree_is_invalid_or_git_fails()
+    {
+        var outboxDir = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(outboxDir, "plan"), "content");
+            var contract = new WorkerContract("worker", [], [new ProducedOutput("plan")], []);
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural),
+                contract,
+                outboxDir,
+                grantAuditMode: GrantAuditMode.AuditedNotEnforced,
+                worktreePath: Path.Combine(Path.GetTempPath(), $"nonexistent-{Guid.NewGuid():N}"));
+
+            Assert.Equal(OutcomeVerdict.Failed, classification.Verdict);
+            Assert.Equal(FailureClassification.Permanent, classification.FailureClassification);
+            Assert.NotNull(classification.Reason);
+            Assert.Contains("Grant audit failed", classification.Reason);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(outboxDir);
+        }
+    }
+
+    private static void InitGitRepository(string path)
+    {
+        RunGitProcess(path, "init");
+        RunGitProcess(path, "config", "user.name", "Test");
+        RunGitProcess(path, "config", "user.email", "test@test.com");
+        File.WriteAllText(Path.Combine(path, "README.md"), "init");
+        RunGitProcess(path, "add", ".");
+        RunGitProcess(path, "commit", "-m", "initial");
+    }
+
+    private static void RunGitProcess(string cwd, params string[] args)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo("git")
+        {
+            WorkingDirectory = cwd,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var arg in args)
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
+        using var proc = System.Diagnostics.Process.Start(startInfo);
+        proc?.WaitForExit();
+    }
 }
 

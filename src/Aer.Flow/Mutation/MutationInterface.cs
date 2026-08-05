@@ -416,8 +416,11 @@ public static class MutationInterface
                         var request = acceptedRequestByExecutionId[executionId];
                         var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
+                        var grantAuditMode = request.GrantAuditMode ?? (workerBindings.TryGetValue(request.Worker, out var b) ? b.GrantAuditMode : GrantAuditMode.Enforced);
+                        var worktreePath = workerBindings.TryGetValue(request.Worker, out var bProc) && bProc is WorkerBinding.Process p ? p.Target.WorkingDirectory : null;
                         var classification = OutcomeClassifier.Classify(
-                            new CoreDispatchResult(exit.ExitCode, exit.Reason, exit.StderrTail), contract, outputDirectory);
+                            new CoreDispatchResult(exit.ExitCode, exit.Reason, exit.StderrTail), contract, outputDirectory,
+                            grantAuditMode: grantAuditMode, worktreePath: worktreePath);
 
                         await eventLogWriter.AppendAsync(ToOutcomeEvent(executionId, classification), ioCancellationToken)
                             .ConfigureAwait(false);
@@ -855,8 +858,10 @@ public static class MutationInterface
             // that would convert a contract violation into a fabricated outcome.
             var dispatchResult = await dispatcher.DispatchAsync(prepared.Request, binding.Target, dispatchCancellationToken)
                 .ConfigureAwait(false);
+            var grantAuditMode = prepared.Request.GrantAuditMode ?? binding.GrantAuditMode;
+            var worktreePath = binding.Target.WorkingDirectory;
             var classification = OutcomeClassifier.Classify(
-                dispatchResult, binding.Contract, prepared.OutputDirectory, binding.FailureClassifier, timeProvider);
+                dispatchResult, binding.Contract, prepared.OutputDirectory, binding.FailureClassifier, timeProvider, grantAuditMode, worktreePath);
 
             // Never gated on dispatchCancellationToken: that token having fired is exactly what
             // produced this outcome (Cancelled) in the first place, so recording it must not itself

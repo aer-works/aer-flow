@@ -802,7 +802,7 @@ public class WorkerBindingResolverTests
     }
 
     [Fact]
-    public void An_audited_binding_with_write_files_true_and_AuditedNotEnforced_resolves_on_gemini()
+    public void An_audited_binding_with_AuditedNotEnforced_without_a_worktree_throws_UnisolatedGrantAuditException()
     {
         var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
@@ -811,6 +811,24 @@ public class WorkerBindingResolverTests
             ["review"] = new WorkerBindingConfigEntry(
                 "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
                 PermissionGrant: grant, GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
+        };
+
+        var ex = Assert.Throws<UnisolatedGrantAuditException>(() => WorkerBindingResolver.Resolve(config, adapters));
+        Assert.Equal("review", ex.WorkerName);
+        Assert.Contains("workspace isolation", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_audited_binding_with_AuditedNotEnforced_and_a_worktree_resolves_successfully()
+    {
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["review"] = new WorkerBindingConfigEntry(
+                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                PermissionGrant: grant, Worktree: new WorktreeWorkspace(Path.GetFullPath("."), "main"),
+                GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
         };
 
         var bindings = WorkerBindingResolver.Resolve(config, adapters);

@@ -110,6 +110,11 @@ public static class WorkerBindingResolver
             throw new UnknownWorkerAdapterException(entry.Adapter);
         }
 
+        if (entry.GrantAuditMode == GrantAuditMode.AuditedNotEnforced && entry.Worktree is null && !entry.IsWorktree)
+        {
+            throw new UnisolatedGrantAuditException(workerName);
+        }
+
         // Both refusals read a grant as deciding what the worker can do, which is only true for an
         // adapter that consumes it. IPermissionGrantTranslator marks that population, and
         // WorkerAdapterRegistryTests (#651) holds the marker to it by dispatching every registered

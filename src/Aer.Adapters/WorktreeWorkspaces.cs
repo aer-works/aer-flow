@@ -61,7 +61,7 @@ public static class WorktreeWorkspaces
 
             provisioned.Add(new ProvisionedWorktree(spec.Repository, worktreePath));
             rewritten ??= new Dictionary<string, WorkerBindingConfigEntry>(bindings);
-            rewritten[workerName] = entry with { WorkingDirectory = worktreePath, Worktree = null };
+            rewritten[workerName] = entry with { WorkingDirectory = worktreePath, Worktree = null, IsWorktree = true };
         }
 
         return (rewritten ?? bindings, provisioned);

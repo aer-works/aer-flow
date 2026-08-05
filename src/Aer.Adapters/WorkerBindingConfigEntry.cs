@@ -51,7 +51,8 @@ public sealed record WorkerBindingConfigEntry(
     string? LogFilePath = null,
     string? Effort = null,
     WorktreeWorkspace? Worktree = null,
-    GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced);
+    GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced,
+    bool IsWorktree = false);
 
 
 /// <summary>
