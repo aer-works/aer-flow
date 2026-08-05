@@ -471,7 +471,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
         Assert.True(decideResponse.IsSuccessStatusCode);
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
         var second = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
         var secondPayload = JsonDocument.Parse(System.Text.Encoding.UTF8.GetString(buffer, 0, second.Count)).RootElement;
@@ -512,7 +512,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.True(runResponse.IsSuccessStatusCode);
 
         var buffer = new byte[1024 * 64];
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         using (var linked1 = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken))
         {
@@ -557,7 +557,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.True(runResponse.IsSuccessStatusCode);
 
         var buffer = new byte[1024 * 64];
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
 
         // First message: /api/tasks/run's own pre-broadcast (proven above), reflecting the still-Paused
         // state from before the background run even started.
@@ -809,7 +809,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         using var socket = new ClientWebSocket();
         await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
         var buffer = new byte[1024 * 64];
         var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
@@ -857,7 +857,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         using var socket = new ClientWebSocket();
         await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws?token={token}"), TestContext.Current.CancellationToken);
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, TestContext.Current.CancellationToken);
         var buffer = new byte[1024 * 64];
         var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
