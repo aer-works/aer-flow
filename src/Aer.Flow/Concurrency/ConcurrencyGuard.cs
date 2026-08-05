@@ -52,7 +52,7 @@ public sealed class ConcurrencyGuard : IDisposable
         catch (IOException ex)
         {
             var holder = TryReadHolderInfo(taskDirectoryPath);
-            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath, holder), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
+            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath, holder, lockFilePath, ex), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
         }
 
         return CreateWithSidecar(lockStream, taskDirectoryPath, holderDescription);
@@ -107,7 +107,7 @@ public sealed class ConcurrencyGuard : IDisposable
             catch (IOException ex)
             {
                 var holder = TryReadHolderInfo(taskDirectoryPath);
-                var message = $"{BuildLockedMessage(taskDirectoryPath, holder)} Still held after waiting " +
+                var message = $"{BuildLockedMessage(taskDirectoryPath, holder, lockFilePath, ex)} Still held after waiting " +
                     $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.";
                 throw new WorkflowLockedException(message, ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
             }
@@ -148,7 +148,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// self-description is appended here, and the two-shapes wording stays as the fallback for a
     /// holder that did not (or whose write lost a race).
     /// </summary>
-    private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder)
+    private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder, string lockFilePath, IOException ex)
     {
         var baseMsg = $"Directory '{taskDirectoryPath}' is already locked by another Flow instance — either a live " +
             "'aer run' pump, or a background component that takes this directory's lock briefly (a room's " +
@@ -157,12 +157,16 @@ public sealed class ConcurrencyGuard : IDisposable
             "terminal reaches only idle tasks — a crashed pump's orphaned executions, or pending " +
             "non-process work.";
 
-        if (holder != null && !string.IsNullOrWhiteSpace(holder.HolderDescription))
+        var msg = holder != null && !string.IsNullOrWhiteSpace(holder.HolderDescription)
+            ? $"{baseMsg} Currently held by: {holder.HolderDescription} since {holder.AcquiredAtUtc:O}."
+            : baseMsg;
+
+        if (Store.FileHolderProbe.IsSharingViolation(ex))
         {
-            return $"{baseMsg} Currently held by: {holder.HolderDescription} since {holder.AcquiredAtUtc:O}.";
+            msg += $" Current holder: {Store.FileHolderProbe.DescribeHolders(lockFilePath)}";
         }
 
-        return baseMsg;
+        return msg;
     }
 
     /// <summary>

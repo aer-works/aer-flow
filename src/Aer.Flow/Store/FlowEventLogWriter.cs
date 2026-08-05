@@ -40,12 +40,6 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
         _leaveOpen = leaveOpen;
     }
 
-    // The Win32 HRESULT for ERROR_SHARING_VIOLATION. .NET assigns this same HRESULT to the
-    // equivalent IOException on every OS it runs on — including Unix, where it comes from the
-    // runtime's own flock-based FileShare enforcement rather than a real Win32 call — so checking
-    // it is portable and does not depend on OS-localized exception text.
-    private const int ErrorSharingViolationHResult = unchecked((int)0x80070020);
-
     /// <exception cref="FlowJournalHeldException">See that type's own docs for why (#816).</exception>
     private static FileStream OpenAppendStream(string logFilePath)
     {
@@ -65,7 +59,7 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
                 bufferSize: 1,
                 useAsync: true);
         }
-        catch (IOException ex) when (ex.HResult == ErrorSharingViolationHResult)
+        catch (IOException ex) when (FileHolderProbe.IsSharingViolation(ex))
         {
             // Name the holder while it is still held (the probe runs here, in-process, not in a
             // post-hoc step where a transient holder would already be gone). This turns the #398
