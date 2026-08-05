@@ -416,8 +416,23 @@ public static class MutationInterface
                         var request = acceptedRequestByExecutionId[executionId];
                         var contract = GetContractForClassification(request, workerBindings);
                         var outputDirectory = ArtifactManager.ResolveOutputDirectory(artifactsRootPath, executionId);
-                        var grantAuditMode = request.GrantAuditMode ?? (workerBindings.TryGetValue(request.Worker, out var b) ? b.GrantAuditMode : GrantAuditMode.Enforced);
-                        var worktreePath = workerBindings.TryGetValue(request.Worker, out var bProc) && bProc is WorkerBinding.Process p ? p.Target.WorkingDirectory : null;
+                        var grantAuditMode = request.GrantAuditMode ?? GrantAuditMode.Enforced;
+                        string? worktreePath = null;
+                        try
+                        {
+                            if (workerBindings.TryGetValue(request.Worker, out var b))
+                            {
+                                grantAuditMode = request.GrantAuditMode ?? b.GrantAuditMode;
+                                if (b is WorkerBinding.Process p)
+                                {
+                                    worktreePath = p.Target.WorkingDirectory;
+                                }
+                            }
+                        }
+                        catch (AerFlowException)
+                        {
+                        }
+
                         var classification = OutcomeClassifier.Classify(
                             new CoreDispatchResult(exit.ExitCode, exit.Reason, exit.StderrTail), contract, outputDirectory,
                             grantAuditMode: grantAuditMode, worktreePath: worktreePath);
