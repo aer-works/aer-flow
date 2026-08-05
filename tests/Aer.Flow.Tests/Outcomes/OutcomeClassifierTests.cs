@@ -704,6 +704,39 @@ public class OutcomeClassifierTests
         }
     }
 
+    [Fact]
+    public void Classify_does_not_veto_a_satisfied_run_for_a_non_ToolDenied_classification()
+    {
+        // #914 scope gate: ONLY an auto-denied tool vetoes an otherwise-satisfied exit-0 run. A
+        // classifier reporting ExhaustedUntil (quota) on a satisfied contract must leave the run
+        // Succeeded — quota exhaustion never produces a satisfied contract, and before the gate this
+        // path stamped such a run Failed AND mislabeled it with the auto-denied message. This arm reds
+        // against the ungated condition and passes against the ToolDenied gate.
+        var directory = CreateTempDirectory();
+        try
+        {
+            var contract = new WorkerContract("worker", [], [], []);
+            var quotaStderr = "Individual quota reached. Resets in 1h";
+            var mockClassifier = new TestQuotaClassifier(
+                quotaStderr,
+                FailureClassification.ExhaustedUntil,
+                new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+            var classification = OutcomeClassifier.Classify(
+                new CoreDispatchResult(0, CoreExitReason.Natural, quotaStderr),
+                contract,
+                directory,
+                mockClassifier);
+
+            Assert.Equal(OutcomeVerdict.Succeeded, classification.Verdict);
+            Assert.Null(classification.FailureClassification);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(directory);
+        }
+    }
+
     private sealed class TestQuotaClassifier(string matchStderr, FailureClassification? classificationToEmit, DateTimeOffset? notBeforeToEmit) : IFailureClassifier
     {
         public bool TryClassifyFailure(string? stderrTail, TimeProvider timeProvider, out FailureClassification? classification, out DateTimeOffset? retryNotBefore)

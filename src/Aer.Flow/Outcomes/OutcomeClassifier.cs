@@ -141,8 +141,14 @@ public static class OutcomeClassifier
                 }
             }
 
+            // #914: an auto-denied tool is the ONLY thing that vetoes an otherwise-satisfied exit-0
+            // run — agy denies a tool, exits 0, and the worker still writes its contract output, so
+            // nothing else here would catch it. Gate specifically on ToolDenied: quota exhaustion
+            // (ExhaustedUntil) cannot reach a *satisfied* contract, and gating narrowly keeps this from
+            // ever stamping some other classification with the auto-denied message below.
             if (failureClassifier is not null && failureClassifier.TryClassifyFailure(
-                    result.StderrTail, timeProvider ?? TimeProvider.System, out var classifiedFailure, out var retryNotBefore))
+                    result.StderrTail, timeProvider ?? TimeProvider.System, out var classifiedFailure, out var retryNotBefore)
+                && classifiedFailure == FailureClassification.ToolDenied)
             {
                 return new OutcomeClassification(
                     OutcomeVerdict.Failed,
