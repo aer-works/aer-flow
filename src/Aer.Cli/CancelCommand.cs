@@ -67,8 +67,8 @@ public static class CancelCommand
 
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
-        var (provisionedConfig, provisionedWorktrees) =
-            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
+        var (provisionedConfig, provisionedWorktrees, _) =
+            WorktreeWorkspaces.ProvisionLazily(bindingConfig, options.TaskDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         // Lazy (#662): cancel targets a task 'aer run' already started — it does not need to know how
         // to dispatch a worker it will never dispatch, so a bindings file naming an unresolvable one

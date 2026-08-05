@@ -66,6 +66,69 @@ public static class WorktreeWorkspaces
 
         return (rewritten ?? bindings, provisioned);
     }
+
+    /// <summary>
+    /// Same provisioning as <see cref="Provision"/>, but skips any entry whose worktree specification is invalid
+    /// or fails to provision, leaving its binding untouched and returning it in the skipped list (#1012).
+    ///
+    /// <para>
+    /// A skipped entry keeps no isolation stamp, so if it is ever actually dispatched the existing refusal fires —
+    /// <see cref="UnisolatedGrantAuditException"/> for an audited binding — and the failure re-surfaces where it is
+    /// actionable instead of blocking an unrelated cancel.
+    /// </para>
+    /// </summary>
+    public static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
+                   IReadOnlyList<ProvisionedWorktree> Provisioned,
+                   IReadOnlyList<SkippedWorktreeProvisioning> Skipped)
+        ProvisionLazily(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath)
+    {
+        ArgumentNullException.ThrowIfNull(bindings);
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskDirectoryPath);
+
+        Dictionary<string, WorkerBindingConfigEntry>? rewritten = null;
+        var provisioned = new List<ProvisionedWorktree>();
+        var skipped = new List<SkippedWorktreeProvisioning>();
+
+        foreach (var (workerName, entry) in bindings)
+        {
+            if (entry.Worktree is not { } spec)
+            {
+                continue;
+            }
+
+            if (entry.WorkingDirectory is not null)
+            {
+                skipped.Add(new SkippedWorktreeProvisioning(
+                    workerName,
+                    new InvalidWorkspaceSpecException(
+                        $"Worker '{workerName}' declares both a WorkingDirectory and a worktree workspace; " +
+                        "a worker runs in exactly one place. Set one, not both.")));
+                continue;
+            }
+
+            try
+            {
+                // Validate on every path (a resume reuses the tree but must still refuse a bad spec).
+                WorktreeProvisioner.ValidateSpec(spec.Repository, spec.Ref);
+                var worktreePath = Path.Combine(taskDirectoryPath, WorkspacesDirectoryName, workerName);
+
+                if (!Directory.Exists(worktreePath))
+                {
+                    WorktreeProvisioner.Provision(worktreePath, spec.Repository, spec.Ref);
+                }
+
+                provisioned.Add(new ProvisionedWorktree(spec.Repository, worktreePath));
+                rewritten ??= new Dictionary<string, WorkerBindingConfigEntry>(bindings);
+                rewritten[workerName] = entry with { WorkingDirectory = worktreePath, Worktree = null, IsWorktree = true };
+            }
+            catch (Exception ex) when (ex is InvalidWorkspaceSpecException or WorktreeProvisioningException)
+            {
+                skipped.Add(new SkippedWorktreeProvisioning(workerName, ex));
+            }
+        }
+
+        return (rewritten ?? bindings, provisioned, skipped);
+    }
 }
 
 /// <summary>
@@ -73,3 +136,8 @@ public static class WorktreeWorkspaces
 /// once the run reaches Terminal.
 /// </summary>
 public sealed record ProvisionedWorktree(string Repository, string WorktreePath);
+
+/// <summary>
+/// An entry whose worktree could not be provisioned during <see cref="WorktreeWorkspaces.ProvisionLazily"/>.
+/// </summary>
+public sealed record SkippedWorktreeProvisioning(string WorkerName, Exception Exception);
