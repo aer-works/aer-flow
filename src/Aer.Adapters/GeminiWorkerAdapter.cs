@@ -819,6 +819,8 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8,
+                StandardErrorEncoding = System.Text.Encoding.UTF8,
             };
             foreach (var arg in args)
             {

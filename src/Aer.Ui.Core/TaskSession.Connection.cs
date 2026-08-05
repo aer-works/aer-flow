@@ -163,6 +163,8 @@ public sealed partial class TaskSession
                     WindowStyle = ProcessWindowStyle.Hidden,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8,
                 };
                 var process = Process.Start(startInfo);
                 if (process != null)
