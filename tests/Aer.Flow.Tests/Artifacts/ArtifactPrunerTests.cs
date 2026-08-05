@@ -1,4 +1,5 @@
 using Aer.Flow.Artifacts;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
@@ -196,8 +197,15 @@ public class ArtifactPrunerTests
         }
     }
 
+    /// <summary>
+    /// A pre-existing target is a recoverable copy from an earlier prune. Pruning NEVER deletes it —
+    /// so a second call finds it there, leaves both it and the (resumed) source untouched, and reports
+    /// no move. The previous version of this test asserted the OPPOSITE (target overwritten, its
+    /// contents gone), encoding the delete-the-recoverable-copy defect #973's second reader caught as
+    /// the intended result. This arm now fails against that code and passes against the fix.
+    /// </summary>
     [Fact]
-    public void PruneDirectory_handles_existing_target_directory_crash_recovery()
+    public void PruneDirectory_never_destroys_an_existing_recoverable_copy()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), $"prune-crash-{Guid.NewGuid():N}");
         try
@@ -206,22 +214,70 @@ public class ArtifactPrunerTests
             var targetDir = Path.Combine(tempRoot, "artifacts", "pruned", "execution_exec-105");
 
             Directory.CreateDirectory(sourceDir);
-            File.WriteAllText(Path.Combine(sourceDir, "valid.txt"), "new-content");
+            File.WriteAllText(Path.Combine(sourceDir, "resumed.txt"), "new-content");
 
-            // Simulate pre-existing target from interrupted attempt
+            // The recoverable copy from an earlier prune of this same execution id.
             Directory.CreateDirectory(targetDir);
-            File.WriteAllText(Path.Combine(targetDir, "stale.txt"), "stale-content");
+            File.WriteAllText(Path.Combine(targetDir, "recoverable.txt"), "the-good-copy");
 
-            ArtifactPruner.PruneDirectory(sourceDir, targetDir);
+            var moved = ArtifactPruner.PruneDirectory(sourceDir, targetDir);
 
-            Assert.False(Directory.Exists(sourceDir));
-            Assert.True(Directory.Exists(targetDir));
-            Assert.True(File.Exists(Path.Combine(targetDir, "valid.txt")));
-            Assert.False(File.Exists(Path.Combine(targetDir, "stale.txt")));
+            Assert.False(moved);
+            // The recoverable copy is intact...
+            Assert.Equal("the-good-copy", File.ReadAllText(Path.Combine(targetDir, "recoverable.txt")));
+            // ...and the source was NOT pulled out from under whatever repopulated it.
+            Assert.True(File.Exists(Path.Combine(sourceDir, "resumed.txt")));
         }
         finally
         {
             DirectoryCleanup.DeleteRecursively(tempRoot);
+        }
+    }
+
+    /// <summary>
+    /// Finding 3: pruning holds the task's <see cref="ConcurrencyGuard"/> across probe→move so a resumed
+    /// run cannot repopulate <c>execution_{id}</c> in the window between reading a run terminal and moving
+    /// its directory. This asserts the lock is load-bearing: while another holder has the task lock,
+    /// pruning refuses (throws <see cref="WorkflowLockedException"/>) and moves nothing. Against the
+    /// pre-fix code — which took no lock — the same run would probe terminal and move the directory,
+    /// so this arm fails there and passes against the fix.
+    /// </summary>
+    [Fact]
+    public async Task PruneAsync_refuses_while_the_task_lock_is_held()
+    {
+        var taskDir = Path.Combine(Path.GetTempPath(), $"prune-locked-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(taskDir);
+            var snapshotPath = Path.Combine(taskDir, "snapshot.json");
+            var logPath = Path.Combine(taskDir, "flow.jsonl");
+
+            await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
+
+            var execId = new ExecutionId("exec-106");
+            await WriteLogEventsAsync(
+                logPath,
+                new FlowEvent.ExecutionRequestAccepted(TestRequest(execId)),
+                new FlowEvent.ExecutionSucceeded(execId)
+            );
+
+            var artifactsRoot = Path.Combine(taskDir, ArtifactManager.ArtifactsDirectoryName);
+            var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
+            await File.WriteAllTextAsync(Path.Combine(execDir, "output.txt"), "held", TestContext.Current.CancellationToken);
+
+            using var heldByAnotherInstance = ConcurrencyGuard.Acquire(taskDir);
+
+            await Assert.ThrowsAsync<WorkflowLockedException>(
+                () => ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken));
+
+            // Nothing moved: the run's active directory is exactly where it was.
+            Assert.True(Directory.Exists(execDir));
+            var prunedDir = ArtifactManager.ResolvePrunedOutputDirectory(artifactsRoot, execId);
+            Assert.False(Directory.Exists(prunedDir));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDir);
         }
     }
 
