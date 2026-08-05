@@ -39,9 +39,24 @@ public class FlowEventSerializationTests
             Environment: [],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
+        var auditedRequest = new ExecutionRequest(
+            new ExecutionId("exec-audited"),
+            new WorkflowId("wf-1"),
+            StepId,
+            "gemini",
+            Inputs: ["/artifacts/execution_1/goal.md"],
+            Outputs: ["/artifacts/execution_2/report.md"],
+            Timeout: TimeSpan.FromMinutes(5),
+            Environment: [],
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
+            GrantAuditMode: GrantAuditMode.AuditedNotEnforced);
+
+
         yield return [new FlowEvent.ExecutionRequestAccepted(request)];
         yield return [new FlowEvent.ExecutionRequestAccepted(stepLessRequest)];
+        yield return [new FlowEvent.ExecutionRequestAccepted(auditedRequest)];
         yield return [new FlowEvent.ExecutionRequestRejected(ExecutionId, "concurrency cap reached")];
+
         yield return [new FlowEvent.ExecutionSucceeded(ExecutionId)];
         yield return [new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification.Retryable)];
         yield return [new FlowEvent.ExecutionFailed(ExecutionId, FailureClassification: null)];
@@ -157,5 +172,70 @@ public class FlowEventSerializationTests
         var failed = Assert.IsType<FlowEvent.ExecutionFailed>(deserialized);
         Assert.Equal(reason, failed.Reason);
     }
+
+    private static string LegacyExecutionRequestAcceptedJson()
+    {
+        var request = new ExecutionRequest(
+            ExecutionId,
+            new WorkflowId("wf-1"),
+            StepId,
+            "gemini",
+            Inputs: ["/artifacts/execution_1/goal.md"],
+            Outputs: ["/artifacts/execution_2/report.md"],
+            Timeout: TimeSpan.FromMinutes(10),
+            Environment: [],
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
+            GrantAuditMode: GrantAuditMode.AuditedNotEnforced);
+
+        var current = JsonSerializer.Serialize(
+            (FlowEvent)new FlowEvent.ExecutionRequestAccepted(request),
+            typeof(FlowEvent),
+            FlowEventLogJson.Options);
+
+        var node = System.Text.Json.Nodes.JsonNode.Parse(current)!.AsObject();
+        var requestNode = node["Request"]!.AsObject();
+
+        Assert.True(requestNode.Remove(nameof(ExecutionRequest.GrantAuditMode)));
+
+        return node.ToJsonString();
+    }
+
+    [Fact]
+    public void Deserializing_legacy_ExecutionRequestAccepted_without_GrantAuditMode_deserializes_with_null_mode()
+    {
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(
+            LegacyExecutionRequestAcceptedJson(), FlowEventLogJson.Options);
+
+        var accepted = Assert.IsType<FlowEvent.ExecutionRequestAccepted>(deserialized);
+        Assert.Equal(ExecutionId, accepted.Request.ExecutionId);
+        Assert.Null(accepted.Request.GrantAuditMode);
+    }
+
+    [Fact]
+    public void Deserializing_current_ExecutionRequestAccepted_with_GrantAuditMode_sets_mode()
+    {
+        var request = new ExecutionRequest(
+            ExecutionId,
+            new WorkflowId("wf-1"),
+            StepId,
+            "gemini",
+            Inputs: ["/artifacts/execution_1/goal.md"],
+            Outputs: ["/artifacts/execution_2/report.md"],
+            Timeout: TimeSpan.FromMinutes(10),
+            Environment: [],
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
+            GrantAuditMode: GrantAuditMode.AuditedNotEnforced);
+
+        var currentJson = JsonSerializer.Serialize(
+            (FlowEvent)new FlowEvent.ExecutionRequestAccepted(request),
+            typeof(FlowEvent),
+            FlowEventLogJson.Options);
+
+        var deserialized = JsonSerializer.Deserialize<FlowEvent>(currentJson, FlowEventLogJson.Options);
+
+        var accepted = Assert.IsType<FlowEvent.ExecutionRequestAccepted>(deserialized);
+        Assert.Equal(GrantAuditMode.AuditedNotEnforced, accepted.Request.GrantAuditMode);
+    }
 }
+
 

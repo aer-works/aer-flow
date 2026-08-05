@@ -207,7 +207,9 @@ public static class MutationInterface
             outputs,
             Timeout: null,
             environment,
-            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>(),
+            GrantAuditMode: nonProcess.GrantAuditMode);
+
 
         // §7's write-sequence discipline still applies: appended and fsync'd before this method
         // returns, even though no Core process ever follows it (§17.3).
@@ -815,7 +817,9 @@ public static class MutationInterface
             step.Outputs,
             binding is WorkerBinding.Process processBinding ? processBinding.Timeout : null,
             environment,
-            upstreamExecutionIds);
+            upstreamExecutionIds,
+            GrantAuditMode: binding.GrantAuditMode);
+
 
         // §7's write-sequence rule: intent recorded and fsync'd before Core is ever asked to run.
         await eventLogWriter.AppendAsync(CreateExecutionRequestAccepted(request), cancellationToken)

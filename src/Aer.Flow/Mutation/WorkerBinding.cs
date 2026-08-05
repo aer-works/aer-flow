@@ -9,7 +9,7 @@ namespace Aer.Flow.Mutation;
 /// leaves this resolution to "configuration external to the workflow" — <c>Aer.Adapters</c> doesn't
 /// exist yet (no milestone), so callers supply it directly.
 /// </summary>
-public abstract record WorkerBinding(WorkerContract Contract)
+public abstract record WorkerBinding(WorkerContract Contract, GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced)
 {
     /// <summary>
     /// A Core-managed process (spec §3, §4): the concrete binary to spawn and how long a single
@@ -19,8 +19,9 @@ public abstract record WorkerBinding(WorkerContract Contract)
         WorkerContract Contract,
         CoreDispatchTarget Target,
         TimeSpan Timeout,
-        Outcomes.IFailureClassifier? FailureClassifier = null)
-        : WorkerBinding(Contract);
+        Outcomes.IFailureClassifier? FailureClassifier = null,
+        GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced)
+        : WorkerBinding(Contract, GrantAuditMode);
 
     /// <summary>
     /// A non-process external party (spec §17.3) — a human, or any other worker tier whose
@@ -31,5 +32,7 @@ public abstract record WorkerBinding(WorkerContract Contract)
     /// <c>Target</c>, no <c>Timeout</c>. Completion is detected later, by contract satisfaction
     /// alone (<see cref="Outcomes.NonProcessCompletionDetector"/>), never by a Core exit.
     /// </summary>
-    public sealed record NonProcess(WorkerContract Contract) : WorkerBinding(Contract);
+    public sealed record NonProcess(WorkerContract Contract, GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced)
+        : WorkerBinding(Contract, GrantAuditMode);
 }
+

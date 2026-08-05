@@ -267,7 +267,12 @@ public class FlowEventLogJsonTests
         Assert.Equal(1, (int)DecisionType.Reject);
         Assert.Equal(2, (int)DecisionType.RetryWithRevision);
         Assert.Equal(3, (int)DecisionType.Supersede);
+
+        // GrantAuditMode is deliberately absent: it carries JsonStringEnumConverter, so it
+        // serializes by name and reordering cannot reinterpret a line — the walker below exempts
+        // it for the same reason.
     }
+
 
     /// <summary>
     /// What made <c>DecisionType</c>'s gap invisible: the variant population is policed
@@ -279,8 +284,9 @@ public class FlowEventLogJsonTests
     [Fact]
     public void Every_enum_reachable_from_a_journal_line_is_pinned_by_these_tests()
     {
-        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType), typeof(DeciderKind) };
-
+        // DeciderKind is absent for the same reason as GrantAuditMode: born with
+        // JsonStringEnumConverter, so its former entry here pinned nothing.
+        var pinned = new[] { typeof(FailureClassification), typeof(CoreExitReason), typeof(DecisionType) };
 
         var reachable = new HashSet<Type>();
         var seen = new HashSet<Type>();
@@ -305,7 +311,20 @@ public class FlowEventLogJsonTests
                 {
                     if (candidate.IsEnum)
                     {
-                        reachable.Add(candidate);
+                        // An enum carrying JsonStringEnumConverter serializes by NAME: reordering
+                        // its members cannot reinterpret a journal line, so it needs no ordinal
+                        // pin. Adding the converter to an ALREADY-pinned enum makes this test fail
+                        // (pinned != reachable) — deliberately, because that change reinterprets
+                        // nothing going forward but strands the ordinals already on disk, and the
+                        // author must face that before deleting the pin.
+                        var stringConverted = candidate
+                            .GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false)
+                            .Cast<JsonConverterAttribute>()
+                            .Any(a => a.ConverterType == typeof(JsonStringEnumConverter));
+                        if (!stringConverted)
+                        {
+                            reachable.Add(candidate);
+                        }
                     }
                     else if (candidate.Namespace?.StartsWith("Aer.Flow", StringComparison.Ordinal) == true)
                     {

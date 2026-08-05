@@ -50,7 +50,9 @@ public sealed record WorkerBindingConfigEntry(
     bool StreamJson = false,
     string? LogFilePath = null,
     string? Effort = null,
-    WorktreeWorkspace? Worktree = null);
+    WorktreeWorkspace? Worktree = null,
+    GrantAuditMode GrantAuditMode = GrantAuditMode.Enforced);
+
 
 /// <summary>
 /// A worktree workspace spec on a <see cref="WorkerBindingConfigEntry"/> (#669): the local

@@ -79,4 +79,23 @@ public class RoleDispatchTests
         var binding = Assert.Contains("review", bindings);
         Assert.Equal(step.Outputs.OrderBy(n => n), binding.Contract.ProducedOutputs.Select(o => o.Name).OrderBy(n => n));
     }
+
+    [Fact]
+    public void ToBinding_on_gemini_adapter_for_write_files_false_role_with_outputs_materializes_audited_grant()
+    {
+        var binding = RoleDispatch.ToBinding(Review, "spec", "gemini");
+
+        Assert.True(binding.PermissionGrant?.WriteFiles);
+        Assert.Equal(GrantAuditMode.AuditedNotEnforced, binding.GrantAuditMode);
+    }
+
+    [Fact]
+    public void ToBinding_on_claude_adapter_for_write_files_false_role_with_outputs_keeps_enforced_grant()
+    {
+        var binding = RoleDispatch.ToBinding(Review, "spec", "claude");
+
+        Assert.False(binding.PermissionGrant?.WriteFiles);
+        Assert.Equal(GrantAuditMode.Enforced, binding.GrantAuditMode);
+    }
 }
+

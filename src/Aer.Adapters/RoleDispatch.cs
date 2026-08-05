@@ -54,15 +54,29 @@ public static class RoleDispatch
         var adapter = (string.IsNullOrWhiteSpace(adapterOverride) ? role.Adapter : adapterOverride)
             .Trim().ToLowerInvariant();
 
+        var grant = role.Grant;
+        var grantAuditMode = GrantAuditMode.Enforced;
+
+        if (!role.Grant.WriteFiles && contract.ProducedOutputs.Count > 0)
+        {
+            if (WorkerAdapterRegistry.Default.TryGetValue(adapter, out var targetAdapter) && !targetAdapter.WithheldWritesReachTheOutbox)
+            {
+                grant = role.Grant with { WriteFiles = true };
+                grantAuditMode = GrantAuditMode.AuditedNotEnforced;
+            }
+        }
+
         return new WorkerBindingConfigEntry(
             Adapter: adapter,
             Contract: contract,
             PromptTemplate: BuildPrompt(role, spec),
             Timeout: role.Timeout,
             Model: role.Model,
-            PermissionGrant: role.Grant,
-            Effort: role.Effort);
+            PermissionGrant: grant,
+            Effort: role.Effort,
+            GrantAuditMode: grantAuditMode);
     }
+
 
     /// <summary>
     /// Wraps <see cref="ToBinding"/> in a single-step workflow — the shape <c>aer dispatch</c> hands to
