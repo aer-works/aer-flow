@@ -1920,9 +1920,13 @@ def _one_writer():
 
 @check("durability.config-dir-redirect-breaks-auth", "durability",
        "CLAUDE_CONFIG_DIR redirects session storage but not the subscription login "
-       "(the measured basis for Architecture Rule 4's 'no redirecting config directories')")
+       "(the measured cost of a fresh config root: a one-time interactive operator login, #527)")
 def _config_dir():
-    """Rule 4 forbids redirecting a vendor CLI's config directory. This measures why.
+    """A fresh CLAUDE_CONFIG_DIR is usable but starts logged out. This measures that cost.
+
+    Architecture Rule 4 (as corrected 2026-07-25, #527) permits redirecting the config root; what
+    it forbids is AER copying a credential into one. This check is why the correction carries an
+    obligation: the operator signs in once per fresh root.
 
     The control arm is the same prompt with the variable unset. If the redirected arm cannot run
     while the control can, an isolated config dir costs the subscription login -- which is the
@@ -1988,7 +1992,16 @@ def _agy_home_redirect():
         return snap
 
     real_gemini = os.path.expanduser("~/.gemini")
+
+    # Control arm: a quiet-host precondition, measured rather than assumed. Anything else writing
+    # to the real store during the run would be indistinguishable from a leak, so a store that is
+    # already moving during an idle pre-window makes the run INCONCLUSIVE, not FAIL.
+    real_idle = tree_snapshot(real_gemini)
+    time.sleep(5)
     real_before = tree_snapshot(real_gemini)
+    if real_idle != real_before:
+        return INCONCLUSIVE, ("real ~/.gemini changed during the idle pre-window; concurrent agy "
+                              "activity on this host, cannot attribute writes -- rerun when quiet")
 
     fake_home = tempfile.mkdtemp(prefix="v-agyhome-")
     wd = tempfile.mkdtemp(prefix="v-agywd-")

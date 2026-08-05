@@ -1202,6 +1202,11 @@ public class GeminiWorkerAdapterTests
         Assert.StartsWith(expectedRef, home);
     }
 
+    /// <summary>
+    /// No SessionId on purpose: the daemon mints a vendor session id only for claude, so a real agy
+    /// session turn is classified entirely by the <c>.aer/session.json</c> sniff on the bindings
+    /// directory -- this pins that clause alone, not the claude-only shortcut in front of it.
+    /// </summary>
     [Fact]
     public void Session_dispatch_points_home_redirect_under_session_root()
     {
@@ -1213,7 +1218,7 @@ public class GeminiWorkerAdapterTests
         {
             var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
             var target = new GeminiWorkerAdapter().Resolve(
-                new WorkerInvocation("Chat turn.", PermissionGrant: nonShellGrant, BindingsFileDirectory: tempSessionDir, SessionId: "conv-123"), ArchitectContract);
+                new WorkerInvocation("Chat turn.", PermissionGrant: nonShellGrant, BindingsFileDirectory: tempSessionDir), ArchitectContract);
 
             var home = target.Environment!.Single(e => e.Name == "HOME").Value;
             var expectedHome = Path.Combine(tempSessionDir, ".gemini_home");
