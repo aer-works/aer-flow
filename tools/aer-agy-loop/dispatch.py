@@ -998,6 +998,11 @@ def grant_refusal(grant: dict) -> str | None:
 # each, and requiring both keeps a stray "permission" or "auto-denied" elsewhere from false-firing.
 # `_selftest` below pins the exact marker, so an agy rewording fails THERE, loudly, rather than
 # silently disabling this guard in a live dispatch.
+# Twin: GeminiWorkerAdapter.TryClassifyAutoDeniedTool (#914) applies the identical two-substring
+# discipline to give the ENGINE a typed FailureClassification.ToolDenied for every caller (daemon, UI,
+# aer run), not just this dispatch.py path. Each side pins the real marker in its own test, so a
+# rewording reds both — but keep the two marker sets in step until dispatch.py is migrated to read the
+# engine's typed signal instead of rescanning stderr.
 DENIED_TOOL_STDERR_MARKERS = ("auto-denied", "permission")
 
 
