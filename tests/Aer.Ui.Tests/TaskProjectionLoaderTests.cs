@@ -213,4 +213,100 @@ public class TaskProjectionLoaderTests
             DirectoryCleanup.DeleteRecursively(notATaskDirectory);
         }
     }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_TaskWithJournalEvents_ReportsNewestEventTimestamp()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-lastact-{Guid.NewGuid():N}");
+        try
+        {
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
+            var snapshot = SnapshotBinder.Bind(definition);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+
+            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            await using (var writer = new FlowEventLogWriter(logPath))
+            {
+                await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-1")), TestContext.Current.CancellationToken);
+            }
+
+            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            Assert.NotNull(fleetItem.LastActivityAt);
+            Assert.True(fleetItem.LastActivityAt >= fleetItem.Created);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_EmptyNoJournalTask_FallsBackToDurableCreatedAt()
+    {
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-lastact-empty-{Guid.NewGuid():N}");
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                "sess-empty", taskDirectory, "claude", cancellationToken: TestContext.Current.CancellationToken);
+
+            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            Assert.NotNull(fleetItem.LastActivityAt);
+            Assert.Equal(fleetItem.Created, fleetItem.LastActivityAt);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_Polarity_AppendingNewEventReordersTaskToTop()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
+        var dirA = Path.Combine(Path.GetTempPath(), $"ui-lastact-polarity-a-{Guid.NewGuid():N}");
+        var dirB = Path.Combine(Path.GetTempPath(), $"ui-lastact-polarity-b-{Guid.NewGuid():N}");
+        try
+        {
+            var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
+            var snapshot = SnapshotBinder.Bind(definition);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(dirA, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(dirB, "snapshot.json"), TestContext.Current.CancellationToken);
+
+            var logPathA = Path.Combine(dirA, "flow.jsonl");
+            var logPathB = Path.Combine(dirB, "flow.jsonl");
+
+            await using (var writerA = new FlowEventLogWriter(logPathA))
+            {
+                await writerA.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-a1")), TestContext.Current.CancellationToken);
+            }
+
+            // Write B after A so B has a newer timestamp
+            await using (var writerB = new FlowEventLogWriter(logPathB))
+            {
+                await writerB.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-b1")), TestContext.Current.CancellationToken);
+            }
+
+            var itemA = await TaskProjectionLoader.LoadFleetStatusAsync(dirA, TestContext.Current.CancellationToken);
+            var itemB = await TaskProjectionLoader.LoadFleetStatusAsync(dirB, TestContext.Current.CancellationToken);
+
+            Assert.NotNull(itemA.LastActivityAt);
+            Assert.NotNull(itemB.LastActivityAt);
+
+            // Now append a new event to task A's journal
+            await using (var writerA = new FlowEventLogWriter(logPathA))
+            {
+                await writerA.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-a2")), TestContext.Current.CancellationToken);
+            }
+
+            var itemAUpdated = await TaskProjectionLoader.LoadFleetStatusAsync(dirA, TestContext.Current.CancellationToken);
+            Assert.True(itemAUpdated.LastActivityAt > itemA.LastActivityAt);
+            Assert.True(itemAUpdated.LastActivityAt >= itemB.LastActivityAt);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(dirA);
+            DirectoryCleanup.DeleteRecursively(dirB);
+        }
+    }
 }

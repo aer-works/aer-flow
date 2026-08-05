@@ -267,6 +267,7 @@ class TaskFleetItem {
   final String statusText;
   final int pausedStepCount;
   final bool isArchived;
+  final DateTime? lastActivityAt;
 
   TaskFleetItem({
     required this.taskDirectoryPath,
@@ -275,6 +276,7 @@ class TaskFleetItem {
     required this.statusText,
     required this.pausedStepCount,
     required this.isArchived,
+    this.lastActivityAt,
   });
 
   factory TaskFleetItem.fromJson(Map<String, dynamic> json) {
@@ -286,6 +288,7 @@ class TaskFleetItem {
       statusText: j['statustext']?.toString() ?? '',
       pausedStepCount: (j['pausedstepcount'] as num?)?.toInt() ?? 0,
       isArchived: j['isarchived'] == true,
+      lastActivityAt: j['lastactivityat'] != null ? DateTime.tryParse(j['lastactivityat'].toString()) : null,
     );
   }
 }

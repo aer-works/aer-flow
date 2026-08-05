@@ -1148,9 +1148,9 @@ namespace Aer.Daemon
                     }
                 }
 
-                // #322: most-recently-updated first, so recency is an ordering guarantee of the
-                // contract rather than an accident of Directory.GetDirectories' name order.
-                return Results.Ok(items.OrderByDescending(i => i.Updated).ToList());
+                // #640: most-recent-activity first (derived from journal events), ties broken by name so
+                // ordering is stable across refreshes.
+                return Results.Ok(items.OrderByDescending(i => i.LastActivityAt ?? i.Updated).ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase).ToList());
             });
 
             app.MapPost("/api/tasks/archive", async ([FromBody] TaskDirectoryRequest request) =>

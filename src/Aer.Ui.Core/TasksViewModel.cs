@@ -125,7 +125,7 @@ public sealed partial class TasksViewModel : ObservableObject
     /// transport keeps local (non-daemon) loads and push-updated rows in the same order as remote ones.
     /// </remarks>
     private static IEnumerable<TaskFleetItem> InFleetOrder(IEnumerable<TaskFleetItem> items) =>
-        items.OrderByDescending(i => i.Updated).ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase);
+        items.OrderByDescending(i => i.LastActivityAt ?? i.Updated).ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Test seam for <see cref="InFleetOrder"/> — same reasoning as <see cref="AddTestItem"/>: the
@@ -365,6 +365,7 @@ public sealed partial class TaskFleetItemViewModel : ObservableObject
         statusText = item.StatusText;
         pausedStepCount = item.PausedStepCount;
         IsArchived = item.IsArchived;
+        LastActivityAt = item.LastActivityAt;
         _archiveAsync = archiveAsync;
         _unarchiveAsync = unarchiveAsync;
         _deleteAsync = deleteAsync;
@@ -374,6 +375,7 @@ public sealed partial class TaskFleetItemViewModel : ObservableObject
     public string TaskDirectoryPath { get; }
     public string FriendlyName { get; }
     public string TypeLabel { get; }
+    public DateTimeOffset? LastActivityAt { get; }
 
     /// <summary>
     /// Whether this row is an interactive session (chat-shaped) rather than a workflow (DAG-shaped)
