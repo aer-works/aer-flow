@@ -109,6 +109,17 @@ public sealed class ConcurrencyGuard : IDisposable
                 var holder = TryReadHolderInfo(taskDirectoryPath);
                 var message = $"{BuildLockedMessage(taskDirectoryPath, holder)} Still held after waiting " +
                     $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.";
+
+                // The OS holder probe costs hundreds of milliseconds, so it runs only here — the
+                // budget is already spent and the holder is by definition anomalous. Acquire's
+                // fail-fast refusal never pays for it: a routine sweep-vs-pump overlap must be
+                // refused immediately (#857), and the sidecar above already names a cooperative
+                // holder there.
+                if (Store.FileHolderProbe.IsSharingViolation(ex))
+                {
+                    message += $" Current holder: {Store.FileHolderProbe.DescribeHolders(lockFilePath)}";
+                }
+
                 throw new WorkflowLockedException(message, ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
             }
         }

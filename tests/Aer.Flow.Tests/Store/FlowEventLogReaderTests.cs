@@ -261,4 +261,38 @@ public class FlowEventLogReaderTests
             FileCleanup.Delete(path);
         }
     }
+
+    [Fact]
+    public async Task Reading_a_journal_held_with_conflicting_share_throws_FlowJournalHeldException_naming_holder()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; on Unix the second open succeeds");
+        var path = Path.Combine(Path.GetTempPath(), $"flow-{Guid.NewGuid():N}.jsonl");
+        try
+        {
+            await File.WriteAllTextAsync(path, "intact\n", TestContext.Current.CancellationToken);
+            using var exclusiveHolder = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+            var ex = await Assert.ThrowsAsync<FlowJournalHeldException>(
+                () => new FlowEventLogReader(path).ReadAllAsync(TestContext.Current.CancellationToken));
+
+            Assert.IsType<IOException>(ex.InnerException);
+            Assert.Contains("held open by another process", ex.Message);
+            Assert.Contains("Current holder:", ex.Message);
+            Assert.Contains($"(pid {Environment.ProcessId})", ex.Message);
+        }
+        finally
+        {
+            FileCleanup.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void IsSharingViolation_returns_false_for_non_sharing_IOException()
+    {
+        var nonSharingEx = new IOException("Path not found", hresult: 3);
+        Assert.False(FileHolderProbe.IsSharingViolation(nonSharingEx));
+
+        var sharingEx = new IOException("Sharing violation", hresult: FileHolderProbe.ErrorSharingViolationHResult);
+        Assert.True(FileHolderProbe.IsSharingViolation(sharingEx));
+    }
 }

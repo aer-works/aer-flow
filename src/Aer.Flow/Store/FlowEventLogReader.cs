@@ -67,7 +67,7 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
 
         try
         {
-            await using var stream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            await using var stream = OpenReadStream(logFilePath);
             var fileLength = stream.Length;
 
             if (seekByteOffset > fileLength)
@@ -144,7 +144,7 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
 
             return new EventLogSnapshot(flowEvents, coreEvents, seekByteOffset + completeByteCount);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException and not FlowJournalHeldException)
         {
             // A cancellation is the caller's request, never a corrupt checkpoint — swallowing it
             // into a full replay would turn "stop now" into the most expensive read in the file.
@@ -173,7 +173,7 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
         }
 
         string text;
-        await using (var stream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        await using (var stream = OpenReadStream(logFilePath))
         using (var reader = new StreamReader(stream))
         {
             text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
@@ -215,7 +215,7 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
         }
 
         string text;
-        await using (var stream = new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        await using (var stream = OpenReadStream(logFilePath))
         using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true))
         {
             text = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
@@ -258,5 +258,26 @@ public sealed class FlowEventLogReader(string logFilePath) : IEventLogReader
         }
 
         return new EventLogSnapshot(flowEvents, coreEvents, completeByteCount, IsFallbackToFull: true);
+    }
+
+    private static FileStream OpenReadStream(string logFilePath)
+    {
+        try
+        {
+            return new FileStream(logFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        }
+        catch (IOException ex) when (FileHolderProbe.IsSharingViolation(ex))
+        {
+            // Name the holder while it is still held (the probe runs here, in-process, not in a
+            // post-hoc step where a transient holder would already be gone). This turns the #398
+            // Windows-CI flake from "used by another process, holder unknown" into a named culprit.
+            throw new FlowJournalHeldException(
+                $"'{logFilePath}' is held open by another process — usually this task's live " +
+                "'aer run' engine, which keeps the ledger open for its whole run, though any " +
+                "sibling aer command mid-append briefly holds it too. Retry once nothing else " +
+                "holds the ledger; for a decision, the workflow's latest attempt must be Paused " +
+                $"with no live 'aer run' (see 'aer status'). Current holder: {FileHolderProbe.DescribeHolders(logFilePath)}",
+                ex);
+        }
     }
 }

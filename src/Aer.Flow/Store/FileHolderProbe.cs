@@ -29,6 +29,19 @@ namespace Aer.Flow.Store;
 internal static class FileHolderProbe
 {
     /// <summary>
+    /// The Win32 HRESULT for ERROR_SHARING_VIOLATION. .NET assigns this same HRESULT to the
+    /// equivalent IOException on every OS it runs on — including Unix, where it comes from the
+    /// runtime's own flock-based FileShare enforcement rather than a real Win32 call — so checking
+    /// it is portable and does not depend on OS-localized exception text.
+    /// </summary>
+    public const int ErrorSharingViolationHResult = unchecked((int)0x80070020);
+
+    /// <summary>
+    /// Returns true if <paramref name="ex"/> is an <see cref="IOException"/> representing a sharing violation.
+    /// </summary>
+    public static bool IsSharingViolation(IOException ex) => ex.HResult == ErrorSharingViolationHResult;
+
+    /// <summary>
     /// A human-readable description of the process(es) currently holding <paramref name="path"/> open, or
     /// a marker string when the probe cannot run or finds no holder. Never throws.
     /// </summary>

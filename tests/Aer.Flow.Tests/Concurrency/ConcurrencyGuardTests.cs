@@ -289,4 +289,58 @@ public class ConcurrencyGuardTests
             DirectoryCleanup.DeleteRecursively(taskDirectory);
         }
     }
+
+    /// <summary>
+    /// Why the probe is confined to <see cref="ConcurrencyGuard.AcquireWithin"/>'s
+    /// exhausted-budget path lives on that catch's own comment. What is pinned here is the
+    /// polarity pair: the fail-fast refusal never carries probe text (that would break
+    /// <see cref="Acquire_remains_fail_fast_and_does_not_wait"/>'s budget), the waited one does.
+    /// </summary>
+    [Fact]
+    public void Only_the_exhausted_wait_enriches_the_locked_message_with_the_probed_holder()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows");
+        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(taskDirectory);
+            var lockPath = Path.Combine(taskDirectory, "flow.lock");
+            using var lockHolder = new FileStream(lockPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+
+            var fastEx = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            Assert.DoesNotContain("Current holder:", fastEx.Message);
+
+            var waitedEx = Assert.Throws<WorkflowLockedException>(
+                () => ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromMilliseconds(50)));
+
+            Assert.Contains("Current holder:", waitedEx.Message);
+            Assert.Contains($"(pid {Environment.ProcessId})", waitedEx.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(taskDirectory);
+        }
+    }
+
+    [Fact]
+    public void Non_sharing_failure_on_guard_acquire_does_not_carry_holder_text()
+    {
+        var rootFile = Path.Combine(Path.GetTempPath(), $"task-guard-control-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(rootFile, []);
+            var invalidTaskDirectory = Path.Combine(rootFile, "subfolder");
+
+            // ThrowsAny: the exact subtype is the OS's choice (Windows throws plain IOException
+            // here, Linux DirectoryNotFoundException); the claim is only that a non-sharing
+            // failure stays a raw IOException-family throw with no probe text.
+            var ex = Assert.ThrowsAny<IOException>(() => ConcurrencyGuard.Acquire(invalidTaskDirectory));
+
+            Assert.DoesNotContain("Current holder:", ex.Message);
+        }
+        finally
+        {
+            FileCleanup.Delete(rootFile);
+        }
+    }
 }
