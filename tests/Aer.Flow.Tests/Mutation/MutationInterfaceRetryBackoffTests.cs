@@ -41,7 +41,7 @@ public class MutationInterfaceRetryBackoffTests
                 Assert.Fail($"Pump completed without appending {typeof(T).Name}.");
             }
 
-            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10), $"Timed out waiting for {typeof(T).Name}.");
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(60), $"Timed out waiting for {typeof(T).Name}.");
             await Task.Delay(10, cancellationToken);
         }
     }

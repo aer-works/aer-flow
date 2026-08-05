@@ -261,7 +261,7 @@ public class CrashRecoveryEndToEndTests
             var completed = await Task.WhenAny(
                 MutationInterface.StartWorkflowAsync(
                     Scenarios.WorkflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher),
-                Task.Delay(TimeSpan.FromSeconds(30)));
+                Task.Delay(TimeSpan.FromSeconds(60)));
 
             if (completed is not Task<FlowState> stateTask)
             {

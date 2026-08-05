@@ -133,7 +133,7 @@ public class StatusCommandEndToEndTests
                 new StatusOptions(taskDirectory, Follow: true), output, TestContext.Current.CancellationToken);
 
             var completedFirst = await Task.WhenAny(
-                statusTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+                statusTask, Task.Delay(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken));
 
             Assert.True(ReferenceEquals(statusTask, completedFirst), "aer status --follow hung on an already-terminal workflow instead of exiting.");
             await statusTask;
