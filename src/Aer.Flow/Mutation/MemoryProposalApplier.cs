@@ -114,7 +114,7 @@ public static class MemoryProposalApplier
                 var tempTargetPath = $"{resolvedTargetPath}.{Guid.NewGuid():N}.tmp";
                 await File.WriteAllTextAsync(tempTargetPath, capture.Content, cancellationToken)
                     .ConfigureAwait(false);
-                RetryingFileMove.Move(tempTargetPath, resolvedTargetPath, overwrite: true);
+                RetryingFileMove.Move(tempTargetPath, resolvedTargetPath, overwrite: true, deleteSourceOnFinalFailure: true);
                 break;
 
             case "delete":
@@ -406,7 +406,7 @@ public static class MemoryProposalApplier
         var indexPath = Path.Combine(memoryRoot, RoomMemoryDocument.IndexFileName);
         var tempIndexPath = $"{indexPath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllLines(tempIndexPath, lines);
-        RetryingFileMove.Move(tempIndexPath, indexPath, overwrite: true);
+        RetryingFileMove.Move(tempIndexPath, indexPath, overwrite: true, deleteSourceOnFinalFailure: true);
     }
 
     private static async Task RecordVersionAsync(
@@ -464,7 +464,7 @@ public static class MemoryProposalApplier
 
         var tempVersionsPath = $"{versionsPath}.{Guid.NewGuid():N}.tmp";
         await File.WriteAllLinesAsync(tempVersionsPath, lines, cancellationToken).ConfigureAwait(false);
-        RetryingFileMove.Move(tempVersionsPath, versionsPath, overwrite: true);
+        RetryingFileMove.Move(tempVersionsPath, versionsPath, overwrite: true, deleteSourceOnFinalFailure: true);
     }
 }
 

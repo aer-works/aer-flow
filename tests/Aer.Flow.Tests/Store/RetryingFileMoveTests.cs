@@ -83,6 +83,38 @@ public sealed class RetryingFileMoveTests : IDisposable
             Assert.True(ex is IOException or UnauthorizedAccessException,
                 $"Expected IOException or UnauthorizedAccessException, got {ex.GetType()}");
         }
+
+        // Polarity for the opt-in cleanup below: by default a failed move never deletes the
+        // source (a rollover site's source is a real file).
+        Assert.True(File.Exists(src));
+    }
+
+    [Fact]
+    public void DeleteSourceOnFinalFailure_RemovesTheTempSource_AndStillThrows()
+    {
+        // Red arm note (second-reader finding on #985): with the cleanup branch removed from the
+        // helper's deadline path, the source survives the throw and the File.Exists assert fails —
+        // the uniquely-named orphan the finding describes.
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("FileShare.None only blocks a move's delete-share requirement on Windows.");
+        }
+
+        var src = Path_("source.txt");
+        var dst = Path_("dest.txt");
+        File.WriteAllText(src, "cleanup source content");
+        File.WriteAllText(dst, "cleanup dest initial content");
+
+        using (new FileStream(dst, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var ex = Assert.ThrowsAny<Exception>(() => RetryingFileMove.Move(
+                src, dst, overwrite: true, budget: TimeSpan.FromMilliseconds(300), deleteSourceOnFinalFailure: true));
+
+            Assert.True(ex is IOException or UnauthorizedAccessException,
+                $"Expected IOException or UnauthorizedAccessException, got {ex.GetType()}");
+        }
+
+        Assert.False(File.Exists(src));
     }
 }
 

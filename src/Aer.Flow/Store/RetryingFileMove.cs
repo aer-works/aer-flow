@@ -14,7 +14,17 @@ public static class RetryingFileMove
     /// sharing violations (<see cref="IOException"/> and <see cref="UnauthorizedAccessException"/>)
     /// until <paramref name="budget"/> expires.
     /// </summary>
-    public static void Move(string source, string destination, bool overwrite = false, TimeSpan? budget = null)
+    /// <param name="deleteSourceOnFinalFailure">Opt-in for temp-then-move sites whose source is a
+    /// disposable temp file: when the budget expires, best-effort delete the source so repeated
+    /// failures cannot accumulate uniquely-named orphans (second-reader finding on #985). Stays
+    /// false by default — a caller like log rollover moves a REAL file, which a failure must never
+    /// delete.</param>
+    public static void Move(
+        string source,
+        string destination,
+        bool overwrite = false,
+        TimeSpan? budget = null,
+        bool deleteSourceOnFinalFailure = false)
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
         ArgumentException.ThrowIfNullOrEmpty(destination);
@@ -34,6 +44,18 @@ public static class RetryingFileMove
             {
                 if (Environment.TickCount64 >= deadlineTicks)
                 {
+                    if (deleteSourceOnFinalFailure)
+                    {
+                        try
+                        {
+                            File.Delete(source);
+                        }
+                        catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException)
+                        {
+                            // Best-effort only: losing the cleanup must never mask the move failure.
+                        }
+                    }
+
                     throw;
                 }
 
@@ -43,3 +65,5 @@ public static class RetryingFileMove
         }
     }
 }
+
+
