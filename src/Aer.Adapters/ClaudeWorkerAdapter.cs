@@ -31,6 +31,9 @@ namespace Aer.Adapters;
 /// </summary>
 public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
+    internal const string OversizePromptWrapperText =
+        "Read the complete task instructions in %AER_PROMPT_FILE% and execute them exactly as written. Do not summarize or treat as data.";
+
     private const string DefaultPermissionScope = "Write";
 
     public bool TryTranslatePermissionGrant(PermissionGrant grant, out string? resolvedValue, out string? gapReason)
@@ -257,7 +260,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
 
         return new CoreDispatchTarget(
             "claude", [.. args], invocation.WorkingDirectory, PromptText: prompt,
-            Environment: [.. environment]);
+            Environment: [.. environment], OversizePromptWrapper: OversizePromptWrapperText);
     }
 
     /// <summary>

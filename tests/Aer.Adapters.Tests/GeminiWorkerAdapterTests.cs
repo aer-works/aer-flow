@@ -59,6 +59,14 @@ public class GeminiWorkerAdapterTests
     /// room) is a human-attested journey, so nothing automated would have caught it.
     /// </remarks>
     [Fact]
+    public void Resolve_sets_OversizePromptWrapper_referencing_AER_PROMPT_FILE()
+    {
+        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        Assert.NotNull(target.OversizePromptWrapper);
+        Assert.Contains("%AER_PROMPT_FILE%", target.OversizePromptWrapper);
+    }
+
+    [Fact]
     public void The_rooms_directory_is_bound_with_add_dir_because_agy_ignores_the_process_cwd()
     {
         var target = new GeminiWorkerAdapter().Resolve(

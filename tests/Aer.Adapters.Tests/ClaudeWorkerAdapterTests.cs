@@ -46,6 +46,14 @@ public class ClaudeWorkerAdapterTests
         Assert.Equal("text", ArgValue(target, "--output-format"));
     }
 
+    [Fact]
+    public void Resolve_sets_OversizePromptWrapper_referencing_AER_PROMPT_FILE()
+    {
+        var target = new ClaudeWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        Assert.NotNull(target.OversizePromptWrapper);
+        Assert.Contains("%AER_PROMPT_FILE%", target.OversizePromptWrapper);
+    }
+
     /// <summary>
     /// #289: Claude Code's own directory-trust sandbox (separate from --allowedTools) was found,
     /// via a live run against the real authenticated CLI, to non-deterministically refuse to write
