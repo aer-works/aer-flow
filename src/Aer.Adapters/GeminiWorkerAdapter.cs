@@ -390,13 +390,11 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
         };
 
-        // agy home redirect (#442, ADR 0050): non-shell bindings get HOME and USERPROFILE redirected
-        // to an AER-owned state directory. Shell-granted workers (grant.RunShellCommands == true) are
+        // agy home redirect (#442): non-shell bindings get HOME and USERPROFILE redirected to an
+        // AER-owned state directory. Shell-granted workers (grant.RunShellCommands == true) are
         // deliberately NOT redirected so worker git commit can see the user's .gitconfig. Dispatch
-        // path ONLY, deliberately absent from BuildGate: the batch value below is a placeholder
-        // CoreDispatcher expands at dispatch time, and the gate's one consumer (the dialogue worker's
-        // gated participant config) spawns vendor CLIs itself with neither AER_OUTPUT_DIR nor any
-        // expansion step -- it would receive the token literally. That remainder is recorded on #1019.
+        // path ONLY, deliberately absent from BuildGate -- ADR 0050 records why the gate's one
+        // consumer (the dialogue worker) cannot carry it; that remainder lives on #1019.
         if (invocation.PermissionGrant is { RunShellCommands: false })
         {
             var isDaemonSession = invocation.SessionId is not null || invocation.ResumeSession ||

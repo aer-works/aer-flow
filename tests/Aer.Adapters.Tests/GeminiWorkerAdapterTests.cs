@@ -1221,7 +1221,7 @@ public class GeminiWorkerAdapterTests
         }
         finally
         {
-            Directory.Delete(tempSessionDir, recursive: true);
+            DirectoryCleanup.DeleteRecursively(tempSessionDir);
         }
     }
 
