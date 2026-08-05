@@ -57,6 +57,9 @@ public enum OutputSchema
 
     /// <summary>The output must parse per <see cref="ReviewVerdictSchema.TryParse"/>.</summary>
     ReviewVerdict,
+
+    /// <summary>The output must parse per <see cref="UnifiedDiffSchema.TryParse"/>.</summary>
+    Diff,
 }
 
 /// <summary>
