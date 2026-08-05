@@ -2,7 +2,7 @@ namespace Aer.Cli;
 
 /// <summary>
 /// Parses <c>aer run</c>'s arguments: <c>aer run &lt;workflow-file&gt; --bindings &lt;bindings-file&gt;
-/// [--task-dir &lt;dir&gt;] [--workflow-id &lt;id&gt;]</c>. Never throws a bare
+/// [--task-dir &lt;dir&gt;] [--workflow-id &lt;id&gt;] [--echo-worker]</c>. Never throws a bare
 /// <see cref="InvalidOperationException"/> for a malformed invocation — every failure here is a
 /// <see cref="CliArgumentException"/> (CLAUDE.md's error-handling rules).
 /// </summary>
@@ -13,7 +13,7 @@ public static class RunOptionsParser
     /// by <c>Program</c> in the full command list.
     /// </summary>
     public const string Usage =
-        "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>]";
+        "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>] [--echo-worker]";
 
     /// <summary>
     /// #628: <c>&lt;workflow-file&gt;</c> reads as "this is what runs", and under
@@ -31,6 +31,7 @@ public static class RunOptionsParser
         string? bindingsFilePath = null;
         string? taskDirectoryPath = null;
         string? workflowId = null;
+        var echoWorker = false;
 
         var i = 0;
         while (i < args.Count)
@@ -46,6 +47,10 @@ public static class RunOptionsParser
                     break;
                 case "--workflow-id":
                     workflowId = RequireValue(args, ref i, arg);
+                    break;
+                case "--echo-worker":
+                    echoWorker = true;
+                    i++;
                     break;
                 default:
                     if (arg.StartsWith("--", StringComparison.Ordinal))
@@ -81,7 +86,7 @@ public static class RunOptionsParser
             Directory.GetCurrentDirectory(), ".aer", Path.GetFileNameWithoutExtension(workflowFilePath));
 
         return new RunOptions(
-            workflowFilePath, bindingsFilePath, TaskDirectoryPath.Resolve(taskDirectoryPath), workflowId);
+            workflowFilePath, bindingsFilePath, TaskDirectoryPath.Resolve(taskDirectoryPath), workflowId, echoWorker);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

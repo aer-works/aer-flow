@@ -483,5 +483,94 @@ public class RunCommandEndToEndTests
             DirectoryCleanup.DeleteRecursively(testRoot);
         }
     }
+
+    [Fact]
+    public async Task When_echo_worker_flag_is_set_worker_stdout_is_written_to_console()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-echo-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        var originalOut = Console.Out;
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteEchoBindingsAsync(testRoot, "hello-live-worker-stdout");
+            var options = RunOptionsParser.Parse(
+                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", taskDirectory, "--echo-worker"]);
+
+            using var consoleOutput = new StringWriter();
+            Console.SetOut(consoleOutput);
+
+            var finalState = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+
+            var captured = consoleOutput.ToString();
+            Assert.Contains("hello-live-worker-stdout", captured);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task When_echo_worker_flag_is_not_set_worker_stdout_is_not_written_to_console()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-noecho-{Guid.NewGuid():N}");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        var originalOut = Console.Out;
+        try
+        {
+            var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteEchoBindingsAsync(testRoot, "hello-live-worker-stdout");
+            var options = RunOptionsParser.Parse(
+                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", taskDirectory]);
+
+            using var consoleOutput = new StringWriter();
+            Console.SetOut(consoleOutput);
+
+            var finalState = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
+            Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
+
+            var captured = consoleOutput.ToString();
+            Assert.DoesNotContain("hello-live-worker-stdout", captured);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            DirectoryCleanup.DeleteRecursively(testRoot);
+        }
+    }
+
+    private static async Task<string> WriteEchoBindingsAsync(string directory, string echoMessage)
+    {
+        Directory.CreateDirectory(directory);
+        var echoCmd = OperatingSystem.IsWindows()
+            ? $"echo {echoMessage} & echo the-plan>%AER_OUTPUT_DIR%\\plan"
+            : $"echo {echoMessage}; echo the-plan > \"$AER_OUTPUT_DIR/plan\"";
+
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["architect"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("architect", [], [new ProducedOutput("plan")], []),
+                echoCmd,
+                TimeSpan.FromSeconds(60)),
+            ["critic"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("critic", ["plan"], [new ProducedOutput("review")], []),
+                CopyFirstInputCommand("review"),
+                TimeSpan.FromSeconds(60)),
+            ["publisher"] = new WorkerBindingConfigEntry(
+                "shell",
+                new WorkerContract("publisher", ["review"], [new ProducedOutput("summary")], []),
+                CopyFirstInputCommand("summary"),
+                TimeSpan.FromSeconds(60)),
+        };
+
+        var path = Path.Combine(directory, "bindings.json");
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config));
+        return path;
+    }
 }
 
