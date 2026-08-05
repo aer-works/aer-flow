@@ -25,46 +25,18 @@ public static class WorktreeWorkspaces
     /// Provisions every declared worktree and returns the bindings with each such entry's
     /// WorkingDirectory rewritten to its worktree, plus the list to hand to teardown on Terminal. When
     /// no entry declares a worktree the input dictionary is returned unchanged.
+    /// <para>
+    /// The strict half of the pair: it is <see cref="ProvisionLazily"/>'s walk, with the first entry
+    /// that could not be provisioned rethrown rather than skipped. Two copies of the walk would be two
+    /// things to keep in step, and the skip/throw choice is the only difference between them.
+    /// </para>
     /// </summary>
     public static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
                    IReadOnlyList<ProvisionedWorktree> Provisioned)
         Provision(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath)
     {
-        ArgumentNullException.ThrowIfNull(bindings);
-        ArgumentException.ThrowIfNullOrWhiteSpace(taskDirectoryPath);
-
-        Dictionary<string, WorkerBindingConfigEntry>? rewritten = null;
-        var provisioned = new List<ProvisionedWorktree>();
-
-        foreach (var (workerName, entry) in bindings)
-        {
-            if (entry.Worktree is not { } spec)
-            {
-                continue;
-            }
-
-            if (entry.WorkingDirectory is not null)
-            {
-                throw new InvalidWorkspaceSpecException(
-                    $"Worker '{workerName}' declares both a WorkingDirectory and a worktree workspace; " +
-                    "a worker runs in exactly one place. Set one, not both.");
-            }
-
-            // Validate on every path (a resume reuses the tree but must still refuse a bad spec).
-            WorktreeProvisioner.ValidateSpec(spec.Repository, spec.Ref);
-            var worktreePath = Path.Combine(taskDirectoryPath, WorkspacesDirectoryName, workerName);
-
-            if (!Directory.Exists(worktreePath))
-            {
-                WorktreeProvisioner.Provision(worktreePath, spec.Repository, spec.Ref);
-            }
-
-            provisioned.Add(new ProvisionedWorktree(spec.Repository, worktreePath));
-            rewritten ??= new Dictionary<string, WorkerBindingConfigEntry>(bindings);
-            rewritten[workerName] = entry with { WorkingDirectory = worktreePath, Worktree = null, IsWorktree = true };
-        }
-
-        return (rewritten ?? bindings, provisioned);
+        var (rewritten, provisioned, _) = Walk(bindings, taskDirectoryPath, throwOnFailure: true);
+        return (rewritten, provisioned);
     }
 
     /// <summary>
@@ -80,7 +52,18 @@ public static class WorktreeWorkspaces
     public static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
                    IReadOnlyList<ProvisionedWorktree> Provisioned,
                    IReadOnlyList<SkippedWorktreeProvisioning> Skipped)
-        ProvisionLazily(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath)
+        ProvisionLazily(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath) =>
+        Walk(bindings, taskDirectoryPath, throwOnFailure: false);
+
+    /// <summary>
+    /// The one walk both entry points above share. <paramref name="throwOnFailure"/> rethrows at the
+    /// failing entry rather than skipping it — which also stops the walk there, so the strict caller
+    /// never leaves later entries' trees provisioned behind a refusal it is about to throw.
+    /// </summary>
+    private static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
+                    IReadOnlyList<ProvisionedWorktree> Provisioned,
+                    IReadOnlyList<SkippedWorktreeProvisioning> Skipped)
+        Walk(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath, bool throwOnFailure)
     {
         ArgumentNullException.ThrowIfNull(bindings);
         ArgumentException.ThrowIfNullOrWhiteSpace(taskDirectoryPath);
@@ -98,11 +81,16 @@ public static class WorktreeWorkspaces
 
             if (entry.WorkingDirectory is not null)
             {
-                skipped.Add(new SkippedWorktreeProvisioning(
-                    workerName,
-                    new InvalidWorkspaceSpecException(
-                        $"Worker '{workerName}' declares both a WorkingDirectory and a worktree workspace; " +
-                        "a worker runs in exactly one place. Set one, not both.")));
+                var bothDeclared = new InvalidWorkspaceSpecException(
+                    $"Worker '{workerName}' declares both a WorkingDirectory and a worktree workspace; " +
+                    "a worker runs in exactly one place. Set one, not both.");
+
+                if (throwOnFailure)
+                {
+                    throw bothDeclared;
+                }
+
+                skipped.Add(new SkippedWorktreeProvisioning(workerName, bothDeclared));
                 continue;
             }
 
@@ -121,7 +109,8 @@ public static class WorktreeWorkspaces
                 rewritten ??= new Dictionary<string, WorkerBindingConfigEntry>(bindings);
                 rewritten[workerName] = entry with { WorkingDirectory = worktreePath, Worktree = null, IsWorktree = true };
             }
-            catch (Exception ex) when (ex is InvalidWorkspaceSpecException or WorktreeProvisioningException)
+            catch (Exception ex) when (!throwOnFailure
+                && ex is InvalidWorkspaceSpecException or WorktreeProvisioningException)
             {
                 skipped.Add(new SkippedWorktreeProvisioning(workerName, ex));
             }
