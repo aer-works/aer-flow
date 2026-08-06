@@ -293,7 +293,7 @@ class DaemonClient {
       }),
     );
     final body = caseInsensitive(jsonDecode(response.body) as Map<String, dynamic>);
-    return (body['taskdirectorypath'] ?? body['roomDirectoryPath'])?.toString() ?? '';
+    return body['roomdirectorypath']?.toString() ?? '';
   }
 
   /// Starts an interactive session on the daemon (M24).

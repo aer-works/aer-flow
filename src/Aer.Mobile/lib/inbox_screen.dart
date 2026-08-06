@@ -387,7 +387,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         roomName: roomNameController.text.trim().isEmpty ? null : roomNameController.text.trim(),
                       );
                       final metaCi = caseInsensitive(meta);
-                      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+                      final startedDirectoryPath = metaCi['roomdirectorypath']?.toString();
                       final startedSessionId = metaCi['sessionid']?.toString();
                       if (startedDirectoryPath != null && mounted) {
                         setState(() => _openDirectoryPath = startedDirectoryPath);
@@ -515,7 +515,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     try {
       final meta = await client.startSession(adapter: selectedAdapter);
       final metaCi = caseInsensitive(meta);
-      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+      final startedDirectoryPath = metaCi['roomdirectorypath']?.toString();
       final startedSessionId = metaCi['sessionid']?.toString();
       if (startedDirectoryPath != null && mounted) {
         setState(() => _openDirectoryPath = startedDirectoryPath);

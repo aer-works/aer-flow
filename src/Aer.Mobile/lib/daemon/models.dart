@@ -204,7 +204,7 @@ class SessionMetadata {
     final j = caseInsensitive(json);
     return SessionMetadata(
       sessionId: j['sessionid'].toString(),
-      roomDirectoryPath: j['taskdirectorypath'].toString(),
+      roomDirectoryPath: j['roomdirectorypath'].toString(),
       currentAdapter: j['currentadapter']?.toString() ?? '',
       turnCount: (j['turncount'] as num?)?.toInt() ?? 0,
       turns: ((j['turns'] as List<dynamic>?) ?? []).map((t) => SessionTurn.fromJson(t as Map<String, dynamic>)).toList(),
@@ -282,7 +282,7 @@ class RoomFleetItem {
   factory RoomFleetItem.fromJson(Map<String, dynamic> json) {
     final j = caseInsensitive(json);
     return RoomFleetItem(
-      roomDirectoryPath: j['taskdirectorypath']?.toString() ?? '',
+      roomDirectoryPath: j['roomdirectorypath']?.toString() ?? '',
       friendlyName: j['friendlyname']?.toString() ?? '',
       typeLabel: j['typelabel']?.toString() ?? '',
       statusText: j['statustext']?.toString() ?? '',
