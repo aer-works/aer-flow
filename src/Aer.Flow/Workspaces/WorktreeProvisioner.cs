@@ -67,6 +67,11 @@ public static class WorktreeProvisioner
         var (exitCode, _, stderr) = RunGit(repository, "worktree", "add", worktreePath, reference);
         if (exitCode != 0)
         {
+            if (IsRegisteredWorktreeForRef(repository, worktreePath, reference))
+            {
+                return;
+            }
+
             throw new WorktreeProvisioningException(
                 $"Provisioning a worktree of '{reference}' from '{repository}' failed (git worktree add, " +
                 $"exit {exitCode}): {stderr.Trim()}");
@@ -234,6 +239,71 @@ public static class WorktreeProvisioner
             Task.WaitAll(stdout, stderr);
             process.WaitForExit();
             return (process.ExitCode, stdout.Result, stderr.Result);
+        }
+    }
+
+    private static bool IsRegisteredWorktreeForRef(string repository, string worktreePath, string reference)
+    {
+        var (refExit, refSha, _) = RunGit(repository, "rev-parse", "--verify", $"{reference}^{{commit}}");
+        if (refExit != 0 || string.IsNullOrWhiteSpace(refSha))
+        {
+            return false;
+        }
+        refSha = refSha.Trim();
+
+        var (listExit, listOut, _) = RunGit(repository, "worktree", "list", "--porcelain");
+        if (listExit != 0 || string.IsNullOrWhiteSpace(listOut))
+        {
+            return false;
+        }
+
+        string? currentPath = null;
+        string? currentHead = null;
+
+        var lines = listOut.Split(['\r', '\n']);
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("worktree ", StringComparison.Ordinal))
+            {
+                if (currentPath != null && currentHead != null)
+                {
+                    if (PathsEqual(currentPath, worktreePath) && string.Equals(currentHead, refSha, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+                currentPath = trimmed["worktree ".Length..].Trim();
+                currentHead = null;
+            }
+            else if (trimmed.StartsWith("HEAD ", StringComparison.Ordinal))
+            {
+                currentHead = trimmed["HEAD ".Length..].Trim();
+            }
+        }
+
+        if (currentPath != null && currentHead != null)
+        {
+            if (PathsEqual(currentPath, worktreePath) && string.Equals(currentHead, refSha, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool PathsEqual(string path1, string path2)
+    {
+        try
+        {
+            var full1 = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path1));
+            var full2 = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path2));
+            return string.Equals(full1, full2, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 }
