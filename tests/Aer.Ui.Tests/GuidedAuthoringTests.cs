@@ -437,17 +437,41 @@ public class GuidedAuthoringTests
         flow.Steps[0].Prompt = "Write it.";
         flow.Steps[0].ProducesFileName = "draft.md";
 
-        // Shell + patterns is coherent (CategoriesDefeatedByTheShell is empty) but refused by GeminiWorkerAdapter.
+        // Network without shell is coherent (no shell to defeat a withheld category) but refused by
+        // GeminiWorkerAdapter: agy's only auto-approve-network flag (--dangerously-skip-permissions)
+        // also grants shell, so the narrower shape cannot be expressed. Shell + patterns used to reach
+        // here too (#624) but #659 now honours it via the hook matcher -- see the acceptance test below.
+        flow.GrantReadFiles = true;
+        flow.GrantWriteFiles = true;
+        flow.GrantNetworkAccess = true;
+
+        var message = Assert.Single(flow.GuidanceMessages);
+        Assert.Contains("'draft'", message, StringComparison.Ordinal);
+        Assert.Contains("agy only supports auto-approving network access", message, StringComparison.Ordinal);
+        Assert.False(flow.CanSave);
+    }
+
+    [Fact]
+    public void Validate_accepts_a_pattern_scoped_shell_grant_now_that_the_hook_enforces_it()
+    {
+        var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
+        flow.AddStepCommand.Execute(null);
+        flow.Steps[0].Name = "draft";
+        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Prompt = "Write it.";
+        flow.Steps[0].ProducesFileName = "draft.md";
+
+        // #659: a shell + network grant scoped by ShellCommandPatterns is honoured -- the
+        // AgyHookCheckCommand strict matcher enforces the patterns -- so the adapter no longer refuses
+        // it at bind. This is the UI-side proof that the #624 refusal is gone.
         flow.GrantRunShellCommands = true;
         flow.GrantReadFiles = true;
         flow.GrantWriteFiles = true;
         flow.GrantNetworkAccess = true;
         flow.ShellCommandPatternsText = "git:*";
 
-        var message = Assert.Single(flow.GuidanceMessages);
-        Assert.Contains("'draft'", message, StringComparison.Ordinal);
-        Assert.Contains("AER cannot yet scope an agy shell grant to ShellCommandPatterns", message, StringComparison.Ordinal);
-        Assert.False(flow.CanSave);
+        Assert.DoesNotContain(flow.GuidanceMessages, m => m.Contains("scope an agy shell grant", StringComparison.Ordinal));
+        Assert.True(flow.CanSave);
     }
 
     [Fact]
@@ -466,11 +490,11 @@ public class GuidedAuthoringTests
         flow.Steps[0].ProducesFileName = "draft.md";
         flow.Steps[1].ProducesFileName = "revise.md";
 
-        flow.GrantRunShellCommands = true;
+        // Both steps share one agy-refused shape (network without shell -- see the refusal test above),
+        // so the two are coalesced into a single message naming them all.
         flow.GrantReadFiles = true;
         flow.GrantWriteFiles = true;
         flow.GrantNetworkAccess = true;
-        flow.ShellCommandPatternsText = "git:*";
 
         var message = Assert.Single(flow.GuidanceMessages);
         Assert.Contains("'draft', 'revise'", message, StringComparison.Ordinal);

@@ -525,14 +525,12 @@ public class MainWindowBindingsEditorTests
         Assert.False(entry.HasPermissionGrantGapWarning);
 
         // A COHERENT grant that agy still cannot express, so what surfaces is the vendor gap rather
-        // than #645's rule. Shell alone no longer reaches this assertion: it is incoherent under #529
-        // and the adapter-independent problem is reported first, deliberately -- see the coherence
-        // test below. Patterns are agy's own refusal (#624).
+        // than #645's rule: network without shell, which agy cannot grant narrowly (its only
+        // auto-approve-network flag also grants shell). A pattern-scoped shell grant is no longer such
+        // a shape -- #659 honours it via the hook matcher -- so it cannot stand in here any more.
         entry.GrantReadFiles = true;
         entry.GrantWriteFiles = true;
         entry.GrantNetworkAccess = true;
-        entry.GrantRunShellCommands = true;
-        entry.ShellCommandPatternsText = "git:*";
 
         Assert.True(entry.HasPermissionGrantGapWarning);
         Assert.Contains("agy", entry.PermissionGrantGapWarning);
