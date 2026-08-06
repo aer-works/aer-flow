@@ -110,11 +110,11 @@ public readonly record struct DecisionId(string Value)
     }
 }
 
-/// <summary>Identifies a held-work reference (lane directory path or lane reference ID).</summary>
+/// <summary>Identifies a held-work reference (workflow directory path or reference id).</summary>
 [JsonConverter(typeof(Converter))]
 public readonly record struct HeldWorkRef(string Value)
 {
-    public string LaneDirectoryPath => Value;
+    public string AsWorkflowDirectoryPath() => Value;
     public override string ToString() => Value;
 
     private sealed class Converter : StringIdJsonConverter<HeldWorkRef>

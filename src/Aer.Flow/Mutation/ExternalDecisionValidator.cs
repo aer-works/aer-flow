@@ -33,7 +33,7 @@ public static class ExternalDecisionValidator
 
         // #815: RetryWithRevision (only) also reaches a step #594's classification quota-parked —
         // Failed, with a FlowEvent.StepRetryScheduled already recorded (RetryNotBefore set) — even
-        // though it was never paused; a lane workflow declares no PausePoint at all, so nothing
+        // though it was never paused; a workflow declares no PausePoint at all, so nothing
         // else can reach it. Reuses #594's existing classification-clearing consequence
         // (StateProjector's WorkflowResumed/RetryWithRevision handling already looks the step up by
         // ReferencedExecutionId, not by Paused status, so no change is needed there). Every other

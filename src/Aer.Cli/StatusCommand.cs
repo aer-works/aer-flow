@@ -171,7 +171,7 @@ public static class StatusCommand
     }
 
     // Public as a test seam, matching FormatStepStatus and EscapeNonPrintable: the reader-side
-    // rollover behavior is asserted directly (the lane review's medium finding).
+    // rollover behavior is asserted directly (the workflow review's medium finding).
     public static void TailStreams(TextWriter output, string artifactsDir, Dictionary<string, long> streamOffsets)
     {
         if (!Directory.Exists(artifactsDir))
@@ -207,7 +207,7 @@ public static class StatusCommand
         // Rollover detection keys on the rollover FILE'S identity (its mtime advances every time
         // the writer rolls), never on a length comparison: a fresh file whose length equals the
         // stored offset made `length < offset` miss the rollover entirely and silently drop the
-        // new content -- found by the reader-side test the lane review demanded. The rollover
+        // new content -- found by the reader-side test the workflow review demanded. The rollover
         // path doubles as its own dict key; log and rollover paths are distinct strings.
         if (File.Exists(rolloverPath))
         {
@@ -314,7 +314,7 @@ public static class StatusCommand
                 // charsUsed == 0 with the byte consumed means the decoder BUFFERED a valid-so-far
                 // lead/continuation byte of a multi-byte sequence -- not an invalid byte. Emitting
                 // an escape here duplicated every non-ASCII character as \xNN + the decoded char
-                // (the lane review's high finding). Advance silently; the decoder produces the
+                // (the workflow review's high finding). Advance silently; the decoder produces the
                 // character when the sequence completes, and the flush below drains a sequence
                 // truncated at end-of-input as U+FFFD (genuinely invalid bytes already surface as
                 // U+FFFD through the decoder's replacement fallback).
@@ -427,7 +427,7 @@ public static class StatusCommand
 
         // Probe ONLY steps claiming a live engine. Paused is a mask over an already-terminal
         // outcome (StateProjector) -- its engine has legitimately exited, and probing it stamped
-        // every healthy paused step "crash recovery will classify" (the lane review's high
+        // every healthy paused step "crash recovery will classify" (the workflow review's high
         // finding). Pending has no execution yet, so no liveness claim applies there either.
         if (step.Status is not StepStatus.Running)
         {

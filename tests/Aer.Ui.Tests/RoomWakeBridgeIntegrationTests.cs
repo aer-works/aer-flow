@@ -86,7 +86,7 @@ public class RoomWakeBridgeIntegrationTests
 
             Assert.Equal(2, firstRead.Count);
             Assert.Equal(firstRead.OrderBy(w => w.Ref.Value), secondRead.OrderBy(w => w.Ref.Value));
-            Assert.Contains(firstRead, w => w.Ref.Value == terminalLane && w.Kind == RoomWakeKind.DispatchedLaneTerminated);
+            Assert.Contains(firstRead, w => w.Ref.Value == terminalLane && w.Kind == RoomWakeKind.DispatchedWorkflowTerminated);
             Assert.Contains(firstRead, w => w.Ref == orphanLaneRef && w.Kind == RoomWakeKind.DispatchOrphaned);
         }
         finally
@@ -216,7 +216,7 @@ public class RoomWakeBridgeIntegrationTests
             }
 
             Assert.NotNull(wakes);
-            Assert.Contains(wakes!, w => w.Ref.Value == laneDirectory && w.Kind == RoomWakeKind.DispatchedLaneTerminated);
+            Assert.Contains(wakes!, w => w.Ref.Value == laneDirectory && w.Kind == RoomWakeKind.DispatchedWorkflowTerminated);
         }
         finally
         {
@@ -258,7 +258,7 @@ public class RoomWakeBridgeIntegrationTests
             var tick = await RoomWakeBridge.DeriveCurrentWakesAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // The healthy lane's wake must survive the sick lane's probe failure...
-            Assert.Contains(tick.Wakes, w => w.Ref.Value == healthyLane && w.Kind == RoomWakeKind.DispatchedLaneTerminated);
+            Assert.Contains(tick.Wakes, w => w.Ref.Value == healthyLane && w.Kind == RoomWakeKind.DispatchedWorkflowTerminated);
             // ...and the sick lane must produce no wake this tick (the transience reasoning lives
             // on RoomWakeBridgeState.CurrentProbeFailures' doc comment), but the failure is
             // surfaced, never logged-and-lost.

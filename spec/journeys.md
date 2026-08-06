@@ -442,24 +442,24 @@ case that pays for the whole idea.
 
 **Status:** Fails — automated + human
 
-Work you started runs as several lanes while you're away. Each moment that needs or informs you — a
-lane finished, failed, or waiting on your call — reaches your phone without you asking; acting from
+Work you started runs as several workflows while you're away. Each moment that needs or informs you — a
+workflow finished, failed, or waiting on your call — reaches your phone without you asking; acting from
 the phone keeps the room moving; and at no point after initiation is the desktop required.
 
 - **Spans** — daemon → paired phone → daemon · *the operating loop: wake events out, decisions back
   (#778's fast-fire orchestrator turns, #799's wake-bridge, decision 0030's AER-as-notifier)*
-- **Passes when** — a multi-lane room, initiated from either surface, delivers lane-terminal and
+- **Passes when** — a multi-workflow room, initiated from either surface, delivers workflow-terminal and
   needs-you events to a paired phone via AER's own notifier; a decision answered from the phone
   advances the room; and the cycle repeats at least twice with the desktop untouched after
   initiation. The notification informs and opens, never carries the verdict (decision 0018).
-- **Path** *(illustrative)* — dispatch two lanes · pocket the phone · a lane finishes and the phone
+- **Path** *(illustrative)* — dispatch two workflows · pocket the phone · a workflow finishes and the phone
   says so · a review verdict needs you; the phone opens it; you answer · the room dispatches the
-  follow-up · the second lane's moment arrives the same way · the desk was never touched.
+  follow-up · the second workflow's moment arrives the same way · the desk was never touched.
 - **Verify** — the phone half is a human walk (real device, real notification); the daemon-side
   event→notification pipeline and the decision round-trip are automated. "Nothing needed you" must
   be evidenced by AER's own gate state, never by the absence of a notification — J3's 0030 rule,
   verbatim.
-- **Today** — nothing delivers. Push exists on no surface, lane events are relayed by a human
+- **Today** — nothing delivers. Push exists on no surface, workflow events are relayed by a human
   orchestrator hand-tailing journals, and the decision inbox is scoped to a single open task. #806
   records the measured session behind this journey — a full build day driven from a pocket through
   a harness never designed for it, every workaround in it a requirement here. `docs/plan.md` §M26

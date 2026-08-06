@@ -10,7 +10,7 @@ public class RoomWakeDerivationTests
     private const string CitedSubject = "exec-lane-a";
 
     [Fact]
-    public void Dispatched_ref_with_terminal_lane_wakes_as_DispatchedLaneTerminated()
+    public void Dispatched_ref_with_terminal_workflow_wakes_as_DispatchedWorkflowTerminated()
     {
         var state = RoomProjector.Project([
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
@@ -18,15 +18,15 @@ public class RoomWakeDerivationTests
 
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
 
         var wake = Assert.Single(wakes);
         Assert.Equal(LaneRefA, wake.Ref);
-        Assert.Equal(RoomWakeKind.DispatchedLaneTerminated, wake.Kind);
+        Assert.Equal(RoomWakeKind.DispatchedWorkflowTerminated, wake.Kind);
     }
 
     [Fact]
-    public void Escalated_ref_with_terminal_lane_wakes_as_EscalatedLaneTerminated()
+    public void Escalated_ref_with_terminal_workflow_wakes_as_EscalatedWorkflowTerminated()
     {
         var state = RoomProjector.Project([
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
@@ -35,10 +35,10 @@ public class RoomWakeDerivationTests
 
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
 
         var wake = Assert.Single(wakes);
-        Assert.Equal(RoomWakeKind.EscalatedLaneTerminated, wake.Kind);
+        Assert.Equal(RoomWakeKind.EscalatedWorkflowTerminated, wake.Kind);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class RoomWakeDerivationTests
 
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: false, IsTerminal: false) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: false, IsTerminal: false) });
 
         var wake = Assert.Single(wakes);
         Assert.Equal(RoomWakeKind.DispatchOrphaned, wake.Kind);
@@ -70,7 +70,7 @@ public class RoomWakeDerivationTests
         // state, and pre-#832 this exact input derived a spurious DispatchOrphaned.
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [proposalRef] = new(JournalExists: false, IsTerminal: false) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [proposalRef] = new(JournalExists: false, IsTerminal: false) });
 
         Assert.Empty(wakes);
     }
@@ -84,7 +84,7 @@ public class RoomWakeDerivationTests
 
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: false) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: false) });
 
         Assert.Empty(wakes);
     }
@@ -98,7 +98,7 @@ public class RoomWakeDerivationTests
 
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
 
         Assert.Single(wakes);
     }
@@ -116,7 +116,7 @@ public class RoomWakeDerivationTests
         // daemon-side ack, no separate "clear" operation.
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
+            new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) });
 
         Assert.Empty(wakes);
     }
@@ -132,7 +132,7 @@ public class RoomWakeDerivationTests
 
         var wakes = RoomWakeDerivation.DeriveWakes(
             state,
-            new Dictionary<HeldWorkRef, LaneProbeResult>
+            new Dictionary<HeldWorkRef, WorkflowProbeResult>
             {
                 [LaneRefA] = new(JournalExists: false, IsTerminal: false),
                 [LaneRefB] = new(JournalExists: true, IsTerminal: true),
@@ -140,7 +140,7 @@ public class RoomWakeDerivationTests
 
         Assert.Equal(2, wakes.Count);
         Assert.Contains(wakes, w => w.Ref == LaneRefA && w.Kind == RoomWakeKind.DispatchOrphaned);
-        Assert.Contains(wakes, w => w.Ref == LaneRefB && w.Kind == RoomWakeKind.EscalatedLaneTerminated);
+        Assert.Contains(wakes, w => w.Ref == LaneRefB && w.Kind == RoomWakeKind.EscalatedWorkflowTerminated);
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class RoomWakeDerivationTests
         var state = RoomProjector.Project([
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
         ]);
-        var probes = new Dictionary<HeldWorkRef, LaneProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) };
+        var probes = new Dictionary<HeldWorkRef, WorkflowProbeResult> { [LaneRefA] = new(JournalExists: true, IsTerminal: true) };
 
         var wakes1 = RoomWakeDerivation.DeriveWakes(state, probes);
         var wakes2 = RoomWakeDerivation.DeriveWakes(state, probes);

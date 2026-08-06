@@ -179,7 +179,7 @@ namespace Aer.Daemon
             builder.Services.AddSingleton<MainWindowViewModel>();
             builder.Services.AddSingleton<PairedClientsStore>();
 
-            // #799: the room wake-bridge — pure derivation of the wake set plus a read-only lane
+            // #799: the room wake-bridge — pure derivation of the wake set plus a read-only workflow
             // probe, no persisted queue. RoomWakeBridgeState is the thin settable pointer to which
             // room directory to watch; the hosted RoomWakeBridge recomputes the wake set on it.
             builder.Services.AddSingleton<RoomWakeBridgeState>();
@@ -773,7 +773,7 @@ namespace Aer.Daemon
             // seam where approving a memory-proposal-shaped item actually applies it (decision
             // 0044 point 3). One endpoint with an Outcome field, mirroring /api/tasks/decide's own
             // shape above, rather than two endpoints -- the daemon's existing decide-style
-            // convention, not a new one invented for this lane. Synchronous (unlike
+            // convention, not a new one invented for this workflow. Synchronous (unlike
             // /api/tasks/decide's fire-and-forget dispatch): a resolve is one journal append plus,
             // at most, one small file write -- not a worker turn -- so the operator gets the actual
             // outcome (including a traversal refusal or a loud missing-delete-target failure) back

@@ -68,7 +68,7 @@ public static class ArtifactPruner
         // the two steps, and the move then pulls the active directory out from under the resumed write.
         using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, "artifact pruning");
 
-        var probeResult = await LaneTerminalProbe.ProbeAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(false);
+        var probeResult = await WorkflowTerminalProbe.ProbeAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(false);
         if (!probeResult.IsTerminal)
         {
             return false;
