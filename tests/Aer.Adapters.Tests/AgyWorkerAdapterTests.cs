@@ -1276,8 +1276,12 @@ public class AgyWorkerAdapterTests
     }
 
     [Fact]
-    public void Unknown_adapter_key_lookup_including_gemini_throws_loud_rename_error()
+    public void Unknown_adapter_key_gemini_throws_plain_unknown_error_with_no_rename_hint()
     {
+        // Hard cutover (#1035): "gemini" is not a recognized adapter identity — it falls through to
+        // the generic unknown-adapter message, exactly like any other unregistered name. The message
+        // must NOT carry the old "renamed to 'agy'" migration hint (polarity: proves the special-case
+        // is gone, not merely that some message is thrown).
         var config = new Dictionary<string, WorkerBindingConfigEntry>
         {
             ["worker"] = new WorkerBindingConfigEntry(
@@ -1291,7 +1295,7 @@ public class AgyWorkerAdapterTests
             WorkerBindingResolver.Resolve(config, WorkerAdapterRegistry.Default));
 
         Assert.Contains("gemini", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("agy", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("renamed", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
