@@ -76,7 +76,7 @@ public sealed partial class RoomsViewModel : ObservableObject
             var (items, error) = await session.GetFleetAsync(IncludeArchived, cancellationToken).ConfigureAwait(true);
             if (items == null)
             {
-                ErrorText = error ?? "Could not load tasks.";
+                ErrorText = error ?? "Could not load rooms.";
                 return;
             }
 
@@ -235,7 +235,7 @@ public sealed partial class RoomsViewModel : ObservableObject
         {
             foreach (var item in targets)
             {
-                var outcome = await session.ArchiveTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
+                var outcome = await session.ArchiveRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
                 if (outcome.ErrorMessage != null)
                 {
                     failures.Add($"{item.FriendlyName}: {outcome.ErrorMessage}");
@@ -253,7 +253,7 @@ public sealed partial class RoomsViewModel : ObservableObject
         // refresh would just be clobbered.
         if (failures.Count > 0)
         {
-            ErrorText = $"{failures.Count} of {targets.Count} task(s) couldn't be archived: {string.Join("; ", failures)}";
+            ErrorText = $"{failures.Count} of {targets.Count} room(s) couldn't be archived: {string.Join("; ", failures)}";
         }
     }
 
@@ -277,7 +277,7 @@ public sealed partial class RoomsViewModel : ObservableObject
         {
             foreach (var item in targets)
             {
-                var outcome = await session.DeleteTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
+                var outcome = await session.DeleteRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
                 if (outcome.ErrorMessage != null)
                 {
                     failures.Add($"{item.FriendlyName}: {outcome.ErrorMessage}");
@@ -293,13 +293,13 @@ public sealed partial class RoomsViewModel : ObservableObject
 
         if (failures.Count > 0)
         {
-            ErrorText = $"{failures.Count} of {targets.Count} task(s) couldn't be deleted: {string.Join("; ", failures)}";
+            ErrorText = $"{failures.Count} of {targets.Count} room(s) couldn't be deleted: {string.Join("; ", failures)}";
         }
     }
 
     private async Task ArchiveAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
-        var outcome = await session.ArchiveTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        var outcome = await session.ArchiveRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
         {
             item.RowErrorText = outcome.ErrorMessage;
@@ -311,7 +311,7 @@ public sealed partial class RoomsViewModel : ObservableObject
 
     private async Task UnarchiveAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
-        var outcome = await session.UnarchiveTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        var outcome = await session.UnarchiveRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
         {
             item.RowErrorText = outcome.ErrorMessage;
@@ -323,7 +323,7 @@ public sealed partial class RoomsViewModel : ObservableObject
 
     private async Task DeleteAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
-        var outcome = await session.DeleteTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        var outcome = await session.DeleteRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
         {
             item.IsConfirmingDelete = false;

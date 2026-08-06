@@ -20,10 +20,10 @@ class RoomsScreen extends StatefulWidget {
   const RoomsScreen({super.key, required this.client});
 
   @override
-  State<RoomsScreen> createState() => _TasksScreenState();
+  State<RoomsScreen> createState() => _RoomsScreenState();
 }
 
-class _TasksScreenState extends State<RoomsScreen> {
+class _RoomsScreenState extends State<RoomsScreen> {
   List<RoomFleetItem> _items = [];
   bool _includeArchived = false;
   bool _isLoading = true;
@@ -45,7 +45,7 @@ class _TasksScreenState extends State<RoomsScreen> {
     });
 
     try {
-      final items = await widget.client.listTasks(includeArchived: _includeArchived);
+      final items = await widget.client.listRooms(includeArchived: _includeArchived);
       if (!mounted) return;
       setState(() => _items = items);
     } on DaemonException catch (e) {
@@ -58,7 +58,7 @@ class _TasksScreenState extends State<RoomsScreen> {
 
   Future<void> _archive(RoomFleetItem item) async {
     try {
-      await widget.client.archiveTask(item.roomDirectoryPath);
+      await widget.client.archiveRoom(item.roomDirectoryPath);
       await _refresh();
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -67,7 +67,7 @@ class _TasksScreenState extends State<RoomsScreen> {
 
   Future<void> _unarchive(RoomFleetItem item) async {
     try {
-      await widget.client.unarchiveTask(item.roomDirectoryPath);
+      await widget.client.unarchiveRoom(item.roomDirectoryPath);
       await _refresh();
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -81,7 +81,7 @@ class _TasksScreenState extends State<RoomsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete this task?'),
+        title: const Text('Delete this room?'),
         content: Text('"${item.friendlyName}" will be permanently removed. This can\'t be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -92,7 +92,7 @@ class _TasksScreenState extends State<RoomsScreen> {
     if (confirmed != true) return;
 
     try {
-      await widget.client.deleteTask(item.roomDirectoryPath);
+      await widget.client.deleteRoom(item.roomDirectoryPath);
       await _refresh();
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -140,7 +140,7 @@ class _TasksScreenState extends State<RoomsScreen> {
     final failures = <String>[];
     for (final item in targets) {
       try {
-        await widget.client.archiveTask(item.roomDirectoryPath);
+        await widget.client.archiveRoom(item.roomDirectoryPath);
       } on DaemonException catch (e) {
         failures.add('${item.friendlyName}: ${e.message}');
       }
@@ -151,7 +151,7 @@ class _TasksScreenState extends State<RoomsScreen> {
 
     if (failures.isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${failures.length} of ${targets.length} task(s) couldn't be archived: ${failures.join('; ')}")),
+        SnackBar(content: Text("${failures.length} of ${targets.length} room(s) couldn't be archived: ${failures.join('; ')}")),
       );
     }
   }
@@ -168,7 +168,7 @@ class _TasksScreenState extends State<RoomsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete ${targets.length} task${targets.length == 1 ? '' : 's'}?'),
+        title: Text('Delete ${targets.length} room${targets.length == 1 ? '' : 's'}?'),
         content: const Text('These will be permanently removed. This can\'t be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -181,7 +181,7 @@ class _TasksScreenState extends State<RoomsScreen> {
     final failures = <String>[];
     for (final item in targets) {
       try {
-        await widget.client.deleteTask(item.roomDirectoryPath);
+        await widget.client.deleteRoom(item.roomDirectoryPath);
       } on DaemonException catch (e) {
         failures.add('${item.friendlyName}: ${e.message}');
       }
@@ -192,7 +192,7 @@ class _TasksScreenState extends State<RoomsScreen> {
 
     if (failures.isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${failures.length} of ${targets.length} task(s) couldn't be deleted: ${failures.join('; ')}")),
+        SnackBar(content: Text("${failures.length} of ${targets.length} room(s) couldn't be deleted: ${failures.join('; ')}")),
       );
     }
   }

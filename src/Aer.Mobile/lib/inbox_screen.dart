@@ -125,16 +125,16 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PairingScreen()));
   }
 
-  Future<void> _pickRecentTask() async {
+  Future<void> _pickRecentRoom() async {
     final client = _client;
     if (client == null) return;
     try {
-      final directories = await client.recentTasks();
+      final directories = await client.recentRooms();
       if (!mounted) return;
       final selected = await showModalBottomSheet<String>(
         context: context,
         builder: (context) => directories.isEmpty
-            ? const Padding(padding: EdgeInsets.all(24), child: Text('No recent tasks on that host yet.'))
+            ? const Padding(padding: EdgeInsets.all(24), child: Text('No recent rooms on that host yet.'))
             : ListView(
                 shrinkWrap: true,
                 children: directories
@@ -143,7 +143,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
               ),
       );
       if (selected != null) {
-        await client.openTask(selected);
+        await client.openRoom(selected);
         if (mounted) setState(() => _openDirectoryPath = selected);
       }
     } on DaemonException catch (e) {
@@ -422,10 +422,10 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         // _pickRecentTask already relies on) so this screen actually shows the
                         // task instead of stranding on the empty state.
                         setState(() => _openDirectoryPath = dirPath);
-                        await client.openTask(dirPath);
+                        await client.openRoom(dirPath);
                       }
                       messenger.showSnackBar(
-                        SnackBar(content: Text('Started task ($dirPath)')),
+                        SnackBar(content: Text('Started room ($dirPath)')),
                       );
                     }
                   } on DaemonException catch (e) {
@@ -575,7 +575,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         actions: [
           IconButton(icon: const Icon(Icons.chat_bubble_outline), tooltip: 'Start new chat', onPressed: _startNewChat),
           IconButton(icon: const Icon(Icons.add), tooltip: 'Start from template', onPressed: _showTemplatePicker),
-          IconButton(icon: const Icon(Icons.folder_open), tooltip: 'Recent tasks', onPressed: _pickRecentTask),
+          IconButton(icon: const Icon(Icons.folder_open), tooltip: 'Recent rooms', onPressed: _pickRecentRoom),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'forget') _forgetPairing();
@@ -637,7 +637,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                 onPressed: _showTemplatePicker,
               ),
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: _pickRecentTask, child: const Text('Browse recent tasks')),
+              OutlinedButton(onPressed: _pickRecentRoom, child: const Text('Browse recent rooms')),
             ],
           ),
         ),

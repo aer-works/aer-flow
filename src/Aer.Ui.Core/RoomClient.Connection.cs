@@ -75,7 +75,7 @@ public sealed partial class RoomClient
                     await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
                     return true;
                 }
-                else if (meta != null && !meta.HasRunningTasks)
+                else if (meta != null && !meta.HasRunningRooms)
                 {
                     // Version skew! Force shutdown running daemon to respawn updated one (safe since no tasks are running)
                     await _httpClient.PostAsync($"{_activeDaemonUrl}/api/daemon/shutdown", null, cancellationToken).ConfigureAwait(true);
@@ -271,7 +271,7 @@ public sealed partial class RoomClient
             if (_isClientMode)
             {
                 _isClientMode = false;
-                if (CurrentTaskDirectoryPath != null)
+                if (CurrentRoomDirectoryPath != null)
                 {
                     _ = EnsureDaemonConnectedAsync(CancellationToken.None);
                 }
@@ -455,18 +455,18 @@ public sealed partial class RoomClient
                                 _syncContext.Post(_ =>
                                 {
                                     UpdateProjection(projection);
-                                    if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                                    if (_onProjectionUpdated != null && CurrentRoomDirectoryPath != null)
                                     {
-                                        _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                                        _onProjectionUpdated(projection, CurrentRoomDirectoryPath);
                                     }
                                 }, null);
                             }
                             else
                             {
                                 UpdateProjection(projection);
-                                if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                                if (_onProjectionUpdated != null && CurrentRoomDirectoryPath != null)
                                 {
-                                    _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                                    _onProjectionUpdated(projection, CurrentRoomDirectoryPath);
                                 }
                             }
                         }

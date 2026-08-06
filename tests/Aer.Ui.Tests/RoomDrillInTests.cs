@@ -537,7 +537,7 @@ public class RoomDrillInTests
             Assert.True(banner.HasStderrExcerpt);
             Assert.Contains("Failed · architect · Worker exited with non-zero code 1.", banner.Headline);
             Assert.Equal("Ask architect to fix it", banner.AskWorkerLabel);
-            Assert.Equal("Try again (re-run task)", banner.TryAgainLabel);
+            Assert.Equal("Try again (re-run room)", banner.TryAgainLabel);
 
             // Architect failed permanently and critic depends on it: the workflow is Terminal, so
             // the re-run clone flow applies and Try again is offered. The polarity — a live

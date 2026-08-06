@@ -98,7 +98,7 @@
         <!-- #336: one destination for "the record you have open", whichever shape it is. This was
              two rail buttons (Task and Chat) that a user had to already know the answer to before
              navigating — the shape of a record is a property of the record, not a choice. -->
-        <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
+        <Button x:Name="NavRoomButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
                 HorizontalAlignment="Stretch">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
             <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
@@ -202,7 +202,7 @@
     </Border>
     <Panel>
       <views:HomeView x:Name="HomeViewControl" IsVisible="{Binding IsHomeVisible}" />
-      <views:RoomView x:Name="RoomViewControl" IsVisible="{Binding IsTaskVisible}" />
+      <views:RoomView x:Name="RoomViewControl" IsVisible="{Binding IsRoomVisible}" />
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
       <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
       <views:ChatView x:Name="ChatViewControl" IsVisible="{Binding IsChatVisible}" />

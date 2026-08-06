@@ -18,7 +18,7 @@ namespace Aer.Ui.Core;
 /// </summary>
 public sealed class LocalUiConfigurationStore(string configFilePath)
 {
-    private const int MaxRecentTaskDirectories = 10;
+    private const int MaxRecentRoomDirectories = 10;
     private const int MaxRecentCommandsPerVendor = 5;
 
     /// <summary>
@@ -28,15 +28,15 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     public static LocalUiConfigurationStore CreateDefault() => new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create),
         "Aer.Ui",
-        "recent-task-directories.json"));
+        "recent-room-directories.json"));
 
-    public async Task<IReadOnlyList<string>> LoadRecentTaskDirectoriesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> LoadRecentRoomDirectoriesAsync(CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
 
         // A listed directory that no longer exists is stale list state, reflected here by
         // omission rather than surfaced as a system error (UI spec §3.1).
-        return configuration.RecentTaskDirectories.Where(Directory.Exists).ToList();
+        return configuration.RecentRoomDirectories.Where(Directory.Exists).ToList();
     }
 
     /// <summary>
@@ -51,14 +51,14 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
         var fullPath = Path.GetFullPath(roomDirectoryPath);
 
         var updated = new List<string> { fullPath };
-        updated.AddRange(configuration.RecentTaskDirectories.Where(
+        updated.AddRange(configuration.RecentRoomDirectories.Where(
             path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal)));
-        if (updated.Count > MaxRecentTaskDirectories)
+        if (updated.Count > MaxRecentRoomDirectories)
         {
-            updated.RemoveRange(MaxRecentTaskDirectories, updated.Count - MaxRecentTaskDirectories);
+            updated.RemoveRange(MaxRecentRoomDirectories, updated.Count - MaxRecentRoomDirectories);
         }
 
-        await SaveConfigurationAsync(configuration with { RecentTaskDirectories = updated }, cancellationToken).ConfigureAwait(false);
+        await SaveConfigurationAsync(configuration with { RecentRoomDirectories = updated }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -66,16 +66,16 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     /// by a real delete so a stale recent doesn't 404 on the next open. A no-op if the path isn't
     /// present, matching this store's own "rebuildable convenience, not authoritative" stance.
     /// </summary>
-    public async Task RemoveRecentTaskDirectoryAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task RemoveRecentRoomDirectoryAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
         var fullPath = Path.GetFullPath(roomDirectoryPath);
 
-        var updated = configuration.RecentTaskDirectories
+        var updated = configuration.RecentRoomDirectories
             .Where(path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal))
             .ToList();
 
-        await SaveConfigurationAsync(configuration with { RecentTaskDirectories = updated }, cancellationToken).ConfigureAwait(false);
+        await SaveConfigurationAsync(configuration with { RecentRoomDirectories = updated }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -235,7 +235,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     /// migration worth writing.
     /// </summary>
     private sealed record StoredConfiguration(
-        List<string> RecentTaskDirectories,
+        List<string> RecentRoomDirectories,
         string? LastBindingsFilePath,
         string? LastWorkflowTemplateFilePath,
         string? TailscaleAuthKey,

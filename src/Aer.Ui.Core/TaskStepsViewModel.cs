@@ -309,7 +309,7 @@ public sealed partial class FailedStepBannerViewModel : ObservableObject
         // The projector therefore passes reRunAction only when the workflow is Terminal, and
         // CanTryAgain hides the button in the meantime rather than offering a click that does
         // nothing.
-        TryAgainLabel = "Try again (re-run task)";
+        TryAgainLabel = "Try again (re-run room)";
         _tryAgainAction = reRunAction;
     }
 

@@ -26,7 +26,7 @@ public static class FlowStateReporter
         if (result.ResumedFromSnapshot)
         {
             output.WriteLine(
-                $"Resumed the snapshot already bound in this task directory " +
+                $"Resumed the snapshot already bound in this room directory " +
                 $"(template '{result.Snapshot.WorkflowTemplateId.Value}').");
         }
 

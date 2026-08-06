@@ -17,7 +17,7 @@ namespace Aer.Ui.Core;
 public sealed partial class RoomClient
 {
     /// <summary>Current remote-access state, for the Enable Remote Access view (M21 Phase 3, issue #234).</summary>
-    public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningTasks);
+    public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningRooms);
 
     /// <summary>A freshly generated pairing code, mirroring <c>/api/pairing/code</c>'s response shape.</summary>
     public sealed record PairingCode(string Code, int ExpiresInSeconds);
@@ -36,7 +36,7 @@ public sealed partial class RoomClient
             if (meta == null) return null;
 
             var port = new Uri(_activeDaemonUrl).Port;
-            return new RemoteAccessStatus(meta.IsRemote, port, meta.HasRunningTasks);
+            return new RemoteAccessStatus(meta.IsRemote, port, meta.HasRunningRooms);
         }
         catch
         {
@@ -174,8 +174,8 @@ public sealed partial class RoomClient
             LogToggleDiagnostic("GetRemoteAccessStatusAsync returned null -> Could not reach Aer.Daemon."); // vocabulary-ok: diagnostic log
             return new MutationOutcome("Could not reach the Baton daemon.");
         }
-        LogToggleDiagnostic($"status: IsRemote={status.IsRemote}, HasRunningTasks={status.HasRunningTasks}, Port={status.Port}");
-        if (status.HasRunningTasks) return new MutationOutcome("Can't change remote access while a task is running — finish or pause it first.");
+        LogToggleDiagnostic($"status: IsRemote={status.IsRemote}, HasRunningRooms={status.HasRunningRooms}, Port={status.Port}");
+        if (status.HasRunningRooms) return new MutationOutcome("Can't change remote access while a room is running — finish or pause it first.");
         if (status.IsRemote == enabled) return new MutationOutcome(null);
 
         await ShutdownDaemonAsync().ConfigureAwait(true);

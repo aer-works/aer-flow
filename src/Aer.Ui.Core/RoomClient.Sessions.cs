@@ -53,7 +53,7 @@ public sealed partial class RoomClient
         try
         {
             var sessionId = Guid.NewGuid().ToString("N")[..12];
-            var roomDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
+            var roomDirectoryPath = InteractiveSessionMaterializer.ResolveRoomDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
 
             var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 sessionId,
@@ -66,7 +66,7 @@ public sealed partial class RoomClient
                 request.PermissionGrant,
                 cancellationToken).ConfigureAwait(true);
 
-            SetCurrentTaskDirectory(roomDirectoryPath);
+            SetCurrentRoomDirectory(roomDirectoryPath);
             await RecordOpenedAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
 
             return new SessionStartOutcome(metadata, null);

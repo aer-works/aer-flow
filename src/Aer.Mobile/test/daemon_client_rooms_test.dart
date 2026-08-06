@@ -7,7 +7,7 @@ import 'package:aer_mobile/daemon/daemon_client.dart';
 
 void main() {
   group('DaemonClient M24 Phase 5 Task Lifecycle Endpoints', () {
-    test('listTasks returns the fleet list and defaults includeArchived to false', () async {
+    test('listRooms returns the fleet list and defaults includeArchived to false', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.path, '/api/rooms');
         expect(request.url.queryParameters['includeArchived'], 'false');
@@ -28,13 +28,13 @@ void main() {
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      final items = await client.listTasks();
+      final items = await client.listRooms();
       expect(items, hasLength(1));
       expect(items.single.friendlyName, 'foo');
       expect(items.single.isArchived, isFalse);
     });
 
-    test('listTasks passes includeArchived through as a query parameter', () async {
+    test('listRooms passes includeArchived through as a query parameter', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.queryParameters['includeArchived'], 'true');
         return http.Response(jsonEncode([]), 200);
@@ -42,10 +42,10 @@ void main() {
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await client.listTasks(includeArchived: true);
+      await client.listRooms(includeArchived: true);
     });
 
-    test('archiveTask posts the directory path', () async {
+    test('archiveRoom posts the directory path', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.path, '/api/rooms/archive');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -55,10 +55,10 @@ void main() {
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await client.archiveTask('C:/Users/pbree/.aer/tasks/foo');
+      await client.archiveRoom('C:/Users/pbree/.aer/tasks/foo');
     });
 
-    test('unarchiveTask posts the directory path', () async {
+    test('unarchiveRoom posts the directory path', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.path, '/api/rooms/unarchive');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -68,10 +68,10 @@ void main() {
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await client.unarchiveTask('C:/Users/pbree/.aer/tasks/foo');
+      await client.unarchiveRoom('C:/Users/pbree/.aer/tasks/foo');
     });
 
-    test('deleteTask posts the directory path', () async {
+    test('deleteRoom posts the directory path', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.path, '/api/rooms/delete');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -81,17 +81,17 @@ void main() {
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await client.deleteTask('C:/Users/pbree/.aer/tasks/foo');
+      await client.deleteRoom('C:/Users/pbree/.aer/tasks/foo');
     });
 
-    test('deleteTask throws DaemonException on a non-2xx response', () async {
+    test('deleteRoom throws DaemonException on a non-2xx response', () async {
       final mockClient = MockClient((request) async {
         return http.Response('DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.', 400);
       });
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      expect(() => client.deleteTask('C:/outside'), throwsA(isA<DaemonException>()));
+      expect(() => client.deleteRoom('C:/outside'), throwsA(isA<DaemonException>()));
     });
   });
 }

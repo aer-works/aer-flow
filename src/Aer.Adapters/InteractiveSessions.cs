@@ -378,7 +378,7 @@ public static class InteractiveSessionMaterializer
     /// id (fixed in Aer.Daemon.Program's session lookups). A caller-supplied <paramref name="roomName"/>
     /// produces a differently-named folder than the "session-{id}" fallback used when it is omitted.
     /// </summary>
-    public static string ResolveTaskDirectoryPath(string sessionId, string? roomName, string? directoryPathOverride)
+    public static string ResolveRoomDirectoryPath(string sessionId, string? roomName, string? directoryPathOverride)
     {
         if (directoryPathOverride != null && Path.IsPathRooted(directoryPathOverride))
         {
@@ -406,8 +406,8 @@ public static class InteractiveSessionMaterializer
         {
             throw new RoomDirectoryAlreadyExistsException(
                 RoomLifecycle.IsArchived(roomDirectoryPath)
-                    ? $"A task already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
-                    : $"A task already exists at '{roomDirectoryPath}'. Choose a different task/session name.");
+                    ? $"A room already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
+                    : $"A room already exists at '{roomDirectoryPath}'. Choose a different room/session name.");
         }
 
         Directory.CreateDirectory(roomDirectoryPath);

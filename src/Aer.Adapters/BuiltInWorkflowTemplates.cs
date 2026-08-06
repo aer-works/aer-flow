@@ -315,8 +315,8 @@ public static class BuiltInWorkflowTemplates
         {
             throw new RoomDirectoryAlreadyExistsException(
                 RoomLifecycle.IsArchived(roomDirectoryPath)
-                    ? $"A task already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
-                    : $"A task already exists at '{roomDirectoryPath}'. Choose a different task/session name.");
+                    ? $"A room already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
+                    : $"A room already exists at '{roomDirectoryPath}'. Choose a different room/session name.");
         }
 
         Directory.CreateDirectory(roomDirectoryPath);

@@ -102,7 +102,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // One confirm for the whole batch, not one per item.
-      expect(find.text('Delete 2 tasks?'), findsOneWidget);
+      expect(find.text('Delete 2 rooms?'), findsOneWidget);
       expect(deleteRequests, isEmpty);
 
       await tester.tap(find.text('Delete'));
@@ -129,7 +129,7 @@ void main() {
 
       await tester.tap(find.byTooltip('Delete selected'));
       await tester.pumpAndSettle();
-      expect(find.text('Delete 1 task?'), findsOneWidget);
+      expect(find.text('Delete 1 room?'), findsOneWidget);
 
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();

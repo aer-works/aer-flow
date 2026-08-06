@@ -209,7 +209,7 @@ public class NavigationShellTests
 
         Assert.Equal(ShellSection.Home, window.ViewModel.CurrentSection);
         Assert.True(window.ViewModel.IsHomeVisible);
-        Assert.False(window.ViewModel.IsTaskVisible);
+        Assert.False(window.ViewModel.IsRoomVisible);
         Assert.Equal("Nothing is waiting on you.", window.ViewModel.Home.InboxSummaryText);
     }
 
@@ -230,7 +230,7 @@ public class NavigationShellTests
             await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(ShellSection.Task, window.ViewModel.CurrentSection);
-            Assert.True(window.ViewModel.IsTaskVisible);
+            Assert.True(window.ViewModel.IsRoomVisible);
             Assert.False(window.ViewModel.IsHomeVisible);
         }
         finally
@@ -257,7 +257,7 @@ public class NavigationShellTests
 
             Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
             Assert.True(window.ViewModel.IsChatVisible);
-            Assert.False(window.ViewModel.IsTaskVisible);
+            Assert.False(window.ViewModel.IsRoomVisible);
             Assert.Equal(metadata.SessionId, window.ViewModel.Chat.SessionId);
         }
         finally
@@ -366,7 +366,7 @@ public class NavigationShellTests
 
         Assert.True(window.ViewModel.IsRoomsVisible);
         Assert.False(window.ViewModel.IsHomeVisible);
-        Assert.False(window.ViewModel.IsTaskVisible);
+        Assert.False(window.ViewModel.IsRoomVisible);
         Assert.False(window.ViewModel.IsChatVisible);
         Assert.False(window.ViewModel.IsRemoteVisible);
     }
@@ -387,7 +387,7 @@ public class NavigationShellTests
 
             var card = Assert.Single(window.ViewModel.Home.RoomCards);
             Assert.Equal(RoomCardStatus.Unavailable, card.Status);
-            Assert.Equal("Not available — moved, deleted, or not a task", card.StatusText);
+            Assert.Equal("Not available — moved, deleted, or not a room", card.StatusText);
             Assert.Empty(window.ViewModel.Home.InboxItems);
         }
         finally

@@ -208,7 +208,7 @@ public class MainWindowTemplateEditorTests
         await window.OpenAsync(FixturePath("three-step-linear-workflow.json"), TestContext.Current.CancellationToken);
 
         var statusText = window.FindViewControl<TextBlock>("StatusText")!;
-        Assert.Contains("not a task, no execution state", statusText.Text);
+        Assert.Contains("not a room, no execution state", statusText.Text);
         Assert.False(window.ViewModel.TemplateEditor.IsOpen);
     }
 }

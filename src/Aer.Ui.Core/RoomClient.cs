@@ -43,7 +43,7 @@ public record CancelRoomRequest(string DirectoryPath, string? ExecutionId = null
 
 /// <summary>M24 Phase 5 (#278): the request body shape shared by <c>/api/rooms/archive</c>, <c>/api/rooms/unarchive</c>, and <c>/api/rooms/delete</c>.</summary>
 public record RoomDirectoryRequest(string DirectoryPath);
-public record DaemonVersionInfo(string Version, bool HasRunningTasks, bool IsRemote = false);
+public record DaemonVersionInfo(string Version, bool HasRunningRooms, bool IsRemote = false);
 
 public class BindingsPathHolder
 {
@@ -93,7 +93,7 @@ public sealed partial class RoomClient
     private readonly Func<string?> _bindingsFilePathProvider;
     private readonly Action _mutationStarted;
     private readonly Action _mutationFailed;
-    private readonly Func<string, CancellationToken, Task> _reopenTaskAsync;
+    private readonly Func<string, CancellationToken, Task> _reopenRoomAsync;
     private readonly Action<RoomProjection, string>? _onProjectionUpdated;
     private readonly string? _daemonUrl;
 
@@ -239,7 +239,7 @@ public sealed partial class RoomClient
     /// at different directories from corrupting each other's view (pre-M24 defect, filed as part
     /// of issue #262's chat work).
     /// </summary>
-    public string? CurrentTaskDirectoryPath { get; private set; }
+    public string? CurrentRoomDirectoryPath { get; private set; }
 
     public bool LastLoadSucceeded { get; private set; }
     public WorkflowStatus? LastWorkflowStatus { get; private set; }
@@ -271,7 +271,7 @@ public sealed partial class RoomClient
         Func<string?> bindingsFilePathProvider,
         Action mutationStarted,
         Action mutationFailed,
-        Func<string, CancellationToken, Task> reopenTaskAsync,
+        Func<string, CancellationToken, Task> reopenRoomAsync,
         Action<RoomProjection, string>? onProjectionUpdated = null,
         string? daemonUrl = null,
         bool spawnDaemonOnDemand = true)
@@ -282,14 +282,14 @@ public sealed partial class RoomClient
         _bindingsFilePathProvider = bindingsFilePathProvider;
         _mutationStarted = mutationStarted;
         _mutationFailed = mutationFailed;
-        _reopenTaskAsync = reopenTaskAsync;
+        _reopenRoomAsync = reopenRoomAsync;
         _onProjectionUpdated = onProjectionUpdated;
         _daemonUrl = daemonUrl;
         _spawnDaemonOnDemand = spawnDaemonOnDemand;
     }
 
     /// <summary>Points the session at <paramref name="roomDirectoryPath"/> without loading — <c>OpenAsync</c>'s bookkeeping half; the load itself goes through <see cref="LoadAsync"/>.</summary>
-    public void SetCurrentTaskDirectory(string? roomDirectoryPath) => CurrentTaskDirectoryPath = roomDirectoryPath;
+    public void SetCurrentRoomDirectory(string? roomDirectoryPath) => CurrentRoomDirectoryPath = roomDirectoryPath;
 
     private static readonly JsonSerializerOptions DefaultJsonOptions = new()
     {
@@ -310,16 +310,16 @@ public sealed partial class RoomClient
     /// </summary>
     internal bool ShouldApplyProjectionPush(string? incomingDirectoryPath)
     {
-        CurrentTaskDirectoryPath ??= incomingDirectoryPath;
-        return incomingDirectoryPath == CurrentTaskDirectoryPath;
+        CurrentRoomDirectoryPath ??= incomingDirectoryPath;
+        return incomingDirectoryPath == CurrentRoomDirectoryPath;
     }
 
     private void UpdateProjection(RoomProjection projection)
     {
-        if (CurrentTaskDirectoryPath != null)
+        if (CurrentRoomDirectoryPath != null)
         {
-            RebuildPausedSteps(projection, CurrentTaskDirectoryPath);
-            RebuildRunningExecutions(projection, CurrentTaskDirectoryPath);
+            RebuildPausedSteps(projection, CurrentRoomDirectoryPath);
+            RebuildRunningExecutions(projection, CurrentRoomDirectoryPath);
             LastLoadSucceeded = true;
             LastWorkflowStatus = projection.State.Status;
             LastSnapshot = projection.Snapshot;
@@ -460,7 +460,7 @@ public sealed partial class RoomClient
         string roomDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default,
         Action<string, string>? onWorkerStdoutLine = null)
     {
-        CurrentTaskDirectoryPath = roomDirectoryPath;
+        CurrentRoomDirectoryPath = roomDirectoryPath;
 
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
@@ -482,8 +482,8 @@ public sealed partial class RoomClient
                         await _configurationStore.RecordWorkflowTemplateFilePathAsync(workflowTemplateFilePath, cancellationToken).ConfigureAwait(true);
                     }
                     await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
-                    await RecordTaskPathMetadataAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
-                    await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+                    await RecordRoomPathMetadataAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
+                    await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
                 else
@@ -536,7 +536,7 @@ public sealed partial class RoomClient
             }
 
             await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
-            await RecordTaskPathMetadataAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
+            await RecordRoomPathMetadataAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
         }
         catch (AerFlowException ex)
         {
@@ -555,7 +555,7 @@ public sealed partial class RoomClient
             // Aer.Daemon's own wiring of that hook (reopenTaskAsync -> BroadcastStateAsync,
             // Program.cs) never fired for this run at all -- a connected phone watching this
             // directory saw nothing, permanently, instead of learning the run stopped.
-            await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+            await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
             return new MutationOutcome(ex.Message);
         }
         finally
@@ -565,11 +565,11 @@ public sealed partial class RoomClient
             hostStopSource.Dispose();
         }
 
-        await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
 
-    private static async Task RecordTaskPathMetadataAsync(string roomDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)
+    private static async Task RecordRoomPathMetadataAsync(string roomDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)
     {
         try
         {
@@ -633,7 +633,7 @@ public sealed partial class RoomClient
                     ViewModel.DecisionStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
                     ViewModel.Home.RetireInboxItem(roomDirectoryPath, stepId, executionId);
-                    await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+                    await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
                 else
@@ -722,7 +722,7 @@ public sealed partial class RoomClient
         }
 
         ViewModel.Home.RetireInboxItem(roomDirectoryPath, stepId, executionId);
-        await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
 
@@ -746,7 +746,7 @@ public sealed partial class RoomClient
                 {
                     ViewModel.CancelStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
-                    await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+                    await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
                 else
@@ -800,7 +800,7 @@ public sealed partial class RoomClient
             ViewModel.IsMutationInFlight = false;
         }
 
-        await _reopenTaskAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
 
@@ -811,9 +811,9 @@ public sealed partial class RoomClient
     /// </summary>
     public void RequestHostStop()
     {
-        if (_isClientMode && CurrentTaskDirectoryPath != null && _activeDaemonUrl != null)
+        if (_isClientMode && CurrentRoomDirectoryPath != null && _activeDaemonUrl != null)
         {
-            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelRoomRequest(CurrentTaskDirectoryPath, null));
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelRoomRequest(CurrentRoomDirectoryPath, null));
             return;
         }
 
@@ -883,7 +883,7 @@ public sealed partial class RoomClient
     {
         ViewModel.RunningExecutions.Clear();
 
-        var isLocallyHostedTask = HostedRunFor(roomDirectoryPath) is not null;
+        var isLocallyHostedRoom = HostedRunFor(roomDirectoryPath) is not null;
 
         foreach (var stepState in projection.State.Steps)
         {
@@ -892,7 +892,7 @@ public sealed partial class RoomClient
                 continue;
             }
 
-            AddRunningExecution(stepState.StepId, executionId, isLocallyHostedTask || _isClientMode, projection.State, roomDirectoryPath);
+            AddRunningExecution(stepState.StepId, executionId, isLocallyHostedRoom || _isClientMode, projection.State, roomDirectoryPath);
         }
 
         foreach (var stepLessExecution in projection.State.StepLessExecutions)

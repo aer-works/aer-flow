@@ -237,9 +237,9 @@ public sealed partial class RemoteViewModel : ObservableObject
 
             StatusText = status switch
             {
-                { IsRemote: true, HasRunningTasks: true } => "Remote access is on. A task is running — pairing still works, but the toggle is locked until it finishes.",
+                { IsRemote: true, HasRunningRooms: true } => "Remote access is on. A room is running — pairing still works, but the toggle is locked until it finishes.",
                 { IsRemote: true } => "Remote access is on — anyone on this network can reach it until you turn it off.",
-                { HasRunningTasks: true } => "Remote access is off. A task is running — the toggle is locked until it finishes.",
+                { HasRunningRooms: true } => "Remote access is off. A room is running — the toggle is locked until it finishes.",
                 _ => "Remote access is off — only this computer can reach the Baton daemon.",
             };
 

@@ -49,7 +49,7 @@ public class ProjectionPushFanOutTests
     {
         var source = File.ReadAllText(Path.Combine(RepoRoot(), "src/Aer.Ui.Core/RoomClient.cs"));
 
-        Assert.Contains("incomingDirectoryPath == CurrentTaskDirectoryPath", source, StringComparison.Ordinal);
+        Assert.Contains("incomingDirectoryPath == CurrentRoomDirectoryPath", source, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()

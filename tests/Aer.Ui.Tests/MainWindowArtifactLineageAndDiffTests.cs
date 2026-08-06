@@ -235,7 +235,7 @@ public class MainWindowArtifactLineageAndDiffTests
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
             Assert.Equal(
-                ["Open a task directory before comparing it to a template."],
+                ["Open a room directory before comparing it to a template."],
                 TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!));
         }
         finally

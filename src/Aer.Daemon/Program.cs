@@ -209,7 +209,7 @@ namespace Aer.Daemon
 
                 RoomClient? session = null;
 
-                Func<string, CancellationToken, Task> reopenTaskAsync = async (roomDirectoryPath, cancellationToken) =>
+                Func<string, CancellationToken, Task> reopenRoomAsync = async (roomDirectoryPath, cancellationToken) =>
                 {
                     if (session != null)
                     {
@@ -228,7 +228,7 @@ namespace Aer.Daemon
                     bindingsFilePathProvider: () => pathHolder.BindingsFilePath,
                     mutationStarted: () => { },
                     mutationFailed: () => { },
-                    reopenTaskAsync: reopenTaskAsync
+                    reopenRoomAsync: reopenRoomAsync
                 );
 
                 return session;
@@ -420,12 +420,12 @@ namespace Aer.Daemon
                     broadcast.AddClient(webSocket);
 
                     // Send current projection immediately if loaded
-                    if (session.CurrentTaskDirectoryPath != null && session.LastLoadSucceeded)
+                    if (session.CurrentRoomDirectoryPath != null && session.LastLoadSucceeded)
                     {
-                        var outcome = await session.LoadAsync(session.CurrentTaskDirectoryPath);
+                        var outcome = await session.LoadAsync(session.CurrentRoomDirectoryPath);
                         if (outcome.Projection != null)
                         {
-                            await broadcast.SendStateAsync(webSocket, outcome.Projection, session.CurrentTaskDirectoryPath);
+                            await broadcast.SendStateAsync(webSocket, outcome.Projection, session.CurrentRoomDirectoryPath);
                         }
                     }
 
@@ -496,7 +496,7 @@ namespace Aer.Daemon
             app.MapGet("/api/version", (RoomClient session) => Results.Ok(new
             {
                 Version = typeof(DaemonHost).Assembly.GetName().Version?.ToString() ?? "1.0.0",
-                HasRunningTasks = session.ShouldLiveRefresh,
+                HasRunningRooms = session.ShouldLiveRefresh,
                 IsRemote = isRemote
             }));
 
@@ -860,7 +860,7 @@ namespace Aer.Daemon
                 // #333: new records are created in the one record root, never the legacy split.
                 var baseTasksDir = AerPaths.Sessions;
                 var folderName = string.IsNullOrWhiteSpace(request.RoomName)
-                    ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}"
+                    ? $"room-{DateTime.UtcNow:yyyyMMddHHmmss}"
                     : request.RoomName.Trim();
                 var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, folderName));
                 var normalizedBaseTasksDir = Path.GetFullPath(baseTasksDir);
@@ -883,7 +883,7 @@ namespace Aer.Daemon
                     var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
 
                     pathHolder.BindingsFilePath = bindingsFilePath;
-                    session.SetCurrentTaskDirectory(roomDirectoryPath);
+                    session.SetCurrentRoomDirectory(roomDirectoryPath);
                     await session.RecordOpenedAsync(roomDirectoryPath).ConfigureAwait(true);
                     var outcome = await session.LoadAsync(roomDirectoryPath).ConfigureAwait(true);
                     if (outcome.Projection != null)
@@ -899,7 +899,7 @@ namespace Aer.Daemon
                         }
                         catch (Exception ex)
                         {
-                            Console.Error.WriteLine($"Error running template task in background: {ex}");
+                            Console.Error.WriteLine($"Error running template room in background: {ex}");
                         }
                     });
 
@@ -913,7 +913,7 @@ namespace Aer.Daemon
 
             app.MapGet("/api/rooms/recent", async (RoomClient session) =>
             {
-                var directories = await session.LoadRecentTaskDirectoriesAsync();
+                var directories = await session.LoadRecentRoomDirectoriesAsync();
                 return Results.Ok(directories);
             });
 
@@ -931,10 +931,10 @@ namespace Aer.Daemon
                 // Surface it as a message a UI can show rather than a bare failure.
                 if (ConcurrencyGuard.IsHeld(request.DirectoryPath))
                 {
-                    return Results.BadRequest("This task is being run by another client.");
+                    return Results.BadRequest("This room is being run by another client.");
                 }
 
-                session.SetCurrentTaskDirectory(request.DirectoryPath);
+                session.SetCurrentRoomDirectory(request.DirectoryPath);
                 await session.RecordOpenedAsync(request.DirectoryPath);
                 var outcome = await session.LoadAsync(request.DirectoryPath);
                 if (outcome.Projection != null)
@@ -951,7 +951,7 @@ namespace Aer.Daemon
                 // fills ErrorMessage from a caught AerFlowException). Never return a bare 400 -- a
                 // client, especially a phone, must always get a sentence it can show the user.
                 return Results.BadRequest(string.IsNullOrEmpty(outcome.ErrorMessage)
-                    ? "Could not open the task. Its saved state could not be read."
+                    ? "Could not open the room. Its saved state could not be read."
                     : outcome.ErrorMessage);
             });
 
@@ -970,7 +970,7 @@ namespace Aer.Daemon
                 // reopenTaskAsync hook fires on completion. This closes the gap for the common case
                 // this projection already exists -- a resumed/re-run task -- immediately instead of
                 // only once the whole pump finishes.
-                session.SetCurrentTaskDirectory(request.DirectoryPath);
+                session.SetCurrentRoomDirectory(request.DirectoryPath);
                 var immediateOutcome = await session.LoadAsync(request.DirectoryPath);
                 if (immediateOutcome.Projection != null)
                 {
@@ -1007,7 +1007,7 @@ namespace Aer.Daemon
                     }
                     catch (Exception ex)
                     {
-                        Console.Error.WriteLine($"Error executing task run in background: {ex}");
+                        Console.Error.WriteLine($"Error executing room run in background: {ex}");
                         await AppendTurnErrorAsync(request.DirectoryPath, "/api/rooms/run", ex).ConfigureAwait(false);
                     }
                     finally
@@ -1031,7 +1031,7 @@ namespace Aer.Daemon
                     {
                         // #324: same guarantee as /api/rooms/open -- LoadAsync may fail without a message.
                         return Results.BadRequest(string.IsNullOrEmpty(referenceOutcome.ErrorMessage)
-                            ? "Could not open the task. Its saved state could not be read."
+                            ? "Could not open the room. Its saved state could not be read."
                             : referenceOutcome.ErrorMessage);
                     }
 
@@ -1081,7 +1081,7 @@ namespace Aer.Daemon
                     }
                     catch (Exception ex)
                     {
-                        Console.Error.WriteLine($"Error executing task decide in background: {ex}");
+                        Console.Error.WriteLine($"Error executing room decide in background: {ex}");
                         await AppendTurnErrorAsync(request.DirectoryPath, "/api/rooms/decide", ex).ConfigureAwait(false);
                     }
                     finally
@@ -1161,7 +1161,7 @@ namespace Aer.Daemon
                 {
                     return Results.BadRequest("DirectoryPath is required.");
                 }
-                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                if (!TryResolveManagedRoomDirectory(request.DirectoryPath, out var resolvedPath))
                 {
                     return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
                 }
@@ -1176,7 +1176,7 @@ namespace Aer.Daemon
                 {
                     return Results.BadRequest("DirectoryPath is required.");
                 }
-                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                if (!TryResolveManagedRoomDirectory(request.DirectoryPath, out var resolvedPath))
                 {
                     return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
                 }
@@ -1195,7 +1195,7 @@ namespace Aer.Daemon
                 {
                     return Results.BadRequest("DirectoryPath is required.");
                 }
-                if (!TryResolveManagedTaskDirectory(request.DirectoryPath, out var resolvedPath))
+                if (!TryResolveManagedRoomDirectory(request.DirectoryPath, out var resolvedPath))
                 {
                     return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
                 }
@@ -1206,7 +1206,7 @@ namespace Aer.Daemon
                 }
 
                 Directory.Delete(resolvedPath, recursive: true);
-                await configStore.RemoveRecentTaskDirectoryAsync(resolvedPath).ConfigureAwait(true);
+                await configStore.RemoveRecentRoomDirectoryAsync(resolvedPath).ConfigureAwait(true);
                 return Results.Ok();
             });
 
@@ -1262,7 +1262,7 @@ namespace Aer.Daemon
             {
                 var adapter = string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant();
                 var sessionId = Guid.NewGuid().ToString("N")[..12];
-                var roomDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
+                var roomDirectoryPath = InteractiveSessionMaterializer.ResolveRoomDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
 
                 if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
                 {
@@ -1293,7 +1293,7 @@ namespace Aer.Daemon
                 var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
 
                 pathHolder.BindingsFilePath = bindingsFilePath;
-                session.SetCurrentTaskDirectory(roomDirectoryPath);
+                session.SetCurrentRoomDirectory(roomDirectoryPath);
                 await session.RecordOpenedAsync(roomDirectoryPath).ConfigureAwait(true);
 
                 if (!string.IsNullOrWhiteSpace(request.InitialMessage))
@@ -1673,7 +1673,7 @@ namespace Aer.Daemon
         // path will ever surface again, silently diverging from the live record. Narrowing a
         // containment check fails closed: the request is rejected instead of quietly doing the wrong
         // thing to the wrong directory.
-        private static bool TryResolveManagedTaskDirectory(string directoryPath, out string resolvedPath)
+        private static bool TryResolveManagedRoomDirectory(string directoryPath, out string resolvedPath)
         {
             resolvedPath = Path.GetFullPath(directoryPath);
 

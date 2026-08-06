@@ -44,9 +44,9 @@ public sealed partial class HomeViewModel : ObservableObject
     /// refresh.
     /// </summary>
     public async Task RefreshAsync(
-        RoomClient session, Func<string, Task> openTaskAsync, CancellationToken cancellationToken = default)
+        RoomClient session, Func<string, Task> openRoomAsync, CancellationToken cancellationToken = default)
     {
-        var recents = await session.LoadRecentTaskDirectoriesAsync(cancellationToken).ConfigureAwait(true);
+        var recents = await session.LoadRecentRoomDirectoriesAsync(cancellationToken).ConfigureAwait(true);
 
         RoomCards.Clear();
         InboxItems.Clear();
@@ -66,13 +66,13 @@ public sealed partial class HomeViewModel : ObservableObject
                 RoomCards.Add(new RoomCardViewModel(
                     roomDirectoryPath,
                     RoomCardViewModel.TitleFor(roomDirectoryPath),
-                    "Not available — moved, deleted, or not a task",
+                    "Not available — moved, deleted, or not a room",
                     RoomCardStatus.Unavailable,
-                    openTaskAsync));
+                    openRoomAsync));
                 continue;
             }
 
-            var card = RoomCardViewModel.FromProjection(roomDirectoryPath, projection, openTaskAsync);
+            var card = RoomCardViewModel.FromProjection(roomDirectoryPath, projection, openRoomAsync);
             RoomCards.Add(card);
 
             if (card.Status == RoomCardStatus.NeedsYou)
@@ -81,7 +81,7 @@ public sealed partial class HomeViewModel : ObservableObject
                 {
                     if (stepState.Status == StepStatus.Paused)
                     {
-                        InboxItems.Add(BuildInboxItem(roomDirectoryPath, projection, stepState, openTaskAsync));
+                        InboxItems.Add(BuildInboxItem(roomDirectoryPath, projection, stepState, openRoomAsync));
                     }
                 }
             }
@@ -133,7 +133,7 @@ public sealed partial class HomeViewModel : ObservableObject
     }
 
     private static InboxItemViewModel BuildInboxItem(
-        string roomDirectoryPath, RoomProjection projection, StepState stepState, Func<string, Task> openTaskAsync)
+        string roomDirectoryPath, RoomProjection projection, StepState stepState, Func<string, Task> openRoomAsync)
     {
         // Lead with the thing to review (ux-principles §4): the paused execution's first durable
         // output, previewed inline. Best-effort by design — a pause with no readable output still
@@ -179,7 +179,7 @@ public sealed partial class HomeViewModel : ObservableObject
             statusText,
             previewText,
             kind,
-            openTaskAsync,
+            openRoomAsync,
             stepState.LatestExecutionId?.Value ?? string.Empty);
     }
 
@@ -212,7 +212,7 @@ public sealed partial class HomeViewModel : ObservableObject
 
 /// <summary>One recent task as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Task view).</summary>
 public sealed partial class RoomCardViewModel(
-    string roomDirectoryPath, string title, string statusText, RoomCardStatus status, Func<string, Task> openTaskAsync)
+    string roomDirectoryPath, string title, string statusText, RoomCardStatus status, Func<string, Task> openRoomAsync)
 {
     public string RoomDirectoryPath { get; } = roomDirectoryPath;
     public string Title { get; } = title;
@@ -223,17 +223,17 @@ public sealed partial class RoomCardViewModel(
     public bool IsNeedsYou => Status == RoomCardStatus.NeedsYou;
 
     [RelayCommand]
-    private Task Open() => openTaskAsync(RoomDirectoryPath);
+    private Task Open() => openRoomAsync(RoomDirectoryPath);
 
     /// <summary>The card title is the task directory's leaf name — the human's handle for the task, with the full path detail-on-demand (ux-principles §3).</summary>
     public static string TitleFor(string roomDirectoryPath)
         => Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
 
     public static RoomCardViewModel FromProjection(
-        string roomDirectoryPath, RoomProjection projection, Func<string, Task> openTaskAsync)
+        string roomDirectoryPath, RoomProjection projection, Func<string, Task> openRoomAsync)
     {
         var (statusText, status) = DeriveStatus(projection);
-        return new RoomCardViewModel(roomDirectoryPath, TitleFor(roomDirectoryPath), statusText, status, openTaskAsync);
+        return new RoomCardViewModel(roomDirectoryPath, TitleFor(roomDirectoryPath), statusText, status, openRoomAsync);
     }
 
     /// <summary>
@@ -316,7 +316,7 @@ public enum RoomCardStatus
 /// </summary>
 public sealed partial class InboxItemViewModel(
     string roomDirectoryPath, string roomTitle, string stepName, string statusText, string previewText,
-    PausePointKind kind, Func<string, Task> openTaskAsync, string executionId = "")
+    PausePointKind kind, Func<string, Task> openRoomAsync, string executionId = "")
 {
     public string RoomDirectoryPath { get; } = roomDirectoryPath;
     public string RoomTitle { get; } = roomTitle;
@@ -333,5 +333,5 @@ public sealed partial class InboxItemViewModel(
     public string ActionLabel => Kind == PausePointKind.NeedsInput ? "Reply" : "Review";
 
     [RelayCommand]
-    private Task Review() => openTaskAsync(RoomDirectoryPath);
+    private Task Review() => openRoomAsync(RoomDirectoryPath);
 }

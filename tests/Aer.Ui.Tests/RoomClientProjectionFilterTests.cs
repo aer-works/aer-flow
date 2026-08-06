@@ -19,7 +19,7 @@ public class RoomClientProjectionFilterTests
         bindingsFilePathProvider: () => null,
         mutationStarted: () => { },
         mutationFailed: () => { },
-        reopenTaskAsync: (_, _) => Task.CompletedTask);
+        reopenRoomAsync: (_, _) => Task.CompletedTask);
 
     [Fact]
     public void AFreshSessionAdoptsTheFirstPushItSeesAsItsOwnCurrentDirectory()
@@ -29,7 +29,7 @@ public class RoomClientProjectionFilterTests
         var applied = session.ShouldApplyProjectionPush("/tmp/task-a");
 
         Assert.True(applied);
-        Assert.Equal("/tmp/task-a", session.CurrentTaskDirectoryPath);
+        Assert.Equal("/tmp/task-a", session.CurrentRoomDirectoryPath);
     }
 
     [Fact]
@@ -41,19 +41,19 @@ public class RoomClientProjectionFilterTests
         var applied = session.ShouldApplyProjectionPush("/tmp/task-b");
 
         Assert.False(applied);
-        Assert.Equal("/tmp/task-a", session.CurrentTaskDirectoryPath);
+        Assert.Equal("/tmp/task-a", session.CurrentRoomDirectoryPath);
     }
 
     [Fact]
     public void APushMatchingThisClientsOwnOpenDirectoryIsStillApplied()
     {
         var session = NewSession();
-        session.SetCurrentTaskDirectory("/tmp/task-a");
+        session.SetCurrentRoomDirectory("/tmp/task-a");
 
         var applied = session.ShouldApplyProjectionPush("/tmp/task-a");
 
         Assert.True(applied);
-        Assert.Equal("/tmp/task-a", session.CurrentTaskDirectoryPath);
+        Assert.Equal("/tmp/task-a", session.CurrentRoomDirectoryPath);
     }
 
     [Fact]
@@ -62,9 +62,9 @@ public class RoomClientProjectionFilterTests
         var session = NewSession();
         session.ShouldApplyProjectionPush("/tmp/task-a");
 
-        // This client's own action (SetCurrentTaskDirectory, as OpenAsync/RunAsync call) reassigns
+        // This client's own action (SetCurrentRoomDirectory, as OpenAsync/RunAsync call) reassigns
         // which directory it cares about -- unlike another client's action, this one must win.
-        session.SetCurrentTaskDirectory("/tmp/task-b");
+        session.SetCurrentRoomDirectory("/tmp/task-b");
 
         Assert.True(session.ShouldApplyProjectionPush("/tmp/task-b"));
         Assert.False(session.ShouldApplyProjectionPush("/tmp/task-a"));

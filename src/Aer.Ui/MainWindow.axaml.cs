@@ -224,7 +224,7 @@ public partial class MainWindow : Window
             bindingsFilePathProvider: () => BindingsFilePathBox.Text,
             mutationStarted: _liveRefreshTimer.Start,
             mutationFailed: _liveRefreshTimer.Stop,
-            reopenTaskAsync: (roomDirectoryPath, cancellationToken) => OpenAsync(roomDirectoryPath, cancellationToken),
+            reopenRoomAsync: (roomDirectoryPath, cancellationToken) => OpenAsync(roomDirectoryPath, cancellationToken),
             onProjectionUpdated: (projection, roomDirectoryPath) => RenderProjection(projection, roomDirectoryPath),
             daemonUrl: daemonUrl);
 
@@ -268,7 +268,7 @@ public partial class MainWindow : Window
         };
         CheckBindingsAgainstTemplateButton.Click += (_, _) => RefreshBindingsTemplateCrossCheck();
         NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
-        NavTaskButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
+        NavRoomButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
         NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
         // #336: Chat and Tasks are no longer rail destinations. Chat is reached by opening a session
@@ -319,7 +319,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (ViewModel.Rooms.CurrentItem is { } row && row.RoomDirectoryPath != _session.CurrentTaskDirectoryPath)
+            if (ViewModel.Rooms.CurrentItem is { } row && row.RoomDirectoryPath != _session.CurrentRoomDirectoryPath)
             {
                 _ = OpenFromSwitcherAsync(row.RoomDirectoryPath);
             }
@@ -410,7 +410,7 @@ public partial class MainWindow : Window
         {
             var roomDirectoryPath = System.IO.Path.Combine(
                 System.IO.Path.GetDirectoryName(workflowFilePath)!,
-                $"task-{DateTime.Now:yyyyMMdd-HHmmss}");
+                $"room-{DateTime.Now:yyyyMMdd-HHmmss}");
             ViewModel.CurrentSection = ShellSection.Task;
             await RunAsync(roomDirectoryPath, workflowFilePath, bindingsFilePath);
         };
@@ -599,7 +599,7 @@ public partial class MainWindow : Window
         {
             ViewModel.CurrentSection = ShellSection.Task;
             WorkflowTemplatePathBox.Text = roomDirectoryPath;
-            _session.SetCurrentTaskDirectory(null);
+            _session.SetCurrentRoomDirectory(null);
             await LoadTemplateAsync(roomDirectoryPath, cancellationToken);
             _liveRefreshTimer.Stop();
             return;
@@ -608,7 +608,7 @@ public partial class MainWindow : Window
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
         WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
 
-        _session.SetCurrentTaskDirectory(roomDirectoryPath);
+        _session.SetCurrentRoomDirectory(roomDirectoryPath);
 
         await LoadAsync(roomDirectoryPath, cancellationToken);
 
@@ -741,7 +741,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _session.SetCurrentTaskDirectory(metadata.RoomDirectoryPath);
+            _session.SetCurrentRoomDirectory(metadata.RoomDirectoryPath);
             await _session.RecordOpenedAsync(metadata.RoomDirectoryPath).ConfigureAwait(true);
             chat.LoadFromMetadata(metadata, metadata.RoomDirectoryPath);
             await RefreshRecordListsAsync(CancellationToken.None).ConfigureAwait(true);
@@ -871,12 +871,12 @@ public partial class MainWindow : Window
         var workflowTemplateFilePath = WorkflowTemplatePathBox.Text;
         var bindingsFilePath = BindingsFilePathBox.Text ?? string.Empty;
 
-        if (ViewModel.IsTaskFinished && !string.IsNullOrWhiteSpace(roomDirectoryPath))
+        if (ViewModel.IsRoomFinished && !string.IsNullOrWhiteSpace(roomDirectoryPath))
         {
             var parentDirectory = System.IO.Path.GetDirectoryName(roomDirectoryPath);
-            if (!string.IsNullOrEmpty(parentDirectory))
+            if (!string.IsNullOrWhiteSpace(parentDirectory))
             {
-                roomDirectoryPath = System.IO.Path.Combine(parentDirectory, $"task-{DateTime.Now:yyyyMMdd-HHmmss}");
+                roomDirectoryPath = System.IO.Path.Combine(parentDirectory, $"room-{DateTime.Now:yyyyMMdd-HHmmss}");
             }
         }
 
@@ -992,23 +992,23 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        if (_session.CurrentTaskDirectoryPath is not { } currentTaskDirectoryPath)
+        if (_session.CurrentRoomDirectoryPath is not { } currentRoomDirectoryPath)
         {
             return;
         }
 
-        await LoadAsync(currentTaskDirectoryPath, cancellationToken);
+        await LoadAsync(currentRoomDirectoryPath, cancellationToken);
 
         // M24 Phase 1 (issue #262): the chat step is paused indefinitely between turns, never
         // Terminal, so ShouldLiveRefresh (and therefore this tick) keeps running the whole time a
         // session is open — exactly the completion signal ChatViewModel.LoadFromMetadata relies on
         // instead of a second polling loop or a push from POST /api/sessions/send.
-        if (ViewModel.IsChatVisible)
+        if (ViewModel.IsChatVisible && _session.IsClientMode)
         {
-            var sessionMetadata = await _session.LoadSessionMetadataAsync(currentTaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            var sessionMetadata = await _session.LoadSessionMetadataAsync(currentRoomDirectoryPath, cancellationToken).ConfigureAwait(true);
             if (sessionMetadata != null)
             {
-                ViewModel.Chat.LoadFromMetadata(sessionMetadata, currentTaskDirectoryPath);
+                ViewModel.Chat.LoadFromMetadata(sessionMetadata, currentRoomDirectoryPath);
             }
         }
 
@@ -1044,7 +1044,7 @@ public partial class MainWindow : Window
             // in-window message instead. The session has already cleared the mutation surfaces.
             StatusText.Text = outcome.ErrorMessage;
             ClearProjectionPanels();
-            ViewModel.IsTaskFinished = false;
+            ViewModel.IsRoomFinished = false;
             return;
         }
 
@@ -1095,7 +1095,7 @@ public partial class MainWindow : Window
             try { BindingsFilePathBox.Text = File.ReadAllText(bindingsPathFile).Trim(); } catch { }
         }
 
-        ViewModel.IsTaskFinished = projection.State.Status == WorkflowStatus.Terminal;
+        ViewModel.IsRoomFinished = projection.State.Status == WorkflowStatus.Terminal;
         StatusText.Text = $"Workflow status: {projection.State.Status}"; // vocabulary-ok: technical status display
 
         StepsPanel.Children.Clear();
@@ -1118,7 +1118,7 @@ public partial class MainWindow : Window
 
         // M19 Phase 3 (#188): the per-step drill-in — built after the session has rebuilt
         // PausedSteps, so each paused step's inline decision card is the same live VM instance.
-        ViewModel.RebuildTaskSteps(
+        ViewModel.RebuildRoomSteps(
             projection, roomDirectoryPath,
             previewFileAsync: filePath => ShowArtifactPreviewAsync(filePath),
             showConversation: ShowConversation,
@@ -1177,7 +1177,7 @@ public partial class MainWindow : Window
         ClearConversation();
         ClearArtifactPreview();
         DiffPanel.Children.Clear();
-        ViewModel.ClearTaskSteps();
+        ViewModel.ClearRoomSteps();
     }
 
     /// <summary>
@@ -1192,7 +1192,7 @@ public partial class MainWindow : Window
     {
         var outcome = await _session.LoadTemplateAsync(templateFilePath, cancellationToken);
 
-        ViewModel.IsTaskFinished = false;
+        ViewModel.IsRoomFinished = false;
 
         if (outcome.Definition is not { } definition)
         {
@@ -1203,10 +1203,10 @@ public partial class MainWindow : Window
 
         StatusText.Text =
             $"Template: {definition.WorkflowTemplateId} v{definition.WorkflowTemplateVersion} " +
-            $"({definition.Steps.Count} step(s)) — not a task, no execution state.";
+            $"({definition.Steps.Count} step(s)) — not a room, no execution state.";
         ClearProjectionPanels();
         RenderDag(definition.Steps, statusByStepId: null);
-        ViewModel.RoomHeadlineText = "A workflow file — not a running task.";
+        ViewModel.RoomHeadlineText = "A workflow file — not a running room.";
     }
 
     /// <summary>The one status system's token keys (M19 Phase 5, #190) — line color and area tint per <see cref="StepStatus"/>, resolved from the active theme at render time so the DAG follows light/dark like every other surface.</summary>
@@ -1872,7 +1872,7 @@ public partial class MainWindow : Window
 
         if (_session.LastSnapshot is not { } snapshot)
         {
-            DiffPanel.Children.Add(new TextBlock { Text = "Open a task directory before comparing it to a template." });
+            DiffPanel.Children.Add(new TextBlock { Text = "Open a room directory before comparing it to a template." });
             return;
         }
 
@@ -1895,7 +1895,7 @@ public partial class MainWindow : Window
         {
             DiffPanel.Children.Add(new TextBlock
             {
-                Text = "This file is a different template than the one the task is bound to — a " +
+                Text = "This file is a different template than the one the room is bound to — a " +
                        "mismatch, not a divergence; no diff is shown.",
             });
             return;

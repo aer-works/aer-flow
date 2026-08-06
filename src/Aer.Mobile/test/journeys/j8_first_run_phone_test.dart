@@ -38,7 +38,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // The dead-end as it stands: the surface tells you it's empty and stops there.
-    expect(find.text('No tasks or sessions yet.'), findsOneWidget);
+    expect(find.text('No rooms or sessions yet.'), findsOneWidget);
 
     // J8's bar: a truly empty surface must present a real primary next step — a way to start work —
     // not merely report emptiness. Operationalised as a primary action control (a prominent button
@@ -55,7 +55,7 @@ void main() {
     expect(
       primaryAction,
       findsWidgets,
-      reason: 'The empty RoomsScreen shows only "No tasks or sessions yet." with no primary action '
+      reason: 'The empty RoomsScreen shows only "No rooms or sessions yet." with no primary action '
           'to start work — J8 requires a real first action on an empty surface (#337).',
     );
   });

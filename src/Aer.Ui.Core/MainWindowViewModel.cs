@@ -25,7 +25,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsHomeVisible))]
-    [NotifyPropertyChangedFor(nameof(IsTaskVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRoomVisible))]
     [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
     [NotifyPropertyChangedFor(nameof(IsRemoteVisible))]
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
@@ -34,7 +34,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private ShellSection currentSection = ShellSection.Home;
 
     public bool IsHomeVisible => CurrentSection == ShellSection.Home;
-    public bool IsTaskVisible => CurrentSection == ShellSection.Task;
+    public bool IsRoomVisible => CurrentSection == ShellSection.Task;
     public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
     public bool IsRemoteVisible => CurrentSection == ShellSection.Remote;
     public bool IsChatVisible => CurrentSection == ShellSection.Chat;
@@ -48,7 +48,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// record is a session or a workflow. Both enum members survive because the two panes are still
     /// genuinely different views; what went away is the user having to know which one they wanted.
     /// </summary>
-    public bool IsDetailVisible => IsTaskVisible || IsChatVisible;
+    public bool IsDetailVisible => IsRoomVisible || IsChatVisible;
 
     /// <summary>The Enable Remote Access view's state (M21 Phase 3, issue #234) — see <see cref="RemoteViewModel"/>.</summary>
     public RemoteViewModel Remote { get; } = new();
@@ -130,15 +130,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RunButtonToolTipText))]
-    private bool isTaskFinished;
+    private bool isRoomFinished;
 
     public bool CanRun => !IsMutationInFlight;
 
     public string RunButtonToolTipText => IsMutationInFlight
         ? "Execution is currently in flight."
-        : IsTaskFinished
-            ? "This task has finished — Run starts a fresh task cloned from it."
-            : "Start a fresh task from a workflow file, or resume the task open above.";
+        : IsRoomFinished
+            ? "This room has finished — Run starts a fresh room cloned from it."
+            : "Start a fresh room from a workflow file, or resume the room open above.";
 
     /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="RoomClient"/> (M19 Phase 2, #187).</summary>
     [ObservableProperty]
@@ -178,7 +178,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The task-level plain-language headline (the vocabulary map's primary text) — the precise <c>Workflow status:</c> line lives in the Details disclosure.</summary>
     [ObservableProperty]
-    private string roomHeadlineText = "No task open.";
+    private string roomHeadlineText = "No room open.";
 
     partial void OnSelectedStepChanged(StepItemViewModel? value)
     {
@@ -240,7 +240,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// and conversation delegates are the skin's render targets — the same inversion
     /// <see cref="RoomClient"/> uses, keeping this assembly Avalonia-free.
     /// </summary>
-    public void RebuildTaskSteps(
+    public void RebuildRoomSteps(
         RoomProjection projection,
         string roomDirectoryPath,
         Func<string, Task> previewFileAsync,
@@ -250,12 +250,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var previousSelectedStepId = SelectedStep?.StepId;
 
         RoomSteps.Clear();
-        // reRunAction only for a Terminal task: Run's re-run-as-clone flow (see IsTaskFinished)
+        // reRunAction only for a Terminal task: Run's re-run-as-clone flow (see IsRoomFinished)
         // exists only then. While a sibling branch still runs or waits on a decision, the same
         // click resumes the directory in place — for a Failed step with no pending obligation the
         // pump returns unchanged, a silent no-op — so the banner hides Try again until the task
         // finishes (FailedStepBannerViewModel.CanTryAgain). Gated on the projection parameter, not
-        // the IsTaskFinished property, so it cannot depend on the skin's render order.
+        // the IsRoomFinished property, so it cannot depend on the skin's render order.
         var reRunAvailable = projection.State.Status == Aer.Flow.Domain.WorkflowStatus.Terminal;
         foreach (var item in StepItemProjector.Build(
             projection, roomDirectoryPath, PausedSteps, previewFileAsync, showConversation,
@@ -275,12 +275,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             RoomSteps.FirstOrDefault();
     }
 
-    /// <summary>Clears the drill-in surface — the error-path counterpart of <see cref="RebuildTaskSteps"/>.</summary>
-    public void ClearTaskSteps()
+    /// <summary>Clears the drill-in surface — the error-path counterpart of <see cref="RebuildRoomSteps"/>.</summary>
+    public void ClearRoomSteps()
     {
         RoomSteps.Clear();
         SelectedStep = null;
-        RoomHeadlineText = "No task open.";
+        RoomHeadlineText = "No room open.";
     }
 
     /// <summary>Selects a step by id — the DAG canvas's node-click entry point (the canvas stays code-behind until Phase 5 makes it a custom control).</summary>

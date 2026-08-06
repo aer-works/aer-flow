@@ -10,14 +10,14 @@ namespace Aer.Ui.Tests;
 public class LocalUiConfigurationStoreTests
 {
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [Fact]
     public async Task No_config_file_yet_loads_as_an_empty_list()
     {
         var store = new LocalUiConfigurationStore(NewConfigFilePath());
 
-        var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+        var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(recents);
     }
@@ -33,7 +33,7 @@ public class LocalUiConfigurationStoreTests
         {
             await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(Path.GetFullPath(roomDirectory), Assert.Single(recents));
         }
@@ -58,7 +58,7 @@ public class LocalUiConfigurationStoreTests
             await store.RecordOpenedAsync(second, TestContext.Current.CancellationToken);
             await store.RecordOpenedAsync(first, TestContext.Current.CancellationToken);
 
-            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal([Path.GetFullPath(first), Path.GetFullPath(second)], recents);
         }
@@ -79,7 +79,7 @@ public class LocalUiConfigurationStoreTests
         await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
         DirectoryCleanup.DeleteRecursively(roomDirectory);
 
-        var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+        var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(recents);
     }
@@ -92,7 +92,7 @@ public class LocalUiConfigurationStoreTests
         await File.WriteAllTextAsync(configFilePath, "{ not valid json for a string list", TestContext.Current.CancellationToken);
         var store = new LocalUiConfigurationStore(configFilePath);
 
-        var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+        var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(recents);
     }
@@ -122,7 +122,7 @@ public class LocalUiConfigurationStoreTests
             Assert.Equal(Path.GetFullPath("bindings.json"), await store.LoadLastBindingsFilePathAsync(TestContext.Current.CancellationToken));
             Assert.Equal(Path.GetFullPath("workflow.json"), await store.LoadLastWorkflowTemplateFilePathAsync(TestContext.Current.CancellationToken));
             Assert.Equal(
-                Path.GetFullPath(roomDirectory), Assert.Single(await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken)));
+                Path.GetFullPath(roomDirectory), Assert.Single(await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken)));
         }
         finally
         {
@@ -150,7 +150,7 @@ public class LocalUiConfigurationStoreTests
                 await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
             }
 
-            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(10, recents.Count);
             Assert.Equal(Path.GetFullPath(roomDirectories[^1]), recents[0]);
@@ -178,9 +178,9 @@ public class LocalUiConfigurationStoreTests
             await store.RecordOpenedAsync(keep, TestContext.Current.CancellationToken);
             await store.RecordOpenedAsync(remove, TestContext.Current.CancellationToken);
 
-            await store.RemoveRecentTaskDirectoryAsync(remove, TestContext.Current.CancellationToken);
+            await store.RemoveRecentRoomDirectoryAsync(remove, TestContext.Current.CancellationToken);
 
-            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
             Assert.Equal(Path.GetFullPath(keep), Assert.Single(recents));
         }
         finally
@@ -201,10 +201,10 @@ public class LocalUiConfigurationStoreTests
         {
             await store.RecordOpenedAsync(recorded, TestContext.Current.CancellationToken);
 
-            await store.RemoveRecentTaskDirectoryAsync(
+            await store.RemoveRecentRoomDirectoryAsync(
                 Path.Combine(Path.GetTempPath(), $"never-recorded-{Guid.NewGuid():N}"), TestContext.Current.CancellationToken);
 
-            var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            var recents = await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
             Assert.Equal(Path.GetFullPath(recorded), Assert.Single(recents));
         }
         finally

@@ -73,7 +73,7 @@ public class MainWindowRunTests
 
             await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
-            var recents = await configurationStore.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
+            var recents = await configurationStore.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken);
             Assert.Equal(Path.GetFullPath(roomDirectory), Assert.Single(recents));
             Assert.Equal(
                 Path.GetFullPath(bindingsFilePath),

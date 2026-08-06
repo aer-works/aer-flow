@@ -8,9 +8,9 @@ namespace Aer.Ui;
 
 public class ExitConfirmationWindow : Window
 {
-    private bool? _cancelTask;
+    private bool? _cancelRoom;
 
-    public ExitConfirmationWindow(bool hasRunningTasks)
+    public ExitConfirmationWindow(bool hasRunningRooms)
     {
         Title = "Exit Baton";
         Width = 520;
@@ -27,8 +27,8 @@ public class ExitConfirmationWindow : Window
         // Content stack
         var mainStack = new StackPanel { Margin = new Thickness(20), Spacing = 16 };
 
-        var messageText = hasRunningTasks
-            ? "An active task is running. Cancel task and exit, or quit UI only (leaving task running)?"
+        var messageText = hasRunningRooms
+            ? "An active room is running. Cancel room and exit, or quit UI only (leaving room running)?"
             : "Close Baton? You can stop the background daemon and exit, or quit the UI only (leaving the daemon running).";
 
         var message = new TextBlock
@@ -48,7 +48,7 @@ public class ExitConfirmationWindow : Window
             Spacing = 12
         };
 
-        var cancelAndExitText = hasRunningTasks ? "Cancel Task & Exit" : "Stop Daemon & Exit";
+        var cancelAndExitText = hasRunningRooms ? "Cancel Room & Exit" : "Stop Daemon & Exit";
         var cancelAndExitButton = new Button
         {
             Content = cancelAndExitText,
@@ -75,9 +75,9 @@ public class ExitConfirmationWindow : Window
             FontSize = 12
         };
 
-        cancelAndExitButton.Click += (s, e) => { _cancelTask = true; Close(); };
-        quitUiOnlyButton.Click += (s, e) => { _cancelTask = false; Close(); };
-        keepRunningButton.Click += (s, e) => { _cancelTask = null; Close(); };
+        cancelAndExitButton.Click += (s, e) => { _cancelRoom = true; Close(); };
+        quitUiOnlyButton.Click += (s, e) => { _cancelRoom = false; Close(); };
+        keepRunningButton.Click += (s, e) => { _cancelRoom = null; Close(); };
 
         buttonsStack.Children.Add(cancelAndExitButton);
         buttonsStack.Children.Add(quitUiOnlyButton);
@@ -88,10 +88,10 @@ public class ExitConfirmationWindow : Window
         Content = mainStack;
     }
 
-    public static async Task<bool?> ShowPromptAsync(Window parent, bool hasRunningTasks)
+    public static async Task<bool?> ShowPromptAsync(Window parent, bool hasRunningRooms)
     {
-        var dialog = new ExitConfirmationWindow(hasRunningTasks);
+        var dialog = new ExitConfirmationWindow(hasRunningRooms);
         await dialog.ShowDialog(parent);
-        return dialog._cancelTask;
+        return dialog._cancelRoom;
     }
 }

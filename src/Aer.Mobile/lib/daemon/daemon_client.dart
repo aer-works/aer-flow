@@ -220,7 +220,7 @@ class DaemonClient {
     }
   }
 
-  Future<List<String>> recentTasks() async {
+  Future<List<String>> recentRooms() async {
     final response = await _get(Uri.http(host, '/api/rooms/recent'));
     _throwIfFailed(response);
     return (jsonDecode(response.body) as List<dynamic>)
@@ -233,7 +233,7 @@ class DaemonClient {
   /// local `_openDirectoryPath` (or equivalent) after this succeeds, or their own filter will
   /// discard the resulting push. Only call this from an explicit user action (the recent-tasks
   /// picker), never automatically.
-  Future<void> openTask(String directoryPath) async {
+  Future<void> openRoom(String directoryPath) async {
     final response = await _post(
       Uri.http(host, '/api/rooms/open'),
       headers: {'Content-Type': 'application/json'},
@@ -449,7 +449,7 @@ class DaemonClient {
 
   /// Every known task/session directory's lightweight status (M24 Phase 5, #278) — archived items
   /// are filtered out by default, matching desktop's own RoomsViewModel.
-  Future<List<RoomFleetItem>> listTasks({bool includeArchived = false}) async {
+  Future<List<RoomFleetItem>> listRooms({bool includeArchived = false}) async {
     final uri = Uri.http(host, '/api/rooms', {'includeArchived': includeArchived.toString()});
     final response = await _get(uri);
     _throwIfFailed(response);
@@ -459,7 +459,7 @@ class DaemonClient {
 
   /// Hides a task/session directory from the default fleet list — the name stays reserved until a
   /// real [deleteTask].
-  Future<void> archiveTask(String directoryPath) async {
+  Future<void> archiveRoom(String directoryPath) async {
     final response = await _post(
       Uri.http(host, '/api/rooms/archive'),
       headers: {'Content-Type': 'application/json'},
@@ -469,7 +469,7 @@ class DaemonClient {
   }
 
   /// Reinstates a task/session directory into the default fleet list.
-  Future<void> unarchiveTask(String directoryPath) async {
+  Future<void> unarchiveRoom(String directoryPath) async {
     final response = await _post(
       Uri.http(host, '/api/rooms/unarchive'),
       headers: {'Content-Type': 'application/json'},
@@ -479,7 +479,7 @@ class DaemonClient {
   }
 
   /// Really deletes a task/session directory — the only action that frees its name for reuse.
-  Future<void> deleteTask(String directoryPath) async {
+  Future<void> deleteRoom(String directoryPath) async {
     final response = await _post(
       Uri.http(host, '/api/rooms/delete'),
       headers: {'Content-Type': 'application/json'},
