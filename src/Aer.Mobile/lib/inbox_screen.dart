@@ -9,7 +9,7 @@ import 'daemon/models.dart';
 import 'pairing_screen.dart';
 import 'rooms_screen.dart';
 
-/// The phone's decision inbox — mirrors whatever task Aer.Daemon currently has open (typically
+/// The phone's decision inbox — mirrors whatever room Aer.Daemon currently has open (typically
 /// opened by the desktop first) and lets the user Approve/Reject a paused step or Cancel the run.
 /// RetryWithRevision/Supersede aren't offered here: both need a way to move file content onto the
 /// daemon host that this app doesn't have yet (deferred past Phase 2 — see daemon_client.dart).
@@ -544,7 +544,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Cancel this run?'),
-        content: const Text('This stops the whole task, not just one step.'),
+        content: const Text('This stops the whole room, not just one step.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep running')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cancel run')),
@@ -623,7 +623,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('No task is open on the host yet.', textAlign: TextAlign.center),
+              const Text('No room is open on the host yet.', textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton.icon(
                 icon: const Icon(Icons.chat_bubble_outline),
@@ -687,7 +687,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
             const SizedBox(height: 16),
             FilledButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Start another task from template'),
+              label: const Text('Start another room from template'),
               onPressed: _showTemplatePicker,
             ),
           ],

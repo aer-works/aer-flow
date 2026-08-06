@@ -86,7 +86,7 @@ void main() {
 
     test('deleteRoom throws DaemonException on a non-2xx response', () async {
       final mockClient = MockClient((request) async {
-        return http.Response('DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.', 400);
+        return http.Response('DirectoryPath must be inside ~/.aer/rooms.', 400);
       });
 
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);

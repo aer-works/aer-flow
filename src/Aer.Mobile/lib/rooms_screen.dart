@@ -233,7 +233,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
           if (_isLoading) const LinearProgressIndicator(),
           Expanded(
             child: _items.isEmpty && !_isLoading
-                ? const Center(child: Text('No tasks or sessions yet.'))
+                ? const Center(child: Text('No rooms yet.'))
                 : ListView.builder(
                     itemCount: _items.length,
                     itemBuilder: (context, index) {

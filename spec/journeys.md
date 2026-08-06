@@ -66,7 +66,7 @@ going back to the machine.
   manual reload.
 - **Path** *(illustrative)* — start a review-run on the desktop · it pauses at its gate · the phone
   shows it waiting on you · you decide and approve · it resumes and finishes · the desk updates.
-- **Today** — the phone's inbox is scoped to the daemon's single open task, so a desk-started run
+- **Today** — the phone's inbox is scoped to the daemon's single open room, so a desk-started run
   often isn't there to approve.
 - **Serves** — #335, #319, #330
 
@@ -112,8 +112,8 @@ first — held apart from what's still running and what already finished.
 - **Path** *(illustrative)* — reopen the app · the first thing you see is the short list of decisions
   waiting · running work is visible but secondary · finished work (failures correctly labelled) is
   available, not in your face.
-- **Today** — a running task shows the phone "Nothing is waiting on you" and nothing else (#337);
-  failed tasks list as `Terminal`/finished (#355). The vendor audit (#527) settled *where the signal
+- **Today** — a running room shows the phone "Nothing is waiting on you" and nothing else (#337);
+  failed rooms list as `Terminal`/finished (#355). The vendor audit (#527) settled *where the signal
   comes from*, which this journey had never pinned down: both vendor events that could have announced
   a pause — `PermissionRequest` and `Notification` — are silent under `-p`, so
   [0030](../docs/decisions/0030-aer-is-its-own-notifier.md) makes AER the notifier. It follows that
@@ -155,7 +155,7 @@ object, the same state, not two disconnected views.
 - **Path** *(illustrative)* — start work on the desktop · the phone shows it appear and track state
   live · (and the reverse) · both agree on what it is and where it's at.
 - **Today** — desktop-started work never broadcasts, so paired phones never see it (#330); starting a
-  non-chat template from the phone leaves it on "No task is open" while the daemon reports it running
+  non-chat template from the phone leaves it on "No room is open" while the daemon reports it running
   (#348).
 - **Serves** — #330, #348, #335
 
@@ -460,7 +460,7 @@ the phone keeps the room moving; and at no point after initiation is the desktop
   be evidenced by AER's own gate state, never by the absence of a notification — J3's 0030 rule,
   verbatim.
 - **Today** — nothing delivers. Push exists on no surface, workflow events are relayed by a human
-  orchestrator hand-tailing journals, and the decision inbox is scoped to a single open task. #806
+  orchestrator hand-tailing journals, and the decision inbox is scoped to a single open room. #806
   records the measured session behind this journey — a full build day driven from a pocket through
   a harness never designed for it, every workaround in it a requirement here. `docs/plan.md` §M26
   names this journey as the milestone's demo bar.

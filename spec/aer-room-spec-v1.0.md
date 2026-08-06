@@ -30,12 +30,12 @@ so the system cannot be in a state it has not recorded.
 ## 2. The room
 
 A **room** is one working directory and everything that happens in it: the workers active there,
-the chat, the running work, the artifacts, and the durable record. In the code at HEAD the room's
-storage form is the *room directory* (`flow.jsonl`, `artifacts/`, bindings) — "task" is the code's
-noun for what the product calls a room, and #443 tracks converging the identifiers. One directory
-may contain several repositories; the room does not know or care.
+the chat, the running work, the artifacts, and the durable record. Its storage form is the room
+directory (`~/.aer/rooms/<room>/`: `flow.jsonl`, `artifacts/`, bindings, and the `room.json` kind
+marker) — #443 converged the code's identifiers onto that noun. One directory may contain several
+repositories; the room does not know or care.
 
-A room's lifecycle surface at HEAD is the daemon's task API (`src/Aer.Daemon/Program.cs` is the
+A room's lifecycle surface at HEAD is the daemon's room API (`src/Aer.Daemon/Program.cs` is the
 authority for the route list): open, run, decide, cancel, archive/unarchive/delete, artifact
 retrieval, and a recent-rooms list. Archival is a client-side shelving state, not an engine state —
 the engine has no notion of an archived room.
@@ -74,7 +74,7 @@ connected, which workers are running, what the engine last recorded. At HEAD it 
 - **Pairing** (`PairedClientsStore`): clients pair with the daemon by code, are stored durably,
   and can be listed and revoked. Pairing is authentication of a client to the daemon — it grants no
   vendor credential and touches none (Credential Isolation, `CLAUDE.md` Architecture Rule 4).
-- **Broadcast** (`DaemonBroadcast`, `/api/ws` and `/api/ws/progress`): the daemon pushes task
+- **Broadcast** (`DaemonBroadcast`, `/api/ws` and `/api/ws/progress`): the daemon pushes room
   progress over WebSocket to connected clients. Broadcast is a wire projection of recorded events,
   never an alternative source of truth.
 

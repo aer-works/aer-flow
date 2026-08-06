@@ -17,10 +17,10 @@ namespace Aer.Ui.Core;
 public sealed partial class RoomClient
 {
     /// <summary>
-    /// The fleet list (M24 Phase 5, #278): every known task/session directory's lightweight status.
-    /// Daemon-only, same reasoning as <see cref="GetSessionCommandsAsync"/> — scanning both
-    /// <c>~/.aer/tasks</c> and <c>~/.aer/sessions</c> is inherently a whole-host operation, not
-    /// something this client instance's own in-process fallback state could answer meaningfully.
+    /// The fleet list (M24 Phase 5, #278): every known room directory's lightweight status.
+    /// Daemon-only, same reasoning as <see cref="GetSessionCommandsAsync"/> — scanning
+    /// <c>~/.aer/rooms</c> is inherently a whole-host operation, not something this client
+    /// instance's own in-process fallback state could answer meaningfully.
     /// </summary>
     public async Task<(IReadOnlyList<RoomFleetItem>? Items, string? ErrorMessage)> GetFleetAsync(
         bool includeArchived = false, CancellationToken cancellationToken = default)

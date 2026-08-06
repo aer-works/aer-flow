@@ -261,7 +261,7 @@ public static class InteractiveSessionMaterializer
     /// <summary>
     /// The directory a session's vendor process runs in (its cwd). When the session is attached to a
     /// codebase that working directory is used; when it is directory-less the process runs in the
-    /// session's own directory (its task dir under <c>~/.aer/sessions/</c>) rather than inheriting the
+    /// session's own directory (its room dir under <c>~/.aer/rooms/</c>) rather than inheriting the
     /// daemon/app cwd (#407). Defense in depth alongside <see cref="DefaultGrantForWorkingDirectory"/>:
     /// a directory-less session is already fail-closed (#321), so it cannot act on any cwd today, but
     /// starting it in a neutral, session-owned dir means a future tool or vector that reads the cwd

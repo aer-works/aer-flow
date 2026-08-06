@@ -1099,13 +1099,12 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
-            // M24 Phase 5 (#278): the fleet list — every known task/session directory's lightweight
-            // status, scanning both ~/.aer/tasks (DAG workflow runs) and ~/.aer/sessions
-            // (interactive chat/codebase sessions), the same two roots /api/templates/run and
-            // /api/sessions already materialize into. Archived items are filtered out by default
-            // (the everyday view); includeArchived=true surfaces them for the management screen.
-            // A directory that fails to load (corrupt snapshot/log) is skipped rather than failing
-            // the whole list, since one bad item shouldn't hide every other task/session.
+            // M24 Phase 5 (#278): the fleet list — every known room directory's lightweight status,
+            // scanning ~/.aer/rooms, the one root /api/templates/run and /api/sessions materialize
+            // into (#443 unified the former ~/.aer/tasks and ~/.aer/sessions). Archived items are
+            // filtered out by default (the everyday view); includeArchived=true surfaces them for
+            // the management screen. A directory that fails to load (corrupt snapshot/log) is skipped
+            // rather than failing the whole list, since one bad item shouldn't hide every other room.
             app.MapGet("/api/rooms", async (bool? includeArchived) =>
             {
                 // #333: one root, one kind of record -- the two-root concatenation this replaced is
@@ -1149,7 +1148,7 @@ namespace Aer.Daemon
                 }
                 if (!TryResolveManagedRoomDirectory(request.DirectoryPath, out var resolvedPath))
                 {
-                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/rooms.");
                 }
 
                 await RoomLifecycle.ArchiveAsync(resolvedPath).ConfigureAwait(true);
@@ -1164,7 +1163,7 @@ namespace Aer.Daemon
                 }
                 if (!TryResolveManagedRoomDirectory(request.DirectoryPath, out var resolvedPath))
                 {
-                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/rooms.");
                 }
 
                 await RoomLifecycle.UnarchiveAsync(resolvedPath).ConfigureAwait(true);
@@ -1183,7 +1182,7 @@ namespace Aer.Daemon
                 }
                 if (!TryResolveManagedRoomDirectory(request.DirectoryPath, out var resolvedPath))
                 {
-                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
+                    return Results.BadRequest("DirectoryPath must be inside ~/.aer/rooms.");
                 }
 
                 if (!Directory.Exists(resolvedPath))
@@ -1923,7 +1922,7 @@ namespace Aer.Daemon
                 Timeout: TimeSpan.FromMinutes(10),
                 Model: requestModel ?? metadata.Model,
                 PermissionGrant: grant,
-                // #407: a directory-less session runs in its own dir under ~/.aer/sessions/, not the
+                // #407: a directory-less session runs in its own dir under ~/.aer/rooms/, not the
                 // inherited daemon/app cwd. The grant above is still derived from metadata.WorkingDirectory
                 // (null -> fail-closed), so this run-dir fallback hardens where it starts without widening
                 // what it may do.
