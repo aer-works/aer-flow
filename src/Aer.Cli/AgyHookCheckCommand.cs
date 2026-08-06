@@ -174,13 +174,10 @@ public static class AgyHookCheckCommand
                       "names it cannot judge, and denied this call rather than allowing it unchecked.");
         }
 
+        // Parsed here; judged inside the run_command branch below. This channel gates exactly one
+        // tool, so its state is not allowed to decide the verdict for any other tool — a non-Present
+        // list denies run_command (see there) but leaves view_file et al. to the denied-tool channel.
         var shellPatternList = ShellPatternList.Parse(shellPatternsRaw, VendorTag);
-        if (shellPatternList.Status == ShellPatternListStatus.WrongVendor)
-        {
-            return DenyJson(
-                "AER: the permission gate received another vendor's shell pattern list, whose patterns " +
-                "it cannot judge, and denied this call rather than allowing it unchecked.");
-        }
 
         // #679 removed the early allow for an empty list here as on claude; see
         // HookCheckCommand.Decide for why, and for what an empty list cannot be told apart from.
@@ -240,21 +237,43 @@ public static class AgyHookCheckCommand
             return DenyJson($"AER: the '{toolName}' tool is withheld by this session's permission grant.");
         }
 
-        if (toolName == "run_command" && shellPatternList.Patterns.Count > 0)
+        if (toolName == "run_command")
         {
-            if (commandLine is null)
+            // The shell channel gates this tool. A non-Present list means the gate cannot judge the
+            // command's scope, so it denies rather than let an unjudged shell through. Absent = the
+            // channel broke: GeminiWorkerAdapter always emits this variable alongside the denied-tool
+            // one, so its absence is the same fail-open #679 closed for denied tools, NOT an unscoped
+            // grant — an unscoped grant is Present with an empty pattern set ("agy:"). WrongVendor =
+            // another vendor's patterns this gate cannot read. Either way, deny run_command.
+            if (shellPatternList.Status != ShellPatternListStatus.Present)
             {
                 return DenyJson(
-                    "AER: the 'run_command' tool is granted with shell command patterns, but this gate " +
-                    "could not read toolCall.args.CommandLine in the hook payload and denied this call " +
-                    "rather than allowing it unchecked.");
+                    shellPatternList.Status == ShellPatternListStatus.Absent
+                        ? "AER: the permission gate did not receive its shell pattern list and denied this " +
+                          "run_command call rather than allowing it unchecked."
+                        : "AER: the permission gate received another vendor's shell pattern list, whose " +
+                          "patterns it cannot judge, and denied this run_command call rather than allowing " +
+                          "it unchecked.");
             }
 
-            if (!Aer.Adapters.ShellCommandPatternMatcher.IsAllowed(commandLine, shellPatternList.Patterns))
+            // Present with no patterns is the deliberate unscoped-shell grant: allow. Only a non-empty
+            // pattern set narrows the shell, and then the command line must match it.
+            if (shellPatternList.Patterns.Count > 0)
             {
-                return DenyJson(
-                    $"AER: the command line '{commandLine}' is denied because it does not match the " +
-                    "shell command patterns allowed by this session's grant.");
+                if (commandLine is null)
+                {
+                    return DenyJson(
+                        "AER: the 'run_command' tool is granted with shell command patterns, but this gate " +
+                        "could not read toolCall.args.CommandLine in the hook payload and denied this call " +
+                        "rather than allowing it unchecked.");
+                }
+
+                if (!Aer.Adapters.ShellCommandPatternMatcher.IsAllowed(commandLine, shellPatternList.Patterns))
+                {
+                    return DenyJson(
+                        $"AER: the command line '{commandLine}' is denied because it does not match the " +
+                        "shell command patterns allowed by this session's grant.");
+                }
             }
         }
 

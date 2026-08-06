@@ -993,8 +993,15 @@ public class GeminiWorkerAdapterTests
         startInfo.ArgumentList.Add(match.Groups[2].Value);
         startInfo.ArgumentList.Add(match.Groups[3].Value);
 
-        var deniedVar = target.Environment!.First(e => e.Name == GeminiWorkerAdapter.DeniedToolsVariable);
-        startInfo.Environment[deniedVar.Name] = deniedVar.Value;
+        // Forward both channels the adapter emits and the hook reads (#600 denied tools, #659 shell
+        // patterns). Since #659 the hook denies when the shell-pattern channel is Absent — the same
+        // fail-closed posture as denied tools — so a launcher that forwarded only one var would deny
+        // every call, including the granted one this test proves is allowed. Production sends the full
+        // environment dict; this mirrors that for the two vars that gate the verdict.
+        foreach (var name in new[] { GeminiWorkerAdapter.DeniedToolsVariable, GeminiWorkerAdapter.ShellPatternsVariable })
+        {
+            startInfo.Environment[name] = target.Environment!.First(e => e.Name == name).Value;
+        }
 
         using var process = Process.Start(startInfo)!;
         process.StandardInput.Write(stdin);

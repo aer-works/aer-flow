@@ -13,10 +13,15 @@ public class DeniedToolChannelTests
     private const string AgyPayload = """{"toolCall":{"name":"run_command","args":{}}}""";
     private const string ClaudePayload = """{"tool_name":"Bash"}""";
 
-    private static string RunAgy(string? denied, string payload = AgyPayload)
+    // These exercise the denied-tool channel, not the shell channel, but the default payload is a
+    // run_command — so the shell channel must be Present-and-unscoped ("agy:"), the way production
+    // always emits it, or #659's fail-closed run_command gate would deny before the denied-tool
+    // logic under test is reached. Absent/wrong-vendor shell patterns are covered in
+    // AgyHookCheckCommandTests, not here.
+    private static string RunAgy(string? denied, string payload = AgyPayload, string? shellPatterns = "agy:")
     {
         using var stdout = new StringWriter();
-        AgyHookCheckCommand.Execute(new StringReader(payload), stdout, denied);
+        AgyHookCheckCommand.Execute(new StringReader(payload), stdout, denied, shellPatternsRaw: shellPatterns);
         return stdout.ToString();
     }
 
