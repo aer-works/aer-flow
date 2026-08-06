@@ -28,8 +28,9 @@ No existing tool does this well under the three constraints that actually apply 
 >
 > The user-facing noun for that unit **is room**
 > ([0013](../docs/decisions/0013-room-is-the-user-facing-noun.md)), with `session` narrowing to the
-> vendor CLI's resumable thread. `#443` converged the identifiers, so the engine, this spec, and the
-> product now say *room* with one voice — which is what
+> vendor CLI's resumable thread. `#443` converged the identifiers and spec terms, so the engine and
+> this spec now say *room* with one voice; the product says it too, bar one template-picker dialog
+> whose room/task wording is a copy pass (`#1037`), not a rename. That is what
 > [0002](../docs/decisions/0002-one-vocabulary.md) requires: one word, no translation map.
 
 Concretely, that means:

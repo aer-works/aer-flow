@@ -457,8 +457,8 @@ class DaemonClient {
     return list.map((item) => RoomFleetItem.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  /// Hides a task/session directory from the default fleet list — the name stays reserved until a
-  /// real [deleteTask].
+  /// Hides a room directory from the default fleet list — the name stays reserved until a
+  /// real [deleteRoom].
   Future<void> archiveRoom(String directoryPath) async {
     final response = await _post(
       Uri.http(host, '/api/rooms/archive'),

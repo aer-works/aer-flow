@@ -132,7 +132,7 @@
       <Border Classes="card" Padding="0">
       <Expander Header="Advanced — edit the files directly" IsExpanded="False">
       <StackPanel Spacing="{DynamicResource Space.3}" Margin="16,8,16,16">
-      <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task):" />
+      <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound room):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Template file:" VerticalAlignment="Center" />
         <TextBox x:Name="TemplateEditorPathBox" Width="360" />

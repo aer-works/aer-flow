@@ -6,7 +6,7 @@ import 'package:http/testing.dart';
 import 'package:aer_mobile/daemon/daemon_client.dart';
 
 void main() {
-  group('DaemonClient M24 Phase 5 Task Lifecycle Endpoints', () {
+  group('DaemonClient M24 Phase 5 Room Lifecycle Endpoints', () {
     test('listRooms returns the fleet list and defaults includeArchived to false', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.path, '/api/rooms');

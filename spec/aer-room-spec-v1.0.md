@@ -178,7 +178,7 @@ implementation *fulfills* this spec. Nothing else belongs here — an undecided 
 ## 9. Filed, not answered
 
 Questions this document surfaced or inherited that require decisions, each filed rather than
-resolved in text: #443 (noun convergence in identifiers), #447 (the ViewModel out of the daemon),
+resolved in text: #447 (the ViewModel out of the daemon),
 #774 (liveness), #775 (live worker output), #745 (event timestamps), #672 (room memory), #594
 (quota classification build-out). When one lands, this list shrinks; it never grows silently — a
 new undecided question gets a new issue first.

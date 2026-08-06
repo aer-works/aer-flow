@@ -151,7 +151,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentTask]'s bare
+  /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentRoom]'s bare
   /// recents sheet, which stays the quick-reopen path; this is the real archive/unarchive/delete
   /// surface.
   Future<void> _manageRooms() async {
@@ -418,9 +418,9 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         // reliably missed (issue #348). Unlike chat's startSession, a template has
                         // no sessionId/ChatScreen to jump into instead; the task's own view is
                         // InboxScreen's body, driven by `_projection`. Set the filter first, then
-                        // force a second, guaranteed-to-match broadcast via openTask (same call
-                        // _pickRecentTask already relies on) so this screen actually shows the
-                        // task instead of stranding on the empty state.
+                        // force a second, guaranteed-to-match broadcast via openRoom (same call
+                        // _pickRecentRoom already relies on) so this screen actually shows the
+                        // room instead of stranding on the empty state.
                         setState(() => _openDirectoryPath = dirPath);
                         await client.openRoom(dirPath);
                       }

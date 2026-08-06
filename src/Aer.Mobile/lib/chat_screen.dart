@@ -182,7 +182,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Chat capability picker (M24 Phase 2 follow-up): fetches this session's discovered skills/
   /// commands/agents (recently-used first) plus session-level mode buttons, in a bottom sheet
-  /// matching InboxScreen's own `_pickRecentTask` idiom.
+  /// matching InboxScreen's own `_pickRecentRoom` idiom.
   Future<void> _openCommandsSheet() async {
     if (_isLoadingCommands) return;
     setState(() => _isLoadingCommands = true);

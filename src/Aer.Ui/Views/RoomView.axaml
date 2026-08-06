@@ -13,7 +13,7 @@
       <TextBlock Classes="display" Text="{Binding RoomHeadlineText}" />
       <!-- The empty state says what to do next (Phase 5): nothing open, two ways forward. -->
       <TextBlock Classes="secondary" IsVisible="{Binding !HasSelectedStep}" TextWrapping="Wrap"
-                 Text="Open a task from Home, or create and run a workflow in Author — this view fills in as soon as a task is open." />
+                 Text="Open a room from Home, or create and run a workflow in Author — this view fills in as soon as a room is open." />
 
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Workflow:" VerticalAlignment="Center" />

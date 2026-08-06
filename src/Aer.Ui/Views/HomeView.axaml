@@ -53,7 +53,7 @@
            test asserts this card is shown with real actions on an empty first run. -->
       <Border x:Name="EmptyStateCard" Classes="card" IsVisible="{Binding Home.HasNoRooms}">
         <StackPanel Spacing="{DynamicResource Space.2}">
-          <TextBlock Classes="body-strong" Text="No tasks yet." />
+          <TextBlock Classes="body-strong" Text="No rooms yet." />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
                      Text="Start from a pre-authored template — or create a custom workflow below." />
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
@@ -92,14 +92,14 @@
       </StackPanel>
 
       <StackPanel Spacing="{DynamicResource Space.3}">
-      <TextBlock Classes="heading" Text="Open a task" />
+      <TextBlock Classes="heading" Text="Open a room" />
       <!-- #212: the text box stays as a visible, hand-editable fallback (never the only way in) —
            Browse is the primary path for a user with no reliable way to type a correct path. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
         <TextBlock Text="Room directory:" VerticalAlignment="Center" />
         <TextBox x:Name="RoomDirectoryPathBox" Width="420" />
         <Button x:Name="BrowseRoomDirectoryButton" Click="OnBrowseRoomDirectoryClick"
-                ToolTip.Tip="Pick a task folder instead of typing its path">
+                ToolTip.Tip="Pick a room folder instead of typing its path">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
             <Path Classes="action-icon" Data="{StaticResource Icon.Folder}"
                   StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"

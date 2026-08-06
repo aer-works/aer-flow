@@ -5,7 +5,7 @@ import 'daemon/models.dart';
 
 /// The fleet management screen (M24 Phase 5, #278) — every known task/session directory at once,
 /// with archive/unarchive/delete. The Flutter counterpart of Aer.Ui's dedicated Rooms view. Reached
-/// from InboxScreen's kebab menu ("Manage rooms"), distinct from `_pickRecentTask`'s bare recents
+/// from InboxScreen's kebab menu ("Manage rooms"), distinct from `_pickRecentRoom`'s bare recents
 /// sheet, which stays the quick-reopen path — this screen is the real management surface.
 ///
 /// Bulk select (issue #288): long-press a card to enter selection mode, then tap any card to

@@ -89,7 +89,7 @@ public partial class HomeView : UserControl
 
         var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Choose a task folder",
+            Title = "Choose a room folder",
             AllowMultiple = false,
             SuggestedStartLocation = suggestedStartLocation,
         });
