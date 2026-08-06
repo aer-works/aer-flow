@@ -64,7 +64,7 @@
       "name": "Archived",
       "behaviour": "Out of the default list, still searchable, restorable in one action.",
       "provenance": "M25 design pass, 2026-07-24",
-      "coverage": { "renderedBy": ["src/Aer.Ui.Core/RoomProjectionLoader.cs", "src/Aer.Ui.Core/TasksViewModel.cs"] }
+      "coverage": { "renderedBy": ["src/Aer.Ui.Core/RoomProjectionLoader.cs", "src/Aer.Ui.Core/RoomsViewModel.cs"] }
     },
     "longOutput": {
       "name": "Long output",
