@@ -15,7 +15,7 @@ namespace Aer.Ui.Tests;
 /// decisions slices. Task directories built from hand-written <see cref="FlowEvent"/>s, matching
 /// <see cref="MainWindowProjectionTests"/>' convention.
 /// </summary>
-public class TaskDrillInTests
+public class RoomDrillInTests
 {
     private static readonly StepId Architect = new("architect");
     private static readonly StepId Critic = new("critic");

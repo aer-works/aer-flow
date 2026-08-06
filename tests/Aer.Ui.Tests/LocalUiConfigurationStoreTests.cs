@@ -135,17 +135,17 @@ public class LocalUiConfigurationStoreTests
     {
         var configFilePath = NewConfigFilePath();
         var store = new LocalUiConfigurationStore(configFilePath);
-        var taskDirectories = Enumerable.Range(0, 12)
+        var roomDirectories = Enumerable.Range(0, 12)
             .Select(_ => Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}"))
             .ToList();
-        foreach (var roomDirectory in taskDirectories)
+        foreach (var roomDirectory in roomDirectories)
         {
             Directory.CreateDirectory(roomDirectory);
         }
 
         try
         {
-            foreach (var roomDirectory in taskDirectories)
+            foreach (var roomDirectory in roomDirectories)
             {
                 await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
             }
@@ -153,11 +153,11 @@ public class LocalUiConfigurationStoreTests
             var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(10, recents.Count);
-            Assert.Equal(Path.GetFullPath(taskDirectories[^1]), recents[0]);
+            Assert.Equal(Path.GetFullPath(roomDirectories[^1]), recents[0]);
         }
         finally
         {
-            foreach (var roomDirectory in taskDirectories)
+            foreach (var roomDirectory in roomDirectories)
             {
                 DirectoryCleanup.DeleteRecursively(roomDirectory);
             }

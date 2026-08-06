@@ -298,7 +298,7 @@ public class MutationInterfaceHumanWorkerTests
         ["human"] = new WorkerBinding.NonProcess(HumanContract),
     };
 
-    private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
+    private static (string RoomDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));

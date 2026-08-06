@@ -101,7 +101,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetRecentTasks_ReturnsOk()
+    public async Task GetRecentRooms_ReturnsOk()
     {
         var response = await _client.GetAsync($"{_baseUrl}/api/rooms/recent", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
@@ -110,22 +110,22 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task OpenTask_WithMissingDirectory_ReturnsBadRequest()
+    public async Task OpenRoom_WithMissingDirectory_ReturnsBadRequest()
     {
-        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/rooms/open", new OpenTaskRequest(""), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/rooms/open", new OpenRoomRequest(""), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task OpenTask_WithInvalidDirectory_ReturnsBadRequest()
+    public async Task OpenRoom_WithInvalidDirectory_ReturnsBadRequest()
     {
         var invalidDir = Path.Combine(_tempTaskDirectory!, "non_existent_folder_abc_123");
-        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/rooms/open", new OpenTaskRequest(invalidDir), TestContext.Current.CancellationToken);
+        var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/rooms/open", new OpenRoomRequest(invalidDir), TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task OpenTask_WhileFlowLockHeld_ReturnsBadRequestWithNonEmptyMessage()
+    public async Task OpenRoom_WhileFlowLockHeld_ReturnsBadRequestWithNonEmptyMessage()
     {
         // #324: a task whose flow.lock is held by another writer is still readable -- ConcurrencyGuard
         // locks only flow.lock, never snapshot.json/flow.jsonl -- so /api/rooms/open would happily load
@@ -140,7 +140,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         using var guard = ConcurrencyGuard.Acquire(roomDirectory);
 
         var response = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/open", new OpenTaskRequest(roomDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/open", new OpenRoomRequest(roomDirectory), TestContext.Current.CancellationToken);
 
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -443,7 +443,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var roomDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
 
         var openResponse = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/open", new OpenTaskRequest(roomDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/open", new OpenRoomRequest(roomDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         // DecideCommand always loads a bindings file, regardless of decision type (Aer.Cli's
@@ -467,7 +467,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var decideResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/decide",
-            new DecideTaskRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.Reject),
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.Reject),
             TestContext.Current.CancellationToken);
         Assert.True(decideResponse.IsSuccessStatusCode);
 
@@ -483,7 +483,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunTask_TriggersTwoWebSocketBroadcasts_ImmediateAndOnCompletion()
+    public async Task RunRoom_TriggersTwoWebSocketBroadcasts_ImmediateAndOnCompletion()
     {
         // #330: /api/rooms/run is the endpoint the desktop's own RoomClient.RunAsync HTTP branch
         // posts to (HomeView.OnStartTemplateClick -> MainWindow.RunAsync) once a template has already
@@ -507,7 +507,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var runResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, bindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
         Assert.True(runResponse.IsSuccessStatusCode);
 
@@ -532,7 +532,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RunTask_ThatFailsInTheBackground_StillTriggersASecondWebSocketBroadcast()
+    public async Task RunRoom_ThatFailsInTheBackground_StillTriggersASecondWebSocketBroadcast()
     {
         // #330: RoomClient.RunAsync's in-process fallback (what Aer.Daemon's own singleton session
         // always uses) used to return straight out of its `catch (AerFlowException ex)` block without
@@ -552,7 +552,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var runResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, bindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
         Assert.True(runResponse.IsSuccessStatusCode);
 
@@ -590,7 +590,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var roomDirectory = await CreateTaskDirectoryWithArtifactAsync(
             "exec-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
         var openResponse = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/open", new OpenTaskRequest(roomDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/open", new OpenRoomRequest(roomDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
@@ -686,7 +686,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var decideResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/decide",
-            new DecideTaskRequest(
+            new DecideRoomRequest(
                 roomDirectory, WorkerStep.Value, executionId, DecisionType.Reject,
                 ArtifactReference: new ArtifactReference(executionId, "../../../secrets.txt")),
             TestContext.Current.CancellationToken);
@@ -705,7 +705,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
         var decideResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/decide",
-            new DecideTaskRequest(
+            new DecideRoomRequest(
                 roomDirectory, WorkerStep.Value, executionId, DecisionType.Reject,
                 ArtifactReference: new ArtifactReference(executionId, "out")),
             TestContext.Current.CancellationToken);
@@ -791,7 +791,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // Deliberately not using StartASessionAsync/POST /api/sessions/start here: a session
         // materialized with no initial message never actually runs (Aer.Daemon's
         // ExecuteSessionTurnAsync only fires when InitialMessage is set), so it has no snapshot.json
-        // yet -- RoomProjectionLoader.LoadAsync throws InvalidTaskDirectoryException for it, and
+        // yet -- RoomProjectionLoader.LoadAsync throws InvalidRoomDirectoryException for it, and
         // /api/ws's on-connect push silently never fires (LastLoadSucceeded stays false). That's a
         // pre-existing daemon quirk, not something to route around by invoking a real vendor CLI in
         // a test (this suite never does that -- see the other CreateXxxDirectoryAsync helpers,
@@ -802,7 +802,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var roomDirectory = await CreateSessionTaskDirectoryAsync(sessionId, TestContext.Current.CancellationToken);
 
         var openResponse = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/open", new OpenTaskRequest(roomDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/open", new OpenRoomRequest(roomDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
@@ -850,7 +850,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var roomDirectory = await CreateTaskDirectoryWithArtifactAsync(
             "exec-plain-1", "result.txt", "The output.", TestContext.Current.CancellationToken);
         var openResponse = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/open", new OpenTaskRequest(roomDirectory), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/open", new OpenRoomRequest(roomDirectory), TestContext.Current.CancellationToken);
         Assert.True(openResponse.IsSuccessStatusCode);
 
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
@@ -1244,7 +1244,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DeleteTask_ForANonexistentDirectory_ReturnsNotFound()
+    public async Task DeleteRoom_ForANonexistentDirectory_ReturnsNotFound()
     {
         // Must be under the managed ~/.aer/sessions root -- otherwise the containment guard now
         // rejects it as BadRequest before this handler's own NotFound check ever runs.
@@ -1298,7 +1298,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ProgressWebSocket_AcceptsAConnectionWithoutRequiringAnOpenTask()
+    public async Task ProgressWebSocket_AcceptsAConnectionWithoutRequiringAnOpenRoom()
     {
         // Deliberately kept separate from /api/ws (M24 Phase 1) -- a client subscribing to live
         // in-turn progress has no RoomClient dependency, unlike the projection socket.

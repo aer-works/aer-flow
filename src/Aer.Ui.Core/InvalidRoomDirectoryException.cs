@@ -10,9 +10,9 @@ namespace Aer.Ui.Core;
 /// <c>Program.cs</c> can catch every domain-level failure — this one alongside
 /// <c>SnapshotLoadException</c>/<c>FlowEventLogReadException</c> — at a single boundary.
 /// </summary>
-public sealed class InvalidTaskDirectoryException : AerFlowException
+public sealed class InvalidRoomDirectoryException : AerFlowException
 {
-    public InvalidTaskDirectoryException(string message)
+    public InvalidRoomDirectoryException(string message)
         : base(message)
     {
     }

@@ -138,7 +138,7 @@ public class MultiSessionHostTests : IAsyncLifetime
         // desktop Stop button and the phone both send.
         var stop = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/cancel",
-            new CancelTaskRequest(alpha, null),
+            new CancelRoomRequest(alpha, null),
             TestContext.Current.CancellationToken);
         Assert.True(stop.IsSuccessStatusCode);
 

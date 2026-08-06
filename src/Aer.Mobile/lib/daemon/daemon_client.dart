@@ -448,7 +448,7 @@ class DaemonClient {
   }
 
   /// Every known task/session directory's lightweight status (M24 Phase 5, #278) — archived items
-  /// are filtered out by default, matching desktop's own TasksViewModel.
+  /// are filtered out by default, matching desktop's own RoomsViewModel.
   Future<List<RoomFleetItem>> listTasks({bool includeArchived = false}) async {
     final uri = Uri.http(host, '/api/rooms', {'includeArchived': includeArchived.toString()});
     final response = await _get(uri);

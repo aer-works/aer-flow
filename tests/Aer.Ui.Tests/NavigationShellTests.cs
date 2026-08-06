@@ -357,14 +357,14 @@ public class NavigationShellTests
 
     /// <summary>M24 Phase 5 (#278): the sixth nav destination — a fleet management view distinct from Home's capped recents cards.</summary>
     [AvaloniaFact]
-    public async Task NavigatingToTasks_showsTheTasksSectionAndHidesEverythingElse()
+    public async Task NavigatingToRooms_showsTheRoomsSectionAndHidesEverythingElse()
     {
         var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
         await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-        window.ViewModel.CurrentSection = ShellSection.Tasks;
+        window.ViewModel.CurrentSection = ShellSection.Rooms;
 
-        Assert.True(window.ViewModel.IsTasksVisible);
+        Assert.True(window.ViewModel.IsRoomsVisible);
         Assert.False(window.ViewModel.IsHomeVisible);
         Assert.False(window.ViewModel.IsTaskVisible);
         Assert.False(window.ViewModel.IsChatVisible);

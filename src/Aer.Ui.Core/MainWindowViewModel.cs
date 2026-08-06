@@ -29,7 +29,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
     [NotifyPropertyChangedFor(nameof(IsRemoteVisible))]
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
-    [NotifyPropertyChangedFor(nameof(IsTasksVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRoomsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
     private ShellSection currentSection = ShellSection.Home;
 
@@ -38,7 +38,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
     public bool IsRemoteVisible => CurrentSection == ShellSection.Remote;
     public bool IsChatVisible => CurrentSection == ShellSection.Chat;
-    public bool IsTasksVisible => CurrentSection == ShellSection.Tasks;
+    public bool IsRoomsVisible => CurrentSection == ShellSection.Rooms;
 
     /// <summary>
     /// Whether the shell is showing an opened record, whichever shape it has (#336). The switcher
@@ -56,8 +56,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>An open chat/codebase session's state (M24 Phase 1 desktop wiring, issue #262) — see <see cref="ChatViewModel"/>.</summary>
     public ChatViewModel Chat { get; } = new();
 
-    /// <summary>The fleet management view's state (M24 Phase 5, #278) — see <see cref="TasksViewModel"/>.</summary>
-    public TasksViewModel Tasks { get; } = new();
+    /// <summary>The fleet management view's state (M24 Phase 5, #278) — see <see cref="RoomsViewModel"/>.</summary>
+    public RoomsViewModel Rooms { get; } = new();
 
     /// <summary>
     /// The template editor's state (M16 Phase 1, issue #150) — the authoring surface, deliberately

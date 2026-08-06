@@ -7,7 +7,7 @@ import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
 import 'pairing_screen.dart';
-import 'tasks_screen.dart';
+import 'rooms_screen.dart';
 
 /// The phone's decision inbox — mirrors whatever task Aer.Daemon currently has open (typically
 /// opened by the desktop first) and lets the user Approve/Reject a paused step or Cancel the run.
@@ -154,10 +154,10 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentTask]'s bare
   /// recents sheet, which stays the quick-reopen path; this is the real archive/unarchive/delete
   /// surface.
-  Future<void> _manageTasks() async {
+  Future<void> _manageRooms() async {
     final client = _client;
     if (client == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TasksScreen(client: client)));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoomsScreen(client: client)));
   }
 
   Future<void> _decide(WorkflowStepState step, String decisionType) async {
@@ -582,14 +582,14 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
               if (value == 'cancel') _cancelRun();
               if (value == 'chat') _startNewChat();
               if (value == 'template') _showTemplatePicker();
-              if (value == 'tasks') _manageTasks();
+              if (value == 'rooms') _manageRooms();
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'chat', child: Text('Start new chat')),
               const PopupMenuItem(value: 'template', child: Text('Start from template')),
               if (projection != null && projection.status == 'Running')
                 const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
-              const PopupMenuItem(value: 'tasks', child: Text('Manage tasks')),
+              const PopupMenuItem(value: 'rooms', child: Text('Manage rooms')),
               const PopupMenuItem(value: 'forget', child: Text('Sign out of this desktop')),
             ],
           ),

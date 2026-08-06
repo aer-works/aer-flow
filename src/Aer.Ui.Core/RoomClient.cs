@@ -16,11 +16,11 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public record OpenTaskRequest(string DirectoryPath);
-public record RunTaskRequest(string DirectoryPath, string? WorkflowTemplateFilePath, string BindingsFilePath);
+public record OpenRoomRequest(string DirectoryPath);
+public record RunRoomRequest(string DirectoryPath, string? WorkflowTemplateFilePath, string BindingsFilePath);
 public record ArtifactReference(string ExecutionId, string FileName);
 
-public record DecideTaskRequest(
+public record DecideRoomRequest(
     string DirectoryPath,
     string StepId,
     string ExecutionId,
@@ -39,7 +39,7 @@ public record RunTemplateRequest(
     string? CustomPrompt = null,
     string? SecondaryCustomPrompt = null);
 
-public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
+public record CancelRoomRequest(string DirectoryPath, string? ExecutionId = null);
 
 /// <summary>M24 Phase 5 (#278): the request body shape shared by <c>/api/rooms/archive</c>, <c>/api/rooms/unarchive</c>, and <c>/api/rooms/delete</c>.</summary>
 public record RoomDirectoryRequest(string DirectoryPath);
@@ -364,7 +364,7 @@ public sealed partial class RoomClient
         {
             try
             {
-                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/open", new OpenTaskRequest(roomDirectoryPath), cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/open", new OpenRoomRequest(roomDirectoryPath), cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     var projection = await response.Content.ReadFromJsonAsync<RoomProjection>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
@@ -466,7 +466,7 @@ public sealed partial class RoomClient
         {
             try
             {
-                var request = new RunTaskRequest(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath);
+                var request = new RunRoomRequest(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath);
                 ViewModel.IsMutationInFlight = true;
                 ViewModel.RunStatusText = "Running…";
                 _mutationStarted();
@@ -617,7 +617,7 @@ public sealed partial class RoomClient
                 ViewModel.IsMutationInFlight = true;
                 _mutationStarted();
 
-                var request = new DecideTaskRequest(
+                var request = new DecideRoomRequest(
                     roomDirectoryPath,
                     stepId.Value,
                     executionId.Value,
@@ -740,7 +740,7 @@ public sealed partial class RoomClient
                 ViewModel.IsMutationInFlight = true;
                 _mutationStarted();
 
-                var request = new CancelTaskRequest(roomDirectoryPath, executionId.Value);
+                var request = new CancelRoomRequest(roomDirectoryPath, executionId.Value);
                 var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
@@ -813,7 +813,7 @@ public sealed partial class RoomClient
     {
         if (_isClientMode && CurrentTaskDirectoryPath != null && _activeDaemonUrl != null)
         {
-            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelTaskRequest(CurrentTaskDirectoryPath, null));
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelRoomRequest(CurrentTaskDirectoryPath, null));
             return;
         }
 
@@ -837,7 +837,7 @@ public sealed partial class RoomClient
     {
         if (_isClientMode && _activeDaemonUrl != null)
         {
-            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelTaskRequest(roomDirectoryPath, null));
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelRoomRequest(roomDirectoryPath, null));
             return true;
         }
 

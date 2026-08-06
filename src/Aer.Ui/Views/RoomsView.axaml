@@ -3,22 +3,22 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
-             x:Class="Aer.Ui.Views.TasksView"
+             x:Class="Aer.Ui.Views.RoomsView"
              x:DataType="vm:MainWindowViewModel">
   <ScrollViewer>
     <StackPanel Margin="24" Spacing="{DynamicResource Space.8}" MaxWidth="760" HorizontalAlignment="Left">
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="{DynamicResource Space.3}">
-        <TextBlock Classes="display" Text="Tasks" VerticalAlignment="Center" />
-        <CheckBox x:Name="TasksIncludeArchivedCheckBox" Content="Show archived"
-                  IsChecked="{Binding Tasks.IncludeArchived}" VerticalAlignment="Center" />
-        <Button x:Name="TasksRefreshButton" VerticalAlignment="Center">
+        <TextBlock Classes="display" Text="Rooms" VerticalAlignment="Center" />
+        <CheckBox x:Name="RoomsIncludeArchivedCheckBox" Content="Show archived"
+                  IsChecked="{Binding Rooms.IncludeArchived}" VerticalAlignment="Center" />
+        <Button x:Name="RoomsRefreshButton" VerticalAlignment="Center">
           <AccessText Text="Re_fresh" />
         </Button>
       </StackPanel>
 
       <TextBlock Classes="secondary" Foreground="{DynamicResource Status.Failed}"
-                 TextWrapping="Wrap" Text="{Binding Tasks.ErrorText}"
-                 IsVisible="{Binding Tasks.HasErrorText}" />
+                 TextWrapping="Wrap" Text="{Binding Rooms.ErrorText}"
+                 IsVisible="{Binding Rooms.HasErrorText}" />
 
       <!-- Bulk select action bar (issue #288) — checkboxes are always shown on every row rather than
            gated behind a separate "selection mode" toggle: a per-row checkbox bound to a parent
@@ -27,32 +27,32 @@
            buttons simply disable at zero selection avoids that entirely and is a conventional desktop
            pattern anyway. Disabled while a refresh or fan-out is in flight (Tasks.IsBusy) so a second
            bulk action can't be queued mid-mutation. -->
-      <Border Classes="card" IsEnabled="{Binding !Tasks.IsBusy}">
+      <Border Classes="card" IsEnabled="{Binding !Rooms.IsBusy}">
         <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-          <TextBlock Text="{Binding Tasks.SelectedCount, StringFormat='{}{0} selected'}" VerticalAlignment="Center" />
-          <Button x:Name="TasksSelectAllButton" Content="Select all" Command="{Binding Tasks.SelectAllCommand}" />
-          <Button x:Name="TasksClearSelectionButton" Content="Clear selection" Command="{Binding Tasks.ClearSelectionCommand}" />
-          <Button x:Name="TasksBulkArchiveButton" Content="Archive selected"
-                  IsEnabled="{Binding Tasks.HasSelection}" />
+          <TextBlock Text="{Binding Rooms.SelectedCount, StringFormat='{}{0} selected'}" VerticalAlignment="Center" />
+          <Button x:Name="RoomsSelectAllButton" Content="Select all" Command="{Binding Rooms.SelectAllCommand}" />
+          <Button x:Name="RoomsClearSelectionButton" Content="Clear selection" Command="{Binding Rooms.ClearSelectionCommand}" />
+          <Button x:Name="RoomsBulkArchiveButton" Content="Archive selected"
+                  IsEnabled="{Binding Rooms.HasSelection}" />
 
           <!-- Bulk delete's own two-step confirm — "Delete N tasks?" instead of one confirm per item,
                same in-place idiom as each row's own IsConfirmingDelete. -->
-          <Button Content="Delete selected" Command="{Binding Tasks.RequestBulkDeleteCommand}"
-                  IsVisible="{Binding !Tasks.IsConfirmingBulkDelete}" />
+          <Button Content="Delete selected" Command="{Binding Rooms.RequestBulkDeleteCommand}"
+                  IsVisible="{Binding !Rooms.IsConfirmingBulkDelete}" />
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
-                      IsVisible="{Binding Tasks.IsConfirmingBulkDelete}">
-            <TextBlock Text="{Binding Tasks.BulkDeleteConfirmText}" VerticalAlignment="Center" />
-            <Button x:Name="TasksBulkDeleteConfirmButton" Classes="accent" Content="Yes, delete" />
-            <Button Content="Cancel" Command="{Binding Tasks.CancelBulkDeleteCommand}" />
+                      IsVisible="{Binding Rooms.IsConfirmingBulkDelete}">
+            <TextBlock Text="{Binding Rooms.BulkDeleteConfirmText}" VerticalAlignment="Center" />
+            <Button x:Name="RoomsBulkDeleteConfirmButton" Classes="accent" Content="Yes, delete" />
+            <Button Content="Cancel" Command="{Binding Rooms.CancelBulkDeleteCommand}" />
           </StackPanel>
         </StackPanel>
       </Border>
 
-      <Border Classes="card" IsVisible="{Binding Tasks.HasNoItems}">
+      <Border Classes="card" IsVisible="{Binding Rooms.HasNoItems}">
         <TextBlock Classes="secondary" Text="No rooms yet." />
       </Border>
 
-      <ItemsControl x:Name="TasksList" ItemsSource="{Binding Tasks.Items}">
+      <ItemsControl x:Name="RoomsList" ItemsSource="{Binding Rooms.Items}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
             <Border Classes="card" Margin="0,0,0,8">

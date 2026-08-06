@@ -338,7 +338,7 @@ public class LiveCancellationEndToEndTests
         WorkflowTemplateVersion: 1,
         Steps: steps);
 
-    private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
+    private static (string RoomDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"live-cancel-task-{Guid.NewGuid():N}");
         return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));

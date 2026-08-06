@@ -103,11 +103,11 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         // dispatch runs, so this genuinely races the two Task.Run bodies against one another.
         var run1 = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, bindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
         var run2 = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, bindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(run1, run2);
@@ -149,11 +149,11 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         // decide's, which is the actual coverage gap; it just cannot itself add a completion.
         var run = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, bindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
         var decide = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/decide",
-            new DecideTaskRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
             TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(run, decide);
@@ -184,11 +184,11 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
 
         var decide1 = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/decide",
-            new DecideTaskRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
             TestContext.Current.CancellationToken);
         var decide2 = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/decide",
-            new DecideTaskRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
             TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(decide1, decide2);
@@ -235,7 +235,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
 
         var badRunResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, badBindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, badBindingsFilePath),
             TestContext.Current.CancellationToken);
         Assert.True(badRunResponse.IsSuccessStatusCode);
 
@@ -246,7 +246,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
 
         var goodRunResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run",
-            new RunTaskRequest(roomDirectory, null, goodBindingsFilePath),
+            new RunRoomRequest(roomDirectory, null, goodBindingsFilePath),
             TestContext.Current.CancellationToken);
         Assert.True(goodRunResponse.IsSuccessStatusCode);
 
@@ -264,9 +264,9 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         var (directoryB, bindingsB) = await CreateReadyTaskDirectoryAsync();
 
         var runA = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/run", new RunTaskRequest(directoryA, null, bindingsA), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/run", new RunRoomRequest(directoryA, null, bindingsA), TestContext.Current.CancellationToken);
         var runB = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/rooms/run", new RunTaskRequest(directoryB, null, bindingsB), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/run", new RunRoomRequest(directoryB, null, bindingsB), TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(runA, runB);
         foreach (var response in responses)
@@ -311,7 +311,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         return File.GetLastWriteTimeUtc(stamp);
     }
 
-    private static async Task<(string TaskDirectory, string BindingsFilePath)> CreateReadyTaskDirectoryAsync()
+    private static async Task<(string RoomDirectory, string BindingsFilePath)> CreateReadyTaskDirectoryAsync()
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("dispatch-serialization-test"),
@@ -337,7 +337,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     /// <c>ExternalDecisionValidator</c> refuses <c>RetryWithRevision</c> once the paused outcome is
     /// Succeeded, so a fixture built the other way could never legitimately re-dispatch.
     /// </summary>
-    private static async Task<(string TaskDirectory, string ExecutionId)> CreatePausedFailedTaskDirectoryAsync()
+    private static async Task<(string RoomDirectory, string ExecutionId)> CreatePausedFailedTaskDirectoryAsync()
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("dispatch-serialization-paused-test"),

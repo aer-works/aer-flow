@@ -321,7 +321,7 @@ public class CrashRecoveryEndToEndTests
         Assert.Equal("done", (await File.ReadAllTextAsync(path)).Trim());
     }
 
-    private static (string TaskDirectory, string ArtifactsRoot, string LogPath, string PauseSignal, string CancelSignal) MakeTaskPaths()
+    private static (string RoomDirectory, string ArtifactsRoot, string LogPath, string PauseSignal, string CancelSignal) MakeTaskPaths()
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"crash-task-{Guid.NewGuid():N}");
         return (

@@ -274,15 +274,15 @@ public partial class MainWindow : Window
         // #336: Chat and Tasks are no longer rail destinations. Chat is reached by opening a session
         // (the switcher routes to the right pane); the management surface is reached from the foot of
         // the switcher list.
-        SwitcherManageButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Tasks;
-        SwitcherRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
-        TasksViewControl.TasksRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
-        TasksViewControl.TasksIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
+        SwitcherManageButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Rooms;
+        SwitcherRefreshButton.Click += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
+        RoomsViewControl.RoomsRefreshButton.Click += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
+        RoomsViewControl.RoomsIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
         // Bulk select (issue #288): these two need the session the same way the single-row actions'
-        // closures do (TasksViewModel.RefreshAsync wires those per row), but the bulk actions live on
-        // TasksViewModel itself rather than per-row, so they're wired here instead.
-        TasksViewControl.TasksBulkArchiveButton.Click += (_, _) => _ = ViewModel.Tasks.BulkArchiveAsync(_session);
-        TasksViewControl.TasksBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Tasks.ConfirmBulkDeleteAsync(_session);
+        // closures do (RoomsViewModel.RefreshAsync wires those per row), but the bulk actions live on
+        // RoomsViewModel itself rather than per-row, so they're wired here instead.
+        RoomsViewControl.RoomsBulkArchiveButton.Click += (_, _) => _ = ViewModel.Rooms.BulkArchiveAsync(_session);
+        RoomsViewControl.RoomsBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Rooms.ConfirmBulkDeleteAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
         ChatStartNewButton.Click += (_, _) => _ = StartNewChatAsync();
         ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
@@ -308,18 +308,18 @@ public partial class MainWindow : Window
         // this client is not currently viewing, which is exactly the case the detail pane's own
         // filter (RoomClient.ShouldApplyProjectionPush, #262) deliberately drops.
         _session.FleetProjectionReceived += (directoryPath, projection) =>
-            ViewModel.Tasks.ApplyProjectionPush(directoryPath, projection);
+            ViewModel.Rooms.ApplyProjectionPush(directoryPath, projection);
         // Selecting a row *is* opening the record — the switcher has no separate "open" action. Guarded
         // against re-entry: OpenAsync itself refreshes the fleet list, which re-finds and re-assigns
         // CurrentItem, and without this an open would recurse through its own selection change.
-        ViewModel.Tasks.PropertyChanged += (_, e) =>
+        ViewModel.Rooms.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(TasksViewModel.CurrentItem) || _isOpeningFromSwitcher)
+            if (e.PropertyName != nameof(RoomsViewModel.CurrentItem) || _isOpeningFromSwitcher)
             {
                 return;
             }
 
-            if (ViewModel.Tasks.CurrentItem is { } row && row.RoomDirectoryPath != _session.CurrentTaskDirectoryPath)
+            if (ViewModel.Rooms.CurrentItem is { } row && row.RoomDirectoryPath != _session.CurrentTaskDirectoryPath)
             {
                 _ = OpenFromSwitcherAsync(row.RoomDirectoryPath);
             }
@@ -373,9 +373,9 @@ public partial class MainWindow : Window
             // M24 Phase 5 (#278): the fleet list rebuilds on every activation, same reasoning as
             // Home's own rebuild-on-activation — archive/unarchive/delete elsewhere (or from
             // another client) shouldn't require leaving and re-entering this view to see reflected.
-            if (section == ShellSection.Tasks)
+            if (section == ShellSection.Rooms)
             {
-                _ = ViewModel.Tasks.RefreshAsync(_session);
+                _ = ViewModel.Rooms.RefreshAsync(_session);
             }
         };
         _pairingCountdownTimer.Tick += (_, _) =>
@@ -534,7 +534,7 @@ public partial class MainWindow : Window
 
         // #336: the switcher is chrome, not a destination, so nothing will ever "activate" it into
         // existence — it has to be populated once at startup and kept current by pushes thereafter.
-        await ViewModel.Tasks.RefreshAsync(_session, cancellationToken);
+        await ViewModel.Rooms.RefreshAsync(_session, cancellationToken);
 
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
         WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
@@ -1985,7 +1985,7 @@ public partial class MainWindow : Window
     internal async Task RefreshRecordListsAsync(CancellationToken cancellationToken = default)
     {
         await RefreshHomeAsync(cancellationToken);
-        await ViewModel.Tasks.RefreshAsync(_session, cancellationToken);
+        await ViewModel.Rooms.RefreshAsync(_session, cancellationToken);
     }
 
     /// <summary>

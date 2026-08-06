@@ -173,19 +173,19 @@ public class MainWindowDecisionTests
     public void Decision_polarity_does_not_retire_unmatched_inbox_items()
     {
         var home = new Aer.Ui.Core.HomeViewModel();
-        var taskPath1 = Path.Combine(Path.GetTempPath(), "task1");
-        var taskPath2 = Path.Combine(Path.GetTempPath(), "task2");
+        var roomPath1 = Path.Combine(Path.GetTempPath(), "task1");
+        var roomPath2 = Path.Combine(Path.GetTempPath(), "task2");
 
         var item1 = new Aer.Ui.Core.InboxItemViewModel(
-            taskPath1, "Task 1", "step-a", "Status", "Preview",
+            roomPath1, "Task 1", "step-a", "Status", "Preview",
             Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
 
         var item2 = new Aer.Ui.Core.InboxItemViewModel(
-            taskPath1, "Task 1", "step-b", "Status", "Preview",
+            roomPath1, "Task 1", "step-b", "Status", "Preview",
             Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
 
         var item3 = new Aer.Ui.Core.InboxItemViewModel(
-            taskPath2, "Task 2", "step-a", "Status", "Preview",
+            roomPath2, "Task 2", "step-a", "Status", "Preview",
             Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
 
         home.InboxItems.Add(item1);
@@ -193,7 +193,7 @@ public class MainWindowDecisionTests
         home.InboxItems.Add(item3);
 
         // Retire step-a of task 1
-        home.RetireInboxItem(taskPath1, new StepId("step-a"), new ExecutionId("exec-1"));
+        home.RetireInboxItem(roomPath1, new StepId("step-a"), new ExecutionId("exec-1"));
 
         Assert.Equal(2, home.InboxItems.Count);
         Assert.DoesNotContain(item1, home.InboxItems);

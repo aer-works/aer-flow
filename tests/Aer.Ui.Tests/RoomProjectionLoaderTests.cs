@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 /// through <see cref="RoomProjectionLoader"/> — never by constructing a <see cref="FlowState"/> by
 /// hand.
 /// </summary>
-public class TaskProjectionLoaderTests
+public class RoomProjectionLoaderTests
 {
     private static readonly StepId Architect = new("architect");
     private static readonly StepId Critic = new("critic");
@@ -203,7 +203,7 @@ public class TaskProjectionLoaderTests
         Directory.CreateDirectory(notATaskDirectory);
         try
         {
-            var exception = await Assert.ThrowsAsync<InvalidTaskDirectoryException>(
+            var exception = await Assert.ThrowsAsync<InvalidRoomDirectoryException>(
                 () => RoomProjectionLoader.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken));
 
             Assert.Contains(notATaskDirectory, exception.Message);

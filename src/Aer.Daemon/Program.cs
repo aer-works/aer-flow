@@ -917,7 +917,7 @@ namespace Aer.Daemon
                 return Results.Ok(directories);
             });
 
-            app.MapPost("/api/rooms/open", async ([FromBody] OpenTaskRequest request, RoomClient session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/rooms/open", async ([FromBody] OpenRoomRequest request, RoomClient session, BindingsPathHolder pathHolder) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath))
                 {
@@ -955,7 +955,7 @@ namespace Aer.Daemon
                     : outcome.ErrorMessage);
             });
 
-            app.MapPost("/api/rooms/run", async ([FromBody] RunTaskRequest request, RoomClient session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/rooms/run", async ([FromBody] RunRoomRequest request, RoomClient session, BindingsPathHolder pathHolder) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
                 if (string.IsNullOrEmpty(request.BindingsFilePath)) return Results.BadRequest("BindingsFilePath is required.");
@@ -1019,7 +1019,7 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
-            app.MapPost("/api/rooms/decide", async ([FromBody] DecideTaskRequest request, RoomClient session) =>
+            app.MapPost("/api/rooms/decide", async ([FromBody] DecideRoomRequest request, RoomClient session) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
 
@@ -1093,7 +1093,7 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
-            app.MapPost("/api/rooms/cancel", async ([FromBody] CancelTaskRequest request, RoomClient session) =>
+            app.MapPost("/api/rooms/cancel", async ([FromBody] CancelRoomRequest request, RoomClient session) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
 

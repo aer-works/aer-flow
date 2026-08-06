@@ -132,7 +132,7 @@ public class AuthoringRoundTripTests
     }
 
     [AvaloniaFact]
-    public async Task Editing_a_bound_tasks_template_shows_the_divergence_in_the_diff_view_and_leaves_the_bound_tasks_rendering_unchanged()
+    public async Task Editing_a_bound_rooms_template_shows_the_divergence_in_the_diff_view_and_leaves_the_bound_tasks_rendering_unchanged()
     {
         var originalDefinition = ArchitectCriticTemplate();
         var templatePath = await WriteTemplateFileAsync(originalDefinition, TestContext.Current.CancellationToken);

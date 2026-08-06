@@ -29,7 +29,7 @@ public class MainWindowDagTests
     private static TextBlock LabelOf(Border node) => ((StackPanel)node.Child!).Children.OfType<TextBlock>().Single();
 
     [AvaloniaFact]
-    public async Task Renders_a_bound_tasks_dag_with_a_status_overlay()
+    public async Task Renders_a_bound_rooms_dag_with_a_status_overlay()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-dag-window-{Guid.NewGuid():N}");

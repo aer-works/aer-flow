@@ -5,12 +5,12 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:aer_mobile/daemon/daemon_client.dart';
-import 'package:aer_mobile/tasks_screen.dart';
+import 'package:aer_mobile/rooms_screen.dart';
 
 /// Bulk select (issue #288) widget-level coverage — the Flutter counterpart of
-/// `Aer.Ui.Tests`' `TasksViewModelTests.cs`. Exercises long-press-to-select, the bulk archive/delete
+/// `Aer.Ui.Tests`' `RoomsViewModelTests.cs`. Exercises long-press-to-select, the bulk archive/delete
 /// app bar actions, and the "Delete N tasks?" confirm, all against a [MockClient] rather than a real
-/// daemon (same approach `daemon_client_tasks_test.dart` already uses for the single-item calls this
+/// daemon (same approach `daemon_client_rooms_test.dart` already uses for the single-item calls this
 /// screen was built on).
 void main() {
   Map<String, dynamic> fleetItemJson(String path, {bool archived = false}) => {
@@ -22,7 +22,7 @@ void main() {
         'isArchived': archived,
       };
 
-  group('TasksScreen bulk select (#288)', () {
+  group('RoomsScreen bulk select (#288)', () {
     testWidgets('Long-pressing a card enters selection mode and shows the selected count', (tester) async {
       final mockClient = MockClient((request) async {
         if (request.method == 'GET' && request.url.path == '/api/rooms') {
@@ -32,10 +32,10 @@ void main() {
       });
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await tester.pumpWidget(MaterialApp(home: TasksScreen(client: client)));
+      await tester.pumpWidget(MaterialApp(home: RoomsScreen(client: client)));
       await tester.pumpAndSettle();
 
-      expect(find.text('Tasks'), findsOneWidget);
+      expect(find.text('Rooms'), findsOneWidget);
       expect(find.byType(Checkbox), findsNothing);
 
       await tester.longPress(find.text('a'));
@@ -60,7 +60,7 @@ void main() {
       });
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await tester.pumpWidget(MaterialApp(home: TasksScreen(client: client)));
+      await tester.pumpWidget(MaterialApp(home: RoomsScreen(client: client)));
       await tester.pumpAndSettle();
 
       await tester.longPress(find.text('a'));
@@ -70,7 +70,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(archiveRequests, ['/tasks/a']);
-      expect(find.text('Tasks'), findsOneWidget);
+      expect(find.text('Rooms'), findsOneWidget);
       expect(find.byType(Checkbox), findsNothing);
     });
 
@@ -89,7 +89,7 @@ void main() {
       });
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await tester.pumpWidget(MaterialApp(home: TasksScreen(client: client)));
+      await tester.pumpWidget(MaterialApp(home: RoomsScreen(client: client)));
       await tester.pumpAndSettle();
 
       await tester.longPress(find.text('a'));
@@ -109,7 +109,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(deleteRequests, unorderedEquals(['/tasks/a', '/tasks/b']));
-      expect(find.text('Tasks'), findsOneWidget);
+      expect(find.text('Rooms'), findsOneWidget);
     });
 
     testWidgets('Cancelling the bulk delete confirm deletes nothing', (tester) async {
@@ -121,7 +121,7 @@ void main() {
       });
       final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-      await tester.pumpWidget(MaterialApp(home: TasksScreen(client: client)));
+      await tester.pumpWidget(MaterialApp(home: RoomsScreen(client: client)));
       await tester.pumpAndSettle();
 
       await tester.longPress(find.text('a'));

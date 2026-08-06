@@ -36,7 +36,7 @@ public sealed partial class HomeViewModel : ObservableObject
 
     /// <summary>True when there is no task history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
     [ObservableProperty]
-    private bool hasNoTasks = true;
+    private bool hasNoRooms = true;
 
     /// <summary>
     /// Rebuilds cards and inbox from the recents list. A listed directory that no longer loads is
@@ -87,7 +87,7 @@ public sealed partial class HomeViewModel : ObservableObject
             }
         }
 
-        HasNoTasks = RoomCards.Count == 0;
+        HasNoRooms = RoomCards.Count == 0;
         UpdateInboxSummary();
     }
 

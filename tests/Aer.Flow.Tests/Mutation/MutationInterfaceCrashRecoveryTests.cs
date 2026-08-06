@@ -492,7 +492,7 @@ public class MutationInterfaceCrashRecoveryTests
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => throw new TestResolutionRefusal("enumerated");
     }
 
-    private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
+    private static (string RoomDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));

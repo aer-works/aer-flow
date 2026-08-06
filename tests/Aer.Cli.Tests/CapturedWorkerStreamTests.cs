@@ -225,7 +225,7 @@ public class CapturedWorkerStreamTests
             Assert.Contains("\\x1b[31mRed\\x1b[0m", statusText);
 
             // Polarity 2: Normal printable text from a real worker process
-            var taskDirectory2 = Path.Combine(testRoot, "task2");
+            var roomDirectory2 = Path.Combine(testRoot, "task2");
             var cmdLineNormal = OperatingSystem.IsWindows()
                 ? "powershell -NoProfile -Command \"Write-Output 'Normal text'\" & echo Red > %AER_OUTPUT_DIR%\\out.txt"
                 : "echo 'Normal text' && echo Red > \"$AER_OUTPUT_DIR/out.txt\"";
@@ -243,14 +243,14 @@ public class CapturedWorkerStreamTests
             var bindingsFile2 = Path.Combine(testRoot, "bindings2.json");
             await File.WriteAllTextAsync(bindingsFile2, JsonSerializer.Serialize(bindings2), TestContext.Current.CancellationToken);
 
-            var runOptions2 = new RunOptions(workflowFile, bindingsFile2, taskDirectory2);
+            var runOptions2 = new RunOptions(workflowFile, bindingsFile2, roomDirectory2);
             var runResult2 = await RunCommand.ExecuteAsync(runOptions2, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, runResult2.State.Status);
             Assert.Equal(StepStatus.Succeeded, runResult2.State.Steps[0].Status);
 
             var execId2 = runResult2.State.Steps[0].LatestExecutionId!.Value.Value;
-            var execDir2 = Path.Combine(taskDirectory2, "artifacts", $"execution_{execId2}");
+            var execDir2 = Path.Combine(roomDirectory2, "artifacts", $"execution_{execId2}");
             var stdoutFile2 = Path.Combine(execDir2, ExecutionStreamLogger.StdoutLogFileName);
 
             Assert.True(File.Exists(stdoutFile2), $"Expected stream log file at {stdoutFile2}");
@@ -259,7 +259,7 @@ public class CapturedWorkerStreamTests
             Assert.NotEmpty(stdoutContent2);
 
             var output2 = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory2, Follow: true), output2, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory2, Follow: true), output2, TestContext.Current.CancellationToken);
             var statusText2 = output2.ToString();
 
             Assert.Contains("Normal text", statusText2);

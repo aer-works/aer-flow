@@ -14,7 +14,7 @@ namespace Aer.Ui.Core;
 /// already establish) — a real fleet management surface is a distinct concern from the mutation/decision
 /// surface <see cref="MainWindowViewModel"/> was introduced for.
 /// </summary>
-public sealed partial class TasksViewModel : ObservableObject
+public sealed partial class RoomsViewModel : ObservableObject
 {
     [ObservableProperty]
     private bool includeArchived;
@@ -62,7 +62,7 @@ public sealed partial class TasksViewModel : ObservableObject
     public bool HasSelection => SelectedCount > 0;
 
     public string BulkDeleteConfirmText =>
-        $"Really delete {SelectedCount} selected task{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
+        $"Really delete {SelectedCount} selected room{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
 
     /// <summary>Re-fetches the fleet list (activation, after archive/unarchive/delete, and the "Show archived" toggle).</summary>
     public async Task RefreshAsync(RoomClient session, CancellationToken cancellationToken = default)
@@ -172,7 +172,7 @@ public sealed partial class TasksViewModel : ObservableObject
     /// <summary>
     /// Test seam (issue #288): adds a row to <see cref="Items"/> wired with the real
     /// selection-changed callback <see cref="RefreshAsync"/> itself uses, but no-op
-    /// archive/unarchive/delete delegates — lets <c>TasksViewModelTests</c> exercise the actual
+    /// archive/unarchive/delete delegates — lets <c>RoomsViewModelTests</c> exercise the actual
     /// selection bookkeeping (<see cref="SelectedCount"/>, <see cref="HasSelection"/>, the bulk-delete
     /// confirm gating) without constructing the sealed <see cref="RoomClient"/> that
     /// <see cref="RefreshAsync"/>'s real row construction needs. Same reasoning as
@@ -337,7 +337,7 @@ public sealed partial class TasksViewModel : ObservableObject
 
 /// <summary>
 /// One row in the Tasks view (M24 Phase 5, #278) — same closure-over-parent-actions shape as
-/// <see cref="PairedClientItemViewModel"/>: the parent <see cref="TasksViewModel"/> already has the
+/// <see cref="PairedClientItemViewModel"/>: the parent <see cref="RoomsViewModel"/> already has the
 /// <see cref="RoomClient"/> this row's actions need, so each action closes over it at construction
 /// rather than the row needing its own reference. Delete uses an inline two-step confirm
 /// (<see cref="IsConfirmingDelete"/>) rather than a modal dialog — no modal-dialog precedent exists
@@ -387,7 +387,7 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
     public bool IsArchived { get; }
 
     /// <summary>
-    /// Live under projection pushes (#336) — see <see cref="TasksViewModel.ApplyProjectionPush"/>.
+    /// Live under projection pushes (#336) — see <see cref="RoomsViewModel.ApplyProjectionPush"/>.
     /// Observable rather than get-only because the switcher's list is permanently visible: it can no
     /// longer wait for a section activation to rebuild itself with a fresh value.
     /// </summary>
@@ -425,7 +425,7 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
     [ObservableProperty]
     private RoomCardStatus? status;
 
-    /// <summary>Bulk select (issue #288) — this row's own checkbox state; <see cref="TasksViewModel.SelectedCount"/> is recomputed from every row's value whenever any one of them changes.</summary>
+    /// <summary>Bulk select (issue #288) — this row's own checkbox state; <see cref="RoomsViewModel.SelectedCount"/> is recomputed from every row's value whenever any one of them changes.</summary>
     [ObservableProperty]
     private bool isSelected;
 

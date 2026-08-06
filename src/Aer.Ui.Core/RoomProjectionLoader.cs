@@ -57,7 +57,7 @@ public static class RoomProjectionLoader
     private const string LogFileName = "flow.jsonl";
     private const string ArtifactsDirectoryName = Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName;
 
-    /// <exception cref="InvalidTaskDirectoryException">
+    /// <exception cref="InvalidRoomDirectoryException">
     /// <paramref name="roomDirectoryPath"/> has no persisted snapshot — UI spec §3.1's
     /// self-describing-directory contract confirmed by contents, not assumed from a path.
     /// </exception>
@@ -71,7 +71,7 @@ public static class RoomProjectionLoader
         var snapshotPath = Path.Combine(roomDirectoryPath, SnapshotFileName);
         if (!File.Exists(snapshotPath))
         {
-            throw new InvalidTaskDirectoryException(
+            throw new InvalidRoomDirectoryException(
                 $"Not a task directory (no '{SnapshotFileName}' found): '{roomDirectoryPath}'");
         }
 

@@ -541,7 +541,7 @@ public class PauseDecisionSupersedeHumanEndToEndTests
         .Select(e => e.Request.ExecutionId)
         .ToList();
 
-    private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
+    private static (string RoomDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));

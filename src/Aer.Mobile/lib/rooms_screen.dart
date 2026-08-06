@@ -4,8 +4,8 @@ import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
 
 /// The fleet management screen (M24 Phase 5, #278) — every known task/session directory at once,
-/// with archive/unarchive/delete. The Flutter counterpart of Aer.Ui's dedicated Tasks view. Reached
-/// from InboxScreen's kebab menu ("Manage tasks"), distinct from `_pickRecentTask`'s bare recents
+/// with archive/unarchive/delete. The Flutter counterpart of Aer.Ui's dedicated Rooms view. Reached
+/// from InboxScreen's kebab menu ("Manage rooms"), distinct from `_pickRecentTask`'s bare recents
 /// sheet, which stays the quick-reopen path — this screen is the real management surface.
 ///
 /// Bulk select (issue #288): long-press a card to enter selection mode, then tap any card to
@@ -14,16 +14,16 @@ import 'daemon/models.dart';
 /// rather than inventing one). Selected paths are tracked by directory path (a task's stable
 /// identity), not list index, since `_refresh()` rebuilds `_items` from scratch after every
 /// mutation.
-class TasksScreen extends StatefulWidget {
+class RoomsScreen extends StatefulWidget {
   final DaemonClient client;
 
-  const TasksScreen({super.key, required this.client});
+  const RoomsScreen({super.key, required this.client});
 
   @override
-  State<TasksScreen> createState() => _TasksScreenState();
+  State<RoomsScreen> createState() => _TasksScreenState();
 }
 
-class _TasksScreenState extends State<TasksScreen> {
+class _TasksScreenState extends State<RoomsScreen> {
   List<RoomFleetItem> _items = [];
   bool _includeArchived = false;
   bool _isLoading = true;
@@ -128,7 +128,7 @@ class _TasksScreenState extends State<TasksScreen> {
 
   /// Archives every selected, not-yet-archived item (issue #288) — sequential calls against the
   /// existing per-directory `/api/rooms/archive` endpoint (same reasoning as desktop's
-  /// `TasksViewModel.BulkArchiveAsync`: archive mutates the shared fleet index, so parallel calls
+  /// `RoomsViewModel.BulkArchiveAsync`: archive mutates the shared fleet index, so parallel calls
   /// could race), one `_refresh()` at the end rather than one per item.
   Future<void> _bulkArchive() async {
     final targets = _items.where((i) => _selectedPaths.contains(i.roomDirectoryPath) && !i.isArchived).toList();
@@ -210,7 +210,7 @@ class _TasksScreenState extends State<TasksScreen> {
               ],
             )
           : AppBar(
-              title: const Text('Tasks'),
+              title: const Text('Rooms'),
               actions: [
                 IconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh', onPressed: _isLoading ? null : _refresh),
               ],

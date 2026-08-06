@@ -13,7 +13,7 @@ namespace Aer.Ui.Tests;
 /// Drives the real <see cref="MainWindow"/> — not a plain-text renderer standing in for it — inside
 /// a headless Avalonia session (<see cref="TestAppBuilder"/>), so the phase's "renders that task's
 /// per-step statuses" claim is proven against actual rendered controls, not just the projection
-/// data <see cref="TaskProjectionLoaderTests"/> already covers.
+/// data <see cref="RoomProjectionLoaderTests"/> already covers.
 /// </summary>
 public class MainWindowTests
 {

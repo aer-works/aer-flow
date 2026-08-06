@@ -8,15 +8,15 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:aer_mobile/daemon/daemon_client.dart';
-import 'package:aer_mobile/tasks_screen.dart';
+import 'package:aer_mobile/rooms_screen.dart';
 
 /// Journey J8 — "Open it for the first time and know what to do." Phone leg.
 ///
 /// The Flutter counterpart of `J8_DesktopFirstRunTests` on the .NET side: it drives the real
-/// [TasksScreen] widget over an empty task list (a [MockClient] returning `[]`, the same approach
-/// `tasks_screen_test.dart` uses) and asserts the empty surface offers a real first action.
+/// [RoomsScreen] widget over an empty task list (a [MockClient] returning `[]`, the same approach
+/// `rooms_screen_test.dart` uses) and asserts the empty surface offers a real first action.
 ///
-/// This is a RED-spec. It fails today on purpose: the empty [TasksScreen] renders only the bare
+/// This is a RED-spec. It fails today on purpose: the empty [RoomsScreen] renders only the bare
 /// message "No tasks or sessions yet." with no way to start work — the #337-class dead-end J8
 /// exists to close. When the empty state gains a start-work action (a button or FAB), this goes
 /// green and J8's phone leg is kept. J8 overall still reads "Fails" in spec/journeys.md until every
@@ -34,7 +34,7 @@ void main() {
     });
     final client = DaemonClient(host: 'localhost:5000', token: 'fake-token', httpClient: mockClient);
 
-    await tester.pumpWidget(MaterialApp(home: TasksScreen(client: client)));
+    await tester.pumpWidget(MaterialApp(home: RoomsScreen(client: client)));
     await tester.pumpAndSettle();
 
     // The dead-end as it stands: the surface tells you it's empty and stops there.
@@ -55,7 +55,7 @@ void main() {
     expect(
       primaryAction,
       findsWidgets,
-      reason: 'The empty TasksScreen shows only "No tasks or sessions yet." with no primary action '
+      reason: 'The empty RoomsScreen shows only "No tasks or sessions yet." with no primary action '
           'to start work — J8 requires a real first action on an empty surface (#337).',
     );
   });
