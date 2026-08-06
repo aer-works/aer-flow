@@ -1,3 +1,4 @@
+using Aer.Flow.Concurrency;
 using Aer.Flow.Workspaces;
 
 namespace Aer.Adapters;
@@ -67,6 +68,8 @@ public static class WorktreeWorkspaces
     {
         ArgumentNullException.ThrowIfNull(bindings);
         ArgumentException.ThrowIfNullOrWhiteSpace(taskDirectoryPath);
+
+        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, "worktree provisioning");
 
         Dictionary<string, WorkerBindingConfigEntry>? rewritten = null;
         var provisioned = new List<ProvisionedWorktree>();

@@ -63,6 +63,54 @@ public sealed class WorktreeProvisionerTests : IDisposable
     }
 
     [Fact]
+    public void Provision_is_idempotent_when_called_again_for_the_same_worktree_repo_and_ref()
+    {
+        var (repo, reference) = CreateRepoWithBranch("committed.txt");
+        var worktree = Path.Combine(NewDir("task"), "workspace");
+
+        // First call provisions the worktree
+        WorktreeProvisioner.Provision(worktree, repo, reference);
+        Assert.True(Directory.Exists(worktree));
+
+        // Second call for the exact same worktree/repo/ref simulates winning the race: must not throw
+        WorktreeProvisioner.Provision(worktree, repo, reference);
+        Assert.True(Directory.Exists(worktree));
+        Assert.True(File.Exists(Path.Combine(worktree, "committed.txt")));
+    }
+
+    [Fact]
+    public void Provision_throws_when_worktree_path_is_occupied_by_a_different_ref()
+    {
+        var (repo, reference) = CreateRepoWithBranch("committed.txt");
+        // Create another ref pointing to a different commit
+        File.WriteAllText(Path.Combine(repo, "second.txt"), "second content");
+        RunGit(repo, "add", ".");
+        RunGit(repo, "commit", "-m", "second commit");
+        RunGit(repo, "branch", "other-ref");
+
+        var worktree = Path.Combine(NewDir("task"), "workspace");
+
+        // Provision for reference ("review-target") first
+        WorktreeProvisioner.Provision(worktree, repo, reference);
+
+        // Attempting to provision the same worktree path for a DIFFERENT ref ("other-ref") must throw
+        Assert.Throws<WorktreeProvisioningException>(
+            () => WorktreeProvisioner.Provision(worktree, repo, "other-ref"));
+    }
+
+    [Fact]
+    public void Provision_throws_when_path_is_occupied_by_unrelated_directory()
+    {
+        var (repo, reference) = CreateRepoWithBranch("committed.txt");
+        var worktree = Path.Combine(NewDir("task"), "workspace");
+        Directory.CreateDirectory(worktree);
+        File.WriteAllText(Path.Combine(worktree, "unrelated.txt"), "data");
+
+        Assert.Throws<WorktreeProvisioningException>(
+            () => WorktreeProvisioner.Provision(worktree, repo, reference));
+    }
+
+    [Fact]
     public void Teardown_removes_a_clean_worktree()
     {
         var (repo, reference) = CreateRepoWithBranch("committed.txt");
