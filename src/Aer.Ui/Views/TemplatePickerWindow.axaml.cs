@@ -81,13 +81,13 @@ public partial class TemplatePickerWindow : Window
         var secondaryVendor = (ReviewRunRadio.IsChecked == true || TwoVendorDialogueRadio.IsChecked == true)
             ? (SecondaryVendorCombo.SelectedItem?.ToString() ?? primaryVendor)
             : null;
-        var roomName = string.IsNullOrWhiteSpace(RoomNameBox.Text) ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}" : RoomNameBox.Text.Trim();
+        var roomName = string.IsNullOrWhiteSpace(RoomNameBox.Text) ? $"room-{DateTime.UtcNow:yyyyMMddHHmmss}" : RoomNameBox.Text.Trim();
         var customPrompt = string.IsNullOrWhiteSpace(CustomPromptBox.Text) ? null : CustomPromptBox.Text.Trim();
         var secondaryCustomPrompt = string.IsNullOrWhiteSpace(SecondaryCustomPromptBox.Text) ? null : SecondaryCustomPromptBox.Text.Trim();
 
-        var baseTasksDir = AerPaths.Sessions;
-        var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, roomName));
-        if (!roomDirectoryPath.StartsWith(Path.GetFullPath(baseTasksDir) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        var baseRoomsDir = AerPaths.Rooms;
+        var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseRoomsDir, roomName));
+        if (!roomDirectoryPath.StartsWith(Path.GetFullPath(baseRoomsDir) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {
             Close(false);
             return;

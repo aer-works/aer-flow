@@ -93,7 +93,7 @@ internal sealed class DaemonBroadcast
             // which SessionId to fetch turns for, without a GET /api/sessions list-scan on
             // every push. Same additive-sibling pattern as DirectoryPath/WorkerAdapters
             // above; still not part of RoomProjection itself.
-            var sessionMetadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+            var sessionMetadataPath = Path.Combine(directoryPath, ".aer", AerPaths.RoomMetadataFileName);
             if (File.Exists(sessionMetadataPath))
             {
                 try

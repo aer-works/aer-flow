@@ -1,3 +1,4 @@
+using Aer.Adapters;
 using Aer.Ui.Core;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -35,13 +36,13 @@ public partial class HomeView : UserControl
                 // knew about. Found by running the app: a freshly created task was reachable only
                 // through the folder picker.
                 await topLevel.RefreshRecordListsAsync();
-                if (File.Exists(Path.Combine(roomPath, ".aer", "session.json"))) // vocabulary-ok: technical file path
+                if (await InteractiveSessionMaterializer.ReadRoomKindAsync(roomPath) == RoomKind.Interactive)
                 {
                     // A chat/codebase session's initial turn is already dispatched (or about to be)
                     // by the daemon's own fire-and-forget background task -- Open, not Run, so this
                     // doesn't start a second, competing execution against the same task directory
                     // (M24 Phase 1 desktop chat UI, issue #262). Open also routes to the dedicated
-                    // Chat view once it detects session.json, which Run never did.
+                    // Chat view once it detects the interactive room marker, which Run never did.
                     await topLevel.OpenAsync(roomPath);
                 }
                 else

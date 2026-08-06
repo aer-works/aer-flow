@@ -391,7 +391,7 @@ public sealed partial class AgyWorkerAdapter : IWorkerAdapter, IPermissionGrantT
         if (invocation.PermissionGrant is { RunShellCommands: false })
         {
             var isDaemonSession = invocation.SessionId is not null || invocation.ResumeSession ||
-                (invocation.BindingsFileDirectory is not null && File.Exists(Path.Combine(invocation.BindingsFileDirectory, ".aer", "session.json")));
+                (invocation.BindingsFileDirectory is not null && InteractiveSessionMaterializer.ReadRoomKind(invocation.BindingsFileDirectory) == RoomKind.Interactive);
 
             if (isDaemonSession)
             {

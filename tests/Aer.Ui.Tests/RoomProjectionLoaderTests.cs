@@ -183,12 +183,41 @@ public class RoomProjectionLoaderTests
             Assert.False(fleetItem.IsArchived);
 
             // #322: a session (even one that never ran, so has no snapshot) takes its created/updated
-            // straight from the durable in-data source, .aer/session.json -- not from filesystem times.
+            // straight from the durable in-data source, .aer/room.json -- not from filesystem times.
             var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(
-                Path.Combine(roomDirectory, ".aer", "session.json"), TestContext.Current.CancellationToken);
+                Path.Combine(roomDirectory, ".aer", "room.json"), TestContext.Current.CancellationToken);
             Assert.NotNull(metadata);
             Assert.Equal(metadata.CreatedAt, fleetItem.Created);
             Assert.Equal(metadata.UpdatedAt, fleetItem.Updated);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_ForAWorkflowRoom_LabelsWorkflowFromRoomKindMarker()
+    {
+        // Polarity partner to the interactive case above (#443): a workflow room writes .aer/room.json
+        // with Kind=Workflow at materialization, and the fleet label must read that marker as
+        // "workflow", never "interactive session". Together the two tests pin RoomProjectionLoader's
+        // kind discrimination on room.json in both directions, from the marker itself rather than from
+        // a file's mere presence.
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-workflow-{Guid.NewGuid():N}");
+        try
+        {
+            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync(
+                "solo-run", "claude", null, roomDirectory, "a prompt",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(
+                RoomKind.Workflow,
+                await InteractiveSessionMaterializer.ReadRoomKindAsync(roomDirectory, TestContext.Current.CancellationToken));
+
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.NotEqual("interactive session", fleetItem.TypeLabel);
+            Assert.Equal("workflow", fleetItem.TypeLabel);
         }
         finally
         {

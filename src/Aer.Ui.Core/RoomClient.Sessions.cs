@@ -272,7 +272,7 @@ public sealed partial class RoomClient
     private sealed record SessionModeResult(string? Mode);
 
     /// <summary>
-    /// Reads <paramref name="roomDirectoryPath"/>'s <c>.aer/session.json</c> directly rather than
+    /// Reads <paramref name="roomDirectoryPath"/>'s <c>.aer/room.json</c> directly rather than
     /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>RoomProjection</c>,
     /// <see cref="SessionMetadata"/> is a directly-readable local artifact with no in-memory
     /// projection of its own) -- also doubles as the "is this task directory a chat/codebase
@@ -281,12 +281,15 @@ public sealed partial class RoomClient
     /// </summary>
     public async Task<SessionMetadata?> LoadSessionMetadataAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        var metadataPath = Path.Combine(roomDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
+        var metadataPath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
         if (!File.Exists(metadataPath))
         {
             return null;
         }
 
+        // A workflow room now also has a room.json marker, but LoadMetadataAsync returns null for it
+        // (its SessionId is empty), so this still answers "is this an interactive session" the same
+        // way MainWindow.OpenAsync has always relied on.
         return await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, cancellationToken).ConfigureAwait(true);
     }
 }

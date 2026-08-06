@@ -331,5 +331,10 @@ public static class BuiltInWorkflowTemplates
         Directory.CreateDirectory(aerDir);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "workflow-path"), workflowFilePath, cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false);
+
+        // Records this room's kind on disk so it is self-describing rather than inferred from a
+        // missing session marker (0013). Defensive: an absent room.json already reads as a workflow
+        // room, but writing it keeps ReadRoomKind authoritative for every room the app creates.
+        await InteractiveSessionMaterializer.WriteWorkflowRoomMarkerAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(false);
     }
 }

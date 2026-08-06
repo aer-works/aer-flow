@@ -743,7 +743,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.True(Directory.Exists(roomDirectoryPath));
         Assert.True(File.Exists(Path.Combine(roomDirectoryPath, "workflow.json")));
         Assert.True(File.Exists(Path.Combine(roomDirectoryPath, "bindings.json")));
-        Assert.True(File.Exists(Path.Combine(roomDirectoryPath, ".aer", "session.json")));
+        Assert.True(File.Exists(Path.Combine(roomDirectoryPath, ".aer", "room.json")));
     }
 
     [Fact]
@@ -837,7 +837,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
             Turns: [new SessionTurn(0, "claude", "hello", "hi there", DateTimeOffset.UtcNow, false, false)]);
-        await InteractiveSessionMaterializer.SaveMetadataAsync(metadata, Path.Combine(roomDirectory, ".aer", "session.json"), cancellationToken);
+        await InteractiveSessionMaterializer.SaveMetadataAsync(metadata, Path.Combine(roomDirectory, ".aer", "room.json"), cancellationToken);
 
         return roomDirectory;
     }
@@ -1070,7 +1070,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task ClearSession_ResetsTurnsAndForcesAFreshUnestablishedVendorSession()
     {
         var (sessionId, roomDirectoryPath) = await StartASessionAsync();
-        var metadataPath = Path.Combine(roomDirectoryPath, ".aer", "session.json");
+        var metadataPath = Path.Combine(roomDirectoryPath, ".aer", "room.json");
 
         // Simulate a session that already had real turns and an established native vendor session
         // -- clear must reset both without ever needing a real vendor call itself.
@@ -1248,7 +1248,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     {
         // Must be under the managed ~/.aer/sessions root -- otherwise the containment guard now
         // rejects it as BadRequest before this handler's own NotFound check ever runs.
-        var missingDirectory = Path.Combine(AerPaths.Sessions, "never-created-" + Guid.NewGuid().ToString("N"));
+        var missingDirectory = Path.Combine(AerPaths.Rooms, "never-created-" + Guid.NewGuid().ToString("N"));
 
         var response = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/delete", new RoomDirectoryRequest(missingDirectory), TestContext.Current.CancellationToken);

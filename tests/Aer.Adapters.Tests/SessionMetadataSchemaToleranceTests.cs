@@ -5,7 +5,8 @@ namespace Aer.Adapters.Tests;
 
 /// <summary>
 /// #521: removing <c>MinimalOverhead</c> deleted a field that had been serialized into every
-/// <c>session.json</c> ever written. This pins the property that makes such a removal safe.
+/// interactive room's marker (<c>room.json</c>, formerly <c>session.json</c>) ever written. This
+/// pins the property that makes such a removal safe.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -34,7 +35,7 @@ public class SessionMetadataSchemaToleranceTests
     {
         var dir = Path.Combine(Path.GetTempPath(), "aer-schema-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, "session.json");
+        var path = Path.Combine(dir, "room.json");
 
         try
         {

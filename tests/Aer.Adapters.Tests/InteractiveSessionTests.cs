@@ -211,7 +211,7 @@ public sealed class InteractiveSessionTests
     {
         // #407: a directory-less session's process must start in its own dir under ~/.aer/sessions/,
         // never the inherited daemon/app cwd -- defense in depth on top of #321's fail-closed grant.
-        var sessionDir = Path.Combine("home", ".aer", "sessions", "session-s-1");
+        var sessionDir = Path.Combine("home", ".aer", "rooms", "session-s-1");
         foreach (var workingDirectory in new string?[] { null, "", "   " })
         {
             Assert.Equal(sessionDir, InteractiveSessionMaterializer.ResolveRunDirectory(workingDirectory, sessionDir));
@@ -319,7 +319,7 @@ public sealed class InteractiveSessionTests
             Assert.Contains(testPath, ex.Message);
 
             // The rejected second attempt must not have clobbered the first session's metadata.
-            var metadataPath = Path.Combine(testPath, ".aer", "session.json");
+            var metadataPath = Path.Combine(testPath, ".aer", "room.json");
             var stillThere = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, TestContext.Current.CancellationToken);
             Assert.NotNull(stillThere);
             Assert.Equal(first.SessionId, stillThere.SessionId);

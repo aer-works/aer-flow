@@ -1235,15 +1235,16 @@ public class AgyWorkerAdapterTests
 
     /// <summary>
     /// No SessionId on purpose: the daemon mints a vendor session id only for claude, so a real agy
-    /// session turn is classified entirely by the <c>.aer/session.json</c> sniff on the bindings
-    /// directory -- this pins that clause alone, not the claude-only shortcut in front of it.
+    /// session turn is classified entirely by the <c>.aer/room.json</c> kind marker (ReadRoomKind ==
+    /// Interactive) on the bindings directory -- this pins that clause alone, not the claude-only
+    /// shortcut in front of it.
     /// </summary>
     [Fact]
     public void Session_dispatch_points_home_redirect_under_session_root()
     {
         var tempSessionDir = Path.Combine(Path.GetTempPath(), "test-session-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(tempSessionDir, ".aer"));
-        File.WriteAllText(Path.Combine(tempSessionDir, ".aer", "session.json"), "{}");
+        File.WriteAllText(Path.Combine(tempSessionDir, ".aer", "room.json"), "{}");
 
         try
         {

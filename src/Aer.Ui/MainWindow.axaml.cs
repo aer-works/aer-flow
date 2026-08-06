@@ -613,7 +613,7 @@ public partial class MainWindow : Window
         await LoadAsync(roomDirectoryPath, cancellationToken);
 
         // M24 Phase 1 (issue #262): a directory that materialized an interactive session
-        // (.aer/session.json present) routes to the dedicated Chat view instead of the generic
+        // (.aer/room.json marker with Kind=Interactive) routes to the dedicated Chat view instead of the generic
         // Task view opened above — see RoomClient.LoadSessionMetadataAsync's remarks.
         var sessionMetadata = await _session.LoadSessionMetadataAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (sessionMetadata != null)

@@ -106,7 +106,7 @@ public static class RoomProjectionLoader
 
         var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
         var isArchived = RoomLifecycle.IsArchived(roomDirectoryPath);
-        var isSession = File.Exists(Path.Combine(roomDirectoryPath, ".aer", "session.json")); // vocabulary-ok: technical file path
+        var isSession = await InteractiveSessionMaterializer.ReadRoomKindAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(false) == RoomKind.Interactive;
         var (created, updated) = await ResolveTimestampsAsync(roomDirectoryPath, isSession, cancellationToken).ConfigureAwait(false);
 
         var snapshotPath = Path.Combine(roomDirectoryPath, SnapshotFileName);
@@ -174,7 +174,7 @@ public static class RoomProjectionLoader
     /// The <c>created</c>/<c>updated</c> timestamps the fleet contract carries (#322), resolved from
     /// the best available source per entry type.
     /// <para>
-    /// An interactive session's <c>.aer/session.json</c> carries serialized <see cref="SessionMetadata.CreatedAt"/>/
+    /// An interactive session's <c>.aer/room.json</c> carries serialized <see cref="SessionMetadata.CreatedAt"/>/
     /// <see cref="SessionMetadata.UpdatedAt"/> values -- a genuine durable in-data source (UpdatedAt
     /// is bumped on every turn by Aer.Daemon's turn executor), so it is preferred outright, and it is
     /// present even for a never-run session that has no snapshot yet.
@@ -192,7 +192,7 @@ public static class RoomProjectionLoader
     {
         if (isSession)
         {
-            var sessionMetadataPath = Path.Combine(roomDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
+            var sessionMetadataPath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
             var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(sessionMetadataPath, cancellationToken).ConfigureAwait(false);
             if (metadata is not null)
             {

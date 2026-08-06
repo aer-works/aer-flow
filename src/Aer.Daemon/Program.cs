@@ -58,20 +58,6 @@ namespace Aer.Daemon
             var aerDir = AerPaths.Root;
             Directory.CreateDirectory(aerDir);
 
-            // #333: fold the legacy `tasks` root into `sessions` before anything reads either. Runs
-            // under the single-instance mutex above, so two daemons can never migrate concurrently.
-            // Copy-only and marker-gated: after the first successful run this is a single File.Exists.
-            // A failure must not start a daemon that would then serve a half-migrated store, so this
-            // is deliberately not wrapped in a catch -- the legacy directory is untouched either way,
-            // and the next start retries from the persisted plan.
-            var migration = await LegacyStorageMigration.RunAsync().ConfigureAwait(false);
-            if (migration.Ran)
-            {
-                Console.WriteLine(
-                    $"Unified storage: migrated {migration.RecordsMigrated} record(s) from 'tasks' into 'sessions'. " +
-                    "The legacy directory was copied, not moved, and is safe to remove by hand.");
-            }
-
             // Generate token if not exists
             var tokenFile = Path.Combine(aerDir, "daemon.token");
             string token;
@@ -858,13 +844,13 @@ namespace Aer.Daemon
                 }
 
                 // #333: new records are created in the one record root, never the legacy split.
-                var baseTasksDir = AerPaths.Sessions;
+                var baseRoomsDir = AerPaths.Rooms;
                 var folderName = string.IsNullOrWhiteSpace(request.RoomName)
                     ? $"room-{DateTime.UtcNow:yyyyMMddHHmmss}"
                     : request.RoomName.Trim();
-                var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, folderName));
-                var normalizedBaseTasksDir = Path.GetFullPath(baseTasksDir);
-                if (!roomDirectoryPath.StartsWith(normalizedBaseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseRoomsDir, folderName));
+                var normalizedBaseRoomsDir = Path.GetFullPath(baseRoomsDir);
+                if (!roomDirectoryPath.StartsWith(normalizedBaseRoomsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 {
                     return Results.BadRequest("RoomName must be a simple folder name, not a path.");
                 }
@@ -1124,12 +1110,12 @@ namespace Aer.Daemon
             {
                 // #333: one root, one kind of record -- the two-root concatenation this replaced is
                 // what "one list of one kind of thing" was blocked on.
-                var baseSessionsDir = AerPaths.Sessions;
+                var baseRoomsDir = AerPaths.Rooms;
 
                 var directories = new List<string>();
-                if (Directory.Exists(baseSessionsDir))
+                if (Directory.Exists(baseRoomsDir))
                 {
-                    directories.AddRange(Directory.GetDirectories(baseSessionsDir));
+                    directories.AddRange(Directory.GetDirectories(baseRoomsDir));
                 }
 
                 var items = new List<RoomFleetItem>();
@@ -1344,7 +1330,7 @@ namespace Aer.Daemon
                     return Results.BadRequest("DirectoryPath or valid SessionId is required.");
                 }
 
-                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var metadataPath = Path.Combine(directoryPath, ".aer", AerPaths.RoomMetadataFileName);
                 var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(true);
                 if (metadata == null)
                 {
@@ -1387,16 +1373,16 @@ namespace Aer.Daemon
 
             app.MapGet("/api/sessions", async () =>
             {
-                var baseSessionsDir = AerPaths.Sessions;
-                if (!Directory.Exists(baseSessionsDir))
+                var baseRoomsDir = AerPaths.Rooms;
+                if (!Directory.Exists(baseRoomsDir))
                 {
                     return Results.Ok(Array.Empty<SessionMetadata>());
                 }
 
                 var list = new List<SessionMetadata>();
-                foreach (var dir in Directory.GetDirectories(baseSessionsDir))
+                foreach (var dir in Directory.GetDirectories(baseRoomsDir))
                 {
-                    var metadataPath = Path.Combine(dir, ".aer", "session.json");
+                    var metadataPath = Path.Combine(dir, ".aer", AerPaths.RoomMetadataFileName);
                     if (File.Exists(metadataPath))
                     {
                         var meta = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath);
@@ -1554,7 +1540,7 @@ namespace Aer.Daemon
                     UpdatedAt = DateTimeOffset.UtcNow,
                 };
 
-                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var metadataPath = Path.Combine(directoryPath, ".aer", AerPaths.RoomMetadataFileName);
                 await InteractiveSessionMaterializer.SaveMetadataAsync(cleared, metadataPath).ConfigureAwait(true);
 
                 return Results.Ok(cleared);
@@ -1677,9 +1663,9 @@ namespace Aer.Daemon
         {
             resolvedPath = Path.GetFullPath(directoryPath);
 
-            var baseSessionsDir = Path.GetFullPath(AerPaths.Sessions);
+            var baseRoomsDir = Path.GetFullPath(AerPaths.Rooms);
 
-            return resolvedPath.StartsWith(baseSessionsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+            return resolvedPath.StartsWith(baseRoomsDir + Path.DirectorySeparatorChar, StringComparison.Ordinal);
         }
 
         /// <summary>#992: the turn-host endpoints serve only the hosted room, and "same room" has
@@ -1696,15 +1682,15 @@ namespace Aer.Daemon
 
         private static async Task<(string DirectoryPath, SessionMetadata Metadata)?> ResolveSessionAsync(string sessionId)
         {
-            var baseSessionsDir = AerPaths.Sessions;
-            if (!Directory.Exists(baseSessionsDir))
+            var baseRoomsDir = AerPaths.Rooms;
+            if (!Directory.Exists(baseRoomsDir))
             {
                 return null;
             }
 
-            foreach (var dir in Directory.GetDirectories(baseSessionsDir))
+            foreach (var dir in Directory.GetDirectories(baseRoomsDir))
             {
-                var metadataPath = Path.Combine(dir, ".aer", "session.json");
+                var metadataPath = Path.Combine(dir, ".aer", AerPaths.RoomMetadataFileName);
                 if (!File.Exists(metadataPath))
                 {
                     continue;
@@ -1774,7 +1760,7 @@ namespace Aer.Daemon
         /// so this in-process lock is the only thing that serializes concurrent dispatches. Keyed by
         /// directory rather than the vendor session id itself because the id is re-minted on handoff
         /// while the directory is stable, and because this lock also serialises the
-        /// <c>session.json</c> read-modify-write an id-keyed lock would miss.
+        /// <c>room.json</c> read-modify-write an id-keyed lock would miss.
         ///
         /// Keyed by the session's task directory: that is what the deletes target, it matches Flow's
         /// own lock granularity, and it is the one identifier all three call sites (create, send,
@@ -1834,9 +1820,9 @@ namespace Aer.Daemon
                 // resuming -- reopening #285's wedge, now concurrency-triggered -- and would append to
                 // a stale Turns transcript, dropping the turn the other one wrote. Re-read inside the
                 // lock so the turn acts on state the previous turn actually committed. Materialization
-                // persists session.json before returning, so the on-disk copy is authoritative for the
+                // persists room.json before returning, so the on-disk copy is authoritative for the
                 // create path too; the parameter remains the fallback for an unreadable file.
-                var metadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+                var metadataPath = Path.Combine(directoryPath, ".aer", AerPaths.RoomMetadataFileName);
                 var current = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath).ConfigureAwait(false);
 
                 await ExecuteSessionTurnCoreAsync(
@@ -2289,7 +2275,7 @@ namespace Aer.Daemon
                 VendorSessionEstablished = handoff ? establishedThisTurn : (metadata.VendorSessionEstablished || establishedThisTurn)
             };
 
-            await InteractiveSessionMaterializer.SaveMetadataAsync(updatedMetadata, Path.Combine(directoryPath, ".aer", "session.json")).ConfigureAwait(false);
+            await InteractiveSessionMaterializer.SaveMetadataAsync(updatedMetadata, Path.Combine(directoryPath, ".aer", AerPaths.RoomMetadataFileName)).ConfigureAwait(false);
         }
 
         /// <summary>
