@@ -28,6 +28,9 @@ public static class ShellCommandPatternMatcher
 
             if (inSingleQuote)
             {
+                // Single quotes are fully literal in POSIX shells — no expansion of any kind,
+                // not even a backslash escape — so nothing inside them can execute. The only
+                // character that matters is the closing quote. Do not add substitution checks here.
                 if (c == '\'')
                 {
                     inSingleQuote = false;
@@ -39,9 +42,23 @@ public static class ShellCommandPatternMatcher
             {
                 if (c == '\\')
                 {
-                    // Escape sequence inside double quotes
+                    // A backslash inside double quotes escapes the next character (bash does this
+                    // for $ ` " \ and newline). Skipping it is what keeps `"\$(x)"` — an escaped,
+                    // non-executing literal — allowed, while `"\a$(x)"` still trips the $( below.
                     i++;
                     continue;
+                }
+                // Command substitution and parameter expansion STILL fire inside double quotes:
+                // `"$(cmd)"`, "`cmd`", and `"${x}"` all execute or expand. The unquoted branch's
+                // metacharacter scan never runs in here, so these must be rejected explicitly or a
+                // scoped grant is escaped through a quoted substitution (the first cut missed this).
+                if (c == '`')
+                {
+                    return false;
+                }
+                if (c == '$' && i + 1 < commandLine.Length && commandLine[i + 1] is '(' or '{')
+                {
+                    return false;
                 }
                 if (c == '"')
                 {

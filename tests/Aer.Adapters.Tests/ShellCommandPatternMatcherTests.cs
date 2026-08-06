@@ -10,6 +10,8 @@ public class ShellCommandPatternMatcherTests
     [InlineData("git commit -m \"msg\"")]
     [InlineData("git commit -m \"a;b\"")] // quoted metacharacter ';' is literal
     [InlineData("git commit -m 'c&&d'")] // quoted metacharacter '&&' is literal
+    [InlineData("git commit -m \"cost: \\$5\"")] // escaped '$' in double quotes does not expand; still allowed
+    [InlineData("git commit -m \"a $HOME b\"")] // bare $VAR in double quotes is not word-split; no injection
     [InlineData("git push --force")]
     public void Allowed_commands_matching_patterns_pass(string commandLine)
     {
@@ -24,6 +26,10 @@ public class ShellCommandPatternMatcherTests
     [InlineData("git log | sh")] // pipe
     [InlineData("git log $(whoami)")] // command substitution $(...)
     [InlineData("git log `whoami`")] // backtick command substitution
+    [InlineData("git log \"$(whoami)\"")] // command substitution EXECUTES inside double quotes
+    [InlineData("git log \"`whoami`\"")] // backtick substitution EXECUTES inside double quotes
+    [InlineData("git log \"${USER}\"")] // parameter expansion inside double quotes
+    [InlineData("git log \"$((1+1))\"")] // arithmetic expansion inside double quotes ($( prefix)
     [InlineData("git show > /etc/x")] // output redirection
     [InlineData("git log < /etc/passwd")] // input redirection
     [InlineData("(git status)")] // subshell
