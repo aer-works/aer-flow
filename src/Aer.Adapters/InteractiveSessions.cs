@@ -145,7 +145,7 @@ public static class InteractiveSessionMaterializer
     /// <c>--mode</c> takes <c>default</c>/<c>accept-edits</c>/<c>plan</c>, claude's
     /// <c>--permission-mode</c> takes <c>default</c>/<c>acceptEdits</c>/<c>plan</c>/
     /// <c>bypassPermissions</c>. The overlap with the names here is a coincidence of English, not a
-    /// mapping: <see cref="GeminiWorkerAdapter.TryTranslatePermissionGrant"/> resolves AER's
+    /// mapping: <see cref="AgyWorkerAdapter.TryTranslatePermissionGrant"/> resolves AER's
     /// <c>default</c> (write, no shell) to agy's <b><c>accept-edits</c></b>, not to agy's
     /// <c>default</c>. Only <c>plan</c> happens to line up.
     /// </para>

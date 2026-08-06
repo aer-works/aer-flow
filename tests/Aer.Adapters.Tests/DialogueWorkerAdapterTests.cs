@@ -82,7 +82,7 @@ public class DialogueWorkerAdapterTests
         Assert.Equal("/configs/100%/debate.json", target.Args[2]);
     }
 
-    /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged, same as ClaudeWorkerAdapterTests/GeminiWorkerAdapterTests.</summary>
+    /// <summary>M23 Phase 3 (#272): WorkingDirectory carries no vendor-specific meaning — every adapter forwards it into CoreDispatchTarget unchanged, same as ClaudeWorkerAdapterTests/AgyWorkerAdapterTests.</summary>
     [Fact]
     public void A_configured_WorkingDirectory_is_forwarded_into_the_resolved_target()
     {

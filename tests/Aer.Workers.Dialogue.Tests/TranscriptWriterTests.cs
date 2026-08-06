@@ -14,7 +14,7 @@ public class TranscriptWriterTests
         await using (var writer = new TranscriptWriter(stream, leaveOpen: true))
         {
             await writer.AppendAsync(new TranscriptTurn(1, "initiator", "claude", "prompt one", "text one"), TestContext.Current.CancellationToken);
-            await writer.AppendAsync(new TranscriptTurn(2, "responder", "gemini", "prompt two", "text two"), TestContext.Current.CancellationToken);
+            await writer.AppendAsync(new TranscriptTurn(2, "responder", "agy", "prompt two", "text two"), TestContext.Current.CancellationToken);
         }
 
         var content = Encoding.UTF8.GetString(stream.ToArray());

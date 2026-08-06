@@ -77,14 +77,14 @@ public class WriteFamilyContractTests
         // Shell stays withheld in both arms: #529's refusal rejects a binding that withholds writes
         // while granting the shell, so varying writes alone is the only legal comparison.
         var denied = (bool writeFiles) => Split(
-            new GeminiWorkerAdapter().Resolve(
+            new AgyWorkerAdapter().Resolve(
                 new WorkerInvocation(
                     "Review this.",
                     PermissionGrant: new PermissionGrant(
                         ReadFiles: true, WriteFiles: writeFiles, RunShellCommands: false,
                         NetworkAccess: false)),
                 new WorkerContract("reviewer", [], [], []))
-                .Environment!.Single(v => v.Name == GeminiWorkerAdapter.DeniedToolsVariable)
+                .Environment!.Single(v => v.Name == AgyWorkerAdapter.DeniedToolsVariable)
                 .Value.Split(':', 2)[1]);
 
         var writeTools = denied(false).Except(denied(true)).ToHashSet(StringComparer.Ordinal);
@@ -139,7 +139,7 @@ public class WriteFamilyContractTests
         var workspace = Path.Combine(Path.GetTempPath(), "aer-workspace");
         IWorkerAdapter adapter = vendor == "claude"
             ? new ClaudeWorkerAdapter()
-            : new GeminiWorkerAdapter();
+            : new AgyWorkerAdapter();
         var contract = new WorkerContract("reviewer", [], [], []);
 
         var withWorkspace = adapter.Resolve(

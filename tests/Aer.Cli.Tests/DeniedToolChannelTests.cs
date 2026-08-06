@@ -104,9 +104,9 @@ public class DeniedToolChannelTests
         var claudeValue = new ClaudeWorkerAdapter()
             .Resolve(new WorkerInvocation("p", PermissionGrant: grant), contract)
             .Environment!.Single(v => v.Name == ClaudeWorkerAdapter.DeniedToolsVariable).Value;
-        var agyValue = new GeminiWorkerAdapter()
+        var agyValue = new AgyWorkerAdapter()
             .Resolve(new WorkerInvocation("p", PermissionGrant: grant), contract)
-            .Environment!.Single(v => v.Name == GeminiWorkerAdapter.DeniedToolsVariable).Value;
+            .Environment!.Single(v => v.Name == AgyWorkerAdapter.DeniedToolsVariable).Value;
 
         Assert.StartsWith("claude:", claudeValue, StringComparison.Ordinal);
         Assert.StartsWith("agy:", agyValue, StringComparison.Ordinal);

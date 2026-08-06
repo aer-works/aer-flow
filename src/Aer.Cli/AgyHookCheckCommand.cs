@@ -4,14 +4,14 @@ namespace Aer.Cli;
 
 /// <summary>
 /// <c>aer agy-hook-check</c> (#554): the executable target of the <c>PreToolUse</c> hook
-/// <see cref="Aer.Adapters.GeminiWorkerAdapter"/> writes into every spawned agy worker's workspace
+/// <see cref="Aer.Adapters.AgyWorkerAdapter"/> writes into every spawned agy worker's workspace
 /// <c>.agents/hooks.json</c>. Not an operator-facing subcommand — <c>agy</c> invokes it itself, on
 /// every matched tool call, and it receives the event JSON on stdin.
 /// <para>
 /// <b>Whether agy invokes it at all depends on how the command string is spelled, which is not this
 /// command's business but is its precondition.</b> This code was correct throughout #710 and never
 /// ran on Windows: agy passes the command to <c>cmd /c</c>, the assembly path was quoted, and
-/// <c>dotnet</c> could not find it. See <c>GeminiWorkerAdapter.HookAssemblyToken</c>, which owns
+/// <c>dotnet</c> could not find it. See <c>AgyWorkerAdapter.HookAssemblyToken</c>, which owns
 /// every constraint on that spelling and is where a change to it belongs.
 /// </para>
 /// </summary>
@@ -241,7 +241,7 @@ public static class AgyHookCheckCommand
         {
             // The shell channel gates this tool. A non-Present list means the gate cannot judge the
             // command's scope, so it denies rather than let an unjudged shell through. Absent = the
-            // channel broke: GeminiWorkerAdapter always emits this variable alongside the denied-tool
+            // channel broke: AgyWorkerAdapter always emits this variable alongside the denied-tool
             // one, so its absence is the same fail-open #679 closed for denied tools, NOT an unscoped
             // grant — an unscoped grant is Present with an empty pattern set ("agy:"). WrongVendor =
             // another vendor's patterns this gate cannot read. Either way, deny run_command.
@@ -418,7 +418,7 @@ public static class AgyHookCheckCommand
         };
 
     /// <summary>
-    /// Mirrors <c>GeminiWorkerAdapter.WriteTools</c> — the agy tools whose target #679 bounds.
+    /// Mirrors <c>AgyWorkerAdapter.WriteTools</c> — the agy tools whose target #679 bounds.
     /// </summary>
     /// <remarks>
     /// A mirror contract like <see cref="DeniedToolsEnvironmentVariable"/>: <c>Aer.Adapters</c> cannot
@@ -439,7 +439,7 @@ public static class AgyHookCheckCommand
     private static string DenyJson(string reason) =>
         JsonSerializer.Serialize(new { decision = "deny", reason });
 
-    /// <summary>Mirrors <c>GeminiWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
+    /// <summary>Mirrors <c>AgyWorkerAdapter.DeniedToolsVendorTag</c>; see it for why (#600).</summary>
     private const string VendorTag = "agy";
 
     /// <summary>

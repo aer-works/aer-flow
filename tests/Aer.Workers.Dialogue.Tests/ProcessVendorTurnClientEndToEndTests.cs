@@ -20,7 +20,7 @@ public class ProcessVendorTurnClientEndToEndTests
         try
         {
             var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", "You are the architect.", " [drafted]");
-            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "You are the critic.", " [reviewed]");
+            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "agy", "You are the critic.", " [reviewed]");
             var config = new DialogueWorkerConfig(
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 3,
@@ -71,7 +71,7 @@ public class ProcessVendorTurnClientEndToEndTests
         try
         {
             var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", "You are the architect.", " [drafted]");
-            var responder = StubVendorScripts.ExitingWithCode(scriptDirectory, "responder", "gemini", "You are the critic.", exitCode: 1, stderrText: "quota exhausted");
+            var responder = StubVendorScripts.ExitingWithCode(scriptDirectory, "responder", "agy", "You are the critic.", exitCode: 1, stderrText: "quota exhausted");
             var config = new DialogueWorkerConfig(
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 4,
@@ -106,7 +106,7 @@ public class ProcessVendorTurnClientEndToEndTests
         try
         {
             var initiator = StubVendorScripts.ProducingEmptyOutput(scriptDirectory, "initiator", "claude", "You are the architect.");
-            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "You are the critic.", " [reviewed]");
+            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "agy", "You are the critic.", " [reviewed]");
             var config = new DialogueWorkerConfig(
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 4,
@@ -146,7 +146,7 @@ public class ProcessVendorTurnClientEndToEndTests
         {
             var oversizePreamble = new string('x', ProcessVendorTurnClient.MaxArgumentLength + 1);
             var initiator = StubVendorScripts.EchoingSuffix(scriptDirectory, "initiator", "claude", oversizePreamble, " [drafted]");
-            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "gemini", "Responder preamble", " [reviewed]");
+            var responder = StubVendorScripts.EchoingSuffix(scriptDirectory, "responder", "agy", "Responder preamble", " [reviewed]");
             var config = new DialogueWorkerConfig(
                 SeedPrompt: "Design a cache.",
                 TurnBudget: 1,

@@ -125,7 +125,7 @@ public static class Journeys
             new("engine — a PreToolUse hook is the actual capability boundary", Runner.Engine, Coverage.Pending,
                 "Decision 0029: a hook is the only measured enforcement point covering vendor tools, exit-2 blocks even against an explicit allow rule, and it is now mandatory on every worker AER spawns. Nothing ships it yet, which is what makes J6 Fails rather than Partial. #530 gates it: hooks may fail SILENTLY on Windows, and a gate that silently does not fire looks exactly like one that works."),
             new("engine — Gemini fails closed when a denial is unenforceable", Runner.Engine, Coverage.Pending,
-                "agy has no deny-list flag, so GeminiWorkerAdapter throws PermissionGrantUnsupportedException rather than running under-enforced — decision 0004's fail-closed floor. Correct and untested: J6's test only exercises ClaudeWorkerAdapter. agy's permission rules are also global-only (#527), so a workspace hook is its only per-worker gate."),
+                "agy has no deny-list flag, so AgyWorkerAdapter throws PermissionGrantUnsupportedException rather than running under-enforced — decision 0004's fail-closed floor. Correct and untested: J6's test only exercises ClaudeWorkerAdapter. agy's permission rules are also global-only (#527), so a workspace hook is its only per-worker gate."),
             new("live worker actually refuses the tool", Runner.Attest, Coverage.HumanAttested,
                 "The end-to-end refusal (worker attempts the tool, is blocked, it's recorded) needs a live vendor — a smoke check. Per #529 this must include the substitution route: withhold Write, then confirm the worker cannot write through Bash either."),
         ], [331, 529, 530]),

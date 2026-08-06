@@ -7,7 +7,7 @@ namespace Aer.Adapters;
 /// <remarks>
 /// <para>
 /// Extracted from <see cref="ClaudeWorkerAdapter"/> by #554, when
-/// <see cref="GeminiWorkerAdapter"/> needed the same guarantee. It was first written as a local
+/// <see cref="AgyWorkerAdapter"/> needed the same guarantee. It was first written as a local
 /// copy whose doc comment claimed to "mirror" the claude implementation and did not: it derived its
 /// temp name from <see cref="Environment.ProcessId"/> — constant for the process, so two concurrent
 /// writers in one process collide on the same temp path — and carried no retry. Caught by an

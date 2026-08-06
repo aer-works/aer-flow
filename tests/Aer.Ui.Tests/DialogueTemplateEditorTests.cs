@@ -19,7 +19,7 @@ public class DialogueTemplateEditorTests
         new Dictionary<string, IWorkerAdapter>
         {
             ["claude"] = new ClaudeWorkerAdapter(),
-            ["gemini"] = new GeminiWorkerAdapter(),
+            ["agy"] = new AgyWorkerAdapter(),
             ["dialogue"] = new DialogueWorkerAdapter(),
         };
 
@@ -57,7 +57,7 @@ public class DialogueTemplateEditorTests
             entry.DialogueParticipants[0].Vendor = "claude";
             entry.DialogueParticipants[0].Preamble = "You design the cache.";
             entry.DialogueParticipants[1].Role = "critic";
-            entry.DialogueParticipants[1].Vendor = "gemini";
+            entry.DialogueParticipants[1].Vendor = "agy";
             entry.DialogueParticipants[1].Preamble = "You critique the design.";
 
             // Third participant — proves this is genuinely N-party, not just the wizard's fixed pair.
@@ -88,7 +88,7 @@ public class DialogueTemplateEditorTests
             Assert.Equal("verdict.md", sidecarConfig.FinalOutputName);
             Assert.Equal(3, sidecarConfig.Participants.Count);
             Assert.Equal(["architect", "critic", "arbiter"], sidecarConfig.Participants.Select(p => p.Role));
-            Assert.Equal(["claude", "gemini", "claude"], sidecarConfig.Participants.Select(p => p.Vendor));
+            Assert.Equal(["claude", "agy", "claude"], sidecarConfig.Participants.Select(p => p.Vendor));
             Assert.Equal("claude-haiku-4-5", sidecarConfig.Participants[2].Model);
             Assert.Contains(sidecarConfig.Participants[0].Args, a => a == DialogueParticipant.PromptPlaceholder);
 

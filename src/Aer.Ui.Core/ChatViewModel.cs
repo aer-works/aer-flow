@@ -84,7 +84,7 @@ public sealed partial class ChatViewModel : ObservableObject
     /// </summary>
     public bool IsSessionOpen => TaskDirectoryPath != null;
 
-    /// <summary>Adapters offered by the "start new chat" picker (#290) — populated from <see cref="Aer.Adapters.VendorCliPresence.Probe"/>, same source and same all-unavailable fallback ["claude","gemini"] the existing template picker already uses, so the two entry points never disagree about what's offered.</summary>
+    /// <summary>Adapters offered by the "start new chat" picker (#290) — populated from <see cref="Aer.Adapters.VendorCliPresence.Probe"/>, same source and same all-unavailable fallback ["claude","agy"] the existing template picker already uses, so the two entry points never disagree about what's offered.</summary>
     public ObservableCollection<string> AvailableAdapters { get; } = [];
 
     [ObservableProperty]
@@ -206,11 +206,11 @@ public sealed partial class ChatViewModel : ObservableObject
     {
         var probed = probeResult ?? VendorCliPresence.Probe();
         // AdapterName, not BinaryName: this value becomes StartSessionRequest.Adapter, and the
-        // daemon resolves adapters by name ("gemini"), not by CLI binary ("agy").
+        // daemon resolves adapters by name ("agy"), not by CLI binary ("agy").
         var available = probed.Where(p => p.IsAvailable).Select(p => p.AdapterName).ToList();
         if (available.Count == 0)
         {
-            available = ["claude", "gemini"]; // vocabulary-ok: adapter contract keys, not display text
+            available = ["claude", "agy"]; // vocabulary-ok: adapter contract keys, not display text
         }
 
         AvailableAdapters.Clear();

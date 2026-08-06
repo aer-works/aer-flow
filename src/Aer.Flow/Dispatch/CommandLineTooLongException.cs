@@ -4,7 +4,7 @@ namespace Aer.Flow.Dispatch;
 /// Raised when the command line a dispatch would assemble is longer than the host OS will accept,
 /// caught by <see cref="CoreDispatcher"/> before it ever reaches aer-core (#598). Both worker
 /// adapters embed the whole prompt inline as a single argument
-/// (<c>GeminiWorkerAdapter</c>'s <c>["-p", prompt]</c>, <c>ClaudeWorkerAdapter</c>'s <c>"-p", prompt</c>),
+/// (<c>AgyWorkerAdapter</c>'s <c>["-p", prompt]</c>, <c>ClaudeWorkerAdapter</c>'s <c>"-p", prompt</c>),
 /// so a long enough prompt hits a limit that has nothing to do with the prompt being wrong.
 /// <para>
 /// This exists to name the failure. Without it the spawn is attempted and fails inside aer-core,

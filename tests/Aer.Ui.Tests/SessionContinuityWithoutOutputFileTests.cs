@@ -48,7 +48,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
         IReadOnlyDictionary<string, IWorkerAdapter> stubAdapters = new Dictionary<string, IWorkerAdapter>
         {
             ["claude"] = new SessionTurnStubAdapter(),
-            ["gemini"] = new SessionTurnStubAdapter(),
+            ["agy"] = new SessionTurnStubAdapter(),
             [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         };
 
@@ -138,7 +138,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
     public async Task A_handoff_turn_that_answers_without_writing_a_file_is_still_established()
     {
         var start = new StartSessionRequest(
-            Adapter: "gemini",
+            Adapter: "agy",
             TaskName: "handoff-nofile-" + Guid.NewGuid().ToString("N"),
             InitialMessage: "turn one",
             SafetyCeiling: 200);
@@ -178,7 +178,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
     [Fact]
     public async Task An_agy_session_whose_worker_writes_the_file_resumes_on_the_second_turn()
     {
-        var (metadata, secondTurn) = await TwoTurnsAsync(withOutputFile: true, adapter: "gemini");
+        var (metadata, secondTurn) = await TwoTurnsAsync(withOutputFile: true, adapter: "agy");
 
         Assert.True(metadata.VendorSessionEstablished,
             "the agy control session was not marked established, so nothing discriminates for agy");
@@ -193,7 +193,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
     [Fact]
     public async Task An_agy_session_whose_worker_writes_no_file_still_carries_continuity()
     {
-        var (metadata, secondTurn) = await TwoTurnsAsync(withOutputFile: false, adapter: "gemini");
+        var (metadata, secondTurn) = await TwoTurnsAsync(withOutputFile: false, adapter: "agy");
 
         Assert.True(metadata.VendorSessionEstablished,
             "the agy vendor ran and answered via conversation id on both turns, but AER never recorded "
@@ -221,7 +221,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
     public async Task A_second_agy_turn_that_produces_nothing_is_not_misreported_as_established()
     {
         var start = new StartSessionRequest(
-            Adapter: "gemini",
+            Adapter: "agy",
             TaskName: "agy-silent-second-turn-" + Guid.NewGuid().ToString("N"),
             InitialMessage: "turn one " + SessionTurnStubAdapter.AgyNoOutputFileSentinel,
             SafetyCeiling: 200);
@@ -240,7 +240,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
         var send = new SendSessionMessageRequest(
             SessionId: started.SessionId,
             Message: SessionTurnStubAdapter.AgySilentSuccessSentinel,
-            Adapter: "gemini");
+            Adapter: "agy");
         var sendResponse = await _client.PostAsJsonAsync(
             $"{_baseUrl}/api/sessions/send", send, TestContext.Current.CancellationToken);
         Assert.True(sendResponse.IsSuccessStatusCode, $"send failed: {sendResponse.StatusCode}");
@@ -256,7 +256,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
 
     private async Task<(SessionMetadata Metadata, SessionTurn SecondTurn)> TwoTurnsAsync(bool withOutputFile, string adapter = "claude")
     {
-        var sentinel = string.Equals(adapter, "gemini", StringComparison.OrdinalIgnoreCase)
+        var sentinel = string.Equals(adapter, "agy", StringComparison.OrdinalIgnoreCase)
             ? SessionTurnStubAdapter.AgyNoOutputFileSentinel
             : SessionTurnStubAdapter.NoOutputFileSentinel;
         var suffix = withOutputFile ? "" : " " + sentinel;

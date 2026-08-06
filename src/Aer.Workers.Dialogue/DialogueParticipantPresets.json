@@ -6,7 +6,7 @@
     "ModelArgs": ["--model", "{MODEL}"]
   },
   {
-    "Vendor": "gemini",
+    "Vendor": "agy",
     "Command": "agy",
     "Args": ["-p", "{PROMPT}", "--mode", "accept-edits"],
     "ModelArgs": ["--model", "{MODEL}"]

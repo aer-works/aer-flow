@@ -95,7 +95,7 @@ public class WorkerRoleCatalogTests
         Assert.True(review.ProducesVerdict);
 
         var implement = WorkerRoleCatalog.For("implement");
-        Assert.Equal("gemini", implement.Adapter);
+        Assert.Equal("agy", implement.Adapter);
         Assert.True(implement.Grant.RunShellCommands);
         Assert.True(implement.Grant.NetworkAccess);
         Assert.False(implement.ProducesVerdict);

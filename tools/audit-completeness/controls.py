@@ -137,7 +137,7 @@ PLANTED_COUNT = 42               # deliberately not the number of steps in compl
          "a template pins a name the register does not list (#547's class)")
 def _bad_pin():
     broken = {**selfcheck.dispatch.TEMPLATES,
-              "control": {"adapter": "gemini", "model": BAD_PIN, "write_files": True}}
+              "control": {"adapter": "agy", "model": BAD_PIN, "write_files": True}}
     with swap(selfcheck.dispatch, "TEMPLATES", broken):
         yield
 

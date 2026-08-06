@@ -44,7 +44,7 @@ public class DialogueYieldWiringTests
         var outputDirectory = CreateTempDir();
         try
         {
-            var participant = new DialogueParticipant("responder", "gemini", null, "preamble", "agy", ["-p", "{PROMPT_FILE}"]);
+            var participant = new DialogueParticipant("responder", "agy", null, "preamble", "agy", ["-p", "{PROMPT_FILE}"]);
 
             var wired = DialogueYieldWiring.Wire([participant], outputDirectory);
 
@@ -95,7 +95,7 @@ public class DialogueYieldWiringTests
             var participants = new List<DialogueParticipant>
             {
                 new("initiator", "claude", null, "a", "claude", ["-p", "{PROMPT_FILE}"]),
-                new("initiator", "gemini", null, "b", "agy", ["-p", "{PROMPT_FILE}"]),
+                new("initiator", "agy", null, "b", "agy", ["-p", "{PROMPT_FILE}"]),
             };
 
             Assert.Throws<DialogueWorkerConfigException>(() => DialogueYieldWiring.Wire(participants, outputDirectory));

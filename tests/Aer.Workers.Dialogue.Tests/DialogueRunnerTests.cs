@@ -459,7 +459,7 @@ public class DialogueRunnerTests
         var participants = new List<DialogueParticipant>
         {
             new("first", "claude", null, "First preamble", "stub-claude", ["{PROMPT}"]),
-            new("second", "gemini", null, "Second preamble", "stub-gemini", ["{PROMPT}"]),
+            new("second", "agy", null, "Second preamble", "stub-gemini", ["{PROMPT}"]),
             new("third", "claude", null, "Third preamble", "stub-claude-2", ["{PROMPT}"]),
         };
         var runner = new DialogueRunner(client);

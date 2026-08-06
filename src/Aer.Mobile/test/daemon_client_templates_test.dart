@@ -29,7 +29,7 @@ void main() {
             ],
             'availableVendors': [
               {'adapterName': 'claude', 'binaryName': 'claude', 'isAvailable': true},
-              {'adapterName': 'gemini', 'binaryName': 'agy', 'isAvailable': true},
+              {'adapterName': 'agy', 'binaryName': 'agy', 'isAvailable': true},
             ]
           }),
           200,

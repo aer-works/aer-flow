@@ -20,7 +20,7 @@ public class DialogueWorkerConfigParserTests
             },
             {
               "Role": "responder",
-              "Vendor": "gemini",
+              "Vendor": "agy",
               "Model": null,
               "Preamble": "You are the critic.",
               "Command": "agy",
@@ -42,7 +42,7 @@ public class DialogueWorkerConfigParserTests
         Assert.Equal("initiator", config.Participants[0].Role);
         Assert.Equal("claude", config.Participants[0].Vendor);
         Assert.Equal("responder", config.Participants[1].Role);
-        Assert.Equal("gemini", config.Participants[1].Vendor);
+        Assert.Equal("agy", config.Participants[1].Vendor);
         Assert.Equal(TimeSpan.FromMinutes(5), config.TurnTimeout);
     }
 
@@ -190,7 +190,7 @@ public class DialogueWorkerConfigParserTests
             Participants:
             [
                 DialogueParticipantPresets.For("claude", "initiator", "You are the architect.", model: null),
-                DialogueParticipantPresets.For("gemini", "responder", "You are the critic.", model: null),
+                DialogueParticipantPresets.For("agy", "responder", "You are the critic.", model: null),
             ]);
         var json = System.Text.Json.JsonSerializer.Serialize(config);
 
@@ -217,7 +217,7 @@ public class DialogueWorkerConfigParserTests
             Participants:
             [
                 DialogueParticipantPresets.For("claude", "initiator", "You are the architect.", model: "sonnet"),
-                DialogueParticipantPresets.For("gemini", "responder", "You are the critic.", model: "gemini-3.6-flash-high"),
+                DialogueParticipantPresets.For("agy", "responder", "You are the critic.", model: "gemini-3.6-flash-high"),
             ]);
         var json = System.Text.Json.JsonSerializer.Serialize(config);
 

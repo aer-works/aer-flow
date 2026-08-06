@@ -59,7 +59,7 @@ public class ClaudeWorkerAdapterTests
     /// via a live run against the real authenticated CLI, to non-deterministically refuse to write
     /// AER_OUTPUT_DIR when it falls outside the spawned process's cwd -- which it always does for a
     /// plain chat session with no WorkingDirectory. --add-dir AER_ARTIFACTS_ROOT (the same grant
-    /// GeminiWorkerAdapter already carries for agy, per ArtifactManager.BuildEnvironment's own doc
+    /// AgyWorkerAdapter already carries for agy, per ArtifactManager.BuildEnvironment's own doc
     /// comment) eliminated the failure across every trial once added.
     /// </summary>
     [Fact]

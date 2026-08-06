@@ -14,7 +14,9 @@ public sealed class UnknownWorkerAdapterException : AerFlowException
     public string AdapterName { get; }
 
     public UnknownWorkerAdapterException(string adapterName)
-        : base($"No IWorkerAdapter registered for adapter name '{adapterName}'.")
+        : base(string.Equals(adapterName, "gemini", StringComparison.OrdinalIgnoreCase)
+            ? $"Unknown adapter '{adapterName}' — it was renamed to 'agy'."
+            : $"No IWorkerAdapter registered for adapter name '{adapterName}'.")
     {
         AdapterName = adapterName;
     }

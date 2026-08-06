@@ -24,7 +24,7 @@ namespace Aer.Workers.Dialogue;
 /// (<c>--resume</c>/<c>--session-id</c> for <c>claude</c>, <c>--conversation</c> for <c>agy</c>, wired
 /// per participant by <see cref="ProcessVendorTurnClient"/> and threaded here via each
 /// <see cref="VendorTurnResult.SessionId"/>), the same mechanism <c>Aer.Adapters</c>'s
-/// <c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c> already use for Conversation/Pipeline. This is
+/// <c>ClaudeWorkerAdapter</c>/<c>AgyWorkerAdapter</c> already use for Conversation/Pipeline. This is
 /// what makes a turn's prompt bounded by construction rather than by an argv-length workaround: #579's
 /// crash (a long transcript overflowing Windows' ~32,767-character command-line ceiling) and #582's
 /// quadratic per-turn cost growth were both symptoms of resending history a resumed vendor session

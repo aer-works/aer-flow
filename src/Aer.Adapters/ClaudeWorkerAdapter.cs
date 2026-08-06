@@ -159,7 +159,7 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
             // to produce their declared output file, each citing "outside the sandboxed worktree" /
             // "outside the allowed working directories" as its own reason, until this flag was
             // added -- 0/6 failures with it across the same trial shape. Mirrors the same grant
-            // GeminiWorkerAdapter has carried since spike #21 for the identical reason (agy ignores
+            // AgyWorkerAdapter has carried since spike #21 for the identical reason (agy ignores
             // the invoking process's cwd entirely); Claude turned out to need it too, just only
             // sometimes, which is what made the gap easy to miss.
             "--add-dir", artifactsRoot,

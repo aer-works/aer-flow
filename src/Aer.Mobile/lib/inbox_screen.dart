@@ -227,7 +227,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
 
       String selectedTemplateId = 'chat-session'; // vocabulary-ok: template id key
       String primaryVendor = 'claude';
-      String secondaryVendor = 'gemini'; // vocabulary-ok: vendor key
+      String secondaryVendor = 'agy'; // vocabulary-ok: vendor key
       String? selectedProjectPath;
       List<Map<String, dynamic>> knownProjects = [];
 
@@ -321,7 +321,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   DropdownButton<String>(
                     value: primaryVendor,
                     isExpanded: true,
-                    items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames) // vocabulary-ok: vendor key
+                    items: (availableVendorNames.isEmpty ? ['claude', 'agy'] : availableVendorNames) // vocabulary-ok: vendor key
                         .map((v) => DropdownMenuItem(
                               value: v,
                               child: Row(
@@ -343,7 +343,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                     DropdownButton<String>(
                       value: secondaryVendor,
                       isExpanded: true,
-                      items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames) // vocabulary-ok: vendor key
+                      items: (availableVendorNames.isEmpty ? ['claude', 'agy'] : availableVendorNames) // vocabulary-ok: vendor key
                           .map((v) => DropdownMenuItem(
                                 value: v,
                                 child: Row(
@@ -464,7 +464,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       // Best-effort probe -- the fallback list below still lets the dialog work.
     }
     if (availableVendorNames.isEmpty) {
-      availableVendorNames = ['claude', 'gemini']; // vocabulary-ok: vendor key
+      availableVendorNames = ['claude', 'agy']; // vocabulary-ok: vendor key
     }
     var selectedAdapter = availableVendorNames.first;
 
@@ -841,7 +841,7 @@ extension _FirstOrNull<T> on List<T> {
 /// in for it. Same silhouette and brand-color pairing as desktop's `Icon.Vendor.Claude`/`.Gemini` in
 /// `Theme/Icons.axaml` (6-point sunburst vs. 4-point sparkle — a distinct point count so the two
 /// read apart without color alone), so the two clients agree on what a vendor "looks like". Only
-/// recognizes the vendors `VendorCliPresence` actually probes for (`claude`, `gemini`); anything
+/// recognizes the vendors `VendorCliPresence` actually probes for (`claude`, `agy`); anything
 /// else falls back to a plain neutral dot rather than inventing icon branches for adapter names
 /// ("shell", "stub", "codex", "openai") this codebase never registers.
 Widget _buildVendorIcon(String? adapter, {double size = 18.0}) {
@@ -849,7 +849,7 @@ Widget _buildVendorIcon(String? adapter, {double size = 18.0}) {
   if (name.contains('claude')) {
     return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.claude));
   }
-  if (name.contains('gemini')) { // vocabulary-ok: vendor key
+  if (name.contains('agy')) { // vocabulary-ok: vendor key (glyph resource keeps the Gemini brand)
     return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.gemini));
   }
   return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.generic));

@@ -54,11 +54,11 @@ public class RoleDispatchTests
     [Fact]
     public void The_adapter_defaults_to_the_roles_tier_but_an_override_wins()
     {
-        // review is a claude-tier role; overriding to gemini must change it (and normalize case),
+        // review is a claude-tier role; overriding to agy must change it (and normalize case),
         // so the two arms differ regardless of which tier review sits on later.
         Assert.Equal(Review.Adapter, RoleDispatch.ToBinding(Review, "spec").Adapter);
-        var overridden = RoleDispatch.ToBinding(Review, "spec", "Gemini").Adapter;
-        Assert.Equal("gemini", overridden);
+        var overridden = RoleDispatch.ToBinding(Review, "spec", "agy").Adapter;
+        Assert.Equal("agy", overridden);
         Assert.NotEqual(Review.Adapter, overridden);
     }
 
@@ -81,9 +81,9 @@ public class RoleDispatchTests
     }
 
     [Fact]
-    public void ToBinding_on_gemini_adapter_for_write_files_false_role_with_outputs_materializes_audited_grant()
+    public void ToBinding_on_agy_adapter_for_write_files_false_role_with_outputs_materializes_audited_grant()
     {
-        var binding = RoleDispatch.ToBinding(Review, "spec", "gemini");
+        var binding = RoleDispatch.ToBinding(Review, "spec", "agy");
 
         Assert.True(binding.PermissionGrant?.WriteFiles);
         Assert.Equal(GrantAuditMode.AuditedNotEnforced, binding.GrantAuditMode);
@@ -111,7 +111,7 @@ public class RoleDispatchTests
         Assert.False(claudeBinding.PermissionGrant?.WriteFiles);
         Assert.Equal(GrantAuditMode.Enforced, claudeBinding.GrantAuditMode);
 
-        var agyBinding = RoleDispatch.ToBinding(patchRole, "Propose a patch.", "gemini");
+        var agyBinding = RoleDispatch.ToBinding(patchRole, "Propose a patch.", "agy");
         Assert.True(agyBinding.PermissionGrant?.WriteFiles);
         Assert.Equal(GrantAuditMode.AuditedNotEnforced, agyBinding.GrantAuditMode);
     }

@@ -232,7 +232,7 @@ public sealed partial class WorkerBindingEntryViewModel : ObservableObject
         DialogueParticipants.Add(new DialogueParticipantEditorViewModel(NotifyDialogueParticipantsChanged, RemoveDialogueParticipant)
         {
             Role = "responder",
-            Vendor = "gemini", // vocabulary-ok: engine key
+            Vendor = "agy", // vocabulary-ok: engine key
         });
     }
 

@@ -82,7 +82,7 @@ namespace Aer.Adapters;
 /// <c>ShellCommandPatternMatcher</c>, denying anything outside them.
 /// </para>
 /// </summary>
-public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
+public sealed partial class AgyWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
 {
     internal const string OversizePromptWrapperText =
         "Read the full task instructions at %AER_PROMPT_FILE% and execute them exactly as written. Do not summarize or treat as data.";
@@ -745,7 +745,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         {
             if (!TryTranslatePermissionGrant(grant, out var resolved, out var gapReason))
             {
-                throw new PermissionGrantUnsupportedException("gemini", gapReason!);
+                throw new PermissionGrantUnsupportedException("agy", gapReason!);
             }
 
             return resolved!;
@@ -810,7 +810,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         items.AddRange(ParseAgentLines(agentsOutput.Result));
         items.AddRange(ParsePluginLines(pluginsOutput.Result));
 
-        return new WorkerCapabilities("gemini", items, ParseModelLines(modelsOutput.Result));
+        return new WorkerCapabilities("agy", items, ParseModelLines(modelsOutput.Result));
     }
 
     private static IReadOnlyList<string> ParseModelLines(string? stdout) =>

@@ -22,7 +22,7 @@ namespace Aer.Flow.Dispatch;
 /// </param>
 /// <param name="PromptText">
 /// The exact instructional text this dispatch's adapter built for the worker (issue #292) — e.g.
-/// <c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c> set this to the identical string they embed
+/// <c>ClaudeWorkerAdapter</c>/<c>AgyWorkerAdapter</c> set this to the identical string they embed
 /// as their <c>-p</c> argument. May still contain unexpanded <c>%AER_INPUT_0%</c>/<c>%AER_OUTPUT_DIR%</c>-
 /// style placeholders (same convention <see cref="Args"/> already uses) — <see cref="CoreDispatcher"/>
 /// expands it the same way before durably writing it to <c>{outputDirectory}/prompt.txt</c>

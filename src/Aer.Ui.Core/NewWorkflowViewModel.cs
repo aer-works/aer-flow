@@ -13,7 +13,7 @@ namespace Aer.Ui.Core;
 public enum GuidedStepKind
 {
     Claude,
-    Gemini,
+    Agy,
     Dialogue,
 }
 
@@ -202,7 +202,7 @@ public sealed partial class NewWorkflowViewModel : ObservableObject
             var refusedSteps = new List<(string AdapterName, string? Reason, string Label)>();
             foreach (var step in Steps.Where(s => !s.IsDialogue))
             {
-                var adapterName = step.Kind == GuidedStepKind.Claude ? "claude" : "gemini"; // vocabulary-ok: technical adapter key
+                var adapterName = step.Kind == GuidedStepKind.Claude ? "claude" : "agy"; // vocabulary-ok: technical adapter key
                 if (!_adapterRegistry.TryGetValue(adapterName, out var adapter))
                 {
                     continue;
@@ -357,7 +357,7 @@ public sealed partial class GuidedStepViewModel : ObservableObject
     public bool IsDialogue => Kind == GuidedStepKind.Dialogue;
 
     public IReadOnlyList<GuidedStepKind> KindOptions { get; } =
-        [GuidedStepKind.Claude, GuidedStepKind.Gemini, GuidedStepKind.Dialogue];
+        [GuidedStepKind.Claude, GuidedStepKind.Agy, GuidedStepKind.Dialogue];
 
     public ObservableCollection<GuidedDependsOnOptionViewModel> DependsOnOptions { get; } = [];
 
@@ -458,7 +458,7 @@ public sealed partial class GuidedStepViewModel : ObservableObject
         {
             var grant = _owner.BuildPermissionGrant();
             return new WorkerBindingConfigEntry(
-                Kind == GuidedStepKind.Claude ? "claude" : "gemini", // vocabulary-ok: technical adapter key
+                Kind == GuidedStepKind.Claude ? "claude" : "agy", // vocabulary-ok: technical adapter key
                 contract,
                 Prompt,
                 DefaultTimeout,
@@ -474,7 +474,7 @@ public sealed partial class GuidedStepViewModel : ObservableObject
             Participants:
             [
                 DialogueParticipantPresets.For("claude", "initiator", InitiatorPreamble, Model.Length > 0 ? Model : null),
-                DialogueParticipantPresets.For("gemini", "responder", ResponderPreamble, model: null), // vocabulary-ok: internal vendor key
+                DialogueParticipantPresets.For("agy", "responder", ResponderPreamble, model: null), // vocabulary-ok: internal vendor key
             ]);
 
         var sidecarPath = Path.Combine(workspacePath, $"dialogue-{Name}.json");

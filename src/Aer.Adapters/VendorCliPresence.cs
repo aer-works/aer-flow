@@ -16,7 +16,7 @@ public static class VendorCliPresence
     private static readonly IReadOnlyList<(string AdapterName, string BinaryName)> KnownBinaries =
     [
         ("claude", "claude"),
-        ("gemini", "agy"),
+        ("agy", "agy"),
     ];
 
     public static IReadOnlyList<VendorCliStatus> Probe(Func<string, bool>? isOnPath = null)

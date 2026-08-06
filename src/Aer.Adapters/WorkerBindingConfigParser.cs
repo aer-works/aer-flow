@@ -90,7 +90,7 @@ public static class WorkerBindingConfigParser
             // Duration::from_millis(0), whose monitor thread kills the process tree immediately. An
             // *omitted* Timeout deserializes to default(TimeSpan) and lands in the same place, so the
             // most likely way to hit this is forgetting the field rather than typing a silly value.
-            // Rejecting here also bounds what GeminiWorkerAdapter's --print-timeout can be derived
+            // Rejecting here also bounds what AgyWorkerAdapter's --print-timeout can be derived
             // from (#588): a negative timeout would otherwise floor that flag at 1s while AER's own
             // limit misbehaves, inverting the very ordering that flag exists to establish.
             if (entry.Timeout <= TimeSpan.Zero)

@@ -5,7 +5,7 @@ namespace Aer.Workers.Dialogue;
 
 /// <summary>
 /// The known vendors' participant invocation shapes (M19 Phase 4, issue #189) — the same
-/// one-shot-text-turn flags <c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c> build for a
+/// one-shot-text-turn flags <c>ClaudeWorkerAdapter</c>/<c>AgyWorkerAdapter</c> build for a
 /// top-level dispatch, minus Flow's <c>AER_INPUT_&lt;n&gt;</c>/<c>AER_OUTPUT_DIR</c> convention
 /// (see <see cref="DialogueParticipant"/>'s remarks), previously duplicated by hand in every
 /// smoke test and now owned here: the worker that invokes the participants is where their

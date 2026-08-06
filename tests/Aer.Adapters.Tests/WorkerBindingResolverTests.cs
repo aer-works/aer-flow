@@ -804,12 +804,12 @@ public class WorkerBindingResolverTests
     [Fact]
     public void An_audited_binding_with_AuditedNotEnforced_without_a_worktree_throws_UnisolatedGrantAuditException()
     {
-        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["agy"] = new AgyWorkerAdapter() };
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
         var config = new Dictionary<string, WorkerBindingConfigEntry>
         {
             ["review"] = new WorkerBindingConfigEntry(
-                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                "agy", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
                 PermissionGrant: grant, GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
         };
 
@@ -828,13 +828,13 @@ public class WorkerBindingResolverTests
     [Fact]
     public void An_audited_binding_resolves_only_once_its_worktree_is_actually_provisioned()
     {
-        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["agy"] = new AgyWorkerAdapter() };
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true);
 
         var provisioned = new Dictionary<string, WorkerBindingConfigEntry>
         {
             ["review"] = new WorkerBindingConfigEntry(
-                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                "agy", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
                 PermissionGrant: grant, WorkingDirectory: Path.GetFullPath("."),
                 GrantAuditMode: GrantAuditMode.AuditedNotEnforced, IsWorktree: true),
         };
@@ -845,7 +845,7 @@ public class WorkerBindingResolverTests
         var declaredButUnprovisioned = new Dictionary<string, WorkerBindingConfigEntry>
         {
             ["review"] = new WorkerBindingConfigEntry(
-                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                "agy", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
                 PermissionGrant: grant, Worktree: new WorktreeWorkspace(Path.GetFullPath("."), "main"),
                 GrantAuditMode: GrantAuditMode.AuditedNotEnforced),
         };
@@ -855,14 +855,14 @@ public class WorkerBindingResolverTests
     }
 
     [Fact]
-    public void A_hand_authored_non_audited_write_files_false_with_outputs_on_gemini_still_throws_unsatisfiable_output_contract()
+    public void A_hand_authored_non_audited_write_files_false_with_outputs_on_agy_still_throws_unsatisfiable_output_contract()
     {
-        var adapters = new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() };
+        var adapters = new Dictionary<string, IWorkerAdapter> { ["agy"] = new AgyWorkerAdapter() };
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false);
         var config = new Dictionary<string, WorkerBindingConfigEntry>
         {
             ["review"] = new WorkerBindingConfigEntry(
-                "gemini", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
+                "agy", ArchitectContract, "Review", TimeSpan.FromMinutes(5),
                 PermissionGrant: grant, GrantAuditMode: GrantAuditMode.Enforced),
         };
 

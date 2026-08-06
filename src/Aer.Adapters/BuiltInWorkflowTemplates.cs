@@ -43,7 +43,7 @@ public static class BuiltInWorkflowTemplates
     public static readonly BuiltInTemplateInfo ChatSession = new(
         Id: "chat-session",
         Title: "Chat (Interactive Session)",
-        Description: "Interactive 1-on-1 session with an AI worker (Claude or Gemini) with live turn streaming and session resumption.",
+        Description: "Interactive 1-on-1 session with an AI worker (Claude or agy) with live turn streaming and session resumption.",
         RequiresSecondaryVendor: false);
 
     public static readonly BuiltInTemplateInfo CodebaseSession = new(
@@ -55,13 +55,13 @@ public static class BuiltInWorkflowTemplates
     public static readonly BuiltInTemplateInfo TwoVendorDialogue = new(
         Id: "two-vendor-dialogue",
         Title: "Two-Vendor Dialogue",
-        Description: "Multi-vendor dialogue exchange between Claude and Gemini with turn-by-turn context synthesis.",
+        Description: "Multi-vendor dialogue exchange between Claude and agy with turn-by-turn context synthesis.",
         RequiresSecondaryVendor: true);
 
     public static readonly BuiltInTemplateInfo SoloRun = new(
         Id: "solo-run",
         Title: "Solo Run (Advanced)",
-        Description: "Single-step execution using an installed AI worker (Claude or Gemini).",
+        Description: "Single-step execution using an installed AI worker (Claude or agy).",
         RequiresSecondaryVendor: false);
 
     public static readonly BuiltInTemplateInfo ReviewRun = new(

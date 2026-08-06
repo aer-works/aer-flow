@@ -86,7 +86,7 @@ public class LiveDialogueSmokeTest
     /// reason. Each participant spawns the real CLI directly (<see cref="DialogueParticipant.Command"/>/
     /// <see cref="DialogueParticipant.Args"/>, built by <see cref="DialogueParticipantPresets"/> and
     /// substituted by <see cref="ProcessVendorTurnClient"/> — no shell involved, so no quoting question
-    /// the way <see cref="ClaudeWorkerAdapter"/>/<see cref="GeminiWorkerAdapter"/>'s top-level dispatch
+    /// the way <see cref="ClaudeWorkerAdapter"/>/<see cref="AgyWorkerAdapter"/>'s top-level dispatch
     /// has), reading its per-turn prompt from a file <see cref="DialogueRunner"/> writes rather than
     /// receiving it on argv (#579) — the same mechanism <see cref="ProcessVendorTurnClientEndToEndTests"/>
     /// proves against stub CLIs, this test proves against the real ones.
@@ -115,7 +115,7 @@ public class LiveDialogueSmokeTest
                     "You are debating in favor of the position. Respond in one sentence.",
                     "claude-haiku-4-5-20251001"),
                 DialogueParticipantPresets.For(
-                    "gemini", "responder",
+                    "agy", "responder",
                     "You are debating against the position. Respond in one sentence.",
                     "gemini-3.6-flash-low"),
             ]);

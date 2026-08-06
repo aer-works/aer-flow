@@ -54,7 +54,7 @@ namespace Aer.Adapters;
 /// expands every <c>Args</c> placeholder <em>before</em> process creation (its <c>VariableToken</c>
 /// is the grammar's one home), so layering <c>cmd</c>/<c>sh</c> expanded nothing. Spawning
 /// <c>dotnet</c> directly avoids unnecessary shell processes. The rest holds:
-/// unlike <see cref="ClaudeWorkerAdapter"/>/<see cref="GeminiWorkerAdapter"/>, this adapter needs
+/// unlike <see cref="ClaudeWorkerAdapter"/>/<see cref="AgyWorkerAdapter"/>, this adapter needs
 /// neither stdin redirection (the dialogue executable never reads <c>Console.In</c> — its
 /// <c>Program.cs</c> is argument-driven only) nor Windows' newline-collapsing (its two arguments
 /// are never multi-line), and args stay a token list end to end — never pre-quoted into one

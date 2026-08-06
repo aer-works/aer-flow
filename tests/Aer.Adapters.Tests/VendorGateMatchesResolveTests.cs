@@ -21,7 +21,7 @@ namespace Aer.Adapters.Tests;
 /// it by reading; nothing here could have. Set equality rather than containment, because anything
 /// weaker leaves room for the same shape to recur — with one pinned exception: the #442 home
 /// redirect is dispatch-path state isolation, not a gate mechanism, and cannot ride the gate (the
-/// reason lives at <c>GeminiWorkerAdapter.Resolve</c>'s own redirect clause).
+/// reason lives at <c>AgyWorkerAdapter.Resolve</c>'s own redirect clause).
 /// </para>
 /// </remarks>
 [Collection(LaunchConfigCollection.Name)]
@@ -92,15 +92,15 @@ public class VendorGateMatchesResolveTests
     [Fact]
     public void Agy_gate_is_every_gate_mechanism_Resolve_installs()
     {
-        var gate = GeminiWorkerAdapter.BuildGate(Restrictive, Workspace);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var gate = AgyWorkerAdapter.BuildGate(Restrictive, Workspace);
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: Restrictive, WorkingDirectory: Workspace), Contract);
 
         AssertGateIsInstalled(gate, target);
 
         // agy discovers hooks ONLY from an --add-dir path, so this pair IS the gate on this vendor.
         Assert.Equal("--add-dir", gate.Args[0]);
-        Assert.Contains(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, gate.Args[1]);
+        Assert.Contains(AgyWorkerAdapter.AgyWorkspaceDirectoryName, gate.Args[1]);
     }
 
     /// <summary>
@@ -115,7 +115,7 @@ public class VendorGateMatchesResolveTests
     /// </remarks>
     [Theory]
     [InlineData("claude")]
-    [InlineData("gemini")]
+    [InlineData("agy")]
     public void The_workspace_bound_reaches_the_gate_when_given_and_is_absent_when_not(string vendor)
     {
         var withWorkspace = VendorGate.For(vendor, Restrictive, Workspace);
@@ -136,6 +136,6 @@ public class VendorGateMatchesResolveTests
     {
         Assert.Null(VendorGate.For("some-future-vendor", Restrictive));
         Assert.NotNull(VendorGate.For("claude", Restrictive));
-        Assert.NotNull(VendorGate.For("gemini", Restrictive));
+        Assert.NotNull(VendorGate.For("agy", Restrictive));
     }
 }

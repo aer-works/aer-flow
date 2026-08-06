@@ -21,7 +21,7 @@ public class ChatAdapterComboTests
     private static readonly VendorCliStatus[] BothVendors =
     [
         new("claude", "claude", IsAvailable: true),
-        new("gemini", "agy", IsAvailable: true),
+        new("agy", "agy", IsAvailable: true),
     ];
 
     [AvaloniaFact]
@@ -32,17 +32,17 @@ public class ChatAdapterComboTests
         var chat = window.ViewModel.Chat;
 
         chat.PopulateAvailableAdapters(BothVendors);
-        chat.NewChatAdapter = "gemini";
+        chat.NewChatAdapter = "agy";
         Dispatcher.UIThread.RunJobs();
-        Assert.Equal("gemini", combo.SelectedItem);
+        Assert.Equal("agy", combo.SelectedItem);
 
         // The #981 trigger: a second populate clears and refills ItemsSource. Under the old
         // two-way binding the control's cleared selection wrote null back into the ViewModel here.
         chat.PopulateAvailableAdapters(BothVendors);
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal("gemini", chat.NewChatAdapter);
-        Assert.Equal("gemini", combo.SelectedItem);
+        Assert.Equal("agy", chat.NewChatAdapter);
+        Assert.Equal("agy", combo.SelectedItem);
     }
 
     [AvaloniaFact]
@@ -58,9 +58,9 @@ public class ChatAdapterComboTests
         chat.PopulateAvailableAdapters(BothVendors);
         Dispatcher.UIThread.RunJobs();
 
-        combo.SelectedItem = "gemini";
+        combo.SelectedItem = "agy";
         Dispatcher.UIThread.RunJobs();
 
-        Assert.Equal("gemini", chat.NewChatAdapter);
+        Assert.Equal("agy", chat.NewChatAdapter);
     }
 }
